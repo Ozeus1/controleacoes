@@ -206,6 +206,18 @@ def add_asset():
         db.session.add(new_asset)
         db.session.commit()
         
+        # Fetch quote immediately for the new asset (Optimize: Single Fetch)
+        try:
+            quotes = get_quotes([ticker])
+            if ticker in quotes:
+                q = quotes[ticker]
+                new_asset.current_price = q.get('price', 0.0)
+                new_asset.daily_change = q.get('change_percent', 0.0)
+                new_asset.last_update = datetime.now()
+                db.session.commit()
+        except Exception as e:
+            print(f"Error fetching initial quote for {ticker}: {e}")
+        
         if strategy == 'SWING':
             return redirect(url_for('swingtrade'))
         elif type_ == 'FII':

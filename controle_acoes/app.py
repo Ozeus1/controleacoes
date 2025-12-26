@@ -51,7 +51,13 @@ def load_user(user_id):
 
 
 with app.app_context():
-    db.create_all()
+    try:
+        db.create_all()
+    except Exception as e:
+        # In a multi-worker environment (Gunicorn), multiple workers might try to create tables simultaneously.
+        # If one succeeds, the others might fail with "table already exists".
+        # We catch this to allow the server to start.
+        print(f"Database initialization note: {e}")
 
 @app.route('/')
 @login_required

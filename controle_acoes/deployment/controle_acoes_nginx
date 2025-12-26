@@ -4,6 +4,6 @@ server {
 
     location / {
         include proxy_params;
-        proxy_pass http://unix:/var/www/controle_acoes/controle_acoes.sock;
+        proxy_pass http://unix:/var/www/controle_acoes/controle_acoes/controle_acoes.sock;
     }
 }

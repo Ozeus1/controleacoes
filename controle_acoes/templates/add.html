@@ -37,12 +37,19 @@
                         %}>SHOPPING CENTER</option>
                     <option value="RENDA" {% if asset and asset.fii_type=='RENDA' %}selected{% endif %}>RENDA</option>
                     <option value="INFRA" {% if asset and asset.fii_type=='INFRA' %}selected{% endif %}>INFRA</option>
-                    <!-- Allow typing? Select is easier, user said "can be edited later", implies flexibility. 
-                         If user wants arbitrary text, maybe datalist or just input. 
-                         For now, fixed list as requested, but maybe add "OUTROS"? 
-                         User listed specific options. -->
                     <option value="OUTROS" {% if asset and asset.fii_type=='OUTROS' %}selected{% endif %}>OUTROS
                     </option>
+                </select>
+            </div>
+
+            <div class="form-group" id="sector-group" style="display: none;">
+                <label for="sector">Setor (Ações)</label>
+                <select id="sector" name="sector">
+                    <option value="">Selecione...</option>
+                    {% for s in ['Bebidas', 'Comércio', 'Energia Elétrica', 'Holding', 'Financeiro', 'Bancos',
+                    'Mineração', 'Petróleo', 'Siderurgia', 'Transporte', 'Outros'] %}
+                    <option value="{{ s }}" {% if asset and asset.sector==s %}selected{% endif %}>{{ s }}</option>
+                    {% endfor %}
                 </select>
             </div>
         </div>
@@ -121,11 +128,18 @@
 
     function toggleFiiFields() {
         const type = document.getElementById('type').value;
-        const group = document.getElementById('fii-type-group');
+        const fiiGroup = document.getElementById('fii-type-group');
+        const sectorGroup = document.getElementById('sector-group');
+
         if (type === 'FII') {
-            group.style.display = 'block';
+            fiiGroup.style.display = 'block';
+            sectorGroup.style.display = 'none';
+        } else if (type === 'ACAO') {
+            fiiGroup.style.display = 'none';
+            sectorGroup.style.display = 'block';
         } else {
-            group.style.display = 'none';
+            fiiGroup.style.display = 'none';
+            sectorGroup.style.display = 'none';
         }
     }
 

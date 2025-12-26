@@ -351,12 +351,22 @@ def add_asset():
 
         # Entry Date (default to today if missing)
         # Assuming form doesn't have it yet, set default. User can edit later or we add field.
+        recommendation = request.form.get('recommendation')
+        fii_type = request.form.get('fii_type')
+        sector = request.form.get('sector')
+        
+        stop_loss = float(stop_loss.replace(',', '.')) if stop_loss else None
+        gain1 = float(gain1.replace(',', '.')) if gain1 else None
+        gain2 = float(gain2.replace(',', '.')) if gain2 else None
+
+        # Entry Date (default to today if missing)
+        # Assuming form doesn't have it yet, set default. User can edit later or we add field.
         entry_date = date.today()
 
         new_asset = Asset(
             ticker=ticker, type=type_, strategy=strategy, quantity=qty, avg_price=price,
             stop_loss=stop_loss, gain1=gain1, gain2=gain2, recommendation=recommendation,
-            entry_date=entry_date, fii_type=fii_type
+            entry_date=entry_date, fii_type=fii_type, sector=sector
         )
         db.session.add(new_asset)
         db.session.commit()
@@ -405,12 +415,14 @@ def edit_asset(id):
         gain2 = request.form.get('gain2')
         recommendation = request.form.get('recommendation')
         fii_type = request.form.get('fii_type')
+        sector = request.form.get('sector')
         
         asset.stop_loss = float(stop_loss.replace(',', '.')) if stop_loss else None
         asset.gain1 = float(gain1.replace(',', '.')) if gain1 else None
         asset.gain2 = float(gain2.replace(',', '.')) if gain2 else None
         asset.recommendation = recommendation
         asset.fii_type = fii_type
+        asset.sector = sector
         
         db.session.commit()
         if asset.strategy == 'SWING':
@@ -532,9 +544,11 @@ def resumo():
     # Usually Swing is just a strategy, but Asset Type is ACAO/FII.
     # Let's split by TYPE for the "Allocation" chart.
     
+    
     total_swing = 0 
     
     fii_types = {}
+    stock_sectors = {} # New: [Sector] -> Value
     
     # FII Classification Mapping
     fii_map = {
@@ -561,6 +575,10 @@ def resumo():
         
         if a.type == 'ACAO':
             total_acoes += val
+            # Stock Sector:
+            s = a.sector or 'Não Classificado'
+            stock_sectors[s] = stock_sectors.get(s, 0) + val
+            
         elif a.type == 'FII':
             total_fiis += val
             t = a.fii_type or 'OUTROS'
@@ -605,15 +623,13 @@ def resumo():
     total_realized_profit = sum(h.profit_value for h in history)
     
     return render_template('resumo.html', 
-                           total_equity=total_equity,
-                           total_acoes=total_acoes,
-                           total_fiis=total_fiis,
-                           total_realized_profit=total_realized_profit, # Pass to template
-                           fii_types=fii_types,
-                           months=sorted_months,
-                           profits=profit_data,
-                           fii_table=fii_table_data,
-                           broad_allocation=broad_allocation)
+                         total_equity=total_equity, total_acoes=total_acoes, total_fiis=total_fiis,
+                         total_realized_profit=sum(profit_data),
+                         fii_types=fii_types,
+                         fii_table=fii_table_data,
+                         broad_allocation=broad_allocation,
+                         months=sorted_months, profits=profit_data,
+                         stock_sectors=stock_sectors)
 
 @app.route('/edit_history/<int:id>', methods=['GET', 'POST'])
 @login_required

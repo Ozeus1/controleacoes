@@ -48,6 +48,10 @@
             <canvas id="allocationChart"></canvas>
         </div>
         <div class="card" style="padding: 1.5rem;">
+            <h3 style="text-align: center; font-size: 1rem; margin-bottom: 1rem;">Setores de Ações</h3>
+            <canvas id="stockChart"></canvas>
+        </div>
+        <div class="card" style="padding: 1.5rem;">
             <h3 style="text-align: center; font-size: 1rem; margin-bottom: 1rem;">Tipos de FIIs</h3>
             <canvas id="fiiChart"></canvas>
         </div>
@@ -152,6 +156,25 @@
                 data: fiiValues,
                 backgroundColor: [
                     '#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#64748b', '#06b6d4'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+    });
+
+    // Stock Sector Chart
+    const stockLabels = {{ stock_sectors.keys() | list | tojson }};
+    const stockValues = {{ stock_sectors.values() | list | tojson }};
+    const ctxStock = document.getElementById('stockChart').getContext('2d');
+    new Chart(ctxStock, {
+        type: 'pie',
+        data: {
+            labels: stockLabels,
+            datasets: [{
+                data: stockValues,
+                backgroundColor: [
+                    '#8b5cf6', '#ec4899', '#f97316', '#14b8a6', '#f43f5e', '#6366f1', '#84cc16', '#a855f7', '#0ea5e9', '#eab308', '#64748b'
                 ],
                 borderWidth: 0
             }]

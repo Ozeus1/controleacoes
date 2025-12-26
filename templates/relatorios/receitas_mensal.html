@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Receitas Mensais - {{ nome_mes }}/{{ ano }}{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-12">
+        <h2><i class="bi bi-cash-coin"></i> Receitas Mensais - {{ nome_mes }}/{{ ano }}</h2>
+        <hr>
+    </div>
+</div>
+
+<!-- Filtro de Mês/Ano -->
+<div class="card mb-3">
+    <div class="card-header bg-success text-white">
+        <h5><i class="bi bi-calendar"></i> Selecionar Período</h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Mês</label>
+                <select class="form-select" name="mes">
+                    {% for m in range(1, 13) %}
+                    <option value="{{ m }}" {% if m==mes %}selected{% endif %}>
+                        {{ ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][m-1] }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Ano</label>
+                <input type="number" class="form-control" name="ano" value="{{ ano }}" min="2000" max="2100">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button type="submit" class="btn btn-success">
+                    <i class="bi bi-search"></i> Filtrar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Gráfico -->
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>Distribuição por Categoria</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="graficoReceitas" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumo -->
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5>Resumo</h5>
+            </div>
+            <div class="card-body">
+                <h3 class="text-success">R$ {{ "%.2f"|format(total_mes)|replace('.', ',') }}</h3>
+                <p class="text-muted mb-0">Total de Receitas</p>
+                <hr>
+                <p class="mb-1"><strong>{{ receitas_por_categoria|length }}</strong> categorias com receitas</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabela Detalhada -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>Detalhamento por Categoria</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Categoria</th>
+                                <th class="text-end">Valor Total</th>
+                                <th class="text-end">% do Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for categoria, valor in receitas_por_categoria %}
+                            <tr>
+                                <td><span class="badge bg-success">{{ categoria }}</span></td>
+                                <td class="text-end text-success fw-bold">R$ {{ "%.2f"|format(valor)|replace('.', ',')
+                                    }}</td>
+                                <td class="text-end">
+                                    {{ "%.1f"|format((valor / total_mes * 100) if total_mes > 0 else 0) }}%
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="3" class="text-center text-muted">Nenhuma receita neste período</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                        {% if receitas_por_categoria %}
+                        <tfoot>
+                            <tr class="table-active">
+                                <th>Total</th>
+                                <th class="text-end">R$ {{ "%.2f"|format(total_mes)|replace('.', ',') }}</th>
+                                <th class="text-end">100%</th>
+                            </tr>
+                        </tfoot>
+                        {% endif %}
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Preparar dados para o gráfico
+    const labels = [{% for cat, val in receitas_por_categoria %}'{{ cat }}'{% if not loop.last %}, {% endif %} {% endfor %}];
+    const valores = [{% for cat, val in receitas_por_categoria %}{ { val } } {% if not loop.last %}, {% endif %} {% endfor %}];
+
+    const ctx = document.getElementById('graficoReceitas');
+    new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Receitas por Categoria',
+                data: valores,
+                backgroundColor: [
+                    'rgba(75, 192, 192, 0.7)',
+                    'rgba(54, 162, 235, 0.7)',
+                    'rgba(153, 102, 255, 0.7)',
+                    'rgba(255, 206, 86, 0.7)',
+                    'rgba(255, 159, 64, 0.7)',
+                    'rgba(199, 199, 199, 0.7)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            let label = context.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            label += 'R$ ' + context.parsed.toFixed(2).replace('.', ',');
+                            return label;
+                        }
+                    }
+                }
+            }
+        }
+    });
+</script>
+{% endblock %}

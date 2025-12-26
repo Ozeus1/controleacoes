@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}{% if receita %}Editar{% else %}Nova{% endif %} Receita{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-8 offset-md-2">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h4>
+                    <i class="bi bi-cash-coin"></i>
+                    {% if receita %}Editar Receita{% else %}Nova Receita{% endif %}
+                </h4>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="row">
+                        <div class="col-md-8 mb-3">
+                            <label for="descricao" class="form-label">Descrição *</label>
+                            <input type="text" class="form-control" id="descricao" name="descricao"
+                                value="{{ receita.descricao if receita else '' }}" required>
+                        </div>
+
+                        <div class="col-md-4 mb-3">
+                            <label for="valor" class="form-label">Valor (R$) *</label>
+                            <input type="text" class="form-control" id="valor" name="valor"
+                                value="{{ receita.valor if receita else '' }}" required placeholder="0,00">
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="categoria_id" class="form-label">Categoria *</label>
+                            <select class="form-select" id="categoria_id" name="categoria_id" required>
+                                <option value="">Selecione...</option>
+                                {% for categoria in categorias %}
+                                <option value="{{ categoria.id }}" {% if receita and receita.categoria_id==categoria.id
+                                    %}selected{% endif %}>
+                                    {{ categoria.nome }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label for="meio_recebimento_id" class="form-label">Meio de Recebimento *</label>
+                            <select class="form-select" id="meio_recebimento_id" name="meio_recebimento_id" required>
+                                <option value="">Selecione...</option>
+                                {% for meio in meios_recebimento %}
+                                <option value="{{ meio.id }}" {% if receita and receita.meio_recebimento_id==meio.id
+                                    %}selected{% endif %}>
+                                    {{ meio.nome }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="data_recebimento" class="form-label">Data de Recebimento *</label>
+                            <input type="date" class="form-control" id="data_recebimento" name="data_recebimento"
+                                value="{{ receita.data_recebimento if receita else hoje }}" required>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <label for="num_parcelas" class="form-label">Número de Parcelas</label>
+                            <input type="number" class="form-control" id="num_parcelas" name="num_parcelas"
+                                value="{{ receita.num_parcelas if receita else 1 }}" min="1" max="48">
+                        </div>
+                    </div>
+
+                    {% if filtros %}
+                    {% for key, value in filtros.items() %}
+                    <input type="hidden" name="filtro_{{ key }}" value="{{ value }}">
+                    {% endfor %}
+                    {% endif %}
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('receitas.lista', **filtros) if filtros else url_for('receitas.lista') }}"
+                            class="btn btn-secondary">
+                            <i class="bi bi-arrow-left"></i> Voltar
+                        </a>
+                        <button type="submit" class="btn btn-success">
+                            <i class="bi bi-check-lg"></i> Salvar
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Formatar valor como moeda enquanto digita
+    document.getElementById('valor').addEventListener('blur', function (e) {
+        let valor = e.target.value.replace(',', '.');
+        if (!isNaN(valor) && valor !== '') {
+            e.target.value = parseFloat(valor).toFixed(2).replace('.', ',');
+        }
+    });
+</script>
+{% endblock %}

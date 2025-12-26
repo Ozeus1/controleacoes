@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width: 800px; margin: 0 auto;">
+    <h2>Configuração</h2>
+
+    <div style="margin-bottom: 3rem;">
+        <h3>Chave de API (BRAPI)</h3>
+        <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+            Insira sua chave de acesso. Se estiver vazia, o sistema tentará usar a variável de ambiente ou o plano
+            gratuito (limitado).
+        </p>
+        <form method="POST" action="{{ url_for('config') }}">
+            <div class="form-group">
+                <label for="api_key">Token API</label>
+                <div style="display: flex; gap: 1rem;">
+                    <input type="text" id="api_key" name="api_key" value="{{ '********' if current_key else '' }}"
+                        placeholder="Ex: xxxxxxxxxx" style="flex: 1; margin-bottom: 0;">
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div style="border-top: 1px solid var(--border-color); padding-top: 2rem;">
+        <h3>Testar Conexão</h3>
+        <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+            Informe um ticker para verificar se a API está retornando dados corretamente com a chave configurada.
+        </p>
+
+        <form method="POST" action="{{ url_for('test_api') }}" style="margin-bottom: 1rem;">
+            <div class="form-group">
+                <label for="ticker">Ticker</label>
+                <div style="display: flex; gap: 1rem;">
+                    <input type="text" id="ticker" name="ticker" placeholder="Ex: PETR4" required
+                        style="flex: 1; margin-bottom: 0;">
+                    <button type="submit" class="btn btn-primary">Testar</button>
+                </div>
+            </div>
+        </form>
+
+        {% if test_result %}
+        <div
+            style="background-color: #0f172a; padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--border-color);">
+            <div style="margin-bottom: 0.5rem;">
+                Status:
+                {% if success %}
+                <span style="color: var(--success-color); font-weight: bold;">SUCESSO</span>
+                {% else %}
+                <span style="color: var(--danger-color); font-weight: bold;">ERRO</span>
+                {% endif %}
+            </div>
+            <pre
+                style="color: #94a3b8; font-family: monospace; white-space: pre-wrap; word-break: break-all;">{{ test_result }}</pre>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

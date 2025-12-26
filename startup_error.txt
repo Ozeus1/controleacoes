@@ -1,0 +1,51 @@
+﻿python : Traceback 
+(most recent call 
+last):
+No linha:1 
+caractere:1
++ python sistema_fina
+nceiro_v15.py 2>&1 | 
+Out-File -Encoding 
+utf8 start ...
++ ~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
+    + CategoryInfo   
+           : NotSpe  
+  cified: (Traceba   
+ ck (most recent     
+call last)::Stri    
+ng) [], RemoteEx    
+ception
+    + FullyQualified 
+   ErrorId : Native  
+  CommandError
+ 
+  File "C:\Users\Orle
+i\OneDrive\ProjPython
+\FINAN\sistema_financ
+eiro_v15.py", line 
+3847, in <module>
+    main()
+  File "C:\Users\Orle
+i\OneDrive\ProjPython
+\FINAN\sistema_financ
+eiro_v15.py", line 
+3842, in main
+    app = SistemaFina
+nceiro(root)
+          ^^^^^^^^^^^
+^^^^^^^^^^^^
+  File "C:\Users\Orle
+i\OneDrive\ProjPython
+\FINAN\sistema_financ
+eiro_v15.py", line 
+678, in __init__
+    self.criar_banco_
+dados_receitas()
+    ^^^^^^^^^^^^^^^^^
+^^^^^^^^^^^^^^
+AttributeError: 
+'SistemaFinanceiro' 
+object has no 
+attribute 'criar_banc
+o_dados_receitas'

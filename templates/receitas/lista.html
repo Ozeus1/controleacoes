@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Receitas{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-12">
+        <h2><i class="bi bi-cash-coin"></i> Gerenciar Receitas</h2>
+        <hr>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-3">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-funnel"></i> Filtros</h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Buscar</label>
+                <input type="text" class="form-control" name="busca" value="{{ request.args.get('busca', '') }}"
+                    placeholder="Descrição...">
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">Categoria</label>
+                <select class="form-select" name="categoria_id">
+                    <option value="">Todas</option>
+                    {% for cat in categorias %}
+                    <option value="{{ cat.id }}" {% if request.args.get('categoria_id')==cat.id|string %}selected{%
+                        endif %}>
+                        {{ cat.nome }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">Meio Recebimento</label>
+                <select class="form-select" name="meio_recebimento_id">
+                    <option value="">Todos</option>
+                    {% for meio in meios_recebimento %}
+                    <option value="{{ meio.id }}" {% if request.args.get('meio_recebimento_id')==meio.id|string
+                        %}selected{% endif %}>
+                        {{ meio.nome }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">Período</label>
+                <select class="form-select" name="periodo" id="periodoSelect" onchange="toggleDatas()">
+                    <option value="mes_atual" {% if periodo=='mes_atual' %}selected{% endif %}>Mês Atual</option>
+                    <option value="todos" {% if periodo=='todos' %}selected{% endif %}>Todos</option>
+                    <option value="personalizado" {% if periodo=='personalizado' %}selected{% endif %}>Personalizado
+                    </option>
+                </select>
+            </div>
+
+            <div class="col-md-2" id="divDataInicio" style="display: none;">
+                <label class="form-label">Data Inicial</label>
+                <input type="date" class="form-control" name="data_inicio" value="{{ data_inicio_filtro or '' }}">
+            </div>
+
+            <div class="col-md-2" id="divDataFim" style="display: none;">
+                <label class="form-label">Data Final</label>
+                <input type="date" class="form-control" name="data_fim" value="{{ data_fim_filtro or '' }}">
+            </div>
+
+            <div class="col-md-1 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="bi bi-search"></i>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Ações -->
+<div class="mb-3">
+    <a href="{{ url_for('receitas.criar') }}" class="btn btn-success">
+        <i class="bi bi-plus-lg"></i> Nova Receita
+    </a>
+    <a href="{{ url_for('receitas.exportar') }}" class="btn btn-outline-success">
+        <i class="bi bi-file-earmark-excel"></i> Exportar Excel
+    </a>
+</div>
+
+<!-- Tabela -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Descrição</th>
+                        <th>Categoria</th>
+                        <th>Meio Recebimento</th>
+                        <th class="text-end">Valor</th>
+                        <th>Parcelas</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for receita in receitas.items %}
+                    <tr>
+                        <td>{{ receita.data_recebimento.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ receita.descricao }}</td>
+                        <td><span class="badge bg-secondary">{{ receita.categoria.nome }}</span></td>
+                        <td><span class="badge bg-info">{{ receita.meio_recebimento.nome }}</span></td>
+                        <td class="text-end">R$ {{ "%.2f"|format(receita.valor)|replace('.', ',') }}</td>
+                        <td>{{ receita.num_parcelas }}x</td>
+                        <td>
+                            <a href="{{ url_for('receitas.editar', id=receita.id, **request.args) }}"
+                                class="btn btn-sm btn-warning" title="Editar">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form method="POST" action="{{ url_for('receitas.excluir', id=receita.id) }}"
+                                style="display:inline;"
+                                onsubmit="return confirm('Tem certeza que deseja excluir esta receita?');">
+                                <button type="submit" class="btn btn-sm btn-danger" title="Excluir">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted">Nenhuma receita encontrada.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginação -->
+        {% if receitas.pages > 1 %}
+        <nav>
+            <ul class="pagination justify-content-center">
+                <li class="page-item {% if not receitas.has_prev %}disabled{% endif %}">
+                    <a class="page-link"
+                        href="{{ url_for('receitas.lista', page=receitas.prev_num, **filtros_url) }}">Anterior</a>
+                </li>
+
+                {% for page_num in range(1, receitas.pages + 1) %}
+                <li class="page-item {% if page_num == receitas.page %}active{% endif %}">
+                    <a class="page-link" href="{{ url_for('receitas.lista', page=page_num, **filtros_url) }}">{{
+                        page_num }}</a>
+                </li>
+                {% endfor %}
+
+                <li class="page-item {% if not receitas.has_next %}disabled{% endif %}">
+                    <a class="page-link"
+                        href="{{ url_for('receitas.lista', page=receitas.next_num, **filtros_url) }}">Próximo</a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    function toggleDatas() {
+        const periodo = document.getElementById('periodoSelect').value;
+        const divInicio = document.getElementById('divDataInicio');
+        const divFim = document.getElementById('divDataFim');
+
+        if (periodo === 'personalizado') {
+            divInicio.style.display = 'block';
+            divFim.style.display = 'block';
+        } else {
+            divInicio.style.display = 'none';
+            divFim.style.display = 'none';
+        }
+    }
+    // Executar ao carregar
+    document.addEventListener('DOMContentLoaded', toggleDatas);
+</script>
+{% endblock %}

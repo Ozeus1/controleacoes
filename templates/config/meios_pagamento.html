@@ -1,0 +1,197 @@
+{% extends "base.html" %}
+
+{% block title %}Gerenciar Meios de Pagamento{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-10 offset-md-1">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4><i class="bi bi-credit-card"></i> Gerenciar Meios de Pagamento</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>Configure os meios de pagamento utilizados</strong>
+                    <p class="mb-0 mt-2">
+                        Cadastre e gerencie cartões de crédito, débito, dinheiro, PIX, etc.
+                    </p>
+                </div>
+
+                <!-- Formulário de Cadastro -->
+                <form method="POST" class="mb-4">
+                    <input type="hidden" name="action" value="criar">
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0"><i class="bi bi-plus-circle"></i> Adicionar Meio de Pagamento</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label"><strong>Nome</strong></label>
+                                    <input type="text" class="form-control" name="nome" placeholder="Ex: Cartão Nubank"
+                                        required>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label"><strong>Tipo</strong></label>
+                                    <select class="form-select" name="tipo" required>
+                                        <option value="">Selecione...</option>
+                                        <option value="cartao">Cartão de Crédito</option>
+                                        <option value="debito">Débito</option>
+                                        <option value="dinheiro">Dinheiro</option>
+                                        <option value="pix">PIX</option>
+                                        <option value="transferencia">Transferência</option>
+                                        <option value="boleto">Boleto</option>
+                                        <option value="outro">Outro</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-check-lg"></i> Adicionar
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                <!-- Lista de Meios de Pagamento -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-list-ul"></i> Meios de Pagamento Cadastrados</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if meios %}
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Nome</th>
+                                        <th>Tipo</th>
+                                        <th class="text-center">Status</th>
+                                        <th class="text-center">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for meio in meios %}
+                                    <tr>
+                                        <td>
+                                            <i
+                                                class="bi bi-{% if meio.tipo == 'cartao' %}credit-card{% elif meio.tipo == 'dinheiro' %}cash{% elif meio.tipo == 'pix' %}qr-code{% else %}wallet2{% endif %}"></i>
+                                            {{ meio.nome }}
+                                        </td>
+                                        <td>
+                                            {% if meio.tipo == 'cartao' %}
+                                            <span class="badge bg-primary">Cartão de Crédito</span>
+                                            {% elif meio.tipo == 'debito' %}
+                                            <span class="badge bg-info">Débito</span>
+                                            {% elif meio.tipo == 'dinheiro' %}
+                                            <span class="badge bg-success">Dinheiro</span>
+                                            {% elif meio.tipo == 'pix' %}
+                                            <span class="badge bg-warning text-dark">PIX</span>
+                                            {% elif meio.tipo == 'transferencia' %}
+                                            <span class="badge bg-secondary">Transferência</span>
+                                            {% elif meio.tipo == 'boleto' %}
+                                            <span class="badge bg-danger">Boleto</span>
+                                            {% else %}
+                                            <span class="badge bg-dark">Outro</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            {% if meio.ativo %}
+                                            <span class="badge bg-success">Ativo</span>
+                                            {% else %}
+                                            <span class="badge bg-secondary">Inativo</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            <!-- Ativar/Desativar -->
+                                            <form method="POST" style="display: inline;">
+                                                <input type="hidden" name="action" value="ativar_desativar">
+                                                <input type="hidden" name="id" value="{{ meio.id }}">
+                                                <button type="submit"
+                                                    class="btn btn-sm btn-{% if meio.ativo %}warning{% else %}success{% endif %}"
+                                                    title="{% if meio.ativo %}Desativar{% else %}Ativar{% endif %}">
+                                                    <i
+                                                        class="bi bi-{% if meio.ativo %}pause-circle{% else %}play-circle{% endif %}"></i>
+                                                </button>
+                                            </form>
+
+                                            <!-- Editar (Modal) -->
+                                            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
+                                                data-bs-target="#editarModal{{ meio.id }}" title="Editar">
+                                                <i class="bi bi-pencil"></i>
+                                            </button>
+
+                                            <!-- Modal de Edição -->
+                                            <div class="modal fade" id="editarModal{{ meio.id }}" tabindex="-1">
+                                                <div class="modal-dialog">
+                                                    <div class="modal-content">
+                                                        <form method="POST">
+                                                            <div class="modal-header">
+                                                                <h5 class="modal-title">Editar Meio de Pagamento</h5>
+                                                                <button type="button" class="btn-close"
+                                                                    data-bs-dismiss="modal"></button>
+                                                            </div>
+                                                            <div class="modal-body">
+                                                                <input type="hidden" name="action" value="editar">
+                                                                <input type="hidden" name="id" value="{{ meio.id }}">
+
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">Nome</label>
+                                                                    <input type="text" class="form-control" name="nome"
+                                                                        value="{{ meio.nome }}" required>
+                                                                </div>
+
+                                                                <div class="mb-3">
+                                                                    <label class="form-label">Tipo</label>
+                                                                    <select class="form-select" name="tipo" required>
+                                                                        <option value="cartao" {% if meio.tipo=='cartao'
+                                                                            %}selected{% endif %}>Cartão de Crédito
+                                                                        </option>
+                                                                        <option value="debito" {% if meio.tipo=='debito'
+                                                                            %}selected{% endif %}>Débito</option>
+                                                                        <option value="dinheiro" {% if
+                                                                            meio.tipo=='dinheiro' %}selected{% endif %}>
+                                                                            Dinheiro</option>
+                                                                        <option value="pix" {% if meio.tipo=='pix'
+                                                                            %}selected{% endif %}>PIX</option>
+                                                                        <option value="transferencia" {% if
+                                                                            meio.tipo=='transferencia' %}selected{%
+                                                                            endif %}>Transferência</option>
+                                                                        <option value="boleto" {% if meio.tipo=='boleto'
+                                                                            %}selected{% endif %}>Boleto</option>
+                                                                        <option value="outro" {% if meio.tipo=='outro'
+                                                                            %}selected{% endif %}>Outro</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                            <div class="modal-footer">
+                                                                <button type="button" class="btn btn-secondary"
+                                                                    data-bs-dismiss="modal">Cancelar</button>
+                                                                <button type="submit"
+                                                                    class="btn btn-primary">Salvar</button>
+                                                            </div>
+                                                        </form>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            Nenhum meio de pagamento cadastrado ainda.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

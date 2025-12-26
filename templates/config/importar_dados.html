@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+
+{% block title %}Importar Dados do Sistema Antigo{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-10 offset-md-1">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4><i class="bi bi-download"></i> Importar Dados do Sistema Antigo</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>Esta ferramenta importa dados do sistema antigo (sistema_financeiro_v14.py)</strong>
+                    <p class="mb-0 mt-2">
+                        Foram encontrados <strong>{{ total_arquivos }}</strong> arquivos de banco de dados na pasta do
+                        projeto.
+                    </p>
+                </div>
+
+                <!-- Arquivos Encontrados -->
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">Arquivos de Banco de Dados Disponíveis</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if arquivos_db %}
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Arquivo</th>
+                                        <th>Tipo</th>
+                                        <th class="text-end">Tamanho</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for arquivo in arquivos_db %}
+                                    <tr class="{% if arquivo.tipo == 'sistema_novo' %}table-warning{% endif %}">
+                                        <td>
+                                            <code>{{ arquivo.nome }}</code>
+                                            {% if arquivo.tipo == 'sistema_novo' %}
+                                            <span class="badge bg-warning text-dark">Atual</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            {% if arquivo.tipo == 'despesas' %}
+                                            <span class="badge bg-danger">Despesas</span>
+                                            {% elif arquivo.tipo == 'receitas' %}
+                                            <span class="badge bg-success">Receitas</span>
+                                            {% elif arquivo.tipo == 'fluxo_caixa' %}
+                                            <span class="badge bg-info">Fluxo Caixa</span>
+                                            {% elif arquivo.tipo == 'sistema_novo' %}
+                                            <span class="badge bg-warning text-dark">Sistema Novo</span>
+                                            {% else %}
+                                            <span class="badge bg-secondary">Desconhecido</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-end">{{ "%.2f"|format(arquivo.tamanho_mb) }} MB</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <p class="text-muted">Nenhum arquivo .db encontrado na pasta do projeto.</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- Formulário de Importação de Despesas e Receitas -->
+                {% if arquivos_db %}
+                <form method="POST" onsubmit="return confirmarImportacao();">
+                    <div class="card mb-3">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0"><i class="bi bi-wallet2"></i> Importar Despesas e Receitas</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">
+                                        <i class="bi bi-wallet2 text-danger"></i>
+                                        <strong>Banco de Despesas</strong>
+                                    </label>
+                                    <select class="form-select" name="caminho_financas" required>
+                                        <option value="">Selecione...</option>
+                                        {% for arquivo in arquivos_db %}
+                                        {% if arquivo.tipo in ['despesas', 'desconhecido'] and arquivo.tipo !=
+                                        'sistema_novo' %}
+                                        <option value="{{ arquivo.caminho }}" {% if arquivo.nome=='financas.db'
+                                            %}selected{% endif %}>
+                                            {{ arquivo.nome }} ({{ "%.2f"|format(arquivo.tamanho_mb) }} MB)
+                                        </option>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </select>
+                                    <small class="text-muted">Selecione o banco que contém as despesas</small>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">
+                                        <i class="bi bi-cash-coin text-success"></i>
+                                        <strong>Banco de Receitas</strong>
+                                    </label>
+                                    <select class="form-select" name="caminho_receitas" required>
+                                        <option value="">Selecione...</option>
+                                        {% for arquivo in arquivos_db %}
+                                        {% if arquivo.tipo in ['receitas', 'desconhecido'] and arquivo.tipo !=
+                                        'sistema_novo' %}
+                                        <option value="{{ arquivo.caminho }}" {% if arquivo.nome=='financas_receitas.db'
+                                            %}selected{% endif %}>
+                                            {{ arquivo.nome }} ({{ "%.2f"|format(arquivo.tamanho_mb) }} MB)
+                                        </option>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </select>
+                                    <small class="text-muted">Selecione o banco que contém as receitas</small>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-warning">
+                                <h6><i class="bi bi-exclamation-triangle"></i> Avisos Importantes</h6>
+                                <ul class="mb-0">
+                                    <li>Os dados serão importados para o usuário <strong>{{ current_user.username
+                                            }}</strong>
+                                    </li>
+                                    <li>Categorias e meios duplicados <strong>não serão reimportados</strong></li>
+                                    <li>Despesas e receitas <strong>serão adicionadas</strong> (pode gerar duplicatas se
+                                        importar múltiplas vezes)</li>
+                                    <li><strong>IMPORTANTE:</strong> Faça backup do banco <code>financeiro.db</code>
+                                        antes de
+                                        importar!</li>
+                                </ul>
+                            </div>
+
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-success">
+                                    <i class="bi bi-download"></i> Importar Despesas e Receitas
+                                </button>
+                                <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">
+                                    <i class="bi bi-arrow-left"></i> Cancelar
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+
+                <!-- Formulário de Importação de Fluxo de Caixa -->
+                <form method="POST" onsubmit="return confirmarImportacaoFluxoCaixa();">
+                    <div class="card mb-3">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0"><i class="bi bi-cash-stack"></i> Importar Fluxo de Caixa</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info mb-3">
+                                <i class="bi bi-info-circle"></i>
+                                <strong>Importação separada para dados de fluxo de caixa</strong><br>
+                                Esta opção importa balanços mensais e eventos de caixa avulsos do sistema antigo.
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">
+                                    <i class="bi bi-cash-stack text-info"></i>
+                                    <strong>Banco de Fluxo de Caixa</strong>
+                                </label>
+                                <select class="form-select" name="caminho_fluxo_caixa" required>
+                                    <option value="">Selecione...</option>
+                                    {% for arquivo in arquivos_db %}
+                                    {% if arquivo.tipo == 'fluxo_caixa' %}
+                                    <option value="{{ arquivo.caminho }}" {% if arquivo.nome=='fluxo_caixa.db'
+                                        %}selected{% endif %}>
+                                        {{ arquivo.nome }} ({{ "%.2f"|format(arquivo.tamanho_mb) }} MB)
+                                    </option>
+                                    {% endif %}
+                                    {% endfor %}
+                                </select>
+                                <small class="text-muted">Selecione o banco que contém os dados de fluxo de
+                                    caixa</small>
+                            </div>
+
+                            <div class="alert alert-warning">
+                                <h6><i class="bi bi-exclamation-triangle"></i> Avisos</h6>
+                                <ul class="mb-0">
+                                    <li>Balanços para meses já existentes <strong>não serão substituídos</strong></li>
+                                    <li>Eventos de caixa <strong>serão importados</strong> (pode gerar duplicatas)</li>
+                                    <li><strong>Alternativa:</strong> Use o botão "Recalcular Tudo" na página de Fluxo
+                                        de Caixa</li>
+                                </ul>
+                            </div>
+
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-info">
+                                    <i class="bi bi-download"></i> Importar Fluxo de Caixa
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+                {% else %}
+                <div class="alert alert-danger">
+                    <i class="bi bi-x-circle"></i>
+                    <strong>Nenhum arquivo de banco de dados encontrado!</strong><br>
+                    Copie os arquivos .db do sistema antigo para a pasta do projeto.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Informações Adicionais -->
+        <div class="card mt-4">
+            <div class="card-header">
+                <h5 class="mb-0"><i class="bi bi-info-circle"></i> Sobre os Arquivos de Backup</h5>
+            </div>
+            <div class="card-body">
+                <p>
+                    O sistema antigo pode criar vários arquivos de backup com nomes como:
+                </p>
+                <ul>
+                    <li><code>financas.db</code> - Banco principal de despesas</li>
+                    <li><code>financas_receitas.db</code> - Banco principal de receitas</li>
+                    <li><code>fluxo_caixa.db</code> - Dados de fluxo de caixa</li>
+                    <li><code>financas-NOMEMAQUINA.db</code> - Backup de despesas</li>
+                    <li><code>financas_receitas-NOMEMAQUINA.db</code> - Backup de receitas</li>
+                </ul>
+                <p class="mb-0">
+                    <strong>Recomendação:</strong> Use os arquivos principais que contêm os dados mais recentes.
+                    Os backups só devem ser usados se os arquivos principais estiverem corrompidos.
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function confirmarImportacao() {
+        const despesas = document.querySelector('select[name="caminho_financas"]').selectedOptions[0].text;
+        const receitas = document.querySelector('select[name="caminho_receitas"]').selectedOptions[0].text;
+
+        return confirm(`⚠️ CONFIRMAÇÃO DE IMPORTAÇÃO\n\n` +
+            `Você está prestes a importar dados de:\n\n` +
+            `Despesas: ${despesas}\n` +
+            `Receitas: ${receitas}\n\n` +
+            `Você fez backup do banco atual (financeiro.db)?\n\n` +
+            `Deseja continuar?`);
+    }
+
+    function confirmarImportacaoFluxoCaixa() {
+        const fluxoCaixa = document.querySelector('select[name="caminho_fluxo_caixa"]').selectedOptions[0].text;
+
+        return confirm(`⚠️ CONFIRMAÇÃO DE IMPORTAÇÃO DE FLUXO DE CAIXA\n\n` +
+            `Você está prestes a importar dados de:\n\n` +
+            `Fluxo de Caixa: ${fluxoCaixa}\n\n` +
+            `Balanços e eventos serão importados.\n\n` +
+            `Deseja continuar?`);
+    }
+</script>
+{% endblock %}

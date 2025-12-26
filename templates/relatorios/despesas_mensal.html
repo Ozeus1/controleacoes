@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Despesas Mensais - {{ nome_mes }}/{{ ano }}{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-12">
+        <h2><i class="bi bi-wallet2"></i> Despesas Mensais - {{ nome_mes }}/{{ ano }}</h2>
+        <hr>
+    </div>
+</div>
+
+<!-- Filtro de Mês/Ano -->
+<div class="card mb-3">
+    <div class="card-header">
+        <h5><i class="bi bi-calendar"></i> Selecionar Período</h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Mês</label>
+                <select class="form-select" name="mes">
+                    {% for m in range(1, 13) %}
+                    <option value="{{ m }}" {% if m==mes %}selected{% endif %}>
+                        {{ ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][m-1] }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Ano</label>
+                <input type="number" class="form-control" name="ano" value="{{ ano }}" min="2000" max="2100">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-search"></i> Filtrar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Cards de Resumo -->
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="card bg-danger text-white">
+            <div class="card-body">
+                <h5>Total do Mês</h5>
+                <h2>R$ {{ "%.2f"|format(total_mes)|replace('.', ',') }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <h5>Categorias com Gastos</h5>
+                <h2>{{ despesas_por_categoria|length }}</h2>
+                <p class="mb-0">categorias registradas</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabela Detalhada -->
+<div class="card">
+    <div class="card-header">
+        <h5>Detalhamento por Categoria</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Categoria</th>
+                        <th class="text-end">Valor Total</th>
+                        <th class="text-center">Quantidade</th>
+                        <th class="text-end">% do Total</th>
+                        <th>Visualização</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for id, categoria, valor, quantidade in despesas_por_categoria %}
+                    <tr class="clickable-row" style="cursor: pointer;"
+                        onclick="window.location.href='{{ url_for('relatorios.detalhes_despesas', categoria=categoria, mes=mes, ano=ano) }}'">
+                        <td><strong>{{ loop.index }}º</strong></td>
+                        <td>
+                            <span class="badge bg-secondary">{{ categoria }}</span>
+                        </td>
+                        <td class="text-end">
+                            <strong>R$ {{ "%.2f"|format(valor)|replace('.', ',') }}</strong>
+                        </td>
+                        <td class="text-center">{{ quantidade }} lançamentos</td>
+                        <td class="text-end">
+                            {{ "%.1f"|format((valor / total_mes * 100) if total_mes > 0 else 0) }}%
+                        </td>
+                        <td>
+                            <div class="progress" style="height: 20px;">
+                                <div class="progress-bar bg-info" role="progressbar"
+                                    style="width: {{ (valor / total_mes * 100) if total_mes > 0 else 0 }}%">
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted">Nenhuma despesa neste período</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Gráfico de Barras -->
+{% if despesas_por_categoria %}
+<div class="card mt-4">
+    <div class="card-header">
+        <h5>Visualização Gráfica</h5>
+    </div>
+    <div class="card-body">
+        <canvas id="graficoDespesas" height="100"></canvas>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if despesas_por_categoria %}
+<script>
+    const ctx = document.getElementById('graficoDespesas');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: [{% for id, cat, val, qtd in despesas_por_categoria %}'{{ cat }}'{% if not loop.last %}, {% endif %} {% endfor %}],
+    datasets: [{
+        label: 'Valor Total (R$)',
+        data: [{% for id, cat, val, qtd in despesas_por_categoria %}{{ val }}{% if not loop.last %}, {% endif %} {% endfor %}],
+    backgroundColor: 'rgba(255, 99, 132, 0.7)',
+        borderColor: 'rgba(255, 99, 132, 1)',
+            borderWidth: 1
+            }]
+        },
+    options: {
+        indexAxis: 'y',
+            responsive: true,
+                plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        return 'R$ ' + context.parsed.x.toFixed(2).replace('.', ',');
+                    }
+                }
+            }
+        },
+        scales: {
+            x: {
+                beginAtZero: true,
+                    ticks: {
+                    callback: function(value) {
+                        return 'R$ ' + value.toLocaleString('pt-BR');
+                    }
+                }
+            }
+        }
+    }
+    });
+</script>
+{% endif %}
+{% endblock %}

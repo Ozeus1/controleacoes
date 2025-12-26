@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saída de Swingtrade</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .form-card {
+            max-width: 600px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: var(--card-bg);
+            border-radius: 1rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header style="margin-bottom: 2rem;">
+            <h1>Registrar Saída: {{ asset.ticker }}</h1>
+            <a href="{{ url_for('swingtrade') }}" class="btn btn-secondary">← Voltar</a>
+        </header>
+
+        <div class="form-card">
+            <div class="info-row">
+                <div>
+                    <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Quantidade
+                        Total</span>
+                    <strong style="font-size: 1.2rem;">{{ asset.quantity }}</strong>
+                </div>
+                <div>
+                    <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Preço Médio</span>
+                    <strong style="font-size: 1.2rem;">R$ {{ "%.2f"|format(asset.avg_price)|replace('.', ',')
+                        }}</strong>
+                </div>
+                <div>
+                    <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Cotação Atual</span>
+                    <strong style="font-size: 1.2rem;">R$ {{ "%.2f"|format(asset.current_price)|replace('.', ',')
+                        }}</strong>
+                </div>
+            </div>
+
+            <form method="POST">
+                <div class="form-group">
+                    <label for="quantity">Quantidade de Saída</label>
+                    <input type="number" id="quantity" name="quantity" value="{{ asset.quantity }}"
+                        max="{{ asset.quantity }}" min="1" required>
+                    <p style="font-size: 0.8rem; color: var(--text-secondary);">Se menor que {{ asset.quantity }}, será
+                        uma saída parcial.</p>
+                </div>
+
+                <div class="form-group">
+                    <label for="price">Preço de Venda</label>
+                    <input type="text" id="price" name="price"
+                        value="{{ '%.2f'|format(asset.current_price)|replace('.', ',') }}" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="date">Data da Saída</label>
+                    <input type="date" id="date" name="date" value="{{ today }}" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="reason">Motivo/Estratégia</label>
+                    <select id="reason" name="reason">
+                        <option value="Alvo / Gain">Atingiu Alvo (Gain)</option>
+                        <option value="Stop Loss">Stop Loss</option>
+                        <option value="Parcial">Saída Parcial</option>
+                        <option value="Revisão">Revisão de Estratégia</option>
+                        <option value="Encerramento">Encerramento Total</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Confirmar
+                    Saída</button>
+            </form>
+        </div>
+    </div>
+</body>
+
+</html>

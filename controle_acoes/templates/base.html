@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Controle de Investimentos</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Custom override for DataTables to match theme -->
+    <style>
+        .dataTables_wrapper .dataTables_length,
+        .dataTables_wrapper .dataTables_filter,
+        .dataTables_wrapper .dataTables_info,
+        .dataTables_wrapper .dataTables_processing,
+        .dataTables_wrapper .dataTables_paginate {
+            color: var(--text-color);
+            margin-bottom: 1rem;
+        }
+
+        table.dataTable tbody tr {
+            background-color: transparent;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <h1>Minha Carteira</h1>
+                <nav class="main-nav">
+                    <a href="{{ url_for('resumo') }}"
+                        class="{{ 'active' if request.endpoint == 'resumo' else '' }}">Resumo</a>
+                    <a href="{{ url_for('acoes') }}"
+                        class="{{ 'active' if request.endpoint == 'acoes' else '' }}">Ações</a>
+                    <a href="{{ url_for('fiis') }}"
+                        class="{{ 'active' if request.endpoint == 'fiis' else '' }}">FIIs</a>
+                    <a href="{{ url_for('swingtrade') }}"
+                        class="{{ 'active' if request.endpoint == 'swingtrade' else '' }}">Swingtrade</a>
+                    <a href="{{ url_for('history') }}"
+                        class="{{ 'active' if request.endpoint == 'history' else '' }}">Histórico</a>
+                    <a href="{{ url_for('config') }}"
+                        class="config-link {{ 'active' if request.endpoint == 'config' else '' }}">⚙️</a>
+                    <a href="{{ url_for('logout') }}"
+                        style="color: var(--danger-color); font-size: 0.9rem; border: 1px solid var(--border-color); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem;">Sair</a>
+                </nav>
+            </div>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <form action="{{ url_for('update_quotes') }}" method="POST" style="margin: 0;">
+                    <button type="submit" class="btn btn-secondary"
+                        style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">🔄 Atualizar Cotações</button>
+                </form>
+                <a href="{{ url_for('add_asset') }}" class="btn btn-primary">+ Novo Ativo</a>
+            </div>
+        </header>
+
+        {% with messages = get_flashed_messages() %}
+        {% if messages %}
+        <div class="card" style="border-left: 4px solid var(--accent-color);">
+            {% for message in messages %}
+            <p>{{ message }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+    <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+    <script>
+        $(document).ready(function () {
+            $('table').DataTable({
+                "language": {
+                    "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
+                },
+                "paging": false,
+                "info": false,
+                "searching": false
+            });
+        });
+    </script>
+</body>
+
+</html>

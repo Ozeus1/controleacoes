@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- Summary Section -->
+<div class="summary-cards">
+    {% set total_acoes = acoes | map(attribute='quantity') | sum * acoes | map(attribute='current_price') | sum if acoes
+    else 0 %}
+    <!-- Calculation logic in template is messy, better to pass from view. For now simple layout. -->
+</div>
+
+{% if acoes %}
+<h2>Ações na Carteira</h2>
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Ativo</th>
+                <th>Qtd</th>
+                <th>Valor Posição</th> <!-- Total Atual -->
+                <th>Preço Compra</th>
+                <th>Total Compra</th>
+                <th>Peso %</th>
+                <th>Cotação</th>
+                <th>Var % Dia</th>
+                <th>Lucro R$</th>
+                <th>Lucro %</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for asset in acoes %}
+            <tr>
+                <td><span class="ticker-badge">{{ asset.ticker }}</span></td>
+                <td>{{ asset.quantity }}</td>
+                <td>R$ {{ "%.2f"|format(asset.quantity * asset.current_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(asset.avg_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(asset.total_invested)|replace('.', ',') }}</td>
+                <td>{{ "%.2f"|format(asset.weight)|replace('.', ',') }}%</td>
+                <td>R$ {{ "%.2f"|format(asset.current_price)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if asset.change_percent >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(asset.change_percent)|replace('.', ',') }}%
+                </td>
+                <td class="{{ 'positive' if asset.profit >= 0 else 'negative' }}">
+                    R$ {{ "%.2f"|format(asset.profit)|replace('.', ',') }}
+                </td>
+                <td class="{{ 'positive' if asset.profit_pct >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(asset.profit_pct)|replace('.', ',') }}%
+                </td>
+                <td class="actions">
+                    <a href="{{ url_for('edit_asset', id=asset.id) }}" class="btn btn-sm btn-primary">Editar</a>
+                    <a href="{{ url_for('delete_asset', id=asset.id) }}" class="btn btn-sm btn-danger"
+                        onclick="return confirm('Confirmar exclusão?')">Apagar</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if fiis %}
+<h2>Fundos Imobiliários (FIIs)</h2>
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Ativo</th>
+                <th>Qtd</th>
+                <th>Valor Posição</th>
+                <th>Preço Compra</th>
+                <th>Total Compra</th>
+                <th>Peso %</th>
+                <th>Cotação</th>
+                <th>Var % Dia</th>
+                <th>Lucro R$</th>
+                <th>Lucro %</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for asset in fiis %}
+            <tr>
+                <td><span class="ticker-badge">{{ asset.ticker }}</span></td>
+                <td>{{ asset.quantity }}</td>
+                <td>R$ {{ "%.2f"|format(asset.quantity * asset.current_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(asset.avg_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(asset.total_invested)|replace('.', ',') }}</td>
+                <td>{{ "%.2f"|format(asset.weight)|replace('.', ',') }}%</td>
+                <td>R$ {{ "%.2f"|format(asset.current_price)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if asset.change_percent >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(asset.change_percent)|replace('.', ',') }}%
+                </td>
+                <td class="{{ 'positive' if asset.profit >= 0 else 'negative' }}">
+                    R$ {{ "%.2f"|format(asset.profit)|replace('.', ',') }}
+                </td>
+                <td class="{{ 'positive' if asset.profit_pct >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(asset.profit_pct)|replace('.', ',') }}%
+                </td>
+                <td class="actions">
+                    <a href="{{ url_for('edit_asset', id=asset.id) }}" class="btn btn-sm btn-primary">Editar</a>
+                    <a href="{{ url_for('delete_asset', id=asset.id) }}" class="btn btn-sm btn-danger"
+                        onclick="return confirm('Confirmar exclusão?')">Apagar</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if not acoes and not fiis %}
+<div class="card" style="text-align: center; padding: 3rem;">
+    <h3>Nenhum ativo cadastrado</h3>
+    <p style="color: var(--text-secondary); margin-bottom: 2rem;">Comece adicionando ações ou FIIs para acompanhar sua
+        carteira.</p>
+    <a href="{{ url_for('add_asset') }}" class="btn btn-primary">Adicionar Primeiro Ativo</a>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,60 @@
+version: '3.7'
+
+services:
+  finan_web:
+    image: finan_web:latest
+    # build: .
+    env_file:
+      - .env.production
+    networks:
+      - network_swarm_public
+      - finan_internal
+    depends_on:
+      - finan_db
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.finan_web.rule=Host(`finan.receberbemevinhos.com.br`)"
+      - "traefik.http.routers.finan_web.entrypoints=websecure"
+      - "traefik.http.routers.finan_web.tls.certresolver=letsencryptresolver"
+      - "traefik.http.services.finan_web.loadbalancer.server.port=5000"
+      - "traefik.docker.network=network_swarm_public"
+      # HTTP Router (for testing)
+      - "traefik.http.routers.finan_web_http.rule=Host(`finan.receberbemevinhos.com.br`)"
+      - "traefik.http.routers.finan_web_http.entrypoints=web"
+      - "traefik.http.routers.finan_web_http.service=finan_web"
+    deploy:
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.finan_web.rule=Host(`finan.receberbemevinhos.com.br`)"
+        - "traefik.http.routers.finan_web.entrypoints=websecure"
+        - "traefik.http.routers.finan_web.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.finan_web.loadbalancer.server.port=5000"
+        - "traefik.docker.network=network_swarm_public"
+        - "traefik.http.routers.finan_web_http.rule=Host(`finan.receberbemevinhos.com.br`)"
+        - "traefik.http.routers.finan_web_http.entrypoints=web"
+        - "traefik.http.routers.finan_web_http.service=finan_web"
+
+  finan_db:
+    image: postgres:15-alpine
+    env_file:
+      - .env.production
+    # environment:
+    #   POSTGRES_USER: ${DB_USER}
+    #   POSTGRES_PASSWORD: ${DB_PASSWORD}
+    #   POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - finan_db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - finan_internal
+
+networks:
+  network_swarm_public:
+    external: true
+    name: network_swarm_public
+  finan_internal:
+    driver: overlay
+
+volumes:
+  finan_db_data:

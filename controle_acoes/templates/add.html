@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width: 600px; margin: 0 auto;">
+    <h2 style="margin-top: 0; border: none; padding: 0;">{{ 'Editar' if edit else 'Adicionar' }} Ativo</h2>
+
+    <form method="POST">
+        <!-- Core Fields -->
+        <div class="form-row">
+            <div class="form-group">
+                <label for="ticker">Ticker</label>
+                <input type="text" id="ticker" name="ticker" required value="{{ asset.ticker if asset else '' }}"
+                    placeholder="PETR4">
+            </div>
+            <div class="form-group">
+                <label for="type">Tipo</label>
+                <select id="type" name="type" onchange="toggleFiiFields()">
+                    <option value="ACAO" {% if asset and asset.type=='ACAO' %}selected{% endif %}>Ação</option>
+                    <option value="FII" {% if asset and asset.type=='FII' %}selected{% endif %}>FII</option>
+                </select>
+            </div>
+            <div class="form-group" id="fii-type-group" style="display: none;">
+                <label for="fii_type">Tipo de FII</label>
+                <select id="fii_type" name="fii_type">
+                    <option value="">Selecione...</option>
+                    <option value="FIAGRO" {% if asset and asset.fii_type=='FIAGRO' %}selected{% endif %}>FIAGRO
+                    </option>
+                    <option value="LAJES CORPORATIVAS" {% if asset and asset.fii_type=='LAJES CORPORATIVAS' %}selected{%
+                        endif %}>LAJES CORPORATIVAS</option>
+                    <option value="HIBRIDO" {% if asset and asset.fii_type=='HIBRIDO' %}selected{% endif %}>HIBRIDO
+                    </option>
+                    <option value="LOGISTICA" {% if asset and asset.fii_type=='LOGISTICA' %}selected{% endif %}>
+                        LOGISTICA</option>
+                    <option value="RECEBIVEIS" {% if asset and asset.fii_type=='RECEBIVEIS' %}selected{% endif %}>
+                        RECEBIVEIS</option>
+                    <option value="SHOPPING CENTER" {% if asset and asset.fii_type=='SHOPPING CENTER' %}selected{% endif
+                        %}>SHOPPING CENTER</option>
+                    <option value="RENDA" {% if asset and asset.fii_type=='RENDA' %}selected{% endif %}>RENDA</option>
+                    <option value="INFRA" {% if asset and asset.fii_type=='INFRA' %}selected{% endif %}>INFRA</option>
+                    <!-- Allow typing? Select is easier, user said "can be edited later", implies flexibility. 
+                         If user wants arbitrary text, maybe datalist or just input. 
+                         For now, fixed list as requested, but maybe add "OUTROS"? 
+                         User listed specific options. -->
+                    <option value="OUTROS" {% if asset and asset.fii_type=='OUTROS' %}selected{% endif %}>OUTROS
+                    </option>
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="strategy">Estratégia</label>
+            <select id="strategy" name="strategy" onchange="toggleSwingFields()">
+                <option value="HOLDER" {% if asset and asset.strategy=='HOLDER' %}selected{% endif %}>Holder (Carteira
+                    Principal)</option>
+                <option value="SWING" {% if asset and asset.strategy=='SWING' %}selected{% endif %}>Swing Trade</option>
+            </select>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label for="quantity">Quantidade</label>
+                <input type="number" id="quantity" name="quantity" required
+                    value="{{ asset.quantity if asset else '' }}" placeholder="100">
+            </div>
+            <div class="form-group">
+                <label for="price">Preço Compra (R$)</label>
+                <input type="text" id="price" name="price" required value="{{ asset.avg_price if asset else '' }}"
+                    placeholder="35,50">
+            </div>
+        </div>
+
+        <!-- Swing Trade Fields -->
+        <div id="swing-fields"
+            style="display: none; border-top: 1px solid var(--border-color); padding-top: 1rem; margin-top: 1rem;">
+            <h3 style="font-size: 1rem; margin-bottom: 1rem;">Dados Operação Swing</h3>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="stop_loss">Stop Loss (R$)</label>
+                    <input type="text" id="stop_loss" name="stop_loss"
+                        value="{{ asset.stop_loss if asset and asset.stop_loss else '' }}" placeholder="0,00">
+                </div>
+                <div class="form-group">
+                    <label for="gain1">Gain 1 (R$)</label>
+                    <input type="text" id="gain1" name="gain1"
+                        value="{{ asset.gain1 if asset and asset.gain1 else '' }}" placeholder="0,00">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="gain2">Gain 2 (R$)</label>
+                    <input type="text" id="gain2" name="gain2"
+                        value="{{ asset.gain2 if asset and asset.gain2 else '' }}" placeholder="0,00">
+                </div>
+                <div class="form-group">
+                    <label for="recommendation">Recomendaçao</label>
+                    <input type="text" id="recommendation" name="recommendation"
+                        value="{{ asset.recommendation if asset and asset.recommendation else '' }}"
+                        placeholder="Manter">
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 2rem; display: flex; gap: 1rem;">
+            <button type="submit" class="btn btn-primary" style="flex: 1;">Salvar</button>
+            <a href="javascript:history.back()" class="btn"
+                style="background: var(--border-color); color: white;">Cancelar</a>
+        </div>
+    </form>
+</div>
+
+<script>
+    function toggleSwingFields() {
+        const strategy = document.getElementById('strategy').value;
+        const fields = document.getElementById('swing-fields');
+        if (strategy === 'SWING') {
+            fields.style.display = 'block';
+        } else {
+            fields.style.display = 'none';
+        }
+    }
+
+    function toggleFiiFields() {
+        const type = document.getElementById('type').value;
+        const group = document.getElementById('fii-type-group');
+        if (type === 'FII') {
+            group.style.display = 'block';
+        } else {
+            group.style.display = 'none';
+        }
+    }
+
+    // Run on init
+    toggleSwingFields();
+    toggleFiiFields();
+</script>
+{% endblock %}

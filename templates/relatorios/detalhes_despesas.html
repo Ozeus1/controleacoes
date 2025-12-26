@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block title %}Detalhes - {{ categoria_nome }} - {{ nome_mes }}/{{ ano }}{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-12">
+        <h2><i class="bi bi-list-ul"></i> Detalhes da Despesa - {{ categoria_nome }}</h2>
+        <p class="text-muted">{{ nome_mes }}/{{ ano }}</p>
+        <hr>
+    </div>
+</div>
+
+<!-- Botão Voltar -->
+<div class="mb-3">
+    <button onclick="history.back()" class="btn btn-secondary">
+        <i class="bi bi-arrow-left"></i> Voltar
+    </button>
+</div>
+
+<!-- Card de Resumo -->
+<div class="card mb-4">
+    <div class="card-header bg-primary text-white">
+        <h5><i class="bi bi-info-circle"></i> Resumo</h5>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <h6 class="text-muted">Categoria</h6>
+                <p class="h5"><span class="badge bg-secondary">{{ categoria_nome }}</span></p>
+            </div>
+            <div class="col-md-4">
+                <h6 class="text-muted">Total de Lançamentos</h6>
+                <p class="h5">{{ despesas|length }}</p>
+            </div>
+            <div class="col-md-4">
+                <h6 class="text-muted">Valor Total</h6>
+                <h4 class="text-danger">R$ {{ "%.2f"|format(total)|replace('.', ',') }}</h4>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabela de Detalhes das Despesas -->
+<div class="card">
+    <div class="card-header">
+        <h5><i class="bi bi-table"></i> Lançamentos Individuais</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-striped table-hover">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Descrição</th>
+                        <th>Meio de Pagamento</th>
+                        <th class="text-end">Valor</th>
+                        <th class="text-center">Parcelas</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for despesa in despesas %}
+                    <tr>
+                        <td>{{ despesa.data_pagamento.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ despesa.descricao }}</td>
+                        <td><span class="badge bg-info">{{ despesa.meio_pagamento.nome }}</span></td>
+                        <td class="text-end">R$ {{ "%.2f"|format(despesa.valor)|replace('.', ',') }}</td>
+                        <td class="text-center">
+                            {% if despesa.num_parcelas > 1 %}
+                            <span class="badge bg-warning text-dark">{{ despesa.num_parcelas }}x</span>
+                            {% else %}
+                            <span class="badge bg-success">À vista</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted">Nenhuma despesa encontrada</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                {% if despesas %}
+                <tfoot>
+                    <tr class="table-active">
+                        <th colspan="3">Total</th>
+                        <th class="text-end">R$ {{ "%.2f"|format(total)|replace('.', ',') }}</th>
+                        <th></th>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

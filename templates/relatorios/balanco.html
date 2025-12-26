@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Balanço Mensal{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-12">
+        <h2><i class="bi bi-bar-chart-line"></i> Balanço Mensal - Receitas vs Despesas</h2>
+        <hr>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>Gráfico de Balanço</h5>
+            </div>
+            <div class="card-body">
+                <canvas id="graficoBalanco" height="100"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h5>Despesas Mensais</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Mês/Ano</th>
+                                <th class="text-end">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for desp in despesas_mensais %}
+                            <tr>
+                                <td>{{ "%02d"|format(desp.mes|int) }}/{{ desp.ano|int }}</td>
+                                <td class="text-end">R$ {{ "%.2f"|format(desp.total)|replace('.', ',') }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <h5>Receitas Mensais</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Mês/Ano</th>
+                                <th class="text-end">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rec in receitas_mensais %}
+                            <tr>
+                                <td>{{ "%02d"|format(rec.mes|int) }}/{{ rec.ano|int }}</td>
+                                <td class="text-end">R$ {{ "%.2f"|format(rec.total)|replace('.', ',') }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // Carregar gráfico de balanço mensal
+    carregarGrafico('/relatorios/api/graficos/balanco-mensal', 'graficoBalanco', 'line');
+</script>
+{% endblock %}

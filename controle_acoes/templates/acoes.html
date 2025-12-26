@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center;">
+    <h2>Carteira de Ações</h2>
+    <!-- Summary in header maybe? -->
+</div>
+
+{% if assets %}
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Ativo</th>
+                <th>Qtd</th>
+                <th>Valor Posição</th> <!-- Qtd * Cotação -->
+                <th>Preço Compra</th>
+                <th>Total Compra</th> <!-- Qtd * Preço Compra -->
+                <th>Peso %</th>
+                <th>Cotação</th>
+                <th>Var % Dia</th>
+                <th>Atualização</th>
+                <th>Lucro R$</th>
+                <th>Lucro %</th>
+                <th>G. Dia</th>
+                <!-- Gain Dia (not implemented in backend yet, strictly speaking need open price, but we have change%). Gain Day = Current Value * (Change% / (100+Change%)) approx or Previous Close. Simplify: (Current - (Current/(1+Var/100))) * Qtd -->
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in assets %}
+            <tr>
+                <td><span class="ticker-badge">{{ item.asset.ticker }}</span></td>
+                <td>{{ item.asset.quantity }}</td>
+                <td>R$ {{ "%.2f"|format(item.current_total)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.asset.avg_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
+                <td>{{ "%.2f"|format(item.weight)|replace('.', ',') }}%</td>
+                <td>R$ {{ "%.2f"|format(item.current_price)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.change_percent)|replace('.', ',') }}%
+                </td>
+                <td style="color: var(--text-secondary); font-size: 0.85rem;">
+                    {{ item.last_update }}
+                </td>
+                <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
+                    R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
+                </td>
+                <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
+                </td>
+                <td class="{{ 'positive' if item.day_gain >= 0 else 'negative' }}">
+                    R$ {{ "%.2f"|format(item.day_gain)|replace('.', ',') }}
+                </td>
+                <td class="actions">
+                    <a href="{{ url_for('exit_trade', id=item.asset.id) }}" class="btn btn-sm"
+                        style="background:var(--accent-color); color: white;" title="Registrar Venda/Saída">🛑</a>
+                    <a href="{{ url_for('edit_asset', id=item.asset.id) }}" class="btn btn-sm btn-primary">✏️</a>
+                    <a href="{{ url_for('delete_asset', id=item.asset.id) }}" class="btn btn-sm btn-danger"
+                        onclick="return confirm('Apagar?')">🗑️</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row"
+                style="font-weight: bold; background-color: rgba(255,255,255,0.05); color: var(--text-color);">
+                <td>TOTAL</td>
+                <td></td> <!-- Qtd -->
+                <td>{{ assets|sum(attribute='current_total') | brl }}</td>
+                <td></td> <!-- Preço Compra -->
+                <td>{{ assets|sum(attribute='total_invested') | brl }}</td>
+                <td>100,00%</td>
+                <td></td> <!-- Cotação -->
+                <td></td> <!-- Var -->
+                <td></td> <!-- Atualização -->
+                <td class="{{ 'positive' if assets|sum(attribute='profit') >= 0 else 'negative' }}">
+                    {{ assets|sum(attribute='profit') | brl }}
+                </td>
+                <td
+                    class="{{ 'positive' if (assets|sum(attribute='profit') / assets|sum(attribute='total_invested') * 100 if assets|sum(attribute='total_invested') > 0 else 0) >= 0 else 'negative' }}">
+                    {{ (assets|sum(attribute='profit') / assets|sum(attribute='total_invested') * 100 if
+                    assets|sum(attribute='total_invested') > 0 else 0) | pct }}
+                </td>
+                <td class="{{ 'positive' if assets|sum(attribute='day_gain') >= 0 else 'negative' }}">
+                    {{ assets|sum(attribute='day_gain') | brl }}
+                </td> <!-- G Dia -->
+                <td></td> <!-- Actions -->
+            </tr>
+        </tfoot>
+        {% else %}
+        <div class="card" style="text-align: center; padding: 3rem;">
+            <h3>Sem Ações Cadastradas</h3>
+            <a href="{{ url_for('add_asset') }}" class="btn btn-primary">Adicionar Ação</a>
+        </div>
+        {% endif %}
+        {% endblock %}

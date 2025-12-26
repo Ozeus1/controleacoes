@@ -1,0 +1,228 @@
+--- Line 2079 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+2077:                     SUM(valor) as total_valor,
+2078:                     COUNT(*) as total_registros
+2079:                 FROM despesas
+2080:                 WHERE data_pagamento BETWEEN ? AND ?
+2081:                 GROUP BY ano_mes
+2082:                 ORDER BY ano_mes
+2083:             """, (data_inicial, data_final))
+------------------
+--- Line 2330 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+2328:                         SUM(valor) as total_valor,
+2329:                         COUNT(*) as total_registros
+2330:                     FROM despesas
+2331:                     WHERE strftime('%Y-%m', data_pagamento) = ?
+2332:                     GROUP BY conta_despesa
+2333:                     ORDER BY total_valor DESC
+2334:                 """, (ano_mes,))
+------------------
+--- Line 2408 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+2406:                     strftime('%Y-%m', data_pagamento) as mes_query,
+2407:                     strftime('%m/%Y', data_pagamento) as mes_display
+2408:                 FROM despesas
+2409:                 ORDER BY mes_query DESC
+2410:             """)
+2411:             meses_disponiveis = self.cursor.fetchall()
+2412: 
+------------------
+--- Line 2448 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+2446:                         strftime('%Y-%m', data_pagamento) as mes_query,
+2447:                         strftime('%m/%Y', data_pagamento) as mes_display
+2448:                     FROM despesas
+2449:                     ORDER BY mes_query DESC
+2450:                 """)
+2451:                 meses_disponiveis = self.cursor.fetchall()
+2452: 
+------------------
+--- Line 2488 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+2486:                 SELECT id, descricao, meio_pagamento, conta_despesa, valor,
+2487:                        num_parcelas, strftime('%d/%m/%Y', data_pagamento) as data_formatada
+2488:                 FROM despesas
+2489:                 ORDER BY data_pagamento DESC
+2490:             """)
+2491: 
+2492:             # Inserir dados na tabela
+------------------
+--- Line 2700 ---
+Original: self.cursor.execute("DELETE FROM despesas WHERE id = ?", (self.id_despesa.get(),))
+Proposed: self.cursor.execute("DELETE FROM despesas WHERE id = ?", (self.id_despesa.get(),))
+Context:
+2698: 
+2699:             # Excluir registro do banco de dados
+2700:             self.cursor.execute("DELETE FROM despesas WHERE id = ?", (self.id_despesa.get(),))
+2701:             self.conn.commit()
+2702: 
+2703:             messagebox.showinfo("Sucesso", "Registro excluído com sucesso!")
+2704: 
+------------------
+--- Line 2729 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+2727:                 SELECT id, descricao, meio_pagamento, conta_despesa, valor,
+2728:                        num_parcelas, strftime('%d/%m/%Y', data_pagamento) as data_formatada
+2729:                 FROM despesas
+2730:                 WHERE descricao LIKE ? OR conta_despesa LIKE ? OR meio_pagamento LIKE ?
+2731:                 ORDER BY data_pagamento DESC
+2732:             """, (f'%{termo}%', f'%{termo}%', f'%{termo}%'))
+2733: 
+------------------
+--- Line 2791 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+2789:             self.cursor.execute("""
+2790:                 SELECT strftime('%d/%m/%Y', data_pagamento), descricao, valor
+2791:                 FROM despesas
+2792:                 WHERE conta_despesa = ? AND strftime('%Y-%m', data_pagamento) = ?
+2793:                 ORDER BY data_pagamento
+2794:             """, (categoria, ano_mes))
+2795: 
+------------------
+--- Line 2986 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+2984:                     SUM(valor) as total_valor,
+2985:                     COUNT(*) as total_registros
+2986:                 FROM despesas
+2987:                 WHERE data_pagamento BETWEEN ? AND ?
+2988:                 GROUP BY conta_despesa
+2989:                 ORDER BY total_valor DESC
+2990:             """, (primeiro_dia, ultimo_dia))
+------------------
+--- Line 3048 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+3046:                     self.cursor.execute("""
+3047:                         SELECT strftime('%d/%m/%Y', data_pagamento), descricao, valor
+3048:                         FROM despesas
+3049:                         WHERE conta_despesa = ? AND strftime('%Y-%m', data_pagamento) = ?
+3050:                         ORDER BY data_pagamento ASC
+3051:                     """, (categoria_clicada, mes_ano_sql))
+3052:                     transacoes = self.cursor.fetchall()
+------------------
+--- Line 3180 ---
+Original: self.cursor.execute("SELECT DISTINCT meio_pagamento FROM despesas ORDER BY meio_pagamento")
+Proposed: self.cursor.execute("SELECT DISTINCT meio_pagamento FROM v_despesas_compat ORDER BY meio_pagamento")
+Context:
+3178:         try:
+3179:             # Obter todos os meios de pagamento
+3180:             self.cursor.execute("SELECT DISTINCT meio_pagamento FROM despesas ORDER BY meio_pagamento")
+3181:             meios_pagamento = [row[0] for row in self.cursor.fetchall()]
+3182: 
+3183:             if not meios_pagamento:
+3184:                 messagebox.showinfo("Relatório", "Não há meios de pagamento cadastrados.")
+------------------
+--- Line 3231 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+3229:                     strftime('%m/%Y', data_pagamento) as mes_ano_formatado,
+3230:                     SUM(valor) as total_valor
+3231:                 FROM despesas
+3232:                 WHERE meio_pagamento = ?
+3233:                 GROUP BY mes_ano
+3234:                 ORDER BY mes_ano DESC
+3235:             """, (meio_pagamento,))
+------------------
+--- Line 3373 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+3371:                     strftime('%m/%Y', data_pagamento) as mes_ano_formatado,
+3372:                     SUM(valor) as total_valor
+3373:                 FROM despesas
+3374:                 WHERE meio_pagamento = ?
+3375:                 GROUP BY mes_ano
+3376:                 ORDER BY mes_ano DESC
+3377:             """, (meio_pagamento,))
+------------------
+--- Line 3535 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+3533:                     strftime('%m/%Y', data_pagamento) as mes_ano_formatado,
+3534:                     SUM(valor) as total_valor
+3535:                 FROM despesas
+3536:                 WHERE conta_despesa = ?
+3537:                 GROUP BY mes_ano
+3538:                 ORDER BY mes_ano DESC
+3539:             """, (categoria,))
+------------------
+--- Line 3682 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+3680:                     num_parcelas, strftime('%d/%m/%Y', data_pagamento) as data_pagamento,
+3681:                     strftime('%d/%m/%Y', data_registro) as data_registro
+3682:                 FROM despesas
+3683:                 ORDER BY data_pagamento DESC
+3684:             """)
+3685: 
+3686:             # Converter resultado para DataFrame
+------------------
+--- Line 3725 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+3723:                     SUM(valor) as 'Total Valor',
+3724:                     COUNT(*) as 'Quantidade'
+3725:                 FROM despesas
+3726:                 WHERE data_pagamento BETWEEN ? AND ?
+3727:                 GROUP BY conta_despesa
+3728:                 ORDER BY 'Total Valor' DESC
+3729:             """, (primeiro_dia, ultimo_dia))
+------------------
+--- Line 3745 ---
+Original: FROM despesas
+Proposed: FROM despesas
+Context:
+3743:                     num_parcelas as Parcelas,
+3744:                     strftime('%d/%m/%Y', data_pagamento) as 'Data de Pagamento'
+3745:                 FROM despesas
+3746:                 WHERE data_pagamento BETWEEN ? AND ?
+3747:                 ORDER BY data_pagamento
+3748:             """, (primeiro_dia, ultimo_dia))
+3749: 
+------------------
+--- Line 3785 ---
+Original: FROM despesas
+Proposed: FROM v_despesas_compat
+Context:
+3783:                     SUM(valor) as 'Total Valor',
+3784:                     COUNT(*) as 'Quantidade'
+3785:                 FROM despesas
+3786:                 WHERE conta_despesa = ?
+3787:                 GROUP BY strftime('%Y-%m', data_pagamento)
+3788:                 ORDER BY strftime('%Y-%m', data_pagamento) DESC
+3789:             """, (categoria,))
+------------------
+--- Line 3804 ---
+Original: FROM despesas
+Proposed: FROM despesas
+Context:
+3802:                     num_parcelas as Parcelas,
+3803:                     strftime('%d/%m/%Y', data_pagamento) as 'Data de Pagamento'
+3804:                 FROM despesas
+3805:                 WHERE conta_despesa = ?
+3806:                 ORDER BY data_pagamento DESC
+3807:             """, (categoria,))
+3808: 
+------------------

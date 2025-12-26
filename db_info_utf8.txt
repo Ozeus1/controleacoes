@@ -1,0 +1,70 @@
+Meios de Pagamento:
+- Dinheiro (dinheiro)
+- Cartão Unlimited (cartao)
+- Cartão C6 (cartao)
+- Cartão Nubank (cartao)
+- Cartão BB (cartao)
+- Transferência (transferencia)
+- PIX (pix)
+- Boleto (boleto)
+- Cartão Latam (cartao)
+- PIX/Transferência (pix)
+- Cartão Unlimited Visa (cartao)
+- Cartão Unlimited Master (cartao)
+- Cartão Mercado Pago (cartao)
+- Cartão Gol (cartao)
+- Cartão Pão de Açúcar (cartao)
+- Cartão Azul (cartao)
+- Débito em Conta (outro)
+- Cartão C6  (outro)
+- PIX/Transferencia (outro)
+- Cartão Nubank Orlei (outro)
+- Cartão Nubank Elma (outro)
+- Cartão Pão de Açucar (outro)
+
+Categorias:
+- Tel. e Internet
+- Gás
+- Mercado
+- Alimentação
+- Moradia
+- Transporte
+- Educação
+- Saúde
+- Lazer
+- Vestuário
+- Funcionários
+- Outros
+- Restaurantes
+- Pedidos Delivery
+- Plano de Saúde
+- Internet
+- Celulares
+- Netflix e Afins
+- Combustível
+- Energia
+- Cagece
+- Condomínio
+- Feira
+- Farmácia
+- Academia
+- Manutenção carro
+- Pontos e viagens
+- Salão
+- RBV negócio
+- Lanche Aline
+- Estacionamento
+- IA e propaganda Instagram
+- Mamãe
+- Impostos
+- Agua Mineral
+- Prestação do Carro
+- Lanche Arthur
+- Seguros
+- Consultas
+- Consórcio
+- Ifood e Deliverys
+- Loterias
+- Pagamentos
+- Combustivel
+- Água Mineral

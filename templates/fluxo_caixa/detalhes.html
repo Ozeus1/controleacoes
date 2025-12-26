@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+
+{% block title %}Detalhes Fluxo de Caixa - {{ mes_nome }}/{{ ano }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2><i class="fas fa-file-invoice-dollar"></i> Detalhes: {{ mes_nome }}/{{ ano }}</h2>
+        <div>
+            <a href="{{ url_for('fluxo_caixa.exportar_excel', ano=ano, mes=mes) }}" class="btn btn-success">
+                <i class="fas fa-file-excel"></i> Exportar Excel
+            </a>
+            <a href="{{ url_for('fluxo_caixa.index') }}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Voltar
+            </a>
+        </div>
+    </div>
+
+    <!-- Resumo -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card shadow-sm border-success">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-success">Total de Entradas</h5>
+                    <h3 class="text-success">R$ {{ '{:,.2f}'.format(total_receitas) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-danger">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-danger">Total de Saídas</h5>
+                    <h3 class="text-danger">R$ {{ '{:,.2f}'.format(total_despesas + total_eventos) }}</h3>
+                    <small class="text-muted">
+                        (Despesas: R$ {{ '{:,.2f}'.format(total_despesas) }} +
+                        Eventos: R$ {{ '{:,.2f}'.format(total_eventos) }})
+                    </small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-primary">
+                <div class="card-body text-center">
+                    <h5 class="card-title text-primary">Saldo do Mês</h5>
+                    <h3
+                        class="{% if (total_receitas - total_despesas - total_eventos) >= 0 %}text-success{% else %}text-danger{% endif %}">
+                        R$ {{ '{:,.2f}'.format(total_receitas - total_despesas - total_eventos) }}
+                    </h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-3" id="detalhesTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="receitas-tab" data-bs-toggle="tab" data-bs-target="#receitas"
+                type="button" role="tab">Receitas</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="despesas-tab" data-bs-toggle="tab" data-bs-target="#despesas" type="button"
+                role="tab">Despesas</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="eventos-tab" data-bs-toggle="tab" data-bs-target="#eventos" type="button"
+                role="tab">Eventos Avulsos</button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="detalhesTabsContent">
+        <!-- Tab: Receitas -->
+        <div class="tab-pane fade show active" id="receitas" role="tabpanel">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h5 class="mb-0">Receitas do Mês</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Descrição</th>
+                                    <th>Categoria</th>
+                                    <th class="text-end">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if receitas %}
+                                {% for receita in receitas %}
+                                <tr>
+                                    <td>{{ receita.data_recebimento.strftime('%d/%m/%Y') }}</td>
+                                    <td>{{ receita.descricao }}</td>
+                                    <td>{{ receita.categoria.nome }}</td>
+                                    <td class="text-end text-success fw-bold">R$ {{ '{:,.2f}'.format(receita.valor) }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="table-success fw-bold">
+                                    <td colspan="3" class="text-end">TOTAL:</td>
+                                    <td class="text-end">R$ {{ '{:,.2f}'.format(total_receitas) }}</td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center text-muted py-4">
+                                        <i class="fas fa-inbox fa-2x mb-2"></i>
+                                        <p>Nenhuma receita registrada neste mês</p>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Despesas -->
+        <div class="tab-pane fade" id="despesas" role="tabpanel">
+            <div class="card shadow-sm">
+                <div class="card-header bg-danger text-white">
+                    <h5 class="mb-0">Despesas do Mês</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Descrição</th>
+                                    <th>Categoria</th>
+                                    <th>Meio Pagamento</th>
+                                    <th class="text-end">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if despesas %}
+                                {% for despesa in despesas %}
+                                <tr>
+                                    <td>{{ despesa.data_pagamento.strftime('%d/%m/%Y') }}</td>
+                                    <td>{{ despesa.descricao }}</td>
+                                    <td>{{ despesa.categoria.nome }}</td>
+                                    <td>{{ despesa.meio_pagamento.nome }}</td>
+                                    <td class="text-end text-danger fw-bold">R$ {{ '{:,.2f}'.format(despesa.valor) }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="table-danger fw-bold">
+                                    <td colspan="4" class="text-end">TOTAL:</td>
+                                    <td class="text-end">R$ {{ '{:,.2f}'.format(total_despesas) }}</td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted py-4">
+                                        <i class="fas fa-inbox fa-2x mb-2"></i>
+                                        <p>Nenhuma despesa registrada neste mês</p>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab: Eventos Avulsos -->
+        <div class="tab-pane fade" id="eventos" role="tabpanel">
+            <div class="card shadow-sm">
+                <div class="card-header bg-warning">
+                    <h5 class="mb-0">Eventos de Caixa Avulsos</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info" role="alert">
+                        <i class="fas fa-info-circle"></i>
+                        Eventos avulsos são saídas de caixa que não fazem parte das despesas regulares
+                        (ex: pagamento de faturas de cartão de crédito)
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Data</th>
+                                    <th>Descrição</th>
+                                    <th class="text-end">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if eventos %}
+                                {% for evento in eventos %}
+                                <tr>
+                                    <td>{{ evento.data.strftime('%d/%m/%Y') }}</td>
+                                    <td>{{ evento.descricao }}</td>
+                                    <td class="text-end text-danger fw-bold">R$ {{ '{:,.2f}'.format(evento.valor) }}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="table-warning fw-bold">
+                                    <td colspan="2" class="text-end">TOTAL:</td>
+                                    <td class="text-end">R$ {{ '{:,.2f}'.format(total_eventos) }}</td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted py-4">
+                                        <i class="fas fa-inbox fa-2x mb-2"></i>
+                                        <p>Nenhum evento avulso registrado neste mês</p>
+                                    </td>
+                                </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

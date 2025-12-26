@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Despesas{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-12">
+        <h2><i class="bi bi-wallet2"></i> Gerenciar Despesas</h2>
+        <hr>
+    </div>
+</div>
+
+<!-- Filtros -->
+<div class="card mb-3">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-funnel"></i> Filtros</h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-3">
+                <label class="form-label">Buscar</label>
+                <input type="text" class="form-control" name="busca" value="{{ request.args.get('busca', '') }}"
+                    placeholder="Descrição...">
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">Categoria</label>
+                <select class="form-select" name="categoria_id">
+                    <option value="">Todas</option>
+                    {% for cat in categorias %}
+                    <option value="{{ cat.id }}" {% if request.args.get('categoria_id')==cat.id|string %}selected{%
+                        endif %}>
+                        {{ cat.nome }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">Meio Pagamento</label>
+                <select class="form-select" name="meio_pagamento_id">
+                    <option value="">Todos</option>
+                    {% for meio in meios_pagamento %}
+                    <option value="{{ meio.id }}" {% if request.args.get('meio_pagamento_id')==meio.id|string
+                        %}selected{% endif %}>
+                        {{ meio.nome }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="col-md-2">
+                <label class="form-label">Período</label>
+                <select class="form-select" name="periodo" id="periodoSelect" onchange="toggleDatas()">
+                    <option value="mes_atual" {% if periodo=='mes_atual' %}selected{% endif %}>Mês Atual</option>
+                    <option value="todos" {% if periodo=='todos' %}selected{% endif %}>Todos</option>
+                    <option value="personalizado" {% if periodo=='personalizado' %}selected{% endif %}>Personalizado
+                    </option>
+                </select>
+            </div>
+
+            <div class="col-md-2" id="divDataInicio" style="display: none;">
+                <label class="form-label">Data Inicial</label>
+                <input type="date" class="form-control" name="data_inicio" value="{{ data_inicio_filtro or '' }}">
+            </div>
+
+            <div class="col-md-2" id="divDataFim" style="display: none;">
+                <label class="form-label">Data Final</label>
+                <input type="date" class="form-control" name="data_fim" value="{{ data_fim_filtro or '' }}">
+            </div>
+
+            <div class="col-md-1 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="bi bi-search"></i>
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Ações -->
+<div class="mb-3">
+    <a href="{{ url_for('despesas.criar') }}" class="btn btn-success">
+        <i class="bi bi-plus-lg"></i> Nova Despesa
+    </a>
+    <a href="{{ url_for('despesas.exportar') }}" class="btn btn-outline-success">
+        <i class="bi bi-file-earmark-excel"></i> Exportar Excel
+    </a>
+</div>
+
+<!-- Tabela -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Data</th>
+                        <th>Descrição</th>
+                        <th>Categoria</th>
+                        <th>Meio Pagamento</th>
+                        <th class="text-end">Valor</th>
+                        <th>Parcelas</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for despesa in despesas.items %}
+                    <tr>
+                        <td>{{ despesa.data_pagamento.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ despesa.descricao }}</td>
+                        <td><span class="badge bg-secondary">{{ despesa.categoria.nome }}</span></td>
+                        <td><span class="badge bg-info">{{ despesa.meio_pagamento.nome }}</span></td>
+                        <td class="text-end">R$ {{ "%.2f"|format(despesa.valor)|replace('.', ',') }}</td>
+                        <td>{{ despesa.num_parcelas }}x</td>
+                        <td>
+                            <a href="{{ url_for('despesas.editar', id=despesa.id, **request.args) }}"
+                                class="btn btn-sm btn-warning" title="Editar">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <form method="POST" action="{{ url_for('despesas.excluir', id=despesa.id) }}"
+                                style="display:inline;"
+                                onsubmit="return confirm('Tem certeza que deseja excluir esta despesa?');">
+                                <button type="submit" class="btn btn-sm btn-danger" title="Excluir">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted">Nenhuma despesa encontrada.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Paginação -->
+        {% if despesas.pages > 1 %}
+        <nav>
+            <ul class="pagination justify-content-center">
+                <li class="page-item {% if not despesas.has_prev %}disabled{% endif %}">
+                    <a class="page-link"
+                        href="{{ url_for('despesas.lista', page=despesas.prev_num, **filtros_url) }}">Anterior</a>
+                </li>
+
+                {% for page_num in range(1, despesas.pages + 1) %}
+                <li class="page-item {% if page_num == despesas.page %}active{% endif %}">
+                    <a class="page-link" href="{{ url_for('despesas.lista', page=page_num, **filtros_url) }}">{{
+                        page_num }}</a>
+                </li>
+                {% endfor %}
+
+                <li class="page-item {% if not despesas.has_next %}disabled{% endif %}">
+                    <a class="page-link"
+                        href="{{ url_for('despesas.lista', page=despesas.next_num, **filtros_url) }}">Próximo</a>
+                </li>
+            </ul>
+        </nav>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    function toggleDatas() {
+        const periodo = document.getElementById('periodoSelect').value;
+        const divInicio = document.getElementById('divDataInicio');
+        const divFim = document.getElementById('divDataFim');
+
+        if (periodo === 'personalizado') {
+            divInicio.style.display = 'block';
+            divFim.style.display = 'block';
+        } else {
+            divInicio.style.display = 'none';
+            divFim.style.display = 'none';
+        }
+    }
+    // Executar ao carregar
+    document.addEventListener('DOMContentLoaded', toggleDatas);
+</script>
+{% endblock %}

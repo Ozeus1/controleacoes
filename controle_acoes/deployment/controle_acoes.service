@@ -1,0 +1,16 @@
+[Unit]
+Description=Gunicorn instance to serve Controle Acoes
+After=network.target
+
+[Service]
+# User running the application (usually ubuntu on EC2, change if differnet)
+User=ubuntu
+Group=www-data
+WorkingDirectory=/var/www/controle_acoes
+Environment="PATH=/var/www/controle_acoes/venv/bin"
+Environment="FLASK_SECRET_KEY=sua_chave_secreta_aqui_gere_uma_nova"
+# Bind to Unix socket
+ExecStart=/var/www/controle_acoes/venv/bin/gunicorn --workers 3 --bind unix:controle_acoes.sock -m 007 app:app
+
+[Install]
+WantedBy=multi-user.target

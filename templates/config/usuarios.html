@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Gerenciar Usuários{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-10 offset-md-1">
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <h4><i class="bi bi-people"></i> Gerenciar Usuários (Admin)</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>Área restrita ao administrador</strong> - Gerencie usuários e níveis de acesso.
+                </div>
+
+                <!-- Lista de Usuários -->
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Usuário</th>
+                                <th>E-mail</th>
+                                <th class="text-center">Nível</th>
+                                <th class="text-center">Status</th>
+                                <th class="text-center">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for usuario in usuarios %}
+                            <tr {% if usuario.id==current_user.id %}class="table-info" {% endif %}>
+                                <td>
+                                    <i class="bi bi-person-circle"></i> {{ usuario.username }}
+                                    {% if usuario.id == current_user.id %}<span class="badge bg-info">Você</span>{%
+                                    endif %}
+                                </td>
+                                <td>{{ usuario.email }}</td>
+                                <td class="text-center">
+                                    {% if usuario.nivel_acesso == 'admin' %}
+                                    <span class="badge bg-danger">Admin</span>
+                                    {% elif usuario.nivel_acesso == 'gerente' %}
+                                    <span class="badge bg-warning text-dark">Gerente</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Usuário</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if usuario.ativo %}
+                                    <span class="badge bg-success">Ativo</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Inativo</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if usuario.id != current_user.id %}
+                                    <!-- Ativar/Desativar -->
+                                    <form method="POST" style="display: inline;">
+                                        <input type="hidden" name="action" value="ativar_desativar">
+                                        <input type="hidden" name="id" value="{{ usuario.id }}">
+                                        <button type="submit"
+                                            class="btn btn-sm btn-{% if usuario.ativo %}warning{% else %}success{% endif %}">
+                                            <i
+                                                class="bi bi-{% if usuario.ativo %}pause-circle{% else %}play-circle{% endif %}"></i>
+                                        </button>
+                                    </form>
+
+                                    <!-- Alterar Nível -->
+                                    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal"
+                                        data-bs-target="#nivelModal{{ usuario.id }}">
+                                        <i class="bi bi-shield-check"></i>
+                                    </button>
+
+                                    <!-- Modal Alterar Nível -->
+                                    <div class="modal fade" id="nivelModal{{ usuario.id }}" tabindex="-1">
+                                        <div class="modal-dialog">
+                                            <div class="modal-content">
+                                                <form method="POST">
+                                                    <div class="modal-header">
+                                                        <h5 class="modal-title">Alterar Nível de Acesso</h5>
+                                                        <button type="button" class="btn-close"
+                                                            data-bs-dismiss="modal"></button>
+                                                    </div>
+                                                    <div class="modal-body">
+                                                        <input type="hidden" name="action" value="alterar_nivel">
+                                                        <input type="hidden" name="id" value="{{ usuario.id }}">
+                                                        <p><strong>Usuário:</strong> {{ usuario.username }}</p>
+                                                        <div class="mb-3">
+                                                            <label class="form-label">Nível de Acesso</label>
+                                                            <select class="form-select" name="nivel" required>
+                                                                <option value="usuario" {% if
+                                                                    usuario.nivel_acesso=='usuario' %}selected{% endif
+                                                                    %}>Usuário</option>
+                                                                <option value="gerente" {% if
+                                                                    usuario.nivel_acesso=='gerente' %}selected{% endif
+                                                                    %}>Gerente</option>
+                                                                <option value="admin" {% if
+                                                                    usuario.nivel_acesso=='admin' %}selected{% endif %}>
+                                                                    Admin</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                    <div class="modal-footer">
+                                                        <button type="button" class="btn btn-secondary"
+                                                            data-bs-dismiss="modal">Cancelar</button>
+                                                        <button type="submit" class="btn btn-primary">Salvar</button>
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

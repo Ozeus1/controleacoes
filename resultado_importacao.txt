@@ -1,0 +1,47 @@
+======================================================================
+RELATÓRIO COMPLETO DE IMPORTAÇÃO
+======================================================================
+
+DADOS IMPORTADOS:
+  Categorias de Despesa:  45
+  Categorias de Receita:  7
+  Meios de Pagamento:     22
+  Meios de Recebimento:   4
+  Despesas:               917
+  Receitas:               6
+  Balanços Mensais:       26
+  Eventos Avulsos:        23
+
+======================================================================
+ANÁLISE DE DUPLICAÇÃO:
+======================================================================
+
+DESPESAS:
+  Banco antigo: 920
+  Banco novo:   917
+  Proporção:    1.00x
+  Status: PERFEITO! ✅
+
+RECEITAS:
+  Banco antigo: 6
+  Banco novo:   6
+  Proporção:    1.00x
+  Status: PERFEITO! ✅
+
+BALANÇOS MENSAIS:
+  Banco antigo: 26
+  Banco novo:   26
+  Proporção:    1.00x
+  Status: PERFEITO! ✅
+
+EVENTOS DE CAIXA:
+  Banco antigo: 23
+  Banco novo:   23
+  Proporção:    1.00x
+  Status: PERFEITO! ✅
+
+======================================================================
+✅ IMPORTAÇÃO CONCLUÍDA COM SUCESSO!
+   Todos os dados foram importados sem duplicação.
+======================================================================
+

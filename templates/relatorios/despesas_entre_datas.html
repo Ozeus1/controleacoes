@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}Despesas Entre Datas{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Despesas Entre Datas</h1>
+    </div>
+
+    <!-- Filter Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Filtros</h6>
+        </div>
+        <div class="card-body">
+            <form method="get" class="form-inline">
+                <label class="my-1 mr-2" for="data_inicio">Data Início:</label>
+                <input type="date" class="form-control my-1 mr-sm-2" id="data_inicio" name="data_inicio"
+                    value="{{ data_inicio }}" required>
+
+                <label class="my-1 mr-2" for="data_fim">Data Fim:</label>
+                <input type="date" class="form-control my-1 mr-sm-2" id="data_fim" name="data_fim"
+                    value="{{ data_fim }}" required>
+
+                <button type="submit" class="btn btn-primary my-1">Gerar Relatório</button>
+            </form>
+        </div>
+    </div>
+
+    {% if resultados %}
+    <div class="row">
+        <!-- Summary Card -->
+        <div class="col-xl-12 col-md-12 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Total no Período</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">R$ {{
+                                "%.2f"|format(total_geral)|replace('.', ',') }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-calendar fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Chart -->
+        <div class="col-xl-6 col-lg-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Distribuição por Categoria</h6>
+                </div>
+                <div class="card-body">
+                    <div class="chart-pie pt-4 pb-2">
+                        <canvas id="categoryPieChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="col-xl-6 col-lg-6">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Detalhamento por Categoria</h6>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                            <thead>
+                                <tr>
+                                    <th>Categoria</th>
+                                    <th>Valor Total</th>
+                                    <th>Quantidade</th>
+                                    <th>%</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in resultados %}
+                                <tr>
+                                    <td>
+                                        <a
+                                            href="{{ url_for('despesas.lista', periodo='personalizado', data_inicio=data_inicio, data_fim=data_fim, categoria_id=row.categoria_id) }}">
+                                            {{ row.categoria }}
+                                        </a>
+                                    </td>
+                                    <td>R$ {{ "%.2f"|format(row.total)|replace('.', ',') }}</td>
+                                    <td>{{ row.quantidade }}</td>
+                                    <td>{{ "%.1f"|format((row.total / total_geral) * 100) }}%</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% elif data_inicio and data_fim %}
+    <div class="alert alert-info">
+        Nenhuma despesa encontrada no período selecionado.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    {% if resultados %}
+    // Set new default font family and font color to mimic Bootstrap's default styling
+    Chart.defaults.font.family = 'Nunito, -apple-system,system-ui,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif';
+    Chart.defaults.color = '#858796';
+
+    var ctx = document.getElementById("categoryPieChart");
+    var myPieChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: {{ chart_labels | tojson }},
+    datasets: [{
+        data: {{ chart_data | tojson }},
+        backgroundColor: ['#4e73df', '#1cc88a', '#36b9cc', '#f6c23e', '#e74a3b', '#858796', '#5a5c69', '#f8f9fc', '#2e59d9', '#17a673'],
+        hoverBackgroundColor: ['#2e59d9', '#17a673', '#2c9faf', '#dda20a', '#be2617', '#60616f', '#373840', '#c2cbe5', '#224abe', '#13855c'],
+        hoverBorderColor: "rgba(234, 236, 244, 1)",
+    }],
+},
+    options: {
+        maintainAspectRatio: false,
+            cutout: '80%',
+                plugins: {
+            legend: {
+                display: true,
+                    position: 'bottom'
+            },
+            tooltip: {
+                backgroundColor: "rgb(255,255,255)",
+                    bodyColor: "#858796",
+                        borderColor: '#dddfeb',
+                            borderWidth: 1,
+                                padding: 15,
+                                    displayColors: false,
+                                        caretPadding: 10,
+                                            callbacks: {
+                    label: function(context) {
+                        var label = context.label || '';
+                        var value = context.parsed;
+                        var total = context.chart._metasets[context.datasetIndex].total;
+                        var percentage = Math.floor(((value / total) * 100) + 0.5);
+                        return label + ': R$ ' + value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' (' + percentage + '%)';
+                    }
+                }
+            }
+        }
+    },
+});
+    {% endif %}
+</script>
+{% endblock %}

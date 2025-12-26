@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Gerenciar Orçamento{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-md-10 offset-md-1">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h4><i class="bi bi-calculator"></i> Gerenciar Orçamento por Categoria</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i>
+                    <strong>Defina o valor orçado para cada categoria de despesa</strong>
+                    <p class="mb-0 mt-2">
+                        Configure um valor orçado geral para cada categoria. Este valor será usado para comparar com os
+                        gastos mensais.
+                    </p>
+                </div>
+
+                <!-- Formulário de Orçamento -->
+                <form method="POST" class="mb-4">
+                    <div class="card">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0"><i class="bi bi-plus-circle"></i> Definir Orçamento</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label"><strong>Categoria</strong></label>
+                                    <select class="form-select" name="categoria_id" required>
+                                        <option value="">Selecione...</option>
+                                        {% for categoria in categorias %}
+                                        <option value="{{ categoria.id }}">{{ categoria.nome }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label"><strong>Valor Orçado (R$)</strong></label>
+                                    <input type="text" class="form-control" name="valor_orcado" placeholder="0,00"
+                                        required>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-check-lg"></i> Salvar Orçamento
+                            </button>
+                        </div>
+                    </div>
+                </form>
+
+                <!-- Lista de Orçamentos -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-list-ul"></i> Orçamentos Cadastrados</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if orcamentos %}
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Categoria</th>
+                                        <th class="text-end">Valor Orçado</th>
+                                        <th class="text-center">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for orcamento in orcamentos %}
+                                    <tr>
+                                        <td>{{ orcamento.categoria.nome }}</td>
+                                        <td class="text-end">R$ {{ "%.2f"|format(orcamento.valor_orcado) }}</td>
+                                        <td class="text-center">
+                                            <form method="POST" style="display: inline;">
+                                                <input type="hidden" name="action" value="excluir">
+                                                <input type="hidden" name="orcamento_id" value="{{ orcamento.id }}">
+                                                <button type="submit" class="btn btn-sm btn-danger"
+                                                    onclick="return confirm('Deseja realmente excluir este orçamento?')">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-warning">
+                            <i class="bi bi-exclamation-triangle"></i>
+                            Nenhum orçamento cadastrado ainda.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

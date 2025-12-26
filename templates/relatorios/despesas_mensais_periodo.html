@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+
+{% block title %}Despesas Mensais por Período{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="h3 mb-0 text-gray-800">Despesas Mensais por Período</h1>
+    </div>
+
+    <!-- Filter Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Filtros</h6>
+        </div>
+        <div class="card-body">
+            <form method="get" class="form-inline">
+                <label class="my-1 mr-2" for="data_inicio">Data Início:</label>
+                <input type="date" class="form-control my-1 mr-sm-2" id="data_inicio" name="data_inicio"
+                    value="{{ data_inicio }}" required>
+
+                <label class="my-1 mr-2" for="data_fim">Data Fim:</label>
+                <input type="date" class="form-control my-1 mr-sm-2" id="data_fim" name="data_fim"
+                    value="{{ data_fim }}" required>
+
+                <button type="submit" class="btn btn-primary my-1">Gerar Relatório</button>
+            </form>
+        </div>
+    </div>
+
+    {% if resultados %}
+    <div class="row">
+        <!-- Summary Card -->
+        <div class="col-xl-12 col-md-12 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                Total no Período</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">R$ {{
+                                "%.2f"|format(total_geral)|replace('.', ',') }}</div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-calendar fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Chart -->
+        <div class="col-xl-12 col-lg-12">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Evolução Mensal</h6>
+                </div>
+                <div class="card-body">
+                    <div class="chart-area">
+                        <canvas id="monthlyEvolutionChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Table -->
+        <div class="col-xl-12 col-lg-12">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Detalhamento Mensal</h6>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                            <thead>
+                                <tr>
+                                    <th>Mês/Ano</th>
+                                    <th>Valor Total</th>
+                                    <th>Quantidade</th>
+                                    <th>%</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in resultados %}
+                                <tr>
+                                    <td>
+                                        <a
+                                            href="{{ url_for('despesas.lista', periodo='personalizado', data_inicio=row.data_inicio, data_fim=row.data_fim) }}">
+                                            {{ row.mes_ano.split('-')[1] }}/{{ row.mes_ano.split('-')[0] }}
+                                        </a>
+                                    </td>
+                                    <td>R$ {{ "%.2f"|format(row.total)|replace('.', ',') }}</td>
+                                    <td>{{ row.quantidade }}</td>
+                                    <td>{{ "%.1f"|format((row.total / total_geral) * 100) }}%</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% elif data_inicio and data_fim %}
+    <div class="alert alert-info">
+        Nenhuma despesa encontrada no período selecionado.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    {% if resultados %}
+    // Set new default font family and font color to mimic Bootstrap's default styling
+    Chart.defaults.font.family = 'Nunito, -apple-system,system-ui,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif';
+    Chart.defaults.color = '#858796';
+
+    var ctx = document.getElementById("monthlyEvolutionChart");
+    var myLineChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: {{ chart_labels | tojson }},
+    datasets: [{
+        label: "Total Gastos",
+        backgroundColor: "#4e73df",
+        hoverBackgroundColor: "#2e59d9",
+        borderColor: "#4e73df",
+        data: {{ chart_data | tojson }},
+    }],
+},
+    options: {
+        maintainAspectRatio: false,
+            layout: {
+            padding: {
+                left: 10,
+                    right: 25,
+                        top: 25,
+                            bottom: 0
+            }
+        },
+        scales: {
+            x: {
+                time: {
+                    unit: 'month'
+                },
+                grid: {
+                    display: false,
+                        drawBorder: false
+                },
+                ticks: {
+                    maxTicksLimit: 6
+                },
+                maxBarThickness: 25,
+            },
+            y: {
+                ticks: {
+                    min: 0,
+                        maxTicksLimit: 5,
+                            padding: 10,
+                                // Include a dollar sign in the ticks
+                                callback: function(value, index, values) {
+                                    return 'R$ ' + value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                                }
+                },
+                grid: {
+                    color: "rgb(234, 236, 244)",
+                        drawBorder: false,
+                            borderDash: [2],
+                                zeroLineBorderDash: [2]
+                }
+            },
+        },
+        plugins: {
+            legend: {
+                display: false
+            },
+            tooltip: {
+                backgroundColor: "rgb(255,255,255)",
+                    bodyColor: "#858796",
+                        titleMarginBottom: 10,
+                            titleColor: '#6e707e',
+                                titleFont: {
+                    size: 14
+                },
+                borderColor: '#dddfeb',
+                    borderWidth: 1,
+                        padding: 15,
+                            displayColors: false,
+                                caretPadding: 10,
+                                    callbacks: {
+                    label: function(context) {
+                        var label = context.dataset.label || '';
+                        return label + ': R$ ' + context.parsed.y.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                    }
+                }
+            }
+        }
+    }
+});
+    {% endif %}
+</script>
+{% endblock %}

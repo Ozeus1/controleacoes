@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}Orçado vs Gasto - {{ nome_mes }}/{{ ano }}{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-12">
+        <h2><i class="bi bi-clipboard-data"></i> Orçado vs Gasto - {{ nome_mes }}/{{ ano }}</h2>
+        <p class="text-muted">Comparativo entre orçamento planejado e gasto real por categoria</p>
+        <hr>
+    </div>
+</div>
+
+<!-- Filtro -->
+<div class="card mb-3">
+    <div class="card-header">
+        <h5><i class="bi bi-calendar"></i> Selecionar Período</h5>
+    </div>
+    <div class="card-body">
+        <form method="GET" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">Mês</label>
+                <select class="form-select" name="mes">
+                    {% for m in range(1, 13) %}
+                    <option value="{{ m }}" {% if m==mes %}selected{% endif %}>
+                        {{ ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+                        'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'][m-1] }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Ano</label>
+                <input type="number" class="form-control" name="ano" value="{{ ano }}" min="2000" max="2100">
+            </div>
+            <div class="col-md-4 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-search"></i> Filtrar
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% if not comparativo %}
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i>
+    <strong>Nenhum orçamento configurado para este período.</strong><br>
+    Configure orçamentos em: Configurações > Orçamentos
+</div>
+{% else %}
+<!-- Tabela Comparativa -->
+<div class="card">
+    <div class="card-header">
+        <h5>Análise Comparativa</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Categoria</th>
+                        <th class="text-end">Orçado</th>
+                        <th class="text-end">Gasto</th>
+                        <th class="text-end">Diferença</th>
+                        <th class="text-end">% Executado</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in comparativo %}
+                    <tr
+                        class="{% if item.percentual > 100 %}table-danger{% elif item.percentual > 90 %}table-warning{% endif %}">
+                        <td><strong>{{ item.categoria }}</strong></td>
+                        <td class="text-end">R$ {{ "%.2f"|format(item.orcado)|replace('.', ',') }}</td>
+                        <td class="text-end">R$ {{ "%.2f"|format(item.gasto)|replace('.', ',') }}</td>
+                        <td class="text-end {% if item.diferenca >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            R$ {{ "%.2f"|format(item.diferenca)|replace('.', ',') }}
+                        </td>
+                        <td class="text-end">
+                            <strong>{{ "%.1f"|format(item.percentual) }}%</strong>
+                        </td>
+                        <td>
+                            {% if item.percentual > 100 %}
+                            <span class="badge bg-danger">Estourado</span>
+                            {% elif item.percentual > 90 %}
+                            <span class="badge bg-warning">Atenção</span>
+                            {% elif item.percentual > 70 %}
+                            <span class="badge bg-info">Normal</span>
+                            {% else %}
+                            <span class="badge bg-success">Dentro</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="table-active">
+                        <th>TOTAL</th>
+                        <th class="text-end">R$ {{ "%.2f"|format(comparativo|sum(attribute='orcado'))|replace('.', ',')
+                            }}</th>
+                        <th class="text-end">R$ {{ "%.2f"|format(comparativo|sum(attribute='gasto'))|replace('.', ',')
+                            }}</th>
+                        <th
+                            class="text-end {% if (comparativo|sum(attribute='orcado') - comparativo|sum(attribute='gasto')) >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            R$ {{ "%.2f"|format(comparativo|sum(attribute='orcado') -
+                            comparativo|sum(attribute='gasto'))|replace('.', ',') }}
+                        </th>
+                        <th class="text-end">
+                            <strong>{{ "%.1f"|format((comparativo|sum(attribute='gasto') /
+                                comparativo|sum(attribute='orcado') * 100) if comparativo|sum(attribute='orcado') > 0
+                                else 0) }}%</strong>
+                        </th>
+                        <th></th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Gráfico Comparativo -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h5>Visualização Comparativa</h5>
+    </div>
+    <div class="card-body">
+        <canvas id="graficoComparativo" height="100"></canvas>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if comparativo %}
+<script>
+    const ctx = document.getElementById('graficoComparativo');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: [{% for item in comparativo %}'{{ item.categoria }}'{% if not loop.last %}, {% endif %}{% endfor %}],
+        datasets: [{
+            label: 'Orçado',
+            data: [{% for item in comparativo %}{{ item.orcado }}{% if not loop.last %}, {% endif %} {% endfor %}],
+    backgroundColor: 'rgba(54, 162, 235, 0.7)',
+        borderColor: 'rgba(54, 162, 235, 1)',
+            borderWidth: 1
+        }, {
+        label: 'Gasto',
+            data: [{% for item in comparativo %} { { item.gasto } } {% if not loop.last %}, {% endif %} {% endfor %}],
+    backgroundColor: 'rgba(255, 99, 132, 0.7)',
+        borderColor: 'rgba(255, 99, 132, 1)',
+            borderWidth: 1
+        }]
+    },
+    options: {
+        responsive: true,
+            plugins: {
+            legend: {
+                position: 'top',
+            },
+            tooltip: {
+                callbacks: {
+                    label: function(context) {
+                        let label = context.dataset.label || '';
+                        if (label) {
+                            label += ': ';
+                        }
+                        label += 'R$ ' + context.parsed.y.toFixed(2).replace('.', ',');
+                        return label;
+                    }
+                }
+            }
+        },
+        scales: {
+            y: {
+                beginAtZero: true,
+                    ticks: {
+                    callback: function(value) {
+                        return 'R$ ' + value.toFixed(0);
+                    }
+                }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+{% endblock %}

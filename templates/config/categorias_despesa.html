@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Gerenciar Categorias de Despesa{% endblock %}
+
+{% block content %}
+<div class="row mt-4">
+    <div class="col-12">
+        <h2><i class="bi bi-tags"></i> Categorias de Despesa</h2>
+        <hr>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5>Nova Categoria</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <input type="hidden" name="action" value="criar">
+                    <div class="mb-3">
+                        <label class="form-label">Nome</label>
+                        <input type="text" class="form-control" name="nome" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-plus-lg"></i> Adicionar
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5>Categorias Cadastradas</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Nome</th>
+                                <th>Status</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for categoria in categorias %}
+                            <tr>
+                                <td>{{ categoria.id }}</td>
+                                <td>{{ categoria.nome }}</td>
+                                <td>
+                                    {% if categoria.ativo %}
+                                    <span class="badge bg-success">Ativa</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">Inativa</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <form method="POST" style="display: inline;">
+                                        <input type="hidden" name="action" value="ativar_desativar">
+                                        <input type="hidden" name="id" value="{{ categoria.id }}">
+                                        <button type="submit"
+                                            class="btn btn-sm btn-{% if categoria.ativo %}warning{% else %}success{% endif %}">
+                                            <i
+                                                class="bi bi-{% if categoria.ativo %}pause{% else %}play{% endif %}-circle"></i>
+                                            {% if categoria.ativo %}Desativar{% else %}Ativar{% endif %}
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

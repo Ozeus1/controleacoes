@@ -1,0 +1,50 @@
+--- Tables ---
+despesas
+  - id (INTEGER)
+  - descricao (TEXT)
+  - meio_pagamento (TEXT)
+  - conta_despesa (TEXT)
+  - valor (REAL)
+  - num_parcelas (INTEGER)
+  - data_registro (DATE)
+  - data_pagamento (DATE)
+sqlite_sequence
+  - name ()
+  - seq ()
+categorias
+  - id (INTEGER)
+  - nome (TEXT)
+meios_pagamento
+  - id (INTEGER)
+  - nome (TEXT)
+orcamento
+  - id (INTEGER)
+  - conta_despesa (TEXT)
+  - valor_orcado (REAL)
+fechamento_cartoes
+  - id (INTEGER)
+  - meio_pagamento (TEXT)
+  - data_fechamento (INTEGER)
+users
+  - id (INTEGER)
+  - username (TEXT)
+  - email (TEXT)
+  - password_hash (TEXT)
+  - nivel_acesso (TEXT)
+  - ativo (BOOLEAN)
+  - data_criacao (DATETIME)
+categorias_despesa
+  - id (INTEGER)
+  - nome (TEXT)
+  - ativo (BOOLEAN)
+
+--- Views ---
+v_despesas_compat:
+CREATE VIEW v_despesas_compat AS
+                SELECT d.id, d.descricao, d.valor, d.num_parcelas, d.data_pagamento, d.data_registro,
+                       c.nome as conta_despesa,
+                       m.nome as meio_pagamento,
+                       d.user_id
+                FROM despesas d
+                JOIN categorias_despesa c ON d.categoria_id = c.id
+                JOIN meios_pagamento m ON d.meio_pagamento_id = m.id

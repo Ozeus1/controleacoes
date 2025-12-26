@@ -1,0 +1,11 @@
+{
+    "supabase_url": "https://gbrktfhxlfqdefuofdpk.supabase.co",
+    "supabase_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imdicmt0Zmh4bGZxZGVmdW9mZHBrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTA2MDQwODYsImV4cCI6MjA2NjE4MDA4Nn0.7K8r6i6xjQr__zTE1UY2cWc56O5qPllq9oTe4qdf_BY",
+    "db_host": "gbrktfhxlfqdefuofdpk.supabase.co",
+    "db_name": "postgres",
+    "db_user": "postgres",
+    "db_password": "",
+    "db_port": "5432",
+    "table_name": "transacoes_financeiras",
+    "connection_method": "rest_api"
+}

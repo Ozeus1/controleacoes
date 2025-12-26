@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Histórico de Operações</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+    <div class="container">
+        <header style="margin-bottom: 2rem;">
+            <div>
+                <h1>Histórico de Operações</h1>
+                <nav class="main-nav">
+                    <a href="{{ url_for('acoes') }}">Ações</a>
+                    <a href="{{ url_for('fiis') }}">FIIs</a>
+                    <a href="{{ url_for('swingtrade') }}">Swingtrade</a>
+                    <a href="{{ url_for('history') }}" class="active">Histórico</a>
+                    <a href="{{ url_for('config') }}">⚙️</a>
+                    <a href="{{ url_for('logout') }}"
+                        style="color: var(--danger-color); font-size: 0.9rem; border: 1px solid var(--border-color); padding: 0.25rem 0.5rem; border-radius: 0.25rem;">Sair</a>
+                </nav>
+            </div>
+            <a href="{{ url_for('add_history') }}" class="btn btn-primary">+ Adicionar Registro</a>
+        </header>
+
+        {% if history %}
+        <div class="card">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Ticker</th>
+                        <th>Estratégia</th>
+                        <th>Entrada</th>
+                        <th>Saída</th>
+                        <th>Qtd</th>
+                        <th>Compra</th>
+                        <th>Venda</th>
+                        <th>Lucro R$</th>
+                        <th>Lucro %</th>
+                        <th>Dias</th>
+                        <th>Motivo</th>
+                        <th>Ações</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in history %}
+                    <tr>
+                        <td><span class="ticker-badge">{{ item.ticker }}</span></td>
+                        <td>{{ item.strategy or '-' }}</td>
+                        <td>{{ item.entry_date.strftime('%d/%m/%Y') if item.entry_date else '-' }}</td>
+                        <td>{{ item.exit_date.strftime('%d/%m/%Y') if item.exit_date else '-' }}</td>
+                        <td>{{ item.quantity }}</td>
+                        <td>R$ {{ "%.2f"|format(item.buy_price)|replace('.', ',') }}</td>
+                        <td>R$ {{ "%.2f"|format(item.sell_price)|replace('.', ',') }}</td>
+                        <td class="{{ 'positive' if item.profit_value >= 0 else 'negative' }}">
+                            R$ {{ "%.2f"|format(item.profit_value)|replace('.', ',') }}
+                        </td>
+                        <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
+                            {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
+                        </td>
+                        <td>{{ item.days_held }}</td>
+                        <td>{{ item.reason or '-' }}</td>
+                        <td class="actions">
+                            <a href="{{ url_for('edit_history', id=item.id) }}" class="btn btn-sm btn-primary">✏️</a>
+                            <a href="{{ url_for('delete_history', id=item.id) }}" class="btn btn-sm btn-danger"
+                                onclick="return confirm('Apagar registro?')">🗑️</a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="total-row">
+                        <td>TOTAL</td>
+                        <td colspan="6"></td>
+                        <td class="{{ 'positive' if history|sum(attribute='profit_value') >= 0 else 'negative' }}">
+                            R$ {{ "%.2f"|format(history|sum(attribute='profit_value'))|replace('.', ',') }}
+                        </td>
+                        <td></td>
+                        <td></td>
+                        <td></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="card" style="text-align: center; padding: 3rem;">
+            <h3>Nenhuma operação registrada</h3>
+        </div>
+        {% endif %}
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2>Resumo da Carteira</h2>
+
+    <!-- KPIs -->
+    <div
+        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div class="card" style="padding: 1.5rem; text-align: center;">
+            <div style="color: var(--text-secondary); font-size: 0.9rem;">Patrimônio Total</div>
+            <div style="font-size: 1.8rem; font-weight: bold; margin-top: 0.5rem; color: var(--accent-color);">
+                {{ total_equity | brl }}
+            </div>
+        </div>
+        <div class="card" style="padding: 1.5rem; text-align: center;">
+            <div style="color: var(--text-secondary); font-size: 0.9rem;">Ações</div>
+            <div style="font-size: 1.5rem; font-weight: bold; margin-top: 0.5rem;">
+                {{ total_acoes | brl }}
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                {{ ((total_acoes / total_equity * 100) if total_equity > 0 else 0) | pct }}
+            </div>
+        </div>
+        <div class="card" style="padding: 1.5rem; text-align: center;">
+            <div style="color: var(--text-secondary); font-size: 0.9rem;">FIIs</div>
+            <div style="font-size: 1.5rem; font-weight: bold; margin-top: 0.5rem;">
+                {{ total_fiis | brl }}
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                {{ ((total_fiis / total_equity * 100) if total_equity > 0 else 0) | pct }}
+            </div>
+        </div>
+        <div class="card" style="padding: 1.5rem; text-align: center;">
+            <div style="color: var(--text-secondary); font-size: 0.9rem;">Lucro Realizado (Histórico)</div>
+            <div
+                style="font-size: 1.5rem; font-weight: bold; margin-top: 0.5rem; color: {{ 'var(--success-color)' if total_realized_profit >= 0 else 'var(--danger-color)' }};">
+                {{ total_realized_profit | brl }}
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row 1 -->
+    <div
+        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+        <div class="card" style="padding: 1.5rem;">
+            <h3 style="text-align: center; font-size: 1rem; margin-bottom: 1rem;">Alocação (Ações vs FIIs)</h3>
+            <canvas id="allocationChart"></canvas>
+        </div>
+        <div class="card" style="padding: 1.5rem;">
+            <h3 style="text-align: center; font-size: 1rem; margin-bottom: 1rem;">Tipos de FIIs</h3>
+            <canvas id="fiiChart"></canvas>
+        </div>
+    </div>
+
+    <!-- FII Details Section -->
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+        <!-- Detailed Table -->
+        <div class="card" style="padding: 1.5rem;">
+            <h3 style="font-size: 1rem; margin-bottom: 1rem;">Detalhamento de FIIs</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Classificação</th>
+                        <th>Tipo</th>
+                        <th>Valor (R$)</th>
+                        <th>Perc. Card.</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in fii_table %}
+                    <tr>
+                        <td>
+                            <span class="badge"
+                                style="background-color: {{ '#3b82f6' if row.category == 'Tijolo' else '#f97316' }}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 0.8rem;">
+                                {{ row.category }}
+                            </span>
+                        </td>
+                        <td>{{ row.type }}</td>
+                        <td>R$ {{ "%.2f"|format(row.value)|replace('.', ',') }}</td>
+                        <td>{{ "%.1f"|format(row.pct)|replace('.', ',') }}%</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr style="font-weight: bold; background-color: rgba(255,255,255,0.05); color: var(--text-color);">
+                        <td>TOTAL FIIs</td>
+                        <td></td>
+                        <td>{{ total_fiis | brl }}</td>
+                        <td>100%</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+
+        <!-- Broad Allocation Chart -->
+        <div class="card" style="padding: 1.5rem;">
+            <h3 style="text-align: center; font-size: 1rem; margin-bottom: 1rem;">Divisão (Tijolo x Papel)</h3>
+            <canvas id="broadChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Charts Row 2 -->
+    <div class="card" style="padding: 1.5rem; margin-bottom: 2rem;">
+        <h3 style="text-align: center; font-size: 1rem; margin-bottom: 1rem;">Lucro Mensal (Histórico)</h3>
+        <canvas id="profitChart"></canvas>
+    </div>
+
+</div>
+
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Broad Allocation Chart
+    const ctxBroad = document.getElementById('broadChart').getContext('2d');
+    new Chart(ctxBroad, {
+        type: 'pie',
+        data: {
+            labels: ['Tijolo', 'Papel'],
+            datasets: [{
+                data: [{{ broad_allocation['Tijolo'] }}, {{ broad_allocation['Papel'] }}],
+        backgroundColor: ['#3b82f6', '#f97316'],
+        borderWidth: 0
+    }]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+    });
+    // Allocation Chart
+    const ctxAlloc = document.getElementById('allocationChart').getContext('2d');
+    new Chart(ctxAlloc, {
+        type: 'doughnut',
+        data: {
+            labels: ['Ações', 'FIIs'],
+            datasets: [{
+                data: [{{ total_acoes }}, {{ total_fiis }}],
+        backgroundColor: ['#6366f1', '#10b981'],
+        borderWidth: 0
+    }]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+    });
+
+    // FII Chart
+    const fiiLabels = {{ fii_types.keys() | list | tojson }};
+    const fiiValues = {{ fii_types.values() | list | tojson }};
+    const ctxFii = document.getElementById('fiiChart').getContext('2d');
+    new Chart(ctxFii, {
+        type: 'pie',
+        data: {
+            labels: fiiLabels,
+            datasets: [{
+                data: fiiValues,
+                backgroundColor: [
+                    '#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#64748b', '#06b6d4'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+    });
+
+    // Profit Chart
+    const monthLabels = {{ months| tojson }};
+    const profitData = {{ profits| tojson }};
+    const ctxProfit = document.getElementById('profitChart').getContext('2d');
+    new Chart(ctxProfit, {
+        type: 'bar',
+        data: {
+            labels: monthLabels,
+            datasets: [{
+                label: 'Lucro (R$)',
+                data: profitData,
+                backgroundColor: profitData.map(v => v >= 0 ? '#10b981' : '#ef4444'),
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+</script>
+{% endblock %}

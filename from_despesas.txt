@@ -1,0 +1,20 @@
+Line 1102: FROM despesas d
+Line 2079: FROM despesas
+Line 2330: FROM despesas
+Line 2408: FROM despesas
+Line 2448: FROM despesas
+Line 2488: FROM despesas
+Line 2700: self.cursor.execute("DELETE FROM despesas WHERE id = ?", (self.id_despesa.get(),))
+Line 2729: FROM despesas
+Line 2791: FROM despesas
+Line 2986: FROM despesas
+Line 3048: FROM despesas
+Line 3180: self.cursor.execute("SELECT DISTINCT meio_pagamento FROM despesas ORDER BY meio_pagamento")
+Line 3231: FROM despesas
+Line 3373: FROM despesas
+Line 3535: FROM despesas
+Line 3682: FROM despesas
+Line 3725: FROM despesas
+Line 3745: FROM despesas
+Line 3785: FROM despesas
+Line 3804: FROM despesas

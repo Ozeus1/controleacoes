@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center;">
+    <h2>Swingtrade</h2>
+</div>
+
+{% if assets %}
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Ativo</th>
+                <th>Qtd</th>
+                <th>Valor Posição</th>
+                <th>Preço Compra</th>
+                <th>Total Compra</th>
+                <th>Peso %</th>
+                <th>Cotação</th>
+                <th>Var % Dia</th>
+                <th>Atualização</th>
+                <th>Stop Loss</th>
+                <th>Gain 1</th> <!-- Target 1 -->
+                <th>Gain 2</th> <!-- Target 2 -->
+                <th>Lucro R$</th>
+                <th>Estratégia</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in assets %}
+            <tr>
+                <td><span class="ticker-badge" style="background: #312e81; color: #818cf8;">{{ item.asset.ticker
+                        }}</span></td>
+                <td>{{ item.asset.quantity }}</td>
+                <td>R$ {{ "%.2f"|format(item.current_total)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.asset.avg_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
+                <td>{{ "%.2f"|format(item.weight)|replace('.', ',') }}%</td>
+
+                <!-- Highlight Quote according to Stop/Gain -->
+                {% set p = item.current_price %}
+                {% set sl = item.asset.stop_loss or 0 %}
+                {% set g1 = item.asset.gain1 or 999999 %}
+                <td
+                    style="font-weight: bold; color: {{ 'var(--danger-color)' if sl > 0 and p <= sl else ('var(--success-color)' if p >= g1 else 'inherit') }}">
+                    R$ {{ "%.2f"|format(p)|replace('.', ',') }}
+                </td>
+
+                <td class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.change_percent)|replace('.', ',') }}%
+                </td>
+                <td style="color: var(--text-secondary); font-size: 0.85rem;">
+                    {{ item.last_update }}
+                </td>
+
+                <td>{{ "%.2f"|format(item.asset.stop_loss)|replace('.', ',') if item.asset.stop_loss else '-' }}</td>
+                <td>{{ "%.2f"|format(item.asset.gain1)|replace('.', ',') if item.asset.gain1 else '-' }}</td>
+                <td>{{ "%.2f"|format(item.asset.gain2)|replace('.', ',') if item.asset.gain2 else '-' }}</td>
+
+                <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
+                    R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
+                </td>
+
+                <td style="font-size: 0.8rem; letter-spacing: 0.5px;">
+                    {{ item.asset.recommendation or '-' }}
+                </td>
+
+                <td class="actions">
+                    <a href="{{ url_for('exit_trade', id=item.asset.id) }}" class="btn btn-sm"
+                        style="background:var(--accent-color); color: white;" title="Saída">🛑</a>
+                    <a href="{{ url_for('edit_asset', id=item.asset.id) }}" class="btn btn-sm btn-primary">✏️</a>
+                    <a href="{{ url_for('delete_asset', id=item.asset.id) }}" class="btn btn-sm btn-danger"
+                        onclick="return confirm('Apagar?')">🗑️</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row"
+                style="font-weight: bold; background-color: rgba(255,255,255,0.05); color: var(--text-color);">
+                <td>TOTAL</td>
+                <td></td> <!-- Qtd -->
+                <td>{{ assets|sum(attribute='current_total') | brl }}</td>
+                <td></td> <!-- Avg Price -->
+                <td>{{ assets|sum(attribute='total_invested') | brl }}</td>
+                <td>100,00%</td>
+                <td></td> <!-- Quote -->
+                <td></td> <!-- Var -->
+                <td></td> <!-- Update -->
+                <td></td> <!-- Stop -->
+                <td></td> <!-- Gain 1 -->
+                <td></td> <!-- Gain 2 -->
+                <td class="{{ 'positive' if assets|sum(attribute='profit') >= 0 else 'negative' }}">
+                    {{ assets|sum(attribute='profit') | brl }}
+                </td>
+                <td></td> <!-- Strategy -->
+                <td></td> <!-- Actions -->
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% else %}
+<div class="card" style="text-align: center; padding: 3rem;">
+    <h3>Sem Swingtrades Cadastrados</h3>
+    <a href="{{ url_for('add_asset') }}" class="btn btn-primary">Adicionar Operação</a>
+</div>
+{% endif %}
+{% endblock %}

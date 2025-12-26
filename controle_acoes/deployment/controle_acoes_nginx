@@ -1,0 +1,9 @@
+server {
+    listen 80;
+    server_name www.invest.casatemporadaceara.cloud;
+
+    location / {
+        include proxy_params;
+        proxy_pass http://unix:/var/www/controle_acoes/controle_acoes.sock;
+    }
+}

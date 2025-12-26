@@ -2,7 +2,7 @@
 import os
 from flask import Flask, render_template, request, redirect, url_for, flash
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory
+from models import db, Asset, Settings, User, TradeHistory, Option
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import time
@@ -42,6 +42,159 @@ db.init_app(app)
 
 login_manager = LoginManager()
 login_manager.login_view = 'login'
+
+# --- Options Module Routes ---
+
+@app.route('/opcoes')
+@login_required
+def opcoes():
+    options = Option.query.all()
+    
+    # Process options to add calculated fields and fetch underlying quotes
+    processed_options = []
+    
+    # Get list of unique underlyings to fetch quotes
+    underlyings = list(set([o.underlying_asset for o in options]))
+    quotes = get_quotes(underlyings) if underlyings else {}
+    
+    for opt in options:
+        underlying_price = 0.0
+        if opt.underlying_asset in quotes:
+            underlying_price = quotes[opt.underlying_asset].get('price', 0.0)
+            
+        total_sold = opt.quantity * opt.sale_price
+        
+        # Profit for SHORT position: (Sale Price - Current Price) * Qty
+        # If Current Price is 0 (not updated), assume profit is full sale price? No, assume 0 cost effectively?
+        # Let's use the manual current_option_price.
+        current_val = opt.quantity * opt.current_option_price
+        profit = total_sold - current_val
+        profit_pct = (profit / total_sold * 100) if total_sold > 0 else 0
+        
+        processed_options.append({
+            'option': opt,
+            'underlying_price': underlying_price,
+            'total_sold': total_sold,
+            'profit': profit,
+            'profit_pct': profit_pct
+        })
+        
+    return render_template('opcoes.html', options=processed_options)
+
+@app.route('/add_option', methods=['GET', 'POST'])
+@login_required
+def add_option():
+    # Similar to add_asset
+    if request.method == 'POST':
+        ticker = request.form.get('ticker').upper()
+        quantity = int(request.form.get('quantity'))
+        underlying = request.form.get('underlying_asset').upper()
+        strike = float(request.form.get('strike_price').replace(',', '.'))
+        expiration = datetime.strptime(request.form.get('expiration_date'), '%Y-%m-%d').date()
+        sale_price = float(request.form.get('sale_price').replace(',', '.'))
+        
+        # Current price (optional on add)
+        curr_price_str = request.form.get('current_option_price')
+        current_option_price = float(curr_price_str.replace(',', '.')) if curr_price_str else 0.0
+        
+        opt = Option(
+            ticker=ticker,
+            quantity=quantity,
+            underlying_asset=underlying,
+            strike_price=strike,
+            expiration_date=expiration,
+            sale_price=sale_price,
+            current_option_price=current_option_price
+        )
+        db.session.add(opt)
+        db.session.commit()
+        
+        flash("Opção adicionada com sucesso!")
+        return redirect(url_for('opcoes'))
+        
+    return render_template('add_option.html')
+
+@app.route('/edit_option/<int:id>', methods=['GET', 'POST'])
+@login_required
+def edit_option(id):
+    opt = Option.query.get_or_404(id)
+    if request.method == 'POST':
+        opt.ticker = request.form.get('ticker').upper()
+        opt.quantity = int(request.form.get('quantity'))
+        opt.underlying_asset = request.form.get('underlying_asset').upper()
+        opt.strike_price = float(request.form.get('strike_price').replace(',', '.'))
+        opt.expiration_date = datetime.strptime(request.form.get('expiration_date'), '%Y-%m-%d').date()
+        opt.sale_price = float(request.form.get('sale_price').replace(',', '.'))
+        
+        curr_price_str = request.form.get('current_option_price')
+        if curr_price_str:
+            opt.current_option_price = float(curr_price_str.replace(',', '.'))
+            
+        db.session.commit()
+        return redirect(url_for('opcoes'))
+        
+    return render_template('add_option.html', option=opt, edit=True)
+
+@app.route('/delete_option/<int:id>')
+@login_required
+def delete_option(id):
+    opt = Option.query.get_or_404(id)
+    db.session.delete(opt)
+    db.session.commit()
+    return redirect(url_for('opcoes'))
+
+@app.route('/update_options_quotes', methods=['POST'])
+@login_required
+def update_options_quotes():
+    # Only updates basic info not stored in DB currently (since we fetch on load),
+    # but could be used if we stored underlying price.
+    # For now, just reload the page as the page logic fetches fresh data.
+    # We could force a refresh or flash message.
+    flash("Cotações dos ativos subjacentes atualizadas na visualização.")
+    return redirect(url_for('opcoes'))
+
+@app.route('/close_option/<int:id>', methods=['GET', 'POST'])
+@login_required
+def close_option(id):
+    opt = Option.query.get_or_404(id)
+    
+    # If using a separate template for closing, we'd render it.
+    # For simplicity, if GET, maybe show a confirmation or small form?
+    # User requested "Gravar saída (nas saídas gravar os lucros e prejuízos em tabela a parte na página histórico)".
+    # Let's reuse exit.html or make a simple one. Reusing logic implies we need a form for "Exit Price" (Buy Back Price).
+    
+    if request.method == 'POST':
+        buy_back_price = float(request.form.get('price').replace(',', '.'))
+        date_exit = datetime.strptime(request.form.get('date'), '%Y-%m-%d').date()
+        
+        # Profit Calculation for SHORT
+        # Profit = (Sale Price - Buy Back Price) * Qty
+        profit_val = (opt.sale_price - buy_back_price) * opt.quantity
+        profit_pct = (profit_val / (opt.quantity * opt.sale_price) * 100) if opt.sale_price > 0 else 0
+        
+        history = TradeHistory(
+            ticker=opt.ticker,
+            strategy="OPCAO",
+            entry_date=None, # We don't track entry date on Option model currently? We could add it or ignore.
+            exit_date=date_exit,
+            buy_price=buy_back_price, # Price we paid to close
+            sell_price=opt.sale_price, # Price we sold at start
+            quantity=opt.quantity,
+            profit_value=profit_val,
+            profit_pct=profit_pct,
+            days_held=0, # Unknown entry date
+            reason="ENCERRAMENTO"
+        )
+        db.session.add(history)
+        db.session.delete(opt) # Remove from active options
+        db.session.commit()
+        
+        flash("Saída de opção registrada no histórico!")
+        return redirect(url_for('opcoes'))
+        
+    # Render a simple exit form for option
+    return render_template('close_option.html', option=opt, today=date.today())
+
 login_manager.init_app(app)
 
 @login_manager.user_loader

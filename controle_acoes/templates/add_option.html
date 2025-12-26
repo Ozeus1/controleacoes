@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card" style="max-width: 600px; margin: 2rem auto;">
+    <h2 style="text-align: center; margin-bottom: 2rem;">
+        {% if edit %}Editar Opção{% else %}Adicionar Nova Opção{% endif %}
+    </h2>
+
+    <form method="POST">
+        <div class="form-group">
+            <label for="ticker">Ticker da Opção (ex: ABEVA31)</label>
+            <input type="text" id="ticker" name="ticker" class="form-control"
+                value="{{ option.ticker if option else '' }}" required style="text-transform: uppercase;">
+        </div>
+
+        <div class="form-group">
+            <label for="quantity">Quantidade Vendida</label>
+            <input type="number" id="quantity" name="quantity" class="form-control"
+                value="{{ option.quantity if option else '' }}" required>
+        </div>
+
+        <div class="form-group">
+            <label for="underlying_asset">Ativo Objeto (ex: ABEV3)</label>
+            <input type="text" id="underlying_asset" name="underlying_asset" class="form-control"
+                value="{{ option.underlying_asset if option else '' }}" required style="text-transform: uppercase;">
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 form-group">
+                <label for="strike_price">Strike (R$)</label>
+                <input type="text" id="strike_price" name="strike_price" class="form-control"
+                    value="{{ '%.2f'|format(option.strike_price)|replace('.', ',') if option else '' }}" required
+                    placeholder="0,00">
+            </div>
+            <div class="col-md-6 form-group">
+                <label for="expiration_date">Vencimento</label>
+                <input type="date" id="expiration_date" name="expiration_date" class="form-control"
+                    value="{{ option.expiration_date if option else '' }}" required>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 form-group">
+                <label for="sale_price">Valor de Venda (Prêmio R$)</label>
+                <input type="text" id="sale_price" name="sale_price" class="form-control"
+                    value="{{ '%.2f'|format(option.sale_price)|replace('.', ',') if option else '' }}" required
+                    placeholder="0,00">
+            </div>
+
+            {% if edit %}
+            <div class="col-md-6 form-group">
+                <label for="current_option_price">Cotação Atual da Opção (R$)</label>
+                <input type="text" id="current_option_price" name="current_option_price" class="form-control"
+                    value="{{ '%.2f'|format(option.current_option_price)|replace('.', ',') if option else '0,00' }}"
+                    placeholder="0,00">
+                <small style="color: var(--text-secondary);">Atualize manualmente</small>
+            </div>
+            {% endif %}
+        </div>
+
+        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+            <button type="submit" class="btn btn-primary" style="flex: 1;">Salvar</button>
+            <a href="{{ url_for('opcoes') }}" class="btn btn-danger"
+                style="flex: 1; text-align: center; text-decoration: none;">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

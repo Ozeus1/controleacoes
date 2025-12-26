@@ -76,7 +76,32 @@ class TradeHistory(db.Model):
     profit_value = db.Column(db.Float)
     profit_pct = db.Column(db.Float)
     days_held = db.Column(db.Integer)
+    days_held = db.Column(db.Integer)
     reason = db.Column(db.String(20)) # StopLoss, Gain, Partial, etc.
+
+class Option(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    ticker = db.Column(db.String(20), nullable=False) # e.g., PETRA40
+    underlying_asset = db.Column(db.String(10), nullable=False) # e.g., PETR4
+    quantity = db.Column(db.Integer, nullable=False)
+    strike_price = db.Column(db.Float, nullable=False)
+    expiration_date = db.Column(db.Date, nullable=False)
+    sale_price = db.Column(db.Float, nullable=False) # Premium received per share
+    
+    # Manual update field
+    current_option_price = db.Column(db.Float, default=0.0)
+    
+    # Calculated/Fetched on fly, but maybe store last fetch for underlying?
+    last_update = db.Column(db.DateTime, nullable=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'ticker': self.ticker,
+            'underlying': self.underlying_asset,
+            'strike': self.strike_price,
+            'current_price': self.current_option_price
+        }
 
 
 class Settings(db.Model):

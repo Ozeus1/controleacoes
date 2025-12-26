@@ -41,6 +41,8 @@
                         class="{{ 'active' if request.endpoint == 'fiis' else '' }}">FIIs</a>
                     <a href="{{ url_for('swingtrade') }}"
                         class="{{ 'active' if request.endpoint == 'swingtrade' else '' }}">Swingtrade</a>
+                    <a href="{{ url_for('opcoes') }}"
+                        class="{{ 'active' if request.endpoint == 'opcoes' else '' }}">Opções</a>
                     <a href="{{ url_for('history') }}"
                         class="{{ 'active' if request.endpoint == 'history' else '' }}">Histórico</a>
                     <a href="{{ url_for('config') }}"

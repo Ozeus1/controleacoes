@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center;">
+    <h2>Carteira de Opções</h2>
+    <div>
+        <!-- Update Underlying Quotes Button -->
+        <form action="{{ url_for('update_options_quotes') }}" method="post" style="display: inline;">
+            <button type="submit" class="btn btn-secondary">🔄 Atualizar Ativos</button>
+        </form>
+        <a href="{{ url_for('add_option') }}" class="btn btn-primary">Adicionar Opção</a>
+    </div>
+</div>
+
+{% if options %}
+<div class="card">
+    <table>
+        <thead>
+            <tr>
+                <th>Opção</th>
+                <th>Qtd</th>
+                <th>Ativo</th>
+                <th>Cotação Ativo</th>
+                <th>Strike</th>
+                <th>Vencimento</th>
+                <th>Valor Venda</th>
+                <th>Total</th>
+                <th>Cotação Opção</th> <!-- Manual -->
+                <th>Lucro R$</th>
+                <th>Lucro %</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in options %}
+            <tr>
+                <td><span class="ticker-badge" style="background: #e67e22;">{{ item.option.ticker }}</span></td>
+                <td>{{ item.option.quantity }}</td>
+                <td>{{ item.option.underlying_asset }}</td>
+                <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
+                <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
+                <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.total_sold)|replace('.', ',') }}</td>
+                <td>
+                    <!-- Editable Display or just Value -->
+                    R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}
+                </td>
+
+                <!-- Profit Logic for Short Option: (Sale - Current) * Qty -->
+                <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
+                    R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
+                </td>
+                <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
+                </td>
+
+                <td class="actions">
+                    <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
+                        style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
+                    <a href="{{ url_for('edit_option', id=item.option.id) }}" class="btn btn-sm btn-primary">✏️</a>
+                    <a href="{{ url_for('delete_option', id=item.option.id) }}" class="btn btn-sm btn-danger"
+                        onclick="return confirm('Apagar?')">🗑️</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row" style="font-weight: bold; background-color: rgba(255,255,255,0.05);">
+                <td>TOTAL</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td>{{ options|sum(attribute='total_sold') | brl }}</td>
+                <td>{{ options|sum(attribute='total_sold') | brl }}</td>
+                <td></td>
+                <td class="{{ 'positive' if options|sum(attribute='profit') >= 0 else 'negative' }}">
+                    {{ options|sum(attribute='profit') | brl }}
+                </td>
+                <td></td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% else %}
+<div class="card" style="text-align: center; padding: 3rem;">
+    <h3>Sem Opções Cadastradas</h3>
+    <a href="{{ url_for('add_option') }}" class="btn btn-primary">Adicionar Opção</a>
+</div>
+{% endif %}
+{% endblock %}

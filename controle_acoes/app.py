@@ -7,6 +7,7 @@ from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import time
 from datetime import datetime, date
+from zoneinfo import ZoneInfo
 
 # Load env vars
 load_dotenv()
@@ -156,7 +157,8 @@ def update_all_assets_logic():
                     q = quotes[asset.ticker]
                     asset.current_price = q.get('price', 0.0)
                     asset.daily_change = q.get('change_percent', 0.0)
-                    asset.last_update = datetime.now()
+                    # Correct Timezone: UTC-3 (Sao Paulo)
+                    asset.last_update = datetime.now(ZoneInfo('America/Sao_Paulo'))
                     db.session.commit() # Commit per line? User said "update one line at a time"
                     # Maybe not commit db per line but update API per line.
                     # Let's commit every few or at end. But to be safe committed per line.
@@ -213,7 +215,7 @@ def add_asset():
                 q = quotes[ticker]
                 new_asset.current_price = q.get('price', 0.0)
                 new_asset.daily_change = q.get('change_percent', 0.0)
-                new_asset.last_update = datetime.now()
+                new_asset.last_update = datetime.now(ZoneInfo('America/Sao_Paulo'))
                 db.session.commit()
         except Exception as e:
             print(f"Error fetching initial quote for {ticker}: {e}")

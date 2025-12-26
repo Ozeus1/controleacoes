@@ -254,6 +254,34 @@ def edit_asset(id):
             return redirect(url_for('acoes'))
     return render_template('add.html', asset=asset, edit=True)
 
+@app.route('/buy/<int:id>', methods=['GET', 'POST'])
+@login_required
+def buy_asset(id):
+    asset = Asset.query.get_or_404(id)
+    if request.method == 'POST':
+        qty_buy = int(request.form.get('quantity'))
+        price_buy = float(request.form.get('price').replace(',', '.'))
+        
+        # Calculate New Average Price
+        current_total = asset.quantity * asset.avg_price
+        new_investment = qty_buy * price_buy
+        total_qty = asset.quantity + qty_buy
+        
+        if total_qty > 0:
+            new_avg_price = (current_total + new_investment) / total_qty
+            asset.avg_price = new_avg_price
+            asset.quantity = total_qty
+            
+            db.session.commit()
+            flash(f'Compra registrada! Novo PM: R$ {new_avg_price:.2f}')
+        
+        if asset.type == 'FII':
+            return redirect(url_for('fiis'))
+        else:
+            return redirect(url_for('acoes'))
+            
+    return render_template('buy.html', asset=asset, today=date.today().isoformat())
+
 @app.route('/exit/<int:id>', methods=['GET', 'POST'])
 @login_required
 def exit_trade(id):

@@ -53,6 +53,8 @@
                     R$ {{ "%.2f"|format(item.day_gain)|replace('.', ',') }}
                 </td>
                 <td class="actions">
+                    <a href="{{ url_for('buy_asset', id=item.asset.id) }}" class="btn btn-sm"
+                        style="background:var(--success-color); color: white;" title="Registrar Nova Compra">➕</a>
                     <a href="{{ url_for('exit_trade', id=item.asset.id) }}" class="btn btn-sm"
                         style="background:var(--accent-color); color: white;" title="Registrar Venda/Saída">🛑</a>
                     <a href="{{ url_for('edit_asset', id=item.asset.id) }}" class="btn btn-sm btn-primary">✏️</a>

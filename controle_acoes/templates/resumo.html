@@ -115,6 +115,26 @@
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+    // Common Tooltip Callback for Percentage
+    const pctTooltip = {
+        callbacks: {
+            label: function (context) {
+                let label = context.label || '';
+                if (label) {
+                    label += ': ';
+                }
+                let value = context.parsed;
+                let total = context.dataset.data.reduce((a, b) => a + b, 0);
+                let pct = total > 0 ? (value / total * 100).toFixed(1) + '%' : '0%';
+
+                // Format Value
+                let formattedValue = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+
+                return `${label}${formattedValue} (${pct})`;
+            }
+        }
+    };
+
     // Broad Allocation Chart
     const ctxBroad = document.getElementById('broadChart').getContext('2d');
     new Chart(ctxBroad, {
@@ -127,8 +147,15 @@
         borderWidth: 0
     }]
         },
-        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        options: {
+        responsive: true,
+        plugins: {
+            legend: { position: 'bottom' },
+            tooltip: pctTooltip
+        }
+    }
     });
+
     // Allocation Chart
     const ctxAlloc = document.getElementById('allocationChart').getContext('2d');
     new Chart(ctxAlloc, {
@@ -141,7 +168,13 @@
         borderWidth: 0
     }]
         },
-        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        options: {
+        responsive: true,
+        plugins: {
+            legend: { position: 'bottom' },
+            tooltip: pctTooltip
+        }
+    }
     });
 
     // FII Chart
@@ -160,7 +193,13 @@
                 borderWidth: 0
             }]
         },
-        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: pctTooltip
+            }
+        }
     });
 
     // Stock Sector Chart
@@ -179,10 +218,16 @@
                 borderWidth: 0
             }]
         },
-        options: { responsive: true, plugins: { legend: { position: 'bottom' } } }
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: pctTooltip
+            }
+        }
     });
 
-    // Profit Chart
+    // Profit Chart (No % needed, but currency format)
     const monthLabels = {{ months| tojson }};
     const profitData = {{ profits| tojson }};
     const ctxProfit = document.getElementById('profitChart').getContext('2d');
@@ -199,7 +244,17 @@
         },
         options: {
             responsive: true,
-            scales: { y: { beginAtZero: true } }
+            scales: { y: { beginAtZero: true } },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            let value = context.parsed.y;
+                            return 'Lucro: ' + new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+                        }
+                    }
+                }
+            }
         }
     });
 </script>

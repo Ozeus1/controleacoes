@@ -242,28 +242,31 @@ def index():
 @app.route('/acoes')
 @login_required
 def acoes():
-    assets = Asset.query.filter(Asset.type=='ACAO', Asset.user_id==current_user.id).all()
+    raw_assets = Asset.query.filter(Asset.type=='ACAO', Asset.user_id==current_user.id).all()
+    processed_assets = process_assets(raw_assets)
     
-    total_invested = sum([a.quantity * a.avg_price for a in assets])
-    total_current = sum([a.quantity * a.current_price for a in assets])
+    total_invested = sum(a['total_invested'] for a in processed_assets)
+    total_current = sum(a['current_total'] for a in processed_assets)
     
-    return render_template('acoes.html', assets=assets, total_invested=total_invested, total_current=total_current)
+    return render_template('acoes.html', assets=processed_assets, total_invested=total_invested, total_current=total_current)
 
 @app.route('/fiis')
 @login_required
 def fiis():
-    assets = Asset.query.filter_by(type='FII', user_id=current_user.id).all()
+    raw_assets = Asset.query.filter_by(type='FII', user_id=current_user.id).all()
+    processed_assets = process_assets(raw_assets)
     
-    total_invested = sum([a.quantity * a.avg_price for a in assets])
-    total_current = sum([a.quantity * a.current_price for a in assets])
+    total_invested = sum(a['total_invested'] for a in processed_assets)
+    total_current = sum(a['current_total'] for a in processed_assets)
     
-    return render_template('fiis.html', assets=assets, total_invested=total_invested, total_current=total_current)
+    return render_template('fiis.html', assets=processed_assets, total_invested=total_invested, total_current=total_current)
 
 @app.route('/swingtrade')
 @login_required
 def swingtrade():
-    assets = Asset.query.filter_by(strategy='SWING', user_id=current_user.id).all()
-    return render_template('swing.html', assets=assets)
+    raw_assets = Asset.query.filter_by(strategy='SWING', user_id=current_user.id).all()
+    assets = process_assets(raw_assets)
+    return render_template('swingtrade.html', assets=assets)
 
 def process_assets(assets):
     if not assets:

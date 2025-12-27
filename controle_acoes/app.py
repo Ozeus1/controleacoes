@@ -1198,10 +1198,7 @@ def delete_balance_item(type, id):
     flash('Item removido!', 'success')
     return redirect(url_for('balanceamento'))
 
-@app.route('/update_intl_quotes')
-@login_required
-def update_intl_quotes():
-    if not yf:
+
 @app.route('/update_intl_quotes')
 @login_required
 def update_intl_quotes():

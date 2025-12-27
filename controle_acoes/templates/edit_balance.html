@@ -127,12 +127,35 @@
                 </div>
 
                 {% elif type == 'intl' %}
+
+                {% if item.category == 'RF' %}
+                <!-- International RF -->
                 <div class="mb-3">
-                    <label>Broker</label>
-                    <input type="text" name="institution" class="form-control" value="{{ item.institution }}">
+                    <label>Banco</label>
+                    <input type="text" name="institution" class="form-control" value="{{ item.institution }}" required>
                 </div>
                 <div class="mb-3">
-                    <label>Ticker</label>
+                    <label>Tipo</label>
+                    <input type="text" name="description" class="form-control" value="{{ item.description }}">
+                </div>
+                <div class="mb-3">
+                    <label>Valor Investido (USD)</label>
+                    <input type="text" name="invested_value" class="form-control"
+                        value="{{ '%.2f'|format(item.invested_value or 0)|replace('.', ',') }}">
+                </div>
+                <div class="mb-3">
+                    <label>Valor Atualizado (USD)</label>
+                    <input type="text" name="value_usd" class="form-control"
+                        value="{{ '%.2f'|format(item.value_usd)|replace('.', ',') }}" required>
+                </div>
+                {% else %}
+                <!-- International RV -->
+                <div class="mb-3">
+                    <label>Corretora</label>
+                    <input type="text" name="institution" class="form-control" value="{{ item.institution }}" required>
+                </div>
+                <div class="mb-3">
+                    <label>Ação (Ticker)</label>
                     <input type="text" name="name" class="form-control" value="{{ item.name }}" required>
                 </div>
                 <div class="mb-3">
@@ -140,10 +163,17 @@
                     <input type="text" name="quantity" class="form-control" value="{{ item.quantity }}">
                 </div>
                 <div class="mb-3">
-                    <label>Valor Total (USD)</label>
-                    <input type="text" name="value_usd" class="form-control"
-                        value="{{ '%.2f'|format(item.value_usd)|replace('.', ',') }}" required>
+                    <label>Preço de Compra (USD)</label>
+                    <input type="text" name="avg_price" class="form-control"
+                        value="{{ '%.2f'|format(item.avg_price or 0)|replace('.', ',') }}">
                 </div>
+                <div class="mb-3">
+                    <label>Cotação Atual (USD)</label>
+                    <input type="text" name="quote" class="form-control"
+                        value="{{ '%.2f'|format(item.quote or 0)|replace('.', ',') }}">
+                </div>
+                {% endif %}
+
                 <div class="mb-3">
                     <label>Cotação Dólar (R$)</label>
                     <input type="text" name="rate_usd" class="form-control"

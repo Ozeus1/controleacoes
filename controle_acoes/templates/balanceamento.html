@@ -305,12 +305,12 @@
         </div>
     </div>
 
-    <!-- INTERNACIONAL -->
-    <div class="col-md-6 mb-4">
+    <!-- INTERNATIONAL RV -->
+    <div class="col-12 mb-4">
         <div class="card bg-dark text-white border-secondary">
             <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
-                <span>Internacional</span>
-                <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalIntl">
+                <span>Renda Variável Internacional</span>
+                <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalIntlRV">
                     <i class="fas fa-plus"></i> Adicionar
                 </button>
             </div>
@@ -318,18 +318,72 @@
                 <table class="table table-dark table-striped mb-0">
                     <thead>
                         <tr>
-                            <th>Broker</th>
-                            <th>Ticker</th>
-                            <th>Valor (USD)</th>
-                            <th>Cotação USD</th>
-                            <th>Del</th>
+                            <th>Corretora</th>
+                            <th>Ação</th>
+                            <th>Quantidade</th>
+                            <th>Vl. Compra</th>
+                            <th>Cotação</th>
+                            <th>Lucro ($)</th>
+                            <th>Total ($)</th>
+                            <th>Câmbio (R$)</th>
+                            <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for item in intls %}
+                        {% for item in intls_rv %}
                         <tr>
                             <td>{{ item.institution }}</td>
                             <td>{{ item.name }}</td>
+                            <td>{{ item.quantity | brl_fmt }}</td>
+                            <td>$ {{ item.avg_price | brl_fmt }}</td>
+                            <td>$ {{ item.quote | brl_fmt }}</td>
+                            {% set profit = (item.quote - item.avg_price) * item.quantity %}
+                            <td class="{{ 'text-success' if profit >= 0 else 'text-danger' }}">$ {{ profit | brl_fmt }}
+                            </td>
+                            <td>$ {{ (item.quote * item.quantity) | brl_fmt }}</td>
+                            <td>R$ {{ item.rate_usd | brl_fmt }}</td>
+                            <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                                <a href="{{ url_for('edit_balance_item', type='intl', id=item.id) }}"
+                                    class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
+                                <a href="{{ url_for('delete_balance_item', type='intl', id=item.id) }}"
+                                    class="btn btn-sm btn-danger"
+                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir">🗑️</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- INTERNATIONAL RF -->
+    <div class="col-12 mb-4">
+        <div class="card bg-dark text-white border-secondary">
+            <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
+                <span>Renda Fixa Internacional</span>
+                <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalIntlRF">
+                    <i class="fas fa-plus"></i> Adicionar
+                </button>
+            </div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-dark table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Banco</th>
+                            <th>Tipo</th>
+                            <th>Vl. Investido ($)</th>
+                            <th>Vl. Atualizado ($)</th>
+                            <th>Câmbio (R$)</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in intls_rf %}
+                        <tr>
+                            <td>{{ item.institution }}</td>
+                            <td>{{ item.description }}</td>
+                            <td>$ {{ item.invested_value | brl_fmt }}</td>
                             <td>$ {{ item.value_usd | brl_fmt }}</td>
                             <td>R$ {{ item.rate_usd | brl_fmt }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
@@ -659,30 +713,7 @@
     </div>
 </div>
 
-<!-- Modal Intl -->
-<div class="modal fade" id="modalIntl" tabindex="-1">
-    <div class="modal-dialog">
-        <form action="{{ url_for('add_intl') }}" method="POST">
-            <div class="modal-content bg-dark text-white">
-                <div class="modal-header">
-                    <h5 class="modal-title">Adicionar Internacional</h5><button type="button"
-                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3"><label>Broker</label><input type="text" name="institution" class="form-control">
-                    </div>
-                    <div class="mb-3"><label>Ticker</label><input type="text" name="name" class="form-control" required>
-                    </div>
-                    <div class="mb-3"><label>Quantidade</label><input type="text" name="quantity" class="form-control">
-                    </div>
-                    <div class="mb-3"><label>Valor Total (USD)</label><input type="text" name="value_usd"
-                            class="form-control" required></div>
-                    <div class="mb-3"><label>Cotação Dólar (R$)</label><input type="text" name="rate_usd"
-                            class="form-control" value="5.50"></div>
-                </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-secondary">Salvar</button></div>
-            </div>
-        </form>
-    </div>
+</form>
+</div>
 </div>
 {% endblock %}

@@ -180,5 +180,10 @@ class International(db.Model):
     quantity = db.Column(db.Float, nullable=True)
     avg_price = db.Column(db.Float, nullable=True)
     quote = db.Column(db.Float, nullable=True)
-    value_usd = db.Column(db.Float, nullable=False) # Value in USD
+    value_usd = db.Column(db.Float, nullable=False) # Value in USD (Current Value for RF, Total for RV)
     rate_usd = db.Column(db.Float, nullable=True) # BRL/USD Rate for conversion
+    
+    # New Fields for Refactor
+    category = db.Column(db.String(10), default='RV') # 'RV' or 'RF'
+    description = db.Column(db.String(50), nullable=True) # For RF Type
+    invested_value = db.Column(db.Float, nullable=True) # For RF Invested Value (USD)

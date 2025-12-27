@@ -837,7 +837,8 @@ def balanceamento():
     funds = InvestmentFund.query.all()
     cryptos = Crypto.query.all()
     pensions = Pension.query.all()
-    intls = International.query.all()
+    intls_rv = International.query.filter((International.category == 'RV') | (International.category == None)).all()
+    intls_rf = International.query.filter(International.category == 'RF').all()
     
     # 2. Existing Assets (Stocks/FIIs)
     assets = Asset.query.all()
@@ -852,8 +853,9 @@ def balanceamento():
     
     types_total = {
         'Renda Fixa Pós': 0, 'Renda Fixa Pré': 0, 'Renda Fixa IPCA': 0,
-        'Fundos': 0, 'Cripto': 0, 'Previdência': 0, 'Internacional': 0,
-        'Ações': val_acoes, 'FIIs': val_fiis, 'Ouro': 0 # Ouro not yet implemented but in user image
+        'Fundos': 0, 'Cripto': 0, 'Previdência': 0, 
+        'Internacional RV': 0, 'Internacional RF': 0,
+        'Ações': val_acoes, 'FIIs': val_fiis, 'Ouro': 0
     }
     
     # Helper to process list
@@ -912,10 +914,18 @@ def balanceamento():
             summary['Renda Fixa'] += p.value
 
     # International
-    t_intl = sum([i.value_usd * (i.rate_usd or 5.5) for i in intls]) # Default fallback rate? Or required.
-    types_total['Internacional'] = t_intl
-    summary['Renda Variável'] += t_intl # Assuming Stocks
-    summary['Indefinido'] += t_intl
+    # International
+    # RV
+    t_intl_rv = sum([i.value_usd * (i.rate_usd or 5.5) for i in intls_rv])
+    types_total['Internacional RV'] = t_intl_rv
+    summary['Renda Variável'] += t_intl_rv
+    summary['Indefinido'] += t_intl_rv
+
+    # RF
+    t_intl_rf = sum([i.value_usd * (i.rate_usd or 5.5) for i in intls_rf])
+    types_total['Internacional RF'] = t_intl_rf
+    summary['Renda Fixa'] += t_intl_rf
+    summary['Longo Prazo'] += t_intl_rf # Assuming Bonds are long term
 
     # Add Stocks/FIIs to Summary
     summary['Renda Variável'] += (val_acoes + val_fiis)
@@ -925,7 +935,10 @@ def balanceamento():
 
     return render_template('balanceamento.html', 
                            rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,
-                           funds=funds, cryptos=cryptos, pensions=pensions, intls=intls,
+    return render_template('balanceamento.html', 
+                           rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,
+                           funds=funds, cryptos=cryptos, pensions=pensions, 
+                           intls_rv=intls_rv, intls_rf=intls_rf,
                            summary=summary, types_total=types_total, total_portfolio=total_portfolio)
 
 @app.route('/balanceamento/add/rf', methods=['POST'])
@@ -991,19 +1004,41 @@ def add_pension():
     flash('Previdência adicionada!', 'success')
     return redirect(url_for('balanceamento'))
 
-@app.route('/balanceamento/add/intl', methods=['POST'])
+@app.route('/balanceamento/add/intl/rv', methods=['POST'])
 @login_required
-def add_intl():
+def add_intl_rv():
+    qty = float(request.form.get('quantity').replace(',','.'))
+    quote = float(request.form.get('quote').replace('.','').replace(',','.'))
     new_intl = International(
-        institution=request.form.get('institution'),
-        name=request.form.get('name'),
-        quantity=float(request.form.get('quantity').replace(',','.')),
-        value_usd=float(request.form.get('value_usd').replace('.','').replace(',','.')),
+        category='RV',
+        institution=request.form.get('institution'), # Broker
+        name=request.form.get('name'), # Ticker
+        quantity=qty,
+        avg_price=float(request.form.get('avg_price').replace('.','').replace(',','.')),
+        quote=quote,
+        value_usd=qty * quote, # Total calculated
         rate_usd=float(request.form.get('rate_usd').replace(',','.')) if request.form.get('rate_usd') else 5.5
     )
     db.session.add(new_intl)
     db.session.commit()
-    flash('Investimento Internacional adicionado!', 'success')
+    flash('Ação Internacional adicionada!', 'success')
+    return redirect(url_for('balanceamento'))
+
+@app.route('/balanceamento/add/intl/rf', methods=['POST'])
+@login_required
+def add_intl_rf():
+    new_intl = International(
+        category='RF',
+        institution=request.form.get('institution'), # Banco
+        description=request.form.get('description'), # Tipo
+        invested_value=float(request.form.get('invested_value').replace('.','').replace(',','.')),
+        value_usd=float(request.form.get('value_usd').replace('.','').replace(',','.')), # Current Value
+        name='RF INT', # Placeholder for non-ticker
+        rate_usd=float(request.form.get('rate_usd').replace(',','.')) if request.form.get('rate_usd') else 5.5
+    )
+    db.session.add(new_intl)
+    db.session.commit()
+    flash('Renda Fixa Internacional adicionada!', 'success')
     return redirect(url_for('balanceamento'))
 
 @app.route('/balanceamento/edit/<type>/<int:id>', methods=['GET', 'POST'])
@@ -1060,14 +1095,20 @@ def edit_balance_item(type, id):
             item.certificate = request.form.get('certificate')
             
         elif type == 'intl':
-            item.institution = request.form.get('institution')
-            item.name = request.form.get('name')
-            if request.form.get('quantity'):
-                item.quantity = float(request.form.get('quantity').replace(',','.'))
-            item.value_usd = float(request.form.get('value_usd').replace('.','').replace(',','.'))
-            if request.form.get('rate_usd'):
-                item.rate_usd = float(request.form.get('rate_usd').replace(',','.'))
-
+            item.rate_usd = float(request.form.get('rate_usd').replace(',','.'))
+            if item.category == 'RF':
+                 item.institution = request.form.get('institution')
+                 item.description = request.form.get('description')
+                 item.invested_value = float(request.form.get('invested_value').replace('.','').replace(',','.'))
+                 item.value_usd = float(request.form.get('value_usd').replace('.','').replace(',','.'))
+            else: # RV
+                 item.institution = request.form.get('institution')
+                 item.name = request.form.get('name')
+                 item.quantity = float(request.form.get('quantity').replace(',','.'))
+                 item.avg_price = float(request.form.get('avg_price').replace('.','').replace(',','.'))
+                 item.quote = float(request.form.get('quote').replace('.','').replace(',','.'))
+                 item.value_usd = item.quantity * item.quote
+        
         db.session.commit()
         flash('Item atualizado com sucesso!', 'success')
         return redirect(url_for('balanceamento'))

@@ -8,7 +8,10 @@ from flask_login import LoginManager, login_user, login_required, logout_user, c
 import time
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
-import yfinance as yf
+try:
+    import yfinance as yf
+except ImportError:
+    yf = None
 
 # Load env vars
 load_dotenv()
@@ -1198,6 +1201,58 @@ def delete_balance_item(type, id):
     db.session.delete(item)
     db.session.commit()
     flash('Item removido!', 'success')
+    return redirect(url_for('balanceamento'))
+
+@app.route('/update_intl_quotes')
+@login_required
+def update_intl_quotes():
+    if not yf:
+        flash('Biblioteca yfinance não instalada no servidor. Contate o administrador.', 'error')
+        return redirect(url_for('balanceamento'))
+
+    try:
+        # Get USD Rate
+        usd_ticker = yf.Ticker("USDBRL=X")
+        hist = usd_ticker.history(period="1d")
+        
+        usd_rate = 0.0
+        if not hist.empty:
+            usd_rate = hist['Close'].iloc[-1]
+            
+        if usd_rate > 0:
+            # Update all International assets
+            intls = International.query.all()
+            for item in intls:
+                # Update Exchange Rate for ALL
+                item.rate_usd = usd_rate
+                
+                # If RV (Stocks), update Quote and Value
+                if item.category == 'RV' and item.name:
+                    try:
+                        stock = yf.Ticker(item.name)
+                        stock_hist = stock.history(period="1d")
+                        if not stock_hist.empty:
+                            price = stock_hist['Close'].iloc[-1]
+                            item.quote = price
+                            # Recalculate Value USD: Quantity * Price
+                            if item.quantity:
+                                item.value_usd = item.quantity * price
+                            else:
+                                item.value_usd = 0.0
+                        else:
+                            # Try adding .SA or simply skip if not found
+                            pass
+                    except Exception as e:
+                        print(f"Error updating {item.name}: {e}")
+            
+            db.session.commit()
+            flash('Cotações e Câmbio atualizados com sucesso via Yahoo Finance!', 'success')
+        else:
+            flash('Não foi possível obter a cotação do Dólar.', 'warning')
+            
+    except Exception as e:
+        flash(f'Erro ao atualizar: {str(e)}', 'danger')
+        
     return redirect(url_for('balanceamento'))
 
 if __name__ == '__main__':

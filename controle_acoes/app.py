@@ -893,6 +893,14 @@ def balanceamento():
         'Ações': val_acoes, 'FIIs': val_fiis, 'Ouro': val_ouro
     }
     
+    # Detailed Maturity Breakdown
+    maturity_breakdown = {
+        'Renda Fixa Pós': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0},
+        'Renda Fixa Pré': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0},
+        'Renda Fixa IPCA': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0},
+        'Fundos': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0}
+    }
+    
     # Helper to process list
     def process_list(items, type_key, is_variable=False):
         total = 0
@@ -903,19 +911,16 @@ def balanceamento():
             # Maturity
             mat = i.maturity_date if hasattr(i, 'maturity_date') else None
             cls = get_maturity_class(mat)
-            if cls != 'Indefinido' or not is_variable: # For variable, maturity might not apply broadly but user asked for classification
-                 # Logic check: Variable usually undefined maturity? Or just categorized?
-                 # User says: "Gere a classificação dos Investimentos em cada tipo, se é de médio, curto ou longo prazo"
-                 # Stocks/FIIs are typically Indefinite/Long? Usually considered Long Term equity.
-                 pass
             
+            # Add to Global Summary
             if hasattr(i, 'maturity_date'):
-               summary[get_maturity_class(i.maturity_date)] += val
+               summary[cls] += val
             else:
-               # Crypto/Intl/Stocks usually fit Long Term or Indefinite. 
-               # Let's default 'No Date' items to 'Indefinido' or logical default.
-               # For now, if no date, add to Indefinido for clarity.
                summary['Indefinido'] += val
+               
+            # Add to Detailed Breakdown if applicable
+            if type_key in maturity_breakdown:
+                maturity_breakdown[type_key][cls] += val
 
         types_total[type_key] = total
         if is_variable:
@@ -972,7 +977,8 @@ def balanceamento():
                            rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,
                            funds=funds, cryptos=cryptos, pensions=pensions, 
                            intls_rv=intls_rv, intls_rf=intls_rf,
-                           summary=summary, types_total=types_total, total_portfolio=total_portfolio)
+                           summary=summary, types_total=types_total, total_portfolio=total_portfolio,
+                           maturity_breakdown=maturity_breakdown)
 
 @app.route('/balanceamento/add/rf', methods=['POST'])
 @login_required

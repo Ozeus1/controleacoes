@@ -531,6 +531,7 @@
                     </tr>
                 </thead>
                 <tbody>
+                    {% for k, v in summary.items() %}
                     <tr>
                         <td>{{ k }}</td>
                         <td>R$ {{ v | brl_fmt }}</td>

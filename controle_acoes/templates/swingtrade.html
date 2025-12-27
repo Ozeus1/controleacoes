@@ -33,9 +33,9 @@
                 <td><span class="ticker-badge" style="background: #312e81; color: #818cf8;">{{ item.asset.ticker
                         }}</span></td>
                 <td>{{ item.asset.quantity }}</td>
-                <td>R$ {{ "%.2f"|format(item.current_total)|replace('.', ',') }}</td>
-                <td>R$ {{ "%.2f"|format(item.asset.avg_price)|replace('.', ',') }}</td>
-                <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
+                <td>{{ item.current_total | brl }}</td>
+                <td>{{ item.asset.avg_price | brl }}</td>
+                <td>{{ item.total_invested | brl }}</td>
                 <td>{{ "%.2f"|format(item.weight)|replace('.', ',') }}%</td>
 
                 <!-- Highlight Quote according to Stop/Gain -->
@@ -44,7 +44,7 @@
                 {% set g1 = item.asset.gain1 or 999999 %}
                 <td
                     style="font-weight: bold; color: {{ 'var(--danger-color)' if sl > 0 and p <= sl else ('var(--success-color)' if p >= g1 else 'inherit') }}">
-                    R$ {{ "%.2f"|format(p)|replace('.', ',') }}
+                    {{ p | brl }}
                 </td>
 
                 <td class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
@@ -54,12 +54,12 @@
                     {{ item.last_update }}
                 </td>
 
-                <td>{{ "%.2f"|format(item.asset.stop_loss)|replace('.', ',') if item.asset.stop_loss else '-' }}</td>
-                <td>{{ "%.2f"|format(item.asset.gain1)|replace('.', ',') if item.asset.gain1 else '-' }}</td>
-                <td>{{ "%.2f"|format(item.asset.gain2)|replace('.', ',') if item.asset.gain2 else '-' }}</td>
+                <td>{{ item.asset.stop_loss | brl_fmt if item.asset.stop_loss else '-' }}</td>
+                <td>{{ item.asset.gain1 | brl_fmt if item.asset.gain1 else '-' }}</td>
+                <td>{{ item.asset.gain2 | brl_fmt if item.asset.gain2 else '-' }}</td>
 
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
-                    R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
+                    {{ item.profit | brl }}
                 </td>
 
                 <td style="font-size: 0.8rem; letter-spacing: 0.5px;">

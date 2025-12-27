@@ -162,9 +162,10 @@ class Crypto(db.Model):
     institution = db.Column(db.String(50), nullable=False) # Exchange
     name = db.Column(db.String(50), nullable=False) # BTC, ETH
     quantity = db.Column(db.Float, nullable=True)
-    invested_value = db.Column(db.Float, nullable=True) # Cost basis
+    invested_value = db.Column(db.Float, nullable=True) # Cost basis (Legacy, now calc from avg_price)
     current_value = db.Column(db.Float, nullable=False) # Market value (manual or calc)
     quote = db.Column(db.Float, nullable=True)
+    avg_price = db.Column(db.Float, nullable=True, default=0.0) # New field
 
 class Pension(db.Model): # Previdencia
     id = db.Column(db.Integer, primary_key=True)

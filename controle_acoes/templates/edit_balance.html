@@ -89,9 +89,9 @@
                     <input type="text" name="quantity" class="form-control" value="{{ item.quantity }}">
                 </div>
                 <div class="mb-3">
-                    <label>Valor Investido (R$)</label>
-                    <input type="text" name="invested_value" class="form-control"
-                        value="{{ '%.2f'|format(item.invested_value)|replace('.', ',') }}">
+                    <label>Preço Médio (R$)</label>
+                    <input type="text" name="avg_price" class="form-control"
+                        value="{{ '%.2f'|format(item.avg_price or 0)|replace('.', ',') }}">
                 </div>
                 <div class="mb-3">
                     <label>Valor Atual (R$)</label>

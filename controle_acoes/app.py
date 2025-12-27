@@ -859,15 +859,25 @@ def fix_crypto_db():
     try:
         conn = sqlite3.connect(os.path.join(app.instance_path, 'investments.db'))
         cursor = conn.cursor()
+        log = []
+        
+        # 1. Quote
         try:
             cursor.execute("ALTER TABLE crypto ADD COLUMN quote REAL")
-            msg = "Added column 'quote' to crypto table."
+            log.append("Added 'quote'")
         except Exception as e:
-            msg = f"Error adding column: {str(e)}"
+            log.append(f"Skip quote: {str(e)}")
+            
+        # 2. Avg Price
+        try:
+            cursor.execute("ALTER TABLE crypto ADD COLUMN avg_price REAL DEFAULT 0.0")
+            log.append("Added 'avg_price'")
+        except Exception as e:
+            log.append(f"Skip avg_price: {str(e)}")
         
         conn.commit()
         conn.close()
-        return f"{msg} <a href='/balanceamento'>Voltar</a>"
+        return f"Migration: {', '.join(log)} <a href='/balanceamento'>Voltar</a>"
     except Exception as e:
         return f"Database Error: {str(e)}"
 
@@ -1018,6 +1028,12 @@ def balanceamento():
     intl_rv_invested = sum([(i.quantity or 0) * (i.avg_price or 0) for i in intls_rv])
     intl_rv_current = sum([(i.quantity or 0) * (i.quote or 0) for i in intls_rv])
     intl_rv_profit = intl_rv_current - intl_rv_invested
+    
+    # 5. Totals for Crypto Table
+    # invested_value should match quantity * avg_price now, or use direct accumulation
+    crypto_invested = sum([(c.quantity or 0) * (c.avg_price or 0) for c in cryptos])
+    crypto_current = sum([c.current_value for c in cryptos])
+    crypto_profit = crypto_current - crypto_invested
 
     return render_template('balanceamento.html', 
                            rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,
@@ -1029,7 +1045,10 @@ def balanceamento():
                            total_rf_detailed=total_rf_detailed,
                            intl_rv_invested=intl_rv_invested, 
                            intl_rv_current=intl_rv_current, 
-                           intl_rv_profit=intl_rv_profit)
+                           intl_rv_profit=intl_rv_profit,
+                           crypto_invested=crypto_invested,
+                           crypto_current=crypto_current,
+                           crypto_profit=crypto_profit)
 
 @app.route('/balanceamento/add/rf', methods=['POST'])
 @login_required
@@ -1172,10 +1191,21 @@ def edit_balance_item(type, id):
         elif type == 'crypto':
             item.institution = request.form.get('institution')
             item.name = request.form.get('name')
-            item.quantity = float(request.form.get('quantity').replace(',','.'))
-            if request.form.get('invested_value'):
-                item.invested_value = float(request.form.get('invested_value').replace('.','').replace(',','.'))
-            item.current_value = float(request.form.get('current_value').replace('.','').replace(',','.'))
+            
+            qty_str = request.form.get('quantity', '').replace(',', '.')
+            if qty_str and qty_str.lower() != 'none':
+                item.quantity = float(qty_str)
+            else:
+                item.quantity = 0.0
+                
+            avg_str = request.form.get('avg_price', '').replace('.', '').replace(',', '.')
+            item.avg_price = float(avg_str) if avg_str and avg_str.lower() != 'none' else 0.0
+            
+            # Recalculate Invested from Avg * Qty
+            item.invested_value = item.quantity * item.avg_price
+
+            cur_str = request.form.get('current_value', '').replace('.', '').replace(',', '.')
+            item.current_value = float(cur_str) if cur_str and cur_str.lower() != 'none' else 0.0
             
         elif type == 'pension':
             item.institution = request.form.get('institution')

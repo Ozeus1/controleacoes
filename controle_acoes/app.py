@@ -854,13 +854,6 @@ def fix_db():
 @app.route('/balanceamento')
 @login_required
 def balanceamento():
-    try:
-        return balanceamento_logic()
-    except Exception:
-        import traceback
-        return f"<h1>DEBUG ERRO NO SERVIDOR</h1><p>Copie o erro abaixo:</p><pre>{traceback.format_exc()}</pre>"
-
-def balanceamento_logic():
     # 1. Fetch Data
     rf_pos = FixedIncome.query.filter_by(category='POS').all()
     rf_pre = FixedIncome.query.filter_by(category='PRE').all()

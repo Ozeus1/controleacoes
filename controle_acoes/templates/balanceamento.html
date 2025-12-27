@@ -788,52 +788,50 @@
 </script>
 
 <!-- LOCATION BREAKDOWN -->
-<div class="row mt-4 mb-5">
-    <div class="col-md-6 mb-4">
-        <div class="card bg-dark text-white border-secondary h-100">
-            <div class="card-header font-weight-bold">Por Localização</div>
-            <div class="card-body">
-                <table class="table table-dark table-striped mb-0 table-center-forced">
-                    <thead>
-                        <tr>
-                            <th>Localização</th>
-                            <th>Valor Total</th>
-                            <th>%</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>Brasil</td>
-                            <td>R$ {{ location_chart['Brasil'] | brl_fmt }}</td>
-                            <td>{{ '%.1f' | format((location_chart['Brasil'] / total_portfolio * 100) if total_portfolio
-                                > 0 else 0) }}%</td>
-                        </tr>
-                        <tr>
-                            <td>Internacional</td>
-                            <td>R$ {{ location_chart['Internacional'] | brl_fmt }}</td>
-                            <td>{{ '%.1f' | format((location_chart['Internacional'] / total_portfolio * 100) if
-                                total_portfolio > 0 else 0) }}%</td>
-                        </tr>
-                    </tbody>
-                    <tfoot>
-                        <tr class="font-weight-bold">
-                            <td>TOTAL</td>
-                            <td>R$ {{ total_portfolio | brl_fmt }}</td>
-                            <td>100.0%</td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
+<!-- Stacked Layout: Table Top, Chart Bottom -->
+<div class="col-12 mt-5 mb-5">
+    <h5 class="text-white mb-2">Por Localização</h5>
+
+    <!-- Table -->
+    <div class="card bg-dark text-white border-secondary mb-4">
+        <div class="card-body p-0">
+            <table class="table table-dark table-striped mb-0 table-center-forced">
+                <thead>
+                    <tr>
+                        <th>Localização</th>
+                        <th>Valor Total</th>
+                        <th>Percentual</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Brasil</td>
+                        <td>R$ {{ location_chart['Brasil'] | brl_fmt }}</td>
+                        <td>{{ '%.1f' | format((location_chart['Brasil'] / total_portfolio * 100) if total_portfolio > 0
+                            else 0) }}%</td>
+                    </tr>
+                    <tr>
+                        <td>Internacional</td>
+                        <td>R$ {{ location_chart['Internacional'] | brl_fmt }}</td>
+                        <td>{{ '%.1f' | format((location_chart['Internacional'] / total_portfolio * 100) if
+                            total_portfolio > 0 else 0) }}%</td>
+                    </tr>
+                </tbody>
+                <tfoot>
+                    <tr class="font-weight-bold" style="background-color: rgba(255,255,255,0.05);">
+                        <td>TOTAL</td>
+                        <td>R$ {{ total_portfolio | brl_fmt }}</td>
+                        <td>100.0%</td>
+                    </tr>
+                </tfoot>
+            </table>
         </div>
     </div>
-    <div class="col-md-6 mb-4">
-        <div class="card bg-dark text-white border-secondary h-100">
-            <div class="card-header font-weight-bold">Gráfico de Localização</div>
-            <div class="card-body d-flex justify-content-center align-items-center">
-                <div style="height: 250px; width: 100%;">
-                    <canvas id="chartLocation"></canvas>
-                </div>
-            </div>
+
+    <!-- Chart -->
+    <div class="d-flex justify-content-center mt-3">
+        <div style="max-width: 500px; width: 100%;">
+            <canvas id="chartLocation"></canvas>
         </div>
     </div>
 </div>
@@ -841,9 +839,47 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        // ... (Existing charts logic) ...
+        // Options matching commonOptions from main script
+        const locOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right', labels: { color: 'white', font: { size: 12 } } },
 
-        // --- CHART LOCATION (New) ---
+                // DataLabels matching existing style
+                datalabels: {
+                    color: '#fff',
+                    font: { weight: 'bold', size: 14 },
+                    formatter: function (value, ctx) {
+                        var sum = 0;
+                        var dataArr = ctx.chart.data.datasets[0].data;
+                        dataArr.map(function (data) {
+                            sum += data;
+                        });
+                        var percentage = (value * 100 / sum).toFixed(1) + "%";
+                        return percentage;
+                    },
+                    anchor: 'center',
+                    align: 'center'
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            let label = context.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed !== null) {
+                                label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed);
+                            }
+                            return label;
+                        }
+                    }
+                }
+            },
+            layout: { padding: 20 }
+        };
+
         const ctxLoc = document.getElementById('chartLocation').getContext('2d');
         new Chart(ctxLoc, {
             type: 'pie',
@@ -851,33 +887,13 @@
                 labels: ['Brasil', 'Internacional'],
                 datasets: [{
                     data: [{{ location_chart['Brasil'] }}, {{ location_chart['Internacional'] }}],
-            backgroundColor: ['#28a745', '#007bff'],
+            backgroundColor: ['#28a745', '#3b82f6'], // Green (BR), Blue (Intl) - Using compatible hex
             borderWidth: 1,
             borderColor: '#1e293b'
         }]
-        },
-        options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { position: 'right', labels: { color: 'white' } },
-            tooltip: {
-                callbacks: {
-                    label: function (context) {
-                        let label = context.label || '';
-                        if (label) {
-                            label += ': ';
-                        }
-                        if (context.parsed !== null) {
-                            label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed);
-                        }
-                        return label;
-                    }
-                }
-            }
-        }
-    }
-    });
+            },
+        options: locOptions
+        });
     });
 </script>
 

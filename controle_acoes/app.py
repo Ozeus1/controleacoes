@@ -442,7 +442,7 @@ def add_asset():
         db.session.commit()
         return redirect(url_for('acoes' if type_ == 'ACAO' else 'fiis'))
         
-    return render_template('add_asset.html')
+    return render_template('add.html')
 
 @app.route('/delete_asset/<int:id>')
 @login_required

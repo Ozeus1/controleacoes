@@ -531,11 +531,16 @@
                     </tr>
                 </thead>
                 <tbody>
-                    {% for k, v in types_total.items() %}
                     <tr>
                         <td>{{ k }}</td>
                         <td>R$ {{ v | brl_fmt }}</td>
-                        <td>{{ (v / total_portfolio * 100) | brl_fmt }}%</td>
+                        <td>
+                            {% if total_portfolio > 0 %}
+                            {{ (v / total_portfolio * 100) | brl_fmt }}%
+                            {% else %}
+                            0,00%
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                     <tr class="bg-secondary font-weight-bold">

@@ -292,18 +292,27 @@
                     <thead>
                         <tr>
                             <th>Exchange</th>
-                            <th>Nome</th>
+                            <th>Cripto</th>
                             <th>Qtd</th>
+                            <th>Vl. Compra</th>
+                            <th>Cotação</th>
+                            <th>Lucro</th>
                             <th>Valor Atual</th>
                             <th>Del</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in cryptos %}
+                        {% set profit = item.current_value - (item.invested_value or 0) %}
                         <tr>
                             <td>{{ item.institution }}</td>
                             <td>{{ item.name }}</td>
-                            <td>{{ item.quantity | brl_fmt }}</td>
+                            <td>{{ item.quantity if item.quantity else '-' }}</td>
+                            <td>R$ {{ (item.invested_value or 0) | brl_fmt }}</td>
+                            <td>R$ {{ (item.quote or 0) | brl_fmt }}</td>
+                            <td class="{{ 'text-success' if profit >= 0 else 'text-danger' }}">
+                                R$ {{ profit | brl_fmt }}
+                            </td>
                             <td>R$ {{ item.current_value | brl_fmt }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='crypto', id=item.id) }}"

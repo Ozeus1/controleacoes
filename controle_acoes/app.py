@@ -954,198 +954,202 @@ def fix_crypto_db():
 @app.route('/balanceamento')
 @login_required
 def balanceamento():
-    # 1. Renda Fixa Data
-    rfs = FixedIncome.query.filter_by(user_id=current_user.id).all()
-    rf_pos = [r for r in rfs if r.category == 'POS']
-    rf_pre = [r for r in rfs if r.category == 'PRE']
-    rf_ipca = [r for r in rfs if r.category == 'IPCA']
-    
-    # 2. Other Classes
-    funds = InvestmentFund.query.filter_by(user_id=current_user.id).all()
-    cryptos = Crypto.query.filter_by(user_id=current_user.id).all()
-    pensions = Pension.query.filter_by(user_id=current_user.id).all()
-    
-    # Split Intls
-    intls_rv = International.query.filter_by(user_id=current_user.id, category='RV').all()
-    intls_rf = International.query.filter_by(user_id=current_user.id, category='RF').all()
-    
-    # 3. Swing Trade (using Asset table)
-    # Using same logic as models: strategy='SWING'
-    assets_swing = Asset.query.filter_by(strategy='SWING', user_id=current_user.id).all()
-    
-    # 4. Stock Holders (Asset table)
-    assets_holder = Asset.query.filter_by(strategy='HOLDER', type='ACAO', user_id=current_user.id).all()
-    fiis_holder = Asset.query.filter_by(strategy='HOLDER', type='FII', user_id=current_user.id).all()
-    
-    # 2. Existing Assets (Stocks/FIIs)
-    assets = Asset.query.filter_by(user_id=current_user.id).all()
-    # Separate GOLD11 (Ouro) from other Stocks
-    gold_assets = [a for a in assets if a.ticker == 'GOLD11']
-    stock_assets = [a for a in assets if a.type == 'ACAO' and a.ticker != 'GOLD11']
-    fii_assets = [a for a in assets if a.type == 'FII']
+    try:
+        # 1. Renda Fixa Data
+        rfs = FixedIncome.query.filter_by(user_id=current_user.id).all()
+        rf_pos = [r for r in rfs if r.category == 'POS']
+        rf_pre = [r for r in rfs if r.category == 'PRE']
+        rf_ipca = [r for r in rfs if r.category == 'IPCA']
+        
+        # 2. Other Classes
+        funds = InvestmentFund.query.filter_by(user_id=current_user.id).all()
+        cryptos = Crypto.query.filter_by(user_id=current_user.id).all()
+        pensions = Pension.query.filter_by(user_id=current_user.id).all()
+        
+        # Split Intls
+        intls_rv = International.query.filter_by(user_id=current_user.id, category='RV').all()
+        intls_rf = International.query.filter_by(user_id=current_user.id, category='RF').all()
+        
+        # 3. Swing Trade (using Asset table)
+        # Using same logic as models: strategy='SWING'
+        assets_swing = Asset.query.filter_by(strategy='SWING', user_id=current_user.id).all()
+        
+        # 4. Stock Holders (Asset table)
+        assets_holder = Asset.query.filter_by(strategy='HOLDER', type='ACAO', user_id=current_user.id).all()
+        fiis_holder = Asset.query.filter_by(strategy='HOLDER', type='FII', user_id=current_user.id).all()
+        
+        # 2. Existing Assets (Stocks/FIIs)
+        assets = Asset.query.filter_by(user_id=current_user.id).all()
+        # Separate GOLD11 (Ouro) from other Stocks
+        gold_assets = [a for a in assets if a.ticker == 'GOLD11']
+        stock_assets = [a for a in assets if a.type == 'ACAO' and a.ticker != 'GOLD11']
+        fii_assets = [a for a in assets if a.type == 'FII']
 
-    val_ouro = sum([(a.quantity or 0) * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0)) for a in gold_assets])
-    val_acoes = sum([(a.quantity or 0) * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0)) for a in stock_assets])
-    val_fiis = sum([(a.quantity or 0) * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0)) for a in fii_assets])
-    
-    # 3. Aggregates & Classification
-    summary = {
-        'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0,
-        'Renda Fixa': 0, 'Renda Variável': 0
-    }
-    
-    types_total = {
-        'Renda Fixa Pós': 0, 'Renda Fixa Pré': 0, 'Renda Fixa IPCA': 0,
-        'Fundos': 0, 'Cripto': 0, 'Previdência': 0, 
-        'Internacional RV': 0, 'Internacional RF': 0,
-        'Ações': val_acoes, 'FIIs': val_fiis, 'Ouro': val_ouro
-    }
-    
-    # Detailed Maturity Breakdown
-    maturity_breakdown = {
-        'Renda Fixa Pós': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0},
-        'Renda Fixa Pré': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0},
-        'Renda Fixa IPCA': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0},
-        'Fundos': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0}
-    }
-    
-    # Helper to process list
-    def process_list(items, type_key, is_variable=False):
-        total = 0
-        for i in items:
-            # Safe access to value or calculation
-            if hasattr(i, 'value'):
-                 val = i.value or 0
-            elif hasattr(i, 'current_value'):
-                 val = i.current_value or 0
+        val_ouro = sum([(a.quantity or 0) * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0)) for a in gold_assets])
+        val_acoes = sum([(a.quantity or 0) * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0)) for a in stock_assets])
+        val_fiis = sum([(a.quantity or 0) * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0)) for a in fii_assets])
+        
+        # 3. Aggregates & Classification
+        summary = {
+            'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0,
+            'Renda Fixa': 0, 'Renda Variável': 0
+        }
+        
+        types_total = {
+            'Renda Fixa Pós': 0, 'Renda Fixa Pré': 0, 'Renda Fixa IPCA': 0,
+            'Fundos': 0, 'Cripto': 0, 'Previdência': 0, 
+            'Internacional RV': 0, 'Internacional RF': 0,
+            'Ações': val_acoes, 'FIIs': val_fiis, 'Ouro': val_ouro
+        }
+        
+        # Detailed Maturity Breakdown
+        maturity_breakdown = {
+            'Renda Fixa Pós': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0},
+            'Renda Fixa Pré': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0},
+            'Renda Fixa IPCA': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0},
+            'Fundos': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0}
+        }
+        
+        # Helper to process list
+        def process_list(items, type_key, is_variable=False):
+            total = 0
+            for i in items:
+                # Safe access to value or calculation
+                if hasattr(i, 'value'):
+                     val = i.value or 0
+                elif hasattr(i, 'current_value'):
+                     val = i.current_value or 0
+                else:
+                     val = (i.value_usd or 0) * (i.rate_usd or 1)
+                
+                total += val
+                
+                # Maturity
+                mat = i.maturity_date if hasattr(i, 'maturity_date') else None
+                cls = get_maturity_class(mat)
+                
+                # Add to Global Summary
+                if hasattr(i, 'maturity_date'):
+                   summary[cls] += val
+                else:
+                   summary['Indefinido'] += val
+                   
+                # Add to Detailed Breakdown if applicable
+                if type_key in maturity_breakdown:
+                    maturity_breakdown[type_key][cls] += val
+
+            types_total[type_key] = total
+            if is_variable:
+                summary['Renda Variável'] += total
             else:
-                 val = (i.value_usd or 0) * (i.rate_usd or 1)
-            
-            total += val
-            
-            # Maturity
-            mat = i.maturity_date if hasattr(i, 'maturity_date') else None
-            cls = get_maturity_class(mat)
-            
-            # Add to Global Summary
-            if hasattr(i, 'maturity_date'):
-               summary[cls] += val
+                summary['Renda Fixa'] += total
+            return total
+
+        # Process Logic
+        process_list(rf_pos, 'Renda Fixa Pós')
+        process_list(rf_pre, 'Renda Fixa Pré')
+        process_list(rf_ipca, 'Renda Fixa IPCA')
+        process_list(funds, 'Fundos') # Funds can be RF or Variable, usually RF in this context/user image (pos fixado)
+        
+        # Crypto
+        # Crypto Model has current_value
+        t_crypto = sum([(c.current_value or 0) for c in cryptos])
+        types_total['Cripto'] = t_crypto
+        summary['Renda Variável'] += t_crypto
+        summary['Indefinido'] += t_crypto # Crypto has no maturity
+
+        # Pension
+        # Pension has type 'Acao' or 'Renda Fixa'
+        for p in pensions:
+            types_total['Previdência'] += p.value
+            # Pension generally Long Term
+            summary['Longo Prazo'] += p.value
+            if p.type == 'Acao':
+                summary['Renda Variável'] += p.value
             else:
-               summary['Indefinido'] += val
-               
-            # Add to Detailed Breakdown if applicable
-            if type_key in maturity_breakdown:
-                maturity_breakdown[type_key][cls] += val
+                summary['Renda Fixa'] += p.value
 
-        types_total[type_key] = total
-        if is_variable:
-            summary['Renda Variável'] += total
-        else:
-            summary['Renda Fixa'] += total
-        return total
+        # International
+        # International
+        # RV
+        t_intl_rv = sum([(i.value_usd or 0) * (i.rate_usd or 5.5) for i in intls_rv])
+        types_total['Internacional RV'] = t_intl_rv
+        summary['Renda Variável'] += t_intl_rv
+        summary['Indefinido'] += t_intl_rv
 
-    # Process Logic
-    process_list(rf_pos, 'Renda Fixa Pós')
-    process_list(rf_pre, 'Renda Fixa Pré')
-    process_list(rf_ipca, 'Renda Fixa IPCA')
-    process_list(funds, 'Fundos') # Funds can be RF or Variable, usually RF in this context/user image (pos fixado)
-    
-    # Crypto
-    # Crypto Model has current_value
-    t_crypto = sum([(c.current_value or 0) for c in cryptos])
-    types_total['Cripto'] = t_crypto
-    summary['Renda Variável'] += t_crypto
-    summary['Indefinido'] += t_crypto # Crypto has no maturity
+        # RF
+        t_intl_rf = sum([(i.value_usd or 0) * (i.rate_usd or 5.5) for i in intls_rf])
+        types_total['Internacional RF'] = t_intl_rf
+        summary['Renda Fixa'] += t_intl_rf
+        summary['Longo Prazo'] += t_intl_rf # Assuming Bonds are long term
 
-    # Pension
-    # Pension has type 'Acao' or 'Renda Fixa'
-    for p in pensions:
-        types_total['Previdência'] += p.value
-        # Pension generally Long Term
-        summary['Longo Prazo'] += p.value
-        if p.type == 'Acao':
-            summary['Renda Variável'] += p.value
-        else:
-            summary['Renda Fixa'] += p.value
+        # Add Stocks/FIIs/Gold to Summary
+        summary['Renda Variável'] += (val_acoes + val_fiis + val_ouro)
+        summary['Indefinido'] += (val_acoes + val_fiis + val_ouro) # Or Long Term? User requested classification. Equity is usually undefined or long. I will leave strict maturity for Fixed Income.
 
-    # International
-    # International
-    # RV
-    t_intl_rv = sum([(i.value_usd or 0) * (i.rate_usd or 5.5) for i in intls_rv])
-    types_total['Internacional RV'] = t_intl_rv
-    summary['Renda Variável'] += t_intl_rv
-    summary['Indefinido'] += t_intl_rv
+        total_portfolio = sum(types_total.values())
 
-    # RF
-    t_intl_rf = sum([(i.value_usd or 0) * (i.rate_usd or 5.5) for i in intls_rf])
-    types_total['Internacional RF'] = t_intl_rf
-    summary['Renda Fixa'] += t_intl_rf
-    summary['Longo Prazo'] += t_intl_rf # Assuming Bonds are long term
+        # Filter breakdown to remove 0 values (Simpler for Template Rowspan)
+        clean_breakdown = {}
+        for cat, terms in maturity_breakdown.items():
+            clean_terms = {k: v for k, v in terms.items() if v > 0.01}
+            if clean_terms:
+                clean_breakdown[cat] = clean_terms
 
-    # Add Stocks/FIIs/Gold to Summary
-    summary['Renda Variável'] += (val_acoes + val_fiis + val_ouro)
-    summary['Indefinido'] += (val_acoes + val_fiis + val_ouro) # Or Long Term? User requested classification. Equity is usually undefined or long. I will leave strict maturity for Fixed Income.
+        # Prepare Data for New Pie Charts (RF by Term, RF by Type)
+        # 1. RF by Term (Aggregate from clean_breakdown)
+        rf_chart_term = {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0}
+        for cat, terms in clean_breakdown.items():
+            for term, val in terms.items():
+                if term in rf_chart_term:
+                    rf_chart_term[term] += val
 
-    total_portfolio = sum(types_total.values())
+        # 2. RF by Type (Aggregate Category Totals from clean_breakdown)
+        rf_chart_type = {cat: sum(terms.values()) for cat, terms in clean_breakdown.items()}
 
-    # Filter breakdown to remove 0 values (Simpler for Template Rowspan)
-    clean_breakdown = {}
-    for cat, terms in maturity_breakdown.items():
-        clean_terms = {k: v for k, v in terms.items() if v > 0.01}
-        if clean_terms:
-            clean_breakdown[cat] = clean_terms
+        # 3. Total for the Table Footer
+        total_rf_detailed = sum(rf_chart_type.values())
 
-    # Prepare Data for New Pie Charts (RF by Term, RF by Type)
-    # 1. RF by Term (Aggregate from clean_breakdown)
-    rf_chart_term = {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0}
-    for cat, terms in clean_breakdown.items():
-        for term, val in terms.items():
-            if term in rf_chart_term:
-                rf_chart_term[term] += val
+        # 4. Totals for International RV Table
+        intl_rv_invested = sum([(i.quantity or 0) * (i.avg_price or 0) for i in intls_rv])
+        intl_rv_current = sum([(i.quantity or 0) * (i.quote or 0) for i in intls_rv])
+        intl_rv_profit = intl_rv_current - intl_rv_invested
+        
+        # 5. Totals for Crypto Table
+        # invested_value should match quantity * avg_price now, or use direct accumulation
+        crypto_invested = sum([(c.quantity or 0) * (c.avg_price or 0) for c in cryptos])
+        crypto_current = sum([(c.current_value or 0) for c in cryptos])
+        crypto_profit = crypto_current - crypto_invested
 
-    # 2. RF by Type (Aggregate Category Totals from clean_breakdown)
-    rf_chart_type = {cat: sum(terms.values()) for cat, terms in clean_breakdown.items()}
+        # 6. Location Breakdown (Brazil vs International)
+        # International = Crypto + Intl RV + Intl RF + Gold
+        # Note: t_intl_rf is calculated above. val_ouro is sum of gold assets.
+        total_intl = t_intl_rv + t_intl_rf + t_crypto + val_ouro
+        total_br = total_portfolio - total_intl
+        
+        location_chart = {
+            'Brasil': total_br,
+            'Internacional': total_intl
+        }
 
-    # 3. Total for the Table Footer
-    total_rf_detailed = sum(rf_chart_type.values())
-
-    # 4. Totals for International RV Table
-    intl_rv_invested = sum([(i.quantity or 0) * (i.avg_price or 0) for i in intls_rv])
-    intl_rv_current = sum([(i.quantity or 0) * (i.quote or 0) for i in intls_rv])
-    intl_rv_profit = intl_rv_current - intl_rv_invested
-    
-    # 5. Totals for Crypto Table
-    # invested_value should match quantity * avg_price now, or use direct accumulation
-    crypto_invested = sum([(c.quantity or 0) * (c.avg_price or 0) for c in cryptos])
-    crypto_current = sum([(c.current_value or 0) for c in cryptos])
-    crypto_profit = crypto_current - crypto_invested
-
-    # 6. Location Breakdown (Brazil vs International)
-    # International = Crypto + Intl RV + Intl RF + Gold
-    # Note: t_intl_rf is calculated above. val_ouro is sum of gold assets.
-    total_intl = t_intl_rv + t_intl_rf + t_crypto + val_ouro
-    total_br = total_portfolio - total_intl
-    
-    location_chart = {
-        'Brasil': total_br,
-        'Internacional': total_intl
-    }
-
-    return render_template('balanceamento.html', 
-                           rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,
-                           funds=funds, cryptos=cryptos, pensions=pensions, 
-                           intls_rv=intls_rv, intls_rf=intls_rf,
-                           summary=summary, types_total=types_total, total_portfolio=total_portfolio,
-                           maturity_breakdown=clean_breakdown,
-                           rf_chart_term=rf_chart_term, rf_chart_type=rf_chart_type,
-                           total_rf_detailed=total_rf_detailed,
-                           intl_rv_invested=intl_rv_invested, 
-                           intl_rv_current=intl_rv_current, 
-                           intl_rv_profit=intl_rv_profit,
-                           crypto_invested=crypto_invested,
-                           crypto_current=crypto_current,
-                           crypto_profit=crypto_profit,
-                           location_chart=location_chart)
+        return render_template('balanceamento.html', 
+                               rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,
+                               funds=funds, cryptos=cryptos, pensions=pensions, 
+                               intls_rv=intls_rv, intls_rf=intls_rf,
+                               summary=summary, types_total=types_total, total_portfolio=total_portfolio,
+                               maturity_breakdown=clean_breakdown,
+                               rf_chart_term=rf_chart_term, rf_chart_type=rf_chart_type,
+                               total_rf_detailed=total_rf_detailed,
+                               intl_rv_invested=intl_rv_invested, 
+                               intl_rv_current=intl_rv_current, 
+                               intl_rv_profit=intl_rv_profit,
+                               crypto_invested=crypto_invested,
+                               crypto_current=crypto_current,
+                               crypto_profit=crypto_profit,
+                               location_chart=location_chart)
+    except Exception as e:
+        import traceback
+        return f"<h3>Debug Error (Temp):</h3><pre>{traceback.format_exc()}</pre>"
 
 @app.route('/balanceamento/add/rf', methods=['POST'])
 @login_required

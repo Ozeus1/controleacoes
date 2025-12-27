@@ -789,7 +789,9 @@ def test_api():
     success, data = get_raw_quote_data(ticker.strip().upper())
     formatted_data = json.dumps(data, indent=4, ensure_ascii=False)
     
-    current_key = Settings.get_value('brapi_token', '') or os.environ.get('BRAPI_API_KEY', '')
+    current_key = Settings.get_value('brapi_token', user_id=current_user.id)
+    if not current_key:
+        current_key = os.environ.get('BRAPI_API_KEY', '')
     
     return render_template('config.html', 
                            current_key=current_key, 

@@ -5,13 +5,8 @@ from dotenv import load_dotenv
 from models import db, Asset, Settings, User, TradeHistory, Option, FixedIncome, InvestmentFund, Crypto, Pension, International
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
-import time
-from datetime import datetime, date
-from zoneinfo import ZoneInfo
-try:
-    import yfinance as yf
-except ImportError:
-    yf = None
+import requests
+# yfinance removed to avoid dependency hell on VPS
 
 # Load env vars
 load_dotenv()
@@ -1207,20 +1202,26 @@ def delete_balance_item(type, id):
 @login_required
 def update_intl_quotes():
     if not yf:
-        flash('Biblioteca yfinance não instalada no servidor. Contate o administrador.', 'error')
-        return redirect(url_for('balanceamento'))
-
+@app.route('/update_intl_quotes')
+@login_required
+def update_intl_quotes():
     try:
-        # Get USD Rate
-        usd_ticker = yf.Ticker("USDBRL=X")
-        hist = usd_ticker.history(period="1d")
-        
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+        msg_log = []
+
+        # 1. Get USD Rate (USDBRL=X)
         usd_rate = 0.0
-        if not hist.empty:
-            usd_rate = hist['Close'].iloc[-1]
-            
+        try:
+            url_usd = "https://query1.finance.yahoo.com/v8/finance/chart/USDBRL=X?interval=1d&range=1d"
+            r_usd = requests.get(url_usd, headers=headers, timeout=10)
+            data_usd = r_usd.json()
+            usd_rate = data_usd['chart']['result'][0]['meta']['regularMarketPrice']
+            msg_log.append(f"Dólar: R$ {usd_rate:.2f}")
+        except Exception as e:
+            msg_log.append(f"Erro Dólar: {str(e)}")
+            print(f"Error fetching USD: {e}")
+
         if usd_rate > 0:
-            msg_log = [f"Dólar: R$ {usd_rate:.2f}"]
             # Update all International assets
             intls = International.query.all()
             for item in intls:
@@ -1235,11 +1236,16 @@ def update_intl_quotes():
                         if ticker_name == 'BRKB':
                             ticker_name = 'BRK-B'
                         
-                        stock = yf.Ticker(ticker_name)
-                        stock_hist = stock.history(period="1d")
+                        # Fetch Stock Quote
+                        url_stock = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker_name}?interval=1d&range=1d"
+                        r_stock = requests.get(url_stock, headers=headers, timeout=10)
+                        data_stock = r_stock.json()
                         
-                        if not stock_hist.empty:
-                            price = stock_hist['Close'].iloc[-1]
+                        price = 0.0
+                        if 'chart' in data_stock and 'result' in data_stock['chart'] and data_stock['chart']['result']:
+                             price = data_stock['chart']['result'][0]['meta']['regularMarketPrice']
+                        
+                        if price > 0:
                             item.quote = price
                             msg_log.append(f"{ticker_name}: ${price:.2f}")
                             
@@ -1249,20 +1255,21 @@ def update_intl_quotes():
                             else:
                                 item.value_usd = 0.0
                         else:
-                            msg_log.append(f"{ticker_name}: Não encontrado")
-                            print(f"Quote not found for {ticker_name}")
-                            pass
+                            msg_log.append(f"{ticker_name}: Não encontrado (API)")
+                            
                     except Exception as e:
-                        msg_log.append(f"{item.name}: Erro {str(e)}")
+                        msg_log.append(f"{item.name}: Erro API {str(e)}")
                         print(f"Error updating {item.name}: {e}")
             
             db.session.commit()
             flash(f'Atualização Concluída! Detalhes: {", ".join(msg_log)}', 'success')
         else:
-            flash('Não foi possível obter a cotação do Dólar (API retornou vazio).', 'warning')
+            flash(f'Não foi possível obter a cotação do Dólar. Detalhes: {", ".join(msg_log)}', 'warning')
             
     except Exception as e:
         flash(f'Erro fatal ao atualizar: {str(e)}', 'danger')
+        
+    return redirect(url_for('balanceamento'))
         
     return redirect(url_for('balanceamento'))
 

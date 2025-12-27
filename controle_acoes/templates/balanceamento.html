@@ -466,7 +466,7 @@
     <div class="col-12 mt-3">
         <h5 class="text-white mb-2">Por Classe</h5>
         <div class="table-responsive">
-            <table class="table table-dark table-bordered table-sm no-datatable">
+            <table class="table table-dark table-bordered table-sm no-datatable text-center">
                 <thead>
                     <tr>
                         <th>Classe</th>
@@ -496,7 +496,7 @@
     <div class="col-12 mt-3">
         <h5 class="text-white mb-2">Por Prazo (Detalhado Renda Fixa)</h5>
         <div class="table-responsive">
-            <table class="table table-dark table-bordered table-sm no-datatable">
+            <table class="table table-dark table-bordered table-sm no-datatable text-center">
                 <thead>
                     <tr>
                         <th>Categoria</th>
@@ -523,36 +523,73 @@
         </div>
     </div>
 
-    <!-- Type Summary -->
-    <div class="col-12 mt-3">
+    <!-- Type Summary with Chart -->
+    <div class="col-12 mt-3 mb-5">
         <h5 class="text-white mb-2">Por Tipo</h5>
-        <div class="table-responsive">
-            <table class="table table-dark table-bordered table-sm no-datatable">
-                <thead>
-                    <tr>
-                        <th>Tipo</th>
-                        <th>Valor</th>
-                        <th>%</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>Renda Fixa</td>
-                        <td>R$ {{ summary['Renda Fixa'] | brl_fmt }}</td>
-                        <td>{{ (summary['Renda Fixa']/total_portfolio * 100) | brl_fmt if total_portfolio > 0 else 0 }}%
-                        </td>
-                    </tr>
-                    <tr>
-                        <td>Renda Variável</td>
-                        <td>R$ {{ summary['Renda Variável'] | brl_fmt }}</td>
-                        <td>{{ (summary['Renda Variável']/total_portfolio * 100) | brl_fmt if total_portfolio > 0 else 0
-                            }}%</td>
-                    </tr>
-                </tbody>
-            </table>
+        <div class="row">
+            <div class="col-md-6">
+                <div class="table-responsive">
+                    <table class="table table-dark table-bordered table-sm no-datatable text-center">
+                        <thead>
+                            <tr>
+                                <th>Tipo</th>
+                                <th>Valor</th>
+                                <th>%</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Renda Fixa</td>
+                                <td>R$ {{ summary['Renda Fixa'] | brl_fmt }}</td>
+                                <td>{{ (summary['Renda Fixa']/total_portfolio * 100) | brl_fmt if total_portfolio > 0
+                                    else 0 }}%</td>
+                            </tr>
+                            <tr>
+                                <td>Renda Variável</td>
+                                <td>R$ {{ summary['Renda Variável'] | brl_fmt }}</td>
+                                <td>{{ (summary['Renda Variável']/total_portfolio * 100) | brl_fmt if total_portfolio >
+                                    0 else 0 }}%</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="col-md-6 d-flex justify-content-center">
+                <div style="max-width: 300px; width: 100%;">
+                    <canvas id="typeChart"></canvas>
+                </div>
+            </div>
         </div>
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const ctx = document.getElementById('typeChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'pie',
+            data: {
+                labels: ['Renda Fixa', 'Renda Variável'],
+                datasets: [{
+                    data: [{{ summary['Renda Fixa'] }}, {{ summary['Renda Variável'] }}],
+            backgroundColor: ['#3b82f6', '#10b981'], // Use app theme colors (Blue/Green)
+            borderWidth: 0
+        }]
+            },
+        options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { color: 'white' }
+            }
+        }
+    }
+        });
+    });
+</script>
 
 <!-- MODALS -->
 <!-- Modal RF Pós -->

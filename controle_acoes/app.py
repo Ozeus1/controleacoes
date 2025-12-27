@@ -976,9 +976,13 @@ def balanceamento():
     # Filter breakdown to remove 0 values (Simpler for Template Rowspan)
     clean_breakdown = {}
     for cat, terms in maturity_breakdown.items():
-        clean_terms = {k: v for k, v in terms.items() if v > 0.01}
-        if clean_terms:
-            clean_breakdown[cat] = clean_terms
+        if cat == 'Fundos':
+            # User request: Always show terms for Fundos
+            clean_breakdown[cat] = terms
+        else:
+            clean_terms = {k: v for k, v in terms.items() if v > 0.01}
+            if clean_terms:
+                clean_breakdown[cat] = clean_terms
 
     return render_template('balanceamento.html', 
                            rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,

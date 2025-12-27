@@ -871,8 +871,14 @@ def balanceamento():
     
     # 2. Existing Assets (Stocks/FIIs)
     assets = Asset.query.all()
-    val_acoes = sum([a.quantity * (a.current_price if a.current_price > 0 else a.avg_price) for a in assets if a.type == 'ACAO'])
-    val_fiis = sum([a.quantity * (a.current_price if a.current_price > 0 else a.avg_price) for a in assets if a.type == 'FII'])
+    # Separate GOLD11 (Ouro) from other Stocks
+    gold_assets = [a for a in assets if a.ticker == 'GOLD11']
+    stock_assets = [a for a in assets if a.type == 'ACAO' and a.ticker != 'GOLD11']
+    fii_assets = [a for a in assets if a.type == 'FII']
+
+    val_ouro = sum([a.quantity * (a.current_price if a.current_price > 0 else a.avg_price) for a in gold_assets])
+    val_acoes = sum([a.quantity * (a.current_price if a.current_price > 0 else a.avg_price) for a in stock_assets])
+    val_fiis = sum([a.quantity * (a.current_price if a.current_price > 0 else a.avg_price) for a in fii_assets])
     
     # 3. Aggregates & Classification
     summary = {
@@ -884,7 +890,7 @@ def balanceamento():
         'Renda Fixa Pós': 0, 'Renda Fixa Pré': 0, 'Renda Fixa IPCA': 0,
         'Fundos': 0, 'Cripto': 0, 'Previdência': 0, 
         'Internacional RV': 0, 'Internacional RF': 0,
-        'Ações': val_acoes, 'FIIs': val_fiis, 'Ouro': 0
+        'Ações': val_acoes, 'FIIs': val_fiis, 'Ouro': val_ouro
     }
     
     # Helper to process list
@@ -956,9 +962,9 @@ def balanceamento():
     summary['Renda Fixa'] += t_intl_rf
     summary['Longo Prazo'] += t_intl_rf # Assuming Bonds are long term
 
-    # Add Stocks/FIIs to Summary
-    summary['Renda Variável'] += (val_acoes + val_fiis)
-    summary['Indefinido'] += (val_acoes + val_fiis) # Or Long Term? User requested classification. Equity is usually undefined or long. I will leave strict maturity for Fixed Income.
+    # Add Stocks/FIIs/Gold to Summary
+    summary['Renda Variável'] += (val_acoes + val_fiis + val_ouro)
+    summary['Indefinido'] += (val_acoes + val_fiis + val_ouro) # Or Long Term? User requested classification. Equity is usually undefined or long. I will leave strict maturity for Fixed Income.
 
     total_portfolio = sum(types_total.values())
 

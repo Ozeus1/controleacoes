@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row" style="margin-bottom: 2rem;">
+    <div class="col-md-12" style="display: flex; justify-content: space-between; align-items: center;">
+        <h2>Histórico de Trades</h2>
+        <a href="{{ url_for('add_history') }}" class="btn btn-primary">+ Adicionar Trade</a>
+    </div>
+</div>
+
+<div class="card">
+    <h3>Resultados</h3>
+    <div style="font-size: 1.2rem; margin-bottom: 1rem;">
+        Lucro Total: <span class="{{ 'profit' if total_profit >= 0 else 'loss' }}">
+            R$ {{ "%.2f"|format(total_profit) }}
+        </span>
+    </div>
+
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Estratégia</th>
+                    <th>Entrada</th>
+                    <th>Saída</th>
+                    <th>Qtd</th>
+                    <th>Preço Compra</th>
+                    <th>Preço Venda</th>
+                    <th>Resultado</th>
+                    <th>%</th>
+                    <th>Dias</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for trade in trades %}
+                <tr>
+                    <td>{{ trade.ticker }}</td>
+                    <td>{{ trade.strategy or '-' }}</td>
+                    <td>{{ trade.entry_date.strftime('%d/%m/%Y') if trade.entry_date else '-' }}</td>
+                    <td>{{ trade.exit_date.strftime('%d/%m/%Y') if trade.exit_date else '-' }}</td>
+                    <td>{{ trade.quantity }}</td>
+                    <td>R$ {{ "%.2f"|format(trade.buy_price) }}</td>
+                    <td>R$ {{ "%.2f"|format(trade.sell_price) }}</td>
+                    <td class="{{ 'profit' if trade.profit_value >= 0 else 'loss' }}">
+                        R$ {{ "%.2f"|format(trade.profit_value) }}
+                    </td>
+                    <td class="{{ 'profit' if trade.profit_pct >= 0 else 'loss' }}">
+                        {{ "%.2f"|format(trade.profit_pct) }}%
+                    </td>
+                    <td>{{ trade.days_held }}</td>
+                    <td>
+                        <a href="{{ url_for('edit_history', id=trade.id) }}" class="btn-icon">✏️</a>
+                        <a href="{{ url_for('delete_history', id=trade.id) }}" class="btn-icon"
+                            onclick="return confirm('Tem certeza que deseja excluir?')">🗑️</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="11" style="text-align: center;">Nenhum histórico encontrado.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

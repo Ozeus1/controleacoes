@@ -758,6 +758,15 @@ def add_history():
         
     return render_template('add_history.html')
 
+@app.route('/history')
+@login_required
+def history():
+    trades = TradeHistory.query.filter_by(user_id=current_user.id).order_by(TradeHistory.exit_date.desc()).all()
+    
+    total_profit = sum(t.profit for t in trades if t.profit)
+    
+    return render_template('history.html', trades=trades, total_profit=total_profit)
+
 
 
 

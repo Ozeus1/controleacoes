@@ -1220,6 +1220,7 @@ def update_intl_quotes():
             usd_rate = hist['Close'].iloc[-1]
             
         if usd_rate > 0:
+            msg_log = [f"Dólar: R$ {usd_rate:.2f}"]
             # Update all International assets
             intls = International.query.all()
             for item in intls:
@@ -1240,25 +1241,28 @@ def update_intl_quotes():
                         if not stock_hist.empty:
                             price = stock_hist['Close'].iloc[-1]
                             item.quote = price
+                            msg_log.append(f"{ticker_name}: ${price:.2f}")
+                            
                             # Recalculate Value USD: Quantity * Price
                             if item.quantity:
                                 item.value_usd = item.quantity * price
                             else:
                                 item.value_usd = 0.0
                         else:
-                            # Try again assuming it might be a fund or different formatting if needed
+                            msg_log.append(f"{ticker_name}: Não encontrado")
                             print(f"Quote not found for {ticker_name}")
                             pass
                     except Exception as e:
+                        msg_log.append(f"{item.name}: Erro {str(e)}")
                         print(f"Error updating {item.name}: {e}")
             
             db.session.commit()
-            flash('Cotações e Câmbio atualizados com sucesso via Yahoo Finance!', 'success')
+            flash(f'Atualização Concluída! Detalhes: {", ".join(msg_log)}', 'success')
         else:
-            flash('Não foi possível obter a cotação do Dólar.', 'warning')
+            flash('Não foi possível obter a cotação do Dólar (API retornou vazio).', 'warning')
             
     except Exception as e:
-        flash(f'Erro ao atualizar: {str(e)}', 'danger')
+        flash(f'Erro fatal ao atualizar: {str(e)}', 'danger')
         
     return redirect(url_for('balanceamento'))
 

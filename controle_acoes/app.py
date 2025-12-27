@@ -827,6 +827,30 @@ def get_maturity_class(maturity_date):
     else:
         return 'Longo Prazo'
 
+@app.route('/fix_db')
+def fix_db():
+    try:
+        # Run migration logic directly here
+        conn = sqlite3.connect(os.path.join(app.instance_path, 'investments.db'))
+        cursor = conn.cursor()
+        columns = [
+            ('category', 'TEXT DEFAULT "RV"'),
+            ('description', 'TEXT'),
+            ('invested_value', 'REAL')
+        ]
+        log = []
+        for col_name, col_type in columns:
+            try:
+                cursor.execute(f"ALTER TABLE international ADD COLUMN {col_name} {col_type}")
+                log.append(f"Added {col_name}")
+            except Exception as e:
+                log.append(f"Skipped {col_name}: {str(e)}")
+        conn.commit()
+        conn.close()
+        return f"Migration Result: {', '.join(log)}. <a href='/balanceamento'>Voltar</a>"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 @app.route('/balanceamento')
 @login_required
 def balanceamento():

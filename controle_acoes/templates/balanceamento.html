@@ -456,6 +456,18 @@
     </div>
 </div>
 
+<!-- Chart.js DataLabels Plugin -->
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+
+<style>
+    /* Force Center Alignment */
+    .table-center-forced th,
+    .table-center-forced td {
+        text-align: center !important;
+        vertical-align: middle !important;
+    }
+</style>
+
 <!-- SUMMARY SECTION -->
 <div class="row mt-5">
     <div class="col-12">
@@ -466,7 +478,7 @@
     <div class="col-12 mt-3">
         <h5 class="text-white mb-2">Por Classe</h5>
         <div class="table-responsive">
-            <table class="table table-dark table-bordered table-sm no-datatable text-center">
+            <table class="table table-dark table-bordered table-sm no-datatable table-center-forced">
                 <thead>
                     <tr>
                         <th>Classe</th>
@@ -492,7 +504,7 @@
         </div>
         <!-- Class Chart -->
         <div class="d-flex justify-content-center mt-3">
-            <div style="max-width: 400px; width: 100%;">
+            <div style="max-width: 500px; width: 100%;">
                 <canvas id="classChart"></canvas>
             </div>
         </div>
@@ -502,7 +514,7 @@
     <div class="col-12 mt-3">
         <h5 class="text-white mb-2">Por Prazo (Detalhado Renda Fixa)</h5>
         <div class="table-responsive">
-            <table class="table table-dark table-bordered table-sm no-datatable text-center">
+            <table class="table table-dark table-bordered table-sm no-datatable table-center-forced">
                 <thead>
                     <tr>
                         <th>Categoria</th>
@@ -523,6 +535,12 @@
                         <td>{{ (val / types_total[category] * 100) | brl_fmt }}%</td>
                     </tr>
                     {% endfor %}
+                    <!-- Subtotal Row -->
+                    <tr class="bg-secondary" style="font-weight: bold;">
+                        <td colspan="2">TOTAL {{ category | upper }}</td>
+                        <td>R$ {{ types_total[category] | brl_fmt }}</td>
+                        <td>100,00%</td>
+                    </tr>
                     {% endfor %}
                 </tbody>
             </table>
@@ -533,7 +551,7 @@
     <div class="col-12 mt-3 mb-5">
         <h5 class="text-white mb-2">Por Tipo</h5>
         <div class="table-responsive">
-            <table class="table table-dark table-bordered table-sm no-datatable text-center">
+            <table class="table table-dark table-bordered table-sm no-datatable table-center-forced">
                 <thead>
                     <tr>
                         <th>Tipo</th>
@@ -559,7 +577,7 @@
         </div>
         <!-- Type Chart (Below Table) -->
         <div class="d-flex justify-content-center mt-3">
-            <div style="max-width: 300px; width: 100%;">
+            <div style="max-width: 500px; width: 100%;">
                 <canvas id="typeChart"></canvas>
             </div>
         </div>
@@ -569,25 +587,47 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
+        // Register DataLabels
+        Chart.register(ChartDataLabels);
+
+        // Common Option for DataLabels
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right', labels: { color: 'white', font: { size: 12 } } },
+                datalabels: {
+                    color: '#fff',
+                    font: { weight: 'bold', size: 14 },
+                    formatter: (value, ctx) => {
+                        let sum = 0;
+                        let dataArr = ctx.chart.data.datasets[0].data;
+                        dataArr.map(data => { sum += data; });
+                        let percentage = (value * 100 / sum).toFixed(1) + "%";
+                        return percentage;
+                    },
+                    anchor: 'end',
+                    align: 'start',
+                    offset: -10
+                }
+            },
+            layout: { padding: 20 }
+        };
+
         // --- TYPE CHART ---
         const ctxType = document.getElementById('typeChart').getContext('2d');
         new Chart(ctxType, {
-            type: 'pie',
+            type: 'pie', // Pie chart is usually good, 'doughnut' is also popular. User said "increase circle size", pie is full circle.
             data: {
                 labels: ['Renda Fixa', 'Renda Variável'],
                 datasets: [{
                     data: [{{ summary['Renda Fixa'] }}, {{ summary['Renda Variável'] }}],
             backgroundColor: ['#3b82f6', '#10b981'],
-            borderWidth: 0
+            borderWidth: 1,
+            borderColor: '#1e293b'
         }]
             },
-        options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { position: 'right', labels: { color: 'white' } }
-        }
-    }
+        options: commonOptions
         });
 
     // --- CLASS CHART ---
@@ -616,16 +656,11 @@
             datasets: [{
                 data: classData,
                 backgroundColor: classColors,
-                borderWidth: 0
+                borderWidth: 1,
+                borderColor: '#1e293b'
             }]
         },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'right', labels: { color: 'white' } }
-            }
-        }
+        options: commonOptions
     });
     });
 </script>

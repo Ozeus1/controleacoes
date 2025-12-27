@@ -642,14 +642,24 @@
                     <tr>
                         <td>Renda Fixa</td>
                         <td>R$ {{ summary['Renda Fixa'] | brl_fmt }}</td>
-                        <td>{{ (summary['Renda Fixa']/total_portfolio * 100) | brl_fmt if total_portfolio > 0
-                            else 0 }}%</td>
+                        <td>
+                            {% if total_portfolio > 0 %}
+                            {{ (summary['Renda Fixa'] / total_portfolio * 100) | brl_fmt }}%
+                            {% else %}
+                            0,00%
+                            {% endif %}
+                        </td>
                     </tr>
                     <tr>
                         <td>Renda Variável</td>
                         <td>R$ {{ summary['Renda Variável'] | brl_fmt }}</td>
-                        <td>{{ (summary['Renda Variável']/total_portfolio * 100) | brl_fmt if total_portfolio >
-                            0 else 0 }}%</td>
+                        <td>
+                            {% if total_portfolio > 0 %}
+                            {{ (summary['Renda Variável'] / total_portfolio * 100) | brl_fmt }}%
+                            {% else %}
+                            0,00%
+                            {% endif %}
+                        </td>
                     </tr>
                 </tbody>
             </table>
@@ -818,14 +828,24 @@
                     <tr>
                         <td>Brasil</td>
                         <td>R$ {{ location_chart['Brasil'] | brl_fmt }}</td>
-                        <td>{{ '%.1f' | format((location_chart['Brasil'] / total_portfolio * 100) if total_portfolio > 0
-                            else 0) }}%</td>
+                        <td>
+                            {% if total_portfolio > 0 %}
+                            {{ '%.1f' | format(location_chart['Brasil'] / total_portfolio * 100) }}%
+                            {% else %}
+                            0.0%
+                            {% endif %}
+                        </td>
                     </tr>
                     <tr>
                         <td>Internacional</td>
                         <td>R$ {{ location_chart['Internacional'] | brl_fmt }}</td>
-                        <td>{{ '%.1f' | format((location_chart['Internacional'] / total_portfolio * 100) if
-                            total_portfolio > 0 else 0) }}%</td>
+                        <td>
+                            {% if total_portfolio > 0 %}
+                            {{ '%.1f' | format(location_chart['Internacional'] / total_portfolio * 100) }}%
+                            {% else %}
+                            0.0%
+                            {% endif %}
+                        </td>
                     </tr>
                 </tbody>
                 <tfoot>

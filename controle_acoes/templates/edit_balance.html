@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <div class="card">
+            <h3 class="mb-4 text-center">Editar Item - {% if type == 'rf' %}Renda Fixa{% elif type == 'fund' %}Fundo{%
+                elif type == 'crypto' %}Cripto{% elif type == 'pension' %}Previdência{% elif type == 'intl'
+                %}Internacional{% endif %}</h3>
+
+            <form method="POST">
+                {% if type == 'rf' %}
+                <div class="mb-3">
+                    <label>Categoria</label>
+                    <input type="text" class="form-control" value="{{ item.category }}" disabled>
+                </div>
+                {% if item.category == 'PRE' %}
+                <div class="mb-3">
+                    <label>Tipo</label>
+                    <select name="product_type" class="form-control mb-2">
+                        <option value="CDB" {% if item.product_type=='CDB' %}selected{% endif %}>CDB</option>
+                        <option value="LCI" {% if item.product_type=='LCI' %}selected{% endif %}>LCI</option>
+                        <option value="LCA" {% if item.product_type=='LCA' %}selected{% endif %}>LCA</option>
+                        <option value="CRI" {% if item.product_type=='CRI' %}selected{% endif %}>CRI</option>
+                        <option value="CRA" {% if item.product_type=='CRA' %}selected{% endif %}>CRA</option>
+                        <option value="Tesouro" {% if item.product_type=='Tesouro' %}selected{% endif %}>Tesouro
+                        </option>
+                        <option value="RDB" {% if item.product_type=='RDB' %}selected{% endif %}>RDB</option>
+                    </select>
+                </div>
+                {% endif %}
+                <div class="mb-3">
+                    <label>Instituição</label>
+                    <input type="text" name="institution" class="form-control" value="{{ item.institution }}" required>
+                </div>
+                <div class="mb-3">
+                    <label>Nome/Descrição</label>
+                    <input type="text" name="name" class="form-control" value="{{ item.name }}" required>
+                </div>
+                <div class="mb-3">
+                    <label>Valor (R$)</label>
+                    <input type="text" name="value" class="form-control"
+                        value="{{ '%.2f'|format(item.value)|replace('.', ',') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label>Taxa</label>
+                    <input type="text" name="rate" class="form-control" value="{{ item.rate }}">
+                </div>
+                <div class="mb-3">
+                    <label>Vencimento</label>
+                    <input type="date" name="maturity_date" class="form-control"
+                        value="{{ item.maturity_date.strftime('%Y-%m-%d') if item.maturity_date else '' }}">
+                </div>
+
+                {% elif type == 'fund' %}
+                <div class="mb-3">
+                    <label>Instituição</label>
+                    <input type="text" name="institution" class="form-control" value="{{ item.institution }}" required>
+                </div>
+                <div class="mb-3">
+                    <label>Nome do Fundo</label>
+                    <input type="text" name="name" class="form-control" value="{{ item.name }}" required>
+                </div>
+                <div class="mb-3">
+                    <label>Valor (R$)</label>
+                    <input type="text" name="value" class="form-control"
+                        value="{{ '%.2f'|format(item.value)|replace('.', ',') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label>Indexador</label>
+                    <input type="text" name="indexer" class="form-control" value="{{ item.indexer }}">
+                </div>
+                <div class="mb-3">
+                    <label>Vencimento</label>
+                    <input type="date" name="maturity_date" class="form-control"
+                        value="{{ item.maturity_date.strftime('%Y-%m-%d') if item.maturity_date else '' }}">
+                </div>
+
+                {% elif type == 'crypto' %}
+                <div class="mb-3">
+                    <label>Exchange</label>
+                    <input type="text" name="institution" class="form-control" value="{{ item.institution }}">
+                </div>
+                <div class="mb-3">
+                    <label>Nome (Ticker)</label>
+                    <input type="text" name="name" class="form-control" value="{{ item.name }}" required>
+                </div>
+                <div class="mb-3">
+                    <label>Quantidade</label>
+                    <input type="text" name="quantity" class="form-control" value="{{ item.quantity }}">
+                </div>
+                <div class="mb-3">
+                    <label>Valor Investido (R$)</label>
+                    <input type="text" name="invested_value" class="form-control"
+                        value="{{ '%.2f'|format(item.invested_value)|replace('.', ',') }}">
+                </div>
+                <div class="mb-3">
+                    <label>Valor Atual (R$)</label>
+                    <input type="text" name="current_value" class="form-control"
+                        value="{{ '%.2f'|format(item.current_value)|replace('.', ',') }}" required>
+                </div>
+
+                {% elif type == 'pension' %}
+                <div class="mb-3">
+                    <label>Instituição</label>
+                    <input type="text" name="institution" class="form-control" value="{{ item.institution }}" required>
+                </div>
+                <div class="mb-3">
+                    <label>Plano</label>
+                    <input type="text" name="name" class="form-control" value="{{ item.name }}" required>
+                </div>
+                <div class="mb-3">
+                    <label>Valor (R$)</label>
+                    <input type="text" name="value" class="form-control"
+                        value="{{ '%.2f'|format(item.value)|replace('.', ',') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label>Tipo</label>
+                    <select name="type" class="form-control">
+                        <option value="Renda Fixa" {% if item.type=='Renda Fixa' %}selected{% endif %}>Renda Fixa
+                        </option>
+                        <option value="Acao" {% if item.type=='Acao' %}selected{% endif %}>Ação</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label>Certificado</label>
+                    <input type="text" name="certificate" class="form-control" value="{{ item.certificate }}">
+                </div>
+
+                {% elif type == 'intl' %}
+                <div class="mb-3">
+                    <label>Broker</label>
+                    <input type="text" name="institution" class="form-control" value="{{ item.institution }}">
+                </div>
+                <div class="mb-3">
+                    <label>Ticker</label>
+                    <input type="text" name="name" class="form-control" value="{{ item.name }}" required>
+                </div>
+                <div class="mb-3">
+                    <label>Quantidade</label>
+                    <input type="text" name="quantity" class="form-control" value="{{ item.quantity }}">
+                </div>
+                <div class="mb-3">
+                    <label>Valor Total (USD)</label>
+                    <input type="text" name="value_usd" class="form-control"
+                        value="{{ '%.2f'|format(item.value_usd)|replace('.', ',') }}" required>
+                </div>
+                <div class="mb-3">
+                    <label>Cotação Dólar (R$)</label>
+                    <input type="text" name="rate_usd" class="form-control"
+                        value="{{ '%.2f'|format(item.rate_usd or 5.50)|replace('.', ',') }}">
+                </div>
+                {% endif %}
+
+                <div class="mt-4" style="display: flex; gap: 10px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">Salvar Alterações</button>
+                    <a href="{{ url_for('balanceamento') }}" class="btn btn-secondary" style="flex: 1;">Cancelar</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -999,6 +999,74 @@ def add_intl():
     flash('Investimento Internacional adicionado!', 'success')
     return redirect(url_for('balanceamento'))
 
+@app.route('/balanceamento/edit/<type>/<int:id>', methods=['GET', 'POST'])
+@login_required
+def edit_balance_item(type, id):
+    if type == 'rf':
+        item = FixedIncome.query.get_or_404(id)
+    elif type == 'fund':
+        item = InvestmentFund.query.get_or_404(id)
+    elif type == 'crypto':
+        item = Crypto.query.get_or_404(id)
+    elif type == 'pension':
+        item = Pension.query.get_or_404(id)
+    elif type == 'intl':
+        item = International.query.get_or_404(id)
+    else:
+        flash('Tipo inválido', 'error')
+        return redirect(url_for('balanceamento'))
+    
+    if request.method == 'POST':
+        # Common fields update could be dynamic, but manual is safer per type
+        if type == 'rf':
+            item.institution = request.form.get('institution')
+            item.name = request.form.get('name')
+            item.value = float(request.form.get('value').replace('.','').replace(',','.'))
+            item.rate = request.form.get('rate')
+            mat = request.form.get('maturity_date')
+            item.maturity_date = datetime.strptime(mat, '%Y-%m-%d').date() if mat else None
+            # Specifics
+            if request.form.get('product_type'):
+                item.product_type = request.form.get('product_type')
+                
+        elif type == 'fund':
+            item.institution = request.form.get('institution')
+            item.name = request.form.get('name')
+            item.value = float(request.form.get('value').replace('.','').replace(',','.'))
+            item.indexer = request.form.get('indexer')
+            mat = request.form.get('maturity_date')
+            item.maturity_date = datetime.strptime(mat, '%Y-%m-%d').date() if mat else None
+            
+        elif type == 'crypto':
+            item.institution = request.form.get('institution')
+            item.name = request.form.get('name')
+            item.quantity = float(request.form.get('quantity').replace(',','.'))
+            if request.form.get('invested_value'):
+                item.invested_value = float(request.form.get('invested_value').replace('.','').replace(',','.'))
+            item.current_value = float(request.form.get('current_value').replace('.','').replace(',','.'))
+            
+        elif type == 'pension':
+            item.institution = request.form.get('institution')
+            item.name = request.form.get('name')
+            item.value = float(request.form.get('value').replace('.','').replace(',','.'))
+            item.type = request.form.get('type')
+            item.certificate = request.form.get('certificate')
+            
+        elif type == 'intl':
+            item.institution = request.form.get('institution')
+            item.name = request.form.get('name')
+            if request.form.get('quantity'):
+                item.quantity = float(request.form.get('quantity').replace(',','.'))
+            item.value_usd = float(request.form.get('value_usd').replace('.','').replace(',','.'))
+            if request.form.get('rate_usd'):
+                item.rate_usd = float(request.form.get('rate_usd').replace(',','.'))
+
+        db.session.commit()
+        flash('Item atualizado com sucesso!', 'success')
+        return redirect(url_for('balanceamento'))
+
+    return render_template('edit_balance.html', item=item, type=type)
+
 @app.route('/balanceamento/delete/<type>/<int:id>')
 @login_required
 def delete_balance_item(type, id):

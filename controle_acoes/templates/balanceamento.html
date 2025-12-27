@@ -425,6 +425,19 @@
                         </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot>
+                        <tr class="font-weight-bold" style="background-color: rgba(255,255,255,0.05);">
+                            <td colspan="3" class="text-right">TOTAIS</td>
+                            <td>$ {{ intl_rv_invested | brl_fmt }}</td>
+                            <td>-</td>
+                            <td class="{{ 'text-success' if intl_rv_profit >= 0 else 'text-danger' }}">
+                                $ {{ intl_rv_profit | brl_fmt }}
+                            </td>
+                            <td>$ {{ intl_rv_current | brl_fmt }}</td>
+                            <td>-</td>
+                            <td>-</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>

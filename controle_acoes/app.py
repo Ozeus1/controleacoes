@@ -1014,6 +1014,11 @@ def balanceamento():
     # 3. Total for the Table Footer
     total_rf_detailed = sum(rf_chart_type.values())
 
+    # 4. Totals for International RV Table
+    intl_rv_invested = sum([(i.quantity or 0) * (i.avg_price or 0) for i in intls_rv])
+    intl_rv_current = sum([(i.quantity or 0) * (i.quote or 0) for i in intls_rv])
+    intl_rv_profit = intl_rv_current - intl_rv_invested
+
     return render_template('balanceamento.html', 
                            rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,
                            funds=funds, cryptos=cryptos, pensions=pensions, 
@@ -1021,7 +1026,10 @@ def balanceamento():
                            summary=summary, types_total=types_total, total_portfolio=total_portfolio,
                            maturity_breakdown=clean_breakdown,
                            rf_chart_term=rf_chart_term, rf_chart_type=rf_chart_type,
-                           total_rf_detailed=total_rf_detailed)
+                           total_rf_detailed=total_rf_detailed,
+                           intl_rv_invested=intl_rv_invested, 
+                           intl_rv_current=intl_rv_current, 
+                           intl_rv_profit=intl_rv_profit)
 
 @app.route('/balanceamento/add/rf', methods=['POST'])
 @login_required

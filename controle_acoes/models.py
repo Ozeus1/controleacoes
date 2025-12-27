@@ -138,3 +138,47 @@ class Settings(db.Model):
             
         db.session.commit()
 
+
+class FixedIncome(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    category = db.Column(db.String(20), nullable=False) # 'POS', 'PRE', 'IPCA'
+    product_type = db.Column(db.String(20), nullable=True) # 'CDB', 'LCI', etc.
+    institution = db.Column(db.String(50), nullable=False) # Bank/Issuer
+    name = db.Column(db.String(100), nullable=False) # Description/Fund Name
+    value = db.Column(db.Float, nullable=False, default=0.0)
+    rate = db.Column(db.String(50), nullable=True) # '120% CDI', '12% a.a.'
+    maturity_date = db.Column(db.Date, nullable=True)
+
+class InvestmentFund(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    institution = db.Column(db.String(50), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    value = db.Column(db.Float, nullable=False, default=0.0)
+    indexer = db.Column(db.String(20), nullable=True)
+    maturity_date = db.Column(db.Date, nullable=True)
+
+class Crypto(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    institution = db.Column(db.String(50), nullable=False) # Exchange
+    name = db.Column(db.String(50), nullable=False) # BTC, ETH
+    quantity = db.Column(db.Float, nullable=True)
+    invested_value = db.Column(db.Float, nullable=True) # Cost basis
+    current_value = db.Column(db.Float, nullable=False) # Market value (manual or calc)
+
+class Pension(db.Model): # Previdencia
+    id = db.Column(db.Integer, primary_key=True)
+    institution = db.Column(db.String(50), nullable=False)
+    name = db.Column(db.String(100), nullable=False)
+    value = db.Column(db.Float, nullable=False)
+    type = db.Column(db.String(20), nullable=True) # 'Acao' or 'Renda Fixa'
+    certificate = db.Column(db.String(50), nullable=True)
+
+class International(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    institution = db.Column(db.String(50), nullable=False) # Broker
+    name = db.Column(db.String(20), nullable=False) # Ticker
+    quantity = db.Column(db.Float, nullable=True)
+    avg_price = db.Column(db.Float, nullable=True)
+    quote = db.Column(db.Float, nullable=True)
+    value_usd = db.Column(db.Float, nullable=False) # Value in USD
+    rate_usd = db.Column(db.Float, nullable=True) # BRL/USD Rate for conversion

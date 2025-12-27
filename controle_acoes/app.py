@@ -2,7 +2,7 @@
 import os
 from flask import Flask, render_template, request, redirect, url_for, flash
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option
+from models import db, Asset, Settings, User, TradeHistory, Option, FixedIncome, InvestmentFund, Crypto, Pension, International
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import time
@@ -801,5 +801,227 @@ def register():
 
 
 
+
+# ==========================================
+# BALANCEAMENTO MODULE
+# ==========================================
+
+def get_maturity_class(maturity_date):
+    if not maturity_date:
+        return 'Indefinido'
+    today = date.today()
+    days = (maturity_date - today).days
+    years = days / 365.0
+    
+    if years <= 2:
+        return 'Curto Prazo'
+    elif years <= 4:
+        return 'Médio Prazo'
+    else:
+        return 'Longo Prazo'
+
+@app.route('/balanceamento')
+@login_required
+def balanceamento():
+    # 1. Fetch Data
+    rf_pos = FixedIncome.query.filter_by(category='POS').all()
+    rf_pre = FixedIncome.query.filter_by(category='PRE').all()
+    rf_ipca = FixedIncome.query.filter_by(category='IPCA').all()
+    funds = InvestmentFund.query.all()
+    cryptos = Crypto.query.all()
+    pensions = Pension.query.all()
+    intls = International.query.all()
+    
+    # 2. Existing Assets (Stocks/FIIs)
+    assets = Asset.query.all()
+    val_acoes = sum([a.quantity * (a.current_price if a.current_price > 0 else a.avg_price) for a in assets if a.type == 'ACAO'])
+    val_fiis = sum([a.quantity * (a.current_price if a.current_price > 0 else a.avg_price) for a in assets if a.type == 'FII'])
+    
+    # 3. Aggregates & Classification
+    summary = {
+        'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0,
+        'Renda Fixa': 0, 'Renda Variável': 0
+    }
+    
+    types_total = {
+        'Renda Fixa Pós': 0, 'Renda Fixa Pré': 0, 'Renda Fixa IPCA': 0,
+        'Fundos': 0, 'Cripto': 0, 'Previdência': 0, 'Internacional': 0,
+        'Ações': val_acoes, 'FIIs': val_fiis, 'Ouro': 0 # Ouro not yet implemented but in user image
+    }
+    
+    # Helper to process list
+    def process_list(items, type_key, is_variable=False):
+        total = 0
+        for i in items:
+            val = i.value if hasattr(i, 'value') else (i.current_value if hasattr(i, 'current_value') else i.value_usd * (i.rate_usd or 1))
+            total += val
+            
+            # Maturity
+            mat = i.maturity_date if hasattr(i, 'maturity_date') else None
+            cls = get_maturity_class(mat)
+            if cls != 'Indefinido' or not is_variable: # For variable, maturity might not apply broadly but user asked for classification
+                 # Logic check: Variable usually undefined maturity? Or just categorized?
+                 # User says: "Gere a classificação dos Investimentos em cada tipo, se é de médio, curto ou longo prazo"
+                 # Stocks/FIIs are typically Indefinite/Long? Usually considered Long Term equity.
+                 pass
+            
+            if hasattr(i, 'maturity_date'):
+               summary[get_maturity_class(i.maturity_date)] += val
+            else:
+               # Crypto/Intl/Stocks usually fit Long Term or Indefinite. 
+               # Let's default 'No Date' items to 'Indefinido' or logical default.
+               # For now, if no date, add to Indefinido for clarity.
+               summary['Indefinido'] += val
+
+        types_total[type_key] = total
+        if is_variable:
+            summary['Renda Variável'] += total
+        else:
+            summary['Renda Fixa'] += total
+        return total
+
+    # Process Logic
+    process_list(rf_pos, 'Renda Fixa Pós')
+    process_list(rf_pre, 'Renda Fixa Pré')
+    process_list(rf_ipca, 'Renda Fixa IPCA')
+    process_list(funds, 'Fundos') # Funds can be RF or Variable, usually RF in this context/user image (pos fixado)
+    
+    # Crypto
+    # Crypto Model has current_value
+    t_crypto = sum([c.current_value for c in cryptos])
+    types_total['Cripto'] = t_crypto
+    summary['Renda Variável'] += t_crypto
+    summary['Indefinido'] += t_crypto # Crypto has no maturity
+
+    # Pension
+    # Pension has type 'Acao' or 'Renda Fixa'
+    for p in pensions:
+        types_total['Previdência'] += p.value
+        # Pension generally Long Term
+        summary['Longo Prazo'] += p.value
+        if p.type == 'Acao':
+            summary['Renda Variável'] += p.value
+        else:
+            summary['Renda Fixa'] += p.value
+
+    # International
+    t_intl = sum([i.value_usd * (i.rate_usd or 5.5) for i in intls]) # Default fallback rate? Or required.
+    types_total['Internacional'] = t_intl
+    summary['Renda Variável'] += t_intl # Assuming Stocks
+    summary['Indefinido'] += t_intl
+
+    # Add Stocks/FIIs to Summary
+    summary['Renda Variável'] += (val_acoes + val_fiis)
+    summary['Indefinido'] += (val_acoes + val_fiis) # Or Long Term? User requested classification. Equity is usually undefined or long. I will leave strict maturity for Fixed Income.
+
+    total_portfolio = sum(types_total.values())
+
+    return render_template('balanceamento.html', 
+                           rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,
+                           funds=funds, cryptos=cryptos, pensions=pensions, intls=intls,
+                           summary=summary, types_total=types_total, total_portfolio=total_portfolio)
+
+@app.route('/balanceamento/add/rf', methods=['POST'])
+@login_required
+def add_rf():
+    category = request.form.get('category')
+    new_rf = FixedIncome(
+        category=category,
+        product_type=request.form.get('product_type'),
+        institution=request.form.get('institution'),
+        name=request.form.get('name'),
+        value=float(request.form.get('value').replace('.','').replace(',','.')),
+        rate=request.form.get('rate'),
+        maturity_date=datetime.strptime(request.form.get('maturity_date'), '%Y-%m-%d').date() if request.form.get('maturity_date') else None
+    )
+    db.session.add(new_rf)
+    db.session.commit()
+    flash('Renda Fixa adicionada!', 'success')
+    return redirect(url_for('balanceamento'))
+
+@app.route('/balanceamento/add/fund', methods=['POST'])
+@login_required
+def add_fund():
+    new_fund = InvestmentFund(
+        institution=request.form.get('institution'),
+        name=request.form.get('name'),
+        value=float(request.form.get('value').replace('.','').replace(',','.')),
+        indexer=request.form.get('indexer'),
+        maturity_date=datetime.strptime(request.form.get('maturity_date'), '%Y-%m-%d').date() if request.form.get('maturity_date') else None
+    )
+    db.session.add(new_fund)
+    db.session.commit()
+    flash('Fundo adicionado!', 'success')
+    return redirect(url_for('balanceamento'))
+
+@app.route('/balanceamento/add/crypto', methods=['POST'])
+@login_required
+def add_crypto():
+    new_crypto = Crypto(
+        institution=request.form.get('institution'),
+        name=request.form.get('name'),
+        quantity=float(request.form.get('quantity').replace(',','.')),
+        invested_value=float(request.form.get('invested_value').replace('.','').replace(',','.')),
+        current_value=float(request.form.get('current_value').replace('.','').replace(',','.'))
+    )
+    db.session.add(new_crypto)
+    db.session.commit()
+    flash('Cripto adicionada!', 'success')
+    return redirect(url_for('balanceamento'))
+
+@app.route('/balanceamento/add/pension', methods=['POST'])
+@login_required
+def add_pension():
+    new_pension = Pension(
+        institution=request.form.get('institution'),
+        name=request.form.get('name'),
+        value=float(request.form.get('value').replace('.','').replace(',','.')),
+        type=request.form.get('type'),
+        certificate=request.form.get('certificate')
+    )
+    db.session.add(new_pension)
+    db.session.commit()
+    flash('Previdência adicionada!', 'success')
+    return redirect(url_for('balanceamento'))
+
+@app.route('/balanceamento/add/intl', methods=['POST'])
+@login_required
+def add_intl():
+    new_intl = International(
+        institution=request.form.get('institution'),
+        name=request.form.get('name'),
+        quantity=float(request.form.get('quantity').replace(',','.')),
+        value_usd=float(request.form.get('value_usd').replace('.','').replace(',','.')),
+        rate_usd=float(request.form.get('rate_usd').replace(',','.')) if request.form.get('rate_usd') else 5.5
+    )
+    db.session.add(new_intl)
+    db.session.commit()
+    flash('Investimento Internacional adicionado!', 'success')
+    return redirect(url_for('balanceamento'))
+
+@app.route('/balanceamento/delete/<type>/<int:id>')
+@login_required
+def delete_balance_item(type, id):
+    if type == 'rf':
+        item = FixedIncome.query.get_or_404(id)
+    elif type == 'fund':
+        item = InvestmentFund.query.get_or_404(id)
+    elif type == 'crypto':
+        item = Crypto.query.get_or_404(id)
+    elif type == 'pension':
+        item = Pension.query.get_or_404(id)
+    elif type == 'intl':
+        item = International.query.get_or_404(id)
+    else:
+        flash('Tipo inválido', 'error')
+        return redirect(url_for('balanceamento'))
+    
+    db.session.delete(item)
+    db.session.commit()
+    flash('Item removido!', 'success')
+    return redirect(url_for('balanceamento'))
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5005)
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True, host='0.0.0.0')

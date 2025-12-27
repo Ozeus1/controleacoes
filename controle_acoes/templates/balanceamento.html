@@ -1,0 +1,574 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="text-white"><i class="fas fa-balance-scale"></i> Balanceamento de Carteira</h2>
+    </div>
+</div>
+
+<!-- Add Buttons Row -->
+<div class="row mb-4">
+    <div class="col-12">
+        <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#modalRFC"><i
+                class="fas fa-plus"></i> Renda Fixa Pós</button>
+        <button class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#modalRFP"><i
+                class="fas fa-plus"></i> Renda Fixa Pré</button>
+        <button class="btn btn-danger me-2" data-bs-toggle="modal" data-bs-target="#modalRFI"><i
+                class="fas fa-plus"></i> Renda Fixa IPCA</button>
+        <button class="btn btn-info me-2" data-bs-toggle="modal" data-bs-target="#modalFund"><i class="fas fa-plus"></i>
+            Fundos</button>
+        <button class="btn btn-dark me-2" data-bs-toggle="modal" data-bs-target="#modalCrypto"><i
+                class="fas fa-coins"></i> Cripto</button>
+        <button class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#modalPension"><i
+                class="fas fa-piggy-bank"></i> Previdência</button>
+        <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#modalIntl"><i
+                class="fas fa-globe"></i> Internacional</button>
+    </div>
+</div>
+
+<!-- RENDA FIXA TABLES -->
+<div class="row">
+    <!-- POS FIXADA -->
+    <div class="col-12 mb-4">
+        <div class="card bg-dark text-white border-primary">
+            <div class="card-header bg-primary text-white font-weight-bold">Renda Fixa Pós-Fixada</div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-dark table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Banco</th>
+                            <th>Fundo/Descrição</th>
+                            <th>Valor</th>
+                            <th>Taxa</th>
+                            <th>Vencimento</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in rf_pos %}
+                        <tr>
+                            <td>{{ item.institution }}</td>
+                            <td>{{ item.name }}</td>
+                            <td>R$ {{ "%.2f"|format(item.value) }}</td>
+                            <td>{{ item.rate }}</td>
+                            <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
+                            <td>
+                                <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
+                                    class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- PRE FIXADA -->
+    <div class="col-12 mb-4">
+        <div class="card bg-dark text-white border-warning">
+            <div class="card-header bg-warning text-dark font-weight-bold">Renda Fixa Pré-Fixada</div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-dark table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Tipo</th>
+                            <th>Banco</th>
+                            <th>Fundo/Descrição</th>
+                            <th>Valor</th>
+                            <th>Taxa</th>
+                            <th>Vencimento</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in rf_pre %}
+                        <tr>
+                            <td>{{ item.product_type }}</td>
+                            <td>{{ item.institution }}</td>
+                            <td>{{ item.name }}</td>
+                            <td>R$ {{ "%.2f"|format(item.value) }}</td>
+                            <td>{{ item.rate }}</td>
+                            <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
+                            <td>
+                                <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
+                                    class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- IPCA -->
+    <div class="col-12 mb-4">
+        <div class="card bg-dark text-white border-danger">
+            <div class="card-header bg-danger text-white font-weight-bold">Renda Fixa Inflação (IPCA)</div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-dark table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Banco</th>
+                            <th>Fundo/Descrição</th>
+                            <th>Valor</th>
+                            <th>Taxa</th>
+                            <th>Vencimento</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in rf_ipca %}
+                        <tr>
+                            <td>{{ item.institution }}</td>
+                            <td>{{ item.name }}</td>
+                            <td>R$ {{ "%.2f"|format(item.value) }}</td>
+                            <td>{{ item.rate }}</td>
+                            <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
+                            <td>
+                                <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
+                                    class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- FUNDS & OTHERS -->
+<div class="row">
+    <!-- FUNDOS -->
+    <div class="col-md-6 mb-4">
+        <div class="card bg-dark text-white border-info">
+            <div class="card-header bg-info text-white font-weight-bold">Fundos de Investimento</div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-dark table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Banco</th>
+                            <th>Fundo</th>
+                            <th>Valor</th>
+                            <th>Indexador</th>
+                            <th>Vencimento</th>
+                            <th>Del</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in funds %}
+                        <tr>
+                            <td>{{ item.institution }}</td>
+                            <td>{{ item.name }}</td>
+                            <td>R$ {{ "%.2f"|format(item.value) }}</td>
+                            <td>{{ item.indexer }}</td>
+                            <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
+                            <td><a href="{{ url_for('delete_balance_item', type='fund', id=item.id) }}"
+                                    class="text-danger"><i class="fas fa-trash"></i></a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- CRIPTO -->
+    <div class="col-md-6 mb-4">
+        <div class="card bg-dark text-white border-secondary">
+            <div class="card-header font-weight-bold">Criptoativos</div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-dark table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Exchange</th>
+                            <th>Nome</th>
+                            <th>Qtd</th>
+                            <th>Valor Atual</th>
+                            <th>Del</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in cryptos %}
+                        <tr>
+                            <td>{{ item.institution }}</td>
+                            <td>{{ item.name }}</td>
+                            <td>{{ item.quantity }}</td>
+                            <td>R$ {{ "%.2f"|format(item.current_value) }}</td>
+                            <td><a href="{{ url_for('delete_balance_item', type='crypto', id=item.id) }}"
+                                    class="text-danger"><i class="fas fa-trash"></i></a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- PREVIDENCIA -->
+    <div class="col-md-6 mb-4">
+        <div class="card bg-dark text-white border-success">
+            <div class="card-header bg-success text-white font-weight-bold">Previdência</div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-dark table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Inst.</th>
+                            <th>Plano</th>
+                            <th>Tipo</th>
+                            <th>Valor</th>
+                            <th>Del</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in pensions %}
+                        <tr>
+                            <td>{{ item.institution }}</td>
+                            <td>{{ item.name }}</td>
+                            <td>{{ item.type }}</td>
+                            <td>R$ {{ "%.2f"|format(item.value) }}</td>
+                            <td><a href="{{ url_for('delete_balance_item', type='pension', id=item.id) }}"
+                                    class="text-danger"><i class="fas fa-trash"></i></a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- INTERNACIONAL -->
+    <div class="col-md-6 mb-4">
+        <div class="card bg-dark text-white border-secondary">
+            <div class="card-header font-weight-bold">Internacional</div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-dark table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Broker</th>
+                            <th>Ticker</th>
+                            <th>Valor (USD)</th>
+                            <th>Cotação USD</th>
+                            <th>Del</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in intls %}
+                        <tr>
+                            <td>{{ item.institution }}</td>
+                            <td>{{ item.name }}</td>
+                            <td>$ {{ "%.2f"|format(item.value_usd) }}</td>
+                            <td>R$ {{ item.rate_usd }}</td>
+                            <td><a href="{{ url_for('delete_balance_item', type='intl', id=item.id) }}"
+                                    class="text-danger"><i class="fas fa-trash"></i></a></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- SUMMARY SECTION -->
+<div class="row mt-5">
+    <div class="col-12">
+        <h3 class="text-white border-bottom pb-2">Resumo e Balanceamento</h3>
+    </div>
+
+    <!-- Totals Table -->
+    <div class="col-md-6 mt-3">
+        <table class="table table-dark table-bordered">
+            <thead>
+                <tr>
+                    <th>Classe</th>
+                    <th>Valor Total</th>
+                    <th>% Carteira</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for k, v in types_total.items() %}
+                <tr>
+                    <td>{{ k }}</td>
+                    <td>R$ {{ "%.2f"|format(v) }}</td>
+                    <td>{{ "%.2f"|format(v / total_portfolio * 100) if total_portfolio > 0 else 0 }}%</td>
+                </tr>
+                {% endfor %}
+                <tr class="bg-secondary font-weight-bold">
+                    <td>TOTAL</td>
+                    <td>R$ {{ "%.2f"|format(total_portfolio) }}</td>
+                    <td>100%</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Maturity & Type Summary -->
+    <div class="col-md-6 mt-3">
+        <table class="table table-dark table-bordered">
+            <thead>
+                <tr>
+                    <th>Classificação (Prazo)</th>
+                    <th>Valor</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Curto Prazo (< 2 anos)</td>
+                    <td>R$ {{ "%.2f"|format(summary['Curto Prazo']) }}</td>
+                </tr>
+                <tr>
+                    <td>Médio Prazo (2-4 anos)</td>
+                    <td>R$ {{ "%.2f"|format(summary['Médio Prazo']) }}</td>
+                </tr>
+                <tr>
+                    <td>Longo Prazo (> 4 anos)</td>
+                    <td>R$ {{ "%.2f"|format(summary['Longo Prazo']) }}</td>
+                </tr>
+                <tr>
+                    <td>Indefinido</td>
+                    <td>R$ {{ "%.2f"|format(summary['Indefinido']) }}</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <table class="table table-dark table-bordered mt-3">
+            <thead>
+                <tr>
+                    <th>Tipo</th>
+                    <th>Valor</th>
+                    <th>%</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Renda Fixa</td>
+                    <td>R$ {{ "%.2f"|format(summary['Renda Fixa']) }}</td>
+                    <td>{{ "%.2f"|format(summary['Renda Fixa']/total_portfolio * 100) if total_portfolio > 0 else 0 }}%
+                    </td>
+                </tr>
+                <tr>
+                    <td>Renda Variável</td>
+                    <td>R$ {{ "%.2f"|format(summary['Renda Variável']) }}</td>
+                    <td>{{ "%.2f"|format(summary['Renda Variável']/total_portfolio * 100) if total_portfolio > 0 else 0
+                        }}%</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- MODALS -->
+<!-- Modal RF Pós -->
+<div class="modal fade" id="modalRFC" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('add_rf') }}" method="POST">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header">
+                    <h5 class="modal-title">Adicionar Renda Fixa Pós</h5><button type="button"
+                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="category" value="POS">
+                    <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Fundo/Descrição</label><input type="text" name="name" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Taxa (ex: 120% CDI)</label><input type="text" name="rate"
+                            class="form-control"></div>
+                    <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date"
+                            class="form-control"></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar</button></div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal RF Pré -->
+<div class="modal fade" id="modalRFP" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('add_rf') }}" method="POST">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header">
+                    <h5 class="modal-title">Adicionar Renda Fixa Pré</h5><button type="button"
+                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="category" value="PRE">
+                    <div class="mb-3">
+                        <label>Tipo</label>
+                        <select name="product_type" class="form-control mb-2">
+                            <option value="CDB">CDB</option>
+                            <option value="LCI">LCI</option>
+                            <option value="LCA">LCA</option>
+                            <option value="CRI">CRI</option>
+                            <option value="CRA">CRA</option>
+                            <option value="Tesouro">Tesouro</option>
+                            <option value="RDB">RDB</option>
+                        </select>
+                    </div>
+                    <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Descrição</label><input type="text" name="name" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Taxa (ex: 12% a.a.)</label><input type="text" name="rate"
+                            class="form-control"></div>
+                    <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date"
+                            class="form-control"></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-warning">Salvar</button></div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal RF IPCA -->
+<div class="modal fade" id="modalRFI" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('add_rf') }}" method="POST">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header">
+                    <h5 class="modal-title">Adicionar Renda Fixa IPCA</h5><button type="button"
+                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="category" value="IPCA">
+                    <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Descrição</label><input type="text" name="name" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Taxa (ex: IPCA+6%)</label><input type="text" name="rate"
+                            class="form-control"></div>
+                    <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date"
+                            class="form-control"></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-danger">Salvar</button></div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Fundos -->
+<div class="modal fade" id="modalFund" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('add_fund') }}" method="POST">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header">
+                    <h5 class="modal-title">Adicionar Fundo</h5><button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Fundo</label><input type="text" name="name" class="form-control" required>
+                    </div>
+                    <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Indexador</label><input type="text" name="indexer" class="form-control">
+                    </div>
+                    <div class="mb-3"><label>Vencimento (Opcional)</label><input type="date" name="maturity_date"
+                            class="form-control"></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-info">Salvar</button></div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Crypto -->
+<div class="modal fade" id="modalCrypto" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('add_crypto') }}" method="POST">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header">
+                    <h5 class="modal-title">Adicionar Cripto</h5><button type="button" class="btn-close btn-close-white"
+                        data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3"><label>Exchange</label><input type="text" name="institution" class="form-control">
+                    </div>
+                    <div class="mb-3"><label>Nome (ex: BTC)</label><input type="text" name="name" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Quantidade</label><input type="text" name="quantity" class="form-control">
+                    </div>
+                    <div class="mb-3"><label>Valor Investido (R$)</label><input type="text" name="invested_value"
+                            class="form-control"></div>
+                    <div class="mb-3"><label>Valor Atual (R$)</label><input type="text" name="current_value"
+                            class="form-control" required></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-dark">Salvar</button></div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Pension -->
+<div class="modal fade" id="modalPension" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('add_pension') }}" method="POST">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header">
+                    <h5 class="modal-title">Adicionar Previdência</h5><button type="button"
+                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3"><label>Instituição</label><input type="text" name="institution"
+                            class="form-control" required></div>
+                    <div class="mb-3"><label>Plano</label><input type="text" name="name" class="form-control" required>
+                    </div>
+                    <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Tipo</label>
+                        <select name="type" class="form-control">
+                            <option value="Renda Fixa">Renda Fixa</option>
+                            <option value="Acao">Ação</option>
+                        </select>
+                    </div>
+                    <div class="mb-3"><label>Certificado (Opcional)</label><input type="text" name="certificate"
+                            class="form-control"></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-success">Salvar</button></div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Intl -->
+<div class="modal fade" id="modalIntl" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('add_intl') }}" method="POST">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header">
+                    <h5 class="modal-title">Adicionar Internacional</h5><button type="button"
+                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3"><label>Broker</label><input type="text" name="institution" class="form-control">
+                    </div>
+                    <div class="mb-3"><label>Ticker</label><input type="text" name="name" class="form-control" required>
+                    </div>
+                    <div class="mb-3"><label>Quantidade</label><input type="text" name="quantity" class="form-control">
+                    </div>
+                    <div class="mb-3"><label>Valor Total (USD)</label><input type="text" name="value_usd"
+                            class="form-control" required></div>
+                    <div class="mb-3"><label>Cotação Dólar (R$)</label><input type="text" name="rate_usd"
+                            class="form-control" value="5.50"></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-secondary">Salvar</button></div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="row mb-4">
     <div class="col-12">
-        <h2 class="text-white"><i class="fas fa-balance-scale"></i> Balanceamento de Carteira (v2.0)</h2>
+        <h2 class="text-white"><i class="fas fa-balance-scale"></i> Balanceamento de Carteira</h2>
     </div>
 </div>
 
@@ -53,16 +53,14 @@
                             <td>R$ {{ "%.2f"|format(item.value) }}</td>
                             <td>{{ item.rate }}</td>
                             <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
-                            <td>
-                                <div style="display: flex; gap: 5px;">
-                                    <a href="{{ url_for('edit_balance_item', type='rf', id=item.id) }}"
-                                        class="btn btn-sm btn-info" style="color: white;" title="Editar"><i
-                                            class="fas fa-edit"></i></a>
-                                    <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
-                                        class="btn btn-sm btn-danger"
-                                        onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir"><i
-                                            class="fas fa-trash"></i></a>
-                                </div>
+                            <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                                <a href="{{ url_for('edit_balance_item', type='rf', id=item.id) }}"
+                                    class="btn btn-sm btn-info" style="color: white;" title="Editar"><i
+                                        class="fas fa-edit"></i></a>
+                                <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
+                                    class="btn btn-sm btn-danger"
+                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir"><i
+                                        class="fas fa-trash"></i></a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -187,14 +185,14 @@
                             <td>R$ {{ "%.2f"|format(item.value) }}</td>
                             <td>{{ item.indexer }}</td>
                             <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
-                            <td>
-                                <div style="display: flex; gap: 5px;">
-                                    <a href="{{ url_for('edit_balance_item', type='fund', id=item.id) }}"
-                                        class="text-info" title="Editar"><i class="fas fa-edit"></i></a>
-                                    <a href="{{ url_for('delete_balance_item', type='fund', id=item.id) }}"
-                                        class="text-danger" onclick="return confirm('Confirma a exclusão deste item?')"
-                                        title="Excluir"><i class="fas fa-trash"></i></a>
-                                </div>
+                            <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                                <a href="{{ url_for('edit_balance_item', type='fund', id=item.id) }}"
+                                    class="btn btn-sm btn-info" style="color: white;" title="Editar"><i
+                                        class="fas fa-edit"></i></a>
+                                <a href="{{ url_for('delete_balance_item', type='fund', id=item.id) }}"
+                                    class="btn btn-sm btn-danger"
+                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir"><i
+                                        class="fas fa-trash"></i></a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -226,14 +224,14 @@
                             <td>{{ item.name }}</td>
                             <td>{{ item.quantity }}</td>
                             <td>R$ {{ "%.2f"|format(item.current_value) }}</td>
-                            <td>
-                                <div style="display: flex; gap: 5px;">
-                                    <a href="{{ url_for('edit_balance_item', type='crypto', id=item.id) }}"
-                                        class="text-info" title="Editar"><i class="fas fa-edit"></i></a>
-                                    <a href="{{ url_for('delete_balance_item', type='crypto', id=item.id) }}"
-                                        class="text-danger" onclick="return confirm('Confirma a exclusão deste item?')"
-                                        title="Excluir"><i class="fas fa-trash"></i></a>
-                                </div>
+                            <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                                <a href="{{ url_for('edit_balance_item', type='crypto', id=item.id) }}"
+                                    class="btn btn-sm btn-info" style="color: white;" title="Editar"><i
+                                        class="fas fa-edit"></i></a>
+                                <a href="{{ url_for('delete_balance_item', type='crypto', id=item.id) }}"
+                                    class="btn btn-sm btn-danger"
+                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir"><i
+                                        class="fas fa-trash"></i></a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -267,14 +265,14 @@
                             <td>{{ item.name }}</td>
                             <td>{{ item.type }}</td>
                             <td>R$ {{ "%.2f"|format(item.value) }}</td>
-                            <td>
-                                <div style="display: flex; gap: 5px;">
-                                    <a href="{{ url_for('edit_balance_item', type='pension', id=item.id) }}"
-                                        class="text-info" title="Editar"><i class="fas fa-edit"></i></a>
-                                    <a href="{{ url_for('delete_balance_item', type='pension', id=item.id) }}"
-                                        class="text-danger" onclick="return confirm('Confirma a exclusão deste item?')"
-                                        title="Excluir"><i class="fas fa-trash"></i></a>
-                                </div>
+                            <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                                <a href="{{ url_for('edit_balance_item', type='pension', id=item.id) }}"
+                                    class="btn btn-sm btn-info" style="color: white;" title="Editar"><i
+                                        class="fas fa-edit"></i></a>
+                                <a href="{{ url_for('delete_balance_item', type='pension', id=item.id) }}"
+                                    class="btn btn-sm btn-danger"
+                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir"><i
+                                        class="fas fa-trash"></i></a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -306,14 +304,14 @@
                             <td>{{ item.name }}</td>
                             <td>$ {{ "%.2f"|format(item.value_usd) }}</td>
                             <td>R$ {{ item.rate_usd }}</td>
-                            <td>
-                                <div style="display: flex; gap: 5px;">
-                                    <a href="{{ url_for('edit_balance_item', type='intl', id=item.id) }}"
-                                        class="text-info" title="Editar"><i class="fas fa-edit"></i></a>
-                                    <a href="{{ url_for('delete_balance_item', type='intl', id=item.id) }}"
-                                        class="text-danger" onclick="return confirm('Confirma a exclusão deste item?')"
-                                        title="Excluir"><i class="fas fa-trash"></i></a>
-                                </div>
+                            <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                                <a href="{{ url_for('edit_balance_item', type='intl', id=item.id) }}"
+                                    class="btn btn-sm btn-info" style="color: white;" title="Editar"><i
+                                        class="fas fa-edit"></i></a>
+                                <a href="{{ url_for('delete_balance_item', type='intl', id=item.id) }}"
+                                    class="btn btn-sm btn-danger"
+                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir"><i
+                                        class="fas fa-trash"></i></a>
                             </td>
                         </tr>
                         {% endfor %}

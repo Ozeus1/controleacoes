@@ -137,6 +137,7 @@
                 <table class="table table-dark table-striped mb-0">
                     <thead>
                         <tr>
+                            <th>Tipo</th>
                             <th>Banco</th>
                             <th>Fundo/Descrição</th>
                             <th>Valor</th>
@@ -148,9 +149,10 @@
                     <tbody>
                         {% for item in rf_ipca %}
                         <tr>
+                            <td>{{ item.product_type or '-' }}</td>
                             <td>{{ item.institution }}</td>
                             <td>{{ item.name }}</td>
-                            <td>R$ {{ "%.2f"|format(item.value) }}</td>
+                            <td>R$ {{ item.value | brl_fmt }}</td>
                             <td>{{ item.rate }}</td>
                             <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
@@ -568,6 +570,20 @@
                         data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+                    <input type="hidden" name="category" value="IPCA">
+                    <div class="mb-3">
+                        <label>Tipo</label>
+                        <select name="product_type" class="form-control mb-2">
+                            <option value="CDB">CDB</option>
+                            <option value="LCI">LCI</option>
+                            <option value="LCA">LCA</option>
+                            <option value="CRI">CRI</option>
+                            <option value="CRA">CRA</option>
+                            <option value="Tesouro">Tesouro</option>
+                            <option value="RDB">RDB</option>
+                            <option value="Outros">Outros</option>
+                        </select>
+                    </div>
                     <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
                             required></div>
                     <div class="mb-3"><label>Fundo</label><input type="text" name="name" class="form-control" required>

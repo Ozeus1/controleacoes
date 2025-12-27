@@ -935,8 +935,6 @@ def balanceamento():
 
     return render_template('balanceamento.html', 
                            rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,
-    return render_template('balanceamento.html', 
-                           rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,
                            funds=funds, cryptos=cryptos, pensions=pensions, 
                            intls_rv=intls_rv, intls_rf=intls_rf,
                            summary=summary, types_total=types_total, total_portfolio=total_portfolio)

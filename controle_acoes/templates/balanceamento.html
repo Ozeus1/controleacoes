@@ -581,7 +581,13 @@
                         {% endif %}
                         <td>{{ term }}</td>
                         <td>R$ {{ val | brl_fmt }}</td>
-                        <td>{{ (val / types_total[category] * 100) | brl_fmt }}%</td>
+                        <td>
+                            {% if types_total[category] > 0 %}
+                            {{ (val / types_total[category] * 100) | brl_fmt }}%
+                            {% else %}
+                            0,00%
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                     <!-- Subtotal Row -->

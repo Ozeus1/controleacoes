@@ -976,20 +976,32 @@ def balanceamento():
     # Filter breakdown to remove 0 values (Simpler for Template Rowspan)
     clean_breakdown = {}
     for cat, terms in maturity_breakdown.items():
-        if cat == 'Fundos':
-            # User request: Always show terms for Fundos
-            clean_breakdown[cat] = terms
-        else:
-            clean_terms = {k: v for k, v in terms.items() if v > 0.01}
-            if clean_terms:
-                clean_breakdown[cat] = clean_terms
+        clean_terms = {k: v for k, v in terms.items() if v > 0.01}
+        if clean_terms:
+            clean_breakdown[cat] = clean_terms
+
+    # Prepare Data for New Pie Charts (RF by Term, RF by Type)
+    # 1. RF by Term (Aggregate from clean_breakdown)
+    rf_chart_term = {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0}
+    for cat, terms in clean_breakdown.items():
+        for term, val in terms.items():
+            if term in rf_chart_term:
+                rf_chart_term[term] += val
+
+    # 2. RF by Type (Aggregate Category Totals from clean_breakdown)
+    rf_chart_type = {cat: sum(terms.values()) for cat, terms in clean_breakdown.items()}
+
+    # 3. Total for the Table Footer
+    total_rf_detailed = sum(rf_chart_type.values())
 
     return render_template('balanceamento.html', 
                            rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,
                            funds=funds, cryptos=cryptos, pensions=pensions, 
                            intls_rv=intls_rv, intls_rf=intls_rf,
                            summary=summary, types_total=types_total, total_portfolio=total_portfolio,
-                           maturity_breakdown=clean_breakdown)
+                           maturity_breakdown=clean_breakdown,
+                           rf_chart_term=rf_chart_term, rf_chart_type=rf_chart_type,
+                           total_rf_detailed=total_rf_detailed)
 
 @app.route('/balanceamento/add/rf', methods=['POST'])
 @login_required

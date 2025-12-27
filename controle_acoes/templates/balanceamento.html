@@ -539,9 +539,33 @@
                         <td>100,00%</td>
                     </tr>
                     {% endfor %}
+                    <!-- GRAND TOTAL ROW -->
+                    <tr class="bg-secondary" style="font-weight: bold; border-top: 2px solid white;">
+                        <td colspan="2">TOTAL GERAL RENDA FIXA</td>
+                        <td>R$ {{ total_rf_detailed | brl_fmt }}</td>
+                        <td>100,00%</td>
+                    </tr>
                 </tbody>
             </table>
         </div>
+
+        <!-- NEW RF CHARTS ROW -->
+        <h5 class="text-white mt-4 mb-2">Gráficos Renda Fixa</h5>
+        <div class="row mb-3">
+            <div class="col-md-6 d-flex flex-column align-items-center">
+                <h6 class="text-white">Por Prazo</h6>
+                <div style="max-width: 400px; width: 100%;">
+                    <canvas id="rfTermChart"></canvas>
+                </div>
+            </div>
+            <div class="col-md-6 d-flex flex-column align-items-center">
+                <h6 class="text-white">Por Tipo (Categoria)</h6>
+                <div style="max-width: 400px; width: 100%;">
+                    <canvas id="rfTypeChart"></canvas>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <!-- Type Summary with Chart -->
@@ -657,6 +681,56 @@
             datasets: [{
                 data: classData,
                 backgroundColor: classColors,
+                borderWidth: 1,
+                borderColor: '#1e293b'
+            }]
+        },
+        options: commonOptions
+    });
+
+    // --- RF TERM CHART ---
+    const ctxRfTerm = document.getElementById('rfTermChart').getContext('2d');
+    const rfTermLabels = [];
+    const rfTermData = [];
+    {% for k, v in rf_chart_term.items() %}
+    {% if v > 0 %}
+    rfTermLabels.push('{{ k }}');
+    rfTermData.push({{ v }});
+    {% endif %}
+    {% endfor %}
+
+    new Chart(ctxRfTerm, {
+        type: 'pie',
+        data: {
+            labels: rfTermLabels,
+            datasets: [{
+                data: rfTermData,
+                backgroundColor: ['#ef4444', '#f59e0b', '#10b981', '#6366f1'], // Red, Orange, Green, Indigo for terms
+                borderWidth: 1,
+                borderColor: '#1e293b'
+            }]
+        },
+        options: commonOptions
+    });
+
+    // --- RF TYPE CHART ---
+    const ctxRfType = document.getElementById('rfTypeChart').getContext('2d');
+    const rfTypeLabels = [];
+    const rfTypeData = [];
+    {% for k, v in rf_chart_type.items() %}
+    {% if v > 0 %}
+    rfTypeLabels.push('{{ k }}');
+    rfTypeData.push({{ v }});
+    {% endif %}
+    {% endfor %}
+
+    new Chart(ctxRfType, {
+        type: 'pie',
+        data: {
+            labels: rfTypeLabels,
+            datasets: [{
+                data: rfTypeData,
+                backgroundColor: ['#3b82f6', '#f43f5e', '#8b5cf6', '#06b6d4'], // Different palette
                 borderWidth: 1,
                 borderColor: '#1e293b'
             }]

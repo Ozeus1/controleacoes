@@ -18,12 +18,15 @@ def parse_date(s):
 
 def run():
     with app.app_context():
-        # Clear existing? Maybe not, just append.
-        # FixedIncome.query.delete()
-        # InvestmentFund.query.delete()
-        # Crypto.query.delete()
-        # Pension.query.delete()
-        # International.query.delete()
+        # Clear existing data before populating
+        print("Clearing existing data...")
+        db.session.query(FixedIncome).delete()
+        db.session.query(InvestmentFund).delete()
+        db.session.query(Crypto).delete()
+        db.session.query(Pension).delete()
+        db.session.query(International).delete()
+        db.session.commit()
+        print("Data cleared. Inserting new data...")
         
         # Renda Fixa Pós
         rf_pos_data = [
@@ -50,17 +53,17 @@ def run():
 
         # Renda Fixa Pré
         rf_pre_data = [
-            ('NUBANK', 'Nu CDB banco C6', 'R$ 4.673,32', '12%', '11/05/2026'),
-            ('C6', 'C6 CDB 4 anos', 'R$ 8.854,90', '13%', '09/05/2028'),
-            ('C6', 'C6 CDB 4 anos', 'R$ 1.045,86', '12%', '15/02/2028'),
-            ('C6', 'C6 CDB 4 anos', 'R$ 8.533,73', '12%', '14/12/2027'),
-            ('EQI', 'EQI CRA MINERVA', 'R$ 22.212,17', '14%', '15/09/2028'),
-            ('EQI', 'EQI CRA FS FLORESTAL', 'R$ 2.168,91', '15%', '15/03/2030'),
-            ('EQI', 'EQI CRA MINERVA', 'R$ 2.220,60', '14%', '16/04/2035'),
-            ('EQI', 'LCA BTG', 'R$ 1.027,45', '13%', '02/07/2026'),
-            ('EQI', 'LCA BTG', 'R$ 1.029,18', '13%', '28/09/2026'),
-            ('EQI', 'LCA BTG', 'R$ 5.136,02', '13%', '02/10/2026'),
-            ('EQI', 'LCA ORIGINAL', 'R$ 1.004,52', '12%', '11/12/2028'),
+            ('NUBANK', 'Nu CDB banco C6', 'R$ 4.673,32', '11,70%', '11/05/2026'),
+            ('C6', 'C6 CDB 4 anos', 'R$ 8.854,90', '12,95%', '09/05/2028'),
+            ('C6', 'C6 CDB 4 anos', 'R$ 1.045,86', '12,20%', '15/02/2028'),
+            ('C6', 'C6 CDB 4 anos', 'R$ 8.533,73', '12,05%', '14/12/2027'),
+            ('EQI', 'EQI CRA MINERVA', 'R$ 22.212,17', '14,20%', '15/09/2028'),
+            ('EQI', 'EQI CRA FS FLORESTAL', 'R$ 2.168,91', '14,86%', '15/03/2030'),
+            ('EQI', 'EQI CRA MINERVA', 'R$ 2.220,60', '14,00%', '16/04/2035'),
+            ('EQI', 'LCA BTG', 'R$ 1.027,45', '12,72%', '02/07/2026'),
+            ('EQI', 'LCA BTG', 'R$ 1.029,18', '12,62%', '28/09/2026'),
+            ('EQI', 'LCA BTG', 'R$ 5.136,02', '12,60%', '02/10/2026'),
+            ('EQI', 'LCA ORIGINAL', 'R$ 1.004,52', '12,04%', '11/12/2028'),
         ]
         
         for inst, name, val, rate, mat in rf_pre_data:

@@ -55,7 +55,9 @@
                             <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
                             <td>
                                 <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
-                                    class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></a>
+                                    class="btn btn-sm btn-danger"
+                                    onclick="return confirm('Confirma a exclusão deste item?')"><i
+                                        class="fas fa-trash"></i></a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -93,7 +95,9 @@
                             <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
                             <td>
                                 <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
-                                    class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></a>
+                                    class="btn btn-sm btn-danger"
+                                    onclick="return confirm('Confirma a exclusão deste item?')"><i
+                                        class="fas fa-trash"></i></a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -129,7 +133,9 @@
                             <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
                             <td>
                                 <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
-                                    class="btn btn-sm btn-danger"><i class="fas fa-trash"></i></a>
+                                    class="btn btn-sm btn-danger"
+                                    onclick="return confirm('Confirma a exclusão deste item?')"><i
+                                        class="fas fa-trash"></i></a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -167,7 +173,8 @@
                             <td>{{ item.indexer }}</td>
                             <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
                             <td><a href="{{ url_for('delete_balance_item', type='fund', id=item.id) }}"
-                                    class="text-danger"><i class="fas fa-trash"></i></a></td>
+                                    class="text-danger" onclick="return confirm('Confirma a exclusão deste item?')"><i
+                                        class="fas fa-trash"></i></a></td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -199,7 +206,8 @@
                             <td>{{ item.quantity }}</td>
                             <td>R$ {{ "%.2f"|format(item.current_value) }}</td>
                             <td><a href="{{ url_for('delete_balance_item', type='crypto', id=item.id) }}"
-                                    class="text-danger"><i class="fas fa-trash"></i></a></td>
+                                    class="text-danger" onclick="return confirm('Confirma a exclusão deste item?')"><i
+                                        class="fas fa-trash"></i></a></td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -233,7 +241,8 @@
                             <td>{{ item.type }}</td>
                             <td>R$ {{ "%.2f"|format(item.value) }}</td>
                             <td><a href="{{ url_for('delete_balance_item', type='pension', id=item.id) }}"
-                                    class="text-danger"><i class="fas fa-trash"></i></a></td>
+                                    class="text-danger" onclick="return confirm('Confirma a exclusão deste item?')"><i
+                                        class="fas fa-trash"></i></a></td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -265,7 +274,8 @@
                             <td>$ {{ "%.2f"|format(item.value_usd) }}</td>
                             <td>R$ {{ item.rate_usd }}</td>
                             <td><a href="{{ url_for('delete_balance_item', type='intl', id=item.id) }}"
-                                    class="text-danger"><i class="fas fa-trash"></i></a></td>
+                                    class="text-danger" onclick="return confirm('Confirma a exclusão deste item?')"><i
+                                        class="fas fa-trash"></i></a></td>
                         </tr>
                         {% endfor %}
                     </tbody>

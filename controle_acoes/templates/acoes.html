@@ -52,14 +52,16 @@
                 <td class="{{ 'positive' if item.day_gain >= 0 else 'negative' }}">
                     R$ {{ "%.2f"|format(item.day_gain)|replace('.', ',') }}
                 </td>
-                <td class="actions">
+                <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                     <a href="{{ url_for('buy_asset', id=item.asset.id) }}" class="btn btn-sm"
                         style="background:var(--success-color); color: white;" title="Registrar Nova Compra">➕</a>
                     <a href="{{ url_for('exit_trade', id=item.asset.id) }}" class="btn btn-sm"
                         style="background:var(--accent-color); color: white;" title="Registrar Venda/Saída">🛑</a>
-                    <a href="{{ url_for('edit_asset', id=item.asset.id) }}" class="btn btn-sm btn-primary">✏️</a>
+                    <a href="{{ url_for('edit_asset', id=item.asset.id) }}" class="btn btn-sm btn-info"
+                        style="color: white;" title="Editar">✏️</a>
                     <a href="{{ url_for('delete_asset', id=item.asset.id) }}" class="btn btn-sm btn-danger"
-                        onclick="return confirm('Apagar?')">🗑️</a>
+                        onclick="return confirm('ATENÇÃO: Tem certeza absoluta que deseja excluir este ativo? Esta ação não pode ser desfeita.')"
+                        title="Excluir">🗑️</a>
                 </td>
             </tr>
             {% endfor %}

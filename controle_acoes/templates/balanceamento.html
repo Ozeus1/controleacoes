@@ -456,9 +456,6 @@
     </div>
 </div>
 
-<!-- Chart.js DataLabels Plugin -->
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
-
 <style>
     /* Force Center Alignment */
     .table-center-forced th,
@@ -585,30 +582,34 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         // Register DataLabels
         Chart.register(ChartDataLabels);
 
-        // Common Option for DataLabels
+        // ... (commonOptions definition logic remains same, just ensuring script tag is there) ...
         const commonOptions = {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
                 legend: { position: 'right', labels: { color: 'white', font: { size: 12 } } },
+
+                // DATA LABELS CONFIGURATION
                 datalabels: {
                     color: '#fff',
                     font: { weight: 'bold', size: 14 },
-                    formatter: (value, ctx) => {
-                        let sum = 0;
-                        let dataArr = ctx.chart.data.datasets[0].data;
-                        dataArr.map(data => { sum += data; });
-                        let percentage = (value * 100 / sum).toFixed(1) + "%";
+                    formatter: function (value, ctx) {
+                        var sum = 0;
+                        var dataArr = ctx.chart.data.datasets[0].data;
+                        dataArr.map(function (data) {
+                            sum += data;
+                        });
+                        var percentage = (value * 100 / sum).toFixed(1) + "%";
                         return percentage;
                     },
-                    anchor: 'end',
-                    align: 'start',
-                    offset: -10
+                    anchor: 'center', // Put it inside
+                    align: 'center'
                 }
             },
             layout: { padding: 20 }
@@ -617,7 +618,7 @@
         // --- TYPE CHART ---
         const ctxType = document.getElementById('typeChart').getContext('2d');
         new Chart(ctxType, {
-            type: 'pie', // Pie chart is usually good, 'doughnut' is also popular. User said "increase circle size", pie is full circle.
+            type: 'pie',
             data: {
                 labels: ['Renda Fixa', 'Renda Variável'],
                 datasets: [{

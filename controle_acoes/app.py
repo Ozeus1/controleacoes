@@ -861,8 +861,13 @@ def balanceamento():
     funds = InvestmentFund.query.all()
     cryptos = Crypto.query.all()
     pensions = Pension.query.all()
-    intls_rv = International.query.filter((International.category == 'RV') | (International.category == None)).all()
-    intls_rf = International.query.filter(International.category == 'RF').all()
+    
+    try:
+        intls_rv = International.query.filter((International.category == 'RV') | (International.category == None)).all()
+        intls_rf = International.query.filter(International.category == 'RF').all()
+    except Exception:
+        # If column missing, redirect to fix
+        return redirect(url_for('fix_db'))
     
     # 2. Existing Assets (Stocks/FIIs)
     assets = Asset.query.all()

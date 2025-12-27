@@ -40,29 +40,61 @@
         </div>
     </div>
 
-    <!-- Charts Row 1 -->
-    <div
-        style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-        <div class="card" style="padding: 1.5rem;">
-            <h3 style="text-align: center; font-size: 1rem; margin-bottom: 1rem;">Alocação (Ações vs FIIs)</h3>
-            <canvas id="allocationChart"></canvas>
-        </div>
-        <div class="card" style="padding: 1.5rem;">
-            <h3 style="text-align: center; font-size: 1rem; margin-bottom: 1rem;">Setores de Ações</h3>
-            <canvas id="stockChart"></canvas>
-        </div>
-        <div class="card" style="padding: 1.5rem;">
-            <h3 style="text-align: center; font-size: 1rem; margin-bottom: 1rem;">Tipos de FIIs</h3>
-            <canvas id="fiiChart"></canvas>
+    <!-- Charts Stacked -->
+
+    <!-- 1. Alocação (Ações vs FIIs) -->
+    <div class="row justify-content-center mb-4">
+        <div class="col-12 col-md-8 text-center">
+            <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
+                <h3 style="font-size: 1.2rem; margin-bottom: 1rem;">Alocação (Ações vs FIIs)</h3>
+                <div style="max-width: 500px; width: 100%;">
+                    <canvas id="allocationChart"></canvas>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- FII Details Section -->
-    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
-        <!-- Detailed Table -->
-        <div class="card" style="padding: 1.5rem;">
-            <h3 style="font-size: 1rem; margin-bottom: 1rem;">Detalhamento de FIIs</h3>
-            <table>
+    <!-- 2. Setores de Ações -->
+    <div class="row justify-content-center mb-4">
+        <div class="col-12 col-md-8 text-center">
+            <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
+                <h3 style="font-size: 1.2rem; margin-bottom: 1rem;">Setores de Ações</h3>
+                <div style="max-width: 500px; width: 100%;">
+                    <canvas id="stockChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. Tipos de FIIs -->
+    <div class="row justify-content-center mb-4">
+        <div class="col-12 col-md-8 text-center">
+            <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
+                <h3 style="font-size: 1.2rem; margin-bottom: 1rem;">Tipos de FIIs</h3>
+                <div style="max-width: 500px; width: 100%;">
+                    <canvas id="fiiChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. Divisão (Tijolo x Papel) -->
+    <div class="row justify-content-center mb-4">
+        <div class="col-12 col-md-8 text-center">
+            <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
+                <h3 style="font-size: 1.2rem; margin-bottom: 1rem;">Divisão (Tijolo x Papel)</h3>
+                <div style="max-width: 500px; width: 100%;">
+                    <canvas id="broadChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FII Details Table -->
+    <div class="card mb-4" style="padding: 1.5rem;">
+        <h3 style="font-size: 1rem; margin-bottom: 1rem;">Detalhamento de FIIs</h3>
+        <div class="table-responsive">
+            <table class="table table-dark table-striped text-center">
                 <thead>
                     <tr>
                         <th>Classificação</th>
@@ -96,12 +128,6 @@
                 </tfoot>
             </table>
         </div>
-
-        <!-- Broad Allocation Chart -->
-        <div class="card" style="padding: 1.5rem;">
-            <h3 style="text-align: center; font-size: 1rem; margin-bottom: 1rem;">Divisão (Tijolo x Papel)</h3>
-            <canvas id="broadChart"></canvas>
-        </div>
     </div>
 
     <!-- Charts Row 2 -->
@@ -114,70 +140,70 @@
 
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
 <script>
-    // Common Tooltip Callback for Percentage
-    const pctTooltip = {
-        callbacks: {
-            label: function (context) {
-                let label = context.label || '';
-                if (label) {
-                    label += ': ';
+    document.addEventListener('DOMContentLoaded', function () {
+        // Register DataLabels
+        Chart.register(ChartDataLabels);
+
+        // Common Option for DataLabels (Same as Balanceamento)
+        const commonOptions = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'right', labels: { color: 'white', font: { size: 12 } } },
+                datalabels: {
+                    color: '#fff',
+                    font: { weight: 'bold', size: 14 },
+                    formatter: function (value, ctx) {
+                        var sum = 0;
+                        var dataArr = ctx.chart.data.datasets[0].data;
+                        dataArr.map(function (data) {
+                            sum += data;
+                        });
+                        var percentage = (value * 100 / sum).toFixed(1) + "%";
+                        return percentage;
+                    },
+                    anchor: 'center',
+                    align: 'center'
                 }
-                let value = context.parsed;
-                let total = context.dataset.data.reduce((a, b) => a + b, 0);
-                let pct = total > 0 ? (value / total * 100).toFixed(1) + '%' : '0%';
+            },
+            layout: { padding: 20 }
+        };
 
-                // Format Value
-                let formattedValue = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+        // 1. Broad Allocation Chart
+        const ctxBroad = document.getElementById('broadChart').getContext('2d');
+        new Chart(ctxBroad, {
+            type: 'pie',
+            data: {
+                labels: ['Tijolo', 'Papel'],
+                datasets: [{
+                    data: [{{ broad_allocation['Tijolo'] }}, {{ broad_allocation['Papel'] }}],
+            backgroundColor: ['#3b82f6', '#f97316'],
+            borderWidth: 1,
+            borderColor: '#1e293b'
+        }]
+            },
+        options: commonOptions
+        });
 
-                return `${label}${formattedValue} (${pct})`;
-            }
-        }
-    };
-
-    // Broad Allocation Chart
-    const ctxBroad = document.getElementById('broadChart').getContext('2d');
-    new Chart(ctxBroad, {
-        type: 'pie',
-        data: {
-            labels: ['Tijolo', 'Papel'],
-            datasets: [{
-                data: [{{ broad_allocation['Tijolo'] }}, {{ broad_allocation['Papel'] }}],
-        backgroundColor: ['#3b82f6', '#f97316'],
-        borderWidth: 0
-    }]
-        },
-        options: {
-        responsive: true,
-        plugins: {
-            legend: { position: 'bottom' },
-            tooltip: pctTooltip
-        }
-    }
-    });
-
-    // Allocation Chart
+    // 2. Allocation Chart (Converted to Pie for Consistency)
     const ctxAlloc = document.getElementById('allocationChart').getContext('2d');
     new Chart(ctxAlloc, {
-        type: 'doughnut',
+        type: 'pie', // Changed from doughnut to pie per request (all pizzas same style)
         data: {
             labels: ['Ações', 'FIIs'],
             datasets: [{
                 data: [{{ total_acoes }}, {{ total_fiis }}],
         backgroundColor: ['#6366f1', '#10b981'],
-        borderWidth: 0
+        borderWidth: 1,
+        borderColor: '#1e293b'
     }]
-        },
-        options: {
-        responsive: true,
-        plugins: {
-            legend: { position: 'bottom' },
-            tooltip: pctTooltip
-        }
-    }
-    });
+            },
+        options: commonOptions
+        });
 
-    // FII Chart
+    // 3. FII Chart
     const fiiLabels = {{ fii_types.keys() | list | tojson }};
     const fiiValues = {{ fii_types.values() | list | tojson }};
     const ctxFii = document.getElementById('fiiChart').getContext('2d');
@@ -190,19 +216,14 @@
                 backgroundColor: [
                     '#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#64748b', '#06b6d4'
                 ],
-                borderWidth: 0
+                borderWidth: 1,
+                borderColor: '#1e293b'
             }]
         },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { position: 'bottom' },
-                tooltip: pctTooltip
-            }
-        }
+        options: commonOptions
     });
 
-    // Stock Sector Chart
+    // 4. Stock Sector Chart
     const stockLabels = {{ stock_sectors.keys() | list | tojson }};
     const stockValues = {{ stock_sectors.values() | list | tojson }};
     const ctxStock = document.getElementById('stockChart').getContext('2d');
@@ -215,19 +236,15 @@
                 backgroundColor: [
                     '#8b5cf6', '#ec4899', '#f97316', '#14b8a6', '#f43f5e', '#6366f1', '#84cc16', '#a855f7', '#0ea5e9', '#eab308', '#64748b'
                 ],
-                borderWidth: 0
+                borderWidth: 1,
+                borderColor: '#1e293b'
             }]
         },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { position: 'bottom' },
-                tooltip: pctTooltip
-            }
-        }
+        options: commonOptions
     });
 
-    // Profit Chart (No % needed, but currency format)
+    // 5. Profit Chart (Bar) - Disable DataLabels for clarity or keep custom
+    // For Bar chart, we might not want the pie formatting logic.
     const monthLabels = {{ months| tojson }};
     const profitData = {{ profits| tojson }};
     const ctxProfit = document.getElementById('profitChart').getContext('2d');
@@ -244,8 +261,10 @@
         },
         options: {
             responsive: true,
-            scales: { y: { beginAtZero: true } },
+            scales: { y: { beginAtZero: true, ticks: { color: 'white' } }, x: { ticks: { color: 'white' } } },
             plugins: {
+                legend: { display: false },
+                datalabels: { display: false }, // Disable datalabels for this bar chart
                 tooltip: {
                     callbacks: {
                         label: function (context) {
@@ -256,6 +275,7 @@
                 }
             }
         }
+    });
     });
 </script>
 {% endblock %}

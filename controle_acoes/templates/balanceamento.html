@@ -32,11 +32,18 @@
     <!-- POS FIXADA -->
     <div class="col-12 mb-4">
         <div class="card bg-dark text-white border-primary">
-            <div class="card-header bg-primary text-white font-weight-bold">Renda Fixa Pós-Fixada</div>
+            <div
+                class="card-header bg-primary text-white font-weight-bold d-flex justify-content-between align-items-center">
+                <span>Renda Fixa Pós-Fixada</span>
+                <button class="btn btn-sm btn-light text-primary" data-bs-toggle="modal" data-bs-target="#modalRFC">
+                    <i class="fas fa-plus"></i> Adicionar
+                </button>
+            </div>
             <div class="card-body p-0 table-responsive">
                 <table class="table table-dark table-striped mb-0">
                     <thead>
                         <tr>
+                            <th>Tipo</th>
                             <th>Banco</th>
                             <th>Fundo/Descrição</th>
                             <th>Valor</th>
@@ -48,9 +55,10 @@
                     <tbody>
                         {% for item in rf_pos %}
                         <tr>
+                            <td>{{ item.product_type or '-' }}</td>
                             <td>{{ item.institution }}</td>
                             <td>{{ item.name }}</td>
-                            <td>R$ {{ "%.2f"|format(item.value) }}</td>
+                            <td>R$ {{ item.value | brl_fmt }}</td>
                             <td>{{ item.rate }}</td>
                             <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
@@ -71,7 +79,13 @@
     <!-- PRE FIXADA -->
     <div class="col-12 mb-4">
         <div class="card bg-dark text-white border-warning">
-            <div class="card-header bg-warning text-dark font-weight-bold">Renda Fixa Pré-Fixada</div>
+            <div
+                class="card-header bg-warning text-dark font-weight-bold d-flex justify-content-between align-items-center">
+                <span>Renda Fixa Pré-Fixada</span>
+                <button class="btn btn-sm btn-dark text-warning" data-bs-toggle="modal" data-bs-target="#modalRFP">
+                    <i class="fas fa-plus"></i> Adicionar
+                </button>
+            </div>
             <div class="card-body p-0 table-responsive">
                 <table class="table table-dark table-striped mb-0">
                     <thead>
@@ -91,7 +105,7 @@
                             <td>{{ item.product_type }}</td>
                             <td>{{ item.institution }}</td>
                             <td>{{ item.name }}</td>
-                            <td>R$ {{ "%.2f"|format(item.value) }}</td>
+                            <td>R$ {{ item.value | brl_fmt }}</td>
                             <td>{{ item.rate }}</td>
                             <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
@@ -112,7 +126,13 @@
     <!-- IPCA -->
     <div class="col-12 mb-4">
         <div class="card bg-dark text-white border-danger">
-            <div class="card-header bg-danger text-white font-weight-bold">Renda Fixa Inflação (IPCA)</div>
+            <div
+                class="card-header bg-danger text-white font-weight-bold d-flex justify-content-between align-items-center">
+                <span>Renda Fixa Inflação (IPCA)</span>
+                <button class="btn btn-sm btn-light text-danger" data-bs-toggle="modal" data-bs-target="#modalRFI">
+                    <i class="fas fa-plus"></i> Adicionar
+                </button>
+            </div>
             <div class="card-body p-0 table-responsive">
                 <table class="table table-dark table-striped mb-0">
                     <thead>
@@ -154,7 +174,13 @@
     <!-- FUNDOS -->
     <div class="col-md-6 mb-4">
         <div class="card bg-dark text-white border-info">
-            <div class="card-header bg-info text-white font-weight-bold">Fundos de Investimento</div>
+            <div
+                class="card-header bg-info text-white font-weight-bold d-flex justify-content-between align-items-center">
+                <span>Fundos de Investimento</span>
+                <button class="btn btn-sm btn-light text-info" data-bs-toggle="modal" data-bs-target="#modalFund">
+                    <i class="fas fa-plus"></i> Adicionar
+                </button>
+            </div>
             <div class="card-body p-0 table-responsive">
                 <table class="table table-dark table-striped mb-0">
                     <thead>
@@ -172,7 +198,7 @@
                         <tr>
                             <td>{{ item.institution }}</td>
                             <td>{{ item.name }}</td>
-                            <td>R$ {{ "%.2f"|format(item.value) }}</td>
+                            <td>R$ {{ item.value | brl_fmt }}</td>
                             <td>{{ item.indexer }}</td>
                             <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
@@ -193,7 +219,12 @@
     <!-- CRIPTO -->
     <div class="col-md-6 mb-4">
         <div class="card bg-dark text-white border-secondary">
-            <div class="card-header font-weight-bold">Criptoativos</div>
+            <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
+                <span>Criptoativos</span>
+                <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalCrypto">
+                    <i class="fas fa-plus"></i> Adicionar
+                </button>
+            </div>
             <div class="card-body p-0 table-responsive">
                 <table class="table table-dark table-striped mb-0">
                     <thead>
@@ -210,8 +241,8 @@
                         <tr>
                             <td>{{ item.institution }}</td>
                             <td>{{ item.name }}</td>
-                            <td>{{ item.quantity }}</td>
-                            <td>R$ {{ "%.2f"|format(item.current_value) }}</td>
+                            <td>{{ item.quantity | brl_fmt }}</td>
+                            <td>R$ {{ item.current_value | brl_fmt }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='crypto', id=item.id) }}"
                                     class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
@@ -232,7 +263,13 @@
     <!-- PREVIDENCIA -->
     <div class="col-md-6 mb-4">
         <div class="card bg-dark text-white border-success">
-            <div class="card-header bg-success text-white font-weight-bold">Previdência</div>
+            <div
+                class="card-header bg-success text-white font-weight-bold d-flex justify-content-between align-items-center">
+                <span>Previdência</span>
+                <button class="btn btn-sm btn-light text-success" data-bs-toggle="modal" data-bs-target="#modalPension">
+                    <i class="fas fa-plus"></i> Adicionar
+                </button>
+            </div>
             <div class="card-body p-0 table-responsive">
                 <table class="table table-dark table-striped mb-0">
                     <thead>
@@ -250,7 +287,7 @@
                             <td>{{ item.institution }}</td>
                             <td>{{ item.name }}</td>
                             <td>{{ item.type }}</td>
-                            <td>R$ {{ "%.2f"|format(item.value) }}</td>
+                            <td>R$ {{ item.value | brl_fmt }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='pension', id=item.id) }}"
                                     class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
@@ -269,7 +306,12 @@
     <!-- INTERNACIONAL -->
     <div class="col-md-6 mb-4">
         <div class="card bg-dark text-white border-secondary">
-            <div class="card-header font-weight-bold">Internacional</div>
+            <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
+                <span>Internacional</span>
+                <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalIntl">
+                    <i class="fas fa-plus"></i> Adicionar
+                </button>
+            </div>
             <div class="card-body p-0 table-responsive">
                 <table class="table table-dark table-striped mb-0">
                     <thead>
@@ -286,8 +328,8 @@
                         <tr>
                             <td>{{ item.institution }}</td>
                             <td>{{ item.name }}</td>
-                            <td>$ {{ "%.2f"|format(item.value_usd) }}</td>
-                            <td>R$ {{ item.rate_usd }}</td>
+                            <td>$ {{ item.value_usd | brl_fmt }}</td>
+                            <td>R$ {{ item.rate_usd | brl_fmt }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='intl', id=item.id) }}"
                                     class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
@@ -324,13 +366,13 @@
                 {% for k, v in types_total.items() %}
                 <tr>
                     <td>{{ k }}</td>
-                    <td>R$ {{ "%.2f"|format(v) }}</td>
-                    <td>{{ "%.2f"|format(v / total_portfolio * 100) if total_portfolio > 0 else 0 }}%</td>
+                    <td>R$ {{ v | brl_fmt }}</td>
+                    <td>{{ (v / total_portfolio * 100) | brl_fmt }}%</td>
                 </tr>
                 {% endfor %}
                 <tr class="bg-secondary font-weight-bold">
                     <td>TOTAL</td>
-                    <td>R$ {{ "%.2f"|format(total_portfolio) }}</td>
+                    <td>R$ {{ total_portfolio | brl_fmt }}</td>
                     <td>100%</td>
                 </tr>
             </tbody>
@@ -404,6 +446,19 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" name="category" value="POS">
+                    <div class="mb-3">
+                        <label>Tipo</label>
+                        <select name="product_type" class="form-control mb-2">
+                            <option value="CDB">CDB</option>
+                            <option value="LCI">LCI</option>
+                            <option value="LCA">LCA</option>
+                            <option value="CRI">CRI</option>
+                            <option value="CRA">CRA</option>
+                            <option value="Tesouro">Tesouro</option>
+                            <option value="RDB">RDB</option>
+                            <option value="Outros">Outros</option>
+                        </select>
+                    </div>
                     <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
                             required></div>
                     <div class="mb-3"><label>Fundo/Descrição</label><input type="text" name="name" class="form-control"
@@ -442,6 +497,7 @@
                             <option value="CRA">CRA</option>
                             <option value="Tesouro">Tesouro</option>
                             <option value="RDB">RDB</option>
+                            <option value="Outros">Outros</option>
                         </select>
                     </div>
                     <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
@@ -472,6 +528,19 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" name="category" value="IPCA">
+                    <div class="mb-3">
+                        <label>Tipo</label>
+                        <select name="product_type" class="form-control mb-2">
+                            <option value="CDB">CDB</option>
+                            <option value="LCI">LCI</option>
+                            <option value="LCA">LCA</option>
+                            <option value="CRI">CRI</option>
+                            <option value="CRA">CRA</option>
+                            <option value="Tesouro">Tesouro</option>
+                            <option value="RDB">RDB</option>
+                            <option value="Outros">Outros</option>
+                        </select>
+                    </div>
                     <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
                             required></div>
                     <div class="mb-3"><label>Descrição</label><input type="text" name="name" class="form-control"

@@ -37,11 +37,19 @@ if not os.path.exists(instance_path):
 db_path = os.path.join(instance_path, 'investments.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+def brl_fmt(value):
+    if value is None:
+        return ""
+    return "{:,.2f}".format(value).replace(",", "X").replace(".", ",").replace("X", ".")
+
+app.jinja_env.filters['brl_fmt'] = brl_fmt
 
 db.init_app(app)
 
-login_manager = LoginManager()
-login_manager.login_view = 'login'
 
 # --- Options Module Routes ---
 
@@ -195,7 +203,6 @@ def close_option(id):
     # Render a simple exit form for option
     return render_template('close_option.html', option=opt, today=date.today())
 
-login_manager.init_app(app)
 
 @login_manager.user_loader
 def load_user(user_id):

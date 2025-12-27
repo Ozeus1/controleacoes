@@ -14,7 +14,6 @@
                     <label>Categoria</label>
                     <input type="text" class="form-control" value="{{ item.category }}" disabled>
                 </div>
-                {% if item.category == 'PRE' %}
                 <div class="mb-3">
                     <label>Tipo</label>
                     <select name="product_type" class="form-control mb-2">
@@ -26,9 +25,9 @@
                         <option value="Tesouro" {% if item.product_type=='Tesouro' %}selected{% endif %}>Tesouro
                         </option>
                         <option value="RDB" {% if item.product_type=='RDB' %}selected{% endif %}>RDB</option>
+                        <option value="Outros" {% if item.product_type=='Outros' %}selected{% endif %}>Outros</option>
                     </select>
                 </div>
-                {% endif %}
                 <div class="mb-3">
                     <label>Instituição</label>
                     <input type="text" name="institution" class="form-control" value="{{ item.institution }}" required>

@@ -766,7 +766,7 @@ def add_history():
 def history():
     trades = TradeHistory.query.filter_by(user_id=current_user.id).order_by(TradeHistory.exit_date.desc()).all()
     
-    total_profit = sum(t.profit for t in trades if t.profit)
+    total_profit = sum(t.profit_value for t in trades if t.profit_value)
     
     return render_template('history.html', trades=trades, total_profit=total_profit)
 

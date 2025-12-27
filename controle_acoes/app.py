@@ -8,6 +8,7 @@ from flask_login import LoginManager, login_user, login_required, logout_user, c
 import time
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
+import yfinance as yf
 
 # Load env vars
 load_dotenv()

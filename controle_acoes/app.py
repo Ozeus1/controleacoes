@@ -384,8 +384,15 @@ def add_asset():
     if request.method == 'POST':
         ticker = request.form.get('ticker').upper()
         type_ = request.form.get('type')
-        qty = int(request.form.get('quantity'))
-        avg_price = float(request.form.get('avg_price').replace(',', '.'))
+        
+        try:
+            qty = int(request.form.get('quantity'))
+            avg_price_str = request.form.get('avg_price', '').replace(',', '.')
+            avg_price = float(avg_price_str) if avg_price_str else 0.0
+        except ValueError:
+            flash("Erro: Quantidade ou Preço inválido.")
+            return redirect(url_for('add_asset'))
+
         date_str = request.form.get('entry_date')
         
         # Check if exists
@@ -402,6 +409,20 @@ def add_asset():
             sector = request.form.get('sector')
             fii_type = request.form.get('fii_type')
             
+            # Fetch Initial Quote Data
+            current_price = 0.0
+            daily_change = 0.0
+            last_update = None
+            
+            try:
+                success, data = get_raw_quote_data(ticker)
+                if success and 'regularMarketPrice' in data:
+                     current_price = data['regularMarketPrice']
+                     daily_change = data.get('regularMarketChangePercent', 0.0)
+                     last_update = datetime.now()
+            except Exception as e:
+                print(f"Error fetching initial quote for {ticker}: {e}")
+            
             asset = Asset(
                 user_id=current_user.id,
                 ticker=ticker, 
@@ -410,7 +431,10 @@ def add_asset():
                 avg_price=avg_price,
                 entry_date=entry_date,
                 sector=sector,
-                fii_type=fii_type
+                fii_type=fii_type,
+                current_price=current_price,
+                daily_change=daily_change,
+                last_update=last_update
             )
             db.session.add(asset)
             flash(f'Ativo {ticker} adicionado!')

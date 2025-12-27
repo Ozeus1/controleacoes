@@ -984,9 +984,9 @@ def balanceamento():
     stock_assets = [a for a in assets if a.type == 'ACAO' and a.ticker != 'GOLD11']
     fii_assets = [a for a in assets if a.type == 'FII']
 
-    val_ouro = sum([a.quantity * (a.current_price if a.current_price > 0 else a.avg_price) for a in gold_assets])
-    val_acoes = sum([a.quantity * (a.current_price if a.current_price > 0 else a.avg_price) for a in stock_assets])
-    val_fiis = sum([a.quantity * (a.current_price if a.current_price > 0 else a.avg_price) for a in fii_assets])
+    val_ouro = sum([(a.quantity or 0) * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0)) for a in gold_assets])
+    val_acoes = sum([(a.quantity or 0) * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0)) for a in stock_assets])
+    val_fiis = sum([(a.quantity or 0) * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0)) for a in fii_assets])
     
     # 3. Aggregates & Classification
     summary = {
@@ -1013,7 +1013,14 @@ def balanceamento():
     def process_list(items, type_key, is_variable=False):
         total = 0
         for i in items:
-            val = i.value if hasattr(i, 'value') else (i.current_value if hasattr(i, 'current_value') else i.value_usd * (i.rate_usd or 1))
+            # Safe access to value or calculation
+            if hasattr(i, 'value'):
+                 val = i.value or 0
+            elif hasattr(i, 'current_value'):
+                 val = i.current_value or 0
+            else:
+                 val = (i.value_usd or 0) * (i.rate_usd or 1)
+            
             total += val
             
             # Maturity
@@ -1045,7 +1052,7 @@ def balanceamento():
     
     # Crypto
     # Crypto Model has current_value
-    t_crypto = sum([c.current_value for c in cryptos])
+    t_crypto = sum([(c.current_value or 0) for c in cryptos])
     types_total['Cripto'] = t_crypto
     summary['Renda Variável'] += t_crypto
     summary['Indefinido'] += t_crypto # Crypto has no maturity
@@ -1064,13 +1071,13 @@ def balanceamento():
     # International
     # International
     # RV
-    t_intl_rv = sum([i.value_usd * (i.rate_usd or 5.5) for i in intls_rv])
+    t_intl_rv = sum([(i.value_usd or 0) * (i.rate_usd or 5.5) for i in intls_rv])
     types_total['Internacional RV'] = t_intl_rv
     summary['Renda Variável'] += t_intl_rv
     summary['Indefinido'] += t_intl_rv
 
     # RF
-    t_intl_rf = sum([i.value_usd * (i.rate_usd or 5.5) for i in intls_rf])
+    t_intl_rf = sum([(i.value_usd or 0) * (i.rate_usd or 5.5) for i in intls_rf])
     types_total['Internacional RF'] = t_intl_rf
     summary['Renda Fixa'] += t_intl_rf
     summary['Longo Prazo'] += t_intl_rf # Assuming Bonds are long term
@@ -1110,7 +1117,7 @@ def balanceamento():
     # 5. Totals for Crypto Table
     # invested_value should match quantity * avg_price now, or use direct accumulation
     crypto_invested = sum([(c.quantity or 0) * (c.avg_price or 0) for c in cryptos])
-    crypto_current = sum([c.current_value for c in cryptos])
+    crypto_current = sum([(c.current_value or 0) for c in cryptos])
     crypto_profit = crypto_current - crypto_invested
 
     # 6. Location Breakdown (Brazil vs International)

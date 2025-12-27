@@ -48,20 +48,27 @@
                     <a href="{{ url_for('history') }}"
                         class="{{ 'active' if request.endpoint == 'history' else '' }}">Histórico</a>
 
-                    {% if current_user.is_admin %}
-                    <a href="{{ url_for('list_users') }}"
-                        class="{{ 'active' if 'users' in request.endpoint else '' }}">👥 Usuários</a>
-                    {% endif %}
+                    <div class="user-menu-container"
+                        style="display: flex; align-items: center; gap: 1rem; margin-left: auto;">
+                        <span style="color: var(--text-secondary); font-size: 0.9rem;">Bem vindo, <strong>{{
+                                current_user.username }}</strong></span>
 
-                    <a href="{{ url_for('config') }}"
-                        class="config-link {{ 'active' if request.endpoint == 'config' else '' }}">APIs</a>
-
-                    <a href="{{ url_for('profile') }}"
-                        class="{{ 'active' if request.endpoint == 'profile' else '' }}">👤 Perfil</a>
-
-                    <a href="{{ url_for('logout') }}"
-                        style="color: var(--danger-color); font-size: 0.9rem; border: 1px solid var(--border-color); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem;">Sair</a>
-                </nav>
+                        <div class="dropdown">
+                            <a href="#"
+                                class="dropdown-toggle {{ 'active' if request.endpoint in ['profile', 'list_users', 'config'] else '' }}">
+                                👤 Perfil
+                            </a>
+                            <div class="dropdown-content">
+                                <a href="{{ url_for('profile') }}">Minha Conta</a>
+                                {% if current_user.is_admin %}
+                                <a href="{{ url_for('list_users') }}">👥 Usuários</a>
+                                {% endif %}
+                                <a href="{{ url_for('config') }}">⚙️ APIs</a>
+                                <div class="dropdown-divider"></div>
+                                <a href="{{ url_for('logout') }}" style="color: var(--danger-color);">Sair</a>
+                            </div>
+                        </div>
+                    </div>
             </div>
             <div style="display: flex; gap: 1rem; align-items: center;">
                 <form action="{{ url_for('update_quotes') }}" method="POST" style="margin: 0;">

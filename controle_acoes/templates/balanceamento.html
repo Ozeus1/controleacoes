@@ -94,16 +94,12 @@
                             <td>R$ {{ "%.2f"|format(item.value) }}</td>
                             <td>{{ item.rate }}</td>
                             <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
-                            <td>
-                                <div style="display: flex; gap: 5px;">
-                                    <a href="{{ url_for('edit_balance_item', type='rf', id=item.id) }}"
-                                        class="btn btn-sm btn-info" style="color: white;" title="Editar"><i
-                                            class="fas fa-edit"></i></a>
-                                    <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
-                                        class="btn btn-sm btn-danger"
-                                        onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir"><i
-                                            class="fas fa-trash"></i></a>
-                                </div>
+                            <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                                <a href="{{ url_for('edit_balance_item', type='rf', id=item.id) }}"
+                                    class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
+                                <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
+                                    class="btn btn-sm btn-danger"
+                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir">🗑️</a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -137,16 +133,12 @@
                             <td>R$ {{ "%.2f"|format(item.value) }}</td>
                             <td>{{ item.rate }}</td>
                             <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
-                            <td>
-                                <div style="display: flex; gap: 5px;">
-                                    <a href="{{ url_for('edit_balance_item', type='rf', id=item.id) }}"
-                                        class="btn btn-sm btn-info" style="color: white;" title="Editar"><i
-                                            class="fas fa-edit"></i></a>
-                                    <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
-                                        class="btn btn-sm btn-danger"
-                                        onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir"><i
-                                            class="fas fa-trash"></i></a>
-                                </div>
+                            <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                                <a href="{{ url_for('edit_balance_item', type='rf', id=item.id) }}"
+                                    class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
+                                <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
+                                    class="btn btn-sm btn-danger"
+                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir">🗑️</a>
                             </td>
                         </tr>
                         {% endfor %}

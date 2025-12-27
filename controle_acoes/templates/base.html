@@ -31,7 +31,7 @@
     <div class="container">
         <header>
             <div>
-                <h1>Minha Carteira</h1>
+                <h1>💰 Minha Carteira</h1>
                 <nav class="main-nav">
                     <a href="{{ url_for('resumo') }}"
                         class="{{ 'active' if request.endpoint == 'resumo' else '' }}">Resumo</a>
@@ -47,8 +47,18 @@
                         class="{{ 'active' if request.endpoint == 'balanceamento' else '' }}">Balanceamento</a>
                     <a href="{{ url_for('history') }}"
                         class="{{ 'active' if request.endpoint == 'history' else '' }}">Histórico</a>
+
+                    {% if current_user.is_admin %}
+                    <a href="{{ url_for('list_users') }}"
+                        class="{{ 'active' if 'users' in request.endpoint else '' }}">👥 Usuários</a>
+                    {% endif %}
+
                     <a href="{{ url_for('config') }}"
-                        class="config-link {{ 'active' if request.endpoint == 'config' else '' }}">⚙️</a>
+                        class="config-link {{ 'active' if request.endpoint == 'config' else '' }}">APIs</a>
+
+                    <a href="{{ url_for('profile') }}"
+                        class="{{ 'active' if request.endpoint == 'profile' else '' }}">👤 Perfil</a>
+
                     <a href="{{ url_for('logout') }}"
                         style="color: var(--danger-color); font-size: 0.9rem; border: 1px solid var(--border-color); padding: 0.25rem 0.5rem; border-radius: 0.25rem; margin-left: 0.5rem;">Sair</a>
                 </nav>

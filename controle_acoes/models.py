@@ -18,6 +18,8 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     password_hash = db.Column(db.String(128))
+    role = db.Column(db.String(20), default='user') # 'admin' or 'user'
+    expiry_date = db.Column(db.Date, nullable=True) # Access expiration
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -25,8 +27,19 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
+    @property
+    def is_admin(self):
+        return self.role == 'admin'
+
+    @property
+    def is_active(self):
+        if self.expiry_date and self.expiry_date < datetime.now().date():
+            return False
+        return True
+
 class Asset(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, default=1)
     ticker = db.Column(db.String(10), nullable=False)
     type = db.Column(db.String(10), nullable=False)  # 'ACAO' or 'FII'
     strategy = db.Column(db.String(10), nullable=False, default='HOLDER') # 'HOLDER' or 'SWING'
@@ -66,6 +79,7 @@ class Asset(db.Model):
 
 class TradeHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, default=1)
     ticker = db.Column(db.String(10), nullable=False)
     strategy = db.Column(db.String(50)) # Previously recommendation
     entry_date = db.Column(db.Date)
@@ -76,11 +90,11 @@ class TradeHistory(db.Model):
     profit_value = db.Column(db.Float)
     profit_pct = db.Column(db.Float)
     days_held = db.Column(db.Integer)
-    days_held = db.Column(db.Integer)
     reason = db.Column(db.String(20)) # StopLoss, Gain, Partial, etc.
 
 class Option(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, default=1)
     ticker = db.Column(db.String(20), nullable=False) # e.g., PETRA40
     underlying_asset = db.Column(db.String(10), nullable=False) # e.g., PETR4
     quantity = db.Column(db.Integer, nullable=False)
@@ -106,12 +120,15 @@ class Option(db.Model):
 
 class Settings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    key = db.Column(db.String(50), unique=True, nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, default=1)
+    key = db.Column(db.String(50), nullable=False) # Removed unique constraint here, handled by (user_id, key) if possible or logic
     value = db.Column(db.String(255), nullable=True)
+    
+    # Unique constraint combo ideally: (user_id, key)
 
     @staticmethod
-    def get_value(key, default=None):
-        setting = Settings.query.filter_by(key=key).first()
+    def get_value(key, user_id, default=None):
+        setting = Settings.query.filter_by(key=key, user_id=user_id).first()
         if setting:
             if key == 'brapi_token':
                 try:
@@ -123,10 +140,10 @@ class Settings(db.Model):
         return default
 
     @staticmethod
-    def set_value(key, value):
-        setting = Settings.query.filter_by(key=key).first()
+    def set_value(key, value, user_id):
+        setting = Settings.query.filter_by(key=key, user_id=user_id).first()
         if not setting:
-            setting = Settings(key=key)
+            setting = Settings(key=key, user_id=user_id)
             db.session.add(setting)
         
         if key == 'brapi_token':
@@ -141,6 +158,7 @@ class Settings(db.Model):
 
 class FixedIncome(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, default=1)
     category = db.Column(db.String(20), nullable=False) # 'POS', 'PRE', 'IPCA'
     product_type = db.Column(db.String(20), nullable=True) # 'CDB', 'LCI', etc.
     institution = db.Column(db.String(50), nullable=False) # Bank/Issuer
@@ -151,6 +169,7 @@ class FixedIncome(db.Model):
 
 class InvestmentFund(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, default=1)
     institution = db.Column(db.String(50), nullable=False)
     name = db.Column(db.String(100), nullable=False)
     value = db.Column(db.Float, nullable=False, default=0.0)
@@ -159,6 +178,7 @@ class InvestmentFund(db.Model):
 
 class Crypto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, default=1)
     institution = db.Column(db.String(50), nullable=False) # Exchange
     name = db.Column(db.String(50), nullable=False) # BTC, ETH
     quantity = db.Column(db.Float, nullable=True)
@@ -169,6 +189,7 @@ class Crypto(db.Model):
 
 class Pension(db.Model): # Previdencia
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, default=1)
     institution = db.Column(db.String(50), nullable=False)
     name = db.Column(db.String(100), nullable=False)
     value = db.Column(db.Float, nullable=False)
@@ -177,6 +198,7 @@ class Pension(db.Model): # Previdencia
 
 class International(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, default=1)
     institution = db.Column(db.String(50), nullable=False) # Broker
     name = db.Column(db.String(20), nullable=False) # Ticker
     quantity = db.Column(db.Float, nullable=True)

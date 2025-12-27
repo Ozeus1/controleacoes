@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card bg-dark text-white border-secondary">
+            <div class="card-header font-weight-bold">
+                {% if edit %}Editar Usuário{% else %}Novo Usuário{% endif %}
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    <div class="mb-3">
+                        <label>Usuário</label>
+                        <input type="text" name="username" class="form-control"
+                            value="{{ user.username if user else '' }}" {% if edit %}readonly{% endif %} required>
+                    </div>
+                    <div class="mb-3">
+                        <label>Senha {% if edit %}(Deixe em branco para manter){% endif %}</label>
+                        <input type="password" name="password" class="form-control" {% if not edit %}required{% endif
+                            %}>
+                    </div>
+                    <div class="mb-3">
+                        <label>Nível de Acesso (Role)</label>
+                        <select name="role" class="form-control">
+                            <option value="user" {% if user and user.role=='user' %}selected{% endif %}>Usuário Comum
+                            </option>
+                            <option value="admin" {% if user and user.role=='admin' %}selected{% endif %}>Administrador
+                            </option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label>Data de Validade (Vencimento do Acesso)</label>
+                        <input type="date" name="expiry_date" class="form-control"
+                            value="{{ user.expiry_date if user and user.expiry_date else '' }}">
+                        <small class="text-muted">Deixe em branco para acesso ilimitado.</small>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Salvar</button>
+                    <a href="{{ url_for('list_users') }}" class="btn btn-secondary w-100 mt-2">Cancelar</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

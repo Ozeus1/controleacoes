@@ -59,14 +59,14 @@ db.init_app(app)
 @app.route('/opcoes')
 @login_required
 def opcoes():
-    options = Option.query.all()
+    options = Option.query.filter_by(user_id=current_user.id).all()
     
     # Process options to add calculated fields and fetch underlying quotes
     processed_options = []
     
     # Get list of unique underlyings to fetch quotes
     underlyings = list(set([o.underlying_asset for o in options]))
-    quotes = get_quotes(underlyings) if underlyings else {}
+    quotes = get_quotes(underlyings, user_id=current_user.id) if underlyings else {}
     
     for opt in options:
         underlying_price = 0.0
@@ -98,10 +98,10 @@ def add_option():
     # Similar to add_asset
     if request.method == 'POST':
         ticker = request.form.get('ticker').upper()
+        underlying = request.form.get('underlying').upper()
         quantity = int(request.form.get('quantity'))
-        underlying = request.form.get('underlying_asset').upper()
-        strike = float(request.form.get('strike_price').replace(',', '.'))
-        expiration = datetime.strptime(request.form.get('expiration_date'), '%Y-%m-%d').date()
+        strike = float(request.form.get('strike').replace(',', '.'))
+        expiration = datetime.strptime(request.form.get('expiration'), '%Y-%m-%d').date()
         sale_price = float(request.form.get('sale_price').replace(',', '.'))
         
         # Current price (optional on add)
@@ -109,6 +109,7 @@ def add_option():
         current_option_price = float(curr_price_str.replace(',', '.')) if curr_price_str else 0.0
         
         opt = Option(
+            user_id=current_user.id,
             ticker=ticker,
             quantity=quantity,
             underlying_asset=underlying,
@@ -129,6 +130,9 @@ def add_option():
 @login_required
 def edit_option(id):
     opt = Option.query.get_or_404(id)
+    if opt.user_id != current_user.id:
+        flash("Você não tem permissão para editar esta opção.")
+        return redirect(url_for('opcoes'))
     if request.method == 'POST':
         opt.ticker = request.form.get('ticker').upper()
         opt.quantity = int(request.form.get('quantity'))
@@ -150,6 +154,9 @@ def edit_option(id):
 @login_required
 def delete_option(id):
     opt = Option.query.get_or_404(id)
+    if opt.user_id != current_user.id:
+        flash("Você não tem permissão para deletar esta opção.")
+        return redirect(url_for('opcoes'))
     db.session.delete(opt)
     db.session.commit()
     return redirect(url_for('opcoes'))
@@ -168,6 +175,9 @@ def update_options_quotes():
 @login_required
 def close_option(id):
     opt = Option.query.get_or_404(id)
+    if opt.user_id != current_user.id:
+        flash("Você não tem permissão para fechar esta opção.")
+        return redirect(url_for('opcoes'))
     
     # If using a separate template for closing, we'd render it.
     # For simplicity, if GET, maybe show a confirmation or small form?
@@ -184,6 +194,7 @@ def close_option(id):
         profit_pct = (profit_val / (opt.quantity * opt.sale_price) * 100) if opt.sale_price > 0 else 0
         
         history = TradeHistory(
+            user_id=current_user.id,
             ticker=opt.ticker,
             strategy="OPCAO",
             entry_date=None, # We don't track entry date on Option model currently? We could add it or ignore.
@@ -231,27 +242,28 @@ def index():
 @app.route('/acoes')
 @login_required
 def acoes():
-    # Filter: Type ACAO, Strategy HOLDER
-    assets = Asset.query.filter_by(type='ACAO', strategy='HOLDER').all()
-    # Can reuse logic or make a helper function for processing
-    processed_assets = process_assets(assets)
-    return render_template('acoes.html', assets=processed_assets)
+    assets = Asset.query.filter(Asset.type=='ACAO', Asset.user_id==current_user.id).all()
+    
+    total_invested = sum([a.quantity * a.avg_price for a in assets])
+    total_current = sum([a.quantity * a.current_price for a in assets])
+    
+    return render_template('acoes.html', assets=assets, total_invested=total_invested, total_current=total_current)
 
 @app.route('/fiis')
 @login_required
 def fiis():
-    # Filter: Type FII, Strategy HOLDER
-    assets = Asset.query.filter_by(type='FII', strategy='HOLDER').all()
-    processed_assets = process_assets(assets)
-    return render_template('fiis.html', assets=processed_assets)
+    assets = Asset.query.filter_by(type='FII', user_id=current_user.id).all()
+    
+    total_invested = sum([a.quantity * a.avg_price for a in assets])
+    total_current = sum([a.quantity * a.current_price for a in assets])
+    
+    return render_template('fiis.html', assets=assets, total_invested=total_invested, total_current=total_current)
 
 @app.route('/swingtrade')
 @login_required
 def swingtrade():
-    # Filter: Strategy SWING (Type can be any, usually ACAO)
-    assets = Asset.query.filter_by(strategy='SWING').all()
-    processed_assets = process_assets(assets) 
-    return render_template('swingtrade.html', assets=processed_assets)
+    assets = Asset.query.filter_by(strategy='SWING', user_id=current_user.id).all()
+    return render_template('swing.html', assets=assets)
 
 def process_assets(assets):
     if not assets:
@@ -306,16 +318,16 @@ def process_assets(assets):
 
 def update_all_assets_logic():
     with app.app_context():
-        assets = Asset.query.all()
+        assets = Asset.query.filter_by(user_id=current_user.id).all()
         # Sequential update: 1 request per asset
-        token = Settings.get_value('brapi_token')
+        token = Settings.get_value('brapi_token', user_id=current_user.id)
         
         for asset in assets:
             try:
                 # Fetch individually (simulating "one line at a time")
                 # We could optimize by fetching batch of 1? 
                 # get_quotes supports list, let's pass single list.
-                quotes = get_quotes([asset.ticker])
+                quotes = get_quotes([asset.ticker], user_id=current_user.id)
                 if asset.ticker in quotes:
                     q = quotes[asset.ticker]
                     asset.current_price = q.get('price', 0.0)
@@ -332,79 +344,83 @@ def update_all_assets_logic():
 @app.route('/update_quotes', methods=['POST'])
 @login_required
 def update_quotes():
-    # Run synchronously (might slow down req)
-    update_all_assets_logic()
+    # 1. Fetch Assets
+    assets = Asset.query.filter_by(user_id=current_user.id).all()
+    tickers = list(set([a.ticker for a in assets]))
+    
+    # 2. Update Options underlying?
+    options = Option.query.filter_by(user_id=current_user.id).all()
+    if options:
+        tickers.extend([o.underlying_asset for o in options])
+        
+    quotes = get_quotes(list(set(tickers)), user_id=current_user.id)
+    
+    # Update Assets
+    for asset in assets:
+        if asset.ticker in quotes:
+            q = quotes[asset.ticker]
+            asset.current_price = q.get('price', 0.0)
+            asset.daily_change = q.get('change_percent', 0.0)
+            asset.last_update = datetime.now(ZoneInfo('America/Sao_Paulo'))
+    
+    # Update Options (current_option_price and underlying_asset price)
+    for opt in options:
+        if opt.underlying_asset in quotes:
+            opt.current_underlying_price = quotes[opt.underlying_asset].get('price', 0.0)
+        if opt.ticker in quotes: # If the option itself has a quote
+            opt.current_option_price = quotes[opt.ticker].get('price', 0.0)
+
+    db.session.commit()
     flash("Cotações atualizadas com sucesso!")
     return redirect(request.referrer or url_for('index'))
 
 
-@app.route('/add', methods=['GET', 'POST'])
+@app.route('/add_asset', methods=['GET', 'POST'])
 @login_required
 def add_asset():
     if request.method == 'POST':
         ticker = request.form.get('ticker').upper()
         type_ = request.form.get('type')
-        strategy = request.form.get('strategy', 'HOLDER')
         qty = int(request.form.get('quantity'))
-        price = float(request.form.get('price').replace(',', '.'))
+        avg_price = float(request.form.get('avg_price').replace(',', '.'))
+        date_str = request.form.get('entry_date')
         
-        # New fields
-        stop_loss = request.form.get('stop_loss')
-        gain1 = request.form.get('gain1')
-        gain2 = request.form.get('gain2')
-        recommendation = request.form.get('recommendation')
-        fii_type = request.form.get('fii_type')
-        
-        stop_loss = float(stop_loss.replace(',', '.')) if stop_loss else None
-        gain1 = float(gain1.replace(',', '.')) if gain1 else None
-        gain2 = float(gain2.replace(',', '.')) if gain2 else None
-
-        # Entry Date (default to today if missing)
-        # Assuming form doesn't have it yet, set default. User can edit later or we add field.
-        recommendation = request.form.get('recommendation')
-        fii_type = request.form.get('fii_type')
-        sector = request.form.get('sector')
-        
-        stop_loss = float(stop_loss.replace(',', '.')) if stop_loss else None
-        gain1 = float(gain1.replace(',', '.')) if gain1 else None
-        gain2 = float(gain2.replace(',', '.')) if gain2 else None
-
-        # Entry Date (default to today if missing)
-        # Assuming form doesn't have it yet, set default. User can edit later or we add field.
-        entry_date = date.today()
-
-        new_asset = Asset(
-            ticker=ticker, type=type_, strategy=strategy, quantity=qty, avg_price=price,
-            stop_loss=stop_loss, gain1=gain1, gain2=gain2, recommendation=recommendation,
-            entry_date=entry_date, fii_type=fii_type, sector=sector
-        )
-        db.session.add(new_asset)
-        db.session.commit()
-        
-        # Fetch quote immediately for the new asset (Optimize: Single Fetch)
-        try:
-            quotes = get_quotes([ticker])
-            if ticker in quotes:
-                q = quotes[ticker]
-                new_asset.current_price = q.get('price', 0.0)
-                new_asset.daily_change = q.get('change_percent', 0.0)
-                new_asset.last_update = datetime.now(ZoneInfo('America/Sao_Paulo'))
-                db.session.commit()
-        except Exception as e:
-            print(f"Error fetching initial quote for {ticker}: {e}")
-        
-        if strategy == 'SWING':
-            return redirect(url_for('swingtrade'))
-        elif type_ == 'FII':
-            return redirect(url_for('fiis'))
+        # Check if exists
+        asset = Asset.query.filter_by(ticker=ticker, user_id=current_user.id).first()
+        if asset:
+            # Update average price / quantity logic
+            total_val = (asset.quantity * asset.avg_price) + (qty * avg_price)
+            new_qty = asset.quantity + qty
+            asset.avg_price = total_val / new_qty
+            asset.quantity = new_qty
+            flash(f'Ativo {ticker} atualizado! Nova quantidade: {new_qty}')
         else:
-            return redirect(url_for('acoes'))
-    return render_template('add.html')
+            entry_date = datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else date.today()
+            sector = request.form.get('sector')
+            fii_type = request.form.get('fii_type')
+            
+            asset = Asset(
+                user_id=current_user.id,
+                ticker=ticker, 
+                type=type_, 
+                quantity=qty, 
+                avg_price=avg_price,
+                entry_date=entry_date,
+                sector=sector,
+                fii_type=fii_type
+            )
+            db.session.add(asset)
+            flash(f'Ativo {ticker} adicionado!')
+        
+        db.session.commit()
+        return redirect(url_for('acoes' if type_ == 'ACAO' else 'fiis'))
+        
+    return render_template('add_asset.html')
 
-@app.route('/delete/<int:id>')
+@app.route('/delete_asset/<int:id>')
 @login_required
 def delete_asset(id):
-    asset = Asset.query.get_or_404(id)
+    asset = Asset.query.filter_by(id=id, user_id=current_user.id).first_or_404()
     db.session.delete(asset)
     db.session.commit()
     return redirect(url_for('index'))
@@ -413,6 +429,9 @@ def delete_asset(id):
 @login_required
 def edit_asset(id):
     asset = Asset.query.get_or_404(id)
+    if asset.user_id != current_user.id:
+        flash("Você não tem permissão para editar este ativo.")
+        return redirect(url_for('index'))
     if request.method == 'POST':
         asset.ticker = request.form.get('ticker').upper()
         asset.type = request.form.get('type')
@@ -447,6 +466,9 @@ def edit_asset(id):
 @login_required
 def buy_asset(id):
     asset = Asset.query.get_or_404(id)
+    if asset.user_id != current_user.id:
+        flash("Você não tem permissão para comprar mais deste ativo.")
+        return redirect(url_for('index'))
     if request.method == 'POST':
         qty_buy = int(request.form.get('quantity'))
         price_buy = float(request.form.get('price').replace(',', '.'))
@@ -475,6 +497,9 @@ def buy_asset(id):
 @login_required
 def exit_trade(id):
     asset = Asset.query.get_or_404(id)
+    if asset.user_id != current_user.id:
+        flash("Você não tem permissão para sair deste ativo.")
+        return redirect(url_for('index'))
     if request.method == 'POST':
         qty_sell = int(request.form.get('quantity'))
         price_sell = float(request.form.get('price').replace(',', '.'))
@@ -498,6 +523,7 @@ def exit_trade(id):
         
         # Record History
         history = TradeHistory(
+            user_id=current_user.id,
             ticker=asset.ticker,
             strategy=asset.recommendation, # As requested: save Recommendation as Strategy
             entry_date=asset.entry_date,
@@ -536,15 +562,16 @@ def exit_trade(id):
 
 @app.route('/historico')
 @login_required
-def history():
-    trades = TradeHistory.query.order_by(TradeHistory.exit_date.desc()).all()
+def historico():
+    trades = TradeHistory.query.filter_by(user_id=current_user.id).order_by(TradeHistory.exit_date.desc()).all()
     return render_template('historico.html', history=trades)
 
 @app.route('/resumo')
 @login_required
 def resumo():
-    assets = Asset.query.all()
-    history = TradeHistory.query.all()
+    # Calculate Summaries
+    assets = Asset.query.filter_by(user_id=current_user.id).all()
+    history = TradeHistory.query.filter_by(user_id=current_user.id).all()
     
     # 1. Total Equity & Allocation
     total_equity = 0
@@ -645,6 +672,9 @@ def resumo():
 @login_required
 def edit_history(id):
     trade = TradeHistory.query.get_or_404(id)
+    if trade.user_id != current_user.id:
+        flash("Você não tem permissão para editar este histórico.")
+        return redirect(url_for('history'))
     if request.method == 'POST':
         trade.ticker = request.form.get('ticker').upper()
         trade.strategy = request.form.get('strategy')
@@ -674,6 +704,9 @@ def edit_history(id):
 @login_required
 def delete_history(id):
     trade = TradeHistory.query.get_or_404(id)
+    if trade.user_id != current_user.id:
+        flash("Você não tem permissão para deletar este histórico.")
+        return redirect(url_for('history'))
     db.session.delete(trade)
     db.session.commit()
     return redirect(url_for('history'))
@@ -705,6 +738,7 @@ def add_history():
         days_held = (exit_date - entry_date).days if (entry_date and exit_date) else 0
         
         new_trade = TradeHistory(
+            user_id=current_user.id,
             ticker=ticker,
             strategy=strategy,
             entry_date=entry_date,
@@ -731,15 +765,13 @@ def add_history():
 @login_required
 def config():
     if request.method == 'POST':
-        api_key = request.form.get('api_key')
-        if api_key is not None:
-            # Value is encrypted automatically by set_value
-            Settings.set_value('brapi_token', api_key.strip())
-            flash("Chave API atualizada com sucesso!")
+        brapi_key = request.form.get('brapi_key')
+        if brapi_key:
+             Settings.set_value('brapi_token', brapi_key, user_id=current_user.id)
+             flash('Chave BRAPI salva com sucesso!')
         return redirect(url_for('config'))
-    
-    # Decrypted automatically by get_value
-    current_key = Settings.get_value('brapi_token', '')
+        
+    current_key = Settings.get_value('brapi_token', user_id=current_user.id)
     if not current_key:
          current_key = os.environ.get('BRAPI_API_KEY', '')
          
@@ -884,23 +916,31 @@ def fix_crypto_db():
 @app.route('/balanceamento')
 @login_required
 def balanceamento():
-    # 1. Fetch Data
-    rf_pos = FixedIncome.query.filter_by(category='POS').all()
-    rf_pre = FixedIncome.query.filter_by(category='PRE').all()
-    rf_ipca = FixedIncome.query.filter_by(category='IPCA').all()
-    funds = InvestmentFund.query.all()
-    cryptos = Crypto.query.all()
-    pensions = Pension.query.all()
+    # 1. Renda Fixa Data
+    rfs = FixedIncome.query.filter_by(user_id=current_user.id).all()
+    rf_pos = [r for r in rfs if r.category == 'POS']
+    rf_pre = [r for r in rfs if r.category == 'PRE']
+    rf_ipca = [r for r in rfs if r.category == 'IPCA']
     
-    try:
-        intls_rv = International.query.filter((International.category == 'RV') | (International.category == None)).all()
-        intls_rf = International.query.filter(International.category == 'RF').all()
-    except Exception:
-        # If column missing, redirect to fix
-        return redirect(url_for('fix_db'))
+    # 2. Other Classes
+    funds = InvestmentFund.query.filter_by(user_id=current_user.id).all()
+    cryptos = Crypto.query.filter_by(user_id=current_user.id).all()
+    pensions = Pension.query.filter_by(user_id=current_user.id).all()
+    
+    # Split Intls
+    intls_rv = International.query.filter_by(user_id=current_user.id, category='RV').all()
+    intls_rf = International.query.filter_by(user_id=current_user.id, category='RF').all()
+    
+    # 3. Swing Trade (using Asset table)
+    # Using same logic as models: strategy='SWING'
+    assets_swing = Asset.query.filter_by(strategy='SWING', user_id=current_user.id).all()
+    
+    # 4. Stock Holders (Asset table)
+    assets_holder = Asset.query.filter_by(strategy='HOLDER', type='ACAO', user_id=current_user.id).all()
+    fiis_holder = Asset.query.filter_by(strategy='HOLDER', type='FII', user_id=current_user.id).all()
     
     # 2. Existing Assets (Stocks/FIIs)
-    assets = Asset.query.all()
+    assets = Asset.query.filter_by(user_id=current_user.id).all()
     # Separate GOLD11 (Ouro) from other Stocks
     gold_assets = [a for a in assets if a.ticker == 'GOLD11']
     stock_assets = [a for a in assets if a.type == 'ACAO' and a.ticker != 'GOLD11']
@@ -1065,118 +1105,128 @@ def balanceamento():
 @app.route('/balanceamento/add/rf', methods=['POST'])
 @login_required
 def add_rf():
-    category = request.form.get('category')
     new_rf = FixedIncome(
-        category=category,
+        user_id=current_user.id,
+        category=request.form.get('category'),
         product_type=request.form.get('product_type'),
         institution=request.form.get('institution'),
         name=request.form.get('name'),
-        value=float(request.form.get('value').replace('.','').replace(',','.')),
+        value=float(request.form.get('value').replace(',', '.')),
         rate=request.form.get('rate'),
         maturity_date=datetime.strptime(request.form.get('maturity_date'), '%Y-%m-%d').date() if request.form.get('maturity_date') else None
     )
     db.session.add(new_rf)
     db.session.commit()
-    flash('Renda Fixa adicionada!', 'success')
+    flash('Renda Fixa adicionada!')
     return redirect(url_for('balanceamento'))
 
 @app.route('/balanceamento/add/fund', methods=['POST'])
 @login_required
 def add_fund():
     new_fund = InvestmentFund(
+        user_id=current_user.id,
         institution=request.form.get('institution'),
         name=request.form.get('name'),
-        value=float(request.form.get('value').replace('.','').replace(',','.')),
+        value=float(request.form.get('value').replace(',', '.')),
         indexer=request.form.get('indexer'),
         maturity_date=datetime.strptime(request.form.get('maturity_date'), '%Y-%m-%d').date() if request.form.get('maturity_date') else None
     )
     db.session.add(new_fund)
     db.session.commit()
-    flash('Fundo adicionado!', 'success')
+    flash('Fundo adicionado!')
     return redirect(url_for('balanceamento'))
 
 @app.route('/balanceamento/add/crypto', methods=['POST'])
 @login_required
 def add_crypto():
+    qty_str = request.form.get('quantity', '').replace(',', '.')
+    qty = float(qty_str) if qty_str else 0.0
+    
+    avg_price_str = request.form.get('avg_price', '').replace(',', '.') # User input for Avg Price
+    avg_price = float(avg_price_str) if avg_price_str else 0.0
+    
+    # Clean logic
+    invested_value = qty * avg_price
+    
+    # User might input current value manually or we calc later
+    inv_val_str = request.form.get('invested_value')
+    # If using form that sends invested_value (legacy), decide which to use. 
+    # Current form has avg_price field?
+    
+    curr_val_str = request.form.get('current_value', '').replace(',', '.')
+    current_value = float(curr_val_str) if curr_val_str else 0.0
+
     new_crypto = Crypto(
+        user_id=current_user.id,
         institution=request.form.get('institution'),
         name=request.form.get('name'),
-        quantity=float(request.form.get('quantity').replace(',','.')),
-        invested_value=float(request.form.get('invested_value').replace('.','').replace(',','.')),
-        current_value=float(request.form.get('current_value').replace('.','').replace(',','.'))
+        quantity=qty,
+        invested_value=invested_value,
+        current_value=current_value,
+        avg_price=avg_price
     )
     db.session.add(new_crypto)
     db.session.commit()
-    flash('Cripto adicionada!', 'success')
+    flash('Cripto adicionada!')
     return redirect(url_for('balanceamento'))
 
 @app.route('/balanceamento/add/pension', methods=['POST'])
 @login_required
 def add_pension():
     new_pension = Pension(
+        user_id=current_user.id,
         institution=request.form.get('institution'),
         name=request.form.get('name'),
-        value=float(request.form.get('value').replace('.','').replace(',','.')),
-        type=request.form.get('type'),
-        certificate=request.form.get('certificate')
+        value=float(request.form.get('value').replace(',', '.')),
+        type=request.form.get('type')
     )
     db.session.add(new_pension)
     db.session.commit()
-    flash('Previdência adicionada!', 'success')
+    flash('Previdência adicionada!')
     return redirect(url_for('balanceamento'))
 
-@app.route('/balanceamento/add/intl/rv', methods=['POST'])
+@app.route('/balanceamento/add/intl', methods=['POST'])
 @login_required
-def add_intl_rv():
-    qty = float(request.form.get('quantity').replace(',','.'))
-    quote = float(request.form.get('quote').replace('.','').replace(',','.'))
+def add_intl():
+    val_str = request.form.get('value_usd', '').replace(',', '.')
+    val_usd = float(val_str) if val_str else 0.0
+    
+    qty_str = request.form.get('quantity', '').replace(',', '.')
+    qty = float(qty_str) if qty_str else 0.0
+    
+    category = request.form.get('category', 'RV')
+    
     new_intl = International(
-        category='RV',
-        institution=request.form.get('institution'), # Broker
-        name=request.form.get('name'), # Ticker
+        user_id=current_user.id,
+        institution=request.form.get('institution'),
+        name=request.form.get('name'),
         quantity=qty,
-        avg_price=float(request.form.get('avg_price').replace('.','').replace(',','.')),
-        quote=quote,
-        value_usd=qty * quote, # Total calculated
-        rate_usd=float(request.form.get('rate_usd').replace(',','.')) if request.form.get('rate_usd') else 5.5
+        value_usd=val_usd,
+        category=category,
+        description=request.form.get('description')
     )
     db.session.add(new_intl)
     db.session.commit()
-    flash('Ação Internacional adicionada!', 'success')
-    return redirect(url_for('balanceamento'))
-
-@app.route('/balanceamento/add/intl/rf', methods=['POST'])
-@login_required
-def add_intl_rf():
-    new_intl = International(
-        category='RF',
-        institution=request.form.get('institution'), # Banco
-        description=request.form.get('description'), # Tipo
-        invested_value=float(request.form.get('invested_value').replace('.','').replace(',','.')),
-        value_usd=float(request.form.get('value_usd').replace('.','').replace(',','.')), # Current Value
-        name='RF INT', # Placeholder for non-ticker
-        rate_usd=float(request.form.get('rate_usd').replace(',','.')) if request.form.get('rate_usd') else 5.5
-    )
-    db.session.add(new_intl)
-    db.session.commit()
-    flash('Renda Fixa Internacional adicionada!', 'success')
+    flash('Investimento Internacional adicionado!')
     return redirect(url_for('balanceamento'))
 
 @app.route('/balanceamento/edit/<type>/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_balance_item(type, id):
+    item = None
     if type == 'rf':
-        item = FixedIncome.query.get_or_404(id)
+        item = FixedIncome.query.filter_by(id=id, user_id=current_user.id).first()
     elif type == 'fund':
-        item = InvestmentFund.query.get_or_404(id)
+        item = InvestmentFund.query.filter_by(id=id, user_id=current_user.id).first()
     elif type == 'crypto':
-        item = Crypto.query.get_or_404(id)
+        item = Crypto.query.filter_by(id=id, user_id=current_user.id).first()
     elif type == 'pension':
-        item = Pension.query.get_or_404(id)
+        item = Pension.query.filter_by(id=id, user_id=current_user.id).first()
     elif type == 'intl':
-        item = International.query.get_or_404(id)
-    else:
-        flash('Tipo inválido', 'error')
+        item = International.query.filter_by(id=id, user_id=current_user.id).first()
+    
+    if not item:
+        flash('Item não encontrado ou acesso negado.')
         return redirect(url_for('balanceamento'))
     
     if request.method == 'POST':
@@ -1260,23 +1310,25 @@ def edit_balance_item(type, id):
 @app.route('/balanceamento/delete/<type>/<int:id>')
 @login_required
 def delete_balance_item(type, id):
+    item = None
     if type == 'rf':
-        item = FixedIncome.query.get_or_404(id)
+        item = FixedIncome.query.filter_by(id=id, user_id=current_user.id).first()
     elif type == 'fund':
-        item = InvestmentFund.query.get_or_404(id)
+        item = InvestmentFund.query.filter_by(id=id, user_id=current_user.id).first()
     elif type == 'crypto':
-        item = Crypto.query.get_or_404(id)
+        item = Crypto.query.filter_by(id=id, user_id=current_user.id).first()
     elif type == 'pension':
-        item = Pension.query.get_or_404(id)
+        item = Pension.query.filter_by(id=id, user_id=current_user.id).first()
     elif type == 'intl':
-        item = International.query.get_or_404(id)
+        item = International.query.filter_by(id=id, user_id=current_user.id).first()
+        
+    if item:
+        db.session.delete(item)
+        db.session.commit()
+        flash('Item removido!')
     else:
-        flash('Tipo inválido', 'error')
-        return redirect(url_for('balanceamento'))
-    
-    db.session.delete(item)
-    db.session.commit()
-    flash('Item removido!', 'success')
+        flash('Item não encontrado ou acesso negado.')
+        
     return redirect(url_for('balanceamento'))
 
 
@@ -1382,6 +1434,113 @@ def update_intl_quotes():
     return redirect(url_for('balanceamento'))
         
     return redirect(url_for('balanceamento'))
+
+# --- User Management & Security ---
+
+@app.before_request
+def check_user_status():
+    if current_user.is_authenticated:
+        if current_user.expiry_date and current_user.expiry_date < date.today():
+            logout_user()
+            flash('Seu acesso expirou. Entre em contato com o administrador.', 'danger')
+            return redirect(url_for('login'))
+
+@app.route('/users')
+@login_required
+def list_users():
+    if not current_user.is_admin:
+        flash('Acesso negado.', 'danger')
+        return redirect(url_for('resumo'))
+    users = User.query.all()
+    return render_template('users.html', users=users)
+
+@app.route('/users/add', methods=['GET', 'POST'])
+@login_required
+def add_user():
+    if not current_user.is_admin:
+        flash('Acesso negado.', 'danger')
+        return redirect(url_for('resumo'))
+    
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        role = request.form.get('role', 'user')
+        expiry_str = request.form.get('expiry_date')
+        
+        if User.query.filter_by(username=username).first():
+            flash('Usuário já existe.', 'danger')
+        else:
+            expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date() if expiry_str else None
+            user = User(username=username, role=role, expiry_date=expiry_date)
+            user.set_password(password)
+            db.session.add(user)
+            db.session.commit()
+            flash('Usuário criado com sucesso!', 'success')
+            return redirect(url_for('list_users'))
+            
+    return render_template('add_user.html')
+
+@app.route('/users/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+def edit_user(id):
+    if not current_user.is_admin:
+        flash('Acesso negado.', 'danger')
+        return redirect(url_for('resumo'))
+        
+    user = User.query.get_or_404(id)
+    
+    if request.method == 'POST':
+        user.role = request.form.get('role')
+        expiry_str = request.form.get('expiry_date')
+        user.expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date() if expiry_str else None
+        
+        new_pass = request.form.get('password')
+        if new_pass:
+            user.set_password(new_pass)
+            
+        db.session.commit()
+        flash('Usuário atualizado!', 'success')
+        return redirect(url_for('list_users'))
+        
+    return render_template('add_user.html', user=user, edit=True)
+
+@app.route('/users/delete/<int:id>')
+@login_required
+def delete_user(id):
+    if not current_user.is_admin:
+        flash('Acesso negado.', 'danger')
+        return redirect(url_for('resumo'))
+    
+    if id == current_user.id:
+        flash('Você não pode excluir a si mesmo.', 'warning')
+        return redirect(url_for('list_users'))
+
+    user = User.query.get_or_404(id)
+    # Optional: Delete all their data? For now standard delete.
+    db.session.delete(user)
+    db.session.commit()
+    flash('Usuário removido.', 'success')
+    return redirect(url_for('list_users'))
+
+
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    if request.method == 'POST':
+        curr_pass = request.form.get('current_password')
+        new_pass = request.form.get('new_password')
+        confirm_pass = request.form.get('confirm_password')
+        
+        if not current_user.check_password(curr_pass):
+            flash('Senha atual incorreta.', 'danger')
+        elif new_pass != confirm_pass:
+            flash('Novas senhas não conferem.', 'danger')
+        else:
+            current_user.set_password(new_pass)
+            db.session.commit()
+            flash('Senha alterada com sucesso!', 'success')
+            
+    return render_template('profile.html')
 
 if __name__ == '__main__':
     with app.app_context():

@@ -10,17 +10,20 @@ from flask import current_app
 
 BASE_URL = "https://brapi.dev/api/quote"
 
-def get_token():
+def get_token(user_id=None):
     try:
         from models import Settings
-        token = Settings.get_value('brapi_token')
-        if token:
-            return token
+        if user_id:
+            token = Settings.get_value('brapi_token', user_id=user_id)
+            if token:
+                return token
+        # Fallback to env or maybe a "System Admin" user (ID 1)?
+        # For now, if no user specific token, maybe return None or Env
     except Exception:
         pass
     return os.environ.get('BRAPI_API_KEY', '')
 
-def get_quotes(tickers):
+def get_quotes(tickers, user_id=None):
     """
     Fetches quotes for a list of tickers.
     Returns a dict: {ticker: {price: float, change: float, logo: str, ...}}
@@ -28,7 +31,7 @@ def get_quotes(tickers):
     if not tickers:
         return {}
     
-    token = get_token()
+    token = get_token(user_id)
     
     params = {}
     if token:

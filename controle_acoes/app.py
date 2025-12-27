@@ -1229,8 +1229,14 @@ def update_intl_quotes():
                 # If RV (Stocks), update Quote and Value
                 if item.category == 'RV' and item.name:
                     try:
-                        stock = yf.Ticker(item.name)
+                        ticker_name = item.name.strip().upper()
+                        # Common Corrections
+                        if ticker_name == 'BRKB':
+                            ticker_name = 'BRK-B'
+                        
+                        stock = yf.Ticker(ticker_name)
                         stock_hist = stock.history(period="1d")
+                        
                         if not stock_hist.empty:
                             price = stock_hist['Close'].iloc[-1]
                             item.quote = price
@@ -1240,7 +1246,8 @@ def update_intl_quotes():
                             else:
                                 item.value_usd = 0.0
                         else:
-                            # Try adding .SA or simply skip if not found
+                            # Try again assuming it might be a fund or different formatting if needed
+                            print(f"Quote not found for {ticker_name}")
                             pass
                     except Exception as e:
                         print(f"Error updating {item.name}: {e}")

@@ -55,12 +55,10 @@
                             <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='rf', id=item.id) }}"
-                                    class="btn btn-sm btn-info" style="color: white;" title="Editar"><i
-                                        class="fas fa-edit"></i></a>
+                                    class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
                                 <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
                                     class="btn btn-sm btn-danger"
-                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir"><i
-                                        class="fas fa-trash"></i></a>
+                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir">🗑️</a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -187,12 +185,10 @@
                             <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='fund', id=item.id) }}"
-                                    class="btn btn-sm btn-info" style="color: white;" title="Editar"><i
-                                        class="fas fa-edit"></i></a>
+                                    class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
                                 <a href="{{ url_for('delete_balance_item', type='fund', id=item.id) }}"
                                     class="btn btn-sm btn-danger"
-                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir"><i
-                                        class="fas fa-trash"></i></a>
+                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir">🗑️</a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -226,12 +222,10 @@
                             <td>R$ {{ "%.2f"|format(item.current_value) }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='crypto', id=item.id) }}"
-                                    class="btn btn-sm btn-info" style="color: white;" title="Editar"><i
-                                        class="fas fa-edit"></i></a>
+                                    class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
                                 <a href="{{ url_for('delete_balance_item', type='crypto', id=item.id) }}"
                                     class="btn btn-sm btn-danger"
-                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir"><i
-                                        class="fas fa-trash"></i></a>
+                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir">🗑️</a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -267,12 +261,10 @@
                             <td>R$ {{ "%.2f"|format(item.value) }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='pension', id=item.id) }}"
-                                    class="btn btn-sm btn-info" style="color: white;" title="Editar"><i
-                                        class="fas fa-edit"></i></a>
+                                    class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
                                 <a href="{{ url_for('delete_balance_item', type='pension', id=item.id) }}"
                                     class="btn btn-sm btn-danger"
-                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir"><i
-                                        class="fas fa-trash"></i></a>
+                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir">🗑️</a>
                             </td>
                         </tr>
                         {% endfor %}
@@ -306,12 +298,10 @@
                             <td>R$ {{ item.rate_usd }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='intl', id=item.id) }}"
-                                    class="btn btn-sm btn-info" style="color: white;" title="Editar"><i
-                                        class="fas fa-edit"></i></a>
+                                    class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
                                 <a href="{{ url_for('delete_balance_item', type='intl', id=item.id) }}"
                                     class="btn btn-sm btn-danger"
-                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir"><i
-                                        class="fas fa-trash"></i></a>
+                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir">🗑️</a>
                             </td>
                         </tr>
                         {% endfor %}

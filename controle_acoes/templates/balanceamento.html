@@ -339,13 +339,17 @@
                         <tr>
                             <td>{{ item.institution }}</td>
                             <td>{{ item.name }}</td>
-                            <td>{{ item.quantity | brl_fmt }}</td>
+                            <td>{{ item.quantity | default(0) }}</td>
                             <td>$ {{ item.avg_price | brl_fmt }}</td>
                             <td>$ {{ item.quote | brl_fmt }}</td>
-                            {% set profit = (item.quote - item.avg_price) * item.quantity %}
-                            <td class="{{ 'text-success' if profit >= 0 else 'text-danger' }}">$ {{ profit | brl_fmt }}
+                            {% set quote = item.quote or 0 %}
+                            {% set avg_price = item.avg_price or 0 %}
+                            {% set quantity = item.quantity or 0 %}
+                            {% set profit = (quote - avg_price) * quantity %}
+                            <td class="{{ 'text-success' if profit >= 0 else 'text-danger' }}">
+                                $ {{ profit | brl_fmt }}
                             </td>
-                            <td>$ {{ (item.quote * item.quantity) | brl_fmt }}</td>
+                            <td>$ {{ (quantity * quote) | brl_fmt }}</td>
                             <td>R$ {{ item.rate_usd | brl_fmt }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='intl', id=item.id) }}"

@@ -1035,6 +1035,17 @@ def balanceamento():
     crypto_current = sum([c.current_value for c in cryptos])
     crypto_profit = crypto_current - crypto_invested
 
+    # 6. Location Breakdown (Brazil vs International)
+    # International = Crypto + Intl RV + Intl RF + Gold
+    # Note: t_intl_rf is calculated above. val_ouro is sum of gold assets.
+    total_intl = t_intl_rv + t_intl_rf + t_crypto + val_ouro
+    total_br = total_portfolio - total_intl
+    
+    location_chart = {
+        'Brasil': total_br,
+        'Internacional': total_intl
+    }
+
     return render_template('balanceamento.html', 
                            rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,
                            funds=funds, cryptos=cryptos, pensions=pensions, 
@@ -1048,7 +1059,8 @@ def balanceamento():
                            intl_rv_profit=intl_rv_profit,
                            crypto_invested=crypto_invested,
                            crypto_current=crypto_current,
-                           crypto_profit=crypto_profit)
+                           crypto_profit=crypto_profit,
+                           location_chart=location_chart)
 
 @app.route('/balanceamento/add/rf', methods=['POST'])
 @login_required

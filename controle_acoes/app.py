@@ -1186,10 +1186,20 @@ def edit_balance_item(type, id):
             else: # RV
                  item.institution = request.form.get('institution')
                  item.name = request.form.get('name')
-                 item.quantity = float(request.form.get('quantity').replace(',','.'))
-                 item.avg_price = float(request.form.get('avg_price').replace('.','').replace(',','.'))
-                 item.quote = float(request.form.get('quote').replace('.','').replace(',','.'))
-                 item.value_usd = item.quantity * item.quote
+                 
+                 qty_str = request.form.get('quantity', '').replace(',', '.')
+                 if qty_str and qty_str.lower() != 'none':
+                     item.quantity = float(qty_str)
+                 else:
+                     item.quantity = 0.0
+
+                 avg_str = request.form.get('avg_price', '').replace('.', '').replace(',', '.')
+                 item.avg_price = float(avg_str) if avg_str and avg_str.lower() != 'none' else 0.0
+                 
+                 quote_str = request.form.get('quote', '').replace('.', '').replace(',', '.')
+                 item.quote = float(quote_str) if quote_str and quote_str.lower() != 'none' else 0.0
+                 
+                 item.value_usd = (item.quantity or 0) * (item.quote or 0)
         
         db.session.commit()
         flash('Item atualizado com sucesso!', 'success')

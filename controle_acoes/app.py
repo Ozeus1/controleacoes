@@ -853,6 +853,23 @@ def fix_db():
     except Exception as e:
         return f"Error: {str(e)}"
 
+@app.route('/fix_crypto_db')
+def fix_crypto_db():
+    try:
+        conn = sqlite3.connect(os.path.join(app.instance_path, 'investments.db'))
+        cursor = conn.cursor()
+        try:
+            cursor.execute("ALTER TABLE crypto ADD COLUMN quote REAL")
+            msg = "Added column 'quote' to crypto table."
+        except Exception as e:
+            msg = f"Error adding column: {str(e)}"
+        
+        conn.commit()
+        conn.close()
+        return f"{msg} <a href='/balanceamento'>Voltar</a>"
+    except Exception as e:
+        return f"Database Error: {str(e)}"
+
 @app.route('/balanceamento')
 @login_required
 def balanceamento():
@@ -1261,6 +1278,38 @@ def update_intl_quotes():
                         msg_log.append(f"{item.name}: Erro API {str(e)}")
                         print(f"Error updating {item.name}: {e}")
             
+            # Update Cryptos
+            cryptos = Crypto.query.all()
+            for c in cryptos:
+                if c.name: # e.g. BTC, ETH
+                    try:
+                        ticker_clean = c.name.strip().upper()
+                        # Default to USD pair if not specified
+                        # Try finding a valid Yahoo Ticker. Usually 'BTC-USD'
+                        yahoo_ticker = f"{ticker_clean}-USD"
+                        
+                        url_crypto = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_ticker}?interval=1d&range=1d"
+                        r_crypto = requests.get(url_crypto, headers=headers, timeout=10)
+                        data_crypto = r_crypto.json()
+                        
+                        price_usd = 0.0
+                        if 'chart' in data_crypto and 'result' in data_crypto['chart'] and data_crypto['chart']['result']:
+                             price_usd = data_crypto['chart']['result'][0]['meta']['regularMarketPrice']
+                        
+                        if price_usd > 0:
+                            # Convert to BRL
+                            price_brl = price_usd * usd_rate
+                            c.quote = price_brl
+                            if c.quantity:
+                                c.current_value = c.quantity * price_brl
+                            msg_log.append(f"{ticker_clean}: R$ {price_brl:.2f}")
+                        else:
+                            msg_log.append(f"{ticker_clean}: Não encontrado")
+                            
+                    except Exception as e:
+                        print(f"Error crypto {c.name}: {e}")
+                        msg_log.append(f"{c.name}: Erro {str(e)}")
+
             db.session.commit()
             flash(f'Atualização Concluída! Detalhes: {", ".join(msg_log)}', 'success')
         else:

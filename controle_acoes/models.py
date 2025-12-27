@@ -164,6 +164,7 @@ class Crypto(db.Model):
     quantity = db.Column(db.Float, nullable=True)
     invested_value = db.Column(db.Float, nullable=True) # Cost basis
     current_value = db.Column(db.Float, nullable=False) # Market value (manual or calc)
+    quote = db.Column(db.Float, nullable=True)
 
 class Pension(db.Model): # Previdencia
     id = db.Column(db.Integer, primary_key=True)

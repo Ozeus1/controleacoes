@@ -463,84 +463,96 @@
     </div>
 
     <!-- Totals Table -->
-    <div class="col-md-6 mt-3">
-        <table class="table table-dark table-bordered">
-            <thead>
-                <tr>
-                    <th>Classe</th>
-                    <th>Valor Total</th>
-                    <th>% Carteira</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for k, v in types_total.items() %}
-                <tr>
-                    <td>{{ k }}</td>
-                    <td>R$ {{ v | brl_fmt }}</td>
-                    <td>{{ (v / total_portfolio * 100) | brl_fmt }}%</td>
-                </tr>
-                {% endfor %}
-                <tr class="bg-secondary font-weight-bold">
-                    <td>TOTAL</td>
-                    <td>R$ {{ total_portfolio | brl_fmt }}</td>
-                    <td>100%</td>
-                </tr>
-            </tbody>
-        </table>
+    <div class="col-md-4 mt-3">
+        <h5 class="text-white mb-2">Por Classe</h5>
+        <div class="table-responsive">
+            <table class="table table-dark table-bordered table-sm">
+                <thead>
+                    <tr>
+                        <th>Classe</th>
+                        <th>Valor</th>
+                        <th>%</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for k, v in types_total.items() %}
+                    <tr>
+                        <td>{{ k }}</td>
+                        <td>R$ {{ v | brl_fmt }}</td>
+                        <td>{{ (v / total_portfolio * 100) | brl_fmt }}%</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="bg-secondary font-weight-bold">
+                        <td>TOTAL</td>
+                        <td>R$ {{ total_portfolio | brl_fmt }}</td>
+                        <td>100%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 
-    <!-- Maturity & Type Summary -->
-    <div class="col-md-6 mt-3">
-        <table class="table table-dark table-bordered">
-            <thead>
-                <tr>
-                    <th>Classificação (Prazo)</th>
-                    <th>Valor</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Curto Prazo (< 2 anos)</td>
-                    <td>R$ {{ "%.2f"|format(summary['Curto Prazo']) }}</td>
-                </tr>
-                <tr>
-                    <td>Médio Prazo (2-4 anos)</td>
-                    <td>R$ {{ "%.2f"|format(summary['Médio Prazo']) }}</td>
-                </tr>
-                <tr>
-                    <td>Longo Prazo (> 4 anos)</td>
-                    <td>R$ {{ "%.2f"|format(summary['Longo Prazo']) }}</td>
-                </tr>
-                <tr>
-                    <td>Indefinido</td>
-                    <td>R$ {{ "%.2f"|format(summary['Indefinido']) }}</td>
-                </tr>
-            </tbody>
-        </table>
+    <!-- Maturity Summary -->
+    <div class="col-md-4 mt-3">
+        <h5 class="text-white mb-2">Por Prazo</h5>
+        <div class="table-responsive">
+            <table class="table table-dark table-bordered table-sm">
+                <thead>
+                    <tr>
+                        <th>Classificação</th>
+                        <th>Valor</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Curto (< 2 anos)</td>
+                        <td>R$ {{ summary['Curto Prazo'] | brl_fmt }}</td>
+                    </tr>
+                    <tr>
+                        <td>Médio (2-4 anos)</td>
+                        <td>R$ {{ summary['Médio Prazo'] | brl_fmt }}</td>
+                    </tr>
+                    <tr>
+                        <td>Longo (> 4 anos)</td>
+                        <td>R$ {{ summary['Longo Prazo'] | brl_fmt }}</td>
+                    </tr>
+                    <tr>
+                        <td>Indefinido</td>
+                        <td>R$ {{ summary['Indefinido'] | brl_fmt }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
 
-        <table class="table table-dark table-bordered mt-3">
-            <thead>
-                <tr>
-                    <th>Tipo</th>
-                    <th>Valor</th>
-                    <th>%</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td>Renda Fixa</td>
-                    <td>R$ {{ "%.2f"|format(summary['Renda Fixa']) }}</td>
-                    <td>{{ "%.2f"|format(summary['Renda Fixa']/total_portfolio * 100) if total_portfolio > 0 else 0 }}%
-                    </td>
-                </tr>
-                <tr>
-                    <td>Renda Variável</td>
-                    <td>R$ {{ "%.2f"|format(summary['Renda Variável']) }}</td>
-                    <td>{{ "%.2f"|format(summary['Renda Variável']/total_portfolio * 100) if total_portfolio > 0 else 0
-                        }}%</td>
-                </tr>
-            </tbody>
-        </table>
+    <!-- Type Summary -->
+    <div class="col-md-4 mt-3">
+        <h5 class="text-white mb-2">Por Tipo</h5>
+        <div class="table-responsive">
+            <table class="table table-dark table-bordered table-sm">
+                <thead>
+                    <tr>
+                        <th>Tipo</th>
+                        <th>Valor</th>
+                        <th>%</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Renda Fixa</td>
+                        <td>R$ {{ summary['Renda Fixa'] | brl_fmt }}</td>
+                        <td>{{ (summary['Renda Fixa']/total_portfolio * 100) | brl_fmt if total_portfolio > 0 else 0 }}%
+                        </td>
+                    </tr>
+                    <tr>
+                        <td>Renda Variável</td>
+                        <td>R$ {{ summary['Renda Variável'] | brl_fmt }}</td>
+                        <td>{{ (summary['Renda Variável']/total_portfolio * 100) | brl_fmt if total_portfolio > 0 else 0
+                            }}%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 

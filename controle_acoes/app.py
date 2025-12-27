@@ -1,5 +1,6 @@
 
 import os
+import sqlite3
 from flask import Flask, render_template, request, redirect, url_for, flash
 from dotenv import load_dotenv
 from models import db, Asset, Settings, User, TradeHistory, Option, FixedIncome, InvestmentFund, Crypto, Pension, International

@@ -973,12 +973,19 @@ def balanceamento():
 
     total_portfolio = sum(types_total.values())
 
+    # Filter breakdown to remove 0 values (Simpler for Template Rowspan)
+    clean_breakdown = {}
+    for cat, terms in maturity_breakdown.items():
+        clean_terms = {k: v for k, v in terms.items() if v > 0.01}
+        if clean_terms:
+            clean_breakdown[cat] = clean_terms
+
     return render_template('balanceamento.html', 
                            rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,
                            funds=funds, cryptos=cryptos, pensions=pensions, 
                            intls_rv=intls_rv, intls_rf=intls_rf,
                            summary=summary, types_total=types_total, total_portfolio=total_portfolio,
-                           maturity_breakdown=maturity_breakdown)
+                           maturity_breakdown=clean_breakdown)
 
 @app.route('/balanceamento/add/rf', methods=['POST'])
 @login_required

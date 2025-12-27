@@ -507,21 +507,16 @@
                 </thead>
                 <tbody>
                     {% for category, terms in maturity_breakdown.items() %}
-                    {% set cat_total = types_total[category] %}
-                    {% if cat_total > 0 %}
                     {% for term, val in terms.items() %}
-                    {% if val > 0 %}
                     <tr>
                         {% if loop.first %}
                         <td rowspan="{{ loop.length }}" class="align-middle font-weight-bold">{{ category }}</td>
                         {% endif %}
                         <td>{{ term }}</td>
                         <td>R$ {{ val | brl_fmt }}</td>
-                        <td>{{ (val / cat_total * 100) | brl_fmt }}%</td>
+                        <td>{{ (val / types_total[category] * 100) | brl_fmt }}%</td>
                     </tr>
-                    {% endif %}
                     {% endfor %}
-                    {% endif %}
                     {% endfor %}
                 </tbody>
             </table>

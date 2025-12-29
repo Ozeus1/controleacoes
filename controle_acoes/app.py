@@ -954,7 +954,7 @@ def fix_crypto_db():
 @app.route('/balanceamento')
 @login_required
 def balanceamento():
-    try:
+    if True: # Try-block removed, keeping indentation
         # 1. Renda Fixa Data
         rfs = FixedIncome.query.filter_by(user_id=current_user.id).all()
         rf_pos = [r for r in rfs if r.category == 'POS']
@@ -1049,7 +1049,44 @@ def balanceamento():
         process_list(rf_pos, 'Renda Fixa Pós')
         process_list(rf_pre, 'Renda Fixa Pré')
         process_list(rf_ipca, 'Renda Fixa IPCA')
-        process_list(funds, 'Fundos') # Funds can be RF or Variable, usually RF in this context/user image (pos fixado)
+        # process_list(funds, 'Fundos') - Replaced by custom logic below
+        
+        # Special Processing for Funds (Chart Classification)
+        total_funds = 0
+        for f in funds:
+            # Safe value access
+            if hasattr(f, 'value'):
+                 val = f.value or 0
+            else:
+                 val = 0
+            
+            total_funds += val
+            
+            # Maturity
+            mat = f.maturity_date
+            cls = get_maturity_class(mat)
+            
+            # Global Summary (Time & Type)
+            if mat:
+                summary[cls] += val
+            else:
+                summary['Indefinido'] += val
+            
+            # Determine Chart Category based on Indexer
+            chart_cat = 'Fundos' 
+            idx = (f.indexer or '').upper()
+            if 'IPCA' in idx:
+                chart_cat = 'Renda Fixa IPCA'
+            elif 'SELIC' in idx or 'CDI' in idx:
+                chart_cat = 'Renda Fixa Pós'
+                
+            # Add to Detailed Breakdown (for Chart)
+            if chart_cat in maturity_breakdown:
+                maturity_breakdown[chart_cat][cls] += val
+        
+        types_total['Fundos'] = total_funds
+        summary['Renda Fixa'] += total_funds
+
         
         # Crypto
         # Crypto Model has current_value
@@ -1147,9 +1184,9 @@ def balanceamento():
                                crypto_current=crypto_current,
                                crypto_profit=crypto_profit,
                                location_chart=location_chart)
-    except Exception as e:
-        import traceback
-        return f"<h3>Debug Error (Temp):</h3><pre>{traceback.format_exc()}</pre>"
+    # except Exception as e:
+    #    import traceback
+    #    return f"<h3>Debug Error (Temp):</h3><pre>{traceback.format_exc()}</pre>"
 
 @app.route('/balanceamento/add/rf', methods=['POST'])
 @login_required

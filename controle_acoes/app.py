@@ -1431,15 +1431,15 @@ def update_quotes():
     try:
         count, tried, errs = update_all_assets_logic()
         
-        # Check token status for debug
-        token = Settings.get_value('brapi_token', user_id=current_user.id)
-        token_status = "Token OK" if token else "Sem Token (Free/Env)"
+        
+        # Source is now Yahoo Finance (no token check needed)
+        source_status = "Fonte: Yahoo Finance"
         
         if errs:
              # Show first error to help debug
              flash(f'Falha: {len(errs)} erros. Primeiro erro: {errs[0]}', 'warning')
         else:
-             flash(f'Cotações atualizadas: {count}/{tried} ativos. {token_status}', 'success')
+             flash(f'Cotações atualizadas: {count}/{tried} ativos. {source_status}', 'success')
              
     except Exception as e:
         flash(f'Erro ao atualizar cotações: {str(e)}', 'danger')

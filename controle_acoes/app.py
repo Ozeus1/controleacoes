@@ -1415,6 +1415,9 @@ def update_all_assets_logic():
             # Commit after each chunk
             db.session.commit()
             
+            # Respect API Rate Limit (Prevent 429 Too Many Requests)
+            time.sleep(3)
+            
         except Exception as e:
             print(f"Error updating chunk {tickers}: {e}")
             errors.append(str(e))

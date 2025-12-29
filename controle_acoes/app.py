@@ -1387,6 +1387,7 @@ def update_all_assets_logic():
     
     updated_count = 0
     errors = []
+    total_tried = 0
 
     # Chunk logic to avoid URL too long or timeouts
     chunk_size = 10
@@ -1395,21 +1396,23 @@ def update_all_assets_logic():
     for chunk in relevant_chunks:
         try:
             tickers = [a.ticker for a in chunk]
+            total_tried += len(tickers)
             quotes = get_quotes(tickers, user_id=current_user.id)
             
             if quotes:
                 for asset in chunk:
-                    if asset.ticker in quotes:
-                        data = quotes[asset.ticker]
-                        price = data.get('price')
-                        
+                    # Generic lookup
+                    quote_data = quotes.get(asset.ticker)
+                    
+                    if quote_data:
+                        price = quote_data.get('price')
                         if price and price > 0:
                             asset.current_price = price
-                            asset.daily_change = data.get('change_percent', 0.0)
-                            asset.last_update = datetime.now()
+                            asset.daily_change = quote_data.get('change_percent', 0.0)
+                            asset.last_update = datetime.now(ZoneInfo('America/Sao_Paulo'))
                             updated_count += 1
             
-            # Commit after each chunk to save progress and avoid huge transaction
+            # Commit after each chunk
             db.session.commit()
             
         except Exception as e:
@@ -1417,17 +1420,28 @@ def update_all_assets_logic():
             errors.append(str(e))
             continue
     
-    return updated_count, errors
+    return updated_count, total_tried, errors
 
 @app.route('/update_quotes', methods=['POST'])
 @login_required
 def update_quotes():
     try:
-        count, errs = update_all_assets_logic()
-        flash(f'Cotações atualizadas com sucesso! ({count} ativos processados)', 'success')
+        count, tried, errs = update_all_assets_logic()
+        
+        # Check token status for debug
+        token = Settings.get_value('brapi_token', user_id=current_user.id)
+        token_status = "Token OK" if token else "Sem Token (Free/Env)"
+        
+        if errs:
+             flash(f'Parcialmente atualizado ({count}/{tried}). Erros: {len(errs)}. {token_status}', 'warning')
+        else:
+             flash(f'Cotações atualizadas: {count}/{tried} ativos. {token_status}', 'success')
+             
     except Exception as e:
         flash(f'Erro ao atualizar cotações: {str(e)}', 'danger')
         print(f"Error in update_quotes: {e}")
+        import traceback
+        traceback.print_exc()
         
     return redirect(request.referrer or url_for('index'))
 

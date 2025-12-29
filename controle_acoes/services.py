@@ -40,26 +40,22 @@ def get_quotes(tickers, user_id=None):
     tickers_param = ','.join(tickers)
     url = f"{BASE_URL}/{tickers_param}"
     
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
-        data = response.json()
-        
-        results = {}
-        if 'results' in data:
-            for item in data['results']:
-                symbol = item.get('symbol')
-                results[symbol] = {
-                    'price': item.get('regularMarketPrice', 0.0),
-                    'change_percent': item.get('regularMarketChangePercent', 0.0),
-                    'logo': item.get('logourl', ''),
-                    'shortName': item.get('shortName', '')
-                }
-        return results
-        
-    except Exception as e:
-        print(f"Error fetching quotes: {e}")
-        return {}
+    # try/except removed to allow debugging in app.py
+    response = requests.get(url, params=params, timeout=10)
+    response.raise_for_status()
+    data = response.json()
+    
+    results = {}
+    if 'results' in data:
+        for item in data['results']:
+            symbol = item.get('symbol')
+            results[symbol] = {
+                'price': item.get('regularMarketPrice', 0.0),
+                'change_percent': item.get('regularMarketChangePercent', 0.0),
+                'logo': item.get('logourl', ''),
+                'shortName': item.get('shortName', '')
+            }
+    return results
 
 def get_raw_quote_data(ticker):
     """

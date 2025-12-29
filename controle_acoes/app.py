@@ -1651,6 +1651,9 @@ def dividendos():
     # Filter only Stocks and FIIs for display
     relevant_assets = [a for a in assets if a.type in ['ACAO', 'FII']]
     
+    # Get all dividends for user's assets
+    all_dividends = db.session.query(Dividend).join(Asset).filter(Asset.user_id == current_user.id).order_by(Dividend.payment_date.desc()).all()
+    
     today = date.today()
     
     # Split Received vs Provisioned

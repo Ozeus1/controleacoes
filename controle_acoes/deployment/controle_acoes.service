@@ -10,7 +10,7 @@ WorkingDirectory=/var/www/controle_acoes/controle_acoes
 Environment="PATH=/var/www/controle_acoes/controle_acoes/venv/bin"
 Environment="FLASK_SECRET_KEY=sua_chave_secreta_aqui_gere_uma_nova"
 # Bind to Unix socket
-ExecStart=/var/www/controle_acoes/controle_acoes/venv/bin/gunicorn --workers 3 --bind unix:controle_acoes.sock -m 007 app:app
+ExecStart=/var/www/controle_acoes/controle_acoes/venv/bin/gunicorn --workers 3 --bind unix:controle_acoes.sock -m 007 --timeout 300 app:app
 
 [Install]
 WantedBy=multi-user.target

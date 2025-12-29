@@ -320,63 +320,8 @@ def process_assets(assets):
         
     return final_data
 
-def update_all_assets_logic():
-    with app.app_context():
-        assets = Asset.query.filter_by(user_id=current_user.id).all()
-        # Sequential update: 1 request per asset
-        token = Settings.get_value('brapi_token', user_id=current_user.id)
-        
-        for asset in assets:
-            try:
-                # Fetch individually (simulating "one line at a time")
-                # We could optimize by fetching batch of 1? 
-                # get_quotes supports list, let's pass single list.
-                quotes = get_quotes([asset.ticker], user_id=current_user.id)
-                if asset.ticker in quotes:
-                    q = quotes[asset.ticker]
-                    asset.current_price = q.get('price', 0.0)
-                    asset.daily_change = q.get('change_percent', 0.0)
-                    # Correct Timezone: UTC-3 (Sao Paulo)
-                    asset.last_update = datetime.now(ZoneInfo('America/Sao_Paulo'))
-                    db.session.commit() # Commit per line? User said "update one line at a time"
-                    # Maybe not commit db per line but update API per line.
-                    # Let's commit every few or at end. But to be safe committed per line.
-            except Exception as e:
-                print(f"Error updating {asset.ticker}: {e}")
-            # time.sleep(1) # Uncomment if strict rate limit needed
-            
-@app.route('/update_quotes', methods=['POST'])
-@login_required
-def update_quotes():
-    # 1. Fetch Assets
-    assets = Asset.query.filter_by(user_id=current_user.id).all()
-    tickers = list(set([a.ticker for a in assets]))
-    
-    # 2. Update Options underlying?
-    options = Option.query.filter_by(user_id=current_user.id).all()
-    if options:
-        tickers.extend([o.underlying_asset for o in options])
-        
-    quotes = get_quotes(list(set(tickers)), user_id=current_user.id)
-    
-    # Update Assets
-    for asset in assets:
-        if asset.ticker in quotes:
-            q = quotes[asset.ticker]
-            asset.current_price = q.get('price', 0.0)
-            asset.daily_change = q.get('change_percent', 0.0)
-            asset.last_update = datetime.now(ZoneInfo('America/Sao_Paulo'))
-    
-    # Update Options (current_option_price and underlying_asset price)
-    for opt in options:
-        if opt.underlying_asset in quotes:
-            opt.current_underlying_price = quotes[opt.underlying_asset].get('price', 0.0)
-        if opt.ticker in quotes: # If the option itself has a quote
-            opt.current_option_price = quotes[opt.ticker].get('price', 0.0)
 
-    db.session.commit()
-    flash("Cotações atualizadas com sucesso!")
-    return redirect(request.referrer or url_for('index'))
+# Valid update_all_assets_logic and update_quotes defined later (lines ~1433)
 
 
 @app.route('/add_asset', methods=['GET', 'POST'])

@@ -1430,6 +1430,53 @@ def delete_balance_item(type, id):
     return redirect(url_for('balanceamento'))
 
 
+def update_all_assets_logic():
+    """
+    Helper function to update quotes for all Stocks/FIIs of current user.
+    """
+    assets = Asset.query.filter_by(user_id=current_user.id).all()
+    # Filter ACAO/FII
+    relevant = [a for a in assets if a.type in ['ACAO', 'FII']]
+    if not relevant:
+        return 0, []
+
+    # Prepare tickers for BRApi
+    tickers = [a.ticker for a in relevant]
+    
+    # Use services.get_quotes
+    quotes = get_quotes(tickers, user_id=current_user.id)
+    
+    updated_count = 0
+    errors = []
+    
+    if quotes:
+        for asset in relevant:
+            if asset.ticker in quotes:
+                data = quotes[asset.ticker]
+                price = data.get('price')
+                
+                if price and price > 0:
+                    asset.current_price = price
+                    asset.daily_change = data.get('change_percent', 0.0)
+                    asset.last_update = datetime.now()
+                    updated_count += 1
+        db.session.commit()
+    
+    return updated_count, errors
+
+@app.route('/update_quotes', methods=['POST'])
+@login_required
+def update_quotes():
+    try:
+        count, errs = update_all_assets_logic()
+        flash(f'Cotações atualizadas com sucesso! ({count} ativos processados)', 'success')
+    except Exception as e:
+        flash(f'Erro ao atualizar cotações: {str(e)}', 'danger')
+        print(f"Error in update_quotes: {e}")
+        
+    return redirect(request.referrer or url_for('index'))
+
+
 @app.route('/update_intl_quotes')
 @login_required
 def update_intl_quotes():

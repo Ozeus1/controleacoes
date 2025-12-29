@@ -1440,27 +1440,37 @@ def update_all_assets_logic():
     if not relevant:
         return 0, []
 
-    # Prepare tickers for BRApi
-    tickers = [a.ticker for a in relevant]
-    
-    # Use services.get_quotes
-    quotes = get_quotes(tickers, user_id=current_user.id)
-    
     updated_count = 0
     errors = []
-    
-    if quotes:
-        for asset in relevant:
-            if asset.ticker in quotes:
-                data = quotes[asset.ticker]
-                price = data.get('price')
-                
-                if price and price > 0:
-                    asset.current_price = price
-                    asset.daily_change = data.get('change_percent', 0.0)
-                    asset.last_update = datetime.now()
-                    updated_count += 1
-        db.session.commit()
+
+    # Chunk logic to avoid URL too long or timeouts
+    chunk_size = 10
+    relevant_chunks = [relevant[i:i + chunk_size] for i in range(0, len(relevant), chunk_size)]
+
+    for chunk in relevant_chunks:
+        try:
+            tickers = [a.ticker for a in chunk]
+            quotes = get_quotes(tickers, user_id=current_user.id)
+            
+            if quotes:
+                for asset in chunk:
+                    if asset.ticker in quotes:
+                        data = quotes[asset.ticker]
+                        price = data.get('price')
+                        
+                        if price and price > 0:
+                            asset.current_price = price
+                            asset.daily_change = data.get('change_percent', 0.0)
+                            asset.last_update = datetime.now()
+                            updated_count += 1
+            
+            # Commit after each chunk to save progress and avoid huge transaction
+            db.session.commit()
+            
+        except Exception as e:
+            print(f"Error updating chunk {tickers}: {e}")
+            errors.append(str(e))
+            continue
     
     return updated_count, errors
 

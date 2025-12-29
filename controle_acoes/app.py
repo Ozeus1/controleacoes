@@ -12,11 +12,12 @@ from datetime import datetime, date
 from zoneinfo import ZoneInfo
 import yfinance as yf
 import requests
+import requests_cache
 
-# Configure YFinance Session to avoid 403/429
-session = requests.Session()
+# Configure Cached Session for YFinance (helps with rate limits and blocking)
+session = requests_cache.CachedSession('yfinance.cache', expire_after=3600) # 1 hour cache
 session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 })
 
 # Load env vars

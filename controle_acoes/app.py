@@ -1651,101 +1651,87 @@ def dividendos():
     # Filter only Stocks and FIIs for display
     relevant_assets = [a for a in assets if a.type in ['ACAO', 'FII']]
     
-    # Get all dividends for user's assets
-    # Using join to filter by user
-    all_dividends = db.session.query(Dividend).join(Asset).filter(Asset.user_id == current_user.id).order_by(Dividend.payment_date.desc()).all()
+    today = date.today()
     
-    # Calculate Totals
-    total_received = sum(d.amount for d in all_dividends)
+    # Split Received vs Provisioned
+    dividends_received = [d for d in all_dividends if d.payment_date and d.payment_date <= today]
+    dividends_provisioned = [d for d in all_dividends if d.payment_date and d.payment_date > today]
     
-    # Chart Data (Stocks vs FIIs)
-    total_stocks = sum(d.amount for d in all_dividends if d.asset.type == 'ACAO')
-    total_fiis = sum(d.amount for d in all_dividends if d.asset.type == 'FII')
+    # Calculate Totals (All time or just received?)
+    total_received = sum(d.amount for d in dividends_received)
+    
+    # Pie Chart Data (Stocks vs FIIs - All Time Received)
+    total_stocks = sum(d.amount for d in dividends_received if d.asset.type == 'ACAO')
+    total_fiis = sum(d.amount for d in dividends_received if d.asset.type == 'FII')
     
     div_chart_data = {
         'Ações': total_stocks,
         'FIIs': total_fiis
     }
     
-    # Monthly Evolution Data (Last 12 Months)
+    # Monthly Evolution Data (Aggregation)
     from collections import defaultdict
     from dateutil.relativedelta import relativedelta
     
-    today = date.today()
-    last_12_months = []
-    # Generate keys for last 12 months (e.g., [date(2024,11,1), date(2024,12,1)...])
-    # Starting from 11 months ago to next month? Or just user's data range? 
-    # Reference image shows future months too ("Proventos a receber"). 
-    # Let's show last 11 months + current + next 12? 
-    # User said "Ultimos 12 meses" in text? No, "Ultimos 12 meses" is in image 2.
-    # Text says "grafico de barras com valores totalizados por mês... Tome como refrência a organização da imagem 2".
-    # Image 2 spans 12/2024 to 12/2025 (13 months). Looks like "Next 12 months" + Current?
-    # Or "Rolling 12 months" window.
-    # Let's show: Last 6 months + Next 6 months (if available) or just simple "Last 12 months" if historical. 
-    # But dividends have "A Receber" (Future).
-    # Let's create a range from First Dividend Date (or 1 year ago) to Last Dividend Date (or 6 months ahead).
-    # Simplest approach matching "Evolution": Last 12 months of History + Future Provisioned.
-    # Let's do a fixed 12-month window centered on today? Or just all available data grouped?
-    # Let's stick to: "Last 12 months" + "Future". 
-    # Actually, let's just group ALL available data by month first, then slice the interesting part.
+    # Struct: key(year, month) -> {'total': X, 'acoes': Y, 'fiis': Z}
+    monthly_agg = defaultdict(lambda: {'total': 0.0, 'acoes': 0.0, 'fiis': 0.0})
     
-    monthly_data = defaultdict(float)
+    # Use ALL dividends (History + Future) to show evolution
     for div in all_dividends:
         if div.payment_date:
-            # key as (year, month)
             key = (div.payment_date.year, div.payment_date.month)
-            monthly_data[key] += div.amount
+            monthly_agg[key]['total'] += div.amount
+            if div.asset.type == 'ACAO':
+                monthly_agg[key]['acoes'] += div.amount
+            elif div.asset.type == 'FII':
+                monthly_agg[key]['fiis'] += div.amount
             
-    # Determine Range
-    if monthly_data:
-        # standard 12 months rolling
-        start_date = today.replace(day=1) - relativedelta(months=11)
-        end_date = today.replace(day=1) + relativedelta(months=12) # Show future too if exists
-        
-        # Or just show what we have in the db if it's within sensible range?
-        # Let's strictly follow the "clean" chart look. Last 12 months context.
-        # But if user populated 2025-01-01, all dividends might be in 2025.
-        # Let's show the range [Today - 6 months, Today + 6 months] or just [Jan 2025 ... Dec 2025] since user populated 2025?
-        # Let's generate a list of months covering the data found.
-        
-        min_key = min(monthly_data.keys())
-        max_key = max(monthly_data.keys())
-        
-        # Ensure we cover at least the default view (e.g. current year)
-        # Construct sorted list of keys
-        sorted_keys = sorted(monthly_data.keys())
-        
-    else:
-        sorted_keys = []
-
-    # Let's just create a simple list of labels/values from the dictionary sorted
+    # Determine Range (Standard 12 months context or based on data)
+    # Let's align with the requested "Image 1/2" style which often shows rolling 12 months.
+    # Default: Start from 11 months ago to next 1 month? Or simple sorted keys?
+    # User data (01/2025 entry) means all data is >= Jan 2025.
+    # If we stick to "Show what we have", it's safer.
+    
+    sorted_keys = sorted(monthly_agg.keys()) 
+    
     monthly_labels = []
-    monthly_values = []
+    values_total = []
+    values_stocks = []
+    values_fiis = []
     
     if sorted_keys:
-        # Fill gaps?
-        # Start from min_key to max_key
-        curr_y, curr_m = sorted_keys[0]
-        end_y, end_m = sorted_keys[-1]
+        curr_y, curr_m = sorted_keys[0] # Start from first data point
+        end_y, end_m = sorted_keys[-1]   # End at last data point
+        
+        # If range is huge, maybe limit? No, let's show all for now or last 15 months.
+        # But if defaults to 12 months view? 
+        # Let's enforce full range of available data for now since it's likely short (2025).
         
         current_iter = date(curr_y, curr_m, 1)
         end_iter = date(end_y, end_m, 1)
         
         while current_iter <= end_iter:
             k = (current_iter.year, current_iter.month)
-            val = monthly_data.get(k, 0.0)
+            data = monthly_agg.get(k, {'total': 0.0, 'acoes': 0.0, 'fiis': 0.0})
+            
             monthly_labels.append(current_iter.strftime('%b/%Y'))
-            monthly_values.append(val)
+            values_total.append(data['total'])
+            values_stocks.append(data['acoes'])
+            values_fiis.append(data['fiis'])
+            
             current_iter += relativedelta(months=1)
 
     monthly_chart_data = {
         'labels': monthly_labels,
-        'values': monthly_values
+        'total': values_total,
+        'acoes': values_stocks,
+        'fiis': values_fiis
     }
     
     return render_template('dividendos.html', 
                            assets=relevant_assets, 
-                           dividends=all_dividends,
+                           dividends_received=dividends_received,
+                           dividends_provisioned=dividends_provisioned,
                            total_received=total_received,
                            div_chart_data=div_chart_data,
                            monthly_chart_data=monthly_chart_data)
@@ -1781,10 +1767,14 @@ def update_dividends():
                 div_date = dt.date()
                 
                 if div_date >= start_date:
+                    div_type = 'Dividendo'
+                    if asset.ticker.endswith('11') or asset.ticker.endswith('11B'):
+                        div_type = 'Rendimento'
+                        
                     new_div = Dividend(
                         asset_id=asset.id,
                         ticker=asset.ticker,
-                        type='PROVENTO', 
+                        type=div_type, 
                         amount=float(amount) * asset.quantity, 
                         payment_date=div_date,
                         ex_date=div_date # YF date is usually Ex-Date

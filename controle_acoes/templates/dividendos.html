@@ -79,8 +79,15 @@
     <div class="col-12">
         <div class="card bg-dark text-white h-100">
             <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
-                <span>Evolução de Proventos</span>
-                <span class="badge badge-primary">MENSAL</span>
+                <span><i class="fas fa-chart-line mr-2"></i>Evolução de Proventos</span>
+                <div class="form-inline">
+                    <select id="chartFilter" class="form-control form-control-sm bg-secondary text-white border-0"
+                        onchange="updateChartType()">
+                        <option value="total">Total</option>
+                        <option value="acoes">Ações (Dividendos)</option>
+                        <option value="fiis">FIIs (Rendimentos)</option>
+                    </select>
+                </div>
             </div>
             <div class="card-body">
                 <div style="height: 300px; width: 100%;">
@@ -91,14 +98,55 @@
     </div>
 </div>
 
+<!-- FUTURE DIVIDENDS TABLE -->
+{% if dividends_provisioned %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card bg-dark text-white border-info">
+            <div class="card-header font-weight-bold text-info">
+                <i class="fas fa-calendar-alt mr-2"></i>Proventos a Receber (Futuros)
+            </div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-dark table-hover mb-0 text-center">
+                    <thead>
+                        <tr class="text-secondary">
+                            <th>Ticker</th>
+                            <th>Tipo</th>
+                            <th>Data Com</th>
+                            <th>Data Pagamento</th>
+                            <th>Valor</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for div in dividends_provisioned %}
+                        <tr>
+                            <td class="font-weight-bold">{{ div.ticker }}</td>
+                            <td><span class="badge badge-secondary">{{ div.type }}</span></td>
+                            <td>{{ div.ex_date.strftime('%d/%m/%Y') if div.ex_date else '-' }}</td>
+                            <td class="text-warning font-weight-bold">{{ div.payment_date.strftime('%d/%m/%Y') if
+                                div.payment_date else '-' }}</td>
+                            <td class="text-success font-weight-bold">{{ div.amount | brl }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
 <!-- DIVIDENDS HISTORY TABLE -->
 <div class="row">
     <div class="col-12">
         <div class="card bg-dark text-white">
-            <div class="card-header font-weight-bold">Histórico de Proventos</div>
-            <div class="card-body p-0 table-responsive">
+            <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
+                <span><i class="fas fa-history mr-2"></i>Histórico de Proventos (Recebidos)</span>
+                <span class="badge badge-success">{{ dividends_received|length }} Pagamentos</span>
+            </div>
+            <div class="card-body p-0 table-responsive" style="max-height: 500px; overflow-y: auto;">
                 <table class="table table-dark table-striped mb-0 text-center" id="dividendsTable">
-                    <thead>
+                    <thead style="position: sticky; top: 0; background-color: #343a40; z-index: 1;">
                         <tr>
                             <th>Data Pagamento</th>
                             <th>Data Com (Ex)</th>
@@ -108,7 +156,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        {% for div in dividends %}
+                        {% for div in dividends_received %}
                         <tr>
                             <td>{{ div.payment_date.strftime('%d/%m/%Y') if div.payment_date else '-' }}</td>
                             <td>{{ div.ex_date.strftime('%d/%m/%Y') if div.ex_date else '-' }}</td>
@@ -128,8 +176,9 @@
 <script>
     // Chart Data
     const divData = {{ div_chart_data | tojson }};
-    const monthlyData = {{ monthly_chart_data | tojson }};
+    const monthlyDataRaw = {{ monthly_chart_data | tojson }};
 
+    //--- Doughnut Chart ---
     const ctx = document.getElementById('divChart').getContext('2d');
     new Chart(ctx, {
         type: 'doughnut',
@@ -153,22 +202,29 @@
         }
     });
 
-    // Monthly Bar Chart
+    //--- Monthly Bar Chart (Dynamic) ---
     const ctxMonthly = document.getElementById('monthlyChart').getContext('2d');
 
-    // Gradient Blue
-    const gradient = ctxMonthly.createLinearGradient(0, 0, 0, 400);
-    gradient.addColorStop(0, '#4facfe');
-    gradient.addColorStop(1, '#00f2fe');
+    // Gradients
+    const gradientTotal = ctxMonthly.createLinearGradient(0, 0, 0, 400);
+    gradientTotal.addColorStop(0, '#4facfe'); gradientTotal.addColorStop(1, '#00f2fe');
 
-    new Chart(ctxMonthly, {
+    const gradientStocks = ctxMonthly.createLinearGradient(0, 0, 0, 400);
+    gradientStocks.addColorStop(0, '#43e97b'); gradientStocks.addColorStop(1, '#38f9d7');
+
+    const gradientFIIs = ctxMonthly.createLinearGradient(0, 0, 0, 400);
+    gradientFIIs.addColorStop(0, '#fa709a'); gradientFIIs.addColorStop(1, '#fee140');
+
+    let currentGradient = gradientTotal;
+
+    const barChart = new Chart(ctxMonthly, {
         type: 'bar',
         data: {
-            labels: monthlyData.labels,
+            labels: monthlyDataRaw.labels,
             datasets: [{
-                label: 'Proventos Recebidos',
-                data: monthlyData.values,
-                backgroundColor: gradient,
+                label: 'Total',
+                data: monthlyDataRaw.total,
+                backgroundColor: gradientTotal,
                 borderRadius: 4,
                 barPercentage: 0.7
             }]
@@ -199,5 +255,31 @@
             }
         }
     });
+
+    function updateChartType() {
+        const type = document.getElementById('chartFilter').value;
+        let newData = [];
+        let newLabel = '';
+        let newGradient = gradientTotal;
+
+        if (type === 'total') {
+            newData = monthlyDataRaw.total;
+            newLabel = 'Total';
+            newGradient = gradientTotal;
+        } else if (type === 'acoes') {
+            newData = monthlyDataRaw.acoes;
+            newLabel = 'Dividendos (Ações)';
+            newGradient = gradientStocks;
+        } else if (type === 'fiis') {
+            newData = monthlyDataRaw.fiis;
+            newLabel = 'Rendimentos (FIIs)';
+            newGradient = gradientFIIs;
+        }
+
+        barChart.data.datasets[0].data = newData;
+        barChart.data.datasets[0].label = newLabel;
+        barChart.data.datasets[0].backgroundColor = newGradient;
+        barChart.update();
+    }
 </script>
 {% endblock %}

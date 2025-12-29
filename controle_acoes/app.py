@@ -10,7 +10,7 @@ import requests
 import time
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
-import yfinance as yf
+# import yfinance as yf -> Moved to local scope
 import requests
 
 # Load env vars
@@ -1440,9 +1440,6 @@ def update_all_assets_logic():
     if not relevant:
         return 0, []
     
-    # DEBUG: Force return to check if crash persists
-    return 0, []
-
     updated_count = 0
     errors = []
 
@@ -1802,6 +1799,7 @@ def dividendos():
 @app.route('/update_dividends', methods=['POST'])
 @login_required
 def update_dividends():
+    import yfinance as yf # Local import to prevent global crash
     assets = Asset.query.filter_by(user_id=current_user.id).filter(Asset.type.in_(['ACAO', 'FII'])).all()
     
     updated_count = 0

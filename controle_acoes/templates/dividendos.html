@@ -74,6 +74,23 @@
     </div>
 </div>
 
+<!-- MONTHLY EVOLUTION CHART -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card bg-dark text-white h-100">
+            <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
+                <span>Evolução de Proventos</span>
+                <span class="badge badge-primary">MENSAL</span>
+            </div>
+            <div class="card-body">
+                <div style="height: 300px; width: 100%;">
+                    <canvas id="monthlyChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- DIVIDENDS HISTORY TABLE -->
 <div class="row">
     <div class="col-12">
@@ -111,6 +128,7 @@
 <script>
     // Chart Data
     const divData = {{ div_chart_data | tojson }};
+    const monthlyData = {{ monthly_chart_data | tojson }};
 
     const ctx = document.getElementById('divChart').getContext('2d');
     new Chart(ctx, {
@@ -130,6 +148,53 @@
                 legend: {
                     position: 'bottom',
                     labels: { color: 'white' }
+                }
+            }
+        }
+    });
+
+    // Monthly Bar Chart
+    const ctxMonthly = document.getElementById('monthlyChart').getContext('2d');
+
+    // Gradient Blue
+    const gradient = ctxMonthly.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, '#4facfe');
+    gradient.addColorStop(1, '#00f2fe');
+
+    new Chart(ctxMonthly, {
+        type: 'bar',
+        data: {
+            labels: monthlyData.labels,
+            datasets: [{
+                label: 'Proventos Recebidos',
+                data: monthlyData.values,
+                backgroundColor: gradient,
+                borderRadius: 4,
+                barPercentage: 0.7
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    grid: { color: 'rgba(255, 255, 255, 0.1)' },
+                    ticks: { color: 'white', callback: function (value) { return 'R$ ' + value; } }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: 'white' }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function (context) {
+                            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed.y);
+                        }
+                    }
                 }
             }
         }

@@ -1667,11 +1667,88 @@ def dividendos():
         'FIIs': total_fiis
     }
     
+    # Monthly Evolution Data (Last 12 Months)
+    from collections import defaultdict
+    from dateutil.relativedelta import relativedelta
+    
+    today = date.today()
+    last_12_months = []
+    # Generate keys for last 12 months (e.g., [date(2024,11,1), date(2024,12,1)...])
+    # Starting from 11 months ago to next month? Or just user's data range? 
+    # Reference image shows future months too ("Proventos a receber"). 
+    # Let's show last 11 months + current + next 12? 
+    # User said "Ultimos 12 meses" in text? No, "Ultimos 12 meses" is in image 2.
+    # Text says "grafico de barras com valores totalizados por mês... Tome como refrência a organização da imagem 2".
+    # Image 2 spans 12/2024 to 12/2025 (13 months). Looks like "Next 12 months" + Current?
+    # Or "Rolling 12 months" window.
+    # Let's show: Last 6 months + Next 6 months (if available) or just simple "Last 12 months" if historical. 
+    # But dividends have "A Receber" (Future).
+    # Let's create a range from First Dividend Date (or 1 year ago) to Last Dividend Date (or 6 months ahead).
+    # Simplest approach matching "Evolution": Last 12 months of History + Future Provisioned.
+    # Let's do a fixed 12-month window centered on today? Or just all available data grouped?
+    # Let's stick to: "Last 12 months" + "Future". 
+    # Actually, let's just group ALL available data by month first, then slice the interesting part.
+    
+    monthly_data = defaultdict(float)
+    for div in all_dividends:
+        if div.payment_date:
+            # key as (year, month)
+            key = (div.payment_date.year, div.payment_date.month)
+            monthly_data[key] += div.amount
+            
+    # Determine Range
+    if monthly_data:
+        # standard 12 months rolling
+        start_date = today.replace(day=1) - relativedelta(months=11)
+        end_date = today.replace(day=1) + relativedelta(months=12) # Show future too if exists
+        
+        # Or just show what we have in the db if it's within sensible range?
+        # Let's strictly follow the "clean" chart look. Last 12 months context.
+        # But if user populated 2025-01-01, all dividends might be in 2025.
+        # Let's show the range [Today - 6 months, Today + 6 months] or just [Jan 2025 ... Dec 2025] since user populated 2025?
+        # Let's generate a list of months covering the data found.
+        
+        min_key = min(monthly_data.keys())
+        max_key = max(monthly_data.keys())
+        
+        # Ensure we cover at least the default view (e.g. current year)
+        # Construct sorted list of keys
+        sorted_keys = sorted(monthly_data.keys())
+        
+    else:
+        sorted_keys = []
+
+    # Let's just create a simple list of labels/values from the dictionary sorted
+    monthly_labels = []
+    monthly_values = []
+    
+    if sorted_keys:
+        # Fill gaps?
+        # Start from min_key to max_key
+        curr_y, curr_m = sorted_keys[0]
+        end_y, end_m = sorted_keys[-1]
+        
+        current_iter = date(curr_y, curr_m, 1)
+        end_iter = date(end_y, end_m, 1)
+        
+        while current_iter <= end_iter:
+            k = (current_iter.year, current_iter.month)
+            val = monthly_data.get(k, 0.0)
+            monthly_labels.append(current_iter.strftime('%b/%Y'))
+            monthly_values.append(val)
+            current_iter += relativedelta(months=1)
+
+    monthly_chart_data = {
+        'labels': monthly_labels,
+        'values': monthly_values
+    }
+    
     return render_template('dividendos.html', 
                            assets=relevant_assets, 
                            dividends=all_dividends,
                            total_received=total_received,
-                           div_chart_data=div_chart_data)
+                           div_chart_data=div_chart_data,
+                           monthly_chart_data=monthly_chart_data)
 
 @app.route('/update_dividends', methods=['POST'])
 @login_required

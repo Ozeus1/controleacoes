@@ -1147,6 +1147,16 @@ def balanceamento():
         # 3. Total for the Table Footer
         total_rf_detailed = sum(rf_chart_type.values())
 
+        # Prepare specific Pie Chart Data (Granular)
+        # Requested: Renda Fixa Pós, Pré, IPCA, Fundos, Cripto, Previdência, Ações, FIIs, Ouro, Internacional RV, Internacional RF
+        target_keys = [
+            'Renda Fixa Pós', 'Renda Fixa Pré', 'Renda Fixa IPCA', 
+            'Fundos', 'Cripto', 'Previdência', 
+            'Ações', 'FIIs', 'Ouro', 
+            'Internacional RV', 'Internacional RF'
+        ]
+        pie_chart_data = {k: types_total.get(k, 0) for k in target_keys if types_total.get(k, 0) > 0.01}
+
         # 4. Totals for International RV Table
         intl_rv_invested = sum([(i.quantity or 0) * (i.avg_price or 0) for i in intls_rv])
         intl_rv_current = sum([(i.quantity or 0) * (i.quote or 0) for i in intls_rv])
@@ -1176,6 +1186,7 @@ def balanceamento():
                                summary=summary, types_total=types_total, total_portfolio=total_portfolio,
                                maturity_breakdown=clean_breakdown,
                                rf_chart_term=rf_chart_term, rf_chart_type=rf_chart_type,
+                               pie_chart_data=pie_chart_data,
                                total_rf_detailed=total_rf_detailed,
                                intl_rv_invested=intl_rv_invested, 
                                intl_rv_current=intl_rv_current, 

@@ -1439,6 +1439,9 @@ def update_all_assets_logic():
     relevant = [a for a in assets if a.type in ['ACAO', 'FII']]
     if not relevant:
         return 0, []
+    
+    # DEBUG: Force return to check if crash persists
+    return 0, []
 
     updated_count = 0
     errors = []

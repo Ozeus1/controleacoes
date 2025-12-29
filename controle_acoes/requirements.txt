@@ -8,3 +8,4 @@ cryptography==42.0.0
 Flask-Login==0.6.3
 gunicorn==21.2.0
 yfinance>=0.2.50
+python-dateutil

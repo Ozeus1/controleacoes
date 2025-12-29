@@ -1,12 +1,22 @@
 import sqlite3
 import os
 
-DB_PATH = 'instance/financas.db'
+DB_PATH = 'instance/investments.db'
+
+# Fallback checking
+if not os.path.exists(DB_PATH) and os.path.exists('instance/financas.db'):
+    DB_PATH = 'instance/financas.db'
 
 def migrate():
     if not os.path.exists(DB_PATH):
-        print(f"Database not found at {DB_PATH}")
+        print(f"Database not found at {DB_PATH}. Checking current directory...")
+        if os.path.exists('investments.db'):
+             # Handle case where run from inside instance path? Unlikely.
+             pass
+        print(f"CRITICAL: Database file not found. Expected at {os.path.abspath(DB_PATH)}")
         return
+
+    print(f"Migrating database: {DB_PATH}")
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()

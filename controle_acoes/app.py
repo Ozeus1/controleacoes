@@ -1433,7 +1433,8 @@ def update_quotes():
         token_status = "Token OK" if token else "Sem Token (Free/Env)"
         
         if errs:
-             flash(f'Parcialmente atualizado ({count}/{tried}). Erros: {len(errs)}. {token_status}', 'warning')
+             # Show first error to help debug
+             flash(f'Falha: {len(errs)} erros. Primeiro erro: {errs[0]}', 'warning')
         else:
              flash(f'Cotações atualizadas: {count}/{tried} ativos. {token_status}', 'success')
              

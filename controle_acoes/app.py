@@ -12,13 +12,6 @@ from datetime import datetime, date
 from zoneinfo import ZoneInfo
 import yfinance as yf
 import requests
-import requests_cache
-
-# Configure Cached Session for YFinance (helps with rate limits and blocking)
-session = requests_cache.CachedSession('yfinance.cache', expire_after=3600) # 1 hour cache
-session.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-})
 
 # Load env vars
 load_dotenv()
@@ -1691,8 +1684,7 @@ def update_dividends():
     for asset in assets:
         try:
             ticker_sa = f"{asset.ticker}.SA" if not asset.ticker.endswith('.SA') else asset.ticker
-            # Use global session with User-Agent
-            yf_ticker = yf.Ticker(ticker_sa, session=session)
+            yf_ticker = yf.Ticker(ticker_sa)
             
             # Fetch Dividends History
             # If entry_date exists, fetch from that date. Else last 1 year.

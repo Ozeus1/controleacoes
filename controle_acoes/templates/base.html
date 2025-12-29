@@ -45,6 +45,8 @@
                         class="{{ 'active' if request.endpoint == 'opcoes' else '' }}">Opções</a>
                     <a href="{{ url_for('balanceamento') }}"
                         class="{{ 'active' if request.endpoint == 'balanceamento' else '' }}">Balanceamento</a>
+                    <a href="{{ url_for('dividendos') }}"
+                        class="{{ 'active' if request.endpoint == 'dividendos' else '' }}">Dividendos</a>
                     <a href="{{ url_for('history') }}"
                         class="{{ 'active' if request.endpoint == 'history' else '' }}">Histórico</a>
 

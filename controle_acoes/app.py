@@ -3,14 +3,14 @@ import os
 import sqlite3
 from flask import Flask, render_template, request, redirect, url_for, flash
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, FixedIncome, InvestmentFund, Crypto, Pension, International
+from models import db, Asset, Settings, User, TradeHistory, Option, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
 import time
 from datetime import datetime, date
 from zoneinfo import ZoneInfo
-# yfinance removed to avoid dependency hell on VPS
+import yfinance as yf
 
 # Load env vars
 load_dotenv()
@@ -1638,6 +1638,113 @@ def profile():
             flash('Senha alterada com sucesso!', 'success')
             
     return render_template('profile.html')
+
+
+# --- Dividends Module ---
+
+@app.route('/dividendos')
+@login_required
+def dividendos():
+    assets = Asset.query.filter_by(user_id=current_user.id).all()
+    
+    # Filter only Stocks and FIIs for display
+    relevant_assets = [a for a in assets if a.type in ['ACAO', 'FII']]
+    
+    # Get all dividends for user's assets
+    # Using join to filter by user
+    all_dividends = db.session.query(Dividend).join(Asset).filter(Asset.user_id == current_user.id).order_by(Dividend.payment_date.desc()).all()
+    
+    # Calculate Totals
+    total_received = sum(d.amount for d in all_dividends)
+    
+    # Chart Data (Stocks vs FIIs)
+    total_stocks = sum(d.amount for d in all_dividends if d.asset.type == 'ACAO')
+    total_fiis = sum(d.amount for d in all_dividends if d.asset.type == 'FII')
+    
+    div_chart_data = {
+        'Ações': total_stocks,
+        'FIIs': total_fiis
+    }
+    
+    return render_template('dividendos.html', 
+                           assets=relevant_assets, 
+                           dividends=all_dividends,
+                           total_received=total_received,
+                           div_chart_data=div_chart_data)
+
+@app.route('/update_dividends', methods=['POST'])
+@login_required
+def update_dividends():
+    assets = Asset.query.filter_by(user_id=current_user.id).filter(Asset.type.in_(['ACAO', 'FII'])).all()
+    
+    updated_count = 0
+    error_count = 0
+    
+    for asset in assets:
+        try:
+            ticker_sa = f"{asset.ticker}.SA" if not asset.ticker.endswith('.SA') else asset.ticker
+            yf_ticker = yf.Ticker(ticker_sa)
+            
+            # Fetch Dividends History
+            # If entry_date exists, fetch from that date. Else last 1 year.
+            start_date = asset.entry_date
+            if not start_date:
+                 # Default to 1 year ago if no entry date
+                 start_date = date.today().replace(year=date.today().year - 1)
+            
+            # YFinance expects string or datetime
+            history = yf_ticker.dividends
+            
+            # Clear existing dividends for this asset to avoid duplicates/stale data
+            Dividend.query.filter_by(asset_id=asset.id).delete()
+            
+            for dt, amount in history.items():
+                # dt is Timestamp, convert to date
+                div_date = dt.date()
+                
+                if div_date >= start_date:
+                    new_div = Dividend(
+                        asset_id=asset.id,
+                        ticker=asset.ticker,
+                        type='PROVENTO', 
+                        amount=float(amount) * asset.quantity, 
+                        payment_date=div_date,
+                        ex_date=div_date # YF date is usually Ex-Date
+                    )
+                    db.session.add(new_div)
+            
+            updated_count += 1
+            
+        except Exception as e:
+            print(f"Error fetching dividends for {asset.ticker}: {e}")
+            error_count += 1
+            continue
+            
+    db.session.commit()
+    msg = f'Dados atualizados! (Sucesso: {updated_count}, Erros: {error_count})'
+    if error_count > 0:
+        flash(msg, 'warning')
+    else:
+        flash(msg, 'success')
+    return redirect(url_for('dividendos'))
+
+@app.route('/update_asset_date/<int:id>', methods=['POST'])
+@login_required
+def update_asset_date(id):
+    asset = Asset.query.get_or_404(id)
+    if asset.user_id != current_user.id:
+        return "Unauthorized", 403
+        
+    new_date_str = request.form.get('entry_date')
+    if new_date_str:
+        try:
+            asset.entry_date = datetime.strptime(new_date_str, '%Y-%m-%d').date()
+            db.session.commit()
+            flash(f'Data de compra de {asset.ticker} atualizada.', 'success')
+        except ValueError:
+            flash('Formato de data inválido.', 'danger')
+    
+    return redirect(url_for('dividendos'))
 
 if __name__ == '__main__':
     with app.app_context():

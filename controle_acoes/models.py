@@ -209,5 +209,20 @@ class International(db.Model):
     
     # New Fields for Refactor
     category = db.Column(db.String(10), default='RV') # 'RV' or 'RF'
-    description = db.Column(db.String(50), nullable=True) # For RF Type
-    invested_value = db.Column(db.Float, nullable=True) # For RF Invested Value (USD)
+    purchase_price = db.Column(db.Float) # Price in USD at purchase
+    invested_value = db.Column(db.Float) # Total Invested in USD
+    current_price = db.Column(db.Float) # Current Price (Quote) in USD
+    description = db.Column(db.String(100)) # Extra details
+
+class Dividend(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    asset_id = db.Column(db.Integer, db.ForeignKey('asset.id'), nullable=False)
+    # ticker not strictly needed if linked to Asset, but good for quick verify
+    ticker = db.Column(db.String(10), nullable=False) 
+    type = db.Column(db.String(20), nullable=False) # 'DIVIDENDO' or 'JCP'
+    payment_date = db.Column(db.Date, nullable=True)
+    ex_date = db.Column(db.Date, nullable=True) # Data Com
+    amount = db.Column(db.Float, nullable=False)
+    
+    asset = db.relationship('Asset', backref=db.backref('dividends', lazy=True))
+

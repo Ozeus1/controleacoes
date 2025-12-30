@@ -98,32 +98,55 @@ def opcoes():
 def add_option():
     # Similar to add_asset
     if request.method == 'POST':
-        ticker = request.form.get('ticker').upper()
-        underlying = request.form.get('underlying').upper()
-        quantity = int(request.form.get('quantity'))
-        strike = float(request.form.get('strike').replace(',', '.'))
-        expiration = datetime.strptime(request.form.get('expiration'), '%Y-%m-%d').date()
-        sale_price = float(request.form.get('sale_price').replace(',', '.'))
+        try:
+            ticker = request.form.get('ticker')
+            underlying = request.form.get('underlying')
+            quantity_str = request.form.get('quantity')
+            strike_str = request.form.get('strike')
+            expiration_str = request.form.get('expiration')
+            sale_price_str = request.form.get('sale_price')
+            
+            # Basic Validation
+            if not all([ticker, underlying, quantity_str, strike_str, expiration_str, sale_price_str]):
+                flash("Todos os campos são obrigatórios.", "warning")
+                return redirect(url_for('add_option'))
+            
+            ticker = ticker.upper()
+            underlying = underlying.upper()
+            quantity = int(quantity_str)
+            strike = float(strike_str.replace(',', '.'))
+            expiration = datetime.strptime(expiration_str, '%Y-%m-%d').date()
+            sale_price = float(sale_price_str.replace(',', '.'))
+            
+            # Current price (optional on add)
+            curr_price_str = request.form.get('current_option_price')
+            current_option_price = float(curr_price_str.replace(',', '.')) if curr_price_str else 0.0
+            
+            opt = Option(
+                user_id=current_user.id,
+                ticker=ticker,
+                quantity=quantity,
+                underlying_asset=underlying,
+                strike_price=strike,
+                expiration_date=expiration,
+                sale_price=sale_price,
+                current_option_price=current_option_price
+            )
+            db.session.add(opt)
+            db.session.commit()
+            
+            flash("Opção adicionada com sucesso!", "success")
+            return redirect(url_for('opcoes'))
+            
+        except ValueError as ve:
+            flash(f"Erro de formato: {ve}", "danger")
+        except Exception as e:
+            flash(f"Erro ao salvar opção: {e}", "danger")
+            print(f"Error add_option: {e}")
+            import traceback
+            traceback.print_exc()
         
-        # Current price (optional on add)
-        curr_price_str = request.form.get('current_option_price')
-        current_option_price = float(curr_price_str.replace(',', '.')) if curr_price_str else 0.0
-        
-        opt = Option(
-            user_id=current_user.id,
-            ticker=ticker,
-            quantity=quantity,
-            underlying_asset=underlying,
-            strike_price=strike,
-            expiration_date=expiration,
-            sale_price=sale_price,
-            current_option_price=current_option_price
-        )
-        db.session.add(opt)
-        db.session.commit()
-        
-        flash("Opção adicionada com sucesso!")
-        return redirect(url_for('opcoes'))
+        return redirect(url_for('add_option'))
         
     return render_template('add_option.html')
 

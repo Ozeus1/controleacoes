@@ -100,10 +100,10 @@ def add_option():
     if request.method == 'POST':
         try:
             ticker = request.form.get('ticker')
-            underlying = request.form.get('underlying')
+            underlying = request.form.get('underlying_asset') # Correct HTML name
             quantity_str = request.form.get('quantity')
-            strike_str = request.form.get('strike')
-            expiration_str = request.form.get('expiration')
+            strike_str = request.form.get('strike_price') # Correct HTML name
+            expiration_str = request.form.get('expiration_date') # Correct HTML name
             sale_price_str = request.form.get('sale_price')
             
             # Basic Validation
@@ -158,18 +158,28 @@ def edit_option(id):
         flash("Você não tem permissão para editar esta opção.")
         return redirect(url_for('opcoes'))
     if request.method == 'POST':
-        opt.ticker = request.form.get('ticker').upper()
-        opt.quantity = int(request.form.get('quantity'))
-        opt.underlying_asset = request.form.get('underlying_asset').upper()
-        opt.strike_price = float(request.form.get('strike_price').replace(',', '.'))
-        opt.expiration_date = datetime.strptime(request.form.get('expiration_date'), '%Y-%m-%d').date()
-        opt.sale_price = float(request.form.get('sale_price').replace(',', '.'))
-        
-        curr_price_str = request.form.get('current_option_price')
-        if curr_price_str:
-            opt.current_option_price = float(curr_price_str.replace(',', '.'))
+        try:
+            opt.ticker = request.form.get('ticker').upper()
+            opt.quantity = int(request.form.get('quantity'))
+            opt.underlying_asset = request.form.get('underlying_asset').upper()
+            opt.strike_price = float(request.form.get('strike_price').replace(',', '.'))
+            opt.expiration_date = datetime.strptime(request.form.get('expiration_date'), '%Y-%m-%d').date()
+            opt.sale_price = float(request.form.get('sale_price').replace(',', '.'))
             
-        db.session.commit()
+            curr_price_str = request.form.get('current_option_price')
+            if curr_price_str:
+                opt.current_option_price = float(curr_price_str.replace(',', '.'))
+                
+            db.session.commit()
+            flash("Opção atualizada com sucesso!", "success")
+            return redirect(url_for('opcoes'))
+            
+        except ValueError as ve:
+             flash(f"Erro de formato: {ve}", "danger")
+        except Exception as e:
+             flash(f"Erro ao editar: {e}", "danger")
+             return redirect(url_for('opcoes'))
+             
         return redirect(url_for('opcoes'))
         
     return render_template('add_option.html', option=opt, edit=True)

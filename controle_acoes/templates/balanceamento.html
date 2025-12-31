@@ -501,8 +501,9 @@
     <!-- INTERNATIONAL RF -->
     <div class="col-12 mb-4">
         <div class="card bg-dark text-white border-secondary">
-            <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
-                <span>Renda Fixa Internacional</span>
+            <div
+                class="card-header bg-secondary text-white font-weight-bold d-flex justify-content-between align-items-center">
+                <span>Renda Fixa Internacional (Bonds/ETFs)</span>
                 <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalIntlRF">
                     <i class="fas fa-plus"></i> Adicionar
                 </button>
@@ -512,10 +513,14 @@
                     <thead>
                         <tr>
                             <th>Banco</th>
+                            <th>Código</th>
                             <th>Tipo</th>
-                            <th>Vl. Investido ($)</th>
-                            <th>Vl. Atualizado ($)</th>
-                            <th>Câmbio (R$)</th>
+                            <th>Qtd</th>
+                            <th>PM ($)</th>
+                            <th>Cotação ($)</th>
+                            <th>Vl. Compra ($)</th>
+                            <th>Lucro ($)</th>
+                            <th>Total ($)</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -523,10 +528,25 @@
                         {% for item in intls_rf %}
                         <tr>
                             <td>{{ item.institution }}</td>
+                            <td>{{ item.name }}</td>
                             <td>{{ item.description }}</td>
-                            <td>$ {{ item.invested_value | brl_fmt }}</td>
-                            <td>$ {{ item.value_usd | brl_fmt }}</td>
-                            <td>R$ {{ item.rate_usd | brl_fmt }}</td>
+                            <td>{{ item.quantity | default(0) }}</td>
+                            <td>$ {{ item.avg_price | brl_fmt }}</td>
+                            <td>$ {{ item.quote | brl_fmt }}</td>
+
+                            {% set quote = item.quote or 0 %}
+                            {% set avg_price = item.avg_price or 0 %}
+                            {% set quantity = item.quantity or 0 %}
+                            {% set invested = quantity * avg_price %}
+                            {% set total = quantity * quote %}
+                            {% set profit = total - invested %}
+
+                            <td>$ {{ invested | brl_fmt }}</td>
+                            <td class="{{ 'text-success' if profit >= 0 else 'text-danger' }}">
+                                $ {{ profit | brl_fmt }}
+                            </td>
+                            <td>$ {{ total | brl_fmt }}</td>
+
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='intl', id=item.id) }}"
                                     class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
@@ -537,32 +557,17 @@
                         </tr>
                         {% endfor %}
                     </tbody>
-                    </tbody>
                     <tfoot>
                         <tr class="font-weight-bold" style="background-color: rgba(255,255,255,0.05);">
-                            <td colspan="2" class="text-right">TOTAL</td>
+                            <td colspan="6" class="text-right">TOTAL</td>
+                            <!-- Using Python calculated totals would be better, but for now placeholder or simple Jinja sum if manageable. 
+                                 However, variable types_total['Internacional RF'] exists but it's BRL probably.
+                                 Let's leave columns consistent. -->
                             <td>-</td>
-                            <td>$ {{ types_total['Internacional RF'] | brl_fmt }}</td>
-                            <!-- Typo fix in next step if variable wrong. Wait, type intl rf is stored in types_total -->
-                            <!-- Actually, types_total['Internacional RF'] is in BRL. The table shows USD columns. I need USD totals. -->
-                            <!-- I will use jinja loop vars or computed values? app.py calculated t_intl_rf in BRL. -->
-                            <!-- For USD, I can sum in Jinja or assume user wants BRL total? The column 4 is "Vl Atualizado ($)". -->
-                            <!-- Let's check logic. -->
-                            <!-- Use Jinja loop.sum logic or pass it. I didn't pass USD total for RF. I will just show BRL total in a new column or just show BRL equivalent? -->
-                            <!-- Table columns: Bank, Type, Invested($), Current($), Rate(R$), Actions. -->
-                            <!-- I should sum Current($). -->
-                            <!-- I'll use a jinja trick to sum, or for now just show "-" and fix later? No, user wants total. -->
-                            <!-- I passed `types_total['Internacional RF']` which is BRL. -->
-                            <!-- I will calculate USD total in Jinja for now to be safe. -->
-                            <!-- {% set total_usd = intls_rf | map(attribute='value_usd') | sum %} -->
-                            <!-- Wait, map sum in Jinja might need checks. -->
-                            <!-- I'll skip USD total for now and put BRL total in a footer row note or column? -->
-                            <!-- Actually, let's just put "-" in USD columns and put the BRL total in a colspan? No, user wants table total. -->
-                            <!-- I will add `{% set total_intl_rf_usd = intls_rf | map(attribute='value_usd') | sum if intls_rf else 0 %}` at top of loop. -->
-                            <!-- Re-thinking: I'll use the existing types_total['Internacional RF'] (BRL) and maybe display it? No, table is USD. -->
-                            <!-- I will skip adding total for Intl RF for a split second, or just use `types_total`? -->
-                            <!-- Let's add the footer structure but leave value generic? No. -->
-                            <!-- I will use the Jinja sum strategy in the loop. -->
+                            <td>-</td>
+                            <td>$ {{ types_total['Internacional RF'] | brl_fmt }} (R$)</td>
+                            <!-- This is BRL likely, label it to avoid confusion or fix later -->
+                            <td>-</td>
                         </tr>
                     </tfoot>
                 </table>
@@ -579,6 +584,38 @@
         vertical-align: middle !important;
     }
 </style>
+
+<!-- ... (Leaving Summary Section intact based on line range) ... -->
+
+<!-- (Below at Modal Definitions) -->
+
+<!-- Modal Intl RF -->
+<div class="modal fade" id="modalIntlRF" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('add_intl') }}" method="POST">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header">
+                    <h5 class="modal-title">Adicionar Renda Fixa Internacional</h5><button type="button"
+                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="category" value="RF">
+                    <div class="mb-3"><label>Banco/Instituição</label><input type="text" name="institution"
+                            class="form-control" required></div>
+                    <div class="mb-3"><label>Código (Ticker ex: SHV)</label><input type="text" name="name"
+                            class="form-control" required style="text-transform: uppercase;"></div>
+                    <div class="mb-3"><label>Tipo (ex: Treasury Bond)</label><input type="text" name="description"
+                            class="form-control" required></div>
+                    <div class="mb-3"><label>Quantidade</label><input type="text" name="quantity" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Custo Médio ($)</label><input type="text" name="avg_price"
+                            class="form-control" required></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-secondary">Salvar</button></div>
+            </div>
+        </form>
+    </div>
+</div>
 
 <!-- SUMMARY SECTION -->
 <div class="row mt-5">

@@ -128,8 +128,8 @@
 
                 {% elif type == 'intl' %}
 
-                {% if item.category == 'RF' %}
-                <!-- International RF -->
+                {% if item.category == 'RF' and (not item.name or item.name == 'Renda Fixa') %}
+                <!-- Legacy International RF -->
                 <div class="mb-3">
                     <label>Banco</label>
                     <input type="text" name="institution" class="form-control" value="{{ item.institution }}" required>
@@ -149,21 +149,27 @@
                         value="{{ '%.2f'|format(item.value_usd)|replace('.', ',') }}" required>
                 </div>
                 {% else %}
-                <!-- International RV -->
+                <!-- International RV and Asset-based RF -->
                 <div class="mb-3">
-                    <label>Corretora</label>
+                    <label>Instituição / Corretora</label>
                     <input type="text" name="institution" class="form-control" value="{{ item.institution }}" required>
                 </div>
                 <div class="mb-3">
-                    <label>Ação (Ticker)</label>
+                    <label>Ativo / Ticker</label>
                     <input type="text" name="name" class="form-control" value="{{ item.name }}" required>
                 </div>
+
+                <div class="mb-3">
+                    <label>Descrição / Tipo (Opcional)</label>
+                    <input type="text" name="description" class="form-control" value="{{ item.description or '' }}">
+                </div>
+
                 <div class="mb-3">
                     <label>Quantidade</label>
                     <input type="text" name="quantity" class="form-control" value="{{ item.quantity }}">
                 </div>
                 <div class="mb-3">
-                    <label>Preço de Compra (USD)</label>
+                    <label>Preço Médio (USD)</label>
                     <input type="text" name="avg_price" class="form-control"
                         value="{{ '%.2f'|format(item.avg_price or 0)|replace('.', ',') }}">
                 </div>

@@ -1272,34 +1272,42 @@ def add_intl():
     
     category = request.form.get('category', 'RV')
     
-    # Handle inputs based on Type
-    # RV sends: quantity, avg_price
-    # RF sends: value_usd (Invested)
-    
     quantity_str = request.form.get('quantity', '').replace(',', '.')
     qty = float(quantity_str) if quantity_str else 0.0
     
     avg_price_str = request.form.get('avg_price', '').replace(',', '.')
     avg_price = float(avg_price_str) if avg_price_str else 0.0
     
+    # Optional direct value (legacy or override)
     value_usd_str = request.form.get('value_usd', '').replace(',', '.')
-    val_usd = float(value_usd_str) if value_usd_str else 0.0
+    val_usd_input = float(value_usd_str) if value_usd_str else 0.0
+    
+    # Code/Ticker
+    ticker_name = request.form.get('name', '').upper()
+    
+    # Calculate Invested Value
+    invested = 0.0
+    if qty > 0 and avg_price > 0:
+        invested = qty * avg_price
+    elif val_usd_input > 0:
+        invested = val_usd_input # Fallback for legacy RF
+        
+    # Initial Value USD (Current) -> equals invest if no quote yet
+    current_val_usd = invested
     
     new_intl = International(
         user_id=current_user.id,
         institution=request.form.get('institution'),
-        name=request.form.get('name') if category == 'RV' else 'Renda Fixa', # Name is Ticker for RV
+        name=ticker_name,
         quantity=qty,
+        avg_price=avg_price,
         category=category,
-        description=request.form.get('description'), # Used by RF
-        avg_price=avg_price, # For RV
-        value_usd=val_usd, # For RF (Invested)
-        # For RV, value_usd (Total) is calculated later via quote*qty
+        description=request.form.get('description'),
+        value_usd=current_val_usd,
+        invested_value=invested,
+        quote=avg_price # Set initial quote to purchase price
     )
     
-    # For RF, set invested_value same as value_usd
-    if category == 'RF':
-        new_intl.invested_value = val_usd
     db.session.add(new_intl)
     db.session.commit()
     flash('Investimento Internacional adicionado!')
@@ -1373,12 +1381,17 @@ def edit_balance_item(type, id):
             
         elif type == 'intl':
             item.rate_usd = float(request.form.get('rate_usd').replace(',','.'))
-            if item.category == 'RF':
+            if item.category == 'RF' and (not item.name or item.name == 'Renda Fixa'):
+                 # Legacy RF or Manual
                  item.institution = request.form.get('institution')
                  item.description = request.form.get('description')
                  item.invested_value = float(request.form.get('invested_value').replace('.','').replace(',','.'))
                  item.value_usd = float(request.form.get('value_usd').replace('.','').replace(',','.'))
-            else: # RV
+            else: # RV or New RF (Ticker-based)
+                 item.institution = request.form.get('institution')
+                 item.name = request.form.get('name')
+                 item.description = request.form.get('description') # Preserve description for RF
+
                  item.institution = request.form.get('institution')
                  item.name = request.form.get('name')
                  
@@ -1528,8 +1541,8 @@ def update_intl_quotes():
                 # Update Exchange Rate for ALL
                 item.rate_usd = usd_rate
                 
-                # If RV (Stocks), update Quote and Value
-                if item.category == 'RV' and item.name:
+                # Update Quote for RV and RF (if Ticker provided)
+                if item.name and item.name.upper() != 'RENDA FIXA':
                     try:
                         ticker_name = item.name.strip().upper()
                         # Common Corrections

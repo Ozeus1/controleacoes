@@ -1272,15 +1272,34 @@ def add_intl():
     
     category = request.form.get('category', 'RV')
     
+    # Handle inputs based on Type
+    # RV sends: quantity, avg_price
+    # RF sends: value_usd (Invested)
+    
+    quantity_str = request.form.get('quantity', '').replace(',', '.')
+    qty = float(quantity_str) if quantity_str else 0.0
+    
+    avg_price_str = request.form.get('avg_price', '').replace(',', '.')
+    avg_price = float(avg_price_str) if avg_price_str else 0.0
+    
+    value_usd_str = request.form.get('value_usd', '').replace(',', '.')
+    val_usd = float(value_usd_str) if value_usd_str else 0.0
+    
     new_intl = International(
         user_id=current_user.id,
         institution=request.form.get('institution'),
-        name=request.form.get('name'),
+        name=request.form.get('name') if category == 'RV' else 'Renda Fixa', # Name is Ticker for RV
         quantity=qty,
-        value_usd=val_usd,
         category=category,
-        description=request.form.get('description')
+        description=request.form.get('description'), # Used by RF
+        avg_price=avg_price, # For RV
+        value_usd=val_usd, # For RF (Invested)
+        # For RV, value_usd (Total) is calculated later via quote*qty
     )
+    
+    # For RF, set invested_value same as value_usd
+    if category == 'RF':
+        new_intl.invested_value = val_usd
     db.session.add(new_intl)
     db.session.commit()
     flash('Investimento Internacional adicionado!')

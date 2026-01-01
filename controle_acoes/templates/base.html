@@ -34,6 +34,20 @@
             /* Match card bg */
             box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.4);
         }
+
+        /* Sticky First Column (Ativo) */
+        table.dataTable thead th:first-child {
+            left: 0;
+            z-index: 105;
+        }
+
+        table.dataTable tbody td:first-child {
+            position: sticky;
+            left: 0;
+            z-index: 90;
+            background-color: #1e1e1e;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+        }
     </style>
 </head>
 

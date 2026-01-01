@@ -30,26 +30,26 @@
         <tbody>
             {% for item in assets %}
             <tr>
-                <td><span class="ticker-badge">{{ item.asset.ticker }}</span></td>
-                <td>{{ item.asset.quantity }}</td>
-                <td>{{ item.current_total | brl }}</td>
-                <td>{{ item.asset.avg_price | brl }}</td>
-                <td>{{ item.total_invested | brl }}</td>
-                <td>{{ "%.2f"|format(item.weight)|replace('.', ',') }}%</td>
-                <td>{{ item.current_price | brl }}</td>
-                <td class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
+                <td data-label="Ativo"><span class="ticker-badge">{{ item.asset.ticker }}</span></td>
+                <td data-label="Qtd">{{ item.asset.quantity }}</td>
+                <td data-label="Valor Posição">{{ item.current_total | brl }}</td>
+                <td data-label="Preço Compra">{{ item.asset.avg_price | brl }}</td>
+                <td data-label="Total Compra">{{ item.total_invested | brl }}</td>
+                <td data-label="Peso %">{{ "%.2f"|format(item.weight)|replace('.', ',') }}%</td>
+                <td data-label="Cotação">{{ item.current_price | brl }}</td>
+                <td data-label="Var % Dia" class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.change_percent)|replace('.', ',') }}%
                 </td>
-                <td style="color: var(--text-secondary); font-size: 0.85rem;">
+                <td data-label="Atualização" style="color: var(--text-secondary); font-size: 0.85rem;">
                     {{ item.last_update }}
                 </td>
-                <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
+                <td data-label="Lucro R$" class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
                     {{ item.profit | brl }}
                 </td>
-                <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
+                <td data-label="Lucro %" class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
                 </td>
-                <td class="{{ 'positive' if item.day_gain >= 0 else 'negative' }}">
+                <td data-label="G. Dia" class="{{ 'positive' if item.day_gain >= 0 else 'negative' }}">
                     {{ item.day_gain | brl }}
                 </td>
                 <td class="actions" style="display: flex; gap: 5px; justify-content: center;">

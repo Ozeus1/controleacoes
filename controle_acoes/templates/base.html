@@ -25,27 +25,36 @@
             background-color: transparent;
         }
 
-        /* Sticky Header */
+        /* Robust Sticky Configuration for Excel-like Freeze Panes */
+        table.dataTable {
+            border-collapse: collapse !important;
+        }
+
+        /* Sticky Header (Vertical Freeze) */
         table.dataTable thead th {
             position: sticky;
             top: 0;
             z-index: 100;
-            background-color: #1e1e1e;
-            /* Match card bg */
+            background-color: #1e1e1e !important;
             box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.4);
         }
 
-        /* Sticky First Column (Ativo) */
+        /* Top-Left Intersection (Header "Ativo") */
         table.dataTable thead th:first-child {
+            position: sticky;
             left: 0;
-            z-index: 105;
+            z-index: 105 !important;
+            background-color: #1e1e1e !important;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
         }
 
+        /* Sticky First Column (Body "Ativo") */
         table.dataTable tbody td:first-child {
             position: sticky;
             left: 0;
-            z-index: 90;
-            background-color: #1e1e1e;
+            z-index: 90 !important;
+            background-color: #1e1e1e !important;
+            /* Ensure opacity */
             border-right: 1px solid rgba(255, 255, 255, 0.1);
         }
     </style>

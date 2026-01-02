@@ -276,7 +276,7 @@ def index():
 @app.route('/acoes')
 @login_required
 def acoes():
-    raw_assets = Asset.query.filter(Asset.type=='ACAO', Asset.user_id==current_user.id).all()
+    raw_assets = Asset.query.filter(Asset.type=='ACAO', Asset.user_id==current_user.id, Asset.quantity > 0).all()
     processed_assets = process_assets(raw_assets)
     
     total_invested = sum(a['total_invested'] for a in processed_assets)
@@ -287,7 +287,7 @@ def acoes():
 @app.route('/fiis')
 @login_required
 def fiis():
-    raw_assets = Asset.query.filter_by(type='FII', user_id=current_user.id).all()
+    raw_assets = Asset.query.filter(Asset.type=='FII', Asset.user_id==current_user.id, Asset.quantity > 0).all()
     processed_assets = process_assets(raw_assets)
     
     total_invested = sum(a['total_invested'] for a in processed_assets)
@@ -298,7 +298,7 @@ def fiis():
 @app.route('/swingtrade')
 @login_required
 def swingtrade():
-    raw_assets = Asset.query.filter_by(strategy='SWING', user_id=current_user.id).all()
+    raw_assets = Asset.query.filter(Asset.strategy=='SWING', Asset.user_id==current_user.id, Asset.quantity > 0).all()
     assets = process_assets(raw_assets)
     return render_template('swingtrade.html', assets=assets)
 
@@ -555,8 +555,8 @@ def exit_trade(id):
             
             # Update Asset
             if qty_sell == asset.quantity:
-                # Total Exit
-                db.session.delete(asset)
+                # Total Exit - KEEP ASSET (Soft Delete) for Dividends
+                asset.quantity = 0
                 flash("Saída TOTAL registrada com sucesso!", "success")
             else:
                 # Partial Exit
@@ -593,7 +593,7 @@ def historico():
 @login_required
 def resumo():
     # Calculate Summaries
-    assets = Asset.query.filter_by(user_id=current_user.id).all()
+    assets = Asset.query.filter(Asset.user_id==current_user.id, Asset.quantity > 0).all()
     history = TradeHistory.query.filter_by(user_id=current_user.id).all()
     
     # 1. Total Equity & Allocation

@@ -34,60 +34,69 @@
             <a href="{{ url_for('swingtrade') }}" class="btn btn-secondary">← Voltar</a>
         </header>
 
-        <div class="form-card">
-            <div class="info-row">
-                <div>
-                    <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Quantidade
-                        Total</span>
-                    <strong style="font-size: 1.2rem;">{{ asset.quantity }}</strong>
-                </div>
-                <div>
-                    <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Preço Médio</span>
-                    <strong style="font-size: 1.2rem;">R$ {{ "%.2f"|format(asset.avg_price)|replace('.', ',')
-                        }}</strong>
-                </div>
-                <div>
-                    <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Cotação Atual</span>
-                    <strong style="font-size: 1.2rem;">R$ {{ "%.2f"|format(asset.current_price)|replace('.', ',')
-                        }}</strong>
-                </div>
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="card"
+            style="border-left: 4px solid var(--{{ 'danger' if category == 'error' or category == 'danger' else 'success' }}); margin-bottom: 1rem; padding: 1rem; background-color: var(--card-bg);">
+            {{ message }}
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+        <div class="info-row">
+            <div>
+                <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Quantidade
+                    Total</span>
+                <strong style="font-size: 1.2rem;">{{ asset.quantity }}</strong>
+            </div>
+            <div>
+                <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Preço Médio</span>
+                <strong style="font-size: 1.2rem;">R$ {{ "%.2f"|format(asset.avg_price)|replace('.', ',')
+                    }}</strong>
+            </div>
+            <div>
+                <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Cotação Atual</span>
+                <strong style="font-size: 1.2rem;">R$ {{ "%.2f"|format(asset.current_price)|replace('.', ',')
+                    }}</strong>
+            </div>
+        </div>
+
+        <form method="POST">
+            <div class="form-group">
+                <label for="quantity">Quantidade de Saída</label>
+                <input type="number" id="quantity" name="quantity" value="{{ asset.quantity }}"
+                    max="{{ asset.quantity }}" min="1" required>
+                <p style="font-size: 0.8rem; color: var(--text-secondary);">Se menor que {{ asset.quantity }}, será
+                    uma saída parcial.</p>
             </div>
 
-            <form method="POST">
-                <div class="form-group">
-                    <label for="quantity">Quantidade de Saída</label>
-                    <input type="number" id="quantity" name="quantity" value="{{ asset.quantity }}"
-                        max="{{ asset.quantity }}" min="1" required>
-                    <p style="font-size: 0.8rem; color: var(--text-secondary);">Se menor que {{ asset.quantity }}, será
-                        uma saída parcial.</p>
-                </div>
+            <div class="form-group">
+                <label for="price">Preço de Venda</label>
+                <input type="text" id="price" name="price"
+                    value="{{ '%.2f'|format(asset.current_price)|replace('.', ',') }}" required>
+            </div>
 
-                <div class="form-group">
-                    <label for="price">Preço de Venda</label>
-                    <input type="text" id="price" name="price"
-                        value="{{ '%.2f'|format(asset.current_price)|replace('.', ',') }}" required>
-                </div>
+            <div class="form-group">
+                <label for="date">Data da Saída</label>
+                <input type="date" id="date" name="date" value="{{ today }}" required>
+            </div>
 
-                <div class="form-group">
-                    <label for="date">Data da Saída</label>
-                    <input type="date" id="date" name="date" value="{{ today }}" required>
-                </div>
+            <div class="form-group">
+                <label for="reason">Motivo/Estratégia</label>
+                <select id="reason" name="reason">
+                    <option value="Alvo / Gain">Atingiu Alvo (Gain)</option>
+                    <option value="Stop Loss">Stop Loss</option>
+                    <option value="Parcial">Saída Parcial</option>
+                    <option value="Revisão">Revisão de Estratégia</option>
+                    <option value="Encerramento">Encerramento Total</option>
+                </select>
+            </div>
 
-                <div class="form-group">
-                    <label for="reason">Motivo/Estratégia</label>
-                    <select id="reason" name="reason">
-                        <option value="Alvo / Gain">Atingiu Alvo (Gain)</option>
-                        <option value="Stop Loss">Stop Loss</option>
-                        <option value="Parcial">Saída Parcial</option>
-                        <option value="Revisão">Revisão de Estratégia</option>
-                        <option value="Encerramento">Encerramento Total</option>
-                    </select>
-                </div>
-
-                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Confirmar
-                    Saída</button>
-            </form>
-        </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Confirmar
+                Saída</button>
+        </form>
+    </div>
     </div>
 </body>
 

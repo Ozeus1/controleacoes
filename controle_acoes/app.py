@@ -506,63 +506,80 @@ def exit_trade(id):
     if asset.user_id != current_user.id:
         flash("Você não tem permissão para sair deste ativo.")
         return redirect(url_for('index'))
+        
     if request.method == 'POST':
-        qty_sell = int(request.form.get('quantity'))
-        price_sell = float(request.form.get('price').replace(',', '.'))
-        date_sell = datetime.strptime(request.form.get('date'), '%Y-%m-%d').date()
-        reason = request.form.get('reason')
-        
-        # Validation
-        if qty_sell > asset.quantity:
-            flash("Quantidade de saída maior que a disponível.")
-            return redirect(url_for('exit_trade', id=id))
-
-        # Calculate metrics
-        avg_price = asset.avg_price
-        total_sell = qty_sell * price_sell
-        total_buy = qty_sell * avg_price
-        profit_value = total_sell - total_buy
-        profit_pct = (profit_value / total_buy * 100) if total_buy > 0 else 0
-        
-        # Days held
-        days_held = (date_sell - asset.entry_date).days if asset.entry_date else 0
-        
-        # Record History
-        history = TradeHistory(
-            user_id=current_user.id,
-            ticker=asset.ticker,
-            strategy=asset.recommendation, # As requested: save Recommendation as Strategy
-            entry_date=asset.entry_date,
-            exit_date=date_sell,
-            buy_price=avg_price,
-            sell_price=price_sell,
-            quantity=qty_sell,
-            profit_value=profit_value,
-            profit_pct=profit_pct,
-            days_held=days_held,
-            reason=reason
-        )
-        db.session.add(history)
-        
-        # Update Asset
-        if qty_sell == asset.quantity:
-            # Total Exit
-            db.session.delete(asset)
-            flash("Saída TOTAL registrada com sucesso!")
-        else:
-            # Partial Exit
-            asset.quantity -= qty_sell
-            flash("Saída PARCIAL registrada com sucesso!")
+        try:
+            qty_sell = int(request.form.get('quantity'))
+            price_sell = float(request.form.get('price').replace(',', '.'))
             
-        db.session.commit()
-        
-        # Redirect back to origin
-        if asset.strategy == 'SWING':
-            return redirect(url_for('swingtrade'))
-        elif asset.type == 'FII':
-            return redirect(url_for('fiis'))
-        else:
-            return redirect(url_for('acoes'))
+            date_str = request.form.get('date')
+            try:
+                date_sell = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                date_sell = datetime.strptime(date_str, '%d/%m/%Y').date()
+                
+            reason = request.form.get('reason')
+            
+            # Validation
+            if qty_sell > asset.quantity:
+                flash("Quantidade de saída maior que a disponível.", "warning")
+                return redirect(url_for('exit_trade', id=id))
+
+            # Calculate metrics
+            avg_price = asset.avg_price
+            total_sell = qty_sell * price_sell
+            total_buy = qty_sell * avg_price
+            profit_value = total_sell - total_buy
+            profit_pct = (profit_value / total_buy * 100) if total_buy > 0 else 0
+            
+            # Days held
+            entry = asset.entry_date
+            days_held = (date_sell - entry).days if entry else 0
+            
+            # Record History
+            history = TradeHistory(
+                user_id=current_user.id,
+                ticker=asset.ticker,
+                strategy=asset.recommendation, # As requested: save Recommendation as Strategy
+                entry_date=asset.entry_date,
+                exit_date=date_sell,
+                buy_price=avg_price,
+                sell_price=price_sell,
+                quantity=qty_sell,
+                profit_value=profit_value,
+                profit_pct=profit_pct,
+                days_held=days_held,
+                reason=reason
+            )
+            db.session.add(history)
+            
+            # Update Asset
+            if qty_sell == asset.quantity:
+                # Total Exit
+                db.session.delete(asset)
+                flash("Saída TOTAL registrada com sucesso!", "success")
+            else:
+                # Partial Exit
+                asset.quantity -= qty_sell
+                flash("Saída PARCIAL registrada com sucesso!", "success")
+                
+            db.session.commit()
+            
+            # Redirect back to origin
+            if asset.strategy == 'SWING':
+                return redirect(url_for('swingtrade'))
+            elif asset.type == 'FII':
+                return redirect(url_for('fiis'))
+            else:
+                return redirect(url_for('acoes'))
+                
+        except ValueError as e:
+            flash(f"Erro de formato (Valores ou Data incorreta): {str(e)}", "danger")
+            return redirect(url_for('exit_trade', id=id))
+        except Exception as e:
+            flash(f"Erro ao registrar saída: {str(e)}", "danger")
+            print(f"Error exit_trade: {e}")
+            return redirect(url_for('exit_trade', id=id))
         
     return render_template('exit.html', asset=asset, today=date.today().isoformat())
 

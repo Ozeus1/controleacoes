@@ -1175,6 +1175,124 @@ def balanceamento():
             'Internacional': total_intl
         }
 
+        # --- NEW SUMMARY CALCULATIONS (User Request) ---
+        
+        # 1. Hierarchical Data
+        # Renda Fixa
+        #   Pos: RF Pos + Funds (Pos) + Pension (RF)
+        #   Pre: RF Pre
+        #   Ipca: RF IPCA + Funds (Ipca)
+        
+        val_rf_pos_strict = types_total.get('Renda Fixa Pós', 0)
+        # Funds classification logic was partly inside the loop, need to replicate or reuse
+        # Let's re-iterate funds to split properly if not done
+        val_funds_pos = 0
+        val_funds_ipca = 0
+        for f in funds:
+            idx = (f.indexer or '').upper()
+            val = f.value
+            if 'IPCA' in idx:
+                val_funds_ipca += val
+            else:
+                val_funds_pos += val
+        
+        val_pension_rf = 0
+        val_pension_acao = 0
+        for p in pensions:
+            if p.type == 'Acao':
+                val_pension_acao += p.value
+            else:
+                val_pension_rf += p.value
+
+        total_pos = val_rf_pos_strict + val_funds_pos + val_pension_rf
+        total_pre = types_total.get('Renda Fixa Pré', 0)
+        total_ipca = types_total.get('Renda Fixa IPCA', 0) + val_funds_ipca
+        
+        total_rf_general = total_pos + total_pre + total_ipca
+        
+        # RV Brasil
+        #   Acoes: Stocks + Pension Acao
+        #   Ouro
+        #   FII
+        total_acoes_consol = val_acoes + val_pension_acao
+        total_ouro = val_ouro
+        total_fii = val_fiis
+        
+        total_rv_br = total_acoes_consol + total_ouro + total_fii
+        
+        # RV Internacional
+        #   Cripto
+        #   RV Intl
+        #   RF Intl (User put RF Intl under "RV Internacional" block in image 1/3? 
+        #            Actually image 1 shows "RV internacional" -> Cripto, RV Intl, RF Intl. 
+        #            So "International" block is a Group.
+        total_cripto = types_total.get('Cripto', 0)
+        total_intl_rv = types_total.get('Internacional RV', 0)
+        total_intl_rf = types_total.get('Internacional RF', 0)
+        
+        total_rv_intl_general = total_cripto + total_intl_rv + total_intl_rf
+        
+        # Data Structure for Template
+        # Hierarchy List: [ {Group, Lines: [{Label, Val, Pct}, ...], Total, TotalPct}, ... ]
+        
+        def calc_pct(v):
+            return (v / total_portfolio * 100) if total_portfolio > 0 else 0
+
+        summary_hierarchy = [
+            {
+                'group': 'Renda Fixa',
+                'lines': [
+                    {'label': 'Pós', 'value': total_pos, 'pct': calc_pct(total_pos)},
+                    {'label': 'Pré', 'value': total_pre, 'pct': calc_pct(total_pre)},
+                    {'label': 'Ipca', 'value': total_ipca, 'pct': calc_pct(total_ipca)},
+                ],
+                'total': total_rf_general,
+                'total_pct': calc_pct(total_rf_general)
+            },
+            {
+                'group': 'RV Brasil',
+                'lines': [
+                    {'label': 'Ações', 'value': total_acoes_consol, 'pct': calc_pct(total_acoes_consol)},
+                    {'label': 'Ouro', 'value': total_ouro, 'pct': calc_pct(total_ouro)},
+                    {'label': 'FII', 'value': total_fii, 'pct': calc_pct(total_fii)},
+                ],
+                'total': total_rv_br,
+                'total_pct': calc_pct(total_rv_br)
+            },
+            {
+                'group': 'RV Internacional',
+                'lines': [
+                    {'label': 'Criptomoedas', 'value': total_cripto, 'pct': calc_pct(total_cripto)},
+                    {'label': 'Renda Variável Internacional', 'value': total_intl_rv, 'pct': calc_pct(total_intl_rv)},
+                    {'label': 'Renda Fixa Internacional', 'value': total_intl_rf, 'pct': calc_pct(total_intl_rf)},
+                ],
+                'total': total_rv_intl_general,
+                'total_pct': calc_pct(total_rv_intl_general)
+            }
+        ]
+        
+        # 2. Exploded Balance (For Pie Chart)
+        # Using the individual lines from hierarchy
+        summary_exploded = {}
+        for group in summary_hierarchy:
+            for line in group['lines']:
+                if line['value'] > 0:
+                    # Clean label for chart
+                    label = line['label']
+                    if label == 'Renda Variável Internacional': label = 'RV Internacional'
+                    if label == 'Renda Fixa Internacional': label = 'RF Internacional'
+                    summary_exploded[label] = line['value']
+                    
+        # 3. General Balance (For Donut Chart)
+        # Categories: Pós, Pré, Ipca, RV Brasil, RV Internacional
+        summary_general = {
+            'Pós': total_pos,
+            'Pré': total_pre,
+            'Ipca': total_ipca,
+            'RV Brasil': total_rv_br,
+            'RV Internacional': total_rv_intl_general
+        }
+
         return render_template('balanceamento.html', 
                                rf_pos=rf_pos, rf_pre=rf_pre, rf_ipca=rf_ipca,
                                funds=funds, cryptos=cryptos, pensions=pensions, 
@@ -1190,7 +1308,11 @@ def balanceamento():
                                crypto_invested=crypto_invested,
                                crypto_current=crypto_current,
                                crypto_profit=crypto_profit,
-                               location_chart=location_chart)
+                               crypto_profit=crypto_profit,
+                               location_chart=location_chart,
+                               summary_hierarchy=summary_hierarchy,
+                               summary_exploded=summary_exploded,
+                               summary_general=summary_general)
     # except Exception as e:
     #    import traceback
     #    return f"<h3>Debug Error (Temp):</h3><pre>{traceback.format_exc()}</pre>"

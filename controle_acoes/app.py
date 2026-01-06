@@ -1190,7 +1190,7 @@ def balanceamento():
         val_funds_ipca = 0
         for f in funds:
             idx = (f.indexer or '').upper()
-            val = f.value
+            val = f.value or 0
             if 'IPCA' in idx:
                 val_funds_ipca += val
             else:
@@ -1199,10 +1199,11 @@ def balanceamento():
         val_pension_rf = 0
         val_pension_acao = 0
         for p in pensions:
+            p_val = p.value or 0
             if p.type == 'Acao':
-                val_pension_acao += p.value
+                val_pension_acao += p_val
             else:
-                val_pension_rf += p.value
+                val_pension_rf += p_val
 
         total_pos = val_rf_pos_strict + val_funds_pos + val_pension_rf
         total_pre = types_total.get('Renda Fixa Pré', 0)

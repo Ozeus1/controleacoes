@@ -152,8 +152,8 @@ tr:hover {
 }
 
 .ticker-badge {
-    background-color: rgba(59, 130, 246, 0.1);
-    color: var(--accent-color);
+    background-color: var(--accent-color);
+    color: white;
     padding: 0.15rem 0.5rem;
     border-radius: 0.5rem;
     font-family: monospace;

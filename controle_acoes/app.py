@@ -1309,7 +1309,6 @@ def balanceamento():
                                crypto_invested=crypto_invested,
                                crypto_current=crypto_current,
                                crypto_profit=crypto_profit,
-                               crypto_profit=crypto_profit,
                                location_chart=location_chart,
                                summary_hierarchy=summary_hierarchy,
                                summary_exploded=summary_exploded,

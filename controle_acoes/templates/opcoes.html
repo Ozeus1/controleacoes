@@ -34,7 +34,7 @@
         <tbody>
             {% for item in options %}
             <tr>
-                <td><span class="ticker-badge" style="background: #e67e22;">{{ item.option.ticker }}</span></td>
+                <td><span class="ticker-badge">{{ item.option.ticker }}</span></td>
                 <td>{{ item.option.quantity }}</td>
                 <td>{{ item.option.underlying_asset }}</td>
                 <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>

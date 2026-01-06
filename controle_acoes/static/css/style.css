@@ -226,7 +226,7 @@ label {
     background-color: var(--card-bg);
     min-width: 160px;
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-    z-index: 100;
+    z-index: 1050;
     border-radius: 0.5rem;
     border: 1px solid var(--border-color);
     margin-top: 0.5rem;

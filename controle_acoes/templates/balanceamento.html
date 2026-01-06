@@ -583,6 +583,15 @@
         text-align: center !important;
         vertical-align: middle !important;
     }
+
+    /* Disable Sticky/Freeze First Column for this page only */
+    table.dataTable tbody td:first-child,
+    table.dataTable thead th:first-child {
+        position: static !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+        border-right: none !important;
+    }
 </style>
 
 <!-- ... (Leaving Summary Section intact based on line range) ... -->

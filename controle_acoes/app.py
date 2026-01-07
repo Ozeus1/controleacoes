@@ -991,7 +991,7 @@ def balanceamento():
         else:
             return 'Longo Prazo'
 
-    if True:
+    try:
         # User Assets
         rfs = FixedIncome.query.filter_by(user_id=current_user.id).all()
         rf_pos = [r for r in rfs if r.category == 'POS']
@@ -1380,6 +1380,9 @@ def balanceamento():
                                summary_hierarchy=summary_hierarchy,
                                summary_exploded=summary_exploded,
                                summary_general=summary_general)
+    except Exception as e:
+        import traceback
+        return f"<h3>Debug Error de Balanceamento (Mostre isso ao suporte):</h3><pre>{traceback.format_exc()}</pre>"
 
 @app.route('/balanceamento/add/rf', methods=['POST'])
 @login_required

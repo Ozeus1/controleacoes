@@ -1147,22 +1147,22 @@ def balanceamento():
         # International
         # International
         # RV
-        t_intl_rv = sum([(i.value_usd or 0) * (i.rate_usd or 5.5) for i in intls_rv])
+        t_intl_rv = sum([((i.value_usd or 0) * (i.rate_usd or 5.5)) for i in intls_rv])
         types_total['Internacional RV'] = t_intl_rv
         summary['Renda Variável'] += t_intl_rv
         summary['Indefinido'] += t_intl_rv
 
         # RF
-        t_intl_rf = sum([(i.value_usd or 0) * (i.rate_usd or 5.5) for i in intls_rf])
+        t_intl_rf = sum([((i.value_usd or 0) * (i.rate_usd or 5.5)) for i in intls_rf])
         types_total['Internacional RF'] = t_intl_rf
         summary['Renda Fixa'] += t_intl_rf
         summary['Longo Prazo'] += t_intl_rf # Assuming Bonds are long term
 
-        # Add Stocks/FIIs/Gold to Summary
+        # Add Stocks/FIIs/Gold (Gold replaced by ETF) to Summary
         # Add Stocks/FIIs to Summary (RV Brasil)
         summary['Renda Variável'] += (val_acoes + val_fiis)
-        # Add ETF to Summary (RV Intl or just Renda Variável? Assuming RV is global, but "Indefinido" might mean Equity)
-        summary['Renda Variável'] += val_etfs # Added ETFs here too
+        # Add ETF to Summary
+        summary['Renda Variável'] += val_etfs
         summary['Indefinido'] += (val_acoes + val_fiis + val_etfs)
 
         total_portfolio = sum(types_total.values())
@@ -1189,13 +1189,22 @@ def balanceamento():
         total_rf_detailed = sum(rf_chart_type.values())
 
         # Prepare specific Pie Chart Data (Granular)
-        # Requested: Renda Fixa Pós, Pré, IPCA, Fundos, Cripto, Previdência, Ações, FIIs, Ouro, Internacional RV, Internacional RF
+        # Requested: Renda Fixa Pós, Pré, IPCA, Fundos, Cripto, Previdência, Ações, FIIs, ETF (replacing Gold), Internacional RV, Internacional RF
         target_keys = [
             'Renda Fixa Pós', 'Renda Fixa Pré', 'Renda Fixa IPCA', 
             'Fundos', 'Cripto', 'Previdência', 
-            'Ações', 'FIIs', 'Ouro', 
+            'Ações', 'FIIs', 
             'Internacional RV', 'Internacional RF'
         ]
+        # Dynamically add ETF to pie chart data, treating it as its own slice if desired, or under Intl.
+        # User asked ETF to be where Gold was. Gold was in target_keys. 
+        # I will add 'ETF' to target_keys to ensure it shows up in "Por Classe" chart if types_total has it.
+        # But wait, types_total doesn't have 'ETF' key yet?
+        # I need to add 'ETF' to types_total!
+        
+        types_total['ETF'] = val_etfs
+        target_keys.append('ETF')
+
         pie_chart_data = {k: types_total.get(k, 0) for k in target_keys if types_total.get(k, 0) > 0.01}
 
         # 4. Totals for International RV Table

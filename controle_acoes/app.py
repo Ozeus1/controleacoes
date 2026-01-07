@@ -1019,11 +1019,12 @@ def balanceamento():
         stock_assets = [a for a in assets if a.type == 'ACAO' and a.ticker != 'GOLD11']
         fii_assets = [a for a in assets if a.type == 'FII']
 
-        val_ouro = sum([(a.quantity or 0) * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0)) for a in gold_assets])
-        val_acoes = sum((a.quantity * (a.current_price if a.current_price > 0 else a.avg_price)) for a in acoes_assets)
-        val_fiis = sum((a.quantity * (a.current_price if a.current_price > 0 else a.avg_price)) for a in fiis_assets)
-        val_etfs = sum((a.quantity * (a.current_price if a.current_price > 0 else a.avg_price)) for a in etfs_assets)
-        val_cryptos = sum((c.quantity * (c.current_price if c.current_price else c.avg_price)) for c in cryptos)
+        val_ouro = 0 # Ouro is deprecated/replaced by ETF logic, setting to 0 to avoid errors if referenced elsewhere
+
+        val_acoes = sum((a.quantity * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0))) for a in acoes_assets)
+        val_fiis = sum((a.quantity * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0))) for a in fiis_assets)
+        val_etfs = sum((a.quantity * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0))) for a in etfs_assets)
+        val_cryptos = sum((c.quantity * ((c.current_price or 0) if (c.current_value or c.current_price) else (c.avg_price or 0))) for c in cryptos)
         val_intls_rv = sum((i.total_brl if i.total_brl else 0) for i in intls_rv)
         
         # 3. Aggregates & Classification
@@ -1256,7 +1257,7 @@ def balanceamento():
         total_rf_general = total_pos + total_pre + total_ipca
         
         # ETF Calculation (New)
-        val_etfs = sum((a.quantity * (a.current_price if a.current_price > 0 else a.avg_price)) for a in etfs_assets)
+        val_etfs = sum((a.quantity * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0))) for a in etfs_assets)
 
         # RV Brasil
         #   Acoes: Stocks + Pension Acao

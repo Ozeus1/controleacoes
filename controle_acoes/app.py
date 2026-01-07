@@ -1919,12 +1919,10 @@ def profile():
 
 # --- Dividends Module ---
 
-@app.route('/balanceamento')
+@app.route('/dividendos')
 @login_required
-def balanceamento():
-    try:
-        # User Assets
-        assets = Asset.query.filter_by(user_id=current_user.id).all()
+def dividendos():
+    assets = Asset.query.filter_by(user_id=current_user.id).all()
     
     # Filter only Stocks and FIIs for display
     relevant_assets = [a for a in assets if a.type in ['ACAO', 'FII']]

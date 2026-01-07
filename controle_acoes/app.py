@@ -1158,8 +1158,11 @@ def balanceamento():
         summary['Longo Prazo'] += t_intl_rf # Assuming Bonds are long term
 
         # Add Stocks/FIIs/Gold to Summary
-        summary['Renda Variável'] += (val_acoes + val_fiis + val_ouro)
-        summary['Indefinido'] += (val_acoes + val_fiis + val_ouro) # Or Long Term? User requested classification. Equity is usually undefined or long. I will leave strict maturity for Fixed Income.
+        # Add Stocks/FIIs to Summary (RV Brasil)
+        summary['Renda Variável'] += (val_acoes + val_fiis)
+        # Add ETF to Summary (RV Intl or just Renda Variável? Assuming RV is global, but "Indefinido" might mean Equity)
+        summary['Renda Variável'] += val_etfs # Added ETFs here too
+        summary['Indefinido'] += (val_acoes + val_fiis + val_etfs)
 
         total_portfolio = sum(types_total.values())
 
@@ -1207,8 +1210,8 @@ def balanceamento():
 
         # 6. Location Breakdown (Brazil vs International)
         # International = Crypto + Intl RV + Intl RF + Gold
-        # Note: t_intl_rf is calculated above. val_ouro is sum of gold assets.
-        total_intl = t_intl_rv + t_intl_rf + t_crypto + val_ouro
+        # Note: t_intl_rf is calculated above. val_etfs is used as International per user request.
+        total_intl = t_intl_rv + t_intl_rf + t_crypto + val_etfs
         total_br = total_portfolio - total_intl
         
         location_chart = {
@@ -1252,27 +1255,29 @@ def balanceamento():
         
         total_rf_general = total_pos + total_pre + total_ipca
         
+        # ETF Calculation (New)
+        val_etfs = sum((a.quantity * (a.current_price if a.current_price > 0 else a.avg_price)) for a in etfs_assets)
+
         # RV Brasil
         #   Acoes: Stocks + Pension Acao
-        #   Ouro
         #   FII
         total_acoes_consol = val_acoes + val_pension_acao
-        total_ouro = val_ouro
         total_fii = val_fiis
         
-        total_rv_br = total_acoes_consol + total_ouro + total_fii
+        total_rv_br = total_acoes_consol + total_fii
         
         # RV Internacional
         #   Cripto
         #   RV Intl
-        #   RF Intl (User put RF Intl under "RV Internacional" block in image 1/3? 
-        #            Actually image 1 shows "RV internacional" -> Cripto, RV Intl, RF Intl. 
-        #            So "International" block is a Group.
+        #   RF Intl
+        #   ETF (Moved here as requested, replacing Gold role if any)
+        
         total_cripto = types_total.get('Cripto', 0)
         total_intl_rv = types_total.get('Internacional RV', 0)
         total_intl_rf = types_total.get('Internacional RF', 0)
+        total_etf_intl = val_etfs
         
-        total_rv_intl_general = total_cripto + total_intl_rv + total_intl_rf
+        total_rv_intl_general = total_cripto + total_intl_rv + total_intl_rf + total_etf_intl
         
         # Data Structure for Template
         # Hierarchy List: [ {Group, Lines: [{Label, Val, Pct}, ...], Total, TotalPct}, ... ]
@@ -1295,7 +1300,6 @@ def balanceamento():
                 'group': 'RV Brasil',
                 'lines': [
                     {'label': 'Ações', 'value': total_acoes_consol, 'pct': calc_pct(total_acoes_consol)},
-                    {'label': 'Ouro', 'value': total_ouro, 'pct': calc_pct(total_ouro)},
                     {'label': 'FII', 'value': total_fii, 'pct': calc_pct(total_fii)},
                 ],
                 'total': total_rv_br,
@@ -1305,6 +1309,7 @@ def balanceamento():
                 'group': 'RV Internacional',
                 'lines': [
                     {'label': 'Criptomoedas', 'value': total_cripto, 'pct': calc_pct(total_cripto)},
+                    {'label': 'ETF', 'value': total_etf_intl, 'pct': calc_pct(total_etf_intl)},
                     {'label': 'Renda Variável Internacional', 'value': total_intl_rv, 'pct': calc_pct(total_intl_rv)},
                     {'label': 'Renda Fixa Internacional', 'value': total_intl_rf, 'pct': calc_pct(total_intl_rf)},
                 ],

@@ -979,6 +979,18 @@ def fix_crypto_db():
 @app.route('/balanceamento')
 @login_required
 def balanceamento():
+    
+    def get_maturity_class(date_obj):
+        if not date_obj:
+            return 'Indefinido'
+        days = (date_obj - date.today()).days
+        if days <= 365:
+            return 'Curto Prazo'
+        elif days <= 1095: # 3 years
+            return 'Médio Prazo'
+        else:
+            return 'Longo Prazo'
+
     if True:
         # User Assets
         rfs = FixedIncome.query.filter_by(user_id=current_user.id).all()

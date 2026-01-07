@@ -1208,8 +1208,8 @@ def balanceamento():
         pie_chart_data = {k: types_total.get(k, 0) for k in target_keys if types_total.get(k, 0) > 0.01}
 
         # 4. Totals for International RV Table
-        intl_rv_invested = sum([(i.quantity or 0) * (i.avg_price or 0) for i in intls_rv])
-        intl_rv_current = sum([(i.quantity or 0) * (i.quote or 0) for i in intls_rv])
+        intl_rv_invested = sum([((i.quantity or 0) * (i.avg_price or 0)) for i in intls_rv])
+        intl_rv_current = sum([((i.quantity or 0) * (i.quote or 0)) for i in intls_rv])
         intl_rv_profit = intl_rv_current - intl_rv_invested
         
         # 5. Totals for Crypto Table
@@ -1369,9 +1369,10 @@ def balanceamento():
                                summary_hierarchy=summary_hierarchy,
                                summary_exploded=summary_exploded,
                                summary_general=summary_general)
-    # except Exception as e:
-    #    import traceback
-    #    return f"<h3>Debug Error (Temp):</h3><pre>{traceback.format_exc()}</pre>"
+                                summary_general=summary_general)
+    except Exception as e:
+        import traceback
+        return f"<h3>Debug Error de Balanceamento (Mostre isso ao suporte):</h3><pre>{traceback.format_exc()}</pre>"
 
 @app.route('/balanceamento/add/rf', methods=['POST'])
 @login_required
@@ -1923,10 +1924,12 @@ def profile():
 
 # --- Dividends Module ---
 
-@app.route('/dividendos')
+@app.route('/balanceamento')
 @login_required
-def dividendos():
-    assets = Asset.query.filter_by(user_id=current_user.id).all()
+def balanceamento():
+    try:
+        # User Assets
+        assets = Asset.query.filter_by(user_id=current_user.id).all()
     
     # Filter only Stocks and FIIs for display
     relevant_assets = [a for a in assets if a.type in ['ACAO', 'FII']]

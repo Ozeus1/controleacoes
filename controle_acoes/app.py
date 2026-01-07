@@ -1036,7 +1036,7 @@ def balanceamento():
         val_fiis = sum((a.quantity * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0))) for a in fiis_assets)
         val_etfs = sum((a.quantity * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0))) for a in etfs_assets)
         val_cryptos = sum((c.current_value or 0) for c in cryptos)
-        val_intls_rv = sum((i.total_brl if i.total_brl else 0) for i in intls_rv)
+        val_intls_rv = sum(((i.value_usd or 0) * (i.rate_usd or 5.5)) for i in intls_rv)
         
         # 3. Aggregates & Classification
         summary = {

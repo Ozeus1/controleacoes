@@ -980,7 +980,8 @@ def fix_crypto_db():
 @app.route('/balanceamento')
 @login_required
 def balanceamento():
-    # User Assets
+    try:
+        # User Assets
         rfs = FixedIncome.query.filter_by(user_id=current_user.id).all()
         rf_pos = [r for r in rfs if r.category == 'POS']
         rf_pre = [r for r in rfs if r.category == 'PRE']

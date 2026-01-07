@@ -1096,6 +1096,16 @@
                 </tbody>
             </table>
         </div>
+
+        <!-- NEW: HIERARCHY CHART CENTERED BELOW -->
+        <h5 class="text-white mt-4 text-center">Gráfico por Grandes Grupos</h5>
+        <div class="row justify-content-center">
+            <div class="col-md-8 d-flex justify-content-center">
+                <div style="max-width: 500px; width: 100%;">
+                    <canvas id="chartHierarchy"></canvas>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- 2. EXPLODED BALANCE (CHART + TABLE STACKED) -->
@@ -1190,14 +1200,55 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        // --- EXPLODED CHART ---
-        const ctxExp = document.getElementById('chartExploded').getContext('2d');
-        const expLabels = [];
-        const expData = [];
-        // Loop Jinja items
-        {% for k, v in summary_exploded.items() %}
-        expLabels.push('{{ k }}');
-        expData.push({{ v }});
+        // --- HIERARCHY GROUP CHART (NEW) ---
+        const ctxHier = document.getElementById('chartHierarchy').getContext('2d');
+        const hierLabels = [];
+        const hierData = [];
+
+        // Loop Jinja to get groups and totals
+        {% for group in summary_hierarchy %}
+        hierLabels.push('{{ group.group }}');
+        hierData.push({{ group.total }});
+    {% endfor %}
+
+    new Chart(ctxHier, {
+        type: 'pie',
+        data: {
+            labels: hierLabels,
+            datasets: [{
+                data: hierData,
+                backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'], // Blue (RF), Green (RV BR), Purple (Intl)
+                borderWidth: 1,
+                borderColor: '#1e293b'
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { color: 'white' } },
+                datalabels: {
+                    color: '#fff',
+                    font: { weight: 'bold', size: 14 },
+                    formatter: (value, ctx) => {
+                        let sum = 0;
+                        let dataArr = ctx.chart.data.datasets[0].data;
+                        dataArr.map(data => { sum += data; });
+                        return (value * 100 / sum).toFixed(1) + "%";
+                    }
+                }
+            }
+        }
+    });
+
+    // --- EXPLODED CHART ---
+    const ctxExp = document.getElementById('chartExploded').getContext('2d');
+    const expLabels = [];
+    const expData = [];
+    // Loop Jinja items
+    {% for k, v in summary_exploded.items() %}
+    expLabels.push('{{ k }}');
+    expData.push({{ v }});
     {% endfor %}
 
     new Chart(ctxExp, {

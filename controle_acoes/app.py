@@ -276,13 +276,27 @@ def index():
 @app.route('/acoes')
 @login_required
 def acoes():
+    # Stocks
     raw_assets = Asset.query.filter(Asset.type=='ACAO', Asset.user_id==current_user.id, Asset.quantity > 0).all()
     processed_assets = process_assets(raw_assets)
     
     total_invested = sum(a['total_invested'] for a in processed_assets)
     total_current = sum(a['current_total'] for a in processed_assets)
+
+    # ETFs
+    raw_etfs = Asset.query.filter(Asset.type=='ETF', Asset.user_id==current_user.id, Asset.quantity > 0).all()
+    processed_etfs = process_assets(raw_etfs)
     
-    return render_template('acoes.html', assets=processed_assets, total_invested=total_invested, total_current=total_current)
+    total_etfs_invested = sum(a['total_invested'] for a in processed_etfs)
+    total_etfs_current = sum(a['current_total'] for a in processed_etfs)
+    
+    return render_template('acoes.html', 
+                           assets=processed_assets, 
+                           total_invested=total_invested, 
+                           total_current=total_current,
+                           etfs=processed_etfs,
+                           total_etfs_invested=total_etfs_invested,
+                           total_etfs_current=total_etfs_current)
 
 @app.route('/fiis')
 @login_required
@@ -419,7 +433,12 @@ def add_asset():
             flash(f'Ativo {ticker} adicionado!')
         
         db.session.commit()
-        return redirect(url_for('acoes' if type_ == 'ACAO' else 'fiis'))
+        if type_ == 'FII':
+            return redirect(url_for('fiis'))
+        elif type_ == 'ETF':
+            return redirect(url_for('acoes'))
+        else:
+            return redirect(url_for('acoes'))
         
     return render_template('add.html')
 
@@ -646,6 +665,17 @@ def resumo():
             fii_types[t] = fii_types.get(t, 0) + val
             # Summary for Table
             fii_summary[t] = fii_summary.get(t, 0) + val
+        
+        elif a.type == 'ETF':
+            # Add to separate total? Or lump with Acoes? User wanted separate in Acoes page.
+            # Let's track separate total_etfs for allocation chart.
+            # Initialize a new variable for this if needed, or pass in context.
+            pass # Creating a separate aggregator below loop might be cleaner if we had initialized it. 
+                 # But let's add logic here.
+    
+    # Re-loop or initialize above? Let's initialize total_etfs above.
+    total_etfs = sum((a.quantity * (a.current_price if a.current_price > 0 else a.avg_price)) for a in assets if a.type == 'ETF')
+
             
     # Process FII Details for Table and Broad Chart
     fii_table_data = []
@@ -683,7 +713,7 @@ def resumo():
     total_realized_profit = sum(h.profit_value for h in history)
     
     return render_template('resumo.html', 
-                         total_equity=total_equity, total_acoes=total_acoes, total_fiis=total_fiis,
+                         total_equity=total_equity, total_acoes=total_acoes, total_fiis=total_fiis, total_etfs=total_etfs,
                          total_realized_profit=sum(profit_data),
                          fii_types=fii_types,
                          fii_table=fii_table_data,
@@ -956,11 +986,19 @@ def balanceamento():
         rf_pos = [r for r in rfs if r.category == 'POS']
         rf_pre = [r for r in rfs if r.category == 'PRE']
         rf_ipca = [r for r in rfs if r.category == 'IPCA']
-        
-        # 2. Other Classes
         funds = InvestmentFund.query.filter_by(user_id=current_user.id).all()
-        cryptos = Crypto.query.filter_by(user_id=current_user.id).all()
         pensions = Pension.query.filter_by(user_id=current_user.id).all()
+        
+        # 2. RV Data
+        acoes_assets = Asset.query.filter(Asset.type=='ACAO', Asset.user_id==current_user.id, Asset.quantity > 0).all()
+        fiis_assets = Asset.query.filter(Asset.type=='FII', Asset.user_id==current_user.id, Asset.quantity > 0).all()
+        etfs_assets = Asset.query.filter(Asset.type=='ETF', Asset.user_id==current_user.id, Asset.quantity > 0).all()
+        cryptos = Crypto.query.filter_by(user_id=current_user.id).all()
+        # Using same logic as models: strategy='SWING'
+        assets_swing = Asset.query.filter_by(strategy='SWING', user_id=current_user.id).all()
+        
+        # 4. Stock Holders (Asset table)
+        assets_holder = Asset.query.filter_by(strategy='HOLDER', type='ACAO', user_id=current_user.id).all()
         
         # Split Intls
         intls_rv = International.query.filter_by(user_id=current_user.id, category='RV').all()
@@ -968,10 +1006,10 @@ def balanceamento():
         
         # 3. Swing Trade (using Asset table)
         # Using same logic as models: strategy='SWING'
-        assets_swing = Asset.query.filter_by(strategy='SWING', user_id=current_user.id).all()
+        # assets_swing = Asset.query.filter_by(strategy='SWING', user_id=current_user.id).all() # This line was moved up
         
         # 4. Stock Holders (Asset table)
-        assets_holder = Asset.query.filter_by(strategy='HOLDER', type='ACAO', user_id=current_user.id).all()
+        # assets_holder = Asset.query.filter_by(strategy='HOLDER', type='ACAO', user_id=current_user.id).all() # This line was moved up
         fiis_holder = Asset.query.filter_by(strategy='HOLDER', type='FII', user_id=current_user.id).all()
         
         # 2. Existing Assets (Stocks/FIIs)
@@ -982,8 +1020,11 @@ def balanceamento():
         fii_assets = [a for a in assets if a.type == 'FII']
 
         val_ouro = sum([(a.quantity or 0) * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0)) for a in gold_assets])
-        val_acoes = sum([(a.quantity or 0) * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0)) for a in stock_assets])
-        val_fiis = sum([(a.quantity or 0) * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0)) for a in fii_assets])
+        val_acoes = sum((a.quantity * (a.current_price if a.current_price > 0 else a.avg_price)) for a in acoes_assets)
+        val_fiis = sum((a.quantity * (a.current_price if a.current_price > 0 else a.avg_price)) for a in fiis_assets)
+        val_etfs = sum((a.quantity * (a.current_price if a.current_price > 0 else a.avg_price)) for a in etfs_assets)
+        val_cryptos = sum((c.quantity * (c.current_price if c.current_price else c.avg_price)) for c in cryptos)
+        val_intls_rv = sum((i.total_brl if i.total_brl else 0) for i in intls_rv)
         
         # 3. Aggregates & Classification
         summary = {

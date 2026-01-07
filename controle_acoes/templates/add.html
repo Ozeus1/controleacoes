@@ -16,6 +16,7 @@
                 <label for="type">Tipo</label>
                 <select id="type" name="type" onchange="toggleFiiFields()">
                     <option value="ACAO" {% if asset and asset.type=='ACAO' %}selected{% endif %}>Ação</option>
+                    <option value="ETF" {% if asset and asset.type=='ETF' %}selected{% endif %}>ETF</option>
                     <option value="FII" {% if asset and asset.type=='FII' %}selected{% endif %}>FII</option>
                 </select>
             </div>
@@ -134,7 +135,7 @@
         if (type === 'FII') {
             fiiGroup.style.display = 'block';
             sectorGroup.style.display = 'none';
-        } else if (type === 'ACAO') {
+        } else if (type === 'ACAO' || type === 'ETF') {
             fiiGroup.style.display = 'none';
             sectorGroup.style.display = 'block';
         } else {

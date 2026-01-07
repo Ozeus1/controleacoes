@@ -32,6 +32,15 @@
             </div>
         </div>
         <div class="card" style="padding: 1.5rem; text-align: center;">
+            <div style="color: var(--text-secondary); font-size: 0.9rem;">ETFs</div>
+            <div style="font-size: 1.5rem; font-weight: bold; margin-top: 0.5rem;">
+                {{ total_etfs | brl }}
+            </div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                {{ ((total_etfs / total_equity * 100) if total_equity > 0 else 0) | pct }}
+            </div>
+        </div>
+        <div class="card" style="padding: 1.5rem; text-align: center;">
             <div style="color: var(--text-secondary); font-size: 0.9rem;">Lucro Realizado (Histórico)</div>
             <div
                 style="font-size: 1.5rem; font-weight: bold; margin-top: 0.5rem; color: {{ 'var(--success-color)' if total_realized_profit >= 0 else 'var(--danger-color)' }};">
@@ -46,7 +55,7 @@
     <div class="row justify-content-center mb-4">
         <div class="col-12 col-md-8 text-center">
             <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
-                <h3 style="font-size: 1.2rem; margin-bottom: 1rem;">Alocação (Ações vs FIIs)</h3>
+                <h3 style="font-size: 1.2rem; margin-bottom: 1rem;">Alocação (Ações vs FIIs vs ETFs)</h3>
                 <div style="max-width: 500px; width: 100%;">
                     <canvas id="allocationChart"></canvas>
                 </div>
@@ -199,10 +208,10 @@
     new Chart(ctxAlloc, {
         type: 'pie', // Changed from doughnut to pie per request (all pizzas same style)
         data: {
-            labels: ['Ações', 'FIIs'],
+            labels: ['Ações', 'FIIs', 'ETFs'],
             datasets: [{
-                data: [{{ total_acoes }}, {{ total_fiis }}],
-        backgroundColor: ['#6366f1', '#10b981'],
+                data: [{{ total_acoes }}, {{ total_fiis }}, {{ total_etfs }}],
+        backgroundColor: ['#6366f1', '#10b981', '#8b5cf6'],
         borderWidth: 1,
         borderColor: '#1e293b'
     }]

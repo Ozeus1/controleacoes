@@ -92,105 +92,105 @@
                 <td></td> <!-- Actions -->
             </tr>
         </tfoot>
-        {% else %}
-        <div class="card" style="text-align: center; padding: 3rem;">
-            <h3>Sem Ações Cadastradas</h3>
-            <a href="{{ url_for('add_asset') }}" class="btn btn-primary">Adicionar Ação</a>
-        </div>
-        {% endif %}
+    </table>
+</div>
+{% else %}
+<div class="card" style="text-align: center; padding: 3rem;">
+    <h3>Sem Ações Cadastradas</h3>
+    <a href="{{ url_for('add_asset') }}" class="btn btn-primary">Adicionar Ação</a>
+</div>
+{% endif %}
 
-        {% if etfs %}
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 3rem;">
-            <h3>Carteira de ETFs</h3>
-        </div>
-        <div class="card">
-            <table class="paginated">
-                <thead>
-                    <tr>
-                        <th>Ativo</th>
-                        <th>Qtd</th>
-                        <th>Valor Posição</th> <!-- Qtd * Cotação -->
-                        <th>Preço Compra</th>
-                        <th>Total Compra</th> <!-- Qtd * Preço Compra -->
-                        <th>Peso %</th>
-                        <th>Cotação</th>
-                        <th>Var % Dia</th>
-                        <th>Atualização</th>
-                        <th>Lucro R$</th>
-                        <th>Lucro %</th>
-                        <th>G. Dia</th>
-                        <th>Ações</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in etfs %}
-                    <tr>
-                        <td><span class="ticker-badge" style="background-color: #8b5cf6; color: white;">{{
-                                item.asset.ticker }}</span></td>
-                        <td>{{ item.asset.quantity }}</td>
-                        <td>{{ item.current_total | brl }}</td>
-                        <td>{{ item.asset.avg_price | brl }}</td>
-                        <td>{{ item.total_invested | brl }}</td>
-                        <td>{{ "%.2f"|format(item.weight)|replace('.', ',') }}%</td>
-                        <td>{{ item.current_price | brl }}</td>
-                        <td class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
-                            {{ "%.2f"|format(item.change_percent)|replace('.', ',') }}%
-                        </td>
-                        <td style="color: var(--text-secondary); font-size: 0.85rem;">
-                            {{ item.last_update }}
-                        </td>
-                        <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
-                            {{ item.profit | brl }}
-                        </td>
-                        <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
-                            {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
-                        </td>
-                        <td class="{{ 'positive' if item.day_gain >= 0 else 'negative' }}">
-                            {{ item.day_gain | brl }}
-                        </td>
-                        <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
-                            <a href="{{ url_for('buy_asset', id=item.asset.id) }}" class="btn btn-sm"
-                                style="background:var(--success-color); color: white;"
-                                title="Registrar Nova Compra">➕</a>
-                            <a href="{{ url_for('exit_trade', id=item.asset.id) }}" class="btn btn-sm"
-                                style="background:var(--accent-color); color: white;"
-                                title="Registrar Venda/Saída">🛑</a>
-                            <a href="{{ url_for('edit_asset', id=item.asset.id) }}" class="btn btn-sm btn-info"
-                                style="color: white;" title="Editar">✏️</a>
-                            <a href="{{ url_for('delete_asset', id=item.asset.id) }}" class="btn btn-sm btn-danger"
-                                onclick="return confirm('ATENÇÃO: Tem certeza absoluta que deseja excluir este ativo? Esta ação não pode ser desfeita.')"
-                                title="Excluir">🗑️</a>
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-                <tfoot>
-                    <tr class="total-row"
-                        style="font-weight: bold; background-color: rgba(255,255,255,0.05); color: var(--text-color);">
-                        <td>TOTAL ETFs</td>
-                        <td></td> <!-- Qtd -->
-                        <td>{{ total_etfs_current | brl }}</td>
-                        <td></td> <!-- Preço Compra -->
-                        <td>{{ total_etfs_invested | brl }}</td>
-                        <td>100,00%</td>
-                        <td></td> <!-- Cotação -->
-                        <td></td> <!-- Var -->
-                        <td></td> <!-- Atualização -->
-                        <td class="{{ 'positive' if (total_etfs_current - total_etfs_invested) >= 0 else 'negative' }}">
-                            {{ (total_etfs_current - total_etfs_invested) | brl }}
-                        </td>
-                        <td
-                            class="{{ 'positive' if ((total_etfs_current - total_etfs_invested) / total_etfs_invested * 100 if total_etfs_invested > 0 else 0) >= 0 else 'negative' }}">
-                            {{ ((total_etfs_current - total_etfs_invested) / total_etfs_invested * 100 if
-                            total_etfs_invested > 0 else 0) | pct }}
-                        </td>
-                        <td class="{{ 'positive' if etfs|sum(attribute='day_gain') >= 0 else 'negative' }}">
-                            {{ etfs|sum(attribute='day_gain') | brl }}
-                        </td> <!-- G Dia -->
-                        <td></td> <!-- Actions -->
-                    </tr>
-                </tfoot>
-            </table>
-        </div>
-        {% endif %}
-        {% endblock %}
+{% if etfs %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 3rem;">
+    <h3>Carteira de ETFs</h3>
+</div>
+<div class="card">
+    <table class="paginated">
+        <thead>
+            <tr>
+                <th>Ativo</th>
+                <th>Qtd</th>
+                <th>Valor Posição</th> <!-- Qtd * Cotação -->
+                <th>Preço Compra</th>
+                <th>Total Compra</th> <!-- Qtd * Preço Compra -->
+                <th>Peso %</th>
+                <th>Cotação</th>
+                <th>Var % Dia</th>
+                <th>Atualização</th>
+                <th>Lucro R$</th>
+                <th>Lucro %</th>
+                <th>G. Dia</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in etfs %}
+            <tr>
+                <td><span class="ticker-badge" style="background-color: #8b5cf6; color: white;">{{
+                        item.asset.ticker }}</span></td>
+                <td>{{ item.asset.quantity }}</td>
+                <td>{{ item.current_total | brl }}</td>
+                <td>{{ item.asset.avg_price | brl }}</td>
+                <td>{{ item.total_invested | brl }}</td>
+                <td>{{ "%.2f"|format(item.weight)|replace('.', ',') }}%</td>
+                <td>{{ item.current_price | brl }}</td>
+                <td class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.change_percent)|replace('.', ',') }}%
+                </td>
+                <td style="color: var(--text-secondary); font-size: 0.85rem;">
+                    {{ item.last_update }}
+                </td>
+                <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
+                    {{ item.profit | brl }}
+                </td>
+                <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
+                </td>
+                <td class="{{ 'positive' if item.day_gain >= 0 else 'negative' }}">
+                    {{ item.day_gain | brl }}
+                </td>
+                <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                    <a href="{{ url_for('buy_asset', id=item.asset.id) }}" class="btn btn-sm"
+                        style="background:var(--success-color); color: white;" title="Registrar Nova Compra">➕</a>
+                    <a href="{{ url_for('exit_trade', id=item.asset.id) }}" class="btn btn-sm"
+                        style="background:var(--accent-color); color: white;" title="Registrar Venda/Saída">🛑</a>
+                    <a href="{{ url_for('edit_asset', id=item.asset.id) }}" class="btn btn-sm btn-info"
+                        style="color: white;" title="Editar">✏️</a>
+                    <a href="{{ url_for('delete_asset', id=item.asset.id) }}" class="btn btn-sm btn-danger"
+                        onclick="return confirm('ATENÇÃO: Tem certeza absoluta que deseja excluir este ativo? Esta ação não pode ser desfeita.')"
+                        title="Excluir">🗑️</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row"
+                style="font-weight: bold; background-color: rgba(255,255,255,0.05); color: var(--text-color);">
+                <td>TOTAL ETFs</td>
+                <td></td> <!-- Qtd -->
+                <td>{{ total_etfs_current | brl }}</td>
+                <td></td> <!-- Preço Compra -->
+                <td>{{ total_etfs_invested | brl }}</td>
+                <td>100,00%</td>
+                <td></td> <!-- Cotação -->
+                <td></td> <!-- Var -->
+                <td></td> <!-- Atualização -->
+                <td class="{{ 'positive' if (total_etfs_current - total_etfs_invested) >= 0 else 'negative' }}">
+                    {{ (total_etfs_current - total_etfs_invested) | brl }}
+                </td>
+                <td
+                    class="{{ 'positive' if ((total_etfs_current - total_etfs_invested) / total_etfs_invested * 100 if total_etfs_invested > 0 else 0) >= 0 else 'negative' }}">
+                    {{ ((total_etfs_current - total_etfs_invested) / total_etfs_invested * 100 if
+                    total_etfs_invested > 0 else 0) | pct }}
+                </td>
+                <td class="{{ 'positive' if etfs|sum(attribute='day_gain') >= 0 else 'negative' }}">
+                    {{ etfs|sum(attribute='day_gain') | brl }}
+                </td> <!-- G Dia -->
+                <td></td> <!-- Actions -->
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% endif %}
+{% endblock %}

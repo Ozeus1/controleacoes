@@ -1626,7 +1626,7 @@ def update_all_assets_logic():
     """
     assets = Asset.query.filter_by(user_id=current_user.id).all()
     # Filter ACAO/FII
-    relevant = [a for a in assets if a.type in ['ACAO', 'FII']]
+    relevant = [a for a in assets if a.type in ['ACAO', 'FII', 'ETF']]
     if not relevant:
         return 0, []
     
@@ -2008,7 +2008,7 @@ def dividendos():
 @login_required
 def update_dividends():
     import yfinance as yf # Local import to prevent global crash
-    assets = Asset.query.filter_by(user_id=current_user.id).filter(Asset.type.in_(['ACAO', 'FII'])).all()
+    assets = Asset.query.filter_by(user_id=current_user.id).filter(Asset.type.in_(['ACAO', 'FII', 'ETF'])).all()
     
     updated_count = 0
     error_count = 0

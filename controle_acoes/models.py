@@ -224,5 +224,5 @@ class Dividend(db.Model):
     ex_date = db.Column(db.Date, nullable=True) # Data Com
     amount = db.Column(db.Float, nullable=False)
     
-    asset = db.relationship('Asset', backref=db.backref('dividends', lazy=True))
+    asset = db.relationship('Asset', backref=db.backref('dividends', lazy=True, cascade="all, delete-orphan"))
 

@@ -831,11 +831,16 @@ def exit_intl(id):
             
             # Update Asset
             asset.quantity -= qty_sell
-            if asset.quantity < 0: asset.quantity = 0
-            asset.invested_value = asset.quantity * asset.avg_price # Update cached total
+            
+            # Using a small epsilon for float comparison safety
+            if asset.quantity <= 0.00000001:
+                db.session.delete(asset)
+                flash(f"Venda Internacional TOTAL registrada! Lucro: R$ {profit_brl:.2f}", "success")
+            else:
+                asset.invested_value = asset.quantity * asset.avg_price # Update cached total
+                flash(f"Venda Internacional PARCIAL registrada! Lucro: R$ {profit_brl:.2f}", "success")
             
             db.session.commit()
-            flash(f"Venda Internacional registrada! Lucro: R$ {profit_brl:.2f}", "success")
             
             return redirect(url_for('balanceamento'))
             

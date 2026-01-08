@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saída de Criptoativos</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+        .form-card {
+            max-width: 600px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: var(--card-bg);
+            border-radius: 1rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header style="margin-bottom: 2rem;">
+            <h1>Registrar Saída: {{ crypto.name }}</h1>
+            <a href="{{ url_for('balanceamento') }}" class="btn btn-secondary">← Voltar para Balanceamento</a>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="card"
+            style="border-left: 4px solid var(--{{ 'danger' if category == 'error' or category == 'danger' else 'success' }}); margin-bottom: 1rem; padding: 1rem; background-color: var(--card-bg);">
+            {{ message }}
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+        <div class="info-row">
+            <div>
+                <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Quantidade Total</span>
+                <strong style="font-size: 1.2rem;">{{ crypto.quantity }}</strong>
+            </div>
+            <div>
+                <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Preço Médio</span>
+                <strong style="font-size: 1.2rem;">R$ {{ "%.2f"|format(crypto.avg_price or 0)|replace('.', ',')
+                    }}</strong>
+            </div>
+            <div>
+                <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Cotação Atual</span>
+                <strong style="font-size: 1.2rem;">R$ {{ "%.2f"|format(crypto.current_value / crypto.quantity if
+                    crypto.quantity > 0 else 0)|replace('.', ',') }} (Estimado)</strong>
+            </div>
+        </div>
+
+        <form method="POST">
+            <div class="form-group">
+                <label for="quantity">Quantidade de Saída</label>
+                <input type="number" step="0.00000001" id="quantity" name="quantity" value="{{ crypto.quantity }}"
+                    max="{{ crypto.quantity }}" min="0.00000001" required>
+                <p style="font-size: 0.8rem; color: var(--text-secondary);">Se menor que {{ crypto.quantity }}, será
+                    uma saída parcial.</p>
+            </div>
+
+            <div class="form-group">
+                <label for="price">Preço de Venda (Valor Total da Venda ou Unitário?)</label>
+                <small class="text-white d-block mb-1">Informe o <strong>PREÇO UNITÁRIO</strong> de venda.</small>
+                <input type="text" id="price" name="price" required placeholder="Ex: 500000,00">
+            </div>
+
+            <div class="form-group">
+                <label for="date">Data da Saída</label>
+                <input type="date" id="date" name="date" value="{{ today }}" required>
+            </div>
+
+            <div class="form-group">
+                <label for="reason">Motivo/Estratégia</label>
+                <select id="reason" name="reason">
+                    <option value="Lucro">Realizar Lucro</option>
+                    <option value="Stop Loss">Stop Loss / Prejuízo</option>
+                    <option value="Rebalanceamento">Rebalanceamento</option>
+                    <option value="Outros">Outros</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Confirmar
+                Saída</button>
+        </form>
+    </div>
+</body>
+
+</html>

@@ -331,7 +331,7 @@
                             <th>Cotação</th>
                             <th>Lucro</th>
                             <th>Valor Atual</th>
-                            <th>Del</th>
+                            <th>Ações</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -350,11 +350,18 @@
                             </td>
                             <td>R$ {{ item.current_value | brl_fmt }}</td>
                             <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
-                                <a href="{{ url_for('edit_balance_item', type='crypto', id=item.id) }}"
-                                    class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
-                                <a href="{{ url_for('delete_balance_item', type='crypto', id=item.id) }}"
-                                    class="btn btn-sm btn-danger"
-                                    onclick="return confirm('Confirma a exclusão deste item?')" title="Excluir">🗑️</a>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <a href="{{ url_for('buy_crypto', id=item.id) }}" class="btn btn-success"
+                                        title="Comprar">➕</a>
+                                    <a href="{{ url_for('exit_crypto', id=item.id) }}" class="btn btn-danger"
+                                        title="Vender/Sair">🛑</a>
+                                    <a href="{{ url_for('edit_balance_item', type='crypto', id=item.id) }}"
+                                        class="btn btn-info" style="color: white;" title="Editar">✏️</a>
+                                    <a href="{{ url_for('delete_balance_item', type='crypto', id=item.id) }}"
+                                        class="btn btn-danger"
+                                        onclick="return confirm('Confirma a exclusão deste item?')"
+                                        title="Excluir">🗑️</a>
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}

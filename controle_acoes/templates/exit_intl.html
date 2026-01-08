@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saída Internacional</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Bootstrap for Utility Classes -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+    <style>
+        /* Force Dark Theme Override matching main site */
+        body {
+            background-color: var(--bg-color) !important;
+            color: var(--text-primary) !important;
+        }
+
+        .form-card {
+            max-width: 600px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: var(--card-bg);
+            border-radius: 1rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        input,
+        select {
+            background-color: #334155 !important;
+            color: white !important;
+            border: 1px solid #475569 !important;
+            padding: 0.5rem;
+            border-radius: 4px;
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header style="margin-bottom: 2rem; margin-top: 2rem;">
+            <h1>Registrar Saída: {{ asset.name }}</h1>
+            <a href="{{ url_for('balanceamento') }}" class="btn btn-secondary">← Voltar</a>
+        </header>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="card"
+            style="border-left: 4px solid var(--{{ 'danger' if category == 'error' or category == 'danger' else 'success' }}); margin-bottom: 1rem; padding: 1rem; background-color: var(--card-bg);">
+            {{ message }}
+        </div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+
+        <div class="form-card">
+            <div class="info-row">
+                <div>
+                    <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Quantidade
+                        Total</span>
+                    <strong style="font-size: 1.2rem;">{{ asset.quantity }}</strong>
+                </div>
+                <div>
+                    <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">PM (USD)</span>
+                    <strong style="font-size: 1.2rem;">US$ {{ "%.2f"|format(asset.avg_price or 0)|replace('.', ',')
+                        }}</strong>
+                </div>
+                <div>
+                    <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Cotação (USD)</span>
+                    <strong style="font-size: 1.2rem;">US$ {{ "%.2f"|format(asset.quote or 0)|replace('.', ',')
+                        }}</strong>
+                </div>
+            </div>
+
+            <form method="POST">
+                <div class="mb-3">
+                    <label for="quantity">Quantidade de Saída</label>
+                    <input type="number" step="0.00000001" id="quantity" name="quantity" value="{{ asset.quantity }}"
+                        max="{{ asset.quantity }}" min="0.00000001" required>
+                    <p style="font-size: 0.8rem; color: var(--text-secondary);">Se menor que {{ asset.quantity }}, será
+                        uma saída parcial.</p>
+                </div>
+
+                <div class="mb-3">
+                    <label for="price">Preço de Venda (Unitário em DÓLAR)</label>
+                    <input type="text" id="price" name="price" required placeholder="Ex: 160,00"
+                        value="{{ '%.2f'|format(asset.quote or 0)|replace('.', ',') }}">
+                </div>
+
+                <div class="mb-3">
+                    <label for="exchange_rate" style="color: #f59e0b;">Cotação do Dólar (R$) para Conversão</label>
+                    <input type="text" id="exchange_rate" name="exchange_rate" required placeholder="Ex: 5,65">
+                    <small style="color: #94a3b8;">Valor usado para converter o lucro em Reais no histórico.</small>
+                </div>
+
+                <div class="mb-3">
+                    <label for="date">Data da Saída</label>
+                    <input type="date" id="date" name="date" value="{{ today }}" required>
+                </div>
+
+                <div class="mb-3">
+                    <label for="reason">Motivo/Estratégia</label>
+                    <select id="reason" name="reason">
+                        <option value="Lucro">Realizar Lucro</option>
+                        <option value="Stop Loss">Stop Loss / Prejuízo</option>
+                        <option value="Rebalanceamento">Rebalanceamento</option>
+                        <option value="Outros">Outros</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">Confirmar
+                    Saída</button>
+            </form>
+        </div>
+    </div>
+</body>
+
+</html>

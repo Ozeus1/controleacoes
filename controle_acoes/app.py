@@ -726,6 +726,124 @@ def exit_crypto(id):
              
     return render_template('exit_crypto.html', crypto=crypto, today=date.today().isoformat())
 
+    return render_template('exit_crypto.html', crypto=crypto, today=date.today().isoformat())
+
+# --- INTERNATIONAL ROUTES ---
+@app.route('/buy_intl/<int:id>', methods=['GET', 'POST'])
+@login_required
+def buy_intl(id):
+    asset = International.query.get_or_404(id)
+    if asset.user_id != current_user.id:
+        flash("Permissão negada.")
+        return redirect(url_for('balanceamento'))
+        
+    if request.method == 'POST':
+        try:
+            qty_buy = float(request.form.get('quantity').replace(',', '.'))
+            price_buy = float(request.form.get('price').replace(',', '.')) # Unit Price in USD
+            date_str = request.form.get('date')
+            
+            # Calculate New Average Price (USD)
+            current_qty = asset.quantity or 0
+            current_avg = asset.avg_price or 0
+            
+            current_total_invested = current_qty * current_avg
+            new_investment = qty_buy * price_buy
+            
+            total_qty = current_qty + qty_buy
+            
+            if total_qty > 0:
+                new_avg_price = (current_total_invested + new_investment) / total_qty
+                asset.avg_price = new_avg_price
+                asset.quantity = total_qty
+                # Update purchase_price/invested_value fields if they are being used for redundancy
+                asset.invested_value = total_qty * new_avg_price 
+                
+                db.session.commit()
+                flash(f'Compra Internacional registrada! Novo PM: US$ {new_avg_price:.2f}', 'success')
+            
+            return redirect(url_for('balanceamento'))
+            
+        except ValueError:
+            flash("Erro nos valores informados.", "danger")
+            
+    return render_template('buy_intl.html', asset=asset, today=date.today().isoformat())
+
+@app.route('/exit_intl/<int:id>', methods=['GET', 'POST'])
+@login_required
+def exit_intl(id):
+    asset = International.query.get_or_404(id)
+    if asset.user_id != current_user.id:
+        flash("Permissão negada.")
+        return redirect(url_for('balanceamento'))
+        
+    if request.method == 'POST':
+        try:
+            qty_sell = float(request.form.get('quantity').replace(',', '.'))
+            price_sell_usd = float(request.form.get('price').replace(',', '.')) # Unit Price USD
+            exchange_rate = float(request.form.get('exchange_rate').replace(',', '.')) # BRL Rate
+            
+            date_str = request.form.get('date')
+            try:
+                date_sell = datetime.strptime(date_str, '%Y-%m-%d').date()
+            except ValueError:
+                date_sell = datetime.strptime(date_str, '%d/%m/%Y').date()
+                
+            reason = request.form.get('reason')
+            
+            if qty_sell > (asset.quantity or 0):
+                flash("Quantidade de venda maior que a possuída!", "danger")
+                return redirect(url_for('exit_intl', id=id))
+            
+            # Calculate Profit in USD
+            avg_price_usd = asset.avg_price or 0
+            total_sell_usd = qty_sell * price_sell_usd
+            total_buy_usd = qty_sell * avg_price_usd
+            
+            profit_usd = total_sell_usd - total_buy_usd
+            
+            # Convert to BRL for History
+            # We assume user wants to track "Realized Profit in BRL"
+            profit_brl = profit_usd * exchange_rate
+            
+            # Calculate implied BRL values for records
+            total_buy_brl = total_buy_usd * exchange_rate
+            
+            profit_pct = (profit_usd / total_buy_usd * 100) if total_buy_usd > 0 else 0
+            
+            # Record History
+            history = TradeHistory(
+                user_id=current_user.id,
+                ticker=asset.name, 
+                strategy="INTL", 
+                entry_date=None, 
+                exit_date=date_sell,
+                buy_price=avg_price_usd * exchange_rate, # Storing BRL basis
+                sell_price=price_sell_usd * exchange_rate, # Storing BRL Sales
+                quantity=int(qty_sell) if qty_sell >=1 else 1, # Same int casting issue as crypto
+                profit_value=profit_brl,
+                profit_pct=profit_pct,
+                days_held=0,
+                reason=reason
+            )
+            
+            db.session.add(history)
+            
+            # Update Asset
+            asset.quantity -= qty_sell
+            if asset.quantity < 0: asset.quantity = 0
+            asset.invested_value = asset.quantity * asset.avg_price # Update cached total
+            
+            db.session.commit()
+            flash(f"Venda Internacional registrada! Lucro: R$ {profit_brl:.2f}", "success")
+            
+            return redirect(url_for('balanceamento'))
+            
+        except ValueError as e:
+             flash(f"Erro de valor: {e}", "danger")
+             
+    return render_template('exit_intl.html', asset=asset, today=date.today().isoformat())
+
 @app.route('/historico')
 @login_required
 def historico():

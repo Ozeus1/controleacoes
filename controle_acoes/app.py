@@ -313,13 +313,17 @@ def acoes():
 @app.route('/fiis')
 @login_required
 def fiis():
-    raw_assets = Asset.query.filter(Asset.type=='FII', Asset.user_id==current_user.id, Asset.quantity > 0).all()
-    processed_assets = process_assets(raw_assets)
-    
-    total_invested = sum(a['total_invested'] for a in processed_assets)
-    total_current = sum(a['current_total'] for a in processed_assets)
-    
-    return render_template('fiis.html', assets=processed_assets, total_invested=total_invested, total_current=total_current)
+    try:
+        raw_assets = Asset.query.filter(Asset.type=='FII', Asset.user_id==current_user.id, Asset.quantity > 0).all()
+        processed_assets = process_assets(raw_assets)
+        
+        total_invested = sum(a['total_invested'] for a in processed_assets)
+        total_current = sum(a['current_total'] for a in processed_assets)
+        
+        return render_template('fiis.html', assets=processed_assets, total_invested=total_invested, total_current=total_current)
+    except Exception as e:
+        import traceback
+        return f"<h3>Erro na Página FIIs:</h3><pre>{traceback.format_exc()}</pre>"
 
 @app.route('/swingtrade')
 @login_required

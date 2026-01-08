@@ -57,6 +57,11 @@ class Asset(db.Model):
     daily_change = db.Column(db.Float, default=0.0)
     last_update = db.Column(db.DateTime,  nullable=True)
     
+    # Dividend Data (New)
+    last_dividend = db.Column(db.Float, nullable=True)
+    last_dividend_date = db.Column(db.Date, nullable=True)
+    dividend_yield = db.Column(db.Float, nullable=True)
+    
     # History/Duration
     entry_date = db.Column(db.Date, nullable=True)
     

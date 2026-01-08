@@ -3,6 +3,12 @@
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center;">
     <h2>Carteira de FIIs</h2>
+    <form action="{{ url_for('update_fii_dividends') }}" method="POST" style="display: inline;">
+        <button type="submit" class="btn btn-warning"
+            onclick="this.innerHTML='Atualizando...'; this.disabled=true; this.form.submit();">
+            <i class="fas fa-sync-alt"></i> Atualizar Dividendos
+        </button>
+    </form>
 </div>
 
 {% if assets %}
@@ -18,6 +24,9 @@
                 <th>Peso %</th>
                 <th>Cotação</th>
                 <th>Var % Dia</th>
+                <th>Último Div.</th>
+                <th>Data Pag.</th>
+                <th>DY (12m) %</th>
                 <th>Atualização</th>
                 <th>Lucro R$</th>
                 <th>Lucro %</th>
@@ -39,6 +48,11 @@
                 <td class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.change_percent)|replace('.', ',') }}%
                 </td>
+                <td>{{ item.asset.last_dividend | brl }}</td>
+                <td style="font-size: 0.85rem;">{{ item.asset.last_dividend_date.strftime('%d/%m/%Y') if
+                    item.asset.last_dividend_date else '-' }}</td>
+                <td>{{ "%.2f"|format(item.asset.dividend_yield * 100 if item.asset.dividend_yield else 0)|replace('.',
+                    ',') }}%</td>
                 <td style="color: var(--text-secondary); font-size: 0.85rem;">
                     {{ item.last_update }}
                 </td>
@@ -79,6 +93,9 @@
                 <td>100,00%</td>
                 <td></td> <!-- Price -->
                 <td></td> <!-- Var -->
+                <td>-</td> <!-- Last Div -->
+                <td>-</td> <!-- Date -->
+                <td>-</td> <!-- DY -->
                 <td></td> <!-- Update -->
                 <td class="{{ 'positive' if assets|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ assets|sum(attribute='profit') | brl }}

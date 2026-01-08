@@ -49,8 +49,7 @@
                     {{ "%.2f"|format(item.change_percent)|replace('.', ',') }}%
                 </td>
                 <td>{{ item.asset.last_dividend | brl }}</td>
-                <td style="font-size: 0.85rem;">{{ item.asset.last_dividend_date.strftime('%d/%m/%Y') if
-                    item.asset.last_dividend_date else '-' }}</td>
+                <td style="font-size: 0.85rem;">{{ item.asset.last_dividend_date | date_fmt }}</td>
                 <td>{{ "%.2f"|format(item.asset.dividend_yield * 100 if item.asset.dividend_yield else 0)|replace('.',
                     ',') }}%</td>
                 <td style="color: var(--text-secondary); font-size: 0.85rem;">

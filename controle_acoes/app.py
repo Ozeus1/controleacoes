@@ -8,9 +8,10 @@ from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
 import time
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
-# import yfinance as yf -> Moved to local scope
+import pytz
+import yfinance as yf
 
 # Load env vars
 load_dotenv()
@@ -44,12 +45,23 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-def brl_fmt(value):
     if value is None:
         return ""
     return "{:,.2f}".format(value).replace(",", "X").replace(".", ",").replace("X", ".")
 
 app.jinja_env.filters['brl_fmt'] = brl_fmt
+
+@app.template_filter('date_fmt')
+def format_date(value):
+    if value is None:
+        return "-"
+    if isinstance(value, str):
+        try:
+            value = datetime.strptime(value, '%Y-%m-%d').date()
+        except:
+             return value
+    return value.strftime('%d/%m/%Y')
+
 
 db.init_app(app)
 

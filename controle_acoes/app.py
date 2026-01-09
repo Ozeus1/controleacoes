@@ -502,10 +502,14 @@ def add_asset():
             except Exception as e:
                 print(f"Error fetching initial quote for {ticker}: {e}")
             
+            # Get Strategy from Form
+            strategy = request.form.get('strategy', 'HOLDER')
+
             asset = Asset(
                 user_id=current_user.id,
                 ticker=ticker, 
                 type=type_, 
+                strategy=strategy,
                 quantity=qty, 
                 avg_price=avg_price,
                 entry_date=entry_date,
@@ -521,6 +525,8 @@ def add_asset():
         db.session.commit()
         if type_ == 'FII':
             return redirect(url_for('fiis'))
+        elif strategy == 'SWING':
+            return redirect(url_for('swingtrade'))
         elif type_ == 'ETF':
             return redirect(url_for('acoes'))
         else:

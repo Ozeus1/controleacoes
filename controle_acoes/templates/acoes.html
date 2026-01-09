@@ -195,4 +195,122 @@
     </table>
 </div>
 {% endif %}
+
+<!-- INTERNATIONAL RV -->
+{% if intls_rv %}
+<div class="card mt-4">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem;">
+        <h3>Renda Variável Internacional</h3>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-dark table-striped mb-0 table-center-forced align-middle">
+            <thead>
+                <tr>
+                    <th>ATIVO</th>
+                    <th>Qtd</th>
+                    <th>Vl. Compra ($)</th>
+                    <th>Cotação ($)</th>
+                    <th>Lucro ($)</th>
+                    <th>Total ($)</th>
+                    <th>Câmbio (R$)</th>
+                    <th>Corretora</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in intls_rv %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.quantity | default(0) }}</td>
+                    <td>$ {{ item.avg_price | brl_fmt }}</td>
+                    <td>$ {{ item.quote | brl_fmt }}</td>
+                    {% set quote = item.quote or 0 %}
+                    {% set avg_price = item.avg_price or 0 %}
+                    {% set quantity = item.quantity or 0 %}
+                    {% set profit = (quote - avg_price) * quantity %}
+                    <td class="{{ 'positive' if profit >= 0 else 'negative' }}">
+                        $ {{ profit | brl_fmt }}
+                    </td>
+                    <td>$ {{ (quantity * quote) | brl_fmt }}</td>
+                    <td>R$ {{ item.rate_usd | brl_fmt }}</td>
+                    <td>{{ item.institution }}</td>
+                    <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                        <a href="{{ url_for('buy_intl', id=item.id) }}" class="btn btn-sm"
+                            style="background:var(--success-color); color: white;" title="Comprar">➕</a>
+                        <a href="{{ url_for('exit_intl', id=item.id) }}" class="btn btn-sm"
+                            style="background:var(--accent-color); color: white;" title="Vender/Sair">🛑</a>
+                        <a href="{{ url_for('edit_balance_item', type='intl', id=item.id) }}"
+                            class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
+                        <a href="{{ url_for('delete_balance_item', type='intl', id=item.id) }}"
+                            class="btn btn-sm btn-danger" onclick="return confirm('Apagar?')" title="Excluir">🗑️</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- INTERNATIONAL RF -->
+{% if intls_rf %}
+<div class="card mt-4">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem;">
+        <h3>Renda Fixa Internacional</h3>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-dark table-striped mb-0 table-center-forced align-middle">
+            <thead>
+                <tr>
+                    <th>ATIVO</th>
+                    <th>Tipo</th>
+                    <th>Qtd</th>
+                    <th>PM ($)</th>
+                    <th>Cotação ($)</th>
+                    <th>Vl. Compra ($)</th>
+                    <th>Lucro ($)</th>
+                    <th>Total ($)</th>
+                    <th>Corretora</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in intls_rf %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.description }}</td>
+                    <td>{{ item.quantity | default(0) }}</td>
+                    <td>$ {{ item.avg_price | brl_fmt }}</td>
+                    <td>$ {{ item.quote | brl_fmt }}</td>
+
+                    {% set quote = item.quote or 0 %}
+                    {% set avg_price = item.avg_price or 0 %}
+                    {% set quantity = item.quantity or 0 %}
+                    {% set invested = quantity * avg_price %}
+                    {% set total = quantity * quote %}
+                    {% set profit = total - invested %}
+
+                    <td>$ {{ invested | brl_fmt }}</td>
+                    <td class="{{ 'positive' if profit >= 0 else 'negative' }}">
+                        $ {{ profit | brl_fmt }}
+                    </td>
+                    <td>$ {{ total | brl_fmt }}</td>
+                    <td>{{ item.institution }}</td>
+                    <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                        <a href="{{ url_for('buy_intl', id=item.id) }}" class="btn btn-sm"
+                            style="background:var(--success-color); color: white;" title="Comprar">➕</a>
+                        <a href="{{ url_for('exit_intl', id=item.id) }}" class="btn btn-sm"
+                            style="background:var(--accent-color); color: white;" title="Vender/Sair">🛑</a>
+                        <a href="{{ url_for('edit_balance_item', type='intl', id=item.id) }}"
+                            class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
+                        <a href="{{ url_for('delete_balance_item', type='intl', id=item.id) }}"
+                            class="btn btn-sm btn-danger" onclick="return confirm('Apagar?')" title="Excluir">🗑️</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

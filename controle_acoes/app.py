@@ -292,6 +292,10 @@ def acoes():
     raw_assets = Asset.query.filter(Asset.type=='ACAO', Asset.strategy!='SWING', Asset.user_id==current_user.id, Asset.quantity > 0).all()
     processed_assets = process_assets(raw_assets)
     
+    # Fetch International Assets for Migration
+    intls_rv = International.query.filter_by(user_id=current_user.id, category='RV').all()
+    intls_rf = International.query.filter_by(user_id=current_user.id, category='RF').all()
+    
     total_invested = sum(a['total_invested'] for a in processed_assets)
     total_current = sum(a['current_total'] for a in processed_assets)
 
@@ -308,7 +312,9 @@ def acoes():
                            total_current=total_current,
                            etfs=processed_etfs,
                            total_etfs_invested=total_etfs_invested,
-                           total_etfs_current=total_etfs_current)
+                           total_etfs_current=total_etfs_current,
+                           intls_rv=intls_rv,
+                           intls_rf=intls_rf)
 
 @app.route('/fiis')
 @login_required

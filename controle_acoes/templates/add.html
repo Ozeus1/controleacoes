@@ -55,12 +55,13 @@
             </div>
         </div>
 
-        <div class="form-group">
+        <div class="form-group" {% if request.args.get('strategy') %}style="display:none" {% endif %}>
             <label for="strategy">Estratégia</label>
             <select id="strategy" name="strategy" onchange="toggleSwingFields()">
-                <option value="HOLDER" {% if asset and asset.strategy=='HOLDER' %}selected{% endif %}>Holder (Carteira
-                    Principal)</option>
-                <option value="SWING" {% if asset and asset.strategy=='SWING' %}selected{% endif %}>Swing Trade</option>
+                <option value="HOLDER" {% if (asset and asset.strategy=='HOLDER' ) or
+                    request.args.get('strategy')=='HOLDER' %}selected{% endif %}>Holder (Carteira Principal)</option>
+                <option value="SWING" {% if (asset and asset.strategy=='SWING' ) or
+                    request.args.get('strategy')=='SWING' %}selected{% endif %}>Swing Trade</option>
             </select>
         </div>
 

@@ -3,6 +3,7 @@
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center;">
     <h2>Swingtrade</h2>
+    <a href="{{ url_for('add_asset', strategy='SWING') }}" class="btn btn-primary">Adicionar Operação</a>
 </div>
 
 {% if assets %}
@@ -103,7 +104,7 @@
 {% else %}
 <div class="card" style="text-align: center; padding: 3rem;">
     <h3>Sem Swingtrades Cadastrados</h3>
-    <a href="{{ url_for('add_asset') }}" class="btn btn-primary">Adicionar Operação</a>
+    <a href="{{ url_for('add_asset', strategy='SWING') }}" class="btn btn-primary">Adicionar Operação</a>
 </div>
 {% endif %}
 {% endblock %}

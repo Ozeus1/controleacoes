@@ -2,13 +2,12 @@
 
 {% block content %}
 <div style="display: flex; justify-content: space-between; align-items: center;">
-    <h2>Carteira de FIIs</h2>
-    <form action="{{ url_for('update_fii_dividends') }}" method="POST" style="display: inline;">
-        <button type="submit" class="btn btn-warning"
-            onclick="this.innerHTML='Atualizando...'; this.disabled=true; this.form.submit();">
-            <i class="fas fa-sync-alt"></i> Atualizar Dividendos
-        </button>
-    </form>
+    <h2>Carteira de FIIs (DEBUG v1.5)</h2>
+    <!-- Temporarily disabled for debugging -->
+    <!-- <form action="{{ url_for('update_fii_dividends') }}" method="POST" style="display: inline;"> -->
+    <button class="btn btn-secondary" disabled>
+        Feature Disabled
+    </button>
 </div>
 
 {% if assets %}

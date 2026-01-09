@@ -980,18 +980,18 @@
         <!-- Table Centered -->
         <div class="row justify-content-center">
             <div class="col-md-8">
-                <table class="table table-dark table-sm table-striped no-datatable mb-0">
+                <table class="table table-dark table-sm table-striped no-datatable mb-0 table-center-forced">
                     <thead>
                         <tr>
                             <th>Categoria</th>
-                            <th class="text-end">Percentual</th>
+                            <th>Percentual</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for label, val in summary_exploded.items() %}
                         <tr>
                             <td>{{ label }}</td>
-                            <td class="text-end">
+                            <td>
                                 {% if total_portfolio > 0 %}
                                 {{ (val / total_portfolio * 100) | brl_fmt }}%
                                 {% else %}
@@ -1022,18 +1022,18 @@
         <!-- Table Centered -->
         <div class="row justify-content-center">
             <div class="col-md-8">
-                <table class="table table-dark table-sm table-striped no-datatable mb-0">
+                <table class="table table-dark table-sm table-striped no-datatable mb-0 table-center-forced">
                     <thead>
                         <tr>
                             <th>Categoria</th>
-                            <th class="text-end">Percentual</th>
+                            <th>Percentual</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for label, val in summary_general.items() %}
                         <tr>
                             <td>{{ label }}</td>
-                            <td class="text-end">
+                            <td>
                                 {% if total_portfolio > 0 %}
                                 {{ (val / total_portfolio * 100) | brl_fmt }}%
                                 {% else %}
@@ -1044,7 +1044,7 @@
                         {% endfor %}
                         <tr class="font-weight-bold border-top">
                             <td>TOTAL</td>
-                            <td class="text-end">100,00%</td>
+                            <td>100,00%</td>
                         </tr>
                     </tbody>
                 </table>

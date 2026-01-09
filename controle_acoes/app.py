@@ -313,17 +313,88 @@ def acoes():
 @app.route('/fiis')
 @login_required
 def fiis():
+    # Force Git Update v2
+    raw_assets = Asset.query.filter(Asset.type=='FII', Asset.user_id==current_user.id, Asset.quantity > 0).all()
+    processed_assets = process_assets(raw_assets)
+    
+    total_invested = sum(a['total_invested'] for a in processed_assets)
+    total_current = sum(a['current_total'] for a in processed_assets)
+    
+    return render_template('fiis.html', assets=processed_assets, total_invested=total_invested, total_current=total_current)
+
+@app.route('/update_fii_dividends', methods=['POST'])
+@login_required
+def update_fii_dividends():
     try:
-        raw_assets = Asset.query.filter(Asset.type=='FII', Asset.user_id==current_user.id, Asset.quantity > 0).all()
-        processed_assets = process_assets(raw_assets)
+        assets = Asset.query.filter_by(user_id=current_user.id, type='FII').all()
+        updated_count = 0
+        error_count = 0
         
-        total_invested = sum(a['total_invested'] for a in processed_assets)
-        total_current = sum(a['current_total'] for a in processed_assets)
+        for asset in assets:
+            try:
+                # Add .SA suffix if missing
+                ticker_symbol = asset.ticker if asset.ticker.endswith('.SA') else f"{asset.ticker}.SA"
+                
+                stock = yf.Ticker(ticker_symbol)
+                
+                # Get Dividends History (Max 1 Year is enough for DY)
+                dividends = stock.dividends
+                
+                if not dividends.empty:
+                    # Filter for last 12 months (UTC aware)
+                    end_date = datetime.now(pytz.utc) 
+                    start_date = end_date - timedelta(days=365)
+                    
+                    # Ensure dividends index is tz-aware for comparison
+                    if dividends.index.tz is None:
+                         dividends.index = dividends.index.tz_localize('UTC')
+                    
+                    last_12m_dividends = dividends[(dividends.index >= start_date) & (dividends.index <= end_date)]
+                    
+                    # 1. Last Dividend
+                    last_div_value = dividends.iloc[-1]
+                    last_div_date = dividends.index[-1].date()
+                    
+                    asset.last_dividend = float(last_div_value)
+                    asset.last_dividend_date = last_div_date
+                    
+                    # 2. DY Calculation (Sum 12m / Current Quote)
+                    sum_dividends = last_12m_dividends.sum()
+                    
+                    # Get Current Price (Try fast info first, fallback to history)
+                    current_price = asset.current_price # Use cached price if available/reliable
+                    
+                    # If cached price is zero, try to fetch
+                    if current_price == 0:
+                        hist = stock.history(period="1d")
+                        if not hist.empty:
+                            current_price = hist['Close'].iloc[-1]
+                    
+                    if current_price > 0:
+                        dy_annual = sum_dividends / current_price
+                        asset.dividend_yield = float(dy_annual)
+                    
+                    updated_count += 1
+                else:
+                    # No dividends found
+                    pass
+                    
+            except Exception as e:
+                print(f"Error updating FII {asset.ticker}: {e}")
+                error_count += 1
+                continue
+                
+        db.session.commit()
         
-        return render_template('fiis.html', assets=processed_assets, total_invested=total_invested, total_current=total_current)
+        if error_count > 0:
+             flash(f"Dividendos atualizados: {updated_count}. Erros: {error_count}", "warning")
+        else:
+             flash(f"Dividendos de {updated_count} FIIs atualizados com sucesso!", "success")
+             
     except Exception as e:
-        import traceback
-        return f"<h3>Erro na Página FIIs:</h3><pre>{traceback.format_exc()}</pre>"
+        flash(f"Erro geral ao atualizar dividendos: {str(e)}", "danger")
+        
+    return redirect(url_for('fiis'))
 
 @app.route('/swingtrade')
 @login_required

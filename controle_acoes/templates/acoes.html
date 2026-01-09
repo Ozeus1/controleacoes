@@ -197,10 +197,13 @@
 {% endif %}
 
 <!-- INTERNATIONAL RV -->
-{% if intls_rv %}
+<!-- removed if -->
 <div class="card mt-4">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem;">
         <h3>Renda Variável Internacional</h3>
+        <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalIntlRV">
+            <i class="fas fa-plus"></i> Adicionar Ativo
+        </button>
     </div>
     <div class="table-responsive">
         <table class="table table-dark table-striped mb-0 table-center-forced align-middle">
@@ -266,13 +269,16 @@
         </table>
     </div>
 </div>
-{% endif %}
+<!-- removed endif -->
 
 <!-- INTERNATIONAL RF -->
-{% if intls_rf %}
+<!-- removed if -->
 <div class="card mt-4">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem;">
         <h3>Renda Fixa Internacional</h3>
+        <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalIntlRF">
+            <i class="fas fa-plus"></i> Adicionar Ativo
+        </button>
     </div>
     <div class="table-responsive">
         <table class="table table-dark table-striped mb-0 table-center-forced align-middle">
@@ -345,5 +351,55 @@
         </table>
     </div>
 </div>
-{% endif %}
+<!-- removed endif -->
+<!-- Modal Intl RV -->
+<div class="modal fade" id="modalIntlRV" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('add_intl') }}" method="POST">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header">
+                    <h5 class="modal-title">Adicionar Renda Variável Internacional</h5><button type="button"
+                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="category" value="RV">
+                    <div class="mb-3"><label>Corretora/Instituição</label><input type="text" name="institution"
+                            class="form-control" required></div>
+                    <div class="mb-3"><label>Ticker (ex: AAPL)</label><input type="text" name="name"
+                            class="form-control" required style="text-transform: uppercase;"></div>
+                    <div class="mb-3"><label>Quantidade</label><input type="text" name="quantity" class="form-control"
+                            required></div>
+                    <div class="mb-3"><label>Preço Médio ($)</label><input type="text" name="avg_price"
+                            class="form-control" required>
+                    </div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-secondary">Salvar</button></div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Intl RF -->
+<div class="modal fade" id="modalIntlRF" tabindex="-1">
+    <div class="modal-dialog">
+        <form action="{{ url_for('add_intl') }}" method="POST">
+            <div class="modal-content bg-dark text-white">
+                <div class="modal-header">
+                    <h5 class="modal-title">Adicionar Renda Fixa Internacional</h5><button type="button"
+                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="category" value="RF">
+                    <div class="mb-3"><label>Instituição</label><input type="text" name="institution"
+                            class="form-control" required></div>
+                    <div class="mb-3"><label>Descrição/Tipo</label><input type="text" name="description"
+                            class="form-control" required></div>
+                    <div class="mb-3"><label>Valor Investido ($)</label><input type="text" name="value_usd"
+                            class="form-control" required></div>
+                </div>
+                <div class="modal-footer"><button type="submit" class="btn btn-secondary">Salvar</button></div>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}

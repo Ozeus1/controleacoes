@@ -289,7 +289,7 @@ def index():
 @login_required
 def acoes():
     # Stocks
-    raw_assets = Asset.query.filter(Asset.type=='ACAO', Asset.user_id==current_user.id, Asset.quantity > 0).all()
+    raw_assets = Asset.query.filter(Asset.type=='ACAO', Asset.strategy!='SWING', Asset.user_id==current_user.id, Asset.quantity > 0).all()
     processed_assets = process_assets(raw_assets)
     
     total_invested = sum(a['total_invested'] for a in processed_assets)
@@ -313,7 +313,6 @@ def acoes():
 @app.route('/fiis')
 @login_required
 def fiis():
-    # Force Git Update v2
     raw_assets = Asset.query.filter(Asset.type=='FII', Asset.user_id==current_user.id, Asset.quantity > 0).all()
     processed_assets = process_assets(raw_assets)
     

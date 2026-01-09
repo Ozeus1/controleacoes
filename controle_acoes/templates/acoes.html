@@ -247,6 +247,22 @@
                 </tr>
                 {% endfor %}
             </tbody>
+            <tfoot>
+                <tr style="font-weight: bold; background-color: rgba(255,255,255,0.05); color: var(--text-color);">
+                    <td>TOTAIS</td>
+                    <td></td>
+                    <td>$ {{ intl_rv_invested | brl_fmt }}</td>
+                    <td></td>
+                    {% set profit = intl_rv_current - intl_rv_invested %}
+                    <td class="{{ 'positive' if profit >= 0 else 'negative' }}">
+                        $ {{ profit | brl_fmt }}
+                    </td>
+                    <td>$ {{ intl_rv_current | brl_fmt }}</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                </tr>
+            </tfoot>
         </table>
     </div>
 </div>
@@ -309,6 +325,23 @@
                 </tr>
                 {% endfor %}
             </tbody>
+            <tfoot>
+                <tr style="font-weight: bold; background-color: rgba(255,255,255,0.05); color: var(--text-color);">
+                    <td>TOTAIS</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td>$ {{ intl_rf_invested | brl_fmt }}</td>
+                    {% set profit = intl_rf_current - intl_rf_invested %}
+                    <td class="{{ 'positive' if profit >= 0 else 'negative' }}">
+                        $ {{ profit | brl_fmt }}
+                    </td>
+                    <td>$ {{ intl_rf_current | brl_fmt }}</td>
+                    <td></td>
+                    <td></td>
+                </tr>
+            </tfoot>
         </table>
     </div>
 </div>

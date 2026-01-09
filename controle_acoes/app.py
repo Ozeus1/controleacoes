@@ -295,6 +295,14 @@ def acoes():
     # Fetch International Assets for Migration
     intls_rv = International.query.filter_by(user_id=current_user.id, category='RV').all()
     intls_rf = International.query.filter_by(user_id=current_user.id, category='RF').all()
+
+    # Calculate Totals for Intl RV
+    intl_rv_invested = sum((i.quantity or 0) * (i.avg_price or 0) for i in intls_rv)
+    intl_rv_current = sum((i.quantity or 0) * (i.quote or 0) for i in intls_rv)
+    
+    # Calculate Totals for Intl RF
+    intl_rf_invested = sum((i.quantity or 0) * (i.avg_price or 0) for i in intls_rf)
+    intl_rf_current = sum((i.quantity or 0) * (i.quote or 0) for i in intls_rf)
     
     total_invested = sum(a['total_invested'] for a in processed_assets)
     total_current = sum(a['current_total'] for a in processed_assets)
@@ -314,7 +322,11 @@ def acoes():
                            total_etfs_invested=total_etfs_invested,
                            total_etfs_current=total_etfs_current,
                            intls_rv=intls_rv,
-                           intls_rf=intls_rf)
+                           intls_rf=intls_rf,
+                           intl_rv_invested=intl_rv_invested,
+                           intl_rv_current=intl_rv_current,
+                           intl_rf_invested=intl_rf_invested,
+                           intl_rf_current=intl_rf_current)
 
 @app.route('/fiis')
 @login_required
@@ -2043,21 +2055,138 @@ def update_all_assets_logic():
     
     return updated_count, total_tried, errors
 
+def update_intl_quotes_logic(user_id):
+    """
+    Helper to update International Assets and Cryptos for a specific user.
+    Returns (success: bool, messages: list)
+    """
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
+    msg_log = []
+    success = False
+
+    try:
+        # 1. Get USD Rate (USDBRL=X)
+        usd_rate = 0.0
+        try:
+            url_usd = "https://query1.finance.yahoo.com/v8/finance/chart/USDBRL=X?interval=1d&range=1d"
+            r_usd = requests.get(url_usd, headers=headers, timeout=10)
+            data_usd = r_usd.json()
+            if 'chart' in data_usd and 'result' in data_usd['chart'] and data_usd['chart']['result']:
+                usd_rate = data_usd['chart']['result'][0]['meta']['regularMarketPrice']
+                msg_log.append(f"Dólar: R$ {usd_rate:.2f}")
+            else:
+                 msg_log.append("Erro ao obter Dólar (API Vazia)")
+        except Exception as e:
+            msg_log.append(f"Erro Dólar: {str(e)}")
+            print(f"Error fetching USD: {e}")
+
+        if usd_rate > 0:
+            success = True # At least we got the rate
+            # Update all International assets
+            intls = International.query.filter_by(user_id=user_id).all()
+            for item in intls:
+                # Update Exchange Rate for ALL
+                item.rate_usd = usd_rate
+                
+                # Update Quote for RV and RF (if Ticker provided)
+                if item.name and item.name.upper() != 'RENDA FIXA':
+                    try:
+                        ticker_name = item.name.strip().upper()
+                        # Common Corrections
+                        if ticker_name == 'BRKB':
+                            ticker_name = 'BRK-B'
+                        
+                        # Fetch Stock Quote
+                        url_stock = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker_name}?interval=1d&range=1d"
+                        r_stock = requests.get(url_stock, headers=headers, timeout=10)
+                        data_stock = r_stock.json()
+                        
+                        price = 0.0
+                        if 'chart' in data_stock and 'result' in data_stock['chart'] and data_stock['chart']['result']:
+                             price = data_stock['chart']['result'][0]['meta']['regularMarketPrice']
+                        
+                        if price > 0:
+                            item.quote = price
+                            # msg_log.append(f"{ticker_name}: ${price:.2f}") # Too verbose for combined update
+                            
+                            # Recalculate Value USD: Quantity * Price
+                            if item.quantity:
+                                item.value_usd = item.quantity * price
+                            else:
+                                item.value_usd = 0.0
+                        else:
+                            pass # msg_log.append(f"{ticker_name}: Não encontrado (API)")
+                            
+                    except Exception as e:
+                        msg_log.append(f"{item.name}: Erro API {str(e)}")
+                        print(f"Error updating {item.name}: {e}")
+            
+            # Update Cryptos
+            cryptos = Crypto.query.filter_by(user_id=user_id).all()
+            for c in cryptos:
+                if c.name: # e.g. BTC, ETH
+                    try:
+                        ticker_clean = c.name.strip().upper()
+                        # Default to USD pair if not specified
+                        yahoo_ticker = f"{ticker_clean}-USD"
+                        
+                        url_crypto = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_ticker}?interval=1d&range=1d"
+                        r_crypto = requests.get(url_crypto, headers=headers, timeout=10)
+                        data_crypto = r_crypto.json()
+                        
+                        price_usd = 0.0
+                        if 'chart' in data_crypto and 'result' in data_crypto['chart'] and data_crypto['chart']['result']:
+                             price_usd = data_crypto['chart']['result'][0]['meta']['regularMarketPrice']
+                        
+                        if price_usd > 0:
+                            # Convert to BRL
+                            price_brl = price_usd * usd_rate
+                            c.quote = price_brl
+                            if c.quantity:
+                                c.current_value = c.quantity * price_brl
+                            # msg_log.append(f"{ticker_clean}: R$ {price_brl:.2f}")
+                        else:
+                            pass
+                            
+                    except Exception as e:
+                        print(f"Error crypto {c.name}: {e}")
+                        # msg_log.append(f"{c.name}: Erro {str(e)}")
+
+            db.session.commit()
+            if not msg_log:
+                 msg_log.append("Intl/Cripto atualizados.")
+        else:
+            if not msg_log:
+                msg_log.append('Não foi possível obter a cotação do Dólar.')
+            
+    except Exception as e:
+        msg_log.append(f"Erro fatal Intl: {str(e)}")
+        
+    return success, msg_log
+
 @app.route('/update_quotes', methods=['POST'])
 @login_required
 def update_quotes():
     try:
+        # 1. Update National Stocks/FIIs/ETFs
         count, tried, errs = update_all_assets_logic()
         
+        # 2. Update International & Crypto
+        intl_success, intl_msgs = update_intl_quotes_logic(current_user.id)
         
-        # Source is now Yahoo Finance (no token check needed)
         source_status = "Fonte: Yahoo Finance"
         
+        final_msg = f'Nacionais: {count}/{tried} atualizados. '
+        if intl_success:
+            final_msg += f'Internacional/Cripto: Sucesso ({", ".join(intl_msgs)}). '
+        else:
+            final_msg += f'Internacional: Falha ({", ".join(intl_msgs)}). '
+            
         if errs:
              # Show first error to help debug
-             flash(f'Falha: {len(errs)} erros. Primeiro erro: {errs[0]}', 'warning')
+             flash(f'{final_msg} Erros: {len(errs)}. {errs[0]}', 'warning')
         else:
-             flash(f'Cotações atualizadas: {count}/{tried} ativos. {source_status}', 'success')
+             flash(f'{final_msg} {source_status}', 'success')
              
     except Exception as e:
         flash(f'Erro ao atualizar cotações: {str(e)}', 'danger')

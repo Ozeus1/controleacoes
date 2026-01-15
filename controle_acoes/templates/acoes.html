@@ -273,8 +273,10 @@
                     <td class="{{ 'positive' if profit >= 0 else 'negative' }}">
                         $ {{ profit | brl_fmt }}
                     </td>
-                    <td></td>
-                    <td></td>
+                    <td></td> <!-- Lucro % -->
+                    <td class="{{ 'positive' if intl_rv_day_gain >= 0 else 'negative' }}">
+                        $ {{ intl_rv_day_gain | brl_fmt }}
+                    </td>
                     <td>$ {{ intl_rv_current | brl_fmt }}</td>
                     <td></td>
                     <td></td>
@@ -371,8 +373,10 @@
                     <td class="{{ 'positive' if profit >= 0 else 'negative' }}">
                         $ {{ profit | brl_fmt }}
                     </td>
-                    <td></td>
-                    <td></td>
+                    <td></td> <!-- Lucro % -->
+                    <td class="{{ 'positive' if intl_rf_day_gain >= 0 else 'negative' }}">
+                        $ {{ intl_rf_day_gain | brl_fmt }}
+                    </td>
                     <td>$ {{ intl_rf_current | brl_fmt }}</td>
                     <td></td>
                     <td></td>

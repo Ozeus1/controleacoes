@@ -308,9 +308,22 @@ def acoes():
     intl_rv_invested = sum((i.quantity or 0) * (i.avg_price or 0) for i in intls_rv)
     intl_rv_current = sum((i.quantity or 0) * (i.quote or 0) for i in intls_rv)
     
+    # Calculate Day Gain Totals
+    def calc_day_gain(item):
+        quote = item.quote or 0
+        qty = item.quantity or 0
+        change = item.daily_change or 0
+        if change == 0 or quote == 0: return 0.0
+        # Prev Close = Current / (1 + change/100)
+        prev = quote / (1 + change/100)
+        return qty * (quote - prev)
+
+    intl_rv_day_gain = sum(calc_day_gain(i) for i in intls_rv)
+    
     # Calculate Totals for Intl RF
     intl_rf_invested = sum((i.quantity or 0) * (i.avg_price or 0) for i in intls_rf)
     intl_rf_current = sum((i.quantity or 0) * (i.quote or 0) for i in intls_rf)
+    intl_rf_day_gain = sum(calc_day_gain(i) for i in intls_rf)
     
     total_invested = sum(a['total_invested'] for a in processed_assets)
     total_current = sum(a['current_total'] for a in processed_assets)
@@ -334,7 +347,9 @@ def acoes():
                            intl_rv_invested=intl_rv_invested,
                            intl_rv_current=intl_rv_current,
                            intl_rf_invested=intl_rf_invested,
-                           intl_rf_current=intl_rf_current)
+                           intl_rf_current=intl_rf_current,
+                           intl_rv_day_gain=intl_rv_day_gain,
+                           intl_rf_day_gain=intl_rf_day_gain)
 
 @app.route('/fiis')
 @login_required

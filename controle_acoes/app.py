@@ -2113,7 +2113,17 @@ def update_intl_quotes_logic(user_id):
                         if 'chart' in data_stock and 'result' in data_stock['chart'] and data_stock['chart']['result']:
                              meta = data_stock['chart']['result'][0]['meta']
                              price = meta.get('regularMarketPrice', 0.0)
-                             item.daily_change = meta.get('regularMarketChangePercent', 0.0)
+                             
+                             # Try to get change %, if not calculate from Previous Close
+                             change_pct = meta.get('regularMarketChangePercent')
+                             if change_pct is None:
+                                 prev_close = meta.get('chartPreviousClose') or meta.get('previousClose')
+                                 if prev_close and prev_close > 0 and price:
+                                     change_pct = ((price - prev_close) / prev_close) * 100
+                                 else:
+                                     change_pct = 0.0
+                             
+                             item.daily_change = change_pct
                         
                         if price > 0:
                             item.quote = price

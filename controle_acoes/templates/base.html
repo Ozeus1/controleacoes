@@ -73,10 +73,10 @@
     <div class="container">
         <header>
             <div>
-                <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <h1>💰 Minha Carteira</h1>
+                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                    <h1 class="mobile-title">💰 Minha Carteira</h1>
                     <button class="menu-toggle d-md-none" onclick="toggleMenu()"
-                        style="background: none; border: none; color: white; font-size: 1.5rem;">☰</button>
+                        style="background: none; border: none; color: white; font-size: 1.5rem; padding: 0;">☰</button>
                 </div>
                 <nav class="main-nav">
                     <!-- Links -->
@@ -119,12 +119,17 @@
                         </div>
                     </div>
             </div>
-            <div style="display: flex; gap: 1rem; align-items: center;">
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
                 <form action="{{ url_for('update_quotes') }}" method="POST" style="margin: 0;">
-                    <button type="submit" class="btn btn-secondary"
-                        style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">🔄 Atualizar Cotações</button>
+                    <button type="submit" class="btn btn-secondary" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">
+                        <span class="d-block d-md-none">🔄</span>
+                        <span class="d-none d-md-block">🔄 Atualizar Cotações</span>
+                    </button>
                 </form>
-                <a href="{{ url_for('add_asset') }}" class="btn btn-primary">+ Novo Ativo</a>
+                <a href="{{ url_for('add_asset') }}" class="btn btn-primary" style="padding: 0.4rem 0.8rem;">
+                    <span class="d-block d-md-none">➕</span>
+                    <span class="d-none d-md-block">+ Novo Ativo</span>
+                </a>
             </div>
         </header>
 

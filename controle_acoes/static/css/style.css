@@ -265,6 +265,11 @@ label {
         margin-bottom: 1rem;
     }
 
+    .mobile-title {
+        font-size: 1.1rem !important;
+        margin: 0;
+    }
+
     h2 {
         font-size: 1.25rem;
         margin-top: 1.5rem;

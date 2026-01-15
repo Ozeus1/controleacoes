@@ -78,6 +78,14 @@
             </div>
         </div>
 
+        <div class="form-row">
+            <div class="form-group">
+                <label for="entry_date">Data Entrada</label>
+                <input type="date" id="entry_date" name="entry_date"
+                    value="{{ asset.entry_date if asset and asset.entry_date else '' }}">
+            </div>
+        </div>
+
         <!-- Swing Trade Fields -->
         <div id="swing-fields"
             style="display: none; border-top: 1px solid var(--border-color); padding-top: 1rem; margin-top: 1rem;">
@@ -148,5 +156,11 @@
     // Run on init
     toggleSwingFields();
     toggleFiiFields();
+
+    // Default Date to Today if empty
+    const dateInput = document.getElementById('entry_date');
+    if (dateInput && !dateInput.value) {
+        dateInput.valueAsDate = new Date();
+    }
 </script>
 {% endblock %}

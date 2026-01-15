@@ -484,7 +484,7 @@ def add_asset():
         
         try:
             qty = int(request.form.get('quantity'))
-            avg_price_str = request.form.get('avg_price', '').replace(',', '.')
+            avg_price_str = request.form.get('price', '').replace(',', '.')
             avg_price = float(avg_price_str) if avg_price_str else 0.0
         except ValueError:
             flash("Erro: Quantidade ou Preço inválido.")

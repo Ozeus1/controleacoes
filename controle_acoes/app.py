@@ -134,6 +134,10 @@ def add_option():
             curr_price_str = request.form.get('current_option_price')
             current_option_price = float(curr_price_str.replace(',', '.')) if curr_price_str else 0.0
             
+            # Entry Date
+            entry_date_str = request.form.get('entry_date')
+            entry_date = datetime.strptime(entry_date_str, '%Y-%m-%d').date() if entry_date_str else None
+
             opt = Option(
                 user_id=current_user.id,
                 ticker=ticker,
@@ -142,7 +146,8 @@ def add_option():
                 strike_price=strike,
                 expiration_date=expiration,
                 sale_price=sale_price,
-                current_option_price=current_option_price
+                current_option_price=current_option_price,
+                entry_date=entry_date
             )
             db.session.add(opt)
             db.session.commit()
@@ -177,6 +182,9 @@ def edit_option(id):
             opt.strike_price = float(request.form.get('strike_price').replace(',', '.'))
             opt.expiration_date = datetime.strptime(request.form.get('expiration_date'), '%Y-%m-%d').date()
             opt.sale_price = float(request.form.get('sale_price').replace(',', '.'))
+            
+            entry_str = request.form.get('entry_date')
+            opt.entry_date = datetime.strptime(entry_str, '%Y-%m-%d').date() if entry_str else None
             
             curr_price_str = request.form.get('current_option_price')
             if curr_price_str:

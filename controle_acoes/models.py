@@ -110,6 +110,9 @@ class Option(db.Model):
     # Manual update field
     current_option_price = db.Column(db.Float, default=0.0)
     
+    # Entry Date (Requested Feature)
+    entry_date = db.Column(db.Date, nullable=True)
+    
     # Calculated/Fetched on fly, but maybe store last fetch for underlying?
     last_update = db.Column(db.DateTime, nullable=True)
 

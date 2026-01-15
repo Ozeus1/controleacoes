@@ -25,44 +25,58 @@
                 value="{{ option.underlying_asset if option else '' }}" required style="text-transform: uppercase;">
         </div>
 
-        <div class="row">
-            <div class="col-md-6 form-group">
-                <label for="strike_price">Strike (R$)</label>
-                <input type="text" id="strike_price" name="strike_price" class="form-control"
-                    value="{{ '%.2f'|format(option.strike_price)|replace('.', ',') if option else '' }}" required
-                    placeholder="0,00">
-            </div>
-            <div class="col-md-6 form-group">
-                <label for="expiration_date">Vencimento</label>
-                <input type="date" id="expiration_date" name="expiration_date" class="form-control"
-                    value="{{ option.expiration_date if option else '' }}" required>
-            </div>
-        </div>
-
-        <div class="row">
-            <div class="col-md-6 form-group">
-                <label for="sale_price">Valor de Venda (Prêmio R$)</label>
-                <input type="text" id="sale_price" name="sale_price" class="form-control"
-                    value="{{ '%.2f'|format(option.sale_price)|replace('.', ',') if option else '' }}" required
-                    placeholder="0,00">
-            </div>
-
-            {% if edit %}
-            <div class="col-md-6 form-group">
-                <label for="current_option_price">Cotação Atual da Opção (R$)</label>
-                <input type="text" id="current_option_price" name="current_option_price" class="form-control"
-                    value="{{ '%.2f'|format(option.current_option_price)|replace('.', ',') if option else '0,00' }}"
-                    placeholder="0,00">
-                <small style="color: var(--text-secondary);">Atualize manualmente</small>
-            </div>
-            {% endif %}
-        </div>
-
-        <div style="display: flex; gap: 1rem; margin-top: 2rem;">
-            <button type="submit" class="btn btn-primary" style="flex: 1;">Salvar</button>
-            <a href="{{ url_for('opcoes') }}" class="btn btn-danger"
-                style="flex: 1; text-align: center; text-decoration: none;">Cancelar</a>
-        </div>
-    </form>
 </div>
+
+<div class="row">
+    <div class="col-md-6 form-group">
+        <label for="strike_price">Strike (R$)</label>
+        <input type="text" id="strike_price" name="strike_price" class="form-control"
+            value="{{ '%.2f'|format(option.strike_price)|replace('.', ',') if option else '' }}" required
+            placeholder="0,00">
+    </div>
+    <div class="col-md-6 form-group">
+        <label for="expiration_date">Vencimento</label>
+        <input type="date" id="expiration_date" name="expiration_date" class="form-control"
+            value="{{ option.expiration_date if option else '' }}" required>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6 form-group">
+        <label for="entry_date">Data Início</label>
+        <input type="date" id="entry_date" name="entry_date" class="form-control"
+            value="{{ option.entry_date if option and option.entry_date else '' }}" required>
+    </div>
+    <div class="col-md-6 form-group">
+        <label for="sale_price">Valor de Venda (Prêmio R$)</label>
+        <input type="text" id="sale_price" name="sale_price" class="form-control"
+            value="{{ '%.2f'|format(option.sale_price)|replace('.', ',') if option else '' }}" required
+            placeholder="0,00">
+    </div>
+
+    {% if edit %}
+    <div class="col-md-6 form-group">
+        <label for="current_option_price">Cotação Atual da Opção (R$)</label>
+        <input type="text" id="current_option_price" name="current_option_price" class="form-control"
+            value="{{ '%.2f'|format(option.current_option_price)|replace('.', ',') if option else '0,00' }}"
+            placeholder="0,00">
+        <small style="color: var(--text-secondary);">Atualize manualmente</small>
+    </div>
+    {% endif %}
+</div>
+
+<div style="display: flex; gap: 1rem; margin-top: 2rem;">
+    <button type="submit" class="btn btn-primary" style="flex: 1;">Salvar</button>
+    <a href="{{ url_for('opcoes') }}" class="btn btn-danger"
+        style="flex: 1; text-align: center; text-decoration: none;">Cancelar</a>
+</div>
+</form>
+</div>
+<script>
+    // Default Date to Today if empty
+    const dateInput = document.getElementById('entry_date');
+    if (dateInput && !dateInput.value) {
+        dateInput.valueAsDate = new Date();
+    }
+</script>
 {% endblock %}

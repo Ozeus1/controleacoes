@@ -281,6 +281,39 @@ label {
         font-size: 0.9rem;
     }
 
+    /* Navbar Mobile */
+    header {
+        flex-wrap: wrap;
+    }
+
+    .main-nav {
+        display: none;
+        flex-direction: column;
+        width: 100%;
+        background-color: var(--card-bg);
+        margin-top: 1rem;
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+    }
+
+    .main-nav.active {
+        display: flex;
+    }
+
+    .main-nav a {
+        padding: 0.75rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        width: 100%;
+        text-align: center;
+    }
+
+    .user-menu-container {
+        margin-left: 0 !important;
+        margin-top: 1rem;
+        justify-content: center;
+        width: 100%;
+    }
+
     /* Table Font */
     table.dataTable,
     .table {

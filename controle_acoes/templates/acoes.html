@@ -16,15 +16,15 @@
                 <th>Ativo</th>
                 <th>Qtd</th>
                 <th>Valor Posição</th> <!-- Qtd * Cotação -->
-                <th class="d-none d-md-table-cell">Preço Compra</th>
-                <th class="d-none d-md-table-cell">Total Compra</th> <!-- Qtd * Preço Compra -->
-                <th class="d-none d-md-table-cell">Peso %</th>
-                <th class="d-none d-sm-table-cell">Cotação</th>
-                <th class="d-none d-md-table-cell">Var % Dia</th>
-                <th class="d-none d-lg-table-cell">Atualização</th>
-                <th class="d-none d-md-table-cell">Lucro R$</th>
+                <th class="">Preço Compra</th>
+                <th class="">Total Compra</th> <!-- Qtd * Preço Compra -->
+                <th class="">Peso %</th>
+                <th class="">Cotação</th>
+                <th class="">Var % Dia</th>
+                <th class="">Atualização</th>
+                <th class="">Lucro R$</th>
                 <th>Lucro %</th>
-                <th class="d-none d-sm-table-cell">G. Dia</th>
+                <th class="">G. Dia</th>
                 <!-- Gain Dia (not implemented in backend yet, strictly speaking need open price, but we have change%). Gain Day = Current Value * (Change% / (100+Change%)) approx or Previous Close. Simplify: (Current - (Current/(1+Var/100))) * Qtd -->
                 <th>Ações</th>
             </tr>
@@ -35,23 +35,23 @@
                 <td><span class="ticker-badge">{{ item.asset.ticker }}</span></td>
                 <td>{{ item.asset.quantity }}</td>
                 <td>{{ item.current_total | brl }}</td>
-                <td class="d-none d-md-table-cell">{{ item.asset.avg_price | brl }}</td>
-                <td class="d-none d-md-table-cell">{{ item.total_invested | brl }}</td>
-                <td class="d-none d-md-table-cell">{{ "%.2f"|format(item.weight)|replace('.', ',') }}%</td>
-                <td class="d-none d-sm-table-cell">{{ item.current_price | brl }}</td>
-                <td class="d-none d-md-table-cell {{ 'positive' if item.change_percent >= 0 else 'negative' }}">
+                <td class="">{{ item.asset.avg_price | brl }}</td>
+                <td class="">{{ item.total_invested | brl }}</td>
+                <td class="">{{ "%.2f"|format(item.weight)|replace('.', ',') }}%</td>
+                <td class="">{{ item.current_price | brl }}</td>
+                <td class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.change_percent)|replace('.', ',') }}%
                 </td>
                 <td class="d-none d-lg-table-cell" style="color: var(--text-secondary); font-size: 0.85rem;">
                     {{ item.last_update }}
                 </td>
-                <td class="d-none d-md-table-cell {{ 'positive' if item.profit >= 0 else 'negative' }}">
+                <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
                     {{ item.profit | brl }}
                 </td>
                 <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
                 </td>
-                <td class="d-none d-sm-table-cell {{ 'positive' if item.day_gain >= 0 else 'negative' }}">
+                <td class="{{ 'positive' if item.day_gain >= 0 else 'negative' }}">
                     {{ item.day_gain | brl }}
                 </td>
                 <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
@@ -74,12 +74,12 @@
                 <td>TOTAL</td>
                 <td></td> <!-- Qtd -->
                 <td>{{ assets|sum(attribute='current_total') | brl }}</td>
-                <td class="d-none d-md-table-cell"></td> <!-- Preço Compra -->
-                <td class="d-none d-md-table-cell">{{ assets|sum(attribute='total_invested') | brl }}</td>
-                <td class="d-none d-md-table-cell">100,00%</td>
-                <td class="d-none d-sm-table-cell"></td> <!-- Cotação -->
-                <td class="d-none d-md-table-cell"></td> <!-- Var -->
-                <td class="d-none d-lg-table-cell"></td> <!-- Atualização -->
+                <td class=""></td> <!-- Preço Compra -->
+                <td class="">{{ assets|sum(attribute='total_invested') | brl }}</td>
+                <td class="">100,00%</td>
+                <td class=""></td> <!-- Cotação -->
+                <td class=""></td> <!-- Var -->
+                <td class=""></td> <!-- Atualização -->
                 <td
                     class="d-none d-md-table-cell {{ 'positive' if assets|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ assets|sum(attribute='profit') | brl }}
@@ -116,15 +116,15 @@
                 <th>Ativo</th>
                 <th>Qtd</th>
                 <th>Valor Posição</th> <!-- Qtd * Cotação -->
-                <th class="d-none d-md-table-cell">Preço Compra</th>
-                <th class="d-none d-md-table-cell">Total Compra</th> <!-- Qtd * Preço Compra -->
-                <th class="d-none d-md-table-cell">Peso %</th>
-                <th class="d-none d-sm-table-cell">Cotação</th>
-                <th class="d-none d-md-table-cell">Var % Dia</th>
-                <th class="d-none d-lg-table-cell">Atualização</th>
-                <th class="d-none d-md-table-cell">Lucro R$</th>
+                <th class="">Preço Compra</th>
+                <th class="">Total Compra</th> <!-- Qtd * Preço Compra -->
+                <th class="">Peso %</th>
+                <th class="">Cotação</th>
+                <th class="">Var % Dia</th>
+                <th class="">Atualização</th>
+                <th class="">Lucro R$</th>
                 <th>Lucro %</th>
-                <th class="d-none d-sm-table-cell">G. Dia</th>
+                <th class="">G. Dia</th>
                 <th>Ações</th>
             </tr>
         </thead>
@@ -135,23 +135,23 @@
                         item.asset.ticker }}</span></td>
                 <td>{{ item.asset.quantity }}</td>
                 <td>{{ item.current_total | brl }}</td>
-                <td class="d-none d-md-table-cell">{{ item.asset.avg_price | brl }}</td>
-                <td class="d-none d-md-table-cell">{{ item.total_invested | brl }}</td>
-                <td class="d-none d-md-table-cell">{{ "%.2f"|format(item.weight)|replace('.', ',') }}%</td>
-                <td class="d-none d-sm-table-cell">{{ item.current_price | brl }}</td>
-                <td class="d-none d-md-table-cell {{ 'positive' if item.change_percent >= 0 else 'negative' }}">
+                <td class="">{{ item.asset.avg_price | brl }}</td>
+                <td class="">{{ item.total_invested | brl }}</td>
+                <td class="">{{ "%.2f"|format(item.weight)|replace('.', ',') }}%</td>
+                <td class="">{{ item.current_price | brl }}</td>
+                <td class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.change_percent)|replace('.', ',') }}%
                 </td>
                 <td class="d-none d-lg-table-cell" style="color: var(--text-secondary); font-size: 0.85rem;">
                     {{ item.last_update }}
                 </td>
-                <td class="d-none d-md-table-cell {{ 'positive' if item.profit >= 0 else 'negative' }}">
+                <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
                     {{ item.profit | brl }}
                 </td>
                 <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
                 </td>
-                <td class="d-none d-sm-table-cell {{ 'positive' if item.day_gain >= 0 else 'negative' }}">
+                <td class="{{ 'positive' if item.day_gain >= 0 else 'negative' }}">
                     {{ item.day_gain | brl }}
                 </td>
                 <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
@@ -174,12 +174,12 @@
                 <td>TOTAL ETFs</td>
                 <td></td> <!-- Qtd -->
                 <td>{{ total_etfs_current | brl }}</td>
-                <td class="d-none d-md-table-cell"></td> <!-- Preço Compra -->
-                <td class="d-none d-md-table-cell">{{ total_etfs_invested | brl }}</td>
-                <td class="d-none d-md-table-cell">100,00%</td>
-                <td class="d-none d-sm-table-cell"></td> <!-- Cotação -->
-                <td class="d-none d-md-table-cell"></td> <!-- Var -->
-                <td class="d-none d-lg-table-cell"></td> <!-- Atualização -->
+                <td class=""></td> <!-- Preço Compra -->
+                <td class="">{{ total_etfs_invested | brl }}</td>
+                <td class="">100,00%</td>
+                <td class=""></td> <!-- Cotação -->
+                <td class=""></td> <!-- Var -->
+                <td class=""></td> <!-- Atualização -->
                 <td
                     class="d-none d-md-table-cell {{ 'positive' if (total_etfs_current - total_etfs_invested) >= 0 else 'negative' }}">
                     {{ (total_etfs_current - total_etfs_invested) | brl }}
@@ -215,14 +215,14 @@
                 <tr>
                     <th>ATIVO</th>
                     <th>Qtd</th>
-                    <th class="d-none d-md-table-cell">Vl. Compra ($)</th>
-                    <th class="d-none d-sm-table-cell">Cotação ($)</th>
-                    <th class="d-none d-md-table-cell">Lucro ($)</th>
+                    <th class="">Vl. Compra ($)</th>
+                    <th class="">Cotação ($)</th>
+                    <th class="">Lucro ($)</th>
                     <th>Lucro %</th>
-                    <th class="d-none d-sm-table-cell">G. Dia</th>
+                    <th class="">G. Dia</th>
                     <th>Total ($)</th>
-                    <th class="d-none d-md-table-cell">Câmbio (R$)</th>
-                    <th class="d-none d-lg-table-cell">Corretora</th>
+                    <th class="">Câmbio (R$)</th>
+                    <th class="">Corretora</th>
                     <th>Ações</th>
                 </tr>
             </thead>
@@ -231,13 +231,13 @@
                 <tr>
                     <td>{{ item.name }}</td>
                     <td>{{ item.quantity | default(0) }}</td>
-                    <td class="d-none d-md-table-cell">$ {{ item.avg_price | brl_fmt }}</td>
-                    <td class="d-none d-sm-table-cell">$ {{ item.quote | brl_fmt }}</td>
+                    <td class="">$ {{ item.avg_price | brl_fmt }}</td>
+                    <td class="">$ {{ item.quote | brl_fmt }}</td>
                     {% set quote = item.quote or 0 %}
                     {% set avg_price = item.avg_price or 0 %}
                     {% set quantity = item.quantity or 0 %}
                     {% set profit = (quote - avg_price) * quantity %}
-                    <td class="d-none d-md-table-cell {{ 'positive' if profit >= 0 else 'negative' }}">
+                    <td class="{{ 'positive' if profit >= 0 else 'negative' }}">
                         $ {{ profit | brl_fmt }}
                     </td>
                     {% set profit_pct = (profit / (quantity * avg_price) * 100) if (quantity * avg_price) > 0 else 0 %}
@@ -247,13 +247,13 @@
                     {% set change_pct = item.daily_change or 0 %}
                     {% set prev_close = quote / (1 + change_pct/100) if (change_pct != 0) else quote %}
                     {% set day_gain = quantity * (quote - prev_close) %}
-                    <td class="d-none d-sm-table-cell {{ 'positive' if day_gain >= 0 else 'negative' }}">
+                    <td class="{{ 'positive' if day_gain >= 0 else 'negative' }}">
                         $ {{ day_gain | brl_fmt }} <br>
                         <small>({{ change_pct | pct }})</small>
                     </td>
                     <td>$ {{ (quantity * quote) | brl_fmt }}</td>
-                    <td class="d-none d-md-table-cell">R$ {{ item.rate_usd | brl_fmt }}</td>
-                    <td class="d-none d-lg-table-cell">{{ item.institution }}</td>
+                    <td class="">R$ {{ item.rate_usd | brl_fmt }}</td>
+                    <td class="">{{ item.institution }}</td>
                     <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                         <a href="{{ url_for('buy_intl', id=item.id) }}" class="btn btn-sm"
                             style="background:var(--success-color); color: white;" title="Comprar">➕</a>
@@ -271,19 +271,19 @@
                 <tr style="font-weight: bold; background-color: rgba(255,255,255,0.05); color: var(--text-color);">
                     <td>TOTAIS</td>
                     <td></td>
-                    <td class="d-none d-md-table-cell">$ {{ intl_rv_invested | brl_fmt }}</td>
-                    <td class="d-none d-sm-table-cell"></td>
+                    <td class="">$ {{ intl_rv_invested | brl_fmt }}</td>
+                    <td class=""></td>
                     {% set profit = intl_rv_current - intl_rv_invested %}
-                    <td class="d-none d-md-table-cell {{ 'positive' if profit >= 0 else 'negative' }}">
+                    <td class="{{ 'positive' if profit >= 0 else 'negative' }}">
                         $ {{ profit | brl_fmt }}
                     </td>
                     <td></td> <!-- Lucro % -->
-                    <td class="d-none d-sm-table-cell {{ 'positive' if intl_rv_day_gain >= 0 else 'negative' }}">
+                    <td class="{{ 'positive' if intl_rv_day_gain >= 0 else 'negative' }}">
                         $ {{ intl_rv_day_gain | brl_fmt }}
                     </td>
                     <td>$ {{ intl_rv_current | brl_fmt }}</td>
-                    <td class="d-none d-md-table-cell"></td>
-                    <td class="d-none d-lg-table-cell"></td>
+                    <td class=""></td>
+                    <td class=""></td>
                     <td></td>
                 </tr>
             </tfoot>
@@ -306,16 +306,16 @@
             <thead>
                 <tr>
                     <th>ATIVO</th>
-                    <th class="d-none d-md-table-cell">Tipo</th>
+                    <th class="">Tipo</th>
                     <th>Qtd</th>
-                    <th class="d-none d-md-table-cell">PM ($)</th>
-                    <th class="d-none d-sm-table-cell">Cotação ($)</th>
-                    <th class="d-none d-md-table-cell">Vl. Compra ($)</th>
-                    <th class="d-none d-md-table-cell">Lucro ($)</th>
+                    <th class="">PM ($)</th>
+                    <th class="">Cotação ($)</th>
+                    <th class="">Vl. Compra ($)</th>
+                    <th class="">Lucro ($)</th>
                     <th>Lucro %</th>
-                    <th class="d-none d-sm-table-cell">G. Dia</th>
+                    <th class="">G. Dia</th>
                     <th>Total ($)</th>
-                    <th class="d-none d-lg-table-cell">Corretora</th>
+                    <th class="">Corretora</th>
                     <th>Ações</th>
                 </tr>
             </thead>
@@ -323,10 +323,10 @@
                 {% for item in intls_rf %}
                 <tr>
                     <td>{{ item.name }}</td>
-                    <td class="d-none d-md-table-cell">{{ item.description }}</td>
+                    <td class="">{{ item.description }}</td>
                     <td>{{ item.quantity | default(0) }}</td>
-                    <td class="d-none d-md-table-cell">$ {{ item.avg_price | brl_fmt }}</td>
-                    <td class="d-none d-sm-table-cell">$ {{ item.quote | brl_fmt }}</td>
+                    <td class="">$ {{ item.avg_price | brl_fmt }}</td>
+                    <td class="">$ {{ item.quote | brl_fmt }}</td>
 
                     {% set quote = item.quote or 0 %}
                     {% set avg_price = item.avg_price or 0 %}
@@ -335,8 +335,8 @@
                     {% set total = quantity * quote %}
                     {% set profit = total - invested %}
 
-                    <td class="d-none d-md-table-cell">$ {{ invested | brl_fmt }}</td>
-                    <td class="d-none d-md-table-cell {{ 'positive' if profit >= 0 else 'negative' }}">
+                    <td class="">$ {{ invested | brl_fmt }}</td>
+                    <td class="{{ 'positive' if profit >= 0 else 'negative' }}">
                         $ {{ profit | brl_fmt }}
                     </td>
                     {% set profit_pct = (profit / invested * 100) if invested > 0 else 0 %}
@@ -346,12 +346,12 @@
                     {% set change_pct = item.daily_change or 0 %}
                     {% set prev_close = quote / (1 + change_pct/100) if (change_pct != 0) else quote %}
                     {% set day_gain = quantity * (quote - prev_close) %}
-                    <td class="d-none d-sm-table-cell {{ 'positive' if day_gain >= 0 else 'negative' }}">
+                    <td class="{{ 'positive' if day_gain >= 0 else 'negative' }}">
                         $ {{ day_gain | brl_fmt }} <br>
                         <small>({{ change_pct | pct }})</small>
                     </td>
                     <td>$ {{ total | brl_fmt }}</td>
-                    <td class="d-none d-lg-table-cell">{{ item.institution }}</td>
+                    <td class="">{{ item.institution }}</td>
                     <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                         <a href="{{ url_for('buy_intl', id=item.id) }}" class="btn btn-sm"
                             style="background:var(--success-color); color: white;" title="Comprar">➕</a>
@@ -368,21 +368,21 @@
             <tfoot>
                 <tr style="font-weight: bold; background-color: rgba(255,255,255,0.05); color: var(--text-color);">
                     <td>TOTAIS</td>
-                    <td class="d-none d-md-table-cell"></td>
+                    <td class=""></td>
                     <td></td>
-                    <td class="d-none d-md-table-cell"></td>
-                    <td class="d-none d-sm-table-cell"></td>
-                    <td class="d-none d-md-table-cell">$ {{ intl_rf_invested | brl_fmt }}</td>
+                    <td class=""></td>
+                    <td class=""></td>
+                    <td class="">$ {{ intl_rf_invested | brl_fmt }}</td>
                     {% set profit = intl_rf_current - intl_rf_invested %}
-                    <td class="d-none d-md-table-cell {{ 'positive' if profit >= 0 else 'negative' }}">
+                    <td class="{{ 'positive' if profit >= 0 else 'negative' }}">
                         $ {{ profit | brl_fmt }}
                     </td>
                     <td></td> <!-- Lucro % -->
-                    <td class="d-none d-sm-table-cell {{ 'positive' if intl_rf_day_gain >= 0 else 'negative' }}">
+                    <td class="{{ 'positive' if intl_rf_day_gain >= 0 else 'negative' }}">
                         $ {{ intl_rf_day_gain | brl_fmt }}
                     </td>
                     <td>$ {{ intl_rf_current | brl_fmt }}</td>
-                    <td class="d-none d-lg-table-cell"></td>
+                    <td class=""></td>
                     <td></td>
                 </tr>
             </tfoot>

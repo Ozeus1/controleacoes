@@ -2111,7 +2111,9 @@ def update_intl_quotes_logic(user_id):
                         
                         price = 0.0
                         if 'chart' in data_stock and 'result' in data_stock['chart'] and data_stock['chart']['result']:
-                             price = data_stock['chart']['result'][0]['meta']['regularMarketPrice']
+                             meta = data_stock['chart']['result'][0]['meta']
+                             price = meta.get('regularMarketPrice', 0.0)
+                             item.daily_change = meta.get('regularMarketChangePercent', 0.0)
                         
                         if price > 0:
                             item.quote = price

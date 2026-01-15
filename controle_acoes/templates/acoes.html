@@ -201,7 +201,7 @@
 <div class="card mt-4">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem;">
         <h3>Renda Variável Internacional</h3>
-        <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalIntlRV">
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalIntlRV">
             <i class="fas fa-plus"></i> Adicionar Ativo
         </button>
     </div>
@@ -214,6 +214,8 @@
                     <th>Vl. Compra ($)</th>
                     <th>Cotação ($)</th>
                     <th>Lucro ($)</th>
+                    <th>Lucro %</th>
+                    <th>G. Dia</th>
                     <th>Total ($)</th>
                     <th>Câmbio (R$)</th>
                     <th>Corretora</th>
@@ -233,6 +235,17 @@
                     {% set profit = (quote - avg_price) * quantity %}
                     <td class="{{ 'positive' if profit >= 0 else 'negative' }}">
                         $ {{ profit | brl_fmt }}
+                    </td>
+                    {% set profit_pct = (profit / (quantity * avg_price) * 100) if (quantity * avg_price) > 0 else 0 %}
+                    <td class="{{ 'positive' if profit_pct >= 0 else 'negative' }}">
+                        {{ profit_pct | pct }}
+                    </td>
+                    {% set change_pct = item.daily_change or 0 %}
+                    {% set prev_close = quote / (1 + change_pct/100) if (change_pct != 0) else quote %}
+                    {% set day_gain = quantity * (quote - prev_close) %}
+                    <td class="{{ 'positive' if day_gain >= 0 else 'negative' }}">
+                        $ {{ day_gain | brl_fmt }} <br>
+                        <small>({{ change_pct | pct }})</small>
                     </td>
                     <td>$ {{ (quantity * quote) | brl_fmt }}</td>
                     <td>R$ {{ item.rate_usd | brl_fmt }}</td>
@@ -260,6 +273,9 @@
                     <td class="{{ 'positive' if profit >= 0 else 'negative' }}">
                         $ {{ profit | brl_fmt }}
                     </td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
                     <td>$ {{ intl_rv_current | brl_fmt }}</td>
                     <td></td>
                     <td></td>
@@ -276,7 +292,7 @@
 <div class="card mt-4">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem;">
         <h3>Renda Fixa Internacional</h3>
-        <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalIntlRF">
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#modalIntlRF">
             <i class="fas fa-plus"></i> Adicionar Ativo
         </button>
     </div>
@@ -291,6 +307,8 @@
                     <th>Cotação ($)</th>
                     <th>Vl. Compra ($)</th>
                     <th>Lucro ($)</th>
+                    <th>Lucro %</th>
+                    <th>G. Dia</th>
                     <th>Total ($)</th>
                     <th>Corretora</th>
                     <th>Ações</th>
@@ -315,6 +333,17 @@
                     <td>$ {{ invested | brl_fmt }}</td>
                     <td class="{{ 'positive' if profit >= 0 else 'negative' }}">
                         $ {{ profit | brl_fmt }}
+                    </td>
+                    {% set profit_pct = (profit / invested * 100) if invested > 0 else 0 %}
+                    <td class="{{ 'positive' if profit_pct >= 0 else 'negative' }}">
+                        {{ profit_pct | pct }}
+                    </td>
+                    {% set change_pct = item.daily_change or 0 %}
+                    {% set prev_close = quote / (1 + change_pct/100) if (change_pct != 0) else quote %}
+                    {% set day_gain = quantity * (quote - prev_close) %}
+                    <td class="{{ 'positive' if day_gain >= 0 else 'negative' }}">
+                        $ {{ day_gain | brl_fmt }} <br>
+                        <small>({{ change_pct | pct }})</small>
                     </td>
                     <td>$ {{ total | brl_fmt }}</td>
                     <td>{{ item.institution }}</td>
@@ -343,6 +372,8 @@
                     <td class="{{ 'positive' if profit >= 0 else 'negative' }}">
                         $ {{ profit | brl_fmt }}
                     </td>
+                    <td></td>
+                    <td></td>
                     <td>$ {{ intl_rf_current | brl_fmt }}</td>
                     <td></td>
                     <td></td>

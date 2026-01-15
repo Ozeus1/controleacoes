@@ -220,6 +220,7 @@ class International(db.Model):
     purchase_price = db.Column(db.Float) # Price in USD at purchase
     invested_value = db.Column(db.Float) # Total Invested in USD
     current_price = db.Column(db.Float) # Current Price (Quote) in USD
+    daily_change = db.Column(db.Float, default=0.0) # New: Daily Change %
     description = db.Column(db.String(100)) # Extra details
 
 class Dividend(db.Model):

@@ -2450,8 +2450,8 @@ def profile():
 def dividendos():
     assets = Asset.query.filter_by(user_id=current_user.id).all()
     
-    # Filter only Stocks and FIIs for display
-    relevant_assets = [a for a in assets if a.type in ['ACAO', 'FII']]
+    # Filter only Stocks and FIIs for display, AND only active assets (quantity > 0)
+    relevant_assets = [a for a in assets if a.type in ['ACAO', 'FII'] and (a.quantity or 0) > 0]
     
     # Get all dividends for user's assets
     all_dividends = db.session.query(Dividend).join(Asset).filter(Asset.user_id == current_user.id).order_by(Dividend.payment_date.desc()).all()
@@ -2551,6 +2551,10 @@ def update_dividends():
     error_count = 0
     
     for asset in assets:
+        # Skip assets with 0 quantity to preserve history and avoid overwriting with 0
+        if (asset.quantity or 0) <= 0:
+            continue
+
         try:
             ticker_sa = f"{asset.ticker}.SA" if not asset.ticker.endswith('.SA') else asset.ticker
             yf_ticker = yf.Ticker(ticker_sa)

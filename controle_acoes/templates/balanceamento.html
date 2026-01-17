@@ -792,6 +792,40 @@
         options: commonOptions
     });
 
+    // --- RF SUBTYPE CHART (NEW) ---
+    const subCanvas = document.getElementById('rfSubtypeChart');
+    if (subCanvas) {
+        const ctxRfSubtype = subCanvas.getContext('2d');
+        const rfSubtypeLabels = [];
+        const rfSubtypeData = [];
+
+        {% if rf_subtypes %}
+        {% for k, v in rf_subtypes.items() %}
+        {% if v > 0 %}
+        rfSubtypeLabels.push('{{ k }}');
+        rfSubtypeData.push({{ v }});
+    {% endif %}
+    {% endfor %}
+    {% endif %}
+
+    new Chart(ctxRfSubtype, {
+        type: 'pie',
+        data: {
+            labels: rfSubtypeLabels,
+            datasets: [{
+                data: rfSubtypeData,
+                backgroundColor: [
+                    '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+                    '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#14b8a6'
+                ],
+                borderWidth: 1,
+                borderColor: '#1e293b'
+            }]
+        },
+        options: commonOptions
+    });
+    }
+
     });
 </script>
 

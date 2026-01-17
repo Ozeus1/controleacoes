@@ -231,44 +231,45 @@
                 "searching": false
             });
         });
-        <script>
+    </script>
+    <script>
         // Init Indicators Bar State
-            document.addEventListener('DOMContentLoaded', function() {
-             const isHidden = localStorage.getItem('hideIndicators') === 'true';
+        document.addEventListener('DOMContentLoaded', function () {
+            const isHidden = localStorage.getItem('hideIndicators') === 'true';
             const bar = document.querySelector('.indicators-bar');
             if (bar) {
-                 if (isHidden) {
-                bar.style.display = 'none';
-                 } else {
-                bar.style.display = 'flex';
-                 }
+                if (isHidden) {
+                    bar.style.display = 'none';
+                } else {
+                    bar.style.display = 'flex';
+                }
 
-            // Add close button if not exists
-            if (!bar.querySelector('.close-indicators')) {
-                     const closeBtn = document.createElement('div');
-            closeBtn.className = 'close-indicators';
-            closeBtn.innerHTML = '&times;';
-            closeBtn.onclick = toggleIndicators;
-            closeBtn.style.cssText = 'cursor: pointer; padding: 0 10px; font-size: 1.2rem; color: #fff; position: absolute; right: 0; z-index: 1002; background: rgba(0,0,0,0.5); height: 100%; display: flex; align-items: center;';
-            bar.appendChild(closeBtn);
-            // Adjust scrolling container padding
-            const scrollContainer = bar.querySelector('.indicators-scroll');
-            if (scrollContainer) scrollContainer.style.paddingRight = '30px';
-                 }
-             }
+                // Add close button if not exists
+                if (!bar.querySelector('.close-indicators')) {
+                    const closeBtn = document.createElement('div');
+                    closeBtn.className = 'close-indicators';
+                    closeBtn.innerHTML = '&times;';
+                    closeBtn.onclick = toggleIndicators;
+                    closeBtn.style.cssText = 'cursor: pointer; padding: 0 10px; font-size: 1.2rem; color: #fff; position: absolute; right: 0; z-index: 1002; background: rgba(0,0,0,0.5); height: 100%; display: flex; align-items: center;';
+                    bar.appendChild(closeBtn);
+                    // Adjust scrolling container padding
+                    const scrollContainer = bar.querySelector('.indicators-scroll');
+                    if (scrollContainer) scrollContainer.style.paddingRight = '30px';
+                }
+            }
         });
 
-            function toggleIndicators() {
-             const bar = document.querySelector('.indicators-bar');
+        function toggleIndicators() {
+            const bar = document.querySelector('.indicators-bar');
             if (bar) {
-                 if (bar.style.display === 'none') {
-                bar.style.display = 'flex';
-            localStorage.setItem('hideIndicators', 'false');
-                 } else {
-                bar.style.display = 'none';
-            localStorage.setItem('hideIndicators', 'true');
-                 }
-             }
+                if (bar.style.display === 'none') {
+                    bar.style.display = 'flex';
+                    localStorage.setItem('hideIndicators', 'false');
+                } else {
+                    bar.style.display = 'none';
+                    localStorage.setItem('hideIndicators', 'true');
+                }
+            }
         }
 
     </script>

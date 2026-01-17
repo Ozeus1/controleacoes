@@ -103,7 +103,11 @@
         <header>
             <div>
                 <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                    <h1 class="mobile-title">💰 Minha Carteira</h1>
+                    <h1 class="mobile-title" style="display: flex; align-items: center;">
+                        <img src="{{ url_for('static', filename='img/icone.png') }}" alt="Logo"
+                            style="height: 32px; margin-right: 10px;">
+                        Minha Carteira
+                    </h1>
                     <button class="menu-toggle d-md-none" onclick="toggleMenu()"
                         style="background: none; border: none; color: white; font-size: 1.5rem; padding: 0;">☰</button>
                 </div>
@@ -142,6 +146,8 @@
                                 <a href="{{ url_for('list_users') }}">👥 Usuários</a>
                                 {% endif %}
                                 <a href="{{ url_for('config') }}">⚙️ APIs</a>
+                                <div class="dropdown-divider"></div>
+                                <a href="#" onclick="toggleIndicators(); return false;">👁️ Alternar Barra</a>
                                 <div class="dropdown-divider"></div>
                                 <a href="{{ url_for('logout') }}" style="color: var(--danger-color);">Sair</a>
                             </div>
@@ -213,6 +219,46 @@
                 "searching": false
             });
         });
+        <script>
+        // Init Indicators Bar State
+            document.addEventListener('DOMContentLoaded', function() {
+             const isHidden = localStorage.getItem('hideIndicators') === 'true';
+            const bar = document.querySelector('.indicators-bar');
+            if (bar) {
+                 if (isHidden) {
+                bar.style.display = 'none';
+                 } else {
+                bar.style.display = 'flex';
+                 }
+
+            // Add close button if not exists
+            if (!bar.querySelector('.close-indicators')) {
+                     const closeBtn = document.createElement('div');
+            closeBtn.className = 'close-indicators';
+            closeBtn.innerHTML = '&times;';
+            closeBtn.onclick = toggleIndicators;
+            closeBtn.style.cssText = 'cursor: pointer; padding: 0 10px; font-size: 1.2rem; color: #fff; position: absolute; right: 0; z-index: 1002; background: rgba(0,0,0,0.5); height: 100%; display: flex; align-items: center;';
+            bar.appendChild(closeBtn);
+            // Adjust scrolling container padding
+            const scrollContainer = bar.querySelector('.indicators-scroll');
+            if (scrollContainer) scrollContainer.style.paddingRight = '30px';
+                 }
+             }
+        });
+
+            function toggleIndicators() {
+             const bar = document.querySelector('.indicators-bar');
+            if (bar) {
+                 if (bar.style.display === 'none') {
+                bar.style.display = 'flex';
+            localStorage.setItem('hideIndicators', 'false');
+                 } else {
+                bar.style.display = 'none';
+            localStorage.setItem('hideIndicators', 'true');
+                 }
+             }
+        }
+
     </script>
 </body>
 

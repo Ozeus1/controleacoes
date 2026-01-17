@@ -2643,10 +2643,17 @@ def debug_yahoo():
         ticker = request.form.get('ticker')
         if ticker:
             try:
-                # Try getting info
+                # Try adding .SA automatically if generic (experimental)
+                # But best to show raw first
+                
                 t = yf.Ticker(ticker)
-                # Fetching info triggers request
-                debug_data = t.info
+                
+                # Fetch multiple data points
+                debug_data = {
+                    "info": t.info,
+                    "fast_info": dict(t.fast_info) if hasattr(t, 'fast_info') else "N/A",
+                    "history_last_1d": t.history(period="1d").to_json()
+                }
             except Exception as e:
                 debug_data = {"error": str(e)}
     

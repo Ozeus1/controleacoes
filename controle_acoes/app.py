@@ -1435,11 +1435,34 @@ def balanceamento():
         
         # Detailed Maturity Breakdown
         maturity_breakdown = {
-            'Renda Fixa Pós': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0},
-            'Renda Fixa Pré': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0},
-            'Renda Fixa IPCA': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0},
             'Fundos': {'Curto Prazo': 0, 'Médio Prazo': 0, 'Longo Prazo': 0, 'Indefinido': 0}
         }
+        
+        # New: Fixed Income Subtypes Aggregation
+        rf_subtypes = {}
+        for r in rfs:
+            # Determine Type
+            p_type = r.product_type
+            if not p_type:
+                # Infer from name
+                name_upper = r.name.upper()
+                if 'CDB' in name_upper: p_type = 'CDB'
+                elif 'LCI' in name_upper: p_type = 'LCI'
+                elif 'LCA' in name_upper: p_type = 'LCA'
+                elif 'CRI' in name_upper: p_type = 'CRI'
+                elif 'CRA' in name_upper: p_type = 'CRA'
+                elif 'RDB' in name_upper: p_type = 'RDB'
+                elif 'TESOURO' in name_upper: p_type = 'Tesouro Direto'
+                elif 'DEBENTURE' in name_upper: p_type = 'Debênture'
+                else: p_type = 'Outros'
+            
+            p_type = p_type.upper().strip() # Normalize
+            
+            # Aggregate
+            rf_subtypes[p_type] = rf_subtypes.get(p_type, 0) + (r.value or 0)
+            
+        # Sort by value desc
+        rf_subtypes_sorted = dict(sorted(rf_subtypes.items(), key=lambda item: item[1], reverse=True))
         
         # Helper to process list
         def process_list(items, type_key, is_variable=False):
@@ -1761,7 +1784,8 @@ def balanceamento():
                                location_chart=location_chart,
                                summary_hierarchy=summary_hierarchy,
                                summary_exploded=summary_exploded,
-                               summary_general=summary_general)
+                               summary_general=summary_general,
+                               rf_subtypes=rf_subtypes_sorted)
     except Exception as e:
         import traceback
         return f"<h3>Debug Error de Balanceamento (Mostre isso ao suporte):</h3><pre>{traceback.format_exc()}</pre>"

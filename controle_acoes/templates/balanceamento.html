@@ -602,6 +602,14 @@
                     <canvas id="rfTypeChart"></canvas>
                 </div>
             </div>
+
+            <!-- RF Subtype Chart (New) -->
+            <div class="col-md-6 col-lg-3 text-center mb-4">
+                <h6 class="text-white">Por Subtipo (Detalhado)</h6>
+                <div style="max-width: 400px; width: 100%;">
+                    <canvas id="rfSubtypeChart"></canvas>
+                </div>
+            </div>
         </div>
 
     </div>
@@ -777,6 +785,34 @@
             datasets: [{
                 data: rfTypeData,
                 backgroundColor: ['#3b82f6', '#f43f5e', '#8b5cf6', '#06b6d4'], // Different palette
+                borderWidth: 1,
+                borderColor: '#1e293b'
+            }]
+        },
+        options: commonOptions
+    });
+
+    // --- RF SUBTYPE CHART (NEW) ---
+    const ctxRfSubtype = document.getElementById('rfSubtypeChart').getContext('2d');
+    const rfSubtypeLabels = [];
+    const rfSubtypeData = [];
+    {% for k, v in rf_subtypes.items() %}
+    {% if v > 0 %}
+    rfSubtypeLabels.push('{{ k }}');
+    rfSubtypeData.push({{ v }});
+    {% endif %}
+    {% endfor %}
+
+    new Chart(ctxRfSubtype, {
+        type: 'pie',
+        data: {
+            labels: rfSubtypeLabels,
+            datasets: [{
+                data: rfSubtypeData,
+                backgroundColor: [
+                    '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+                    '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#14b8a6'
+                ],
                 borderWidth: 1,
                 borderColor: '#1e293b'
             }]

@@ -42,7 +42,7 @@
                 <td class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.change_percent)|replace('.', ',') }}%
                 </td>
-                <td class="d-none d-lg-table-cell" style="color: var(--text-secondary); font-size: 0.85rem;">
+                <td class="" style="color: var(--text-secondary); font-size: 0.85rem;">
                     {{ item.last_update }}
                 </td>
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
@@ -80,8 +80,7 @@
                 <td class=""></td> <!-- Cotação -->
                 <td class=""></td> <!-- Var -->
                 <td class=""></td> <!-- Atualização -->
-                <td
-                    class="d-none d-md-table-cell {{ 'positive' if assets|sum(attribute='profit') >= 0 else 'negative' }}">
+                <td class="{{ 'positive' if assets|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ assets|sum(attribute='profit') | brl }}
                 </td>
                 <td
@@ -89,8 +88,7 @@
                     {{ (assets|sum(attribute='profit') / assets|sum(attribute='total_invested') * 100 if
                     assets|sum(attribute='total_invested') > 0 else 0) | pct }}
                 </td>
-                <td
-                    class="d-none d-sm-table-cell {{ 'positive' if assets|sum(attribute='day_gain') >= 0 else 'negative' }}">
+                <td class="{{ 'positive' if assets|sum(attribute='day_gain') >= 0 else 'negative' }}">
                     {{ assets|sum(attribute='day_gain') | brl }}
                 </td> <!-- G Dia -->
                 <td></td> <!-- Actions -->
@@ -142,7 +140,7 @@
                 <td class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.change_percent)|replace('.', ',') }}%
                 </td>
-                <td class="d-none d-lg-table-cell" style="color: var(--text-secondary); font-size: 0.85rem;">
+                <td class="" style="color: var(--text-secondary); font-size: 0.85rem;">
                     {{ item.last_update }}
                 </td>
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
@@ -180,8 +178,7 @@
                 <td class=""></td> <!-- Cotação -->
                 <td class=""></td> <!-- Var -->
                 <td class=""></td> <!-- Atualização -->
-                <td
-                    class="d-none d-md-table-cell {{ 'positive' if (total_etfs_current - total_etfs_invested) >= 0 else 'negative' }}">
+                <td class="{{ 'positive' if (total_etfs_current - total_etfs_invested) >= 0 else 'negative' }}">
                     {{ (total_etfs_current - total_etfs_invested) | brl }}
                 </td>
                 <td
@@ -189,8 +186,7 @@
                     {{ ((total_etfs_current - total_etfs_invested) / total_etfs_invested * 100 if
                     total_etfs_invested > 0 else 0) | pct }}
                 </td>
-                <td
-                    class="d-none d-sm-table-cell {{ 'positive' if etfs|sum(attribute='day_gain') >= 0 else 'negative' }}">
+                <td class="d-sm-table-cell {{ 'positive' if etfs|sum(attribute='day_gain') >= 0 else 'negative' }}">
                     {{ etfs|sum(attribute='day_gain') | brl }}
                 </td> <!-- G Dia -->
                 <td></td> <!-- Actions -->

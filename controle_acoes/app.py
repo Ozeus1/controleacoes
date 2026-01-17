@@ -2736,6 +2736,34 @@ def update_market_indices():
             if (prev_close == 0.0 or prev_close == price) and hist_prev > 0:
                  prev_close = hist_prev
             
+            # SUPER ROBUST FALLBACK FOR CRYPTO (BTC-BRL, ETH-BRL)
+            if price == 0.0 and '-BRL' in idx.ticker:
+                # Try USD version
+                ticker_usd = idx.ticker.replace('-BRL', '-USD')
+                try:
+                    t_usd = yf.Ticker(ticker_usd)
+                    hist_usd = t_usd.history(period="1d")
+                    if not hist_usd.empty:
+                        price_usd = float(hist_usd['Close'].iloc[-1])
+                        # Get USD rate from DB or Yahoo
+                        # Note: We are inside the loop, so querying DB is fine but inefficient if many cryptos. 
+                        # Assuming BRL=X is already updated or exists.
+                        usd_rate_idx = MarketIndex.query.filter_by(ticker='BRL=X').first()
+                        # Fallback default 5.50 if not found
+                        usd_rate = usd_rate_idx.price if usd_rate_idx and usd_rate_idx.price > 0 else 5.50 
+                        
+                        price = price_usd * usd_rate
+                        # Estimate change from USD change (close enough)
+                        if len(hist_usd) > 0:
+                            prev_close_usd = float(hist_usd['Open'].iloc[-1])
+                            change_usd = ((price_usd - prev_close_usd) / prev_close_usd) * 100
+                            change = change_usd 
+                            
+                        # Set prev_close to enable change calculation in standard block if skipped
+                        prev_close = price / (1 + (change/100)) if change != 0 else price
+                except Exception as e_usd:
+                     print(f"USD Fallback failed for {idx.ticker}: {e_usd}")
+            
             if price and prev_close:
                 change = ((price - prev_close) / prev_close) * 100
                 

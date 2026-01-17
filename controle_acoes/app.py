@@ -3,7 +3,7 @@ import os
 import sqlite3
 from flask import Flask, render_template, request, redirect, url_for, flash
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend
+from models import db, Asset, Settings, User, TradeHistory, Option, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests

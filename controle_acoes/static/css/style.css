@@ -325,3 +325,65 @@ label {
         font-size: 0.8rem !important;
     }
 }
+
+/* Indicators Bar */
+.indicators-bar {
+    background-color: #0f172a;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    height: 30px;
+    overflow: hidden;
+    white-space: nowrap;
+    position: relative;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+}
+
+.indicators-track {
+    display: inline-block;
+    animation: scroll-left 40s linear infinite;
+    padding-left: 100%;
+    /* Start offscreen */
+}
+
+.indicator-item {
+    display: inline-flex;
+    align-items: center;
+    margin-right: 2rem;
+    color: var(--text-color);
+    gap: 0.5rem;
+}
+
+.indicator-name {
+    font-weight: bold;
+    color: var(--text-secondary);
+}
+
+.indicator-price {
+    color: white;
+}
+
+.indicator-change.positive {
+    color: var(--success-color);
+}
+
+.indicator-change.negative {
+    color: var(--danger-color);
+}
+
+@keyframes scroll-left {
+    0% {
+        transform: translateX(0);
+    }
+
+    100% {
+        transform: translateX(-100%);
+    }
+}
+
+/* Mobile adjustments */
+@media (max-width: 768px) {
+    .indicators-bar {
+        font-size: 0.75rem;
+    }
+}

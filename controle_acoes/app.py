@@ -2203,6 +2203,9 @@ def update_intl_quotes_logic(user_id):
 @login_required
 def update_quotes():
     try:
+        # 0. Update Market Indices (Indicators)
+        update_market_indices()
+        
         # 1. Update National Stocks/FIIs/ETFs
         count, tried, errs = update_all_assets_logic()
         
@@ -2623,6 +2626,76 @@ def update_asset_date(id):
             flash('Formato de data inválido.', 'danger')
     
     return redirect(url_for('dividendos'))
+
+# --- Context Processor for Indices ---
+@app.context_processor
+def inject_indices():
+    indices = MarketIndex.query.all()
+    return dict(market_indices=indices)
+
+@app.route('/config/debug_yahoo', methods=['GET', 'POST'])
+@login_required
+def debug_yahoo():
+    debug_data = None
+    ticker = None
+    if request.method == 'POST':
+        import yfinance as yf
+        ticker = request.form.get('ticker')
+        if ticker:
+            try:
+                # Try getting info
+                t = yf.Ticker(ticker)
+                # Fetching info triggers request
+                debug_data = t.info
+            except Exception as e:
+                debug_data = {"error": str(e)}
+    
+    return render_template('debug_yahoo.html', debug_data=debug_data, ticker=ticker)
+
+def update_market_indices():
+    """Helper to update market indices"""
+    import yfinance as yf
+    indices = MarketIndex.query.all()
+    
+    for idx in indices:
+        try:
+            t = yf.Ticker(idx.ticker)
+            # Use fast info if available or history for reliability
+            # fast_info is better for indices usually
+            
+            price = 0.0
+            change = 0.0
+            
+            # Try history for today/yesterday to calculate change
+            hist = t.history(period="2d")
+            
+            if not hist.empty:
+                current_price = hist['Close'].iloc[-1]
+                prev_close = hist['Close'].iloc[0] if len(hist) > 1 else current_price # inaccurate if only 1 row
+                # Better: get previousClose from info
+            
+            # Info approach
+            info = t.info
+            price = info.get('regularMarketPrice') or info.get('currentPrice') or 0.0
+            prev_close = info.get('previousClose') or info.get('regularMarketPreviousClose') or price
+            
+            if price and prev_close:
+                change = ((price - prev_close) / prev_close) * 100
+                
+            idx.price = price
+            idx.change_percent = change
+            idx.last_update = datetime.now().strftime('%H:%M')
+            
+        except Exception as e:
+            print(f"Error updating index {idx.ticker}: {e}")
+            continue
+            
+    db.session.commit()
+
+# --- Modifying this to run on updates ---
+# For now, I'll call update_market_indices inside the existing update_quotes route or similar.
+# But where is update_quotes? I'll check user route later. 
+# I will attach it to `update_quotes` via a wrapper or direct call in next step.
 
 if __name__ == '__main__':
     with app.app_context():

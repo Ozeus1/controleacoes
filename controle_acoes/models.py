@@ -235,3 +235,14 @@ class Dividend(db.Model):
     
     asset = db.relationship('Asset', backref=db.backref('dividends', lazy=True, cascade="all, delete-orphan"))
 
+class MarketIndex(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    ticker = db.Column(db.String(20), unique=True, nullable=False)
+    name = db.Column(db.String(50), nullable=False)
+    price = db.Column(db.Float, default=0.0)
+    change_percent = db.Column(db.Float, default=0.0)
+    last_update = db.Column(db.String(20))
+
+    def __repr__(self):
+        return f'<MarketIndex {self.ticker}>'
+

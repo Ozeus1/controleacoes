@@ -56,4 +56,15 @@
         {% endif %}
     </div>
 </div>
+
+<div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-top: 2rem;">
+    <h3>Debug Yahoo Finance</h3>
+    <p style="color: var(--text-secondary); margin-bottom: 1rem;">
+        Acesse a ferramenta de debug para verificar dados brutos retornados pelo Yahoo Finance para qualquer ativo.
+    </p>
+    <a href="{{ url_for('debug_yahoo') }}" class="btn btn-warning">
+        <i class="fas fa-bug mr-2"></i> Abrir Ferramenta de Debug
+    </a>
+</div>
+</div>
 {% endblock %}

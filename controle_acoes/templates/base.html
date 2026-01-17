@@ -70,6 +70,35 @@
 </head>
 
 <body>
+    <!-- Economic Indicators Bar -->
+    {% if market_indices %}
+    <div class="indicators-bar">
+        <div class="indicators-track">
+            {% for idx in market_indices %}
+            <div class="indicator-item">
+                <span class="indicator-name">{{ idx.name }}</span>
+                <span class="indicator-price">{{ idx.price | brl if idx.name not in ['IBOV', 'Nasdaq', 'S&P 500', 'Dow
+                    Jones'] else idx.price | int }}</span>
+                <span class="indicator-change {{ 'positive' if idx.change_percent >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(idx.change_percent)|replace('.', ',') }}%
+                </span>
+            </div>
+            {% endfor %}
+            <!-- Duplicate for infinite scroll effect if needed, or just static list -->
+            {% for idx in market_indices %}
+            <div class="indicator-item">
+                <span class="indicator-name">{{ idx.name }}</span>
+                <span class="indicator-price">{{ idx.price | brl if idx.name not in ['IBOV', 'Nasdaq', 'S&P 500', 'Dow
+                    Jones'] else idx.price | int }}</span>
+                <span class="indicator-change {{ 'positive' if idx.change_percent >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(idx.change_percent)|replace('.', ',') }}%
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <div class="container">
         <header>
             <div>

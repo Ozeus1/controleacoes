@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="mb-4">Debug Yahoo Finance</h2>
+        <div class="card bg-dark text-white">
+            <div class="card-body">
+                <form method="POST" class="mb-4">
+                    <div class="input-group">
+                        <input type="text" name="ticker" class="form-control"
+                            placeholder="Digite o Ticker (ex: ^BVSP, PETR4.SA, BTC-USD)"
+                            value="{{ ticker if ticker else '' }}" required>
+                        <button type="submit" class="btn btn-primary">Testar Dados</button>
+                    </div>
+                </form>
+
+                {% if debug_data %}
+                <h4 class="text-info">Resultados para: {{ ticker }}</h4>
+                <div class="bg-secondary p-3 rounded" style="max-height: 500px; overflow-y: auto;">
+                    <pre class="text-white mb-0"
+                        style="white-space: pre-wrap;">{{ debug_data | tojson(indent=4) }}</pre>
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-footer">
+                <a href="{{ url_for('config') }}" class="btn btn-secondary">Voltar</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

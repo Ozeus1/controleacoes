@@ -53,10 +53,12 @@
                             <td>{{ idx.last_update }}</td>
                         </tr>
                         {% endfor %}
-                        {% else %}
-                        <tr>
-                            <td colspan="5" class="text-center text-warning">Nenhum índice encontrado no banco de dados.
-                            </td>
+                        {% else <tr>
+                            <td class="text-center text-warning">Nenhum dado</td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
                         </tr>
                         {% endif %}
                     </tbody>

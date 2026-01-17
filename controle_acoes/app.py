@@ -2681,6 +2681,24 @@ def debug_yahoo():
 def update_market_indices():
     """Helper to update market indices"""
     import yfinance as yf
+    
+    # Self-healing: Check if indices exist, if not, create them
+    if MarketIndex.query.count() == 0:
+        defaults = [
+            {'ticker': '^BVSP', 'name': 'IBOV'},
+            {'ticker': 'IFIX.SA', 'name': 'IFIX'},
+            {'ticker': 'BRL=X', 'name': 'Dólar'},
+            {'ticker': 'EURBRL=X', 'name': 'Euro'},
+            {'ticker': 'BTC-BRL', 'name': 'Bitcoin'},
+            {'ticker': 'ETH-BRL', 'name': 'Ethereum'},
+            {'ticker': '^IXIC', 'name': 'Nasdaq'},
+            {'ticker': '^GSPC', 'name': 'S&P 500'},
+            {'ticker': '^DJI', 'name': 'Dow Jones'}
+        ]
+        for d in defaults:
+            db.session.add(MarketIndex(ticker=d['ticker'], name=d['name']))
+        db.session.commit()
+    
     indices = MarketIndex.query.all()
     
     for idx in indices:

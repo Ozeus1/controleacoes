@@ -1023,495 +1023,501 @@
         <!-- Table Centered -->
         <div class="row justify-content-center">
             <div class="col-md-8">
-                <table class="table table-dark table-sm table-striped no-datatable mb-0 table-center-forced">
-                    <thead>
-                        <tr>
-                            <th>Categoria</th>
-                            <th>Percentual</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for label, val in summary_exploded.items() %}
-                        <tr>
-                            <td>{{ label }}</td>
-                            <td>
-                                {% if total_portfolio > 0 %}
-                                {{ (val / total_portfolio * 100) | brl_fmt }}%
-                                {% else %}
-                                0,00%
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                    <table class="table table-dark table-sm table-striped no-datatable mb-0 table-center-forced">
+                        <thead style="position: sticky; top: 0; background-color: #212529; z-index: 1;">
+                            <tr>
+                                <th>Categoria</th>
+                                <th>Percentual</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for label, val in summary_exploded.items() %}
+                            <tr>
+                                <td>{{ label }}</td>
+                                <td>
+                                    {% if total_portfolio > 0 %}
+                                    {{ (val / total_portfolio * 100) | brl_fmt }}%
+                                    {% else %}
+                                    0,00%
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
 
-        <!-- Chart Centered Below -->
-        <div class="row mt-4">
-            <div class="col-12 d-flex justify-content-center">
-                <div style="max-width: 600px; width: 100%;">
-                    <canvas id="chartExploded"></canvas>
+            <!-- Chart Centered Below -->
+            <div class="row mt-4">
+                <div class="col-12 d-flex justify-content-center">
+                    <div style="max-width: 600px; width: 100%;">
+                        <canvas id="chartExploded"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- 3. GENERAL BALANCE (CHART + TABLE STACKED) -->
-    <div class="col-12 mb-5">
-        <h4 class="text-white border-bottom pb-2">Balanceamento Geral</h4>
+        <!-- 3. GENERAL BALANCE (CHART + TABLE STACKED) -->
+        <div class="col-12 mb-5">
+            <h4 class="text-white border-bottom pb-2">Balanceamento Geral</h4>
 
-        <!-- Table Centered -->
-        <div class="row justify-content-center">
-            <div class="col-md-8">
-                <table class="table table-dark table-sm table-striped no-datatable mb-0 table-center-forced">
-                    <thead>
-                        <tr>
-                            <th>Categoria</th>
-                            <th>Percentual</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for label, val in summary_general.items() %}
-                        <tr>
-                            <td>{{ label }}</td>
-                            <td>
-                                {% if total_portfolio > 0 %}
-                                {{ (val / total_portfolio * 100) | brl_fmt }}%
-                                {% else %}
-                                0,00%
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                        <tr class="font-weight-bold border-top">
-                            <td>TOTAL</td>
-                            <td>100,00%</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <!-- Table Centered -->
+            <div class="row justify-content-center">
+                <div class="col-md-8">
+                    <table class="table table-dark table-sm table-striped no-datatable mb-0 table-center-forced">
+                        <thead>
+                            <tr>
+                                <th>Categoria</th>
+                                <th>Percentual</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for label, val in summary_general.items() %}
+                            <tr>
+                                <td>{{ label }}</td>
+                                <td>
+                                    {% if total_portfolio > 0 %}
+                                    {{ (val / total_portfolio * 100) | brl_fmt }}%
+                                    {% else %}
+                                    0,00%
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            <tr class="font-weight-bold border-top">
+                                <td>TOTAL</td>
+                                <td>100,00%</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
 
-        <!-- Chart Centered Below -->
-        <div class="row mt-4">
-            <div class="col-12 d-flex justify-content-center">
-                <div style="max-width: 600px; width: 100%;">
-                    <canvas id="chartGeneral"></canvas>
+            <!-- Chart Centered Below -->
+            <div class="row mt-4">
+                <div class="col-12 d-flex justify-content-center">
+                    <div style="max-width: 600px; width: 100%;">
+                        <canvas id="chartGeneral"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
+
     </div>
 
-</div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            // --- HIERARCHY GROUP CHART (NEW) ---
+            const ctxHier = document.getElementById('chartHierarchy').getContext('2d');
+            const hierLabels = [];
+            const hierData = [];
 
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        // --- HIERARCHY GROUP CHART (NEW) ---
-        const ctxHier = document.getElementById('chartHierarchy').getContext('2d');
-        const hierLabels = [];
-        const hierData = [];
+            // Loop Jinja to get groups and totals
+            {% for group in summary_hierarchy %}
+            hierLabels.push('{{ group.group }}');
+            hierData.push({{ group.total }});
+        {% endfor %}
 
-        // Loop Jinja to get groups and totals
-        {% for group in summary_hierarchy %}
-        hierLabels.push('{{ group.group }}');
-        hierData.push({{ group.total }});
-    {% endfor %}
-
-    new Chart(ctxHier, {
-        type: 'pie',
-        data: {
-            labels: hierLabels,
-            datasets: [{
-                data: hierData,
-                backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'], // Blue (RF), Green (RV BR), Purple (Intl)
-                borderWidth: 1,
-                borderColor: '#1e293b'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'bottom', labels: { color: 'white' } },
-                datalabels: {
-                    color: '#fff',
-                    font: { weight: 'bold', size: 14 },
-                    formatter: (value, ctx) => {
-                        let sum = 0;
-                        let dataArr = ctx.chart.data.datasets[0].data;
-                        dataArr.map(data => { sum += data; });
-                        return (value * 100 / sum).toFixed(1) + "%";
+        new Chart(ctxHier, {
+            type: 'pie',
+            data: {
+                labels: hierLabels,
+                datasets: [{
+                    data: hierData,
+                    backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'], // Blue (RF), Green (RV BR), Purple (Intl)
+                    borderWidth: 1,
+                    borderColor: '#1e293b'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: 'white' } },
+                    datalabels: {
+                        color: '#fff',
+                        font: { weight: 'bold', size: 14 },
+                        formatter: (value, ctx) => {
+                            let sum = 0;
+                            let dataArr = ctx.chart.data.datasets[0].data;
+                            dataArr.map(data => { sum += data; });
+                            return (value * 100 / sum).toFixed(1) + "%";
+                        }
                     }
                 }
             }
-        }
-    });
+        });
 
-    // --- EXPLODED CHART ---
-    const ctxExp = document.getElementById('chartExploded').getContext('2d');
-    const expLabels = [];
-    const expData = [];
-    // Loop Jinja items
-    {% for k, v in summary_exploded.items() %}
-    expLabels.push('{{ k }}');
-    expData.push({{ v }});
-    {% endfor %}
+        // --- EXPLODED CHART ---
+        const ctxExp = document.getElementById('chartExploded').getContext('2d');
+        const expLabels = [];
+        const expData = [];
+        // Loop Jinja items
+        {% for k, v in summary_exploded.items() %}
+        expLabels.push('{{ k }}');
+        expData.push({{ v }});
+        {% endfor %}
 
-    new Chart(ctxExp, {
-        type: 'doughnut', // Exploded usually Donut or Pie
-        data: {
-            labels: expLabels,
-            datasets: [{
-                data: expData,
-                backgroundColor: [
-                    '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
-                    '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
-                ],
-                borderWidth: 1,
-                borderColor: '#1e293b'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'bottom', labels: { color: 'white' } },
-                title: { display: true, text: 'Balanceamento Explodido', color: 'white', font: { size: 16 } },
-                datalabels: {
-                    color: '#fff',
-                    font: { weight: 'bold' },
-                    formatter: (value, ctx) => {
-                        let sum = 0;
-                        let dataArr = ctx.chart.data.datasets[0].data;
-                        dataArr.map(data => { sum += data; });
-                        return (value * 100 / sum).toFixed(1) + "%";
+        new Chart(ctxExp, {
+            type: 'doughnut', // Exploded usually Donut or Pie
+            data: {
+                labels: expLabels,
+                datasets: [{
+                    data: expData,
+                    backgroundColor: [
+                        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+                        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
+                    ],
+                    borderWidth: 1,
+                    borderColor: '#1e293b'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: 'white' } },
+                    title: { display: true, text: 'Balanceamento Explodido', color: 'white', font: { size: 16 } },
+                    datalabels: {
+                        color: '#fff',
+                        font: { weight: 'bold' },
+                        formatter: (value, ctx) => {
+                            let sum = 0;
+                            let dataArr = ctx.chart.data.datasets[0].data;
+                            dataArr.map(data => { sum += data; });
+                            return (value * 100 / sum).toFixed(1) + "%";
+                        }
                     }
                 }
             }
-        }
-    });
+        });
 
-    // --- GENERAL CHART ---
-    const ctxGen = document.getElementById('chartGeneral').getContext('2d');
-    const genLabels = [];
-    const genData = [];
-    {% for k, v in summary_general.items() %}
-    genLabels.push('{{ k }}');
-    genData.push({{ v }});
-    {% endfor %}
+        // --- GENERAL CHART ---
+        const ctxGen = document.getElementById('chartGeneral').getContext('2d');
+        const genLabels = [];
+        const genData = [];
+        {% for k, v in summary_general.items() %}
+        genLabels.push('{{ k }}');
+        genData.push({{ v }});
+        {% endfor %}
 
-    new Chart(ctxGen, {
-        type: 'doughnut',
-        data: {
-            labels: genLabels,
-            datasets: [{
-                data: genData,
-                backgroundColor: [
-                    '#0d47a1', '#e65100', '#1b5e20', '#00acc1', '#8e24aa'
-                ], // Deep Colors: Blue, Orange, Green, Cyan, Purple
-                borderWidth: 1,
-                borderColor: '#1e293b'
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'bottom', labels: { color: 'white' } },
-                title: { display: true, text: 'Balanceamento Geral', color: 'white', font: { size: 16 } },
-                datalabels: {
-                    color: '#fff',
-                    font: { weight: 'bold' },
-                    formatter: (value, ctx) => {
-                        let sum = 0;
-                        let dataArr = ctx.chart.data.datasets[0].data;
-                        dataArr.map(data => { sum += data; });
-                        return (value * 100 / sum).toFixed(1) + "%";
+        new Chart(ctxGen, {
+            type: 'doughnut',
+            data: {
+                labels: genLabels,
+                datasets: [{
+                    data: genData,
+                    backgroundColor: [
+                        '#0d47a1', '#e65100', '#1b5e20', '#00acc1', '#8e24aa'
+                    ], // Deep Colors: Blue, Orange, Green, Cyan, Purple
+                    borderWidth: 1,
+                    borderColor: '#1e293b'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: 'white' } },
+                    title: { display: true, text: 'Balanceamento Geral', color: 'white', font: { size: 16 } },
+                    datalabels: {
+                        color: '#fff',
+                        font: { weight: 'bold' },
+                        formatter: (value, ctx) => {
+                            let sum = 0;
+                            let dataArr = ctx.chart.data.datasets[0].data;
+                            dataArr.map(data => { sum += data; });
+                            return (value * 100 / sum).toFixed(1) + "%";
+                        }
                     }
                 }
             }
-        }
+        });
     });
-    });
-</script>
+    </script>
 
-<!-- MODALS -->
-<!-- Modal RF Pós -->
-<div class="modal fade" id="modalRFC" tabindex="-1">
-    <div class="modal-dialog">
-        <form action="{{ url_for('add_rf') }}" method="POST">
-            <div class="modal-content bg-dark text-white">
-                <div class="modal-header">
-                    <h5 class="modal-title">Adicionar Renda Fixa Pós</h5><button type="button"
-                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" name="category" value="POS">
-                    <div class="mb-3">
-                        <label>Tipo</label>
-                        <select name="product_type" class="form-control mb-2">
-                            <option value="CDB">CDB</option>
-                            <option value="LCI">LCI</option>
-                            <option value="LCA">LCA</option>
-                            <option value="CRI">CRI</option>
-                            <option value="CRA">CRA</option>
-                            <option value="Tesouro">Tesouro</option>
-                            <option value="RDB">RDB</option>
-                            <option value="Outros">Outros</option>
-                        </select>
+    <!-- MODALS -->
+    <!-- Modal RF Pós -->
+    <div class="modal fade" id="modalRFC" tabindex="-1">
+        <div class="modal-dialog">
+            <form action="{{ url_for('add_rf') }}" method="POST">
+                <div class="modal-content bg-dark text-white">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Adicionar Renda Fixa Pós</h5><button type="button"
+                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
-                    <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Fundo/Descrição</label><input type="text" name="name" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Taxa (ex: 120% CDI)</label><input type="text" name="rate"
-                            class="form-control"></div>
-                    <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date"
-                            class="form-control"></div>
+                    <div class="modal-body">
+                        <input type="hidden" name="category" value="POS">
+                        <div class="mb-3">
+                            <label>Tipo</label>
+                            <select name="product_type" class="form-control mb-2">
+                                <option value="CDB">CDB</option>
+                                <option value="LCI">LCI</option>
+                                <option value="LCA">LCA</option>
+                                <option value="CRI">CRI</option>
+                                <option value="CRA">CRA</option>
+                                <option value="Tesouro">Tesouro</option>
+                                <option value="RDB">RDB</option>
+                                <option value="Outros">Outros</option>
+                            </select>
+                        </div>
+                        <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
+                                required></div>
+                        <div class="mb-3"><label>Fundo/Descrição</label><input type="text" name="name"
+                                class="form-control" required></div>
+                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
+                                required></div>
+                        <div class="mb-3"><label>Taxa (ex: 120% CDI)</label><input type="text" name="rate"
+                                class="form-control"></div>
+                        <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date"
+                                class="form-control"></div>
+                    </div>
+                    <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar</button></div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar</button></div>
-            </div>
-        </form>
+            </form>
+        </div>
     </div>
-</div>
 
-<!-- Modal RF Pré -->
-<div class="modal fade" id="modalRFP" tabindex="-1">
-    <div class="modal-dialog">
-        <form action="{{ url_for('add_rf') }}" method="POST">
-            <div class="modal-content bg-dark text-white">
-                <div class="modal-header">
-                    <h5 class="modal-title">Adicionar Renda Fixa Pré</h5><button type="button"
-                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" name="category" value="PRE">
-                    <div class="mb-3">
-                        <label>Tipo</label>
-                        <select name="product_type" class="form-control mb-2">
-                            <option value="CDB">CDB</option>
-                            <option value="LCI">LCI</option>
-                            <option value="LCA">LCA</option>
-                            <option value="CRI">CRI</option>
-                            <option value="CRA">CRA</option>
-                            <option value="Tesouro">Tesouro</option>
-                            <option value="RDB">RDB</option>
-                            <option value="Outros">Outros</option>
-                        </select>
+    <!-- Modal RF Pré -->
+    <div class="modal fade" id="modalRFP" tabindex="-1">
+        <div class="modal-dialog">
+            <form action="{{ url_for('add_rf') }}" method="POST">
+                <div class="modal-content bg-dark text-white">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Adicionar Renda Fixa Pré</h5><button type="button"
+                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
-                    <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Descrição</label><input type="text" name="name" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Taxa (ex: 12% a.a.)</label><input type="text" name="rate"
-                            class="form-control"></div>
-                    <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date"
-                            class="form-control"></div>
+                    <div class="modal-body">
+                        <input type="hidden" name="category" value="PRE">
+                        <div class="mb-3">
+                            <label>Tipo</label>
+                            <select name="product_type" class="form-control mb-2">
+                                <option value="CDB">CDB</option>
+                                <option value="LCI">LCI</option>
+                                <option value="LCA">LCA</option>
+                                <option value="CRI">CRI</option>
+                                <option value="CRA">CRA</option>
+                                <option value="Tesouro">Tesouro</option>
+                                <option value="RDB">RDB</option>
+                                <option value="Outros">Outros</option>
+                            </select>
+                        </div>
+                        <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
+                                required></div>
+                        <div class="mb-3"><label>Descrição</label><input type="text" name="name" class="form-control"
+                                required></div>
+                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
+                                required></div>
+                        <div class="mb-3"><label>Taxa (ex: 12% a.a.)</label><input type="text" name="rate"
+                                class="form-control"></div>
+                        <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date"
+                                class="form-control"></div>
+                    </div>
+                    <div class="modal-footer"><button type="submit" class="btn btn-warning">Salvar</button></div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-warning">Salvar</button></div>
-            </div>
-        </form>
+            </form>
+        </div>
     </div>
-</div>
 
-<!-- Modal RF IPCA -->
-<div class="modal fade" id="modalRFI" tabindex="-1">
-    <div class="modal-dialog">
-        <form action="{{ url_for('add_rf') }}" method="POST">
-            <div class="modal-content bg-dark text-white">
-                <div class="modal-header">
-                    <h5 class="modal-title">Adicionar Renda Fixa IPCA</h5><button type="button"
-                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" name="category" value="IPCA">
-                    <div class="mb-3">
-                        <label>Tipo</label>
-                        <select name="product_type" class="form-control mb-2">
-                            <option value="CDB">CDB</option>
-                            <option value="LCI">LCI</option>
-                            <option value="LCA">LCA</option>
-                            <option value="CRI">CRI</option>
-                            <option value="CRA">CRA</option>
-                            <option value="Tesouro">Tesouro</option>
-                            <option value="RDB">RDB</option>
-                            <option value="Outros">Outros</option>
-                        </select>
+    <!-- Modal RF IPCA -->
+    <div class="modal fade" id="modalRFI" tabindex="-1">
+        <div class="modal-dialog">
+            <form action="{{ url_for('add_rf') }}" method="POST">
+                <div class="modal-content bg-dark text-white">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Adicionar Renda Fixa IPCA</h5><button type="button"
+                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
-                    <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Descrição</label><input type="text" name="name" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Taxa (ex: IPCA+6%)</label><input type="text" name="rate"
-                            class="form-control"></div>
-                    <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date"
-                            class="form-control"></div>
+                    <div class="modal-body">
+                        <input type="hidden" name="category" value="IPCA">
+                        <div class="mb-3">
+                            <label>Tipo</label>
+                            <select name="product_type" class="form-control mb-2">
+                                <option value="CDB">CDB</option>
+                                <option value="LCI">LCI</option>
+                                <option value="LCA">LCA</option>
+                                <option value="CRI">CRI</option>
+                                <option value="CRA">CRA</option>
+                                <option value="Tesouro">Tesouro</option>
+                                <option value="RDB">RDB</option>
+                                <option value="Outros">Outros</option>
+                            </select>
+                        </div>
+                        <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
+                                required></div>
+                        <div class="mb-3"><label>Descrição</label><input type="text" name="name" class="form-control"
+                                required></div>
+                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
+                                required></div>
+                        <div class="mb-3"><label>Taxa (ex: IPCA+6%)</label><input type="text" name="rate"
+                                class="form-control"></div>
+                        <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date"
+                                class="form-control"></div>
+                    </div>
+                    <div class="modal-footer"><button type="submit" class="btn btn-danger">Salvar</button></div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-danger">Salvar</button></div>
-            </div>
-        </form>
+            </form>
+        </div>
     </div>
-</div>
 
-<!-- Modal Fundos -->
-<div class="modal fade" id="modalFund" tabindex="-1">
-    <div class="modal-dialog">
-        <form action="{{ url_for('add_fund') }}" method="POST">
-            <div class="modal-content bg-dark text-white">
-                <div class="modal-header">
-                    <h5 class="modal-title">Adicionar Fundo</h5><button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal"></button>
+    <!-- Modal Fundos -->
+    <div class="modal fade" id="modalFund" tabindex="-1">
+        <div class="modal-dialog">
+            <form action="{{ url_for('add_fund') }}" method="POST">
+                <div class="modal-content bg-dark text-white">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Adicionar Fundo</h5><button type="button"
+                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="category" value="IPCA">
+                        <div class="mb-3">
+                            <label>Tipo</label>
+                            <select name="product_type" class="form-control mb-2">
+                                <option value="CDB">CDB</option>
+                                <option value="LCI">LCI</option>
+                                <option value="LCA">LCA</option>
+                                <option value="CRI">CRI</option>
+                                <option value="CRA">CRA</option>
+                                <option value="Tesouro">Tesouro</option>
+                                <option value="RDB">RDB</option>
+                                <option value="Outros">Outros</option>
+                            </select>
+                        </div>
+                        <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
+                                required></div>
+                        <div class="mb-3"><label>Fundo</label><input type="text" name="name" class="form-control"
+                                required>
+                        </div>
+                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
+                                required></div>
+                        <div class="mb-3"><label>Indexador</label><input type="text" name="indexer"
+                                class="form-control">
+                        </div>
+                        <div class="mb-3"><label>Vencimento (Opcional)</label><input type="date" name="maturity_date"
+                                class="form-control"></div>
+                    </div>
+                    <div class="modal-footer"><button type="submit" class="btn btn-info">Salvar</button></div>
                 </div>
-                <div class="modal-body">
-                    <input type="hidden" name="category" value="IPCA">
-                    <div class="mb-3">
-                        <label>Tipo</label>
-                        <select name="product_type" class="form-control mb-2">
-                            <option value="CDB">CDB</option>
-                            <option value="LCI">LCI</option>
-                            <option value="LCA">LCA</option>
-                            <option value="CRI">CRI</option>
-                            <option value="CRA">CRA</option>
-                            <option value="Tesouro">Tesouro</option>
-                            <option value="RDB">RDB</option>
-                            <option value="Outros">Outros</option>
-                        </select>
-                    </div>
-                    <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Fundo</label><input type="text" name="name" class="form-control" required>
-                    </div>
-                    <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Indexador</label><input type="text" name="indexer" class="form-control">
-                    </div>
-                    <div class="mb-3"><label>Vencimento (Opcional)</label><input type="date" name="maturity_date"
-                            class="form-control"></div>
-                </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-info">Salvar</button></div>
-            </div>
-        </form>
+            </form>
+        </div>
     </div>
-</div>
 
-<!-- Modal Crypto -->
-<div class="modal fade" id="modalCrypto" tabindex="-1">
-    <div class="modal-dialog">
-        <form action="{{ url_for('add_crypto') }}" method="POST">
-            <div class="modal-content bg-dark text-white">
-                <div class="modal-header">
-                    <h5 class="modal-title">Adicionar Cripto</h5><button type="button" class="btn-close btn-close-white"
-                        data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3"><label>Exchange</label><input type="text" name="institution" class="form-control">
+    <!-- Modal Crypto -->
+    <div class="modal fade" id="modalCrypto" tabindex="-1">
+        <div class="modal-dialog">
+            <form action="{{ url_for('add_crypto') }}" method="POST">
+                <div class="modal-content bg-dark text-white">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Adicionar Cripto</h5><button type="button"
+                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
-                    <div class="mb-3"><label>Nome (ex: BTC)</label><input type="text" name="name" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Quantidade</label><input type="text" name="quantity" class="form-control">
+                    <div class="modal-body">
+                        <div class="mb-3"><label>Exchange</label><input type="text" name="institution"
+                                class="form-control">
+                        </div>
+                        <div class="mb-3"><label>Nome (ex: BTC)</label><input type="text" name="name"
+                                class="form-control" required></div>
+                        <div class="mb-3"><label>Quantidade</label><input type="text" name="quantity"
+                                class="form-control">
+                        </div>
+                        <div class="mb-3"><label>Valor Investido (R$)</label><input type="text" name="invested_value"
+                                class="form-control"></div>
+                        <div class="mb-3"><label>Valor Atual (R$)</label><input type="text" name="current_value"
+                                class="form-control" required></div>
                     </div>
-                    <div class="mb-3"><label>Valor Investido (R$)</label><input type="text" name="invested_value"
-                            class="form-control"></div>
-                    <div class="mb-3"><label>Valor Atual (R$)</label><input type="text" name="current_value"
-                            class="form-control" required></div>
+                    <div class="modal-footer"><button type="submit" class="btn btn-dark">Salvar</button></div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-dark">Salvar</button></div>
-            </div>
-        </form>
+            </form>
+        </div>
     </div>
-</div>
 
-<!-- Modal Pension -->
-<div class="modal fade" id="modalPension" tabindex="-1">
-    <div class="modal-dialog">
-        <form action="{{ url_for('add_pension') }}" method="POST">
-            <div class="modal-content bg-dark text-white">
-                <div class="modal-header">
-                    <h5 class="modal-title">Adicionar Previdência</h5><button type="button"
-                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="mb-3"><label>Instituição</label><input type="text" name="institution"
-                            class="form-control" required></div>
-                    <div class="mb-3"><label>Plano</label><input type="text" name="name" class="form-control" required>
+    <!-- Modal Pension -->
+    <div class="modal fade" id="modalPension" tabindex="-1">
+        <div class="modal-dialog">
+            <form action="{{ url_for('add_pension') }}" method="POST">
+                <div class="modal-content bg-dark text-white">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Adicionar Previdência</h5><button type="button"
+                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
-                    <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Tipo</label>
-                        <select name="type" class="form-control">
-                            <option value="Renda Fixa">Renda Fixa</option>
-                            <option value="Acao">Ação</option>
-                        </select>
+                    <div class="modal-body">
+                        <div class="mb-3"><label>Instituição</label><input type="text" name="institution"
+                                class="form-control" required></div>
+                        <div class="mb-3"><label>Plano</label><input type="text" name="name" class="form-control"
+                                required>
+                        </div>
+                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
+                                required></div>
+                        <div class="mb-3"><label>Tipo</label>
+                            <select name="type" class="form-control">
+                                <option value="Renda Fixa">Renda Fixa</option>
+                                <option value="Acao">Ação</option>
+                            </select>
+                        </div>
+                        <div class="mb-3"><label>Certificado (Opcional)</label><input type="text" name="certificate"
+                                class="form-control"></div>
                     </div>
-                    <div class="mb-3"><label>Certificado (Opcional)</label><input type="text" name="certificate"
-                            class="form-control"></div>
+                    <div class="modal-footer"><button type="submit" class="btn btn-success">Salvar</button></div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-success">Salvar</button></div>
-            </div>
-        </form>
+            </form>
+        </div>
     </div>
-</div>
 
-<!-- Modal Intl RV -->
-<div class="modal fade" id="modalIntlRV" tabindex="-1">
-    <div class="modal-dialog">
-        <form action="{{ url_for('add_intl') }}" method="POST">
-            <div class="modal-content bg-dark text-white">
-                <div class="modal-header">
-                    <h5 class="modal-title">Adicionar Renda Variável Internacional</h5><button type="button"
-                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" name="category" value="RV">
-                    <div class="mb-3"><label>Corretora/Instituição</label><input type="text" name="institution"
-                            class="form-control" required></div>
-                    <div class="mb-3"><label>Ticker (ex: AAPL)</label><input type="text" name="name"
-                            class="form-control" required style="text-transform: uppercase;"></div>
-                    <div class="mb-3"><label>Quantidade</label><input type="text" name="quantity" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Preço Médio ($)</label><input type="text" name="avg_price"
-                            class="form-control" required>
+    <!-- Modal Intl RV -->
+    <div class="modal fade" id="modalIntlRV" tabindex="-1">
+        <div class="modal-dialog">
+            <form action="{{ url_for('add_intl') }}" method="POST">
+                <div class="modal-content bg-dark text-white">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Adicionar Renda Variável Internacional</h5><button type="button"
+                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="category" value="RV">
+                        <div class="mb-3"><label>Corretora/Instituição</label><input type="text" name="institution"
+                                class="form-control" required></div>
+                        <div class="mb-3"><label>Ticker (ex: AAPL)</label><input type="text" name="name"
+                                class="form-control" required style="text-transform: uppercase;"></div>
+                        <div class="mb-3"><label>Quantidade</label><input type="text" name="quantity"
+                                class="form-control" required></div>
+                        <div class="mb-3"><label>Preço Médio ($)</label><input type="text" name="avg_price"
+                                class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer"><button type="submit" class="btn btn-secondary">Salvar</button></div>
                 </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-secondary">Salvar</button></div>
-            </div>
-        </form>
+            </form>
+        </div>
     </div>
-</div>
 
-<!-- Modal Intl RF -->
-<div class="modal fade" id="modalIntlRF" tabindex="-1">
-    <div class="modal-dialog">
-        <form action="{{ url_for('add_intl') }}" method="POST">
-            <div class="modal-content bg-dark text-white">
-                <div class="modal-header">
-                    <h5 class="modal-title">Adicionar Renda Fixa Internacional</h5><button type="button"
-                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+    <!-- Modal Intl RF -->
+    <div class="modal fade" id="modalIntlRF" tabindex="-1">
+        <div class="modal-dialog">
+            <form action="{{ url_for('add_intl') }}" method="POST">
+                <div class="modal-content bg-dark text-white">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Adicionar Renda Fixa Internacional</h5><button type="button"
+                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="category" value="RF">
+                        <div class="mb-3"><label>Instituição</label><input type="text" name="institution"
+                                class="form-control" required></div>
+                        <div class="mb-3"><label>Descrição/Tipo</label><input type="text" name="description"
+                                class="form-control" required></div>
+                        <div class="mb-3"><label>Valor Investido ($)</label><input type="text" name="value_usd"
+                                class="form-control" required></div>
+                    </div>
+                    <div class="modal-footer"><button type="submit" class="btn btn-secondary">Salvar</button></div>
                 </div>
-                <div class="modal-body">
-                    <input type="hidden" name="category" value="RF">
-                    <div class="mb-3"><label>Instituição</label><input type="text" name="institution"
-                            class="form-control" required></div>
-                    <div class="mb-3"><label>Descrição/Tipo</label><input type="text" name="description"
-                            class="form-control" required></div>
-                    <div class="mb-3"><label>Valor Investido ($)</label><input type="text" name="value_usd"
-                            class="form-control" required></div>
-                </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-secondary">Salvar</button></div>
-            </div>
-        </form>
+            </form>
+        </div>
     </div>
-</div>
 
-</form>
+    </form>
 </div>
 </div>
 {% endblock %}

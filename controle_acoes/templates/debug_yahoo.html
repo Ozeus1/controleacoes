@@ -24,9 +24,43 @@
                         style="white-space: pre-wrap;">{{ debug_data | tojson(indent=4) }}</pre>
                 </div>
                 {% endif %}
+                {% endif %}
             </div>
-            <div class="card-footer">
-                <a href="{{ url_for('config') }}" class="btn btn-secondary">Voltar</a>
+        </div>
+
+        <!-- DB Inspection Section -->
+        <h3 class="mt-5">Estado dos Índices (Banco de Dados)</h3>
+        <div class="card bg-dark text-white">
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-dark table-striped mb-0">
+                    <thead>
+                        <tr>
+                            <th>Ticker</th>
+                            <th>Nome</th>
+                            <th>Preço</th>
+                            <th>Var %</th>
+                            <th>Última Atualização</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if db_indices %}
+                        {% for idx in db_indices %}
+                        <tr>
+                            <td>{{ idx.ticker }}</td>
+                            <td>{{ idx.name }}</td>
+                            <td>{{ idx.price }}</td>
+                            <td>{{ idx.change_percent }}%</td>
+                            <td>{{ idx.last_update }}</td>
+                        </tr>
+                        {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center text-warning">Nenhum índice encontrado no banco de dados.
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>

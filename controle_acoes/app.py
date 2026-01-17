@@ -2671,7 +2671,12 @@ def debug_yahoo():
             except Exception as e:
                 debug_data = {"fatal_error": str(e)}
     
-    return render_template('debug_yahoo.html', debug_data=debug_data, ticker=ticker)
+                debug_data = {"fatal_error": str(e)}
+    
+    # NEW: Fetch existing indices to verify DB state
+    db_indices = MarketIndex.query.all()
+    
+    return render_template('debug_yahoo.html', debug_data=debug_data, ticker=ticker, db_indices=db_indices)
 
 def update_market_indices():
     """Helper to update market indices"""

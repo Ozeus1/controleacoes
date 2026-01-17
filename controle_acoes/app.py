@@ -2648,14 +2648,28 @@ def debug_yahoo():
                 
                 t = yf.Ticker(ticker)
                 
-                # Fetch multiple data points
-                debug_data = {
-                    "info": t.info,
-                    "fast_info": dict(t.fast_info) if hasattr(t, 'fast_info') else "N/A",
-                    "history_last_1d": t.history(period="1d").to_json()
-                }
+                debug_data = {}
+                
+                # 1. Info (prone to errors if ticker invalid)
+                try:
+                    debug_data['info'] = t.info
+                except Exception as e:
+                    debug_data['info'] = f"Error: {str(e)}"
+                    
+                # 2. Fast Info
+                try:
+                    debug_data['fast_info'] = dict(t.fast_info) if hasattr(t, 'fast_info') else "N/A"
+                except Exception as e:
+                    debug_data['fast_info'] = f"Error: {str(e)}"
+                
+                # 3. History
+                try:
+                    debug_data['history_last_1d'] = t.history(period="1d").to_json()
+                except Exception as e:
+                    debug_data['history_last_1d'] = f"Error: {str(e)}"
+                    
             except Exception as e:
-                debug_data = {"error": str(e)}
+                debug_data = {"fatal_error": str(e)}
     
     return render_template('debug_yahoo.html', debug_data=debug_data, ticker=ticker)
 

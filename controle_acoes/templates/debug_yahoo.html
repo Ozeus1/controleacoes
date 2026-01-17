@@ -13,6 +13,8 @@
                             value="{{ ticker if ticker else '' }}" required>
                         <button type="submit" class="btn btn-primary">Testar Dados</button>
                     </div>
+                    <small class="text-muted mt-2 d-block">Dica: Para ações brasileiras, adicione <strong>.SA</strong>
+                        no final (ex: VALE3.SA).</small>
                 </form>
 
                 {% if debug_data %}

@@ -2713,15 +2713,28 @@ def update_market_indices():
             # Try history for today/yesterday to calculate change
             hist = t.history(period="2d")
             
+            hist_price = 0.0
+            hist_prev = 0.0
+            
             if not hist.empty:
-                current_price = hist['Close'].iloc[-1]
-                prev_close = hist['Close'].iloc[0] if len(hist) > 1 else current_price # inaccurate if only 1 row
-                # Better: get previousClose from info
+                hist_price = float(hist['Close'].iloc[-1])
+                hist_prev = float(hist['Close'].iloc[0]) if len(hist) > 1 else hist_price
             
             # Info approach
-            info = t.info
-            price = info.get('regularMarketPrice') or info.get('currentPrice') or 0.0
-            prev_close = info.get('previousClose') or info.get('regularMarketPreviousClose') or price
+            try:
+                info = t.info
+                price = info.get('regularMarketPrice') or info.get('currentPrice') or 0.0
+                prev_close = info.get('previousClose') or info.get('regularMarketPreviousClose') or price
+            except:
+                price = 0.0
+                prev_close = 0.0
+
+            # Fallback to history if info fails
+            if price == 0.0 and hist_price > 0:
+                price = hist_price
+            
+            if (prev_close == 0.0 or prev_close == price) and hist_prev > 0:
+                 prev_close = hist_prev
             
             if price and prev_close:
                 change = ((price - prev_close) / prev_close) * 100

@@ -113,69 +113,81 @@
 
     <div class="container">
         <header>
-            <div>
-                <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                    <h1 class="mobile-title" style="display: flex; align-items: center;">
+            <!-- Top row: Logo + Profile/Welcome -->
+            <div class="header-top">
+                <div class="header-brand">
+                    <h1 class="mobile-title">
                         <img src="{{ url_for('static', filename='img/investimento.png') }}" alt="Logo"
                             style="height: 32px; margin-right: 10px;">
                         Minha Carteira
                     </h1>
-                    <button class="menu-toggle d-md-none" onclick="toggleMenu()"
-                        style="background: none; border: none; color: white; font-size: 1.5rem; padding: 0;">☰</button>
+                    <button class="menu-toggle" onclick="toggleMenu()"
+                        style="background: none; border: none; color: white; font-size: 1.5rem; padding: 0; display: none;">☰</button>
                 </div>
-                <nav class="main-nav">
-                    <!-- Links -->
-                    <a href="{{ url_for('resumo') }}"
-                        class="{{ 'active' if request.endpoint == 'resumo' else '' }}">Resumo</a>
-                    <a href="{{ url_for('acoes') }}"
-                        class="{{ 'active' if request.endpoint == 'acoes' else '' }}">Ações</a>
-                    <a href="{{ url_for('fiis') }}"
-                        class="{{ 'active' if request.endpoint == 'fiis' else '' }}">FIIs</a>
-                    <a href="{{ url_for('swingtrade') }}"
-                        class="{{ 'active' if request.endpoint == 'swingtrade' else '' }}">Swingtrade</a>
-                    <a href="{{ url_for('opcoes') }}"
-                        class="{{ 'active' if request.endpoint == 'opcoes' else '' }}">Opções</a>
-                    <a href="{{ url_for('balanceamento') }}"
-                        class="{{ 'active' if request.endpoint == 'balanceamento' else '' }}">Balanceamento</a>
-                    <a href="{{ url_for('dividendos') }}"
-                        class="{{ 'active' if request.endpoint == 'dividendos' else '' }}">Dividendos</a>
-                    <a href="{{ url_for('history') }}"
-                        class="{{ 'active' if request.endpoint == 'history' else '' }}">Histórico</a>
-
-                    <div class="user-menu-container"
-                        style="display: flex; align-items: center; gap: 1rem; margin-left: auto;">
-                        <span style="color: var(--text-secondary); font-size: 0.9rem;">Bem vindo, <strong>{{
-                                current_user.username }}</strong></span>
-
-                        <div class="dropdown">
-                            <a href="#"
-                                class="dropdown-toggle {{ 'active' if request.endpoint in ['profile', 'list_users', 'config'] else '' }}">
-                                👤 Perfil
-                            </a>
-                            <div class="dropdown-content">
-                                <a href="{{ url_for('profile') }}">Minha Conta</a>
-                                {% if current_user.is_admin %}
-                                <a href="{{ url_for('list_users') }}">👥 Usuários</a>
-                                {% endif %}
-                                <a href="{{ url_for('config') }}">⚙️ APIs</a>
-                                <div class="dropdown-divider"></div>
-                                <a href="#" onclick="toggleIndicators(); return false;">👁️ Alternar Barra</a>
-                                <div class="dropdown-divider"></div>
-                                <a href="{{ url_for('logout') }}" style="color: var(--danger-color);">Sair</a>
-                            </div>
+                <div class="header-user">
+                    <span class="welcome-text">Bem vindo, <strong>{{ current_user.username }}</strong></span>
+                    <div class="dropdown">
+                        <a href="#"
+                            class="dropdown-toggle {{ 'active' if request.endpoint in ['profile', 'list_users', 'config'] else '' }}">
+                            👤 Perfil
+                        </a>
+                        <div class="dropdown-content">
+                            <a href="{{ url_for('profile') }}">Minha Conta</a>
+                            {% if current_user.is_admin %}
+                            <a href="{{ url_for('list_users') }}">👥 Usuários</a>
+                            {% endif %}
+                            <a href="{{ url_for('config') }}">⚙️ APIs</a>
+                            <div class="dropdown-divider"></div>
+                            <a href="#" onclick="toggleIndicators(); return false;">👁️ Alternar Barra</a>
+                            <div class="dropdown-divider"></div>
+                            <a href="{{ url_for('logout') }}" style="color: var(--danger-color);">Sair</a>
                         </div>
                     </div>
+                </div>
             </div>
-            <div style="display: flex; gap: 0.5rem; align-items: center;">
+
+            <!-- Nav row -->
+            <nav class="main-nav">
+                <a href="{{ url_for('resumo') }}"
+                    class="{{ 'active' if request.endpoint == 'resumo' else '' }}">Resumo</a>
+                <a href="{{ url_for('acoes') }}"
+                    class="{{ 'active' if request.endpoint == 'acoes' else '' }}">Ações</a>
+                <a href="{{ url_for('fiis') }}"
+                    class="{{ 'active' if request.endpoint == 'fiis' else '' }}">FIIs</a>
+                <a href="{{ url_for('swingtrade') }}"
+                    class="{{ 'active' if request.endpoint == 'swingtrade' else '' }}">Swingtrade</a>
+                <a href="{{ url_for('opcoes') }}"
+                    class="{{ 'active' if request.endpoint == 'opcoes' else '' }}">Opções</a>
+                <a href="{{ url_for('balanceamento') }}"
+                    class="{{ 'active' if request.endpoint == 'balanceamento' else '' }}">Balanceamento</a>
+                <a href="{{ url_for('dividendos') }}"
+                    class="{{ 'active' if request.endpoint == 'dividendos' else '' }}">Dividendos</a>
+                <a href="{{ url_for('history') }}"
+                    class="{{ 'active' if request.endpoint == 'history' else '' }}">Histórico</a>
+                <!-- Mobile-only user section inside nav -->
+                <div class="nav-user-mobile">
+                    <span class="welcome-text">Bem vindo, <strong>{{ current_user.username }}</strong></span>
+                    <div class="nav-mobile-links">
+                        <a href="{{ url_for('profile') }}">👤 Minha Conta</a>
+                        {% if current_user.is_admin %}
+                        <a href="{{ url_for('list_users') }}">👥 Usuários</a>
+                        {% endif %}
+                        <a href="{{ url_for('config') }}">⚙️ APIs</a>
+                        <a href="#" onclick="toggleIndicators(); return false;">👁️ Alternar Barra</a>
+                        <a href="{{ url_for('logout') }}" style="color: var(--danger-color);">🚪 Sair</a>
+                    </div>
+                </div>
+            </nav>
+
+            <!-- Action buttons row -->
+            <div class="header-actions">
                 <form action="{{ url_for('update_quotes') }}" method="POST" style="margin: 0;">
-                    <button type="submit" class="btn btn-secondary" style="font-size: 0.9rem; padding: 0.4rem 0.8rem;">
-                        <span class="d-block d-md-none">🔄</span>
-                        <span class="d-none d-md-block">🔄 Atualizar Cotações</span>
+                    <button type="submit" class="btn btn-secondary">
+                        🔄 <span class="btn-label">Atualizar Cotações</span>
                     </button>
                 </form>
-                <a href="{{ url_for('add_asset') }}" class="btn btn-primary" style="padding: 0.4rem 0.8rem;">
-                    <span class="d-block d-md-none">➕</span>
-                    <span class="d-none d-md-block">+ Novo Ativo</span>
+                <a href="{{ url_for('add_asset') }}" class="btn btn-primary">
+                    + <span class="btn-label">Novo Ativo</span>
                 </a>
             </div>
         </header>

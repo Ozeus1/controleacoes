@@ -1214,11 +1214,67 @@ def add_history():
 @app.route('/history')
 @login_required
 def history():
+    from collections import defaultdict
     trades = TradeHistory.query.filter_by(user_id=current_user.id).order_by(TradeHistory.exit_date.desc()).all()
-    
+
     total_profit = sum(t.profit_value for t in trades if t.profit_value)
-    
-    return render_template('history.html', trades=trades, total_profit=total_profit)
+
+    # Unique strategies for filter
+    strategies = sorted(set((t.strategy or 'Outros') for t in trades))
+
+    # Summary by strategy
+    summary_by_type = defaultdict(lambda: {'invested': 0.0, 'profit': 0.0})
+    for t in trades:
+        key = t.strategy or 'Outros'
+        invested = (t.buy_price or 0) * (t.quantity or 0)
+        summary_by_type[key]['invested'] += invested
+        summary_by_type[key]['profit'] += (t.profit_value or 0)
+
+    summary_table = []
+    for strategy, vals in sorted(summary_by_type.items()):
+        pct = (vals['profit'] / vals['invested'] * 100) if vals['invested'] > 0 else 0
+        summary_table.append({
+            'strategy': strategy,
+            'invested': vals['invested'],
+            'profit': vals['profit'],
+            'profit_pct': pct
+        })
+
+    # Chart: profit by strategy and month (last 12 available months)
+    month_strategy = defaultdict(lambda: defaultdict(float))
+    for t in trades:
+        if t.exit_date and t.profit_value is not None:
+            month_key = t.exit_date.strftime('%Y-%m')
+            key = t.strategy or 'Outros'
+            month_strategy[month_key][key] += t.profit_value
+
+    # Get last 12 months with data
+    sorted_months = sorted(month_strategy.keys())[-12:]
+    chart_labels = []
+    for m in sorted_months:
+        parts = m.split('-')
+        chart_labels.append(f"{parts[1]}/{parts[0]}")
+
+    all_strategies = sorted(set(s for m in sorted_months for s in month_strategy[m].keys()))
+    colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#64748b', '#84cc16']
+    chart_datasets = []
+    for i, strat in enumerate(all_strategies):
+        data = [round(month_strategy[m].get(strat, 0), 2) for m in sorted_months]
+        chart_datasets.append({
+            'label': strat,
+            'data': data,
+            'backgroundColor': colors[i % len(colors)],
+            'borderRadius': 4
+        })
+
+    return render_template('history.html',
+        trades=trades,
+        total_profit=total_profit,
+        strategies=strategies,
+        summary_table=summary_table,
+        chart_labels=chart_labels,
+        chart_datasets=chart_datasets
+    )
 
 
 

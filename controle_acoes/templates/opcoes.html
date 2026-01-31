@@ -1,19 +1,17 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center;">
-    <h2>Carteira de Opções</h2>
-    <div>
-        <!-- Update Underlying Quotes Button -->
-        <form action="{{ url_for('update_options_quotes') }}" method="post" style="display: inline;">
-            <button type="submit" class="btn btn-secondary">🔄 Atualizar Ativos</button>
-        </form>
-        <a href="{{ url_for('add_option') }}" class="btn btn-primary">Adicionar Opção</a>
-    </div>
-</div>
-
 {% if options %}
 <div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Carteira de Opções</h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <form action="{{ url_for('update_options_quotes') }}" method="post" style="margin: 0;">
+                <button type="submit" class="btn btn-secondary btn-sm">🔄 Atualizar Ativos</button>
+            </form>
+            <a href="{{ url_for('add_option') }}" class="btn btn-primary btn-sm">Adicionar Opção</a>
+        </div>
+    </div>
     <table>
         <thead>
             <tr>
@@ -86,9 +84,17 @@
     </table>
 </div>
 {% else %}
-<div class="card" style="text-align: center; padding: 3rem;">
-    <h3>Sem Opções Cadastradas</h3>
-    <a href="{{ url_for('add_option') }}" class="btn btn-primary">Adicionar Opção</a>
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Carteira de Opções</h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <form action="{{ url_for('update_options_quotes') }}" method="post" style="margin: 0;">
+                <button type="submit" class="btn btn-secondary btn-sm">🔄 Atualizar Ativos</button>
+            </form>
+            <a href="{{ url_for('add_option') }}" class="btn btn-primary btn-sm">Adicionar Opção</a>
+        </div>
+    </div>
+    <p style="text-align: center; padding: 2rem; color: var(--text-secondary);">Sem Opções Cadastradas</p>
 </div>
 {% endif %}
 {% endblock %}

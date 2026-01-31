@@ -31,7 +31,7 @@
 
     .form-control,
     .form-select {
-        background-color: #334155;
+        background-color: var(--input-bg);
         /* Slate 700 */
         color: #fff;
         border-color: #475569;
@@ -39,7 +39,7 @@
 
     .form-control:focus,
     .form-select:focus {
-        background-color: #334155;
+        background-color: var(--input-bg);
         color: #fff;
         border-color: var(--accent-color);
         box-shadow: 0 0 0 0.25rem rgba(59, 130, 246, 0.25);
@@ -502,7 +502,7 @@
         <h5 class="text-white mb-2">Por Classe</h5>
         <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
             <table class="table table-dark table-bordered table-sm no-datatable table-center-forced">
-                <thead style="position: sticky; top: 0; background-color: #1e293b; z-index: 1;">
+                <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                     <tr>
                         <th>Classe</th>
                         <th>Valor</th>
@@ -544,7 +544,7 @@
         <h5 class="text-white mb-2">Por Prazo (Detalhado Renda Fixa)</h5>
         <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
             <table class="table table-dark table-bordered table-sm no-datatable table-center-forced">
-                <thead style="position: sticky; top: 0; background-color: #1e293b; z-index: 1;">
+                <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                     <tr>
                         <th>Categoria</th>
                         <th>Prazo</th>
@@ -619,7 +619,7 @@
         <h5 class="text-white mb-2">Por Tipo</h5>
         <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
             <table class="table table-dark table-bordered table-sm no-datatable table-center-forced">
-                <thead style="position: sticky; top: 0; background-color: #1e293b; z-index: 1;">
+                <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                     <tr>
                         <th>Tipo</th>
                         <th>Valor</th>
@@ -673,11 +673,11 @@
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { position: 'right', labels: { color: 'white', font: { size: 12 } } },
+                legend: { position: 'right', labels: { color: themeColors.text, font: { size: 12 } } },
 
                 // DATA LABELS CONFIGURATION
                 datalabels: {
-                    color: '#fff',
+                    color: themeColors.text,
                     font: { weight: 'bold', size: 14 },
                     formatter: function (value, ctx) {
                         var sum = 0;
@@ -838,7 +838,7 @@
     <div class="card bg-dark text-white border-secondary mb-4">
         <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
             <table class="table table-dark table-striped mb-0 table-center-forced">
-                <thead style="position: sticky; top: 0; background-color: #212529; z-index: 1;">
+                <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                     <tr>
                         <th>Localização</th>
                         <th>Valor Total</th>
@@ -896,11 +896,11 @@
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { position: 'right', labels: { color: 'white', font: { size: 12 } } },
+                legend: { position: 'right', labels: { color: themeColors.text, font: { size: 12 } } },
 
                 // DataLabels matching existing style
                 datalabels: {
-                    color: '#fff',
+                    color: themeColors.text,
                     font: { weight: 'bold', size: 14 },
                     formatter: function (value, ctx) {
                         var sum = 0;
@@ -1025,7 +1025,7 @@
             <div class="col-md-8">
                 <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                     <table class="table table-dark table-sm table-striped no-datatable mb-0 table-center-forced">
-                        <thead style="position: sticky; top: 0; background-color: #212529; z-index: 1;">
+                        <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                             <tr>
                                 <th>Categoria</th>
                                 <th>Percentual</th>
@@ -1068,7 +1068,7 @@
                 <div class="col-md-8">
                     <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                         <table class="table table-dark table-sm table-striped no-datatable mb-0 table-center-forced">
-                            <thead style="position: sticky; top: 0; background-color: #212529; z-index: 1;">
+                            <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                                 <tr>
                                     <th>Categoria</th>
                                     <th>Percentual</th>
@@ -1137,9 +1137,9 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { position: 'bottom', labels: { color: 'white' } },
+                    legend: { position: 'bottom', labels: { color: themeColors.text } },
                     datalabels: {
-                        color: '#fff',
+                        color: themeColors.text,
                         font: { weight: 'bold', size: 14 },
                         formatter: (value, ctx) => {
                             let sum = 0;
@@ -1180,10 +1180,10 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { position: 'bottom', labels: { color: 'white' } },
-                    title: { display: true, text: 'Balanceamento Explodido', color: 'white', font: { size: 16 } },
+                    legend: { position: 'bottom', labels: { color: themeColors.text } },
+                    title: { display: true, text: 'Balanceamento Explodido', color: themeColors.text, font: { size: 16 } },
                     datalabels: {
-                        color: '#fff',
+                        color: themeColors.text,
                         font: { weight: 'bold' },
                         formatter: (value, ctx) => {
                             let sum = 0;
@@ -1222,10 +1222,10 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { position: 'bottom', labels: { color: 'white' } },
-                    title: { display: true, text: 'Balanceamento Geral', color: 'white', font: { size: 16 } },
+                    legend: { position: 'bottom', labels: { color: themeColors.text } },
+                    title: { display: true, text: 'Balanceamento Geral', color: themeColors.text, font: { size: 16 } },
                     datalabels: {
-                        color: '#fff',
+                        color: themeColors.text,
                         font: { weight: 'bold' },
                         formatter: (value, ctx) => {
                             let sum = 0;

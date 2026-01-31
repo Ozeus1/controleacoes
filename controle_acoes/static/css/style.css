@@ -154,6 +154,60 @@ h2 {
     cursor: pointer;
 }
 
+/* Theme-aware overrides for Bootstrap dark classes */
+.table-dark,
+.table-dark thead th,
+.table-dark tbody td {
+    background-color: var(--card-bg) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-color) !important;
+}
+
+.table-dark.table-striped tbody tr:nth-of-type(odd) {
+    background-color: var(--hover-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+.table-dark.table-striped tbody tr:nth-of-type(odd) td {
+    background-color: transparent !important;
+}
+
+.table-dark.table-hover tbody tr:hover {
+    background-color: var(--hover-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+.bg-dark {
+    background-color: var(--card-bg) !important;
+}
+
+.text-white {
+    color: var(--text-primary) !important;
+}
+
+.bg-primary .text-white,
+.bg-primary.text-white,
+tr.bg-primary.text-white td,
+.card-header.bg-primary.text-white {
+    color: #ffffff !important;
+}
+
+.bg-secondary {
+    background-color: var(--input-bg) !important;
+    color: var(--input-color) !important;
+}
+
+.modal-content.bg-dark {
+    background-color: var(--card-bg) !important;
+    color: var(--text-primary) !important;
+}
+
+.form-control {
+    background-color: var(--input-bg) !important;
+    color: var(--input-color) !important;
+    border-color: var(--border-color) !important;
+}
+
 .btn-primary {
     background-color: var(--accent-color);
     color: white;

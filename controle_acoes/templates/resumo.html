@@ -167,9 +167,9 @@
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { position: 'right', labels: { color: 'white', font: { size: 12 } } },
+                legend: { position: 'right', labels: { color: themeColors.text, font: { size: 12 } } },
                 datalabels: {
-                    color: '#fff',
+                    color: themeColors.text,
                     font: { weight: 'bold', size: 14 },
                     formatter: function (value, ctx) {
                         var sum = 0;
@@ -277,7 +277,7 @@
         },
         options: {
             responsive: true,
-            scales: { y: { beginAtZero: true, ticks: { color: 'white' } }, x: { ticks: { color: 'white' } } },
+            scales: { y: { beginAtZero: true, ticks: { color: themeColors.text } }, x: { ticks: { color: themeColors.text } } },
             plugins: {
                 legend: { display: false },
                 datalabels: { display: false }, // Disable datalabels for this bar chart

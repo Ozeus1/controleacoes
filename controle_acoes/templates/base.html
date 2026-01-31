@@ -217,6 +217,19 @@
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script>
+        // Theme-aware chart colors helper
+        function getThemeColors() {
+            var s = getComputedStyle(document.documentElement);
+            return {
+                text: s.getPropertyValue('--text-primary').trim(),
+                textSecondary: s.getPropertyValue('--text-secondary').trim(),
+                border: s.getPropertyValue('--border-color').trim(),
+                grid: s.getPropertyValue('--hover-bg').trim()
+            };
+        }
+        var themeColors = getThemeColors();
+    </script>
+    <script>
         function toggleMenu() {
             var nav = document.querySelector('.main-nav');
             if (nav.style.display === 'flex') {

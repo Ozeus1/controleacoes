@@ -41,7 +41,7 @@
 
         {% if test_result %}
         <div
-            style="background-color: #0f172a; padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--border-color);">
+            style="background-color: var(--bg-color); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--border-color);">
             <div style="margin-bottom: 0.5rem;">
                 Status:
                 {% if success %}
@@ -51,7 +51,7 @@
                 {% endif %}
             </div>
             <pre
-                style="color: #94a3b8; font-family: monospace; white-space: pre-wrap; word-break: break-all;">{{ test_result }}</pre>
+                style="color: var(--text-secondary); font-family: monospace; white-space: pre-wrap; word-break: break-all;">{{ test_result }}</pre>
         </div>
         {% endif %}
     </div>

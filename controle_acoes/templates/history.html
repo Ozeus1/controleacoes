@@ -5,7 +5,7 @@
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
         <h3>Histórico de Trades</h3>
         <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-            <select id="strategyFilter" onchange="filterByStrategy()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 0.5rem; background-color: #0f172a; border: 1px solid var(--border-color); color: white;">
+            <select id="strategyFilter" onchange="filterByStrategy()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 0.5rem; background-color: var(--input-bg); border: 1px solid var(--border-color); color: var(--input-color);">
                 <option value="">Todas Estratégias</option>
                 {% for s in strategies %}
                 <option value="{{ s }}">{{ s }}</option>
@@ -153,18 +153,18 @@ new Chart(ctx, {
         maintainAspectRatio: false,
         plugins: {
             legend: {
-                labels: { color: '#f8fafc' }
+                labels: { color: themeColors.text }
             }
         },
         scales: {
             x: {
                 stacked: false,
-                ticks: { color: '#94a3b8' },
+                ticks: { color: themeColors.textSecondary },
                 grid: { color: 'rgba(255,255,255,0.05)' }
             },
             y: {
                 ticks: {
-                    color: '#94a3b8',
+                    color: themeColors.textSecondary,
                     callback: function(value) {
                         return 'R$ ' + value.toLocaleString('pt-BR');
                     }

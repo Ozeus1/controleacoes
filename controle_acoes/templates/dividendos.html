@@ -155,7 +155,7 @@
             </div>
             <div class="card-body p-0 table-responsive" style="max-height: 500px; overflow-y: auto;">
                 <table class="table table-dark table-striped mb-0 text-center" id="dividendsTable">
-                    <thead style="position: sticky; top: 0; background-color: #343a40; z-index: 1;">
+                    <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                         <tr>
                             <th>Data Pagamento</th>
                             <th>Data Com (Ex)</th>
@@ -205,7 +205,7 @@
             plugins: {
                 legend: {
                     position: 'bottom',
-                    labels: { color: 'white' }
+                    labels: { color: themeColors.text }
                 }
             }
         }
@@ -245,11 +245,11 @@
                 y: {
                     beginAtZero: true,
                     grid: { color: 'rgba(255, 255, 255, 0.1)' },
-                    ticks: { color: 'white', callback: function (value) { return 'R$ ' + value; } }
+                    ticks: { color: themeColors.text, callback: function (value) { return 'R$ ' + value; } }
                 },
                 x: {
                     grid: { display: false },
-                    ticks: { color: 'white' }
+                    ticks: { color: themeColors.text }
                 }
             },
             plugins: {

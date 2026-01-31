@@ -36,9 +36,9 @@
 
         input,
         select {
-            background-color: #334155 !important;
-            color: white !important;
-            border: 1px solid #475569 !important;
+            background-color: var(--input-bg) !important;
+            color: var(--input-color) !important;
+            border: 1px solid var(--border-color) !important;
             padding: 0.5rem;
             border-radius: 4px;
             width: 100%;
@@ -101,7 +101,7 @@
                 <div class="mb-3">
                     <label for="exchange_rate" style="color: #f59e0b;">Cotação do Dólar (R$) para Conversão</label>
                     <input type="text" id="exchange_rate" name="exchange_rate" required placeholder="Ex: 5,65">
-                    <small style="color: #94a3b8;">Valor usado para converter o lucro em Reais no histórico.</small>
+                    <small style="color: var(--text-secondary);">Valor usado para converter o lucro em Reais no histórico.</small>
                 </div>
 
                 <div class="mb-3">

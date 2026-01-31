@@ -67,7 +67,7 @@
         </tbody>
         <tfoot>
             <tr class="total-row"
-                style="font-weight: bold; background-color: rgba(255,255,255,0.05); color: var(--text-color);">
+                style="font-weight: bold; background-color: var(--total-row-bg); color: var(--text-primary);">
                 <td>TOTAL</td>
                 <td></td> <!-- Qtd -->
                 <td>{{ assets|sum(attribute='current_total') | brl }}</td>
@@ -169,7 +169,7 @@
         </tbody>
         <tfoot>
             <tr class="total-row"
-                style="font-weight: bold; background-color: rgba(255,255,255,0.05); color: var(--text-color);">
+                style="font-weight: bold; background-color: var(--total-row-bg); color: var(--text-primary);">
                 <td>TOTAL ETFs</td>
                 <td></td> <!-- Qtd -->
                 <td>{{ total_etfs_current | brl }}</td>
@@ -265,7 +265,7 @@
                 {% endfor %}
             </tbody>
             <tfoot>
-                <tr style="font-weight: bold; background-color: rgba(255,255,255,0.05); color: var(--text-color);">
+                <tr style="font-weight: bold; background-color: var(--total-row-bg); color: var(--text-primary);">
                     <td>TOTAIS</td>
                     <td></td>
                     <td class="">$ {{ intl_rv_invested | brl_fmt }}</td>
@@ -363,7 +363,7 @@
                 {% endfor %}
             </tbody>
             <tfoot>
-                <tr style="font-weight: bold; background-color: rgba(255,255,255,0.05); color: var(--text-color);">
+                <tr style="font-weight: bold; background-color: var(--total-row-bg); color: var(--text-primary);">
                     <td>TOTAIS</td>
                     <td class=""></td>
                     <td></td>

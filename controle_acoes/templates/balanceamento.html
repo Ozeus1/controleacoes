@@ -133,7 +133,7 @@
                     </tbody>
                     </tbody>
                     <tfoot>
-                        <tr class="font-weight-bold" style="background-color: rgba(255,255,255,0.05);">
+                        <tr class="font-weight-bold" style="background-color: var(--total-row-bg);">
                             <td colspan="3" class="text-right">TOTAL</td>
                             <td>R$ {{ types_total['Renda Fixa Pós'] | brl_fmt }}</td>
                             <td colspan="3">-</td>
@@ -188,7 +188,7 @@
                     </tbody>
                     </tbody>
                     <tfoot>
-                        <tr class="font-weight-bold" style="background-color: rgba(255,255,255,0.05);">
+                        <tr class="font-weight-bold" style="background-color: var(--total-row-bg);">
                             <td colspan="3" class="text-right">TOTAL</td>
                             <td>R$ {{ types_total['Renda Fixa Pré'] | brl_fmt }}</td>
                             <td colspan="3">-</td>
@@ -243,7 +243,7 @@
                     </tbody>
                     </tbody>
                     <tfoot>
-                        <tr class="font-weight-bold" style="background-color: rgba(255,255,255,0.05);">
+                        <tr class="font-weight-bold" style="background-color: var(--total-row-bg);">
                             <td colspan="3" class="text-right">TOTAL</td>
                             <td>R$ {{ types_total['Renda Fixa IPCA'] | brl_fmt }}</td>
                             <td colspan="3">-</td>
@@ -298,7 +298,7 @@
                         {% endfor %}
                     </tbody>
                     <tfoot>
-                        <tr class="font-weight-bold" style="background-color: rgba(255,255,255,0.05);">
+                        <tr class="font-weight-bold" style="background-color: var(--total-row-bg);">
                             <td colspan="2" class="text-right">TOTAL</td>
                             <td>R$ {{ types_total['Fundos'] | brl_fmt }}</td>
                             <td colspan="3">-</td>
@@ -367,7 +367,7 @@
                         {% endfor %}
                     </tbody>
                     <tfoot>
-                        <tr class="font-weight-bold" style="background-color: rgba(255,255,255,0.05);">
+                        <tr class="font-weight-bold" style="background-color: var(--total-row-bg);">
                             <td colspan="4" class="text-right">TOTAIS</td>
                             <td>R$ {{ crypto_invested | brl_fmt }}</td>
                             <td>-</td>
@@ -425,7 +425,7 @@
                     </tbody>
                     </tbody>
                     <tfoot>
-                        <tr class="font-weight-bold" style="background-color: rgba(255,255,255,0.05);">
+                        <tr class="font-weight-bold" style="background-color: var(--total-row-bg);">
                             <td colspan="3" class="text-right">TOTAL</td>
                             <td>R$ {{ types_total['Previdência'] | brl_fmt }}</td>
                             <td>-</td>
@@ -870,7 +870,7 @@
                     </tr>
                 </tbody>
                 <tfoot>
-                    <tr class="font-weight-bold" style="background-color: rgba(255,255,255,0.05);">
+                    <tr class="font-weight-bold" style="background-color: var(--total-row-bg);">
                         <td>TOTAL</td>
                         <td>R$ {{ total_portfolio | brl_fmt }}</td>
                         <td>100.0%</td>

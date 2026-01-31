@@ -101,7 +101,7 @@
             {% endfor %}
         </tbody>
         <tfoot>
-            <tr class="total-row" style="font-weight: bold; background-color: rgba(255,255,255,0.05);">
+            <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
                 <td>TOTAL</td>
                 <td>R$ {{ "%.2f"|format(ns.total_invested)|replace('.', ',') }}</td>
                 <td class="{{ 'positive' if ns.total_profit >= 0 else 'negative' }}">
@@ -160,7 +160,7 @@ new Chart(ctx, {
             x: {
                 stacked: false,
                 ticks: { color: themeColors.textSecondary },
-                grid: { color: 'rgba(255,255,255,0.05)' }
+                grid: { color: 'var(--total-row-bg)' }
             },
             y: {
                 ticks: {
@@ -169,7 +169,7 @@ new Chart(ctx, {
                         return 'R$ ' + value.toLocaleString('pt-BR');
                     }
                 },
-                grid: { color: 'rgba(255,255,255,0.05)' }
+                grid: { color: 'var(--total-row-bg)' }
             }
         }
     }

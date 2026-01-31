@@ -19,6 +19,7 @@
     --indicator-price-color: #ffffff;
     --shadow-color: rgba(0, 0, 0, 0.1);
     --indicators-border: rgba(255, 255, 255, 0.1);
+    --total-row-bg: rgba(255, 255, 255, 0.05);
 }
 
 /* Light Theme */
@@ -42,6 +43,7 @@
     --indicator-price-color: #0f172a;
     --shadow-color: rgba(0, 0, 0, 0.08);
     --indicators-border: rgba(0, 0, 0, 0.1);
+    --total-row-bg: rgba(0, 0, 0, 0.06);
 }
 
 * {
@@ -155,24 +157,59 @@ h2 {
 }
 
 /* Theme-aware overrides for Bootstrap dark classes */
-.table-dark,
-.table-dark thead th,
-.table-dark tbody td {
+.table-dark {
+    --bs-table-bg: var(--card-bg) !important;
+    --bs-table-color: var(--text-primary) !important;
+    --bs-table-border-color: var(--border-color) !important;
+    --bs-table-striped-bg: var(--hover-bg) !important;
+    --bs-table-striped-color: var(--text-primary) !important;
+    --bs-table-hover-bg: var(--hover-bg) !important;
+    --bs-table-hover-color: var(--text-primary) !important;
     background-color: var(--card-bg) !important;
     color: var(--text-primary) !important;
     border-color: var(--border-color) !important;
 }
 
-.table-dark.table-striped tbody tr:nth-of-type(odd) {
+.table-dark thead th,
+.table-dark tbody td,
+.table-dark tfoot td {
+    background-color: var(--card-bg) !important;
+    color: var(--text-primary) !important;
+    border-color: var(--border-color) !important;
+}
+
+.table-dark.table-striped > tbody > tr:nth-of-type(odd) > * {
     background-color: var(--hover-bg) !important;
     color: var(--text-primary) !important;
+    --bs-table-bg-type: var(--hover-bg) !important;
 }
 
-.table-dark.table-striped tbody tr:nth-of-type(odd) td {
-    background-color: transparent !important;
+.table-dark.table-striped > tbody > tr:nth-of-type(even) > * {
+    background-color: var(--card-bg) !important;
+    color: var(--text-primary) !important;
+    --bs-table-bg-type: var(--card-bg) !important;
 }
 
-.table-dark.table-hover tbody tr:hover {
+.table-dark.table-bordered {
+    border-color: var(--border-color) !important;
+}
+
+.table-dark.table-bordered td,
+.table-dark.table-bordered th {
+    border-color: var(--border-color) !important;
+}
+
+.table-dark.table-hover tbody tr:hover > * {
+    background-color: var(--hover-bg) !important;
+    color: var(--text-primary) !important;
+    --bs-table-bg-state: var(--hover-bg) !important;
+}
+
+.table-dark tfoot tr {
+    background-color: var(--hover-bg) !important;
+}
+
+.table-dark tfoot tr td {
     background-color: var(--hover-bg) !important;
     color: var(--text-primary) !important;
 }

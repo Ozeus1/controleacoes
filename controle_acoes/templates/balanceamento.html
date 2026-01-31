@@ -532,9 +532,13 @@
             </table>
         </div>
         <!-- Class Chart -->
-        <div class="d-flex justify-content-center mt-3">
-            <div style="max-width: 500px; width: 100%;">
-                <canvas id="classChart"></canvas>
+        <div class="row justify-content-center mt-3">
+            <div class="col-12 col-md-8 text-center">
+                <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
+                    <div style="max-width: 500px; width: 100%;">
+                        <canvas id="classChart"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -589,25 +593,29 @@
 
         <!-- NEW RF CHARTS ROW -->
         <h5 class="text-white mt-4 mb-2">Gráficos Renda Fixa</h5>
-        <div class="row mb-3">
-            <div class="col-md-6 d-flex flex-column align-items-center">
-                <h6 class="text-white">Por Prazo</h6>
-                <div style="max-width: 400px; width: 100%;">
-                    <canvas id="rfTermChart"></canvas>
+        <div class="row justify-content-center mb-3">
+            <div class="col-12 col-md-8 text-center mb-4">
+                <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
+                    <h6 style="font-size: 1.2rem; margin-bottom: 1rem;">Por Prazo</h6>
+                    <div style="max-width: 500px; width: 100%;">
+                        <canvas id="rfTermChart"></canvas>
+                    </div>
                 </div>
             </div>
-            <div class="col-md-6 d-flex flex-column align-items-center">
-                <h6 class="text-white">Por Tipo (Categoria)</h6>
-                <div style="max-width: 400px; width: 100%;">
-                    <canvas id="rfTypeChart"></canvas>
+            <div class="col-12 col-md-8 text-center mb-4">
+                <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
+                    <h6 style="font-size: 1.2rem; margin-bottom: 1rem;">Por Tipo (Categoria)</h6>
+                    <div style="max-width: 500px; width: 100%;">
+                        <canvas id="rfTypeChart"></canvas>
+                    </div>
                 </div>
             </div>
-
-            <!-- RF Subtype Chart (New) -->
-            <div class="col-md-6 col-lg-3 text-center mb-4">
-                <h6 class="text-white">Por Subtipo (Detalhado)</h6>
-                <div style="max-width: 400px; width: 100%;">
-                    <canvas id="rfSubtypeChart"></canvas>
+            <div class="col-12 col-md-8 text-center mb-4">
+                <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
+                    <h6 style="font-size: 1.2rem; margin-bottom: 1rem;">Por Subtipo (Detalhado)</h6>
+                    <div style="max-width: 500px; width: 100%;">
+                        <canvas id="rfSubtypeChart"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
@@ -653,9 +661,13 @@
             </table>
         </div>
         <!-- Type Chart (Below Table) -->
-        <div class="d-flex justify-content-center mt-3">
-            <div style="max-width: 500px; width: 100%;">
-                <canvas id="typeChart"></canvas>
+        <div class="row justify-content-center mt-3">
+            <div class="col-12 col-md-8 text-center">
+                <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
+                    <div style="max-width: 500px; width: 100%;">
+                        <canvas id="typeChart"></canvas>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -705,7 +717,7 @@
                     data: [{{ summary['Renda Fixa'] }}, {{ summary['Renda Variável'] }}],
             backgroundColor: ['#3b82f6', '#10b981'],
             borderWidth: 1,
-            borderColor: '#1e293b'
+            borderColor: themeColors.border
         }]
             },
         options: commonOptions
@@ -736,7 +748,7 @@
                 data: classData,
                 backgroundColor: classColors,
                 borderWidth: 1,
-                borderColor: '#1e293b'
+                borderColor: themeColors.border
             }]
         },
         options: commonOptions
@@ -761,7 +773,7 @@
                 data: rfTermData,
                 backgroundColor: ['#ef4444', '#f59e0b', '#10b981', '#6366f1'], // Red, Orange, Green, Indigo for terms
                 borderWidth: 1,
-                borderColor: '#1e293b'
+                borderColor: themeColors.border
             }]
         },
         options: commonOptions
@@ -786,7 +798,7 @@
                 data: rfTypeData,
                 backgroundColor: ['#3b82f6', '#f43f5e', '#8b5cf6', '#06b6d4'], // Different palette
                 borderWidth: 1,
-                borderColor: '#1e293b'
+                borderColor: themeColors.border
             }]
         },
         options: commonOptions
@@ -819,7 +831,7 @@
                     '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#14b8a6'
                 ],
                 borderWidth: 1,
-                borderColor: '#1e293b'
+                borderColor: themeColors.border
             }]
         },
         options: commonOptions
@@ -881,9 +893,13 @@
     </div>
 
     <!-- Chart -->
-    <div class="d-flex justify-content-center mt-3">
-        <div style="max-width: 500px; width: 100%;">
-            <canvas id="chartLocation"></canvas>
+    <div class="row justify-content-center mt-3">
+        <div class="col-12 col-md-8 text-center">
+            <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
+                <div style="max-width: 500px; width: 100%;">
+                    <canvas id="chartLocation"></canvas>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -941,7 +957,7 @@
                     data: [{{ location_chart['Brasil'] }}, {{ location_chart['Internacional'] }}],
             backgroundColor: ['#28a745', '#3b82f6'], // Green (BR), Blue (Intl) - Using compatible hex
             borderWidth: 1,
-            borderColor: '#1e293b'
+            borderColor: themeColors.border
         }]
             },
         options: locOptions
@@ -1006,11 +1022,13 @@
         </div>
 
         <!-- NEW: HIERARCHY CHART CENTERED BELOW -->
-        <h5 class="text-white mt-4 text-center">Gráfico por Grandes Grupos</h5>
-        <div class="row justify-content-center">
-            <div class="col-md-8 d-flex justify-content-center">
-                <div style="max-width: 500px; width: 100%;">
-                    <canvas id="chartHierarchy"></canvas>
+        <div class="row justify-content-center mt-4">
+            <div class="col-12 col-md-8 text-center">
+                <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
+                    <h5 style="font-size: 1.2rem; margin-bottom: 1rem;">Gráfico por Grandes Grupos</h5>
+                    <div style="max-width: 500px; width: 100%;">
+                        <canvas id="chartHierarchy"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1050,10 +1068,12 @@
             </div>
 
             <!-- Chart Centered Below -->
-            <div class="row mt-4">
-                <div class="col-12 d-flex justify-content-center">
-                    <div style="max-width: 600px; width: 100%;">
-                        <canvas id="chartExploded"></canvas>
+            <div class="row justify-content-center mt-4">
+                <div class="col-12 col-md-8 text-center">
+                    <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
+                        <div style="max-width: 500px; width: 100%;">
+                            <canvas id="chartExploded"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1098,10 +1118,12 @@
             </div>
 
             <!-- Chart Centered Below -->
-            <div class="row mt-4">
-                <div class="col-12 d-flex justify-content-center">
-                    <div style="max-width: 600px; width: 100%;">
-                        <canvas id="chartGeneral"></canvas>
+            <div class="row justify-content-center mt-4">
+                <div class="col-12 col-md-8 text-center">
+                    <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
+                        <div style="max-width: 500px; width: 100%;">
+                            <canvas id="chartGeneral"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1111,6 +1133,27 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
+            const commonOpt2 = {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right', labels: { color: themeColors.text, font: { size: 12 } } },
+                    datalabels: {
+                        color: themeColors.text,
+                        font: { weight: 'bold', size: 14 },
+                        formatter: function (value, ctx) {
+                            var sum = 0;
+                            var dataArr = ctx.chart.data.datasets[0].data;
+                            dataArr.map(function (data) { sum += data; });
+                            return (value * 100 / sum).toFixed(1) + "%";
+                        },
+                        anchor: 'center',
+                        align: 'center'
+                    }
+                },
+                layout: { padding: 20 }
+            };
+
             // --- HIERARCHY GROUP CHART (NEW) ---
             const ctxHier = document.getElementById('chartHierarchy').getContext('2d');
             const hierLabels = [];
@@ -1128,28 +1171,12 @@
                 labels: hierLabels,
                 datasets: [{
                     data: hierData,
-                    backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'], // Blue (RF), Green (RV BR), Purple (Intl)
+                    backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'],
                     borderWidth: 1,
-                    borderColor: '#1e293b'
+                    borderColor: themeColors.border
                 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom', labels: { color: themeColors.text } },
-                    datalabels: {
-                        color: themeColors.text,
-                        font: { weight: 'bold', size: 14 },
-                        formatter: (value, ctx) => {
-                            let sum = 0;
-                            let dataArr = ctx.chart.data.datasets[0].data;
-                            dataArr.map(data => { sum += data; });
-                            return (value * 100 / sum).toFixed(1) + "%";
-                        }
-                    }
-                }
-            }
+            options: commonOpt2
         });
 
         // --- EXPLODED CHART ---
@@ -1163,7 +1190,7 @@
         {% endfor %}
 
         new Chart(ctxExp, {
-            type: 'doughnut', // Exploded usually Donut or Pie
+            type: 'pie',
             data: {
                 labels: expLabels,
                 datasets: [{
@@ -1173,27 +1200,10 @@
                         '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
                     ],
                     borderWidth: 1,
-                    borderColor: '#1e293b'
+                    borderColor: themeColors.border
                 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom', labels: { color: themeColors.text } },
-                    title: { display: true, text: 'Balanceamento Explodido', color: themeColors.text, font: { size: 16 } },
-                    datalabels: {
-                        color: themeColors.text,
-                        font: { weight: 'bold' },
-                        formatter: (value, ctx) => {
-                            let sum = 0;
-                            let dataArr = ctx.chart.data.datasets[0].data;
-                            dataArr.map(data => { sum += data; });
-                            return (value * 100 / sum).toFixed(1) + "%";
-                        }
-                    }
-                }
-            }
+            options: commonOpt2
         });
 
         // --- GENERAL CHART ---
@@ -1206,36 +1216,19 @@
         {% endfor %}
 
         new Chart(ctxGen, {
-            type: 'doughnut',
+            type: 'pie',
             data: {
                 labels: genLabels,
                 datasets: [{
                     data: genData,
                     backgroundColor: [
                         '#0d47a1', '#e65100', '#1b5e20', '#00acc1', '#8e24aa'
-                    ], // Deep Colors: Blue, Orange, Green, Cyan, Purple
+                    ],
                     borderWidth: 1,
-                    borderColor: '#1e293b'
+                    borderColor: themeColors.border
                 }]
             },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom', labels: { color: themeColors.text } },
-                    title: { display: true, text: 'Balanceamento Geral', color: themeColors.text, font: { size: 16 } },
-                    datalabels: {
-                        color: themeColors.text,
-                        font: { weight: 'bold' },
-                        formatter: (value, ctx) => {
-                            let sum = 0;
-                            let dataArr = ctx.chart.data.datasets[0].data;
-                            dataArr.map(data => { sum += data; });
-                            return (value * 100 / sum).toFixed(1) + "%";
-                        }
-                    }
-                }
-            }
+            options: commonOpt2
         });
     });
     </script>

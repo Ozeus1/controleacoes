@@ -68,17 +68,6 @@ header {
     white-space: nowrap;
 }
 
-.header-actions {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-}
-
-.header-actions .btn {
-    font-size: 0.9rem;
-    padding: 0.4rem 0.8rem;
-}
-
 .main-nav {
     display: flex;
     gap: 1.5rem;
@@ -360,15 +349,6 @@ label {
 
     .header-user {
         display: none !important;
-    }
-
-    .header-actions {
-        width: 100%;
-    }
-
-    .header-actions .btn {
-        flex: 1;
-        text-align: center;
     }
 
     .btn-label {

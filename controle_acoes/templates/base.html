@@ -126,6 +126,11 @@
                 </div>
                 <div class="header-user">
                     <span class="welcome-text">Bem vindo, <strong>{{ current_user.username }}</strong></span>
+                    <form action="{{ url_for('update_quotes') }}" method="POST" style="margin: 0;">
+                        <button type="submit" class="btn btn-secondary btn-sm">
+                            🔄 <span class="btn-label">Atualizar Cotações</span>
+                        </button>
+                    </form>
                     <div class="dropdown">
                         <a href="#"
                             class="dropdown-toggle {{ 'active' if request.endpoint in ['profile', 'list_users', 'config'] else '' }}">
@@ -167,6 +172,11 @@
                 <!-- Mobile-only user section inside nav -->
                 <div class="nav-user-mobile">
                     <span class="welcome-text">Bem vindo, <strong>{{ current_user.username }}</strong></span>
+                    <form action="{{ url_for('update_quotes') }}" method="POST" style="margin: 0.5rem 0;">
+                        <button type="submit" class="btn btn-secondary btn-sm" style="width: 100%;">
+                            🔄 Atualizar Cotações
+                        </button>
+                    </form>
                     <div class="nav-mobile-links">
                         <a href="{{ url_for('profile') }}">👤 Minha Conta</a>
                         {% if current_user.is_admin %}
@@ -179,17 +189,6 @@
                 </div>
             </nav>
 
-            <!-- Action buttons row -->
-            <div class="header-actions">
-                <form action="{{ url_for('update_quotes') }}" method="POST" style="margin: 0;">
-                    <button type="submit" class="btn btn-secondary">
-                        🔄 <span class="btn-label">Atualizar Cotações</span>
-                    </button>
-                </form>
-                <a href="{{ url_for('add_asset') }}" class="btn btn-primary">
-                    + <span class="btn-label">Novo Ativo</span>
-                </a>
-            </div>
         </header>
 
         {% with messages = get_flashed_messages() %}

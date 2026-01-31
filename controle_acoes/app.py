@@ -104,6 +104,8 @@ def opcoes():
         lastro = underlying_price - exercise_price
         lucro_ex_pct = ((exercise_price - avg_price) / avg_price * 100) if avg_price > 0 else 0
         lucro_at_pct = ((underlying_price - avg_price) / avg_price * 100) if avg_price > 0 else 0
+        lucro_ex_rs = (exercise_price - avg_price) * opt.quantity
+        lucro_at_rs = (underlying_price - avg_price) * opt.quantity
 
         processed_options.append({
             'option': opt,
@@ -115,7 +117,9 @@ def opcoes():
             'exercise_price': exercise_price,
             'lastro': lastro,
             'lucro_ex_pct': lucro_ex_pct,
-            'lucro_at_pct': lucro_at_pct
+            'lucro_at_pct': lucro_at_pct,
+            'lucro_ex_rs': lucro_ex_rs,
+            'lucro_at_rs': lucro_at_rs
         })
         
     return render_template('opcoes.html', options=processed_options)

@@ -29,7 +29,9 @@
                 <th>Cotação Opção</th>
                 <th>Lucro R$</th>
                 <th>Lucro %</th>
+                <th>Lucro Ação Ex.R$</th>
                 <th>Lucro Ação Ex.%</th>
+                <th>Lucro Ação At.R$</th>
                 <th>Lucro Ação At.%</th>
                 <th>Ações</th>
             </tr>
@@ -57,8 +59,14 @@
                 <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
                 </td>
+                <td class="{{ 'positive' if item.lucro_ex_rs >= 0 else 'negative' }}">
+                    R$ {{ "%.2f"|format(item.lucro_ex_rs)|replace('.', ',') }}
+                </td>
                 <td class="{{ 'positive' if item.lucro_ex_pct >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.lucro_ex_pct)|replace('.', ',') }}%
+                </td>
+                <td class="{{ 'positive' if item.lucro_at_rs >= 0 else 'negative' }}">
+                    R$ {{ "%.2f"|format(item.lucro_at_rs)|replace('.', ',') }}
                 </td>
                 <td class="{{ 'positive' if item.lucro_at_pct >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.lucro_at_pct)|replace('.', ',') }}%
@@ -91,6 +99,8 @@
                 <td class="{{ 'positive' if options|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ options|sum(attribute='profit') | brl }}
                 </td>
+                <td></td>
+                <td></td>
                 <td></td>
                 <td></td>
                 <td></td>

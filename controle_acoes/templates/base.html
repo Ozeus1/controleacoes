@@ -313,6 +313,33 @@
             document.documentElement.setAttribute('data-theme', next);
             document.documentElement.setAttribute('data-bs-theme', next);
             localStorage.setItem('theme', next);
+            // Update themeColors and redraw all Chart.js instances
+            themeColors = getThemeColors();
+            if (typeof Chart !== 'undefined') {
+                Object.values(Chart.instances).forEach(function (chart) {
+                    var opts = chart.options;
+                    if (opts.plugins && opts.plugins.legend && opts.plugins.legend.labels) {
+                        opts.plugins.legend.labels.color = themeColors.text;
+                    }
+                    if (opts.plugins && opts.plugins.datalabels) {
+                        opts.plugins.datalabels.color = themeColors.text;
+                    }
+                    if (opts.plugins && opts.plugins.title) {
+                        opts.plugins.title.color = themeColors.text;
+                    }
+                    if (opts.scales) {
+                        Object.values(opts.scales).forEach(function (scale) {
+                            if (scale.ticks) scale.ticks.color = themeColors.text;
+                        });
+                    }
+                    chart.data.datasets.forEach(function (ds) {
+                        if (ds.borderColor) {
+                            ds.borderColor = themeColors.border;
+                        }
+                    });
+                    chart.update();
+                });
+            }
         }
 
     </script>

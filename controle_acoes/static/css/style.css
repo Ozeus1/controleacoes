@@ -225,7 +225,13 @@ h2 {
 .bg-primary .text-white,
 .bg-primary.text-white,
 tr.bg-primary.text-white td,
-.card-header.bg-primary.text-white {
+.card-header.bg-primary.text-white,
+.card-header.bg-danger.text-white,
+.card-header.bg-info.text-white,
+.card-header.bg-success.text-white,
+.bg-danger .text-white,
+.bg-info .text-white,
+.bg-success .text-white {
     color: #ffffff !important;
 }
 

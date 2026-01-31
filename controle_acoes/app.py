@@ -81,26 +81,41 @@ def opcoes():
     underlyings = list(set([o.underlying_asset for o in options]))
     quotes = get_quotes(underlyings, user_id=current_user.id) if underlyings else {}
     
+    # Get avg_price of underlying assets from user's portfolio
+    underlying_avg_prices = {}
+    if underlyings:
+        assets = Asset.query.filter(Asset.user_id == current_user.id, Asset.ticker.in_(underlyings)).all()
+        for a in assets:
+            underlying_avg_prices[a.ticker] = a.avg_price
+
     for opt in options:
         underlying_price = 0.0
         if opt.underlying_asset in quotes:
             underlying_price = quotes[opt.underlying_asset].get('price', 0.0)
-            
+
         total_sold = opt.quantity * opt.sale_price
-        
-        # Profit for SHORT position: (Sale Price - Current Price) * Qty
-        # If Current Price is 0 (not updated), assume profit is full sale price? No, assume 0 cost effectively?
-        # Let's use the manual current_option_price.
+
         current_val = opt.quantity * opt.current_option_price
         profit = total_sold - current_val
         profit_pct = (profit / total_sold * 100) if total_sold > 0 else 0
-        
+
+        avg_price = underlying_avg_prices.get(opt.underlying_asset, 0.0)
+        exercise_price = opt.strike_price + opt.sale_price
+        lastro = underlying_price - exercise_price
+        lucro_ex_pct = ((exercise_price - avg_price) / avg_price * 100) if avg_price > 0 else 0
+        lucro_at_pct = ((underlying_price - avg_price) / avg_price * 100) if avg_price > 0 else 0
+
         processed_options.append({
             'option': opt,
             'underlying_price': underlying_price,
             'total_sold': total_sold,
             'profit': profit,
-            'profit_pct': profit_pct
+            'profit_pct': profit_pct,
+            'avg_price': avg_price,
+            'exercise_price': exercise_price,
+            'lastro': lastro,
+            'lucro_ex_pct': lucro_ex_pct,
+            'lucro_at_pct': lucro_at_pct
         })
         
     return render_template('opcoes.html', options=processed_options)

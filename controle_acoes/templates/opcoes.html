@@ -19,13 +19,18 @@
                 <th>Qtd</th>
                 <th>Ativo</th>
                 <th>Cotação Ativo</th>
+                <th>Preço Médio</th>
                 <th>Strike</th>
                 <th>Vencimento</th>
                 <th>Valor Venda</th>
+                <th>Preço Exercício</th>
+                <th>Lastro</th>
                 <th>Total</th>
-                <th>Cotação Opção</th> <!-- Manual -->
+                <th>Cotação Opção</th>
                 <th>Lucro R$</th>
                 <th>Lucro %</th>
+                <th>Lucro Ação Ex.%</th>
+                <th>Lucro Ação At.%</th>
                 <th>Ações</th>
             </tr>
         </thead>
@@ -36,21 +41,27 @@
                 <td>{{ item.option.quantity }}</td>
                 <td>{{ item.option.underlying_asset }}</td>
                 <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.avg_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
-                <td>R$ {{ "%.2f"|format(item.total_sold)|replace('.', ',') }}</td>
-                <td>
-                    <!-- Editable Display or just Value -->
-                    R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}
+                <td>R$ {{ "%.2f"|format(item.exercise_price)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if item.lastro >= 0 else 'negative' }}">
+                    R$ {{ "%.2f"|format(item.lastro)|replace('.', ',') }}
                 </td>
-
-                <!-- Profit Logic for Short Option: (Sale - Current) * Qty -->
+                <td>R$ {{ "%.2f"|format(item.total_sold)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
                     R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
                 </td>
                 <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
+                </td>
+                <td class="{{ 'positive' if item.lucro_ex_pct >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.lucro_ex_pct)|replace('.', ',') }}%
+                </td>
+                <td class="{{ 'positive' if item.lucro_at_pct >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.lucro_at_pct)|replace('.', ',') }}%
                 </td>
 
                 <td class="actions">
@@ -71,12 +82,17 @@
                 <td></td>
                 <td></td>
                 <td></td>
-                <td>{{ options|sum(attribute='total_sold') | brl }}</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
                 <td>{{ options|sum(attribute='total_sold') | brl }}</td>
                 <td></td>
                 <td class="{{ 'positive' if options|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ options|sum(attribute='profit') | brl }}
                 </td>
+                <td></td>
+                <td></td>
                 <td></td>
                 <td></td>
             </tr>

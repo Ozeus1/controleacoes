@@ -1,15 +1,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div style="display: flex; justify-content: space-between; align-items: center;">
-    <h2>Carteira de Ações</h2>
-    <div style="display: flex; gap: 1rem;">
-        <a href="{{ url_for('add_asset', type='ACAO', strategy='HOLDER') }}" class="btn btn-primary">Adicionar Ação</a>
-    </div>
-</div>
-
 {% if assets %}
 <div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem;">
+        <h3>Carteira de Ações</h3>
+        <a href="{{ url_for('add_asset', type='ACAO', strategy='HOLDER') }}" class="btn btn-primary btn-sm">Adicionar Ação</a>
+    </div>
     <table class="paginated">
         <thead>
             <tr>
@@ -97,17 +94,21 @@
     </table>
 </div>
 {% else %}
-<div class="card" style="text-align: center; padding: 3rem;">
-    <h3>Sem Ações Cadastradas</h3>
-    <a href="{{ url_for('add_asset') }}" class="btn btn-primary">Adicionar Ação</a>
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem;">
+        <h3>Carteira de Ações</h3>
+        <a href="{{ url_for('add_asset', type='ACAO', strategy='HOLDER') }}" class="btn btn-primary btn-sm">Adicionar Ação</a>
+    </div>
+    <p style="text-align: center; padding: 2rem; color: var(--text-secondary);">Sem Ações Cadastradas</p>
 </div>
 {% endif %}
 
 {% if etfs %}
-<div style="display: flex; justify-content: space-between; align-items: center; margin-top: 3rem;">
-    <h3>Carteira de ETFs</h3>
-</div>
-<div class="card">
+<div class="card mt-4">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem;">
+        <h3>Carteira de ETFs</h3>
+        <a href="{{ url_for('add_asset', type='ETF', strategy='HOLDER') }}" class="btn btn-primary btn-sm">Adicionar ETF</a>
+    </div>
     <table class="paginated">
         <thead>
             <tr>

@@ -2686,16 +2686,12 @@ def update_dividends():
                     if asset.ticker.endswith('11') or asset.ticker.endswith('11B'):
                         div_type = 'Rendimento'
                         
-                    # YF date is Ex-Date; estimate payment ~30 days later (ações) or ~15 days (FIIs)
-                    pay_offset = timedelta(days=15) if div_type == 'Rendimento' else timedelta(days=30)
-                    estimated_payment = div_date + pay_offset
-
                     new_div = Dividend(
                         asset_id=asset.id,
                         ticker=asset.ticker,
                         type=div_type,
                         amount=float(amount) * asset.quantity,
-                        payment_date=estimated_payment,
+                        payment_date=div_date,
                         ex_date=div_date
                     )
                     db.session.add(new_div)

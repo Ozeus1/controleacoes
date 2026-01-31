@@ -121,8 +121,7 @@
                         <tr class="text-secondary">
                             <th>Ticker</th>
                             <th>Tipo</th>
-                            <th>Data Com</th>
-                            <th>Data Pagamento</th>
+                            <th>Data</th>
                             <th>Valor</th>
                         </tr>
                     </thead>
@@ -131,9 +130,7 @@
                         <tr>
                             <td class="font-weight-bold">{{ div.ticker }}</td>
                             <td><span class="badge badge-secondary">{{ div.type }}</span></td>
-                            <td data-order="{{ div.ex_date.strftime('%Y-%m-%d') if div.ex_date else '' }}">{{ div.ex_date.strftime('%d/%m/%Y') if div.ex_date else '-' }}</td>
-                            <td data-order="{{ div.payment_date.strftime('%Y-%m-%d') if div.payment_date else '' }}" class="text-warning font-weight-bold">{{ div.payment_date.strftime('%d/%m/%Y') if
-                                div.payment_date else '-' }}</td>
+                            <td data-order="{{ div.ex_date.strftime('%Y-%m-%d') if div.ex_date else '' }}" class="text-warning font-weight-bold">{{ div.ex_date.strftime('%d/%m/%Y') if div.ex_date else '-' }}</td>
                             <td class="text-success font-weight-bold">{{ div.amount | brl }}</td>
                         </tr>
                         {% endfor %}
@@ -157,8 +154,7 @@
                 <table class="table table-dark table-striped mb-0 text-center" id="dividendsTable">
                     <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                         <tr>
-                            <th>Data Pagamento</th>
-                            <th>Data Com (Ex)</th>
+                            <th>Data</th>
                             <th>Ticker</th>
                             <th>Tipo</th>
                             <th>Valor Total</th>
@@ -167,7 +163,6 @@
                     <tbody>
                         {% for div in dividends_received %}
                         <tr>
-                            <td data-order="{{ div.payment_date.strftime('%Y-%m-%d') if div.payment_date else '' }}">{{ div.payment_date.strftime('%d/%m/%Y') if div.payment_date else '-' }}</td>
                             <td data-order="{{ div.ex_date.strftime('%Y-%m-%d') if div.ex_date else '' }}">{{ div.ex_date.strftime('%d/%m/%Y') if div.ex_date else '-' }}</td>
                             <td class="font-weight-bold text-info">{{ div.ticker }}</td>
                             <td>{{ div.type }}</td>

@@ -1,3 +1,4 @@
+/* Dark Theme (default) */
 :root {
     --bg-color: #0f172a;
     --card-bg: #1e293b;
@@ -8,6 +9,39 @@
     --danger-color: #ef4444;
     --border-color: #334155;
     --nav-active: #3b82f6;
+    --table-header-bg: #1e1e1e;
+    --input-bg: #0f172a;
+    --input-color: #f8fafc;
+    --hover-bg: rgba(255, 255, 255, 0.02);
+    --dropdown-hover: rgba(255, 255, 255, 0.05);
+    --toggle-bg: rgba(255, 255, 255, 0.05);
+    --nav-mobile-border: rgba(255, 255, 255, 0.05);
+    --indicator-price-color: #ffffff;
+    --shadow-color: rgba(0, 0, 0, 0.1);
+    --indicators-border: rgba(255, 255, 255, 0.1);
+}
+
+/* Light Theme */
+[data-theme="light"] {
+    --bg-color: #f1f5f9;
+    --card-bg: #ffffff;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --accent-color: #2563eb;
+    --success-color: #059669;
+    --danger-color: #dc2626;
+    --border-color: #cbd5e1;
+    --nav-active: #2563eb;
+    --table-header-bg: #e2e8f0;
+    --input-bg: #ffffff;
+    --input-color: #0f172a;
+    --hover-bg: rgba(0, 0, 0, 0.03);
+    --dropdown-hover: rgba(0, 0, 0, 0.05);
+    --toggle-bg: rgba(0, 0, 0, 0.06);
+    --nav-mobile-border: rgba(0, 0, 0, 0.08);
+    --indicator-price-color: #0f172a;
+    --shadow-color: rgba(0, 0, 0, 0.08);
+    --indicators-border: rgba(0, 0, 0, 0.1);
 }
 
 * {
@@ -149,7 +183,7 @@ h2 {
     background-color: var(--card-bg);
     border-radius: 1rem;
     padding: 1rem;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 6px -1px var(--shadow-color);
     margin-bottom: 2rem;
     overflow-x: auto;
 }
@@ -182,7 +216,7 @@ td:first-child {
 }
 
 tr:hover {
-    background-color: rgba(255, 255, 255, 0.02);
+    background-color: var(--hover-bg);
 }
 
 .ticker-badge {
@@ -206,10 +240,10 @@ input,
 select {
     width: 100%;
     padding: 0.75rem;
-    background-color: #0f172a;
+    background-color: var(--input-bg);
     border: 1px solid var(--border-color);
     border-radius: 0.5rem;
-    color: white;
+    color: var(--input-color);
     margin-bottom: 1rem;
 }
 
@@ -247,7 +281,7 @@ label {
     cursor: pointer;
     padding: 0.5rem 1rem;
     border-radius: 0.5rem;
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: var(--toggle-bg);
     color: var(--text-primary) !important;
     border: 1px solid var(--border-color);
 }
@@ -275,7 +309,7 @@ label {
 }
 
 .dropdown-content a:hover {
-    background-color: rgba(255, 255, 255, 0.05);
+    background-color: var(--dropdown-hover);
     color: var(--text-primary);
 }
 
@@ -338,7 +372,7 @@ label {
 
     .main-nav a {
         padding: 0.75rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        border-bottom: 1px solid var(--nav-mobile-border);
         width: 100%;
         text-align: center;
     }
@@ -395,7 +429,7 @@ label {
         font-size: 0.85rem;
         padding: 0.4rem 0.75rem !important;
         border-bottom: none !important;
-        background-color: rgba(255, 255, 255, 0.05);
+        background-color: var(--dropdown-hover);
         border-radius: 0.5rem;
         width: auto !important;
         white-space: nowrap;
@@ -404,8 +438,8 @@ label {
 
 /* Indicators Bar */
 .indicators-bar {
-    background-color: #0f172a;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    background-color: var(--bg-color);
+    border-bottom: 1px solid var(--indicators-border);
     height: 30px;
     overflow: hidden;
     white-space: nowrap;
@@ -436,7 +470,7 @@ label {
 }
 
 .indicator-price {
-    color: white;
+    color: var(--indicator-price-color);
 }
 
 .indicator-change.positive {

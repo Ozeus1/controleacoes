@@ -1,5 +1,13 @@
 <!DOCTYPE html>
 <html lang="pt-BR" data-bs-theme="dark">
+<script>
+    // Apply theme before render to avoid flash
+    (function() {
+        var theme = localStorage.getItem('theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.setAttribute('data-bs-theme', theme);
+    })();
+</script>
 
 <head>
     <meta charset="UTF-8">
@@ -38,8 +46,8 @@
             position: sticky;
             top: 0;
             z-index: 100;
-            background-color: #1e1e1e !important;
-            border-bottom: 2px solid #333;
+            background-color: var(--table-header-bg) !important;
+            border-bottom: 2px solid var(--border-color);
             box-shadow: 0 2px 2px -1px rgba(0, 0, 0, 0.4);
         }
 
@@ -50,8 +58,8 @@
             left: 0 !important;
             z-index: 200 !important;
             /* Highest priority */
-            background-color: #1e1e1e !important;
-            border-right: 2px solid #333;
+            background-color: var(--table-header-bg) !important;
+            border-right: 2px solid var(--border-color);
             box-shadow: 2px 2px 2px rgba(0, 0, 0, 0.4);
         }
 
@@ -60,10 +68,10 @@
             position: sticky;
             left: 0;
             z-index: 90 !important;
-            background-color: #1e1e1e !important;
+            background-color: var(--table-header-bg) !important;
             /* Ensure opacity */
-            border-right: 2px solid #333;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            border-right: 2px solid var(--border-color);
+            border-bottom: 1px solid var(--nav-mobile-border);
             box-shadow: 2px 0 2px -1px rgba(0, 0, 0, 0.4);
         }
     </style>
@@ -144,6 +152,7 @@
                             <a href="{{ url_for('config') }}">⚙️ APIs</a>
                             <div class="dropdown-divider"></div>
                             <a href="#" onclick="toggleIndicators(); return false;">👁️ Alternar Barra</a>
+                            <a href="#" onclick="toggleTheme(); return false;">🌓 Alternar Tema</a>
                             <div class="dropdown-divider"></div>
                             <a href="{{ url_for('logout') }}" style="color: var(--danger-color);">Sair</a>
                         </div>
@@ -184,6 +193,7 @@
                         {% endif %}
                         <a href="{{ url_for('config') }}">⚙️ APIs</a>
                         <a href="#" onclick="toggleIndicators(); return false;">👁️ Alternar Barra</a>
+                        <a href="#" onclick="toggleTheme(); return false;">🌓 Alternar Tema</a>
                         <a href="{{ url_for('logout') }}" style="color: var(--danger-color);">🚪 Sair</a>
                     </div>
                 </div>
@@ -281,6 +291,14 @@
                     localStorage.setItem('hideIndicators', 'true');
                 }
             }
+        }
+
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme') || 'dark';
+            const next = current === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', next);
+            document.documentElement.setAttribute('data-bs-theme', next);
+            localStorage.setItem('theme', next);
         }
 
     </script>

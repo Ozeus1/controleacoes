@@ -225,7 +225,7 @@
             <tbody>
                 {% for item in intls_rv %}
                 <tr>
-                    <td>{{ item.name }}</td>
+                    <td><span class="ticker-badge" style="background-color: #f59e0b;">{{ item.name }}</span></td>
                     <td>{{ item.quantity | default(0) }}</td>
                     <td class="">$ {{ item.avg_price | brl_fmt }}</td>
                     <td class="">$ {{ item.quote | brl_fmt }}</td>
@@ -318,7 +318,7 @@
             <tbody>
                 {% for item in intls_rf %}
                 <tr>
-                    <td>{{ item.name }}</td>
+                    <td><span class="ticker-badge" style="background-color: #06b6d4;">{{ item.name }}</span></td>
                     <td class="">{{ item.description }}</td>
                     <td>{{ item.quantity | default(0) }}</td>
                     <td class="">$ {{ item.avg_price | brl_fmt }}</td>

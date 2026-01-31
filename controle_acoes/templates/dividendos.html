@@ -131,8 +131,8 @@
                         <tr>
                             <td class="font-weight-bold">{{ div.ticker }}</td>
                             <td><span class="badge badge-secondary">{{ div.type }}</span></td>
-                            <td>{{ div.ex_date.strftime('%d/%m/%Y') if div.ex_date else '-' }}</td>
-                            <td class="text-warning font-weight-bold">{{ div.payment_date.strftime('%d/%m/%Y') if
+                            <td data-order="{{ div.ex_date.strftime('%Y-%m-%d') if div.ex_date else '' }}">{{ div.ex_date.strftime('%d/%m/%Y') if div.ex_date else '-' }}</td>
+                            <td data-order="{{ div.payment_date.strftime('%Y-%m-%d') if div.payment_date else '' }}" class="text-warning font-weight-bold">{{ div.payment_date.strftime('%d/%m/%Y') if
                                 div.payment_date else '-' }}</td>
                             <td class="text-success font-weight-bold">{{ div.amount | brl }}</td>
                         </tr>
@@ -167,8 +167,8 @@
                     <tbody>
                         {% for div in dividends_received %}
                         <tr>
-                            <td>{{ div.payment_date.strftime('%d/%m/%Y') if div.payment_date else '-' }}</td>
-                            <td>{{ div.ex_date.strftime('%d/%m/%Y') if div.ex_date else '-' }}</td>
+                            <td data-order="{{ div.payment_date.strftime('%Y-%m-%d') if div.payment_date else '' }}">{{ div.payment_date.strftime('%d/%m/%Y') if div.payment_date else '-' }}</td>
+                            <td data-order="{{ div.ex_date.strftime('%Y-%m-%d') if div.ex_date else '' }}">{{ div.ex_date.strftime('%d/%m/%Y') if div.ex_date else '-' }}</td>
                             <td class="font-weight-bold text-info">{{ div.ticker }}</td>
                             <td>{{ div.type }}</td>
                             <td class="text-success font-weight-bold">{{ div.amount | brl }}</td>

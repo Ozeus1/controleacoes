@@ -565,19 +565,33 @@ def add_asset():
             # Get Strategy from Form
             strategy = request.form.get('strategy', 'HOLDER')
 
+            # Get SwingTrade specific fields
+            stop_loss_str = request.form.get('stop_loss')
+            gain1_str = request.form.get('gain1')
+            gain2_str = request.form.get('gain2')
+            recommendation = request.form.get('recommendation')
+
+            stop_loss = float(stop_loss_str.replace(',', '.')) if stop_loss_str else None
+            gain1 = float(gain1_str.replace(',', '.')) if gain1_str else None
+            gain2 = float(gain2_str.replace(',', '.')) if gain2_str else None
+
             asset = Asset(
                 user_id=current_user.id,
-                ticker=ticker, 
-                type=type_, 
+                ticker=ticker,
+                type=type_,
                 strategy=strategy,
-                quantity=qty, 
+                quantity=qty,
                 avg_price=avg_price,
                 entry_date=entry_date,
                 sector=sector,
                 fii_type=fii_type,
                 current_price=current_price,
                 daily_change=daily_change,
-                last_update=last_update
+                last_update=last_update,
+                stop_loss=stop_loss,
+                gain1=gain1,
+                gain2=gain2,
+                recommendation=recommendation
             )
             db.session.add(asset)
             flash(f'Ativo {ticker} adicionado!')

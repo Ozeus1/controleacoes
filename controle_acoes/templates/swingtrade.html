@@ -79,6 +79,8 @@
 
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
                     {{ item.profit | brl }}
+                    {% set profit_pct = (item.profit / item.total_invested * 100) if item.total_invested else 0 %}
+                    <span style="font-size: 0.75rem;">({{ "%.1f"|format(profit_pct)|replace('.', ',') }}%)</span>
                 </td>
 
                 <td style="font-size: 0.8rem; letter-spacing: 0.5px;">

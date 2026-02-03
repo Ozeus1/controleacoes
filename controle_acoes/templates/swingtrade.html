@@ -55,9 +55,27 @@
                     {{ item.last_update }}
                 </td>
 
-                <td>{{ item.asset.stop_loss | brl_fmt if item.asset.stop_loss else '-' }}</td>
-                <td>{{ item.asset.gain1 | brl_fmt if item.asset.gain1 else '-' }}</td>
-                <td>{{ item.asset.gain2 | brl_fmt if item.asset.gain2 else '-' }}</td>
+                <td>
+                    {% if item.asset.stop_loss %}
+                        {{ item.asset.stop_loss | brl_fmt }}
+                        {% set sl_pct = ((item.asset.stop_loss - item.asset.avg_price) / item.asset.avg_price * 100) if item.asset.avg_price else 0 %}
+                        <span style="font-size: 0.75rem; color: var(--danger-color);">({{ "%.1f"|format(sl_pct)|replace('.', ',') }}%)</span>
+                    {% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if item.asset.gain1 %}
+                        {{ item.asset.gain1 | brl_fmt }}
+                        {% set g1_pct = ((item.asset.gain1 - item.asset.avg_price) / item.asset.avg_price * 100) if item.asset.avg_price else 0 %}
+                        <span style="font-size: 0.75rem; color: var(--success-color);">(+{{ "%.1f"|format(g1_pct)|replace('.', ',') }}%)</span>
+                    {% else %}-{% endif %}
+                </td>
+                <td>
+                    {% if item.asset.gain2 %}
+                        {{ item.asset.gain2 | brl_fmt }}
+                        {% set g2_pct = ((item.asset.gain2 - item.asset.avg_price) / item.asset.avg_price * 100) if item.asset.avg_price else 0 %}
+                        <span style="font-size: 0.75rem; color: var(--success-color);">(+{{ "%.1f"|format(g2_pct)|replace('.', ',') }}%)</span>
+                    {% else %}-{% endif %}
+                </td>
 
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
                     {{ item.profit | brl }}

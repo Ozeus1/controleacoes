@@ -501,7 +501,7 @@ def process_assets(assets):
         final_data.append({
             'asset': a,
             'current_price': current_price,
-            'change_percent': a.daily_change,
+            'change_percent': a.daily_change if a.daily_change is not None else 0.0,
             'total_invested': total_invested,
             'current_total': current_total,
             'profit': profit,
@@ -555,10 +555,12 @@ def add_asset():
             
             try:
                 success, data = get_raw_quote_data(ticker)
-                if success and 'regularMarketPrice' in data:
-                     current_price = data['regularMarketPrice']
-                     daily_change = data.get('regularMarketChangePercent', 0.0)
-                     last_update = datetime.now()
+                if success and 'results' in data and data['results']:
+                    quote = data['results'][0]
+                    if 'regularMarketPrice' in quote:
+                        current_price = quote['regularMarketPrice']
+                        daily_change = quote.get('regularMarketChangePercent', 0.0)
+                        last_update = datetime.now()
             except Exception as e:
                 print(f"Error fetching initial quote for {ticker}: {e}")
             

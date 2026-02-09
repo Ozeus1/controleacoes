@@ -251,43 +251,57 @@ def close_option(id):
     if opt.user_id != current_user.id:
         flash("Você não tem permissão para fechar esta opção.")
         return redirect(url_for('opcoes'))
-    
-    # If using a separate template for closing, we'd render it.
-    # For simplicity, if GET, maybe show a confirmation or small form?
-    # User requested "Gravar saída (nas saídas gravar os lucros e prejuízos em tabela a parte na página histórico)".
-    # Let's reuse exit.html or make a simple one. Reusing logic implies we need a form for "Exit Price" (Buy Back Price).
-    
+
     if request.method == 'POST':
         buy_back_price = float(request.form.get('price').replace(',', '.'))
         date_exit = datetime.strptime(request.form.get('date'), '%Y-%m-%d').date()
-        
-        # Profit Calculation for SHORT
+        qty_exit = int(request.form.get('quantity', opt.quantity))
+        reason = request.form.get('reason', 'ENCERRAMENTO')
+
+        # Validate quantity
+        if qty_exit <= 0 or qty_exit > opt.quantity:
+            flash("Quantidade inválida.", "danger")
+            return redirect(url_for('close_option', id=id))
+
+        # Calculate days held if entry_date exists
+        days_held = 0
+        if opt.entry_date:
+            days_held = (date_exit - opt.entry_date).days
+
+        # Profit Calculation for SHORT position
         # Profit = (Sale Price - Buy Back Price) * Qty
-        profit_val = (opt.sale_price - buy_back_price) * opt.quantity
-        profit_pct = (profit_val / (opt.quantity * opt.sale_price) * 100) if opt.sale_price > 0 else 0
-        
+        profit_val = (opt.sale_price - buy_back_price) * qty_exit
+        profit_pct = (profit_val / (qty_exit * opt.sale_price) * 100) if opt.sale_price > 0 else 0
+
         history = TradeHistory(
             user_id=current_user.id,
             ticker=opt.ticker,
             strategy="OPCAO",
-            entry_date=None, # We don't track entry date on Option model currently? We could add it or ignore.
+            entry_date=opt.entry_date,
             exit_date=date_exit,
-            buy_price=buy_back_price, # Price we paid to close
-            sell_price=opt.sale_price, # Price we sold at start
-            quantity=opt.quantity,
+            buy_price=buy_back_price,
+            sell_price=opt.sale_price,
+            quantity=qty_exit,
             profit_value=profit_val,
             profit_pct=profit_pct,
-            days_held=0, # Unknown entry date
-            reason="ENCERRAMENTO"
+            days_held=days_held,
+            reason=reason
         )
         db.session.add(history)
-        db.session.delete(opt) # Remove from active options
+
+        if qty_exit == opt.quantity:
+            # Total exit - remove option
+            db.session.delete(opt)
+            flash("Saída TOTAL de opção registrada no histórico!", "success")
+        else:
+            # Partial exit - reduce quantity
+            opt.quantity -= qty_exit
+            flash(f"Saída PARCIAL registrada! Restam {opt.quantity} opções.", "success")
+
         db.session.commit()
-        
-        flash("Saída de opção registrada no histórico!")
         return redirect(url_for('opcoes'))
-        
-    # Render a simple exit form for option
+
+    # Render exit form for option
     return render_template('close_option.html', option=opt, today=date.today())
 
 

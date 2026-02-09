@@ -5,17 +5,40 @@
     <h2 style="text-align: center; margin-bottom: 2rem;">Gravar Saída (Encerrar Opção)</h2>
 
     <div style="background-color: var(--total-row-bg); padding: 1rem; border-radius: 8px; margin-bottom: 2rem;">
-        <p><strong>Opção:</strong> <span class="ticker-badge">{{ option.ticker }}</span></p>
-        <p><strong>Quantidade:</strong> {{ option.quantity }}</p>
-        <p><strong>Valor Venda (Prêmio):</strong> {{ option.sale_price | brl }}</p>
+        <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Opção</span>
+                <span class="ticker-badge">{{ option.ticker }}</span>
+            </div>
+            <div>
+                <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Quantidade Total</span>
+                <strong style="font-size: 1.2rem;">{{ option.quantity }}</strong>
+            </div>
+            <div>
+                <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Valor Venda (Prêmio)</span>
+                <strong style="font-size: 1.2rem;">{{ option.sale_price | brl }}</strong>
+            </div>
+            <div>
+                <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Cotação Atual</span>
+                <strong style="font-size: 1.2rem;">{{ (option.current_option_price or 0) | brl }}</strong>
+            </div>
+        </div>
     </div>
 
     <form method="POST">
         <div class="form-group">
+            <label for="quantity">Quantidade de Saída</label>
+            <input type="number" id="quantity" name="quantity" value="{{ option.quantity }}"
+                max="{{ option.quantity }}" min="1" required class="form-control">
+            <small style="color: var(--text-secondary);">Se menor que {{ option.quantity }}, será uma saída parcial.</small>
+        </div>
+
+        <div class="form-group">
             <label for="price">Valor de Recompra (Custo para fechar, por unidade)</label>
             <input type="text" id="price" name="price" required class="form-control"
+                value="{{ '%.2f'|format(option.current_option_price or 0)|replace('.', ',') }}"
                 placeholder="0,00 - Use 0 se virou pó">
-            <small style="color: grey;">Se a opção virou pó (não exercida), coloque 0.</small>
+            <small style="color: var(--text-secondary);">Se a opção virou pó (não exercida), coloque 0.</small>
         </div>
 
         <div class="form-group">
@@ -23,8 +46,19 @@
             <input type="date" id="date" name="date" required class="form-control" value="{{ today }}">
         </div>
 
+        <div class="form-group">
+            <label for="reason">Motivo/Estratégia</label>
+            <select id="reason" name="reason" class="form-control">
+                <option value="Virou Pó">Virou Pó (Expirou sem valor)</option>
+                <option value="Recompra">Recompra (Encerramento antecipado)</option>
+                <option value="Parcial">Saída Parcial</option>
+                <option value="Stop Loss">Stop Loss</option>
+                <option value="Rolagem">Rolagem</option>
+            </select>
+        </div>
+
         <div style="display: flex; gap: 1rem; margin-top: 2rem;">
-            <button type="submit" class="btn btn-danger" style="flex: 1;">Finalizar Posição</button>
+            <button type="submit" class="btn btn-danger" style="flex: 1;">Confirmar Saída</button>
             <a href="{{ url_for('opcoes') }}" class="btn btn-secondary"
                 style="flex: 1; text-align: center; text-decoration: none;">Cancelar</a>
         </div>

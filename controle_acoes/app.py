@@ -533,10 +533,15 @@ def add_asset():
             return redirect(url_for('add_asset'))
 
         date_str = request.form.get('entry_date')
-        
+
+        # Get Strategy from Form (needed for redirect logic)
+        strategy = request.form.get('strategy', 'HOLDER')
+
         # Check if exists
         asset = Asset.query.filter_by(ticker=ticker, user_id=current_user.id).first()
         if asset:
+            # Use existing asset's strategy for redirect
+            strategy = asset.strategy
             # Update average price / quantity logic
             total_val = (asset.quantity * asset.avg_price) + (qty * avg_price)
             new_qty = asset.quantity + qty
@@ -563,9 +568,6 @@ def add_asset():
                         last_update = datetime.now()
             except Exception as e:
                 print(f"Error fetching initial quote for {ticker}: {e}")
-            
-            # Get Strategy from Form
-            strategy = request.form.get('strategy', 'HOLDER')
 
             # Get SwingTrade specific fields
             stop_loss_str = request.form.get('stop_loss')

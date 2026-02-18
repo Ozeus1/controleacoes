@@ -66,6 +66,27 @@ def format_date(value):
 
 db.init_app(app)
 
+def run_migrations():
+    """Auto-migrate database schema on startup."""
+    import sqlite3 as _sqlite3
+    conn = _sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Check existing columns in 'option' table
+    cursor.execute("PRAGMA table_info(option)")
+    existing_columns = {row[1] for row in cursor.fetchall()}
+
+    if 'option_type' not in existing_columns:
+        cursor.execute("ALTER TABLE 'option' ADD COLUMN option_type VARCHAR(20) NOT NULL DEFAULT 'VENDA_CALL'")
+        print("[MIGRATION] Added column 'option_type' to 'option' table.")
+
+    conn.commit()
+    conn.close()
+
+with app.app_context():
+    db.create_all()
+    run_migrations()
+
 
 # --- Options Module Routes ---
 

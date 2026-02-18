@@ -684,24 +684,46 @@
         const commonOptions = {
             responsive: true,
             maintainAspectRatio: false,
+            cutout: '60%',
             plugins: {
-                legend: { position: 'right', labels: { color: themeColors.text, font: { size: 12 } } },
-
-                // DATA LABELS CONFIGURATION
-                datalabels: {
-                    color: themeColors.text,
-                    font: { weight: 'bold', size: 14 },
-                    formatter: function (value, ctx) {
-                        var sum = 0;
-                        var dataArr = ctx.chart.data.datasets[0].data;
-                        dataArr.map(function (data) {
-                            sum += data;
-                        });
-                        var percentage = (value * 100 / sum).toFixed(1) + "%";
-                        return percentage;
-                    },
-                    anchor: 'center', // Put it inside
-                    align: 'center'
+                legend: {
+                    position: 'right',
+                    labels: {
+                        color: themeColors.text,
+                        font: { size: 12 },
+                        padding: 12,
+                        generateLabels: function(chart) {
+                            const data = chart.data;
+                            if (data.labels.length && data.datasets.length) {
+                                const sum = data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                return data.labels.map(function(label, i) {
+                                    const value = data.datasets[0].data[i];
+                                    const pct = sum > 0 ? (value / sum * 100).toFixed(2) : '0.00';
+                                    return {
+                                        text: label + '    ' + pct + '%',
+                                        fillStyle: data.datasets[0].backgroundColor[i],
+                                        strokeStyle: data.datasets[0].backgroundColor[i],
+                                        lineWidth: 0,
+                                        hidden: false,
+                                        index: i
+                                    };
+                                });
+                            }
+                            return [];
+                        }
+                    }
+                },
+                datalabels: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.label || '';
+                            if (context.parsed !== null) {
+                                label += ': ' + new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed);
+                            }
+                            return label;
+                        }
+                    }
                 }
             },
             layout: { padding: 20 }
@@ -710,17 +732,16 @@
         // --- TYPE CHART ---
         const ctxType = document.getElementById('typeChart').getContext('2d');
         new Chart(ctxType, {
-            type: 'pie',
+            type: 'doughnut',
             data: {
                 labels: ['Renda Fixa', 'Renda Variável'],
                 datasets: [{
                     data: [{{ summary['Renda Fixa'] }}, {{ summary['Renda Variável'] }}],
-            backgroundColor: ['#3b82f6', '#10b981'],
-            borderWidth: 1,
-            borderColor: themeColors.border
-        }]
+                    backgroundColor: ['#3b82f6', '#10b981'],
+                    borderWidth: 0
+                }]
             },
-        options: commonOptions
+            options: commonOptions
         });
 
     // --- CLASS CHART ---
@@ -741,14 +762,13 @@
     ];
 
     new Chart(ctxClass, {
-        type: 'pie',
+        type: 'doughnut',
         data: {
             labels: classLabels,
             datasets: [{
                 data: classData,
                 backgroundColor: classColors,
-                borderWidth: 1,
-                borderColor: themeColors.border
+                borderWidth: 0
             }]
         },
         options: commonOptions
@@ -766,14 +786,13 @@
     {% endfor %}
 
     new Chart(ctxRfTerm, {
-        type: 'pie',
+        type: 'doughnut',
         data: {
             labels: rfTermLabels,
             datasets: [{
                 data: rfTermData,
-                backgroundColor: ['#ef4444', '#f59e0b', '#10b981', '#6366f1'], // Red, Orange, Green, Indigo for terms
-                borderWidth: 1,
-                borderColor: themeColors.border
+                backgroundColor: ['#ef4444', '#f59e0b', '#10b981', '#6366f1'],
+                borderWidth: 0
             }]
         },
         options: commonOptions
@@ -791,14 +810,13 @@
     {% endfor %}
 
     new Chart(ctxRfType, {
-        type: 'pie',
+        type: 'doughnut',
         data: {
             labels: rfTypeLabels,
             datasets: [{
                 data: rfTypeData,
-                backgroundColor: ['#3b82f6', '#f43f5e', '#8b5cf6', '#06b6d4'], // Different palette
-                borderWidth: 1,
-                borderColor: themeColors.border
+                backgroundColor: ['#3b82f6', '#f43f5e', '#8b5cf6', '#06b6d4'],
+                borderWidth: 0
             }]
         },
         options: commonOptions
@@ -821,7 +839,7 @@
     {% endif %}
 
     new Chart(ctxRfSubtype, {
-        type: 'pie',
+        type: 'doughnut',
         data: {
             labels: rfSubtypeLabels,
             datasets: [{
@@ -830,8 +848,7 @@
                     '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
                     '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#14b8a6'
                 ],
-                borderWidth: 1,
-                borderColor: themeColors.border
+                borderWidth: 0
             }]
         },
         options: commonOptions
@@ -908,59 +925,64 @@
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         // Options matching commonOptions from main script
-        const locOptions = {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'right', labels: { color: themeColors.text, font: { size: 12 } } },
-
-                // DataLabels matching existing style
-                datalabels: {
-                    color: themeColors.text,
-                    font: { weight: 'bold', size: 14 },
-                    formatter: function (value, ctx) {
-                        var sum = 0;
-                        var dataArr = ctx.chart.data.datasets[0].data;
-                        dataArr.map(function (data) {
-                            sum += data;
-                        });
-                        var percentage = (value * 100 / sum).toFixed(1) + "%";
-                        return percentage;
-                    },
-                    anchor: 'center',
-                    align: 'center'
-                },
-                tooltip: {
-                    callbacks: {
-                        label: function (context) {
-                            let label = context.label || '';
-                            if (label) {
-                                label += ': ';
-                            }
-                            if (context.parsed !== null) {
-                                label += new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed);
-                            }
-                            return label;
-                        }
-                    }
-                }
-            },
-            layout: { padding: 20 }
-        };
-
         const ctxLoc = document.getElementById('chartLocation').getContext('2d');
         new Chart(ctxLoc, {
-            type: 'pie',
+            type: 'doughnut',
             data: {
                 labels: ['Brasil', 'Internacional'],
                 datasets: [{
                     data: [{{ location_chart['Brasil'] }}, {{ location_chart['Internacional'] }}],
-            backgroundColor: ['#28a745', '#3b82f6'], // Green (BR), Blue (Intl) - Using compatible hex
-            borderWidth: 1,
-            borderColor: themeColors.border
-        }]
+                    backgroundColor: ['#28a745', '#3b82f6'],
+                    borderWidth: 0
+                }]
             },
-        options: locOptions
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '60%',
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            color: themeColors.text,
+                            font: { size: 12 },
+                            padding: 12,
+                            generateLabels: function(chart) {
+                                const data = chart.data;
+                                if (data.labels.length && data.datasets.length) {
+                                    const sum = data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                    return data.labels.map(function(label, i) {
+                                        const value = data.datasets[0].data[i];
+                                        const pct = sum > 0 ? (value / sum * 100).toFixed(2) : '0.00';
+                                        return {
+                                            text: label + '    ' + pct + '%',
+                                            fillStyle: data.datasets[0].backgroundColor[i],
+                                            strokeStyle: data.datasets[0].backgroundColor[i],
+                                            lineWidth: 0,
+                                            hidden: false,
+                                            index: i
+                                        };
+                                    });
+                                }
+                                return [];
+                            }
+                        }
+                    },
+                    datalabels: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                if (context.parsed !== null) {
+                                    label += ': ' + new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed);
+                                }
+                                return label;
+                            }
+                        }
+                    }
+                },
+                layout: { padding: 20 }
+            }
         });
     });
 </script>
@@ -1136,19 +1158,46 @@
             const commonOpt2 = {
                 responsive: true,
                 maintainAspectRatio: false,
+                cutout: '60%',
                 plugins: {
-                    legend: { position: 'right', labels: { color: themeColors.text, font: { size: 12 } } },
-                    datalabels: {
-                        color: themeColors.text,
-                        font: { weight: 'bold', size: 14 },
-                        formatter: function (value, ctx) {
-                            var sum = 0;
-                            var dataArr = ctx.chart.data.datasets[0].data;
-                            dataArr.map(function (data) { sum += data; });
-                            return (value * 100 / sum).toFixed(1) + "%";
-                        },
-                        anchor: 'center',
-                        align: 'center'
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            color: themeColors.text,
+                            font: { size: 12 },
+                            padding: 12,
+                            generateLabels: function(chart) {
+                                const data = chart.data;
+                                if (data.labels.length && data.datasets.length) {
+                                    const sum = data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                    return data.labels.map(function(label, i) {
+                                        const value = data.datasets[0].data[i];
+                                        const pct = sum > 0 ? (value / sum * 100).toFixed(2) : '0.00';
+                                        return {
+                                            text: label + '    ' + pct + '%',
+                                            fillStyle: data.datasets[0].backgroundColor[i],
+                                            strokeStyle: data.datasets[0].backgroundColor[i],
+                                            lineWidth: 0,
+                                            hidden: false,
+                                            index: i
+                                        };
+                                    });
+                                }
+                                return [];
+                            }
+                        }
+                    },
+                    datalabels: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let label = context.label || '';
+                                if (context.parsed !== null) {
+                                    label += ': ' + new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed);
+                                }
+                                return label;
+                            }
+                        }
                     }
                 },
                 layout: { padding: 20 }
@@ -1166,14 +1215,13 @@
         {% endfor %}
 
         new Chart(ctxHier, {
-            type: 'pie',
+            type: 'doughnut',
             data: {
                 labels: hierLabels,
                 datasets: [{
                     data: hierData,
                     backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'],
-                    borderWidth: 1,
-                    borderColor: themeColors.border
+                    borderWidth: 0
                 }]
             },
             options: commonOpt2
@@ -1190,7 +1238,7 @@
         {% endfor %}
 
         new Chart(ctxExp, {
-            type: 'pie',
+            type: 'doughnut',
             data: {
                 labels: expLabels,
                 datasets: [{
@@ -1199,8 +1247,7 @@
                         '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
                         '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
                     ],
-                    borderWidth: 1,
-                    borderColor: themeColors.border
+                    borderWidth: 0
                 }]
             },
             options: commonOpt2
@@ -1216,7 +1263,7 @@
         {% endfor %}
 
         new Chart(ctxGen, {
-            type: 'pie',
+            type: 'doughnut',
             data: {
                 labels: genLabels,
                 datasets: [{
@@ -1224,8 +1271,7 @@
                     backgroundColor: [
                         '#0d47a1', '#e65100', '#1b5e20', '#00acc1', '#8e24aa'
                     ],
-                    borderWidth: 1,
-                    borderColor: themeColors.border
+                    borderWidth: 0
                 }]
             },
             options: commonOpt2

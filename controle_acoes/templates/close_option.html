@@ -15,7 +15,9 @@
                 <strong style="font-size: 1.2rem;">{{ option.quantity }}</strong>
             </div>
             <div>
-                <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">Valor Venda (Prêmio)</span>
+                <span style="display: block; font-size: 0.9rem; color: var(--text-secondary);">
+                    {% if option.option_type in ('COMPRA_CALL', 'COMPRA_PUT') %}Valor Compra (Prêmio){% else %}Valor Venda (Prêmio){% endif %}
+                </span>
                 <strong style="font-size: 1.2rem;">{{ option.sale_price | brl }}</strong>
             </div>
             <div>
@@ -34,7 +36,10 @@
         </div>
 
         <div class="form-group">
-            <label for="price">Valor de Recompra (Custo para fechar, por unidade)</label>
+            <label for="price">
+                {% if option.option_type in ('COMPRA_CALL', 'COMPRA_PUT') %}Valor de Venda (Preço de saída, por unidade)
+                {% else %}Valor de Recompra (Custo para fechar, por unidade){% endif %}
+            </label>
             <input type="text" id="price" name="price" required class="form-control"
                 value="{{ '%.2f'|format(option.current_option_price or 0)|replace('.', ',') }}"
                 placeholder="0,00 - Use 0 se virou pó">

@@ -3,10 +3,16 @@
 {% block content %}
 <div class="card" style="max-width: 600px; margin: 2rem auto;">
     <h2 style="text-align: center; margin-bottom: 2rem;">
-        {% if edit %}Editar Opção{% else %}Adicionar Nova Opção{% endif %}
+        {% if edit %}Editar Opção{% else %}
+            {% if option_type == 'COMPRA_CALL' %}Adicionar Compra a Seco - Call ITM
+            {% elif option_type == 'COMPRA_PUT' %}Adicionar Compra a Seco - Put
+            {% else %}Adicionar Venda Coberta de Call{% endif %}
+        {% endif %}
     </h2>
 
     <form method="POST">
+        <input type="hidden" name="option_type" value="{{ option_type if option_type else (option.option_type if option else 'VENDA_CALL') }}">
+
         <div class="form-group">
             <label for="ticker">Ticker da Opção (ex: ABEVA31)</label>
             <input type="text" id="ticker" name="ticker" class="form-control"
@@ -14,7 +20,10 @@
         </div>
 
         <div class="form-group">
-            <label for="quantity">Quantidade Vendida</label>
+            <label for="quantity">
+                {% if option_type in ('COMPRA_CALL', 'COMPRA_PUT') %}Quantidade Comprada
+                {% else %}Quantidade Vendida{% endif %}
+            </label>
             <input type="number" id="quantity" name="quantity" class="form-control"
                 value="{{ option.quantity if option else '' }}" required>
         </div>
@@ -48,7 +57,10 @@
             value="{{ option.entry_date if option and option.entry_date else '' }}" required>
     </div>
     <div class="col-md-6 form-group">
-        <label for="sale_price">Valor de Venda (Prêmio R$)</label>
+        <label for="sale_price">
+            {% if option_type in ('COMPRA_CALL', 'COMPRA_PUT') %}Valor de Compra (Prêmio R$)
+            {% else %}Valor de Venda (Prêmio R$){% endif %}
+        </label>
         <input type="text" id="sale_price" name="sale_price" class="form-control"
             value="{{ '%.2f'|format(option.sale_price)|replace('.', ',') if option else '' }}" required
             placeholder="0,00">

@@ -1,15 +1,17 @@
 {% extends "base.html" %}
 
 {% block content %}
+
+{# ========== TABELA 1: VENDA COBERTA DE CALLS ========== #}
 {% if options %}
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
-        <h3>Carteira de Opções</h3>
+        <h3>Venda Coberta de Calls</h3>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
             <form action="{{ url_for('update_options_quotes') }}" method="post" style="margin: 0;">
                 <button type="submit" class="btn btn-secondary btn-sm">🔄 Atualizar Ativos</button>
             </form>
-            <a href="{{ url_for('add_option') }}" class="btn btn-primary btn-sm">Adicionar Opção</a>
+            <a href="{{ url_for('add_option', type='VENDA_CALL') }}" class="btn btn-primary btn-sm">Adicionar Opção</a>
         </div>
     </div>
     <table>
@@ -112,15 +114,194 @@
 {% else %}
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
-        <h3>Carteira de Opções</h3>
+        <h3>Venda Coberta de Calls</h3>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
             <form action="{{ url_for('update_options_quotes') }}" method="post" style="margin: 0;">
                 <button type="submit" class="btn btn-secondary btn-sm">🔄 Atualizar Ativos</button>
             </form>
-            <a href="{{ url_for('add_option') }}" class="btn btn-primary btn-sm">Adicionar Opção</a>
+            <a href="{{ url_for('add_option', type='VENDA_CALL') }}" class="btn btn-primary btn-sm">Adicionar Opção</a>
         </div>
     </div>
-    <p style="text-align: center; padding: 2rem; color: var(--text-secondary);">Sem Opções Cadastradas</p>
+    <p style="text-align: center; padding: 2rem; color: var(--text-secondary);">Sem opções de venda coberta cadastradas</p>
 </div>
 {% endif %}
+
+{# ========== TABELA 2: COMPRA A SECO - CALLS ITM ========== #}
+{% if compra_calls %}
+<div class="card" style="margin-top: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Compra a Seco - Calls ITM</h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <a href="{{ url_for('add_option', type='COMPRA_CALL') }}" class="btn btn-primary btn-sm">Adicionar Call</a>
+        </div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Opção</th>
+                <th>Qtd</th>
+                <th>Ativo</th>
+                <th>Cotação Ativo</th>
+                <th>Strike</th>
+                <th>Vencimento</th>
+                <th>Valor Compra</th>
+                <th>Total Investido</th>
+                <th>Cotação Opção</th>
+                <th>Valor Atual</th>
+                <th>Lucro R$</th>
+                <th>Lucro %</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in compra_calls %}
+            <tr>
+                <td><span class="ticker-badge">{{ item.option.ticker }}</span></td>
+                <td>{{ item.option.quantity }}</td>
+                <td>{{ item.option.underlying_asset }}</td>
+                <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
+                <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
+                <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.current_value)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
+                    R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
+                </td>
+                <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
+                </td>
+                <td class="actions">
+                    <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
+                        style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
+                    <a href="{{ url_for('edit_option', id=item.option.id) }}" class="btn btn-sm btn-primary">✏️</a>
+                    <a href="{{ url_for('delete_option', id=item.option.id) }}" class="btn btn-sm btn-danger"
+                        onclick="return confirm('Apagar?')">🗑️</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
+                <td>TOTAL</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td>{{ compra_calls|sum(attribute='total_invested') | brl }}</td>
+                <td></td>
+                <td>{{ compra_calls|sum(attribute='current_value') | brl }}</td>
+                <td class="{{ 'positive' if compra_calls|sum(attribute='profit') >= 0 else 'negative' }}">
+                    {{ compra_calls|sum(attribute='profit') | brl }}
+                </td>
+                <td></td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% else %}
+<div class="card" style="margin-top: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Compra a Seco - Calls ITM</h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <a href="{{ url_for('add_option', type='COMPRA_CALL') }}" class="btn btn-primary btn-sm">Adicionar Call</a>
+        </div>
+    </div>
+    <p style="text-align: center; padding: 2rem; color: var(--text-secondary);">Sem compras a seco de Calls cadastradas</p>
+</div>
+{% endif %}
+
+{# ========== TABELA 3: COMPRA A SECO - PUTS ========== #}
+{% if compra_puts %}
+<div class="card" style="margin-top: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Compra a Seco - Puts</h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <a href="{{ url_for('add_option', type='COMPRA_PUT') }}" class="btn btn-primary btn-sm">Adicionar Put</a>
+        </div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Opção</th>
+                <th>Qtd</th>
+                <th>Ativo</th>
+                <th>Cotação Ativo</th>
+                <th>Strike</th>
+                <th>Vencimento</th>
+                <th>Valor Compra</th>
+                <th>Total Investido</th>
+                <th>Cotação Opção</th>
+                <th>Valor Atual</th>
+                <th>Lucro R$</th>
+                <th>Lucro %</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in compra_puts %}
+            <tr>
+                <td><span class="ticker-badge">{{ item.option.ticker }}</span></td>
+                <td>{{ item.option.quantity }}</td>
+                <td>{{ item.option.underlying_asset }}</td>
+                <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
+                <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
+                <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.current_value)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
+                    R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
+                </td>
+                <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
+                </td>
+                <td class="actions">
+                    <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
+                        style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
+                    <a href="{{ url_for('edit_option', id=item.option.id) }}" class="btn btn-sm btn-primary">✏️</a>
+                    <a href="{{ url_for('delete_option', id=item.option.id) }}" class="btn btn-sm btn-danger"
+                        onclick="return confirm('Apagar?')">🗑️</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
+                <td>TOTAL</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td>{{ compra_puts|sum(attribute='total_invested') | brl }}</td>
+                <td></td>
+                <td>{{ compra_puts|sum(attribute='current_value') | brl }}</td>
+                <td class="{{ 'positive' if compra_puts|sum(attribute='profit') >= 0 else 'negative' }}">
+                    {{ compra_puts|sum(attribute='profit') | brl }}
+                </td>
+                <td></td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% else %}
+<div class="card" style="margin-top: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Compra a Seco - Puts</h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <a href="{{ url_for('add_option', type='COMPRA_PUT') }}" class="btn btn-primary btn-sm">Adicionar Put</a>
+        </div>
+    </div>
+    <p style="text-align: center; padding: 2rem; color: var(--text-secondary);">Sem compras a seco de Puts cadastradas</p>
+</div>
+{% endif %}
+
 {% endblock %}

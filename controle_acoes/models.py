@@ -100,6 +100,7 @@ class TradeHistory(db.Model):
 class Option(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, default=1)
+    option_type = db.Column(db.String(20), nullable=False, default='VENDA_CALL') # VENDA_CALL, COMPRA_CALL, COMPRA_PUT
     ticker = db.Column(db.String(20), nullable=False) # e.g., PETRA40
     underlying_asset = db.Column(db.String(10), nullable=False) # e.g., PETR4
     quantity = db.Column(db.Integer, nullable=False)

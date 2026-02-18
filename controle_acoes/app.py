@@ -72,15 +72,12 @@ db.init_app(app)
 @app.route('/opcoes')
 @login_required
 def opcoes():
-    options = Option.query.filter_by(user_id=current_user.id).all()
-    
-    # Process options to add calculated fields and fetch underlying quotes
-    processed_options = []
-    
+    all_options = Option.query.filter_by(user_id=current_user.id).all()
+
     # Get list of unique underlyings to fetch quotes
-    underlyings = list(set([o.underlying_asset for o in options]))
+    underlyings = list(set([o.underlying_asset for o in all_options]))
     quotes = get_quotes(underlyings, user_id=current_user.id) if underlyings else {}
-    
+
     # Get avg_price of underlying assets from user's portfolio
     underlying_avg_prices = {}
     if underlyings:
@@ -88,77 +85,103 @@ def opcoes():
         for a in assets:
             underlying_avg_prices[a.ticker] = a.avg_price
 
-    for opt in options:
+    processed_options = []  # VENDA_CALL
+    compra_calls = []       # COMPRA_CALL
+    compra_puts = []        # COMPRA_PUT
+
+    for opt in all_options:
         underlying_price = 0.0
         if opt.underlying_asset in quotes:
             underlying_price = quotes[opt.underlying_asset].get('price', 0.0)
 
-        total_sold = opt.quantity * opt.sale_price
+        option_type = getattr(opt, 'option_type', 'VENDA_CALL') or 'VENDA_CALL'
 
-        current_val = opt.quantity * opt.current_option_price
-        profit = total_sold - current_val
-        profit_pct = (profit / total_sold * 100) if total_sold > 0 else 0
+        if option_type == 'VENDA_CALL':
+            # Lógica existente para venda coberta
+            total_sold = opt.quantity * opt.sale_price
+            current_val = opt.quantity * opt.current_option_price
+            profit = total_sold - current_val
+            profit_pct = (profit / total_sold * 100) if total_sold > 0 else 0
 
-        avg_price = underlying_avg_prices.get(opt.underlying_asset, 0.0)
-        exercise_price = opt.strike_price + opt.sale_price
-        lastro = underlying_price - exercise_price
-        lucro_ex_pct = ((exercise_price - avg_price) / avg_price * 100) if avg_price > 0 else 0
-        lucro_at_pct = ((underlying_price - avg_price) / avg_price * 100) if avg_price > 0 else 0
-        lucro_ex_rs = (exercise_price - avg_price) * opt.quantity
-        lucro_at_rs = (underlying_price - avg_price) * opt.quantity
+            avg_price = underlying_avg_prices.get(opt.underlying_asset, 0.0)
+            exercise_price = opt.strike_price + opt.sale_price
+            lastro = underlying_price - exercise_price
+            lucro_ex_pct = ((exercise_price - avg_price) / avg_price * 100) if avg_price > 0 else 0
+            lucro_at_pct = ((underlying_price - avg_price) / avg_price * 100) if avg_price > 0 else 0
+            lucro_ex_rs = (exercise_price - avg_price) * opt.quantity
+            lucro_at_rs = (underlying_price - avg_price) * opt.quantity
 
-        processed_options.append({
-            'option': opt,
-            'underlying_price': underlying_price,
-            'total_sold': total_sold,
-            'profit': profit,
-            'profit_pct': profit_pct,
-            'avg_price': avg_price,
-            'exercise_price': exercise_price,
-            'lastro': lastro,
-            'lucro_ex_pct': lucro_ex_pct,
-            'lucro_at_pct': lucro_at_pct,
-            'lucro_ex_rs': lucro_ex_rs,
-            'lucro_at_rs': lucro_at_rs
-        })
-        
-    return render_template('opcoes.html', options=processed_options)
+            processed_options.append({
+                'option': opt,
+                'underlying_price': underlying_price,
+                'total_sold': total_sold,
+                'profit': profit,
+                'profit_pct': profit_pct,
+                'avg_price': avg_price,
+                'exercise_price': exercise_price,
+                'lastro': lastro,
+                'lucro_ex_pct': lucro_ex_pct,
+                'lucro_at_pct': lucro_at_pct,
+                'lucro_ex_rs': lucro_ex_rs,
+                'lucro_at_rs': lucro_at_rs
+            })
+        else:
+            # Lógica para compra a seco (COMPRA_CALL / COMPRA_PUT)
+            total_invested = opt.quantity * opt.sale_price
+            current_value = opt.quantity * opt.current_option_price
+            profit = current_value - total_invested
+            profit_pct = (profit / total_invested * 100) if total_invested > 0 else 0
+
+            item = {
+                'option': opt,
+                'underlying_price': underlying_price,
+                'total_invested': total_invested,
+                'current_value': current_value,
+                'profit': profit,
+                'profit_pct': profit_pct,
+            }
+
+            if option_type == 'COMPRA_CALL':
+                compra_calls.append(item)
+            else:
+                compra_puts.append(item)
+
+    return render_template('opcoes.html', options=processed_options,
+                           compra_calls=compra_calls, compra_puts=compra_puts)
 
 @app.route('/add_option', methods=['GET', 'POST'])
 @login_required
 def add_option():
-    # Similar to add_asset
     if request.method == 'POST':
         try:
             ticker = request.form.get('ticker')
-            underlying = request.form.get('underlying_asset') # Correct HTML name
+            underlying = request.form.get('underlying_asset')
             quantity_str = request.form.get('quantity')
-            strike_str = request.form.get('strike_price') # Correct HTML name
-            expiration_str = request.form.get('expiration_date') # Correct HTML name
+            strike_str = request.form.get('strike_price')
+            expiration_str = request.form.get('expiration_date')
             sale_price_str = request.form.get('sale_price')
-            
-            # Basic Validation
+            option_type = request.form.get('option_type', 'VENDA_CALL')
+
             if not all([ticker, underlying, quantity_str, strike_str, expiration_str, sale_price_str]):
                 flash("Todos os campos são obrigatórios.", "warning")
-                return redirect(url_for('add_option'))
-            
+                return redirect(url_for('add_option', type=option_type))
+
             ticker = ticker.upper()
             underlying = underlying.upper()
             quantity = int(quantity_str)
             strike = float(strike_str.replace(',', '.'))
             expiration = datetime.strptime(expiration_str, '%Y-%m-%d').date()
             sale_price = float(sale_price_str.replace(',', '.'))
-            
-            # Current price (optional on add)
+
             curr_price_str = request.form.get('current_option_price')
             current_option_price = float(curr_price_str.replace(',', '.')) if curr_price_str else 0.0
-            
-            # Entry Date
+
             entry_date_str = request.form.get('entry_date')
             entry_date = datetime.strptime(entry_date_str, '%Y-%m-%d').date() if entry_date_str else None
 
             opt = Option(
                 user_id=current_user.id,
+                option_type=option_type,
                 ticker=ticker,
                 quantity=quantity,
                 underlying_asset=underlying,
@@ -170,10 +193,10 @@ def add_option():
             )
             db.session.add(opt)
             db.session.commit()
-            
+
             flash("Opção adicionada com sucesso!", "success")
             return redirect(url_for('opcoes'))
-            
+
         except ValueError as ve:
             flash(f"Erro de formato: {ve}", "danger")
         except Exception as e:
@@ -181,10 +204,11 @@ def add_option():
             print(f"Error add_option: {e}")
             import traceback
             traceback.print_exc()
-        
-        return redirect(url_for('add_option'))
-        
-    return render_template('add_option.html')
+
+        return redirect(url_for('add_option', type=option_type))
+
+    option_type = request.args.get('type', 'VENDA_CALL')
+    return render_template('add_option.html', option_type=option_type)
 
 @app.route('/edit_option/<int:id>', methods=['GET', 'POST'])
 @login_required
@@ -221,7 +245,7 @@ def edit_option(id):
              
         return redirect(url_for('opcoes'))
         
-    return render_template('add_option.html', option=opt, edit=True)
+    return render_template('add_option.html', option=opt, edit=True, option_type=opt.option_type)
 
 @app.route('/delete_option/<int:id>')
 @login_required
@@ -268,15 +292,21 @@ def close_option(id):
         if opt.entry_date:
             days_held = (date_exit - opt.entry_date).days
 
-        # Profit Calculation for SHORT position
-        # Profit = (Sale Price - Buy Back Price) * Qty
-        profit_val = (opt.sale_price - buy_back_price) * qty_exit
+        # Profit Calculation depends on position type
+        if opt.option_type in ('COMPRA_CALL', 'COMPRA_PUT'):
+            # LONG position: Profit = (Sell Price - Buy Price) * Qty
+            profit_val = (buy_back_price - opt.sale_price) * qty_exit
+            strategy = "OPCAO_" + opt.option_type
+        else:
+            # SHORT position: Profit = (Sale Price - Buy Back Price) * Qty
+            profit_val = (opt.sale_price - buy_back_price) * qty_exit
+            strategy = "OPCAO"
         profit_pct = (profit_val / (qty_exit * opt.sale_price) * 100) if opt.sale_price > 0 else 0
 
         history = TradeHistory(
             user_id=current_user.id,
             ticker=opt.ticker,
-            strategy="OPCAO",
+            strategy=strategy,
             entry_date=opt.entry_date,
             exit_date=date_exit,
             buy_price=buy_back_price,

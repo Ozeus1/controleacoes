@@ -162,26 +162,51 @@
         // Register DataLabels
         Chart.register(ChartDataLabels);
 
-        // Common Option for DataLabels (Same as Balanceamento)
+        // Common Option for Doughnut Charts
         const commonOptions = {
             responsive: true,
             maintainAspectRatio: false,
+            cutout: '60%',
             plugins: {
-                legend: { position: 'right', labels: { color: themeColors.text, font: { size: 12 } } },
-                datalabels: {
-                    color: themeColors.text,
-                    font: { weight: 'bold', size: 14 },
-                    formatter: function (value, ctx) {
-                        var sum = 0;
-                        var dataArr = ctx.chart.data.datasets[0].data;
-                        dataArr.map(function (data) {
-                            sum += data;
-                        });
-                        var percentage = (value * 100 / sum).toFixed(1) + "%";
-                        return percentage;
-                    },
-                    anchor: 'center',
-                    align: 'center'
+                legend: {
+                    position: 'right',
+                    labels: {
+                        color: themeColors.text,
+                        font: { size: 12 },
+                        padding: 12,
+                        generateLabels: function(chart) {
+                            const data = chart.data;
+                            if (data.labels.length && data.datasets.length) {
+                                const sum = data.datasets[0].data.reduce((a, b) => a + b, 0);
+                                return data.labels.map(function(label, i) {
+                                    const value = data.datasets[0].data[i];
+                                    const pct = sum > 0 ? (value / sum * 100).toFixed(2) : '0.00';
+                                    return {
+                                        text: label + '    ' + pct + '%',
+                                        fillStyle: data.datasets[0].backgroundColor[i],
+                                        strokeStyle: data.datasets[0].backgroundColor[i],
+                                        fontColor: themeColors.text,
+                                        lineWidth: 0,
+                                        hidden: false,
+                                        index: i
+                                    };
+                                });
+                            }
+                            return [];
+                        }
+                    }
+                },
+                datalabels: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.label || '';
+                            if (context.parsed !== null) {
+                                label += ': ' + new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed);
+                            }
+                            return label;
+                        }
+                    }
                 }
             },
             layout: { padding: 20 }
@@ -190,41 +215,39 @@
         // 1. Broad Allocation Chart
         const ctxBroad = document.getElementById('broadChart').getContext('2d');
         new Chart(ctxBroad, {
-            type: 'pie',
+            type: 'doughnut',
             data: {
                 labels: ['Tijolo', 'Papel'],
                 datasets: [{
                     data: [{{ broad_allocation['Tijolo'] }}, {{ broad_allocation['Papel'] }}],
-            backgroundColor: ['#3b82f6', '#f97316'],
-            borderWidth: 1,
-            borderColor: themeColors.border
-        }]
+                    backgroundColor: ['#3b82f6', '#f97316'],
+                    borderWidth: 0
+                }]
             },
-        options: commonOptions
+            options: commonOptions
         });
 
-    // 2. Allocation Chart (Converted to Pie for Consistency)
+    // 2. Allocation Chart
     const ctxAlloc = document.getElementById('allocationChart').getContext('2d');
     new Chart(ctxAlloc, {
-        type: 'pie', // Changed from doughnut to pie per request (all pizzas same style)
+        type: 'doughnut',
         data: {
             labels: ['Ações', 'FIIs', 'ETFs'],
             datasets: [{
                 data: [{{ total_acoes }}, {{ total_fiis }}, {{ total_etfs }}],
-        backgroundColor: ['#6366f1', '#10b981', '#8b5cf6'],
-        borderWidth: 1,
-        borderColor: themeColors.border
-    }]
-            },
+                backgroundColor: ['#6366f1', '#10b981', '#8b5cf6'],
+                borderWidth: 0
+            }]
+        },
         options: commonOptions
-        });
+    });
 
     // 3. FII Chart
     const fiiLabels = {{ fii_types.keys() | list | tojson }};
     const fiiValues = {{ fii_types.values() | list | tojson }};
     const ctxFii = document.getElementById('fiiChart').getContext('2d');
     new Chart(ctxFii, {
-        type: 'pie',
+        type: 'doughnut',
         data: {
             labels: fiiLabels,
             datasets: [{
@@ -232,8 +255,7 @@
                 backgroundColor: [
                     '#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#64748b', '#06b6d4'
                 ],
-                borderWidth: 1,
-                borderColor: themeColors.border
+                borderWidth: 0
             }]
         },
         options: commonOptions
@@ -244,7 +266,7 @@
     const stockValues = {{ stock_sectors.values() | list | tojson }};
     const ctxStock = document.getElementById('stockChart').getContext('2d');
     new Chart(ctxStock, {
-        type: 'pie',
+        type: 'doughnut',
         data: {
             labels: stockLabels,
             datasets: [{
@@ -252,8 +274,7 @@
                 backgroundColor: [
                     '#8b5cf6', '#ec4899', '#f97316', '#14b8a6', '#f43f5e', '#6366f1', '#84cc16', '#a855f7', '#0ea5e9', '#eab308', '#64748b'
                 ],
-                borderWidth: 1,
-                borderColor: themeColors.border
+                borderWidth: 0
             }]
         },
         options: commonOptions

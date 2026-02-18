@@ -127,6 +127,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <script>
 function filterByStrategy() {
     const val = document.getElementById('strategyFilter').value;
@@ -142,18 +143,39 @@ function filterByStrategy() {
 
 // Bar Chart
 const ctx = document.getElementById('historyChart').getContext('2d');
+const rawDatasets = {{ chart_datasets | tojson }};
+
 new Chart(ctx, {
     type: 'bar',
     data: {
         labels: {{ chart_labels | tojson }},
-        datasets: {{ chart_datasets | tojson }}
+        datasets: rawDatasets
     },
+    plugins: [ChartDataLabels],
     options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
             legend: {
                 labels: { color: themeColors.text }
+            },
+            datalabels: {
+                color: themeColors.text,
+                anchor: function(context) {
+                    return context.dataset.data[context.dataIndex] >= 0 ? 'end' : 'start';
+                },
+                align: function(context) {
+                    return context.dataset.data[context.dataIndex] >= 0 ? 'top' : 'bottom';
+                },
+                font: { size: 10, weight: 'bold' },
+                formatter: function(value, context) {
+                    const pctData = context.dataset.pct_data;
+                    if (pctData && pctData[context.dataIndex] !== undefined) {
+                        const pct = pctData[context.dataIndex];
+                        return pct !== 0 ? pct.toFixed(1).replace('.', ',') + '%' : '';
+                    }
+                    return '';
+                }
             }
         },
         scales: {

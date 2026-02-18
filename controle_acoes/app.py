@@ -1324,28 +1324,37 @@ def history():
         })
 
     # Chart: profit by strategy and month (last 12 available months)
-    month_strategy = defaultdict(lambda: defaultdict(float))
+    month_strategy_profit = defaultdict(lambda: defaultdict(float))
+    month_strategy_invested = defaultdict(lambda: defaultdict(float))
     for t in trades:
         if t.exit_date and t.profit_value is not None:
             month_key = t.exit_date.strftime('%Y-%m')
             key = t.strategy or 'Outros'
-            month_strategy[month_key][key] += t.profit_value
+            month_strategy_profit[month_key][key] += t.profit_value
+            month_strategy_invested[month_key][key] += (t.buy_price or 0) * (t.quantity or 0)
 
     # Get last 12 months with data
-    sorted_months = sorted(month_strategy.keys())[-12:]
+    sorted_months = sorted(month_strategy_profit.keys())[-12:]
     chart_labels = []
     for m in sorted_months:
         parts = m.split('-')
         chart_labels.append(f"{parts[1]}/{parts[0]}")
 
-    all_strategies = sorted(set(s for m in sorted_months for s in month_strategy[m].keys()))
+    all_strategies = sorted(set(s for m in sorted_months for s in month_strategy_profit[m].keys()))
     colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#64748b', '#84cc16']
     chart_datasets = []
     for i, strat in enumerate(all_strategies):
-        data = [round(month_strategy[m].get(strat, 0), 2) for m in sorted_months]
+        data = [round(month_strategy_profit[m].get(strat, 0), 2) for m in sorted_months]
+        pct_data = []
+        for m in sorted_months:
+            invested = month_strategy_invested[m].get(strat, 0)
+            profit = month_strategy_profit[m].get(strat, 0)
+            pct = round(profit / invested * 100, 1) if invested > 0 else 0
+            pct_data.append(pct)
         chart_datasets.append({
             'label': strat,
             'data': data,
+            'pct_data': pct_data,
             'backgroundColor': colors[i % len(colors)],
             'borderRadius': 4
         })

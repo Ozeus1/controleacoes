@@ -337,6 +337,12 @@
                             ds.borderColor = themeColors.border;
                         }
                     });
+                    // Update fontColor in custom legend labels for doughnut charts
+                    if (chart.legend && chart.legend.legendItems) {
+                        chart.legend.legendItems.forEach(function(item) {
+                            item.fontColor = themeColors.text;
+                        });
+                    }
                     chart.update();
                 });
             }

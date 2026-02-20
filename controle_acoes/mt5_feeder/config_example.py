@@ -8,7 +8,7 @@ API_URL = "https://www.invest.casatemporadaceara.cloud/api/update_quotes"
 
 # API Key — deve ser a mesma definida no .env do VPS como MT5_API_KEY
 # Exemplo: MT5_API_KEY=minha_chave_secreta_123
-API_KEY = "coloque_sua_chave_aqui"
+API_KEY = "chave_mtq5_2026"
 
 # ID do usuário no site (normalmente 1 para o admin)
 USER_ID = 1
@@ -34,4 +34,14 @@ TICKER_MAP = {
     "HGLG11": "HGLG11",
     "KNRI11": "KNRI11",
     # Adicione quantos quiser...
+}
+
+# Mapeamento de OPÇÕES: "TICKER_NO_SITE" -> "SÍMBOLO_NO_MT5"
+# O ticker no site é o mesmo cadastrado na página /opcoes.
+# No MT5 o nome da opção costuma ser o próprio código da série (ex: PETRA40).
+# Deixe vazio ({}) se não quiser enviar preços de opções.
+OPTION_MAP = {
+    # "PETRA40": "PETRA40",
+    # "VALEF92": "VALEF92",
+    # Adicione suas opções aqui...
 }

@@ -1375,17 +1375,29 @@ def history():
 @login_required
 def config():
     if request.method == 'POST':
-        brapi_key = request.form.get('brapi_key')
-        if brapi_key:
-             Settings.set_value('brapi_token', brapi_key, user_id=current_user.id)
-             flash('Chave BRAPI salva com sucesso!')
+        action = request.form.get('action')
+
+        if action == 'save_brapi':
+            brapi_key = request.form.get('brapi_key')
+            if brapi_key:
+                Settings.set_value('brapi_token', brapi_key, user_id=current_user.id)
+                flash('Chave BRAPI salva com sucesso!', 'success')
+
+        elif action == 'set_quote_mode':
+            mode = request.form.get('quote_mode', 'yahoo')
+            if mode in ('yahoo', 'mt5'):
+                Settings.set_value('quote_mode', mode, user_id=current_user.id)
+                flash(f'Modo de cotação alterado para: {"Yahoo Finance" if mode == "yahoo" else "MT5 Feeder"}', 'success')
+
         return redirect(url_for('config'))
-        
+
     current_key = Settings.get_value('brapi_token', user_id=current_user.id)
     if not current_key:
-         current_key = os.environ.get('BRAPI_API_KEY', '')
-         
-    return render_template('config.html', current_key=current_key)
+        current_key = os.environ.get('BRAPI_API_KEY', '')
+
+    quote_mode = Settings.get_value('quote_mode', user_id=current_user.id, default='yahoo')
+
+    return render_template('config.html', current_key=current_key, quote_mode=quote_mode)
 
 @app.route('/test_api', methods=['POST'])
 @login_required
@@ -2978,47 +2990,116 @@ def update_market_indices():
 
 # --- MT5 Quote Feed API ---
 
+def _check_api_key():
+    """Returns True if the X-API-Key header matches MT5_API_KEY env var."""
+    api_key = request.headers.get('X-API-Key', '')
+    expected_key = os.environ.get('MT5_API_KEY', '')
+    return expected_key and api_key == expected_key
+
+
 @app.route('/api/update_quotes', methods=['POST'])
 def api_update_quotes():
     """
     Receives quote updates from a local MT5 feeder script.
     Requires API key authentication via header: X-API-Key.
-    Body (JSON): {"quotes": {"PETR4": 38.50, "VALE3": 92.10, ...}}
+    Body (JSON):
+    {
+        "user_id": 1,
+        "quotes":  {"PETR4": 38.50, "VALE3": 92.10},       # asset prices
+        "changes": {"PETR4": 1.25, "VALE3": -0.80},        # daily change % (optional)
+        "options": {"PETRA40": 0.45, "VALEF92": 1.20}      # option current prices (optional)
+    }
     """
     from flask import jsonify
 
-    # API Key check
-    api_key = request.headers.get('X-API-Key', '')
-    expected_key = os.environ.get('MT5_API_KEY', '')
-    if not expected_key or api_key != expected_key:
+    if not _check_api_key():
         return jsonify({'error': 'Unauthorized'}), 401
 
     data = request.get_json()
     if not data or 'quotes' not in data:
-        return jsonify({'error': 'Invalid payload'}), 400
+        return jsonify({'error': 'Invalid payload — need at least quotes key'}), 400
 
-    quotes = data['quotes']  # dict: {"TICKER": price, ...}
     user_id = int(data.get('user_id', 1))
+    now = datetime.now()
 
-    updated = []
-    not_found = []
+    # ── Assets ────────────────────────────────────────────────────────────────
+    quotes  = data.get('quotes', {})
+    changes = data.get('changes', {})
+    updated_assets, not_found_assets = [], []
 
     for ticker, price in quotes.items():
         ticker = ticker.upper()
         asset = Asset.query.filter_by(ticker=ticker, user_id=user_id).first()
         if asset:
             asset.current_price = float(price)
-            asset.last_update = datetime.now()
-            updated.append(ticker)
+            asset.daily_change  = float(changes.get(ticker, changes.get(ticker.lower(), 0)))
+            asset.last_update   = now
+            updated_assets.append(ticker)
         else:
-            not_found.append(ticker)
+            not_found_assets.append(ticker)
+
+    # ── Options ───────────────────────────────────────────────────────────────
+    options_prices = data.get('options', {})
+    updated_options, not_found_options = [], []
+
+    for ticker, price in options_prices.items():
+        ticker = ticker.upper()
+        opt = Option.query.filter_by(ticker=ticker, user_id=user_id).first()
+        if opt:
+            opt.current_option_price = float(price)
+            opt.last_update = now
+            updated_options.append(ticker)
+        else:
+            not_found_options.append(ticker)
 
     db.session.commit()
+
     return jsonify({
         'status': 'ok',
-        'updated': updated,
-        'not_found': not_found
+        'updated_assets':  updated_assets,
+        'updated_options': updated_options,
+        'not_found_assets':  not_found_assets,
+        'not_found_options': not_found_options,
     }), 200
+
+
+@app.route('/api/current_quotes')
+@login_required
+def api_current_quotes():
+    """
+    Returns current prices for all assets and options of the logged-in user.
+    Used by browser-side JS polling to update tables without page reload.
+    Response JSON:
+    {
+        "mode": "mt5",
+        "assets":  {"PETR4": {"price": 38.50, "change": 1.25, "updated": "10:32"}},
+        "options": {"PETRA40": {"price": 0.45, "updated": "10:32"}}
+    }
+    """
+    from flask import jsonify
+
+    mode = Settings.get_value('quote_mode', user_id=current_user.id, default='yahoo')
+
+    assets_data = {}
+    for a in Asset.query.filter_by(user_id=current_user.id).all():
+        assets_data[a.ticker] = {
+            'price':   round(a.current_price or 0, 2),
+            'change':  round(a.daily_change  or 0, 2),
+            'updated': a.last_update.strftime('%H:%M') if a.last_update else '-'
+        }
+
+    options_data = {}
+    for o in Option.query.filter_by(user_id=current_user.id).all():
+        options_data[o.ticker] = {
+            'price':   round(o.current_option_price or 0, 2),
+            'updated': o.last_update.strftime('%H:%M') if o.last_update else '-'
+        }
+
+    return jsonify({
+        'mode':    mode,
+        'assets':  assets_data,
+        'options': options_data,
+    })
 
 
 if __name__ == '__main__':

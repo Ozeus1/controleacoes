@@ -11,14 +11,73 @@
             gratuito (limitado).
         </p>
         <form method="POST" action="{{ url_for('config') }}">
+            <input type="hidden" name="action" value="save_brapi">
             <div class="form-group">
                 <label for="api_key">Token API</label>
                 <div style="display: flex; gap: 1rem;">
-                    <input type="text" id="api_key" name="api_key" value="{{ '********' if current_key else '' }}"
+                    <input type="text" id="api_key" name="brapi_key" value="{{ '********' if current_key else '' }}"
                         placeholder="Ex: xxxxxxxxxx" style="flex: 1; margin-bottom: 0;">
                     <button type="submit" class="btn btn-primary">Salvar</button>
                 </div>
             </div>
+        </form>
+    </div>
+
+    <!-- MODO DE COTAÇÃO -->
+    <div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-bottom: 2rem;">
+        <h3>Modo de Atualização de Cotações</h3>
+        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+            Escolha como as cotações de ações e opções serão atualizadas nas tabelas do site.
+        </p>
+
+        <div style="display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+            <!-- Card Yahoo -->
+            <div style="flex: 1; min-width: 220px; padding: 1.2rem; border-radius: 10px;
+                        border: 2px solid {{ 'var(--accent-color)' if quote_mode == 'yahoo' else 'var(--border-color)' }};
+                        background: {{ 'var(--hover-bg)' if quote_mode == 'yahoo' else 'var(--card-bg)' }};">
+                <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">📈</div>
+                <strong>Yahoo Finance</strong>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 0.5rem 0 0;">
+                    Cotações atualizadas via internet (Yahoo Finance). Não atualiza preços de opções.
+                    Funciona em qualquer lugar.
+                </p>
+                {% if quote_mode == 'yahoo' %}
+                <span style="display: inline-block; margin-top: 0.8rem; padding: 0.2rem 0.8rem;
+                             background: var(--accent-color); color: white; border-radius: 20px; font-size: 0.8rem;">
+                    ✓ Modo ativo
+                </span>
+                {% endif %}
+            </div>
+
+            <!-- Card MT5 -->
+            <div style="flex: 1; min-width: 220px; padding: 1.2rem; border-radius: 10px;
+                        border: 2px solid {{ 'var(--success-color)' if quote_mode == 'mt5' else 'var(--border-color)' }};
+                        background: {{ 'var(--hover-bg)' if quote_mode == 'mt5' else 'var(--card-bg)' }};">
+                <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">⚡</div>
+                <strong>MT5 Feeder (Tempo Real)</strong>
+                <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 0.5rem 0 0;">
+                    Cotações enviadas pelo script local conectado ao MetaTrader 5.
+                    Atualiza ações <strong>e opções</strong> em tempo real. Requer feeder rodando no seu PC.
+                </p>
+                {% if quote_mode == 'mt5' %}
+                <span style="display: inline-block; margin-top: 0.8rem; padding: 0.2rem 0.8rem;
+                             background: var(--success-color); color: white; border-radius: 20px; font-size: 0.8rem;">
+                    ✓ Modo ativo
+                </span>
+                {% endif %}
+            </div>
+        </div>
+
+        <form method="POST" action="{{ url_for('config') }}" style="display: flex; gap: 1rem; flex-wrap: wrap;">
+            <input type="hidden" name="action" value="set_quote_mode">
+            <button type="submit" name="quote_mode" value="yahoo"
+                class="btn {{ 'btn-primary' if quote_mode == 'yahoo' else 'btn-secondary' }}">
+                Usar Yahoo Finance
+            </button>
+            <button type="submit" name="quote_mode" value="mt5"
+                class="btn {{ 'btn-success' if quote_mode == 'mt5' else 'btn-secondary' }}">
+                Usar MT5 Feeder
+            </button>
         </form>
     </div>
 

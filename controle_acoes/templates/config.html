@@ -117,6 +117,51 @@
 </div>
 
 <div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-top: 2rem;">
+    <h3>Gerador de config.py para MT5 Feeder</h3>
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
+        Copie os blocos abaixo para o arquivo <code>mt5_feeder/config.py</code> no seu computador.
+        Os tickers são gerados automaticamente com base nos ativos e opções cadastrados no site.
+    </p>
+
+    <div style="margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <strong>TICKER_MAP</strong>
+            <button onclick="copyText('tickerMapBlock', this)" class="btn btn-secondary btn-sm">Copiar</button>
+        </div>
+        <pre id="tickerMapBlock" style="background: var(--bg-color); color: var(--text-primary); padding: 1rem;
+             border-radius: 0.5rem; border: 1px solid var(--border-color); font-family: monospace;
+             white-space: pre; overflow-x: auto; font-size: 0.85rem;">{{ ticker_map_text }}</pre>
+    </div>
+
+    <div style="margin-bottom: 1.5rem;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+            <strong>OPTION_MAP</strong>
+            <button onclick="copyText('optionMapBlock', this)" class="btn btn-secondary btn-sm">Copiar</button>
+        </div>
+        <pre id="optionMapBlock" style="background: var(--bg-color); color: var(--text-primary); padding: 1rem;
+             border-radius: 0.5rem; border: 1px solid var(--border-color); font-family: monospace;
+             white-space: pre; overflow-x: auto; font-size: 0.85rem;">{{ option_map_text }}</pre>
+    </div>
+
+    <script>
+    function copyText(id, btn) {
+        const text = document.getElementById(id).textContent;
+        navigator.clipboard.writeText(text).then(function() {
+            const orig = btn.textContent;
+            btn.textContent = '✓ Copiado!';
+            btn.classList.add('btn-success');
+            btn.classList.remove('btn-secondary');
+            setTimeout(function() {
+                btn.textContent = orig;
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-secondary');
+            }, 2000);
+        });
+    }
+    </script>
+</div>
+
+<div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-top: 2rem;">
     <h3>Debug Yahoo Finance</h3>
     <p style="color: var(--text-secondary); margin-bottom: 1rem;">
         Acesse a ferramenta de debug para verificar dados brutos retornados pelo Yahoo Finance para qualquer ativo.

@@ -1397,7 +1397,27 @@ def config():
 
     quote_mode = Settings.get_value('quote_mode', user_id=current_user.id, default='yahoo')
 
-    return render_template('config.html', current_key=current_key, quote_mode=quote_mode)
+    # Generate TICKER_MAP and OPTION_MAP for mt5_feeder/config.py
+    user_assets = Asset.query.filter(
+        Asset.user_id == current_user.id,
+        Asset.quantity > 0
+    ).order_by(Asset.type, Asset.ticker).all()
+
+    ticker_map_lines = [f'    "{a.ticker}": "{a.ticker}",  # {a.type}' for a in user_assets]
+    ticker_map_text = "TICKER_MAP = {\n" + "\n".join(ticker_map_lines) + "\n}"
+
+    user_options = Option.query.filter_by(user_id=current_user.id).order_by(Option.ticker).all()
+    option_map_lines = [
+        f'    "{o.ticker}": "{o.ticker}",  # {o.underlying_asset} | venc {o.expiration_date.strftime("%d/%m/%Y")}'
+        for o in user_options
+    ]
+    option_map_text = "OPTION_MAP = {\n" + "\n".join(option_map_lines) + "\n}"
+
+    return render_template('config.html',
+                           current_key=current_key,
+                           quote_mode=quote_mode,
+                           ticker_map_text=ticker_map_text,
+                           option_map_text=option_map_text)
 
 @app.route('/test_api', methods=['POST'])
 @login_required

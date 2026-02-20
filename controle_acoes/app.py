@@ -2976,6 +2976,51 @@ def update_market_indices():
 # But where is update_quotes? I'll check user route later. 
 # I will attach it to `update_quotes` via a wrapper or direct call in next step.
 
+# --- MT5 Quote Feed API ---
+
+@app.route('/api/update_quotes', methods=['POST'])
+def api_update_quotes():
+    """
+    Receives quote updates from a local MT5 feeder script.
+    Requires API key authentication via header: X-API-Key.
+    Body (JSON): {"quotes": {"PETR4": 38.50, "VALE3": 92.10, ...}}
+    """
+    from flask import jsonify
+
+    # API Key check
+    api_key = request.headers.get('X-API-Key', '')
+    expected_key = os.environ.get('MT5_API_KEY', '')
+    if not expected_key or api_key != expected_key:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json()
+    if not data or 'quotes' not in data:
+        return jsonify({'error': 'Invalid payload'}), 400
+
+    quotes = data['quotes']  # dict: {"TICKER": price, ...}
+    user_id = int(data.get('user_id', 1))
+
+    updated = []
+    not_found = []
+
+    for ticker, price in quotes.items():
+        ticker = ticker.upper()
+        asset = Asset.query.filter_by(ticker=ticker, user_id=user_id).first()
+        if asset:
+            asset.current_price = float(price)
+            asset.last_update = datetime.now()
+            updated.append(ticker)
+        else:
+            not_found.append(ticker)
+
+    db.session.commit()
+    return jsonify({
+        'status': 'ok',
+        'updated': updated,
+        'not_found': not_found
+    }), 200
+
+
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()

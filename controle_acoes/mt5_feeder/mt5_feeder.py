@@ -48,13 +48,16 @@ def conectar_mt5():
     return True
 
 
-def _get_price(symbol):
+def _get_price(symbol, retries=3, wait=0.5):
     """Retorna (price, change_pct) para o símbolo. Tenta habilitar se necessário."""
     tick = mt5.symbol_info_tick(symbol)
     if tick is None:
         mt5.symbol_select(symbol, True)
-        time.sleep(0.15)
-        tick = mt5.symbol_info_tick(symbol)
+        for _ in range(retries):
+            time.sleep(wait)
+            tick = mt5.symbol_info_tick(symbol)
+            if tick is not None:
+                break
     if tick is None:
         return None, None
 
@@ -86,11 +89,22 @@ def obter_cotacoes():
     return quotes, changes
 
 
+def _preselect_symbols(symbols):
+    """Habilita todos os símbolos no Market Watch antes de ler preços."""
+    for sym in symbols:
+        if mt5.symbol_info(sym) is None:
+            mt5.symbol_select(sym, True)
+    time.sleep(1.0)  # aguarda o MT5 carregar os símbolos
+
+
 def obter_cotacoes_opcoes():
     """Lê opções. Retorna dict {ticker_opcao: price}."""
     option_map = getattr(cfg, 'OPTION_MAP', {})
     if not option_map:
         return {}
+
+    # Pré-habilita todos os símbolos de opções antes de ler
+    _preselect_symbols(list(option_map.values()))
 
     options = {}
     print("  [Opções]")
@@ -100,7 +114,9 @@ def obter_cotacoes_opcoes():
             options[ticker_site] = price
             print(f"    {ticker_site:12s} ({simbolo_mt5:15s}) = R$ {price:.2f}")
         else:
-            print(f"    {ticker_site:12s} ({simbolo_mt5:15s}) = sem preço")
+            info = mt5.symbol_info(simbolo_mt5)
+            motivo = "símbolo não encontrado no MT5" if info is None else "preço zero/indisponível"
+            print(f"    {ticker_site:12s} ({simbolo_mt5:15s}) = sem preço ({motivo})")
     return options
 
 

@@ -133,15 +133,15 @@
                 <td><span class="ticker-badge" style="background-color: #8b5cf6; color: white;">{{
                         item.asset.ticker }}</span></td>
                 <td>{{ item.asset.quantity }}</td>
-                <td>{{ item.current_total | brl }}</td>
+                <td data-ticker="{{ item.asset.ticker }}" data-field="position" data-qty="{{ item.asset.quantity }}" data-avgprice="{{ item.asset.avg_price }}">{{ item.current_total | brl }}</td>
                 <td class="">{{ item.asset.avg_price | brl }}</td>
                 <td class="">{{ item.total_invested | brl }}</td>
                 <td class="">{{ "%.2f"|format(item.weight)|replace('.', ',') }}%</td>
-                <td class="">{{ item.current_price | brl }}</td>
-                <td class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
+                <td data-ticker="{{ item.asset.ticker }}" data-field="price">{{ item.current_price | brl }}</td>
+                <td data-ticker="{{ item.asset.ticker }}" data-field="change" class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.change_percent)|replace('.', ',') }}%
                 </td>
-                <td class="" style="color: var(--text-secondary); font-size: 0.85rem;">
+                <td data-ticker="{{ item.asset.ticker }}" data-field="updated" style="color: var(--text-secondary); font-size: 0.85rem;">
                     {{ item.last_update }}
                 </td>
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">

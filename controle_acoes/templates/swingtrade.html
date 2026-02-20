@@ -34,7 +34,7 @@
                 <td><span class="ticker-badge" style="background: #312e81; color: #818cf8;">{{ item.asset.ticker
                         }}</span></td>
                 <td>{{ item.asset.quantity }}</td>
-                <td>{{ item.current_total | brl }}</td>
+                <td data-ticker="{{ item.asset.ticker }}" data-field="position" data-qty="{{ item.asset.quantity }}" data-avgprice="{{ item.asset.avg_price }}">{{ item.current_total | brl }}</td>
                 <td>{{ item.asset.avg_price | brl }}</td>
                 <td>{{ item.total_invested | brl }}</td>
                 <td>{{ "%.2f"|format(item.weight)|replace('.', ',') }}%</td>
@@ -43,15 +43,15 @@
                 {% set p = item.current_price %}
                 {% set sl = item.asset.stop_loss or 0 %}
                 {% set g1 = item.asset.gain1 or 999999 %}
-                <td
+                <td data-ticker="{{ item.asset.ticker }}" data-field="price"
                     style="font-weight: bold; color: {{ 'var(--danger-color)' if sl > 0 and p <= sl else ('var(--success-color)' if p >= g1 else 'inherit') }}">
                     {{ p | brl }}
                 </td>
 
-                <td class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
+                <td data-ticker="{{ item.asset.ticker }}" data-field="change" class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.change_percent)|replace('.', ',') }}%
                 </td>
-                <td style="color: var(--text-secondary); font-size: 0.85rem;">
+                <td data-ticker="{{ item.asset.ticker }}" data-field="updated" style="color: var(--text-secondary); font-size: 0.85rem;">
                     {{ item.last_update }}
                 </td>
 
@@ -127,4 +127,43 @@
     <a href="{{ url_for('add_asset', strategy='SWING') }}" class="btn btn-primary">Adicionar Operação</a>
 </div>
 {% endif %}
+
+<!-- MT5 Live Polling -->
+<script>
+(function() {
+    const POLL_URL = "{{ url_for('api_current_quotes') }}";
+    const INTERVAL = 15000;
+    function fmtBRL(v) { return 'R$ ' + v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+    function fmtPct(v) { return v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) + '%'; }
+    function setClass(el, val) { el.classList.remove('positive','negative'); el.classList.add(val >= 0 ? 'positive' : 'negative'); }
+    function applyQuotes(assets) {
+        document.querySelectorAll('[data-field="price"]').forEach(function(el) {
+            const d = assets[el.dataset.ticker]; if (d) el.textContent = fmtBRL(d.price);
+        });
+        document.querySelectorAll('[data-field="change"]').forEach(function(el) {
+            const d = assets[el.dataset.ticker]; if (d) { el.textContent = fmtPct(d.change); setClass(el, d.change); }
+        });
+        document.querySelectorAll('[data-field="updated"]').forEach(function(el) {
+            const d = assets[el.dataset.ticker]; if (d) el.textContent = d.updated + ' ⚡';
+        });
+        document.querySelectorAll('[data-field="position"]').forEach(function(el) {
+            const d = assets[el.dataset.ticker]; if (d) el.textContent = fmtBRL(parseFloat(el.dataset.qty) * d.price);
+        });
+    }
+    function poll() {
+        fetch(POLL_URL).then(r => r.json()).then(function(data) {
+            if (data.mode === 'mt5') applyQuotes(data.assets);
+        }).catch(function(){});
+    }
+    fetch(POLL_URL).then(r => r.json()).then(function(data) {
+        if (data.mode !== 'mt5') return;
+        applyQuotes(data.assets);
+        setInterval(poll, INTERVAL);
+        var b = document.createElement('div');
+        b.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--success-color);color:#fff;padding:0.4rem 1rem;border-radius:20px;font-size:0.85rem;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+        b.textContent = '⚡ MT5 ao vivo';
+        document.body.appendChild(b);
+    }).catch(function(){});
+})();
+</script>
 {% endblock %}

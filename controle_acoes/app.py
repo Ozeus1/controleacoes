@@ -106,6 +106,30 @@ def run_migrations():
         cursor.execute("ALTER TABLE asset ADD COLUMN dividend_yield FLOAT")
         print("[MIGRATION] Added column 'dividend_yield' to 'asset' table.")
 
+    # Check existing columns in 'international' table
+    cursor.execute("PRAGMA table_info(international)")
+    intl_columns = {row[1] for row in cursor.fetchall()}
+
+    if 'purchase_price' not in intl_columns:
+        cursor.execute("ALTER TABLE international ADD COLUMN purchase_price FLOAT")
+        print("[MIGRATION] Added column 'purchase_price' to 'international' table.")
+
+    if 'current_price' not in intl_columns:
+        cursor.execute("ALTER TABLE international ADD COLUMN current_price FLOAT")
+        print("[MIGRATION] Added column 'current_price' to 'international' table.")
+
+    # Check existing columns in 'crypto' table
+    cursor.execute("PRAGMA table_info(crypto)")
+    crypto_columns = {row[1] for row in cursor.fetchall()}
+
+    if 'quote' not in crypto_columns:
+        cursor.execute("ALTER TABLE crypto ADD COLUMN quote FLOAT")
+        print("[MIGRATION] Added column 'quote' to 'crypto' table.")
+
+    if 'avg_price' not in crypto_columns:
+        cursor.execute("ALTER TABLE crypto ADD COLUMN avg_price FLOAT DEFAULT 0.0")
+        print("[MIGRATION] Added column 'avg_price' to 'crypto' table.")
+
     conn.commit()
     conn.close()
 

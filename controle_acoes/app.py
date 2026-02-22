@@ -1,5 +1,6 @@
 
 import os
+import sys
 import sqlite3
 from flask import Flask, render_template, request, redirect, url_for, flash
 from dotenv import load_dotenv
@@ -16,7 +17,16 @@ import yfinance as yf
 # Load env vars
 load_dotenv()
 
-app = Flask(__name__)
+# Suporte a PyInstaller (frozen) e execução normal
+if getattr(sys, 'frozen', False):
+    # sys._MEIPASS = _internal/ com templates/static bundled
+    _bundle = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+    app = Flask(__name__,
+                root_path=_bundle,
+                template_folder=os.path.join(_bundle, 'templates'),
+                static_folder=os.path.join(_bundle, 'static'))
+else:
+    app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'default_secret')
 
 # --- Custom Filters ---
@@ -33,7 +43,7 @@ def format_pct(value):
     return f"{value:,.2f}%".replace('.', ',')
 
 
-basedir = os.path.abspath(os.path.dirname(__file__))
+basedir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.abspath(os.path.dirname(__file__))
 instance_path = os.path.join(basedir, 'instance')
 if not os.path.exists(instance_path):
     os.makedirs(instance_path)
@@ -79,6 +89,22 @@ def run_migrations():
     if 'option_type' not in existing_columns:
         cursor.execute("ALTER TABLE 'option' ADD COLUMN option_type VARCHAR(20) NOT NULL DEFAULT 'VENDA_CALL'")
         print("[MIGRATION] Added column 'option_type' to 'option' table.")
+
+    # Check existing columns in 'asset' table
+    cursor.execute("PRAGMA table_info(asset)")
+    asset_columns = {row[1] for row in cursor.fetchall()}
+
+    if 'last_dividend' not in asset_columns:
+        cursor.execute("ALTER TABLE asset ADD COLUMN last_dividend FLOAT")
+        print("[MIGRATION] Added column 'last_dividend' to 'asset' table.")
+
+    if 'last_dividend_date' not in asset_columns:
+        cursor.execute("ALTER TABLE asset ADD COLUMN last_dividend_date DATE")
+        print("[MIGRATION] Added column 'last_dividend_date' to 'asset' table.")
+
+    if 'dividend_yield' not in asset_columns:
+        cursor.execute("ALTER TABLE asset ADD COLUMN dividend_yield FLOAT")
+        print("[MIGRATION] Added column 'dividend_yield' to 'asset' table.")
 
     conn.commit()
     conn.close()

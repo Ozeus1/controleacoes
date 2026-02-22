@@ -1,0 +1,4 @@
+# Dependências adicionais para a versão desktop
+# Instale com:  pip install -r requirements_desktop.txt
+
+pywebview>=4.0

@@ -86,6 +86,10 @@ header {
     gap: 0.5rem;
 }
 
+.menu-toggle {
+    display: none;
+}
+
 .header-brand h1 {
     display: flex;
     align-items: center;
@@ -475,7 +479,7 @@ label {
     }
 
     .menu-toggle {
-        display: block !important;
+        display: block;
     }
 
     .header-user {

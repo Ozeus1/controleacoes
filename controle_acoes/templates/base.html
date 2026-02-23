@@ -134,11 +134,9 @@
                 </div>
                 <div class="header-user">
                     <span class="welcome-text">Bem vindo, <strong>{{ current_user.username }}</strong></span>
-                    <form action="{{ url_for('update_quotes') }}" method="POST" style="margin: 0;">
-                        <button type="submit" class="btn btn-secondary btn-sm">
-                            🔄 <span class="btn-label">Atualizar Cotações</span>
-                        </button>
-                    </form>
+                    <button type="button" id="btn-update-desktop" data-update-btn onclick="startUpdateQuotes()" class="btn btn-secondary btn-sm">
+                        🔄 <span class="btn-label">Atualizar Cotações</span>
+                    </button>
                     <div class="dropdown">
                         <a href="#"
                             class="dropdown-toggle {{ 'active' if request.endpoint in ['profile', 'list_users', 'config'] else '' }}">
@@ -181,11 +179,9 @@
                 <!-- Mobile-only user section inside nav -->
                 <div class="nav-user-mobile">
                     <span class="welcome-text">Bem vindo, <strong>{{ current_user.username }}</strong></span>
-                    <form action="{{ url_for('update_quotes') }}" method="POST" style="margin: 0.5rem 0;">
-                        <button type="submit" class="btn btn-secondary btn-sm" style="width: 100%;">
-                            🔄 Atualizar Cotações
-                        </button>
-                    </form>
+                    <button type="button" id="btn-update-mobile" data-update-btn onclick="startUpdateQuotes()" class="btn btn-secondary btn-sm" style="width: 100%;">
+                        🔄 Atualizar Cotações
+                    </button>
                     <div class="nav-mobile-links">
                         <a href="{{ url_for('profile') }}">👤 Minha Conta</a>
                         {% if current_user.is_admin %}
@@ -348,6 +344,73 @@
             }
         }
 
+    </script>
+
+    <!-- Overlay de atualização de cotações -->
+    <div id="update-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; justify-content:center; align-items:center;">
+        <div style="background:var(--card-bg,#1e1e1e); border:1px solid var(--border-color,#333); padding:2rem 2.5rem; border-radius:10px; text-align:center; min-width:280px;">
+            <div style="display:inline-block; width:40px; height:40px; border:4px solid var(--border-color,#555); border-top-color:var(--accent-color,#4a9eff); border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+            <p style="margin-top:1rem; color:var(--text-primary,#e0e0e0); font-size:1rem;">Atualizando cotações...</p>
+            <p style="color:var(--text-secondary,#999); font-size:0.85rem;">Isso pode levar até 2 minutos.</p>
+        </div>
+    </div>
+    <!-- Banner de resultado da atualização -->
+    <div id="update-result-banner" style="display:none; position:fixed; top:1rem; left:50%; transform:translateX(-50%); z-index:10000; padding:0.75rem 1.5rem; border-radius:6px; font-size:0.9rem; max-width:90vw; text-align:center; box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+    <style>
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #update-result-banner.cat-success { background:#1a5c2e; color:#7adf8e; border:1px solid #2d9c4e; }
+        #update-result-banner.cat-warning { background:#5c4a0a; color:#f0c060; border:1px solid #a07820; }
+        #update-result-banner.cat-danger  { background:#5c1a1a; color:#f08080; border:1px solid #9c3030; }
+    </style>
+    <script>
+        function startUpdateQuotes() {
+            document.querySelectorAll('[data-update-btn]').forEach(function(b) { b.disabled = true; });
+            document.getElementById('update-overlay').style.display = 'flex';
+
+            fetch('{{ url_for("update_quotes_async") }}', { method: 'POST' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.task_id) {
+                        pollUpdate(data.task_id);
+                    } else {
+                        showUpdateResult('Erro ao iniciar atualização.', 'danger');
+                    }
+                })
+                .catch(function(err) {
+                    showUpdateResult('Erro de rede: ' + err, 'danger');
+                });
+        }
+
+        function pollUpdate(taskId) {
+            setTimeout(function() {
+                fetch('/api/update_progress/' + taskId)
+                    .then(function(r) { return r.json(); })
+                    .then(function(data) {
+                        if (data.status === 'running') {
+                            pollUpdate(taskId);
+                        } else if (data.status === 'done') {
+                            showUpdateResult(data.msg, data.category);
+                        } else {
+                            showUpdateResult('Erro desconhecido ao atualizar.', 'danger');
+                        }
+                    })
+                    .catch(function(err) {
+                        showUpdateResult('Erro ao verificar progresso: ' + err, 'danger');
+                    });
+            }, 2500);
+        }
+
+        function showUpdateResult(msg, category) {
+            document.getElementById('update-overlay').style.display = 'none';
+            document.querySelectorAll('[data-update-btn]').forEach(function(b) { b.disabled = false; });
+
+            var banner = document.getElementById('update-result-banner');
+            banner.textContent = msg;
+            banner.className = 'cat-' + (category || 'success');
+            banner.style.display = 'block';
+
+            setTimeout(function() { location.reload(); }, 3000);
+        }
     </script>
 </body>
 

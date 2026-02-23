@@ -2,13 +2,15 @@
 import os
 import sys
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
 from models import db, Asset, Settings, User, TradeHistory, Option, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
 import time
+import threading
+import uuid
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 import pytz
@@ -75,6 +77,9 @@ def format_date(value):
 
 
 db.init_app(app)
+
+# In-memory store for async update tasks: task_id -> {status, msg, category}
+_update_tasks = {}
 
 def run_migrations():
     """Auto-migrate database schema on startup."""
@@ -2304,16 +2309,19 @@ def delete_balance_item(type, id):
     return redirect(url_for('balanceamento'))
 
 
-def update_all_assets_logic():
+def update_all_assets_logic(user_id=None):
     """
-    Helper function to update quotes for all Stocks/FIIs of current user.
+    Helper function to update quotes for all Stocks/FIIs of a given user.
+    Accepts user_id directly so it can be called from background threads.
     """
-    assets = Asset.query.filter_by(user_id=current_user.id).all()
+    if user_id is None:
+        user_id = current_user.id
+    assets = Asset.query.filter_by(user_id=user_id).all()
     # Filter ACAO/FII
     relevant = [a for a in assets if a.type in ['ACAO', 'FII', 'ETF']]
     if not relevant:
-        return 0, []
-    
+        return 0, 0, []
+
     updated_count = 0
     errors = []
     total_tried = 0
@@ -2326,7 +2334,7 @@ def update_all_assets_logic():
         try:
             tickers = [a.ticker for a in chunk]
             total_tried += len(tickers)
-            quotes = get_quotes(tickers, user_id=current_user.id)
+            quotes = get_quotes(tickers, user_id=user_id)
             
             if quotes:
                 for asset in chunk:
@@ -2509,6 +2517,60 @@ def update_quotes():
         traceback.print_exc()
         
     return redirect(request.referrer or url_for('index'))
+
+
+@app.route('/update_quotes_async', methods=['POST'])
+@login_required
+def update_quotes_async():
+    """Start background update and return task_id immediately (no 504 timeout)."""
+    user_id = current_user.id
+    task_id = str(uuid.uuid4())
+    _update_tasks[task_id] = {'status': 'running', 'msg': '', 'category': ''}
+
+    def do_update():
+        with app.app_context():
+            try:
+                update_market_indices()
+                count, tried, errs = update_all_assets_logic(user_id=user_id)
+                intl_success, intl_msgs = update_intl_quotes_logic(user_id)
+
+                final_msg = f'Nacionais: {count}/{tried} atualizados. '
+                if intl_success:
+                    final_msg += f'Internacional/Cripto: Sucesso ({", ".join(intl_msgs)}). '
+                else:
+                    final_msg += f'Internacional: Falha ({", ".join(intl_msgs)}). '
+
+                if errs:
+                    _update_tasks[task_id] = {
+                        'status': 'done',
+                        'msg': f'{final_msg} Erros: {len(errs)}. {errs[0]}',
+                        'category': 'warning'
+                    }
+                else:
+                    _update_tasks[task_id] = {
+                        'status': 'done',
+                        'msg': f'{final_msg} Fonte: Yahoo Finance',
+                        'category': 'success'
+                    }
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                _update_tasks[task_id] = {
+                    'status': 'done',
+                    'msg': f'Erro ao atualizar cotações: {str(e)}',
+                    'category': 'danger'
+                }
+
+    threading.Thread(target=do_update, daemon=True).start()
+    return jsonify({'task_id': task_id})
+
+
+@app.route('/api/update_progress/<task_id>')
+@login_required
+def update_progress(task_id):
+    """Poll endpoint to check background update status."""
+    task = _update_tasks.get(task_id, {'status': 'not_found', 'msg': '', 'category': ''})
+    return jsonify(task)
 
 
 @app.route('/update_intl_quotes')

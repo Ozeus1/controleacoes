@@ -129,8 +129,7 @@
                             style="height: 32px; margin-right: 10px;">
                         Minha Carteira
                     </h1>
-                    <button class="menu-toggle" onclick="toggleMenu()"
-                        style="background: none; border: none; color: white; font-size: 1.5rem; padding: 0;">☰</button>
+                    <button class="menu-toggle" onclick="toggleMenu()">☰</button>
                 </div>
                 <div class="header-user">
                     <span class="welcome-text">Bem vindo, <strong>{{ current_user.username }}</strong></span>
@@ -228,7 +227,17 @@
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script>
         function toggleMenu() {
-            document.querySelector('.main-nav').classList.toggle('active');
+            var nav = document.querySelector('.main-nav');
+            if (!nav) return;
+            var isOpen = nav.classList.contains('active');
+            if (isOpen) {
+                nav.classList.remove('active');
+                nav.style.display = '';
+            } else {
+                nav.classList.add('active');
+                nav.style.display = 'flex';
+                nav.style.flexDirection = 'column';
+            }
         }
     </script>
     <script>

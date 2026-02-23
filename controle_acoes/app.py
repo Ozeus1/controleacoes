@@ -152,6 +152,26 @@ def run_migrations():
         cursor.execute("ALTER TABLE crypto ADD COLUMN avg_price FLOAT DEFAULT 0.0")
         print("[MIGRATION] Added column 'avg_price' to 'crypto' table.")
 
+    # Reclassify legacy strategy names in trade_history
+    cursor.execute("""
+        UPDATE trade_history SET strategy = 'Recomendações'
+        WHERE strategy = 'EQI'
+    """)
+    cursor.execute("""
+        UPDATE trade_history SET strategy = 'Fundos Imobiliários'
+        WHERE strategy = 'FII'
+    """)
+    cursor.execute("""
+        UPDATE trade_history SET strategy = 'Internacional'
+        WHERE strategy = 'INTL'
+    """)
+    cursor.execute("""
+        UPDATE trade_history SET strategy = 'Opções'
+        WHERE strategy LIKE 'OPCAO%'
+    """)
+    if cursor.rowcount > 0:
+        print(f"[MIGRATION] Reclassified {cursor.rowcount} trade_history strategy records.")
+
     conn.commit()
     conn.close()
 

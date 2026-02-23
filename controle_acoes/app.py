@@ -1522,11 +1522,16 @@ def login():
         
         if user and user.check_password(password):
             login_user(user)
-            # Automatic Update on Login
-            try:
-                update_all_assets_logic()
-            except:
-                pass 
+            # Automatic Update on Login (background - não bloqueia o redirect)
+            uid = user.id
+            def _bg_login_update():
+                with app.app_context():
+                    try:
+                        update_market_indices()
+                        update_all_assets_logic(user_id=uid)
+                    except Exception:
+                        pass
+            threading.Thread(target=_bg_login_update, daemon=True).start()
             return redirect(url_for('index'))
         flash('Usuário ou senha inválidos')
     return render_template('login.html')

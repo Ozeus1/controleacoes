@@ -11,6 +11,8 @@ import requests
 import time
 import threading
 import uuid
+import json
+import tempfile
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 import pytz
@@ -78,8 +80,23 @@ def format_date(value):
 
 db.init_app(app)
 
-# In-memory store for async update tasks: task_id -> {status, msg, category}
-_update_tasks = {}
+# File-based task store (shared across gunicorn workers)
+_TASK_DIR = os.path.join(tempfile.gettempdir(), 'ca_update_tasks')
+os.makedirs(_TASK_DIR, exist_ok=True)
+
+def _task_file(task_id):
+    return os.path.join(_TASK_DIR, task_id + '.json')
+
+def _set_task(task_id, data):
+    with open(_task_file(task_id), 'w') as f:
+        json.dump(data, f)
+
+def _get_task(task_id):
+    try:
+        with open(_task_file(task_id), 'r') as f:
+            return json.load(f)
+    except Exception:
+        return {'status': 'not_found', 'msg': '', 'category': ''}
 
 def run_migrations():
     """Auto-migrate database schema on startup."""
@@ -2525,7 +2542,7 @@ def update_quotes_async():
     """Start background update and return task_id immediately (no 504 timeout)."""
     user_id = current_user.id
     task_id = str(uuid.uuid4())
-    _update_tasks[task_id] = {'status': 'running', 'msg': '', 'category': ''}
+    _set_task(task_id, {'status': 'running', 'msg': '', 'category': ''})
 
     def do_update():
         with app.app_context():
@@ -2541,25 +2558,25 @@ def update_quotes_async():
                     final_msg += f'Internacional: Falha ({", ".join(intl_msgs)}). '
 
                 if errs:
-                    _update_tasks[task_id] = {
+                    _set_task(task_id, {
                         'status': 'done',
                         'msg': f'{final_msg} Erros: {len(errs)}. {errs[0]}',
                         'category': 'warning'
-                    }
+                    })
                 else:
-                    _update_tasks[task_id] = {
+                    _set_task(task_id, {
                         'status': 'done',
                         'msg': f'{final_msg} Fonte: Yahoo Finance',
                         'category': 'success'
-                    }
+                    })
             except Exception as e:
                 import traceback
                 traceback.print_exc()
-                _update_tasks[task_id] = {
+                _set_task(task_id, {
                     'status': 'done',
                     'msg': f'Erro ao atualizar cotações: {str(e)}',
                     'category': 'danger'
-                }
+                })
 
     threading.Thread(target=do_update, daemon=True).start()
     return jsonify({'task_id': task_id})
@@ -2569,8 +2586,7 @@ def update_quotes_async():
 @login_required
 def update_progress(task_id):
     """Poll endpoint to check background update status."""
-    task = _update_tasks.get(task_id, {'status': 'not_found', 'msg': '', 'category': ''})
-    return jsonify(task)
+    return jsonify(_get_task(task_id))
 
 
 @app.route('/update_intl_quotes')

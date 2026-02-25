@@ -126,7 +126,90 @@
 </div>
 {% endif %}
 
-{# ========== TABELA 2: COMPRA A SECO - CALLS ITM ========== #}
+{# ========== TABELA 2: VENDA A SECO DE PUTS ========== #}
+{% if venda_puts %}
+<div class="card" style="margin-top: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Venda a Seco de Puts</h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <a href="{{ url_for('add_option', type='VENDA_PUT') }}" class="btn btn-primary btn-sm">Adicionar Put</a>
+        </div>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Opção</th>
+                <th>Qtd</th>
+                <th>Ativo</th>
+                <th>Cotação Ativo</th>
+                <th>Strike</th>
+                <th>Vencimento</th>
+                <th>Prêmio Recebido</th>
+                <th>Total Recebido</th>
+                <th>Cotação Opção</th>
+                <th>Valor Atual</th>
+                <th>Lucro R$</th>
+                <th>Lucro %</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in venda_puts %}
+            <tr>
+                <td><span class="ticker-badge">{{ item.option.ticker }}</span></td>
+                <td>{{ item.option.quantity }}</td>
+                <td>{{ item.option.underlying_asset }}</td>
+                <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
+                <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
+                <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.total_sold)|replace('.', ',') }}</td>
+                <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td data-optticker="{{ item.option.ticker }}" data-field="opt_value" data-qty="{{ item.option.quantity }}">R$ {{ "%.2f"|format(item.current_val)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
+                    R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
+                </td>
+                <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
+                </td>
+                <td class="actions">
+                    <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
+                        style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
+                    <a href="{{ url_for('edit_option', id=item.option.id) }}" class="btn btn-sm btn-primary">✏️</a>
+                    <a href="{{ url_for('delete_option', id=item.option.id) }}" class="btn btn-sm btn-danger"
+                        onclick="return confirm('Apagar?')">🗑️</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
+                <td>TOTAL</td>
+                <td></td><td></td><td></td><td></td><td></td><td></td>
+                <td>{{ venda_puts|sum(attribute='total_sold') | brl }}</td>
+                <td></td>
+                <td>{{ venda_puts|sum(attribute='current_val') | brl }}</td>
+                <td class="{{ 'positive' if venda_puts|sum(attribute='profit') >= 0 else 'negative' }}">
+                    {{ venda_puts|sum(attribute='profit') | brl }}
+                </td>
+                <td></td><td></td>
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% else %}
+<div class="card" style="margin-top: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Venda a Seco de Puts</h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <a href="{{ url_for('add_option', type='VENDA_PUT') }}" class="btn btn-primary btn-sm">Adicionar Put</a>
+        </div>
+    </div>
+    <p style="text-align: center; padding: 2rem; color: var(--text-secondary);">Sem vendas a seco de Puts cadastradas</p>
+</div>
+{% endif %}
+
+{# ========== TABELA 3: COMPRA A SECO - CALLS ITM ========== #}
 {% if compra_calls %}
 <div class="card" style="margin-top: 2rem;">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
@@ -215,7 +298,7 @@
 </div>
 {% endif %}
 
-{# ========== TABELA 3: COMPRA A SECO - PUTS ========== #}
+{# ========== TABELA 4: COMPRA A SECO - PUTS ========== #}
 {% if compra_puts %}
 <div class="card" style="margin-top: 2rem;">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">

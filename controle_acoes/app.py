@@ -199,6 +199,7 @@ def opcoes():
             underlying_avg_prices[a.ticker] = a.avg_price
 
     processed_options = []  # VENDA_CALL
+    venda_puts = []         # VENDA_PUT
     compra_calls = []       # COMPRA_CALL
     compra_puts = []        # COMPRA_PUT
 
@@ -238,6 +239,23 @@ def opcoes():
                 'lucro_ex_rs': lucro_ex_rs,
                 'lucro_at_rs': lucro_at_rs
             })
+
+        elif option_type == 'VENDA_PUT':
+            # Venda a Seco de Puts: prêmio recebido menos valor atual
+            total_sold = opt.quantity * opt.sale_price
+            current_val = opt.quantity * opt.current_option_price
+            profit = total_sold - current_val
+            profit_pct = (profit / total_sold * 100) if total_sold > 0 else 0
+
+            venda_puts.append({
+                'option': opt,
+                'underlying_price': underlying_price,
+                'total_sold': total_sold,
+                'current_val': current_val,
+                'profit': profit,
+                'profit_pct': profit_pct,
+            })
+
         else:
             # Lógica para compra a seco (COMPRA_CALL / COMPRA_PUT)
             total_invested = opt.quantity * opt.sale_price
@@ -260,6 +278,7 @@ def opcoes():
                 compra_puts.append(item)
 
     return render_template('opcoes.html', options=processed_options,
+                           venda_puts=venda_puts,
                            compra_calls=compra_calls, compra_puts=compra_puts)
 
 @app.route('/add_option', methods=['GET', 'POST'])
@@ -409,11 +428,10 @@ def close_option(id):
         if opt.option_type in ('COMPRA_CALL', 'COMPRA_PUT'):
             # LONG position: Profit = (Sell Price - Buy Price) * Qty
             profit_val = (buy_back_price - opt.sale_price) * qty_exit
-            strategy = "OPCAO_" + opt.option_type
         else:
-            # SHORT position: Profit = (Sale Price - Buy Back Price) * Qty
+            # SHORT position (VENDA_CALL, VENDA_PUT): Profit = (Sale Price - Buy Back Price) * Qty
             profit_val = (opt.sale_price - buy_back_price) * qty_exit
-            strategy = "OPCAO"
+        strategy = 'Opções'
         profit_pct = (profit_val / (qty_exit * opt.sale_price) * 100) if opt.sale_price > 0 else 0
 
         history = TradeHistory(

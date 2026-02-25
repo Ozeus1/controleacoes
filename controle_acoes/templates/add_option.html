@@ -6,6 +6,7 @@
         {% if edit %}Editar Opção{% else %}
             {% if option_type == 'COMPRA_CALL' %}Adicionar Compra a Seco - Call ITM
             {% elif option_type == 'COMPRA_PUT' %}Adicionar Compra a Seco - Put
+            {% elif option_type == 'VENDA_PUT' %}Adicionar Venda a Seco de Put
             {% else %}Adicionar Venda Coberta de Call{% endif %}
         {% endif %}
     </h2>
@@ -59,7 +60,7 @@
     <div class="col-md-6 form-group">
         <label for="sale_price">
             {% if option_type in ('COMPRA_CALL', 'COMPRA_PUT') %}Valor de Compra (Prêmio R$)
-            {% else %}Valor de Venda (Prêmio R$){% endif %}
+            {% else %}Valor de Venda / Prêmio Recebido (R$){% endif %}
         </label>
         <input type="text" id="sale_price" name="sale_price" class="form-control"
             value="{{ '%.2f'|format(option.sale_price)|replace('.', ',') if option else '' }}" required

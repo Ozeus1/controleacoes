@@ -56,7 +56,7 @@
         <div class="col-12 col-md-8 text-center">
             <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
                 <h3 style="font-size: 1.2rem; margin-bottom: 1rem;">Alocação (Ações vs FIIs vs ETFs)</h3>
-                <div style="max-width: 500px; width: 100%;">
+                <div style="max-width: 500px; width: 100%; height: 300px;">
                     <canvas id="allocationChart"></canvas>
                 </div>
             </div>
@@ -68,7 +68,7 @@
         <div class="col-12 col-md-8 text-center">
             <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
                 <h3 style="font-size: 1.2rem; margin-bottom: 1rem;">Setores de Ações</h3>
-                <div style="max-width: 500px; width: 100%;">
+                <div style="max-width: 500px; width: 100%; height: 300px;">
                     <canvas id="stockChart"></canvas>
                 </div>
             </div>
@@ -80,7 +80,7 @@
         <div class="col-12 col-md-8 text-center">
             <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
                 <h3 style="font-size: 1.2rem; margin-bottom: 1rem;">Tipos de FIIs</h3>
-                <div style="max-width: 500px; width: 100%;">
+                <div style="max-width: 500px; width: 100%; height: 300px;">
                     <canvas id="fiiChart"></canvas>
                 </div>
             </div>
@@ -92,7 +92,7 @@
         <div class="col-12 col-md-8 text-center">
             <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
                 <h3 style="font-size: 1.2rem; margin-bottom: 1rem;">Divisão (Tijolo x Papel)</h3>
-                <div style="max-width: 500px; width: 100%;">
+                <div style="max-width: 500px; width: 100%; height: 300px;">
                     <canvas id="broadChart"></canvas>
                 </div>
             </div>
@@ -163,26 +163,28 @@
         Chart.register(ChartDataLabels);
 
         // Common Option for Doughnut Charts
+        const isMobile = window.innerWidth < 600;
         const commonOptions = {
             responsive: true,
             maintainAspectRatio: false,
             cutout: '60%',
             plugins: {
                 legend: {
-                    position: 'right',
+                    position: isMobile ? 'bottom' : 'right',
                     labels: {
                         color: themeColors.text,
-                        font: { size: 12 },
-                        padding: 12,
+                        font: { size: isMobile ? 11 : 12 },
+                        padding: isMobile ? 6 : 12,
+                        boxWidth: isMobile ? 12 : 16,
                         generateLabels: function(chart) {
                             const data = chart.data;
                             if (data.labels.length && data.datasets.length) {
                                 const sum = data.datasets[0].data.reduce((a, b) => a + b, 0);
                                 return data.labels.map(function(label, i) {
                                     const value = data.datasets[0].data[i];
-                                    const pct = sum > 0 ? (value / sum * 100).toFixed(2) : '0.00';
+                                    const pct = sum > 0 ? (value / sum * 100).toFixed(1) : '0.0';
                                     return {
-                                        text: label + '    ' + pct + '%',
+                                        text: label + '  ' + pct + '%',
                                         fillStyle: data.datasets[0].backgroundColor[i],
                                         strokeStyle: data.datasets[0].backgroundColor[i],
                                         fontColor: themeColors.text,
@@ -209,7 +211,7 @@
                     }
                 }
             },
-            layout: { padding: 20 }
+            layout: { padding: isMobile ? 5 : 20 }
         };
 
         // 1. Broad Allocation Chart

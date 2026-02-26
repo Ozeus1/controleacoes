@@ -21,7 +21,7 @@
         </span>
     </div>
 
-    <table id="historyTable">
+    <table id="historyTable" class="no-datatable">
         <thead>
             <tr>
                 <th>Ticker</th>
@@ -195,6 +195,25 @@ new Chart(ctx, {
             }
         }
     }
+});
+</script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+$(document).ready(function () {
+    $('#historyTable').DataTable({
+        "language": {
+            "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
+        },
+        "paging": false,
+        "info": false,
+        "searching": false,
+        "order": [[3, "desc"]],
+        "columnDefs": [
+            { "orderable": false, "targets": 10 }
+        ]
+    });
 });
 </script>
 {% endblock %}

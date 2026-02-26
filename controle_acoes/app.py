@@ -712,11 +712,9 @@ def add_asset():
         # Get Strategy from Form (needed for redirect logic)
         strategy = request.form.get('strategy', 'HOLDER')
 
-        # Check if exists
-        asset = Asset.query.filter_by(ticker=ticker, user_id=current_user.id).first()
+        # Check if exists with same strategy (SWING and HOLDER are tracked separately)
+        asset = Asset.query.filter_by(ticker=ticker, user_id=current_user.id, strategy=strategy).first()
         if asset:
-            # Use existing asset's strategy for redirect
-            strategy = asset.strategy
             # Update average price / quantity logic
             total_val = (asset.quantity * asset.avg_price) + (qty * avg_price)
             new_qty = asset.quantity + qty
@@ -858,9 +856,11 @@ def buy_asset(id):
         
         if asset.type == 'FII':
             return redirect(url_for('fiis'))
+        elif asset.strategy == 'SWING':
+            return redirect(url_for('swingtrade'))
         else:
             return redirect(url_for('acoes'))
-            
+
     return render_template('buy.html', asset=asset, today=date.today().isoformat())
 
 @app.route('/exit/<int:id>', methods=['GET', 'POST'])

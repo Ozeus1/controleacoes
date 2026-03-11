@@ -280,7 +280,9 @@ def previsao_cartoes():
     print(f"DEBUG: Found {len(despesas_parceladas)} parcel expenses for user {current_user.id}")
     
     for d_data, d_parcelas in despesas_parceladas:
-        data_final = d_data + relativedelta(months=d_parcelas - 1)
+        # +1 mês extra para cobrir o deslocamento do dia de fechamento
+        # (compras após o fechamento têm a 1ª parcela no mês seguinte)
+        data_final = d_data + relativedelta(months=d_parcelas)
         if not max_parcela_date or data_final > max_parcela_date:
             max_parcela_date = data_final
             

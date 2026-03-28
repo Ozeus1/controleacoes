@@ -432,6 +432,17 @@ label {
     margin: 4px 0;
 }
 
+.dropdown-section-label {
+    padding: 4px 12px 2px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    cursor: default;
+    pointer-events: none;
+}
+
 @media (max-width: 768px) {
     .container {
         padding: 0.75rem;

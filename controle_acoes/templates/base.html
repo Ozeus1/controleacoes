@@ -142,16 +142,20 @@
                             👤 Perfil
                         </a>
                         <div class="dropdown-content">
-                            <a href="{{ url_for('profile') }}">Minha Conta</a>
+                            <a href="{{ url_for('profile') }}">👤 Minha Conta</a>
                             {% if current_user.is_admin %}
                             <a href="{{ url_for('list_users') }}">👥 Usuários</a>
                             {% endif %}
-                            <a href="{{ url_for('config') }}">⚙️ APIs</a>
                             <div class="dropdown-divider"></div>
+                            <div class="dropdown-section-label">🔧 Ferramentas</div>
+                            <a href="{{ url_for('config') }}">⚙️ APIs</a>
+                            <a href="{{ url_for('importar_excel') }}">📊 Importar Excel</a>
+                            <div class="dropdown-divider"></div>
+                            <div class="dropdown-section-label">⚙️ Preferências</div>
                             <a href="#" onclick="toggleIndicators(); return false;">👁️ Alternar Barra</a>
                             <a href="#" onclick="toggleTheme(); return false;">🌓 Alternar Tema</a>
                             <div class="dropdown-divider"></div>
-                            <a href="{{ url_for('logout') }}" style="color: var(--danger-color);">Sair</a>
+                            <a href="{{ url_for('logout') }}" style="color: var(--danger-color);">🚪 Sair</a>
                         </div>
                     </div>
                 </div>
@@ -186,7 +190,10 @@
                         {% if current_user.is_admin %}
                         <a href="{{ url_for('list_users') }}">👥 Usuários</a>
                         {% endif %}
+                        <span style="font-size: 0.75rem; color: var(--text-secondary); padding: 0.2rem 0; display: block;">🔧 Ferramentas</span>
                         <a href="{{ url_for('config') }}">⚙️ APIs</a>
+                        <a href="{{ url_for('importar_excel') }}">📊 Importar Excel</a>
+                        <span style="font-size: 0.75rem; color: var(--text-secondary); padding: 0.2rem 0; display: block;">⚙️ Preferências</span>
                         <a href="#" onclick="toggleIndicators(); return false;">👁️ Alternar Barra</a>
                         <a href="#" onclick="toggleTheme(); return false;">🌓 Alternar Tema</a>
                         <a href="{{ url_for('logout') }}" style="color: var(--danger-color);">🚪 Sair</a>

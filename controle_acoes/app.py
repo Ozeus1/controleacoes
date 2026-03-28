@@ -3051,6 +3051,90 @@ def delete_user(id):
     return redirect(url_for('list_users'))
 
 
+@app.route('/importar_excel', methods=['GET', 'POST'])
+@login_required
+def importar_excel():
+    if request.method == 'GET':
+        return render_template('importar_excel.html')
+
+    f = request.files.get('excel_file')
+    if not f or not f.filename.endswith(('.xlsx', '.xlsm')):
+        flash('Envie um arquivo .xlsx válido.', 'danger')
+        return redirect(url_for('importar_excel'))
+
+    import openpyxl, io
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
+    except Exception as e:
+        flash(f'Erro ao abrir o arquivo: {e}', 'danger')
+        return redirect(url_for('importar_excel'))
+
+    ativos_atualizados = 0
+    opcoes_atualizadas = 0
+    erros = []
+
+    # ── 1. Preços das ações (sheet "acao") ──────────────────────────
+    if 'acao' in wb.sheetnames:
+        ws = wb['acao']
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            ticker = row[0]
+            price  = row[3]
+            if not ticker or not isinstance(price, (int, float)):
+                continue
+            ticker = str(ticker).upper().strip()
+            asset = Asset.query.filter_by(ticker=ticker, user_id=current_user.id).first()
+            if asset:
+                asset.current_price = float(price)
+                asset.last_update = datetime.now()
+                ativos_atualizados += 1
+
+    # ── 2. Preços dos ETFs (sheet "ETF") — ignora linhas de opções ──
+    if 'ETF' in wb.sheetnames:
+        ws = wb['ETF']
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            ticker = row[0]
+            price  = row[3]
+            name   = str(row[11]) if row[11] else ''
+            if not ticker or not isinstance(price, (int, float)):
+                continue
+            if name.startswith('Opc ') or name.startswith('Opc\xa0'):
+                continue
+            ticker = str(ticker).upper().strip()
+            asset = Asset.query.filter_by(ticker=ticker, user_id=current_user.id).first()
+            if asset:
+                asset.current_price = float(price)
+                asset.last_update = datetime.now()
+                ativos_atualizados += 1
+
+    # ── 3. Preços das opções (sheet "opcao") ────────────────────────
+    if 'opcao' in wb.sheetnames:
+        ws = wb['opcao']
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            ticker = row[0]
+            price  = row[3]
+            if not ticker or not isinstance(price, (int, float)):
+                continue
+            ticker = str(ticker).upper().strip()
+            opt = Option.query.filter_by(ticker=ticker, user_id=current_user.id).first()
+            if opt:
+                opt.current_option_price = float(price)
+                opt.last_update = datetime.now()
+                opcoes_atualizadas += 1
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao salvar: {e}', 'danger')
+        return redirect(url_for('importar_excel'))
+
+    msg = f'Atualizado: {ativos_atualizados} ativo(s) e {opcoes_atualizadas} opção(ões).'
+    if erros:
+        msg += f' Avisos: {"; ".join(erros)}'
+    flash(msg, 'success')
+    return redirect(url_for('importar_excel'))
+
+
 @app.route('/profile', methods=['GET', 'POST'])
 @login_required
 def profile():

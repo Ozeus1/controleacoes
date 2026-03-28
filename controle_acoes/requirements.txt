@@ -10,3 +10,4 @@ gunicorn==21.2.0
 yfinance>=0.2.50
 python-dateutil
 pytz
+openpyxl>=3.1.0

@@ -3117,27 +3117,13 @@ def importar_excel():
                 asset.last_update = datetime.now()
                 ativos_atualizados += 1
 
-    # ── 3. Preços das opções (todas as sheets de opções) ────────────
-    # Monta dicionário unificado ticker→preço a partir de todas as sheets
+    # ── 3. Preços das opções (sheet "opcao", coluna Último) ─────────
     opcao_prices = {}
-
-    # Sheets onde col A = ticker, col D (índice 3) = preço da opção
-    for sheet_name in ('opcao', 'C_put', 'V_put', 'C_Call_ITM'):
-        if sheet_name in wb.sheetnames:
-            ws = wb[sheet_name]
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                ticker = row[0]
-                price  = row[3]
-                if not ticker or not isinstance(price, (int, float)):
-                    continue
-                opcao_prices[str(ticker).upper().strip()] = float(price)
-
-    # Sheet V_coberta: col A = ticker da opção, col L (índice 11) = preço da opção
-    if 'V_coberta' in wb.sheetnames:
-        ws = wb['V_coberta']
+    if 'opcao' in wb.sheetnames:
+        ws = wb['opcao']
         for row in ws.iter_rows(min_row=2, values_only=True):
             ticker = row[0]
-            price  = row[11] if len(row) > 11 else None
+            price  = row[3]
             if not ticker or not isinstance(price, (int, float)):
                 continue
             opcao_prices[str(ticker).upper().strip()] = float(price)

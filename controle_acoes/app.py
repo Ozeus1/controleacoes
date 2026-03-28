@@ -276,6 +276,12 @@ def opcoes():
             profit = total_sold - current_val
             profit_pct = (profit / total_sold * 100) if total_sold > 0 else 0
 
+            lastro_rs = underlying_price - opt.strike_price
+            lastro_pct = (lastro_rs / opt.strike_price * 100) if opt.strike_price > 0 else 0
+            breakeven = opt.strike_price - opt.sale_price
+            lastrobk_rs = underlying_price - breakeven
+            lastrobk_pct = (lastrobk_rs / breakeven * 100) if breakeven > 0 else 0
+
             venda_puts.append({
                 'option': opt,
                 'underlying_price': underlying_price,
@@ -283,6 +289,11 @@ def opcoes():
                 'current_val': current_val,
                 'profit': profit,
                 'profit_pct': profit_pct,
+                'lastro_rs': lastro_rs,
+                'lastro_pct': lastro_pct,
+                'breakeven': breakeven,
+                'lastrobk_rs': lastrobk_rs,
+                'lastrobk_pct': lastrobk_pct,
             })
 
         else:

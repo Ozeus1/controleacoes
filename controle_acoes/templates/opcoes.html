@@ -143,6 +143,11 @@
                 <th>Ativo</th>
                 <th>Cotação Ativo</th>
                 <th>Strike</th>
+                <th>Lastro R$</th>
+                <th>Lastro %</th>
+                <th>Breakeven</th>
+                <th>Lastro BK R$</th>
+                <th>Lastro BK %</th>
                 <th>Vencimento</th>
                 <th>Prêmio Recebido</th>
                 <th>Total Recebido</th>
@@ -161,6 +166,19 @@
                 <td>{{ item.option.underlying_asset }}</td>
                 <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if item.lastro_rs >= 0 else 'negative' }}">
+                    R$ {{ "%.2f"|format(item.lastro_rs)|replace('.', ',') }}
+                </td>
+                <td class="{{ 'positive' if item.lastro_pct >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.lastro_pct)|replace('.', ',') }}%
+                </td>
+                <td>R$ {{ "%.2f"|format(item.breakeven)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if item.lastrobk_rs >= 0 else 'negative' }}">
+                    R$ {{ "%.2f"|format(item.lastrobk_rs)|replace('.', ',') }}
+                </td>
+                <td class="{{ 'positive' if item.lastrobk_pct >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.lastrobk_pct)|replace('.', ',') }}%
+                </td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.total_sold)|replace('.', ',') }}</td>
@@ -185,7 +203,9 @@
         <tfoot>
             <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
                 <td>TOTAL</td>
-                <td></td><td></td><td></td><td></td><td></td><td></td>
+                <td></td><td></td><td></td><td></td>
+                <td></td><td></td><td></td><td></td><td></td>
+                <td></td><td></td>
                 <td>{{ venda_puts|sum(attribute='total_sold') | brl }}</td>
                 <td></td>
                 <td>{{ venda_puts|sum(attribute='current_val') | brl }}</td>

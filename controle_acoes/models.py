@@ -117,6 +117,10 @@ class Option(db.Model):
     # Calculated/Fetched on fly, but maybe store last fetch for underlying?
     last_update = db.Column(db.DateTime, nullable=True)
 
+    # Study fields (populated from Excel import)
+    vdx = db.Column(db.Float, nullable=True)
+    nv  = db.Column(db.Float, nullable=True)
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -249,6 +253,38 @@ class International(db.Model):
     current_price = db.Column(db.Float) # Current Price (Quote) in USD
     daily_change = db.Column(db.Float, default=0.0) # New: Daily Change %
     description = db.Column(db.String(100)) # Extra details
+
+class StudyOption(db.Model):
+    """Opções extras (não VENDA_CALL) adicionadas para estudo."""
+    __tablename__ = 'study_option'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ticker = db.Column(db.String(20), nullable=False)          # ticker da opção
+    underlying_asset = db.Column(db.String(15), nullable=False)
+    underlying_price = db.Column(db.Float, nullable=True)      # cotação do ativo
+    avg_price_stock = db.Column(db.Float, nullable=True)       # preço médio da ação
+    strike = db.Column(db.Float, nullable=True)
+    expiration_date = db.Column(db.Date, nullable=True)
+    option_price = db.Column(db.Float, nullable=True)          # cotação da opção
+    vdx = db.Column(db.Float, nullable=True)
+    nv  = db.Column(db.Float, nullable=True)
+
+
+class StudyStock(db.Model):
+    """Análise de ações para decisão de estratégia."""
+    __tablename__ = 'study_stock'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ticker = db.Column(db.String(15), nullable=False)
+    trend = db.Column(db.String(10), nullable=True)            # Alta / Baixa / Lateral
+    rsi = db.Column(db.Float, nullable=True)
+    volatility = db.Column(db.String(10), nullable=True)       # Alta / Baixa / Neutra
+    ve = db.Column(db.Float, nullable=True)
+    strategy = db.Column(db.String(60), nullable=True)
+    study_date = db.Column(db.Date, nullable=True)
+    strategy_active = db.Column(db.String(100), nullable=True)
+    entry_date = db.Column(db.Date, nullable=True)
+
 
 class Dividend(db.Model):
     id = db.Column(db.Integer, primary_key=True)

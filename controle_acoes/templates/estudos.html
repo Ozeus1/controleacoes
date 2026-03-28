@@ -1,0 +1,543 @@
+{% extends "base.html" %}
+
+{% block title %}Estudos{% endblock %}
+
+{% block content %}
+<h2 style="margin-top:0">📚 Estudos</h2>
+
+{# ─────────────────────────────────────────────────────────────────
+   TABELA 1 — Estudo Opções Cobertas
+───────────────────────────────────────────────────────────────── #}
+<a id="estudo-opcoes"></a>
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.5rem">
+  <h3 style="margin:0">Estudo Opções Cobertas</h3>
+  <button class="btn btn-primary btn-sm" onclick="openAddOpcao()">+ Adicionar</button>
+</div>
+
+<div class="card">
+  <table class="table table-dark table-striped table-bordered table-hover" style="min-width:900px;font-size:.85rem">
+    <thead>
+      <tr>
+        <th>Asset</th>
+        <th>Ativo</th>
+        <th>Cot. Ativo</th>
+        <th>Preço Médio</th>
+        <th>Strike</th>
+        <th>Vencimento</th>
+        <th>Dias</th>
+        <th>Cot. Opção</th>
+        <th>VDX</th>
+        <th>NV</th>
+        <th>Origem</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in study_calls_vc %}
+      <tr>
+        <td><span class="ticker-badge">{{ row.ticker.upper() }}</span></td>
+        <td>{{ row.underlying }}</td>
+        <td>{{ '%.2f'|format(row.underlying_price) if row.underlying_price else '-' }}</td>
+        <td>{{ '%.2f'|format(row.avg_price) if row.avg_price else '-' }}</td>
+        <td>{{ '%.2f'|format(row.strike) if row.strike else '-' }}</td>
+        <td>{{ row.expiration.strftime('%d/%m/%Y') if row.expiration else '-' }}</td>
+        <td>
+          {% if row.days is not none %}
+            {% if row.days <= 7 %}<span class="negative">{{ row.days }}d</span>
+            {% elif row.days <= 21 %}<span style="color:#f59e0b">{{ row.days }}d</span>
+            {% else %}{{ row.days }}d{% endif %}
+          {% else %}-{% endif %}
+        </td>
+        <td>{{ '%.2f'|format(row.option_price) if row.option_price else '-' }}</td>
+        <td class="{{ 'positive' if row.vdx and row.vdx > 0 else ('negative' if row.vdx and row.vdx < 0 else '') }}">
+          {{ '%.4f'|format(row.vdx) if row.vdx is not none else '-' }}
+        </td>
+        <td>{{ '%.4f'|format(row.nv) if row.nv is not none else '-' }}</td>
+        <td><span style="font-size:.75rem;color:var(--text-secondary)">V. Coberta</span></td>
+        <td><span style="color:var(--text-secondary);font-size:.75rem">—</span></td>
+      </tr>
+      {% endfor %}
+
+      {% for row in study_calls_extra %}
+      <tr>
+        <td><span class="ticker-badge" style="background:var(--success-color)">{{ row.ticker.upper() }}</span></td>
+        <td>{{ row.underlying }}</td>
+        <td>{{ '%.2f'|format(row.underlying_price) if row.underlying_price else '-' }}</td>
+        <td>{{ '%.2f'|format(row.avg_price) if row.avg_price else '-' }}</td>
+        <td>{{ '%.2f'|format(row.strike) if row.strike else '-' }}</td>
+        <td>{{ row.expiration.strftime('%d/%m/%Y') if row.expiration else '-' }}</td>
+        <td>
+          {% if row.days is not none %}
+            {% if row.days <= 7 %}<span class="negative">{{ row.days }}d</span>
+            {% elif row.days <= 21 %}<span style="color:#f59e0b">{{ row.days }}d</span>
+            {% else %}{{ row.days }}d{% endif %}
+          {% else %}-{% endif %}
+        </td>
+        <td>{{ '%.2f'|format(row.option_price) if row.option_price else '-' }}</td>
+        <td class="{{ 'positive' if row.vdx and row.vdx > 0 else ('negative' if row.vdx and row.vdx < 0 else '') }}">
+          {{ '%.4f'|format(row.vdx) if row.vdx is not none else '-' }}
+        </td>
+        <td>{{ '%.4f'|format(row.nv) if row.nv is not none else '-' }}</td>
+        <td><span style="font-size:.75rem;color:var(--success-color)">Estudo</span></td>
+        <td>
+          <button class="btn btn-primary btn-sm"
+            onclick="openEditOpcao({{ row.id }}, '{{ row.ticker }}', '{{ row.underlying }}',
+              '{{ row.underlying_price or '' }}', '{{ row.avg_price or '' }}',
+              '{{ row.strike or '' }}',
+              '{{ row.expiration.strftime('%Y-%m-%d') if row.expiration else '' }}',
+              '{{ row.option_price or '' }}',
+              '{{ row.vdx or '' }}', '{{ row.nv or '' }}'
+            )">✏️</button>
+          <form method="POST" action="{{ url_for('delete_study_option', sid=row.id) }}" style="display:inline"
+                onsubmit="return confirm('Excluir esta opção de estudo?')">
+            <button class="btn btn-danger btn-sm">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+
+      {% if not study_calls_vc and not study_calls_extra %}
+      <tr><td colspan="12" style="text-align:center;color:var(--text-secondary)">Nenhuma opção de estudo cadastrada.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{# ─────────────────────────────────────────────────────────────────
+   TABELA 2 — Estudo Ações
+───────────────────────────────────────────────────────────────── #}
+<a id="estudo-acoes"></a>
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.5rem;margin-top:2rem">
+  <h3 style="margin:0">Estudo Ações</h3>
+  <button class="btn btn-primary btn-sm" onclick="openAddAcao()">+ Adicionar</button>
+</div>
+
+<div class="card">
+  <table class="table table-dark table-striped table-bordered table-hover" style="min-width:1000px;font-size:.85rem">
+    <thead>
+      <tr>
+        <th>Ação</th>
+        <th>Tendência</th>
+        <th>RSI</th>
+        <th>Volatilidade</th>
+        <th>VE</th>
+        <th>Estratégia Sugerida</th>
+        <th>Data Estudo</th>
+        <th>Estratégia Ativa</th>
+        <th>Data Entrada</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ss in study_stocks %}
+      <tr>
+        <td><strong>{{ ss.ticker }}</strong></td>
+        <td>
+          {% if ss.trend == 'Alta' %}<span class="positive">▲ Alta</span>
+          {% elif ss.trend and 'aixa' in ss.trend %}<span class="negative">▼ Baixa</span>
+          {% elif ss.trend %}<span style="color:#f59e0b">↔ Lateral</span>
+          {% else %}-{% endif %}
+        </td>
+        <td>
+          {% if ss.rsi is not none %}
+            {% if ss.rsi < 30 %}<span class="positive">{{ '%.1f'|format(ss.rsi) }}</span>
+            {% elif ss.rsi > 70 %}<span class="negative">{{ '%.1f'|format(ss.rsi) }}</span>
+            {% else %}{{ '%.1f'|format(ss.rsi) }}{% endif %}
+          {% else %}-{% endif %}
+        </td>
+        <td>
+          {% if ss.volatility %}
+            {% if ss.volatility|lower == 'alta' %}<span class="negative">Alta</span>
+            {% elif ss.volatility|lower == 'baixa' %}Baixa
+            {% else %}Neutra{% endif %}
+          {% else %}-{% endif %}
+        </td>
+        <td>{{ ss.ve if ss.ve is not none else '-' }}</td>
+        <td>{{ ss.strategy or '-' }}</td>
+        <td>{{ ss.study_date.strftime('%d/%m/%Y') if ss.study_date else '-' }}</td>
+        <td>{{ ss.strategy_active or '-' }}</td>
+        <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
+        <td>
+          <button class="btn btn-primary btn-sm"
+            onclick="openEditAcao({{ ss.id }}, '{{ ss.ticker }}',
+              '{{ ss.trend or '' }}', '{{ ss.rsi or '' }}',
+              '{{ ss.volatility or '' }}', '{{ ss.ve or '' }}',
+              '{{ ss.strategy or '' }}',
+              '{{ ss.study_date.strftime('%Y-%m-%d') if ss.study_date else '' }}',
+              '{{ ss.strategy_active or '' }}',
+              '{{ ss.entry_date.strftime('%Y-%m-%d') if ss.entry_date else '' }}'
+            )">✏️</button>
+          <form method="POST" action="{{ url_for('delete_study_stock', sid=ss.id) }}" style="display:inline"
+                onsubmit="return confirm('Excluir esta ação de estudo?')">
+            <button class="btn btn-danger btn-sm">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not study_stocks %}
+      <tr><td colspan="10" style="text-align:center;color:var(--text-secondary)">Nenhuma ação de estudo cadastrada. Use "Importar Excel" para carregar do arquivo.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{# ─────────────────────────────────────────────────────────────────
+   TABELA 3 — Ações Livres (sem venda coberta)
+───────────────────────────────────────────────────────────────── #}
+<a id="acoes-livres"></a>
+<h3 style="margin-top:2rem;margin-bottom:.5rem">Ações Livres (sem Venda Coberta)</h3>
+<p style="color:var(--text-secondary);font-size:.85rem;margin-bottom:.75rem">
+  Ações da carteira que não possuem operação de Venda Coberta de Call ativa em <a href="{{ url_for('opcoes') }}">/opcoes</a>.
+</p>
+
+<div class="card">
+  <table class="table table-dark table-striped table-bordered table-hover" style="min-width:500px;font-size:.85rem">
+    <thead>
+      <tr>
+        <th>Ação</th>
+        <th>Qtd</th>
+        <th>Preço Médio</th>
+        <th>Cotação Atual</th>
+        <th>Variação</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in free_stocks %}
+      {% set var_pct = ((a.current_price - a.avg_price) / a.avg_price * 100) if a.avg_price > 0 else 0 %}
+      <tr>
+        <td><span class="ticker-badge">{{ a.ticker }}</span></td>
+        <td>{{ a.quantity }}</td>
+        <td>R$ {{ '%.2f'|format(a.avg_price) }}</td>
+        <td>R$ {{ '%.2f'|format(a.current_price) if a.current_price else '-' }}</td>
+        <td class="{{ 'positive' if var_pct >= 0 else 'negative' }}">
+          {{ '%+.2f'|format(var_pct) }}%
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not free_stocks %}
+      <tr><td colspan="5" style="text-align:center;color:var(--text-secondary)">Todas as ações da carteira possuem venda coberta ativa.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+
+{# ─────────────────────────────────────────────────────────────────
+   MODAIS
+───────────────────────────────────────────────────────────────── #}
+
+<!-- Modal: Adicionar Opção de Estudo -->
+<div id="modal-add-opcao" class="modal fade" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content bg-dark text-white">
+      <div class="modal-header">
+        <h5 class="modal-title">Adicionar Opção de Estudo</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('add_study_option') }}">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label>Ticker Opção *</label>
+              <input type="text" name="ticker" class="form-control" required placeholder="ex: PETRB450">
+            </div>
+            <div class="col-md-3">
+              <label>Ativo Subjacente *</label>
+              <input type="text" name="underlying_asset" class="form-control" required placeholder="ex: PETR4">
+            </div>
+            <div class="col-md-3">
+              <label>Cotação Ativo</label>
+              <input type="number" step="0.01" name="underlying_price" class="form-control" placeholder="0.00">
+            </div>
+            <div class="col-md-3">
+              <label>Preço Médio Ação</label>
+              <input type="number" step="0.01" name="avg_price_stock" class="form-control" placeholder="0.00">
+            </div>
+            <div class="col-md-3">
+              <label>Strike</label>
+              <input type="number" step="0.01" name="strike" class="form-control" placeholder="0.00">
+            </div>
+            <div class="col-md-3">
+              <label>Vencimento</label>
+              <input type="date" name="expiration_date" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label>Cotação Opção</label>
+              <input type="number" step="0.0001" name="option_price" class="form-control" placeholder="0.00">
+            </div>
+            <div class="col-md-3">
+              <label>VDX</label>
+              <input type="number" step="0.0001" name="vdx" class="form-control" placeholder="(do Excel)">
+            </div>
+            <div class="col-md-3">
+              <label>NV</label>
+              <input type="number" step="0.0001" name="nv" class="form-control" placeholder="(do Excel)">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar Opção de Estudo -->
+<div id="modal-edit-opcao" class="modal fade" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content bg-dark text-white">
+      <div class="modal-header">
+        <h5 class="modal-title">Editar Opção de Estudo</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="form-edit-opcao">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label>Ticker Opção *</label>
+              <input type="text" name="ticker" id="eo-ticker" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+              <label>Ativo Subjacente *</label>
+              <input type="text" name="underlying_asset" id="eo-underlying" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+              <label>Cotação Ativo</label>
+              <input type="number" step="0.01" name="underlying_price" id="eo-uprice" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label>Preço Médio Ação</label>
+              <input type="number" step="0.01" name="avg_price_stock" id="eo-avgprice" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label>Strike</label>
+              <input type="number" step="0.01" name="strike" id="eo-strike" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label>Vencimento</label>
+              <input type="date" name="expiration_date" id="eo-exp" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label>Cotação Opção</label>
+              <input type="number" step="0.0001" name="option_price" id="eo-oprice" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label>VDX</label>
+              <input type="number" step="0.0001" name="vdx" id="eo-vdx" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label>NV</label>
+              <input type="number" step="0.0001" name="nv" id="eo-nv" class="form-control">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Adicionar Ação de Estudo -->
+<div id="modal-add-acao" class="modal fade" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content bg-dark text-white">
+      <div class="modal-header">
+        <h5 class="modal-title">Adicionar Ação de Estudo</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('add_study_stock') }}">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label>Ação *</label>
+              <input type="text" name="ticker" class="form-control" required placeholder="ex: PETR4">
+            </div>
+            <div class="col-md-3">
+              <label>Tendência</label>
+              <select name="trend" class="form-control">
+                <option value="">—</option>
+                <option>Alta</option>
+                <option>Baixa</option>
+                <option>Lateral</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label>RSI</label>
+              <input type="number" step="0.01" name="rsi" class="form-control" placeholder="0-100">
+            </div>
+            <div class="col-md-3">
+              <label>Volatilidade</label>
+              <select name="volatility" class="form-control">
+                <option value="">—</option>
+                <option>Alta</option>
+                <option>Baixa</option>
+                <option>Neutra</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label>VE</label>
+              <input type="number" step="0.1" name="ve" class="form-control" placeholder="Vol. Estat.">
+            </div>
+            <div class="col-md-5">
+              <label>Estratégia Sugerida</label>
+              <select name="strategy" class="form-control">
+                <option value="">—</option>
+                {% for s in strategies %}
+                <option value="{{ s }}">{{ s }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label>Data Estudo</label>
+              <input type="date" name="study_date" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label>Estratégia Ativa</label>
+              <input type="text" name="strategy_active" class="form-control" placeholder="Descrição da operação ativa">
+            </div>
+            <div class="col-md-3">
+              <label>Data Entrada</label>
+              <input type="date" name="entry_date" class="form-control">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar Ação de Estudo -->
+<div id="modal-edit-acao" class="modal fade" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content bg-dark text-white">
+      <div class="modal-header">
+        <h5 class="modal-title">Editar Ação de Estudo</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="form-edit-acao">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label>Ação *</label>
+              <input type="text" name="ticker" id="ea-ticker" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+              <label>Tendência</label>
+              <select name="trend" id="ea-trend" class="form-control">
+                <option value="">—</option>
+                <option>Alta</option>
+                <option>Baixa</option>
+                <option>Lateral</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label>RSI</label>
+              <input type="number" step="0.01" name="rsi" id="ea-rsi" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label>Volatilidade</label>
+              <select name="volatility" id="ea-vol" class="form-control">
+                <option value="">—</option>
+                <option>Alta</option>
+                <option>Baixa</option>
+                <option>Neutra</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label>VE</label>
+              <input type="number" step="0.1" name="ve" id="ea-ve" class="form-control">
+            </div>
+            <div class="col-md-5">
+              <label>Estratégia Sugerida</label>
+              <select name="strategy" id="ea-strategy" class="form-control">
+                <option value="">—</option>
+                {% for s in strategies %}
+                <option value="{{ s }}">{{ s }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label>Data Estudo</label>
+              <input type="date" name="study_date" id="ea-study-date" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label>Estratégia Ativa</label>
+              <input type="text" name="strategy_active" id="ea-strat-active" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label>Data Entrada</label>
+              <input type="date" name="entry_date" id="ea-entry-date" class="form-control">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function openAddOpcao() {
+  new bootstrap.Modal(document.getElementById('modal-add-opcao')).show();
+}
+function openEditOpcao(id, ticker, underlying, uprice, avgprice, strike, exp, oprice, vdx, nv) {
+  document.getElementById('eo-ticker').value     = ticker;
+  document.getElementById('eo-underlying').value = underlying;
+  document.getElementById('eo-uprice').value     = uprice;
+  document.getElementById('eo-avgprice').value   = avgprice;
+  document.getElementById('eo-strike').value     = strike;
+  document.getElementById('eo-exp').value        = exp;
+  document.getElementById('eo-oprice').value     = oprice;
+  document.getElementById('eo-vdx').value        = vdx;
+  document.getElementById('eo-nv').value         = nv;
+  document.getElementById('form-edit-opcao').action = '/estudos/edit_study_option/' + id;
+  new bootstrap.Modal(document.getElementById('modal-edit-opcao')).show();
+}
+
+function openAddAcao() {
+  new bootstrap.Modal(document.getElementById('modal-add-acao')).show();
+}
+function openEditAcao(id, ticker, trend, rsi, vol, ve, strategy, studyDate, stratActive, entryDate) {
+  document.getElementById('ea-ticker').value       = ticker;
+  document.getElementById('ea-rsi').value          = rsi;
+  document.getElementById('ea-ve').value           = ve;
+  document.getElementById('ea-study-date').value   = studyDate;
+  document.getElementById('ea-strat-active').value = stratActive;
+  document.getElementById('ea-entry-date').value   = entryDate;
+
+  // selects
+  setSelect('ea-trend',    trend);
+  setSelect('ea-vol',      vol);
+  setSelect('ea-strategy', strategy);
+
+  document.getElementById('form-edit-acao').action = '/estudos/edit_study_stock/' + id;
+  new bootstrap.Modal(document.getElementById('modal-edit-acao')).show();
+}
+
+function setSelect(id, val) {
+  const sel = document.getElementById(id);
+  for (let i = 0; i < sel.options.length; i++) {
+    if (sel.options[i].value === val || sel.options[i].text === val) {
+      sel.selectedIndex = i;
+      return;
+    }
+  }
+  sel.selectedIndex = 0;
+}
+</script>
+{% endblock %}

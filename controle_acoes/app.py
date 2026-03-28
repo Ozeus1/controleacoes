@@ -4,7 +4,7 @@ import sys
 import sqlite3
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -200,6 +200,50 @@ def run_migrations():
     spread_cols = {row[1] for row in cursor.fetchall()}
     if 'pop' not in spread_cols:
         cursor.execute("ALTER TABLE option_spread ADD COLUMN pop FLOAT")
+
+    # Add vdx / nv columns to option table
+    cursor.execute("PRAGMA table_info(option)")
+    opt_cols2 = {row[1] for row in cursor.fetchall()}
+    if 'vdx' not in opt_cols2:
+        cursor.execute("ALTER TABLE 'option' ADD COLUMN vdx FLOAT")
+    if 'nv' not in opt_cols2:
+        cursor.execute("ALTER TABLE 'option' ADD COLUMN nv FLOAT")
+
+    # Create study_option table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS study_option (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            ticker VARCHAR(20) NOT NULL DEFAULT '',
+            underlying_asset VARCHAR(15) NOT NULL DEFAULT '',
+            underlying_price FLOAT,
+            avg_price_stock FLOAT,
+            strike FLOAT,
+            expiration_date DATE,
+            option_price FLOAT,
+            vdx FLOAT,
+            nv FLOAT,
+            FOREIGN KEY (user_id) REFERENCES user(id)
+        )
+    """)
+
+    # Create study_stock table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS study_stock (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            ticker VARCHAR(15) NOT NULL DEFAULT '',
+            trend VARCHAR(10),
+            rsi FLOAT,
+            volatility VARCHAR(10),
+            ve FLOAT,
+            strategy VARCHAR(60),
+            study_date DATE,
+            strategy_active VARCHAR(100),
+            entry_date DATE,
+            FOREIGN KEY (user_id) REFERENCES user(id)
+        )
+    """)
 
     conn.commit()
     conn.close()
@@ -3136,6 +3180,85 @@ def importar_excel():
             opt.last_update = datetime.now()
             opcoes_atualizadas += 1
 
+    # ── 4. VDX / NV do sheet "estudo opcoes" ────────────────────────
+    estudo_opcoes_atualizados = 0
+    if 'estudo opcoes' in wb.sheetnames:
+        ws = wb['estudo opcoes']
+        for row in ws.iter_rows(min_row=3, values_only=True):  # row 1=title, row 2=header
+            ticker = row[0]
+            if not ticker or not str(ticker).strip():
+                continue
+            ticker = str(ticker).upper().strip()
+            vdx_val = row[7] if len(row) > 7 else None
+            nv_val  = row[8] if len(row) > 8 else None
+            # only store numeric values
+            vdx_f = float(vdx_val) if isinstance(vdx_val, (int, float)) else None
+            nv_f  = float(nv_val)  if isinstance(nv_val,  (int, float)) else None
+            # update VENDA_CALL Option
+            opt = Option.query.filter_by(ticker=ticker, user_id=current_user.id, option_type='VENDA_CALL').first()
+            if opt:
+                opt.vdx = vdx_f
+                opt.nv  = nv_f
+                estudo_opcoes_atualizados += 1
+            # update extra StudyOption
+            so = StudyOption.query.filter_by(ticker=ticker, user_id=current_user.id).first()
+            if so:
+                so.vdx = vdx_f
+                so.nv  = nv_f
+                if len(row) > 6 and isinstance(row[6], (int, float)):
+                    so.option_price = float(row[6])
+
+    # ── 5. StudyStock do sheet "estudo acoes" ────────────────────────
+    estudo_acoes_atualizados = 0
+    if 'estudo acoes' in wb.sheetnames:
+        ws = wb['estudo acoes']
+        for row in ws.iter_rows(min_row=3, values_only=True):  # row 1=blank/title, row 2=header
+            ticker = row[1]  # col B
+            if not ticker or not str(ticker).strip():
+                continue
+            ticker = str(ticker).upper().strip()
+            trend    = str(row[2]).strip() if row[2] else None
+            rsi_val  = float(row[3]) if isinstance(row[3], (int, float)) else None
+            volat    = str(row[4]).strip() if row[4] else None
+            ve_val   = float(row[5]) if isinstance(row[5], (int, float)) else None
+            strat    = str(row[6]).strip() if row[6] else None
+            # study_date, strategy_active, entry_date may be None
+            study_dt = row[7] if isinstance(row[7], date) else None
+            strat_active = str(row[8]).strip() if row[8] else None
+            entry_dt = row[9] if isinstance(row[9], date) else None
+
+            ss = StudyStock.query.filter_by(ticker=ticker, user_id=current_user.id).first()
+            if ss:
+                ss.trend = trend
+                if rsi_val is not None:
+                    ss.rsi = rsi_val
+                ss.volatility = volat
+                if ve_val is not None:
+                    ss.ve = ve_val
+                ss.strategy = strat
+                if study_dt:
+                    ss.study_date = study_dt
+                if strat_active:
+                    ss.strategy_active = strat_active
+                if entry_dt:
+                    ss.entry_date = entry_dt
+                estudo_acoes_atualizados += 1
+            else:
+                new_ss = StudyStock(
+                    user_id=current_user.id,
+                    ticker=ticker,
+                    trend=trend,
+                    rsi=rsi_val,
+                    volatility=volat,
+                    ve=ve_val,
+                    strategy=strat,
+                    study_date=study_dt,
+                    strategy_active=strat_active,
+                    entry_date=entry_dt,
+                )
+                db.session.add(new_ss)
+                estudo_acoes_atualizados += 1
+
     # Atualiza legs dos OptionSpreads do usuário
     spreads_atualizados = 0
     user_spreads = OptionSpread.query.filter_by(user_id=current_user.id).all()
@@ -3157,11 +3280,248 @@ def importar_excel():
         flash(f'Erro ao salvar: {e}', 'danger')
         return redirect(url_for('importar_excel'))
 
-    msg = f'Atualizado: {ativos_atualizados} ativo(s), {opcoes_atualizadas} opção(ões) e {spreads_atualizados} spread(s).'
+    msg = (f'Atualizado: {ativos_atualizados} ativo(s), {opcoes_atualizadas} opção(ões), '
+           f'{spreads_atualizados} spread(s), {estudo_opcoes_atualizados} VDX/NV e '
+           f'{estudo_acoes_atualizados} ação(ões) de estudo.')
     if erros:
         msg += f' Avisos: {"; ".join(erros)}'
     flash(msg, 'success')
     return redirect(url_for('importar_excel'))
+
+
+# ─────────────────────────────────────────────────────────────────
+# ESTUDOS
+# ─────────────────────────────────────────────────────────────────
+
+STUDY_STRATEGIES = [
+    'Venda de Call Coberta',
+    'Venda de Put',
+    'Compra de Put',
+    'Trava de Alta com Call',
+    'Trava de Alta com Put',
+    'Trava de Baixa com Call',
+    'Trava de Baixa com Put',
+    'Strangle Vendido',
+    'Borboleta',
+    'Iron Condor',
+    'Compra de Call',
+    'Boi',
+    'Vaca',
+    'Outros',
+    'ne',
+]
+
+
+@app.route('/estudos')
+@login_required
+def estudos():
+    uid = current_user.id
+    today = date.today()
+
+    # ── Tabela 1: Estudo Opções Cobertas ────────────────────────────
+    # A) Opções VENDA_CALL lançadas na página /opcoes
+    venda_calls = Option.query.filter_by(user_id=uid, option_type='VENDA_CALL').all()
+    vc_underlying = {opt.underlying_asset.upper() for opt in venda_calls}
+    assets_map = {
+        a.ticker.upper(): a
+        for a in Asset.query.filter_by(user_id=uid).all()
+    }
+    study_calls_vc = []
+    for opt in venda_calls:
+        asset = assets_map.get(opt.underlying_asset.upper())
+        days = (opt.expiration_date - today).days if opt.expiration_date else None
+        study_calls_vc.append({
+            'source': 'venda_call',
+            'id': opt.id,
+            'ticker': opt.ticker,
+            'underlying': opt.underlying_asset,
+            'underlying_price': asset.current_price if asset else 0,
+            'avg_price': asset.avg_price if asset else 0,
+            'strike': opt.strike_price,
+            'expiration': opt.expiration_date,
+            'days': days,
+            'option_price': opt.current_option_price,
+            'vdx': opt.vdx,
+            'nv': opt.nv,
+        })
+
+    # B) Opções extras adicionadas diretamente nesta página
+    study_calls_extra = []
+    for so in StudyOption.query.filter_by(user_id=uid).all():
+        days = (so.expiration_date - today).days if so.expiration_date else None
+        study_calls_extra.append({
+            'source': 'study',
+            'id': so.id,
+            'ticker': so.ticker,
+            'underlying': so.underlying_asset,
+            'underlying_price': so.underlying_price,
+            'avg_price': so.avg_price_stock,
+            'strike': so.strike,
+            'expiration': so.expiration_date,
+            'days': days,
+            'option_price': so.option_price,
+            'vdx': so.vdx,
+            'nv': so.nv,
+        })
+
+    # ── Tabela 2: Estudo Ações ───────────────────────────────────────
+    study_stocks = StudyStock.query.filter_by(user_id=uid).order_by(StudyStock.ticker).all()
+
+    # ── Tabela 3: Ações Livres (sem venda coberta ativa) ───────────
+    all_acoes = [a for a in Asset.query.filter_by(user_id=uid, type='ACAO').all()]
+    free_stocks = [a for a in all_acoes if a.ticker.upper() not in vc_underlying]
+    free_stocks.sort(key=lambda a: a.ticker)
+
+    return render_template(
+        'estudos.html',
+        study_calls_vc=study_calls_vc,
+        study_calls_extra=study_calls_extra,
+        study_stocks=study_stocks,
+        free_stocks=free_stocks,
+        strategies=STUDY_STRATEGIES,
+    )
+
+
+@app.route('/estudos/add_study_option', methods=['POST'])
+@login_required
+def add_study_option():
+    def _f(k): return request.form.get(k, '').strip()
+    def _fl(k):
+        v = _f(k)
+        return float(v) if v else None
+    def _dt(k):
+        v = _f(k)
+        try:
+            return datetime.strptime(v, '%Y-%m-%d').date() if v else None
+        except ValueError:
+            return None
+
+    so = StudyOption(
+        user_id=current_user.id,
+        ticker=_f('ticker').upper(),
+        underlying_asset=_f('underlying_asset').upper(),
+        underlying_price=_fl('underlying_price'),
+        avg_price_stock=_fl('avg_price_stock'),
+        strike=_fl('strike'),
+        expiration_date=_dt('expiration_date'),
+        option_price=_fl('option_price'),
+        vdx=_fl('vdx'),
+        nv=_fl('nv'),
+    )
+    db.session.add(so)
+    db.session.commit()
+    flash('Opção de estudo adicionada.', 'success')
+    return redirect(url_for('estudos') + '#estudo-opcoes')
+
+
+@app.route('/estudos/edit_study_option/<int:sid>', methods=['POST'])
+@login_required
+def edit_study_option(sid):
+    so = StudyOption.query.filter_by(id=sid, user_id=current_user.id).first_or_404()
+    def _f(k): return request.form.get(k, '').strip()
+    def _fl(k):
+        v = _f(k)
+        return float(v) if v else None
+    def _dt(k):
+        v = _f(k)
+        try:
+            return datetime.strptime(v, '%Y-%m-%d').date() if v else None
+        except ValueError:
+            return None
+
+    so.ticker = _f('ticker').upper()
+    so.underlying_asset = _f('underlying_asset').upper()
+    so.underlying_price = _fl('underlying_price')
+    so.avg_price_stock = _fl('avg_price_stock')
+    so.strike = _fl('strike')
+    so.expiration_date = _dt('expiration_date')
+    so.option_price = _fl('option_price')
+    so.vdx = _fl('vdx')
+    so.nv = _fl('nv')
+    db.session.commit()
+    flash('Opção de estudo atualizada.', 'success')
+    return redirect(url_for('estudos') + '#estudo-opcoes')
+
+
+@app.route('/estudos/delete_study_option/<int:sid>', methods=['POST'])
+@login_required
+def delete_study_option(sid):
+    so = StudyOption.query.filter_by(id=sid, user_id=current_user.id).first_or_404()
+    db.session.delete(so)
+    db.session.commit()
+    flash('Opção de estudo removida.', 'success')
+    return redirect(url_for('estudos') + '#estudo-opcoes')
+
+
+@app.route('/estudos/add_study_stock', methods=['POST'])
+@login_required
+def add_study_stock():
+    def _f(k): return request.form.get(k, '').strip()
+    def _fl(k):
+        v = _f(k)
+        return float(v) if v else None
+    def _dt(k):
+        v = _f(k)
+        try:
+            return datetime.strptime(v, '%Y-%m-%d').date() if v else None
+        except ValueError:
+            return None
+
+    ss = StudyStock(
+        user_id=current_user.id,
+        ticker=_f('ticker').upper(),
+        trend=_f('trend') or None,
+        rsi=_fl('rsi'),
+        volatility=_f('volatility') or None,
+        ve=_fl('ve'),
+        strategy=_f('strategy') or None,
+        study_date=_dt('study_date'),
+        strategy_active=_f('strategy_active') or None,
+        entry_date=_dt('entry_date'),
+    )
+    db.session.add(ss)
+    db.session.commit()
+    flash('Ação de estudo adicionada.', 'success')
+    return redirect(url_for('estudos') + '#estudo-acoes')
+
+
+@app.route('/estudos/edit_study_stock/<int:sid>', methods=['POST'])
+@login_required
+def edit_study_stock(sid):
+    ss = StudyStock.query.filter_by(id=sid, user_id=current_user.id).first_or_404()
+    def _f(k): return request.form.get(k, '').strip()
+    def _fl(k):
+        v = _f(k)
+        return float(v) if v else None
+    def _dt(k):
+        v = _f(k)
+        try:
+            return datetime.strptime(v, '%Y-%m-%d').date() if v else None
+        except ValueError:
+            return None
+
+    ss.ticker = _f('ticker').upper()
+    ss.trend = _f('trend') or None
+    ss.rsi = _fl('rsi')
+    ss.volatility = _f('volatility') or None
+    ss.ve = _fl('ve')
+    ss.strategy = _f('strategy') or None
+    ss.study_date = _dt('study_date')
+    ss.strategy_active = _f('strategy_active') or None
+    ss.entry_date = _dt('entry_date')
+    db.session.commit()
+    flash('Ação de estudo atualizada.', 'success')
+    return redirect(url_for('estudos') + '#estudo-acoes')
+
+
+@app.route('/estudos/delete_study_stock/<int:sid>', methods=['POST'])
+@login_required
+def delete_study_stock(sid):
+    ss = StudyStock.query.filter_by(id=sid, user_id=current_user.id).first_or_404()
+    db.session.delete(ss)
+    db.session.commit()
+    flash('Ação de estudo removida.', 'success')
+    return redirect(url_for('estudos') + '#estudo-acoes')
 
 
 @app.route('/profile', methods=['GET', 'POST'])

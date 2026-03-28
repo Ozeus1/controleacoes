@@ -3117,20 +3117,52 @@ def importar_excel():
                 asset.last_update = datetime.now()
                 ativos_atualizados += 1
 
-    # ── 3. Preços das opções (sheet "opcao") ────────────────────────
-    if 'opcao' in wb.sheetnames:
-        ws = wb['opcao']
+    # ── 3. Preços das opções (todas as sheets de opções) ────────────
+    # Monta dicionário unificado ticker→preço a partir de todas as sheets
+    opcao_prices = {}
+
+    # Sheets onde col A = ticker, col D (índice 3) = preço da opção
+    for sheet_name in ('opcao', 'C_put', 'V_put', 'C_Call_ITM'):
+        if sheet_name in wb.sheetnames:
+            ws = wb[sheet_name]
+            for row in ws.iter_rows(min_row=2, values_only=True):
+                ticker = row[0]
+                price  = row[3]
+                if not ticker or not isinstance(price, (int, float)):
+                    continue
+                opcao_prices[str(ticker).upper().strip()] = float(price)
+
+    # Sheet V_coberta: col A = ticker da opção, col L (índice 11) = preço da opção
+    if 'V_coberta' in wb.sheetnames:
+        ws = wb['V_coberta']
         for row in ws.iter_rows(min_row=2, values_only=True):
             ticker = row[0]
-            price  = row[3]
+            price  = row[11] if len(row) > 11 else None
             if not ticker or not isinstance(price, (int, float)):
                 continue
-            ticker = str(ticker).upper().strip()
-            opt = Option.query.filter_by(ticker=ticker, user_id=current_user.id).first()
-            if opt:
-                opt.current_option_price = float(price)
-                opt.last_update = datetime.now()
-                opcoes_atualizadas += 1
+            opcao_prices[str(ticker).upper().strip()] = float(price)
+
+    # Atualiza Option.current_option_price para todos os tipos
+    for ticker, price in opcao_prices.items():
+        opt = Option.query.filter_by(ticker=ticker, user_id=current_user.id).first()
+        if opt:
+            opt.current_option_price = price
+            opt.last_update = datetime.now()
+            opcoes_atualizadas += 1
+
+    # Atualiza legs dos OptionSpreads do usuário
+    spreads_atualizados = 0
+    user_spreads = OptionSpread.query.filter_by(user_id=current_user.id).all()
+    for sp in user_spreads:
+        changed = False
+        if sp.leg_long_ticker and sp.leg_long_ticker.upper() in opcao_prices:
+            sp.leg_long_current = opcao_prices[sp.leg_long_ticker.upper()]
+            changed = True
+        if sp.leg_short_ticker and sp.leg_short_ticker.upper() in opcao_prices:
+            sp.leg_short_current = opcao_prices[sp.leg_short_ticker.upper()]
+            changed = True
+        if changed:
+            spreads_atualizados += 1
 
     try:
         db.session.commit()
@@ -3139,7 +3171,7 @@ def importar_excel():
         flash(f'Erro ao salvar: {e}', 'danger')
         return redirect(url_for('importar_excel'))
 
-    msg = f'Atualizado: {ativos_atualizados} ativo(s) e {opcoes_atualizadas} opção(ões).'
+    msg = f'Atualizado: {ativos_atualizados} ativo(s), {opcoes_atualizadas} opção(ões) e {spreads_atualizados} spread(s).'
     if erros:
         msg += f' Avisos: {"; ".join(erros)}'
     flash(msg, 'success')

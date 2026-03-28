@@ -178,7 +178,7 @@ def run_migrations():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             spread_type VARCHAR(20) NOT NULL DEFAULT 'TRAVA_ALTA_PUT',
-            underlying_asset VARCHAR(10) NOT NULL DEFAULT '',
+            underlying_asset VARCHAR(15) NOT NULL DEFAULT '',
             quantity INTEGER NOT NULL DEFAULT 0,
             expiration_date DATE NOT NULL DEFAULT '2000-01-01',
             entry_date DATE,
@@ -190,9 +190,16 @@ def run_migrations():
             leg_short_strike FLOAT NOT NULL DEFAULT 0.0,
             leg_short_price FLOAT NOT NULL DEFAULT 0.0,
             leg_short_current FLOAT DEFAULT 0.0,
+            pop FLOAT,
             FOREIGN KEY (user_id) REFERENCES user(id)
         )
     """)
+
+    # Add pop column if table already existed without it
+    cursor.execute("PRAGMA table_info(option_spread)")
+    spread_cols = {row[1] for row in cursor.fetchall()}
+    if 'pop' not in spread_cols:
+        cursor.execute("ALTER TABLE option_spread ADD COLUMN pop FLOAT")
 
     conn.commit()
     conn.close()
@@ -309,27 +316,31 @@ def opcoes():
     spread_underlyings = list(set([s.underlying_asset for s in all_spreads]))
     spread_quotes = get_quotes(spread_underlyings, user_id=current_user.id) if spread_underlyings else {}
 
-    spreads_alta = []
-    spreads_baixa = []
+    spreads_alta_put = []    # crédito: vende put alta + compra put baixa
+    spreads_alta_call = []   # débito:  compra call baixa + vende call alta
+    spreads_baixa_put = []   # débito:  compra put alta + vende put baixa
+    spreads_baixa_call = []  # crédito: vende call baixa + compra call alta
 
     for sp in all_spreads:
         underlying_price = spread_quotes.get(sp.underlying_asset, {}).get('price', 0.0)
-        net_credit = sp.leg_short_price - sp.leg_long_price
-        net_credit_total = net_credit * sp.quantity
-        current_cost_to_close = sp.leg_short_current - sp.leg_long_current
-        result = (net_credit - current_cost_to_close) * sp.quantity
+        net = sp.leg_short_price - sp.leg_long_price   # >0 crédito, <0 débito
+        net_total = net * sp.quantity
+        current_net = sp.leg_short_current - sp.leg_long_current
+        result = (net - current_net) * sp.quantity
         width = abs(sp.leg_short_strike - sp.leg_long_strike)
-        max_gain = net_credit * sp.quantity
-        max_loss = (width - net_credit) * sp.quantity
-        result_pct = (result / abs(max_loss) * 100) if max_loss != 0 else 0
+        is_credit = net >= 0
+        max_gain = net * sp.quantity if is_credit else (width + net) * sp.quantity
+        max_loss = (width - net) * sp.quantity if is_credit else abs(net) * sp.quantity
+        result_pct = (result / max_loss * 100) if max_loss != 0 else 0
         days_left = (sp.expiration_date - today).days
 
         item = {
             'spread': sp,
             'underlying_price': underlying_price,
-            'net_credit': net_credit,
-            'net_credit_total': net_credit_total,
-            'current_cost_to_close': current_cost_to_close,
+            'net': net,
+            'net_total': net_total,
+            'is_credit': is_credit,
+            'current_net': current_net,
             'result': result,
             'result_pct': result_pct,
             'max_gain': max_gain,
@@ -337,14 +348,21 @@ def opcoes():
             'days_left': days_left,
         }
         if sp.spread_type == 'TRAVA_ALTA_PUT':
-            spreads_alta.append(item)
+            spreads_alta_put.append(item)
+        elif sp.spread_type == 'TRAVA_ALTA_CALL':
+            spreads_alta_call.append(item)
+        elif sp.spread_type == 'TRAVA_BAIXA_PUT':
+            spreads_baixa_put.append(item)
         else:
-            spreads_baixa.append(item)
+            spreads_baixa_call.append(item)
 
     return render_template('opcoes.html', options=processed_options,
                            venda_puts=venda_puts,
                            compra_calls=compra_calls, compra_puts=compra_puts,
-                           spreads_alta=spreads_alta, spreads_baixa=spreads_baixa)
+                           spreads_alta_put=spreads_alta_put,
+                           spreads_alta_call=spreads_alta_call,
+                           spreads_baixa_put=spreads_baixa_put,
+                           spreads_baixa_call=spreads_baixa_call)
 
 @app.route('/add_option', methods=['GET', 'POST'])
 @login_required
@@ -429,6 +447,9 @@ def add_spread():
             leg_short_price = float(request.form.get('leg_short_price', '0').replace(',', '.'))
             leg_short_current = float(request.form.get('leg_short_current', '0').replace(',', '.'))
 
+            pop_str = request.form.get('pop', '')
+            pop = float(pop_str.replace(',', '.')) if pop_str else None
+
             sp = OptionSpread(
                 user_id=current_user.id,
                 spread_type=spread_type,
@@ -444,6 +465,7 @@ def add_spread():
                 leg_short_strike=leg_short_strike,
                 leg_short_price=leg_short_price,
                 leg_short_current=leg_short_current,
+                pop=pop,
             )
             db.session.add(sp)
             db.session.commit()
@@ -479,6 +501,9 @@ def edit_spread(id):
             sp.leg_short_strike = float(request.form.get('leg_short_strike', '0').replace(',', '.'))
             sp.leg_short_price = float(request.form.get('leg_short_price', '0').replace(',', '.'))
             sp.leg_short_current = float(request.form.get('leg_short_current', '0').replace(',', '.'))
+
+            pop_str = request.form.get('pop', '')
+            sp.pop = float(pop_str.replace(',', '.')) if pop_str else None
 
             db.session.commit()
             flash("Trava atualizada!", "success")

@@ -131,8 +131,8 @@ class OptionSpread(db.Model):
     __tablename__ = 'option_spread'
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    spread_type = db.Column(db.String(20), nullable=False)  # TRAVA_ALTA_PUT, TRAVA_BAIXA_CALL
-    underlying_asset = db.Column(db.String(10), nullable=False)
+    spread_type = db.Column(db.String(20), nullable=False)  # TRAVA_ALTA_PUT, TRAVA_ALTA_CALL, TRAVA_BAIXA_PUT, TRAVA_BAIXA_CALL
+    underlying_asset = db.Column(db.String(15), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
     expiration_date = db.Column(db.Date, nullable=False)
     entry_date = db.Column(db.Date, nullable=True)
@@ -148,6 +148,9 @@ class OptionSpread(db.Model):
     leg_short_strike = db.Column(db.Float, nullable=False)
     leg_short_price = db.Column(db.Float, nullable=False)  # prêmio recebido
     leg_short_current = db.Column(db.Float, default=0.0)
+
+    # Probability of Profit informado na montagem
+    pop = db.Column(db.Float, nullable=True)
 
 
 class Settings(db.Model):

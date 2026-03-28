@@ -1,25 +1,57 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card" style="max-width: 700px; margin: 0 auto; padding: 2rem;">
+<div class="card" style="max-width: 720px; margin: 0 auto; padding: 2rem;">
+
     {% if edit %}
     <h2>Editar Trava</h2>
     {% elif spread_type == 'TRAVA_ALTA_PUT' %}
-    <h2>Adicionar Trava de Alta com Puts</h2>
+    <h2>Trava de Alta com Puts</h2>
+    {% elif spread_type == 'TRAVA_ALTA_CALL' %}
+    <h2>Trava de Alta com Calls</h2>
+    {% elif spread_type == 'TRAVA_BAIXA_PUT' %}
+    <h2>Trava de Baixa com Puts</h2>
     {% else %}
-    <h2>Adicionar Trava de Baixa com Calls</h2>
+    <h2>Trava de Baixa com Calls</h2>
+    {% endif %}
+
+    {# ===== DICA DA ESTRATÉGIA ===== #}
+    {% if spread_type == 'TRAVA_ALTA_PUT' %}
+    <div style="background: rgba(16,185,129,0.12); border-left: 4px solid var(--success-color); padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1.5rem; font-size: 0.88rem; color: var(--text-secondary);">
+        <strong style="color: var(--success-color);">Trava de Alta com Puts — Crédito</strong><br>
+        Estrutura: <em>Venda Put strike maior + Compra Put strike menor</em><br>
+        ✅ Crédito recebido &nbsp;·&nbsp; 📈 Direcional: mercado <strong>não cair</strong> &nbsp;·&nbsp; ⏳ Ganha com o tempo (theta+) &nbsp;·&nbsp; 📊 Vol alta → queda da vol &nbsp;·&nbsp; 🎯 Mercado lateral ou leve alta
+    </div>
+    {% elif spread_type == 'TRAVA_ALTA_CALL' %}
+    <div style="background: rgba(16,185,129,0.12); border-left: 4px solid var(--success-color); padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1.5rem; font-size: 0.88rem; color: var(--text-secondary);">
+        <strong style="color: var(--success-color);">Trava de Alta com Calls — Débito</strong><br>
+        Estrutura: <em>Compra Call strike menor + Venda Call strike maior</em><br>
+        💰 Débito pago &nbsp;·&nbsp; 📈 Direcional: mercado <strong>subir</strong> &nbsp;·&nbsp; ⏳ Perde com o tempo (theta−) &nbsp;·&nbsp; 📊 Vol baixa → alta da vol &nbsp;·&nbsp; 🎯 Espera alta moderada
+    </div>
+    {% elif spread_type == 'TRAVA_BAIXA_PUT' %}
+    <div style="background: rgba(239,68,68,0.12); border-left: 4px solid var(--danger-color); padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1.5rem; font-size: 0.88rem; color: var(--text-secondary);">
+        <strong style="color: var(--danger-color);">Trava de Baixa com Puts — Débito</strong><br>
+        Estrutura: <em>Compra Put strike maior + Venda Put strike menor</em><br>
+        💰 Débito pago &nbsp;·&nbsp; 📉 Direcional: mercado <strong>cair</strong> &nbsp;·&nbsp; ⏳ Perde com o tempo (theta−) &nbsp;·&nbsp; 📊 Vol baixa → alta da vol &nbsp;·&nbsp; 🎯 Espera queda forte
+    </div>
+    {% else %}
+    <div style="background: rgba(239,68,68,0.12); border-left: 4px solid var(--danger-color); padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1.5rem; font-size: 0.88rem; color: var(--text-secondary);">
+        <strong style="color: var(--danger-color);">Trava de Baixa com Calls — Crédito</strong><br>
+        Estrutura: <em>Venda Call strike menor + Compra Call strike maior</em><br>
+        ✅ Crédito recebido &nbsp;·&nbsp; 📉 Direcional: mercado <strong>não subir</strong> &nbsp;·&nbsp; ⏳ Ganha com o tempo (theta+) &nbsp;·&nbsp; 📊 Vol alta → queda da vol &nbsp;·&nbsp; 🎯 Mercado lateral ou leve queda
+    </div>
     {% endif %}
 
     <form method="POST" action="{{ url_for('edit_spread', id=spread.id) if edit else url_for('add_spread') }}">
         <input type="hidden" name="spread_type" value="{{ spread_type }}">
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
             <div>
-                <label>Ativo Subjacente (ex: PETR4)</label>
+                <label>Ativo Subjacente (ex: PETR4, AAPL)</label>
                 <input type="text" name="underlying_asset" class="form-control" style="text-transform:uppercase"
                     value="{{ spread.underlying_asset if edit else '' }}" required>
             </div>
             <div>
-                <label>Quantidade</label>
+                <label>Quantidade (contratos)</label>
                 <input type="number" name="quantity" class="form-control"
                     value="{{ spread.quantity if edit else '' }}" required>
             </div>
@@ -33,24 +65,26 @@
                 <input type="date" name="entry_date" class="form-control"
                     value="{{ spread.entry_date.strftime('%Y-%m-%d') if (edit and spread.entry_date) else '' }}">
             </div>
+            <div>
+                <label>POP — Probabilidade de Lucro na montagem (%)</label>
+                <input type="text" name="pop" class="form-control" placeholder="ex: 72,5"
+                    value="{{ '%.1f'|format(spread.pop)|replace('.', ',') if (edit and spread.pop) else '' }}">
+            </div>
         </div>
 
         <hr style="margin: 1.5rem 0; border-color: var(--border-color);">
 
-        {% if spread_type == 'TRAVA_ALTA_PUT' %}
-        <p style="color: var(--text-secondary); font-size: 0.9rem;">
-            <strong>Trava de Alta com Puts:</strong> Compra a Put de strike menor (proteção) + Venda a Put de strike maior (crédito).
-        </p>
-        {% else %}
-        <p style="color: var(--text-secondary); font-size: 0.9rem;">
-            <strong>Trava de Baixa com Calls:</strong> Venda a Call de strike menor (crédito) + Compra a Call de strike maior (proteção).
-        </p>
-        {% endif %}
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1rem;">
-            <!-- Leg Compra -->
-            <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem;">
-                <h4 style="color: var(--success-color); margin-top: 0;">📗 Leg Compra (Long)</h4>
+            {# ===== LEG COMPRA ===== #}
+            <div style="border: 1px solid var(--success-color); border-radius: 8px; padding: 1rem;">
+                <h4 style="color: var(--success-color); margin-top: 0;">
+                    📗 Leg Compra (Long)
+                    {% if spread_type == 'TRAVA_ALTA_CALL' %}<small style="font-weight:normal"> — strike menor</small>
+                    {% elif spread_type == 'TRAVA_ALTA_PUT' %}<small style="font-weight:normal"> — strike menor</small>
+                    {% elif spread_type == 'TRAVA_BAIXA_PUT' %}<small style="font-weight:normal"> — strike maior</small>
+                    {% else %}<small style="font-weight:normal"> — strike maior</small>{% endif %}
+                </h4>
                 <div style="margin-bottom: 0.75rem;">
                     <label>Ticker da Opção</label>
                     <input type="text" name="leg_long_ticker" class="form-control" style="text-transform:uppercase"
@@ -63,7 +97,8 @@
                 </div>
                 <div style="margin-bottom: 0.75rem;">
                     <label>Prêmio Pago (entrada)</label>
-                    <input type="text" name="leg_long_price" class="form-control"
+                    <input type="text" name="leg_long_price" class="form-control" id="leg_long_price"
+                        oninput="calcNet()"
                         value="{{ '%.2f'|format(spread.leg_long_price)|replace('.', ',') if edit else '' }}" required>
                 </div>
                 <div>
@@ -73,9 +108,15 @@
                 </div>
             </div>
 
-            <!-- Leg Venda -->
-            <div style="border: 1px solid var(--border-color); border-radius: 8px; padding: 1rem;">
-                <h4 style="color: var(--danger-color); margin-top: 0;">📕 Leg Venda (Short)</h4>
+            {# ===== LEG VENDA ===== #}
+            <div style="border: 1px solid var(--danger-color); border-radius: 8px; padding: 1rem;">
+                <h4 style="color: var(--danger-color); margin-top: 0;">
+                    📕 Leg Venda (Short)
+                    {% if spread_type == 'TRAVA_ALTA_CALL' %}<small style="font-weight:normal"> — strike maior</small>
+                    {% elif spread_type == 'TRAVA_ALTA_PUT' %}<small style="font-weight:normal"> — strike maior</small>
+                    {% elif spread_type == 'TRAVA_BAIXA_PUT' %}<small style="font-weight:normal"> — strike menor</small>
+                    {% else %}<small style="font-weight:normal"> — strike menor</small>{% endif %}
+                </h4>
                 <div style="margin-bottom: 0.75rem;">
                     <label>Ticker da Opção</label>
                     <input type="text" name="leg_short_ticker" class="form-control" style="text-transform:uppercase"
@@ -88,7 +129,8 @@
                 </div>
                 <div style="margin-bottom: 0.75rem;">
                     <label>Prêmio Recebido (entrada)</label>
-                    <input type="text" name="leg_short_price" class="form-control"
+                    <input type="text" name="leg_short_price" class="form-control" id="leg_short_price"
+                        oninput="calcNet()"
                         value="{{ '%.2f'|format(spread.leg_short_price)|replace('.', ',') if edit else '' }}" required>
                 </div>
                 <div>
@@ -99,10 +141,36 @@
             </div>
         </div>
 
+        {# ===== RESULTADO LÍQUIDO DA MONTAGEM ===== #}
+        <div id="net-result" style="margin-top: 1.25rem; padding: 0.75rem 1rem; border-radius: 8px; background: var(--card-bg); border: 1px solid var(--border-color); font-size: 0.95rem;">
+            <span id="net-label">— preencha os prêmios para ver o resultado líquido da montagem</span>
+        </div>
+
         <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
             <button type="submit" class="btn btn-primary">💾 Salvar</button>
             <a href="{{ url_for('opcoes') }}" class="btn btn-secondary">Cancelar</a>
         </div>
     </form>
 </div>
+
+<script>
+function calcNet() {
+    const bought = parseFloat(document.getElementById('leg_long_price').value.replace(',', '.')) || 0;
+    const sold   = parseFloat(document.getElementById('leg_short_price').value.replace(',', '.')) || 0;
+    const net = sold - bought;
+    const el  = document.getElementById('net-label');
+    const box = document.getElementById('net-result');
+    if (net > 0) {
+        el.innerHTML = '✅ <strong>Crédito Líquido: R$ ' + net.toFixed(2).replace('.', ',') + '</strong> por contrato recebido na montagem';
+        box.style.borderColor = 'var(--success-color)';
+    } else if (net < 0) {
+        el.innerHTML = '💰 <strong>Débito Líquido: R$ ' + Math.abs(net).toFixed(2).replace('.', ',') + '</strong> por contrato pago na montagem';
+        box.style.borderColor = 'var(--accent-color)';
+    } else {
+        el.innerHTML = '— preencha os prêmios para ver o resultado líquido da montagem';
+        box.style.borderColor = 'var(--border-color)';
+    }
+}
+{% if edit %}calcNet();{% endif %}
+</script>
 {% endblock %}

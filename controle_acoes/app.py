@@ -4,7 +4,7 @@ import sys
 import sqlite3
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -172,6 +172,28 @@ def run_migrations():
     if cursor.rowcount > 0:
         print(f"[MIGRATION] Reclassified {cursor.rowcount} trade_history strategy records.")
 
+    # Create option_spread table if it doesn't exist
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS option_spread (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            spread_type VARCHAR(20) NOT NULL DEFAULT 'TRAVA_ALTA_PUT',
+            underlying_asset VARCHAR(10) NOT NULL DEFAULT '',
+            quantity INTEGER NOT NULL DEFAULT 0,
+            expiration_date DATE NOT NULL DEFAULT '2000-01-01',
+            entry_date DATE,
+            leg_long_ticker VARCHAR(20) NOT NULL DEFAULT '',
+            leg_long_strike FLOAT NOT NULL DEFAULT 0.0,
+            leg_long_price FLOAT NOT NULL DEFAULT 0.0,
+            leg_long_current FLOAT DEFAULT 0.0,
+            leg_short_ticker VARCHAR(20) NOT NULL DEFAULT '',
+            leg_short_strike FLOAT NOT NULL DEFAULT 0.0,
+            leg_short_price FLOAT NOT NULL DEFAULT 0.0,
+            leg_short_current FLOAT DEFAULT 0.0,
+            FOREIGN KEY (user_id) REFERENCES user(id)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -277,9 +299,52 @@ def opcoes():
             else:
                 compra_puts.append(item)
 
+    from datetime import date as date_cls
+    today = date_cls.today()
+
+    # Process spreads
+    all_spreads = OptionSpread.query.filter_by(user_id=current_user.id).all()
+
+    # Fetch quotes for spread underlyings
+    spread_underlyings = list(set([s.underlying_asset for s in all_spreads]))
+    spread_quotes = get_quotes(spread_underlyings, user_id=current_user.id) if spread_underlyings else {}
+
+    spreads_alta = []
+    spreads_baixa = []
+
+    for sp in all_spreads:
+        underlying_price = spread_quotes.get(sp.underlying_asset, {}).get('price', 0.0)
+        net_credit = sp.leg_short_price - sp.leg_long_price
+        net_credit_total = net_credit * sp.quantity
+        current_cost_to_close = sp.leg_short_current - sp.leg_long_current
+        result = (net_credit - current_cost_to_close) * sp.quantity
+        width = abs(sp.leg_short_strike - sp.leg_long_strike)
+        max_gain = net_credit * sp.quantity
+        max_loss = (width - net_credit) * sp.quantity
+        result_pct = (result / abs(max_loss) * 100) if max_loss != 0 else 0
+        days_left = (sp.expiration_date - today).days
+
+        item = {
+            'spread': sp,
+            'underlying_price': underlying_price,
+            'net_credit': net_credit,
+            'net_credit_total': net_credit_total,
+            'current_cost_to_close': current_cost_to_close,
+            'result': result,
+            'result_pct': result_pct,
+            'max_gain': max_gain,
+            'max_loss': max_loss,
+            'days_left': days_left,
+        }
+        if sp.spread_type == 'TRAVA_ALTA_PUT':
+            spreads_alta.append(item)
+        else:
+            spreads_baixa.append(item)
+
     return render_template('opcoes.html', options=processed_options,
                            venda_puts=venda_puts,
-                           compra_calls=compra_calls, compra_puts=compra_puts)
+                           compra_calls=compra_calls, compra_puts=compra_puts,
+                           spreads_alta=spreads_alta, spreads_baixa=spreads_baixa)
 
 @app.route('/add_option', methods=['GET', 'POST'])
 @login_required
@@ -341,6 +406,144 @@ def add_option():
 
     option_type = request.args.get('type', 'VENDA_CALL')
     return render_template('add_option.html', option_type=option_type)
+
+@app.route('/add_spread', methods=['GET', 'POST'])
+@login_required
+def add_spread():
+    if request.method == 'POST':
+        try:
+            spread_type = request.form.get('spread_type', 'TRAVA_ALTA_PUT')
+            underlying = request.form.get('underlying_asset', '').upper()
+            quantity = int(request.form.get('quantity'))
+            expiration = datetime.strptime(request.form.get('expiration_date'), '%Y-%m-%d').date()
+            entry_date_str = request.form.get('entry_date')
+            entry_date = datetime.strptime(entry_date_str, '%Y-%m-%d').date() if entry_date_str else None
+
+            leg_long_ticker = request.form.get('leg_long_ticker', '').upper()
+            leg_long_strike = float(request.form.get('leg_long_strike', '0').replace(',', '.'))
+            leg_long_price = float(request.form.get('leg_long_price', '0').replace(',', '.'))
+            leg_long_current = float(request.form.get('leg_long_current', '0').replace(',', '.'))
+
+            leg_short_ticker = request.form.get('leg_short_ticker', '').upper()
+            leg_short_strike = float(request.form.get('leg_short_strike', '0').replace(',', '.'))
+            leg_short_price = float(request.form.get('leg_short_price', '0').replace(',', '.'))
+            leg_short_current = float(request.form.get('leg_short_current', '0').replace(',', '.'))
+
+            sp = OptionSpread(
+                user_id=current_user.id,
+                spread_type=spread_type,
+                underlying_asset=underlying,
+                quantity=quantity,
+                expiration_date=expiration,
+                entry_date=entry_date,
+                leg_long_ticker=leg_long_ticker,
+                leg_long_strike=leg_long_strike,
+                leg_long_price=leg_long_price,
+                leg_long_current=leg_long_current,
+                leg_short_ticker=leg_short_ticker,
+                leg_short_strike=leg_short_strike,
+                leg_short_price=leg_short_price,
+                leg_short_current=leg_short_current,
+            )
+            db.session.add(sp)
+            db.session.commit()
+            flash("Trava adicionada com sucesso!", "success")
+        except Exception as e:
+            flash(f"Erro ao salvar trava: {e}", "danger")
+        return redirect(url_for('opcoes'))
+
+    spread_type = request.args.get('type', 'TRAVA_ALTA_PUT')
+    return render_template('add_spread.html', spread_type=spread_type)
+
+@app.route('/edit_spread/<int:id>', methods=['GET', 'POST'])
+@login_required
+def edit_spread(id):
+    sp = OptionSpread.query.get_or_404(id)
+    if sp.user_id != current_user.id:
+        flash("Sem permissão.", "danger")
+        return redirect(url_for('opcoes'))
+    if request.method == 'POST':
+        try:
+            sp.underlying_asset = request.form.get('underlying_asset', '').upper()
+            sp.quantity = int(request.form.get('quantity'))
+            sp.expiration_date = datetime.strptime(request.form.get('expiration_date'), '%Y-%m-%d').date()
+            entry_date_str = request.form.get('entry_date')
+            sp.entry_date = datetime.strptime(entry_date_str, '%Y-%m-%d').date() if entry_date_str else None
+
+            sp.leg_long_ticker = request.form.get('leg_long_ticker', '').upper()
+            sp.leg_long_strike = float(request.form.get('leg_long_strike', '0').replace(',', '.'))
+            sp.leg_long_price = float(request.form.get('leg_long_price', '0').replace(',', '.'))
+            sp.leg_long_current = float(request.form.get('leg_long_current', '0').replace(',', '.'))
+
+            sp.leg_short_ticker = request.form.get('leg_short_ticker', '').upper()
+            sp.leg_short_strike = float(request.form.get('leg_short_strike', '0').replace(',', '.'))
+            sp.leg_short_price = float(request.form.get('leg_short_price', '0').replace(',', '.'))
+            sp.leg_short_current = float(request.form.get('leg_short_current', '0').replace(',', '.'))
+
+            db.session.commit()
+            flash("Trava atualizada!", "success")
+        except Exception as e:
+            flash(f"Erro: {e}", "danger")
+        return redirect(url_for('opcoes'))
+    return render_template('add_spread.html', spread_type=sp.spread_type, spread=sp, edit=True)
+
+@app.route('/close_spread/<int:id>', methods=['GET', 'POST'])
+@login_required
+def close_spread(id):
+    sp = OptionSpread.query.get_or_404(id)
+    if sp.user_id != current_user.id:
+        flash("Sem permissão.", "danger")
+        return redirect(url_for('opcoes'))
+    if request.method == 'POST':
+        try:
+            close_long_price = float(request.form.get('close_long_price', '0').replace(',', '.'))
+            close_short_price = float(request.form.get('close_short_price', '0').replace(',', '.'))
+            exit_date = datetime.strptime(request.form.get('date'), '%Y-%m-%d').date()
+            reason = request.form.get('reason', 'ENCERRAMENTO')
+
+            net_credit = sp.leg_short_price - sp.leg_long_price
+            cost_to_close = close_short_price - close_long_price
+            profit_val = (net_credit - cost_to_close) * sp.quantity
+            width = abs(sp.leg_short_strike - sp.leg_long_strike)
+            max_loss_ref = (width - net_credit) * sp.quantity
+            profit_pct = (profit_val / abs(max_loss_ref) * 100) if max_loss_ref != 0 else 0
+            days_held = (exit_date - sp.entry_date).days if sp.entry_date else 0
+
+            label = f"TRAVA {sp.leg_long_ticker}/{sp.leg_short_ticker}"
+            history = TradeHistory(
+                user_id=current_user.id,
+                ticker=label[:10],
+                strategy='Opções',
+                entry_date=sp.entry_date,
+                exit_date=exit_date,
+                buy_price=close_long_price,
+                sell_price=sp.leg_short_price,
+                quantity=sp.quantity,
+                profit_value=profit_val,
+                profit_pct=profit_pct,
+                days_held=days_held,
+                reason=reason
+            )
+            db.session.add(history)
+            db.session.delete(sp)
+            db.session.commit()
+            flash("Trava encerrada e registrada no histórico!", "success")
+        except Exception as e:
+            flash(f"Erro: {e}", "danger")
+        return redirect(url_for('opcoes'))
+    return render_template('close_spread.html', spread=sp, today=date.today())
+
+@app.route('/delete_spread/<int:id>')
+@login_required
+def delete_spread(id):
+    sp = OptionSpread.query.get_or_404(id)
+    if sp.user_id != current_user.id:
+        flash("Sem permissão.", "danger")
+        return redirect(url_for('opcoes'))
+    db.session.delete(sp)
+    db.session.commit()
+    flash("Trava excluída.", "success")
+    return redirect(url_for('opcoes'))
 
 @app.route('/edit_option/<int:id>', methods=['GET', 'POST'])
 @login_required

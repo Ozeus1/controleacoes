@@ -127,6 +127,29 @@ class Option(db.Model):
         }
 
 
+class OptionSpread(db.Model):
+    __tablename__ = 'option_spread'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    spread_type = db.Column(db.String(20), nullable=False)  # TRAVA_ALTA_PUT, TRAVA_BAIXA_CALL
+    underlying_asset = db.Column(db.String(10), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False)
+    expiration_date = db.Column(db.Date, nullable=False)
+    entry_date = db.Column(db.Date, nullable=True)
+
+    # Leg Compra (Long)
+    leg_long_ticker = db.Column(db.String(20), nullable=False)
+    leg_long_strike = db.Column(db.Float, nullable=False)
+    leg_long_price = db.Column(db.Float, nullable=False)   # prêmio pago
+    leg_long_current = db.Column(db.Float, default=0.0)
+
+    # Leg Venda (Short)
+    leg_short_ticker = db.Column(db.String(20), nullable=False)
+    leg_short_strike = db.Column(db.Float, nullable=False)
+    leg_short_price = db.Column(db.Float, nullable=False)  # prêmio recebido
+    leg_short_current = db.Column(db.Float, default=0.0)
+
+
 class Settings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, default=1)

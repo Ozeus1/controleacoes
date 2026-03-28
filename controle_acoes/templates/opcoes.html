@@ -387,6 +387,150 @@
 </div>
 {% endif %}
 
+{# ========== TABELA 5: TRAVA DE ALTA COM PUTS ========== #}
+<div class="card" style="margin-top: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Trava de Alta com Puts</h3>
+        <a href="{{ url_for('add_spread', type='TRAVA_ALTA_PUT') }}" class="btn btn-primary btn-sm">Adicionar Trava</a>
+    </div>
+    {% if spreads_alta %}
+    <table>
+        <thead>
+            <tr>
+                <th>Leg Compra</th>
+                <th>Leg Venda</th>
+                <th>Ativo</th>
+                <th>Cotação</th>
+                <th>Qtd</th>
+                <th>Vencimento</th>
+                <th>Dias</th>
+                <th>Prêmio Liq.</th>
+                <th>Crédito Total</th>
+                <th>Cot. Compra</th>
+                <th>Cot. Venda</th>
+                <th>Resultado R$</th>
+                <th>Resultado %</th>
+                <th>Ganho Máx.</th>
+                <th>Perda Máx.</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in spreads_alta %}
+            <tr>
+                <td><span class="ticker-badge">{{ item.spread.leg_long_ticker }}</span><br><small>K={{ "%.2f"|format(item.spread.leg_long_strike)|replace('.', ',') }}</small></td>
+                <td><span class="ticker-badge">{{ item.spread.leg_short_ticker }}</span><br><small>K={{ "%.2f"|format(item.spread.leg_short_strike)|replace('.', ',') }}</small></td>
+                <td>{{ item.spread.underlying_asset }}</td>
+                <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                <td>{{ item.spread.quantity }}</td>
+                <td>{{ item.spread.expiration_date.strftime('%d/%m/%Y') }}</td>
+                <td>{{ item.days_left }}</td>
+                <td class="{{ 'positive' if item.net_credit >= 0 else 'negative' }}">R$ {{ "%.2f"|format(item.net_credit)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if item.net_credit_total >= 0 else 'negative' }}">R$ {{ "%.2f"|format(item.net_credit_total)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.spread.leg_long_current)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.spread.leg_short_current)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if item.result >= 0 else 'negative' }}">R$ {{ "%.2f"|format(item.result)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if item.result_pct >= 0 else 'negative' }}">{{ "%.2f"|format(item.result_pct)|replace('.', ',') }}%</td>
+                <td class="positive">R$ {{ "%.2f"|format(item.max_gain)|replace('.', ',') }}</td>
+                <td class="negative">R$ {{ "%.2f"|format(item.max_loss)|replace('.', ',') }}</td>
+                <td class="actions">
+                    <a href="{{ url_for('close_spread', id=item.spread.id) }}" class="btn btn-sm" style="background:var(--accent-color); color: white;" title="Encerrar">🛑</a>
+                    <a href="{{ url_for('edit_spread', id=item.spread.id) }}" class="btn btn-sm btn-primary">✏️</a>
+                    <a href="{{ url_for('delete_spread', id=item.spread.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Apagar?')">🗑️</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
+                <td colspan="8">TOTAL</td>
+                <td class="{{ 'positive' if spreads_alta|sum(attribute='net_credit_total') >= 0 else 'negative' }}">R$ {{ "%.2f"|format(spreads_alta|sum(attribute='net_credit_total'))|replace('.', ',') }}</td>
+                <td></td><td></td>
+                <td class="{{ 'positive' if spreads_alta|sum(attribute='result') >= 0 else 'negative' }}">R$ {{ "%.2f"|format(spreads_alta|sum(attribute='result'))|replace('.', ',') }}</td>
+                <td></td>
+                <td class="positive">R$ {{ "%.2f"|format(spreads_alta|sum(attribute='max_gain'))|replace('.', ',') }}</td>
+                <td class="negative">R$ {{ "%.2f"|format(spreads_alta|sum(attribute='max_loss'))|replace('.', ',') }}</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+    {% else %}
+    <p style="text-align: center; padding: 2rem; color: var(--text-secondary);">Sem travas de alta cadastradas</p>
+    {% endif %}
+</div>
+
+{# ========== TABELA 6: TRAVA DE BAIXA COM CALLS ========== #}
+<div class="card" style="margin-top: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Trava de Baixa com Calls</h3>
+        <a href="{{ url_for('add_spread', type='TRAVA_BAIXA_CALL') }}" class="btn btn-primary btn-sm">Adicionar Trava</a>
+    </div>
+    {% if spreads_baixa %}
+    <table>
+        <thead>
+            <tr>
+                <th>Leg Compra</th>
+                <th>Leg Venda</th>
+                <th>Ativo</th>
+                <th>Cotação</th>
+                <th>Qtd</th>
+                <th>Vencimento</th>
+                <th>Dias</th>
+                <th>Prêmio Liq.</th>
+                <th>Crédito Total</th>
+                <th>Cot. Compra</th>
+                <th>Cot. Venda</th>
+                <th>Resultado R$</th>
+                <th>Resultado %</th>
+                <th>Ganho Máx.</th>
+                <th>Perda Máx.</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in spreads_baixa %}
+            <tr>
+                <td><span class="ticker-badge">{{ item.spread.leg_long_ticker }}</span><br><small>K={{ "%.2f"|format(item.spread.leg_long_strike)|replace('.', ',') }}</small></td>
+                <td><span class="ticker-badge">{{ item.spread.leg_short_ticker }}</span><br><small>K={{ "%.2f"|format(item.spread.leg_short_strike)|replace('.', ',') }}</small></td>
+                <td>{{ item.spread.underlying_asset }}</td>
+                <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                <td>{{ item.spread.quantity }}</td>
+                <td>{{ item.spread.expiration_date.strftime('%d/%m/%Y') }}</td>
+                <td>{{ item.days_left }}</td>
+                <td class="{{ 'positive' if item.net_credit >= 0 else 'negative' }}">R$ {{ "%.2f"|format(item.net_credit)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if item.net_credit_total >= 0 else 'negative' }}">R$ {{ "%.2f"|format(item.net_credit_total)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.spread.leg_long_current)|replace('.', ',') }}</td>
+                <td>R$ {{ "%.2f"|format(item.spread.leg_short_current)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if item.result >= 0 else 'negative' }}">R$ {{ "%.2f"|format(item.result)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if item.result_pct >= 0 else 'negative' }}">{{ "%.2f"|format(item.result_pct)|replace('.', ',') }}%</td>
+                <td class="positive">R$ {{ "%.2f"|format(item.max_gain)|replace('.', ',') }}</td>
+                <td class="negative">R$ {{ "%.2f"|format(item.max_loss)|replace('.', ',') }}</td>
+                <td class="actions">
+                    <a href="{{ url_for('close_spread', id=item.spread.id) }}" class="btn btn-sm" style="background:var(--accent-color); color: white;" title="Encerrar">🛑</a>
+                    <a href="{{ url_for('edit_spread', id=item.spread.id) }}" class="btn btn-sm btn-primary">✏️</a>
+                    <a href="{{ url_for('delete_spread', id=item.spread.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Apagar?')">🗑️</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
+                <td colspan="8">TOTAL</td>
+                <td class="{{ 'positive' if spreads_baixa|sum(attribute='net_credit_total') >= 0 else 'negative' }}">R$ {{ "%.2f"|format(spreads_baixa|sum(attribute='net_credit_total'))|replace('.', ',') }}</td>
+                <td></td><td></td>
+                <td class="{{ 'positive' if spreads_baixa|sum(attribute='result') >= 0 else 'negative' }}">R$ {{ "%.2f"|format(spreads_baixa|sum(attribute='result'))|replace('.', ',') }}</td>
+                <td></td>
+                <td class="positive">R$ {{ "%.2f"|format(spreads_baixa|sum(attribute='max_gain'))|replace('.', ',') }}</td>
+                <td class="negative">R$ {{ "%.2f"|format(spreads_baixa|sum(attribute='max_loss'))|replace('.', ',') }}</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+    {% else %}
+    <p style="text-align: center; padding: 2rem; color: var(--text-secondary);">Sem travas de baixa cadastradas</p>
+    {% endif %}
+</div>
+
 <!-- MT5 Live Polling for Options -->
 <script>
 (function() {

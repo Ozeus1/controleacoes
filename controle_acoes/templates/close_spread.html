@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width: 500px; margin: 0 auto; padding: 2rem;">
+    <h2>Encerrar Trava</h2>
+    <p style="color: var(--text-secondary);">
+        {{ spread.leg_long_ticker }} / {{ spread.leg_short_ticker }} — {{ spread.underlying_asset }} — {{ spread.quantity }} contratos
+    </p>
+    <p>
+        Crédito líquido na entrada: <strong>R$ {{ "%.2f"|format(spread.leg_short_price - spread.leg_long_price)|replace('.', ',') }}</strong> por unidade
+    </p>
+
+    <form method="POST">
+        <div style="margin-bottom: 1rem;">
+            <label>Cotação atual da Leg Compra ({{ spread.leg_long_ticker }}) para encerrar</label>
+            <input type="text" name="close_long_price" class="form-control"
+                value="{{ '%.2f'|format(spread.leg_long_current)|replace('.', ',') }}" required>
+        </div>
+        <div style="margin-bottom: 1rem;">
+            <label>Cotação atual da Leg Venda ({{ spread.leg_short_ticker }}) para encerrar</label>
+            <input type="text" name="close_short_price" class="form-control"
+                value="{{ '%.2f'|format(spread.leg_short_current)|replace('.', ',') }}" required>
+        </div>
+        <div style="margin-bottom: 1rem;">
+            <label>Data de Encerramento</label>
+            <input type="date" name="date" class="form-control" value="{{ today.strftime('%Y-%m-%d') }}" required>
+        </div>
+        <div style="margin-bottom: 1rem;">
+            <label>Motivo</label>
+            <select name="reason" class="form-control">
+                <option value="ENCERRAMENTO">Encerramento Normal</option>
+                <option value="STOP">Stop Loss</option>
+                <option value="GAIN">Gain</option>
+                <option value="VENCIMENTO">Vencimento</option>
+            </select>
+        </div>
+        <div style="display: flex; gap: 1rem;">
+            <button type="submit" class="btn btn-danger">🛑 Encerrar e Registrar</button>
+            <a href="{{ url_for('opcoes') }}" class="btn btn-secondary">Cancelar</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

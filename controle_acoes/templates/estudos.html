@@ -398,7 +398,12 @@
             </div>
             <div class="col-md-6">
               <label>Estratégia Ativa</label>
-              <input type="text" name="strategy_active" class="form-control" placeholder="Descrição da operação ativa">
+              <select name="strategy_active" class="form-control">
+                <option value="">—</option>
+                {% for s in strategies %}
+                <option value="{{ s }}">{{ s }}</option>
+                {% endfor %}
+              </select>
             </div>
             <div class="col-md-3">
               <label>Data Entrada</label>
@@ -471,7 +476,12 @@
             </div>
             <div class="col-md-6">
               <label>Estratégia Ativa</label>
-              <input type="text" name="strategy_active" id="ea-strat-active" class="form-control">
+              <select name="strategy_active" id="ea-strat-active" class="form-control">
+                <option value="">—</option>
+                {% for s in strategies %}
+                <option value="{{ s }}">{{ s }}</option>
+                {% endfor %}
+              </select>
             </div>
             <div class="col-md-3">
               <label>Data Entrada</label>
@@ -516,14 +526,14 @@ function openEditAcao(id, ticker, trend, rsi, vol, ve, strategy, studyDate, stra
   document.getElementById('ea-ticker').value       = ticker;
   document.getElementById('ea-rsi').value          = rsi;
   document.getElementById('ea-ve').value           = ve;
-  document.getElementById('ea-study-date').value   = studyDate;
-  document.getElementById('ea-strat-active').value = stratActive;
-  document.getElementById('ea-entry-date').value   = entryDate;
+  document.getElementById('ea-study-date').value = studyDate;
+  document.getElementById('ea-entry-date').value  = entryDate;
 
   // selects
-  setSelect('ea-trend',    trend);
-  setSelect('ea-vol',      vol);
-  setSelect('ea-strategy', strategy);
+  setSelect('ea-trend',        trend);
+  setSelect('ea-vol',          vol);
+  setSelect('ea-strategy',     strategy);
+  setSelect('ea-strat-active', stratActive);
 
   document.getElementById('form-edit-acao').action = '/estudos/edit_study_stock/' + id;
   new bootstrap.Modal(document.getElementById('modal-edit-acao')).show();

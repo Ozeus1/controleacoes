@@ -3217,14 +3217,23 @@ def importar_excel():
             if not ticker or not str(ticker).strip():
                 continue
             ticker = str(ticker).upper().strip()
-            trend    = str(row[2]).strip() if row[2] else None
+            # normaliza tendência
+            trend_raw = str(row[2]).strip() if row[2] else ''
+            trend_map = {'alta': 'Alta', 'baixa': 'Baixa', 'lateral': 'Lateral'}
+            trend = trend_map.get(trend_raw.lower().strip(), trend_raw or None)
+
             rsi_val  = float(row[3]) if isinstance(row[3], (int, float)) else None
-            volat    = str(row[4]).strip() if row[4] else None
+
+            # normaliza volatilidade
+            volat_raw = str(row[4]).strip() if row[4] else ''
+            volat_map = {'alta': 'Alta', 'baixa': 'Baixa', 'neutra': 'Neutra'}
+            volat = volat_map.get(volat_raw.lower().strip(), volat_raw or None)
+
             ve_val   = float(row[5]) if isinstance(row[5], (int, float)) else None
-            strat    = str(row[6]).strip() if row[6] else None
+            strat    = _normalize_strategy(str(row[6]).strip() if row[6] else None)
             # study_date, strategy_active, entry_date may be None
             study_dt = row[7] if isinstance(row[7], date) else None
-            strat_active = str(row[8]).strip() if row[8] else None
+            strat_active = _normalize_strategy(str(row[8]).strip() if row[8] else None)
             entry_dt = row[9] if isinstance(row[9], date) else None
 
             ss = StudyStock.query.filter_by(ticker=ticker, user_id=current_user.id).first()
@@ -3246,7 +3255,7 @@ def importar_excel():
             else:
                 new_ss = StudyStock(
                     user_id=current_user.id,
-                    ticker=ticker,
+                    ticker=ticker.upper(),
                     trend=trend,
                     rsi=rsi_val,
                     volatility=volat,
@@ -3310,6 +3319,45 @@ STUDY_STRATEGIES = [
     'Outros',
     'ne',
 ]
+
+# Mapeamento dos valores da planilha para os do programa
+_STRATEGY_MAP = {
+    'venda coberta':          'Venda de Call Coberta',
+    'venda de call coberta':  'Venda de Call Coberta',
+    'venda de call':          'Venda de Call Coberta',
+    'venda put':              'Venda de Put',
+    'venda de put':           'Venda de Put',
+    'compra de put':          'Compra de Put',
+    'compra put':             'Compra de Put',
+    'trava de alta':          'Trava de Alta com Call',
+    'trava de alta com call': 'Trava de Alta com Call',
+    'trava de alta com put':  'Trava de Alta com Put',
+    'trava de baixa':         'Trava de Baixa com Call',
+    'trava de baixa com call':'Trava de Baixa com Call',
+    'trava de baixa com put': 'Trava de Baixa com Put',
+    'strangle vendido':       'Strangle Vendido',
+    'strangle':               'Strangle Vendido',
+    'borboleta':              'Borboleta',
+    'iron condor':            'Iron Condor',
+    'compra call':            'Compra de Call',
+    'compra de call':         'Compra de Call',
+    'boi':                    'Boi',
+    'vaca':                   'Vaca',
+    'outros':                 'Outros',
+    'ne':                     'ne',
+}
+
+def _normalize_strategy(value):
+    """Converte valor da planilha para a lista do programa."""
+    if not value:
+        return None
+    normalized = _STRATEGY_MAP.get(str(value).strip().lower())
+    if normalized:
+        return normalized
+    # se já é um valor válido da lista, devolve como está
+    if value in STUDY_STRATEGIES:
+        return value
+    return 'Outros'
 
 
 @app.route('/estudos')

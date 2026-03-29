@@ -4,7 +4,7 @@ import sys
 import sqlite3
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -237,6 +237,24 @@ def run_migrations():
     if 'delta' not in so_cols: cursor.execute("ALTER TABLE study_option ADD COLUMN delta FLOAT")
     if 'gama'  not in so_cols: cursor.execute("ALTER TABLE study_option ADD COLUMN gama FLOAT")
 
+    # Create study_intl_stock table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS study_intl_stock (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            ticker VARCHAR(15) NOT NULL DEFAULT '',
+            trend VARCHAR(10),
+            rsi FLOAT,
+            volatility VARCHAR(10),
+            ve FLOAT,
+            strategy VARCHAR(60),
+            study_date DATE,
+            strategy_active VARCHAR(100),
+            entry_date DATE,
+            FOREIGN KEY (user_id) REFERENCES user(id)
+        )
+    """)
+
     # Create study_stock table
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS study_stock (
@@ -373,6 +391,11 @@ def opcoes():
 
     from datetime import date as date_cls
     today = date_cls.today()
+
+    # Add days_left to every option item
+    for item in processed_options + venda_puts + compra_calls + compra_puts:
+        exp = item['option'].expiration_date
+        item['days_left'] = (exp - today).days if exp else None
 
     # Process spreads
     all_spreads = OptionSpread.query.filter_by(user_id=current_user.id).all()
@@ -3453,6 +3476,7 @@ def estudos():
 
     # ── Tabela 2: Estudo Ações ───────────────────────────────────────
     study_stocks = StudyStock.query.filter_by(user_id=uid).order_by(StudyStock.ticker).all()
+    study_intl_stocks = StudyIntlStock.query.filter_by(user_id=uid).order_by(StudyIntlStock.ticker).all()
 
     # ── Tabela 3: Ações Livres (sem venda coberta ativa) ───────────
     all_acoes = [a for a in Asset.query.filter_by(user_id=uid, type='ACAO').all() if a.quantity > 0]
@@ -3464,6 +3488,7 @@ def estudos():
         study_calls_vc=study_calls_vc,
         study_calls_extra=study_calls_extra,
         study_stocks=study_stocks,
+        study_intl_stocks=study_intl_stocks,
         free_stocks=free_stocks,
         strategies=STUDY_STRATEGIES,
     )
@@ -3627,6 +3652,77 @@ def delete_study_stock(sid):
     db.session.commit()
     flash('Ação de estudo removida.', 'success')
     return redirect(url_for('estudos') + '#estudo-acoes')
+
+
+@app.route('/estudos/add_study_intl_stock', methods=['POST'])
+@login_required
+def add_study_intl_stock():
+    def _f(k): return request.form.get(k, '').strip()
+    def _fl(k):
+        v = _f(k)
+        return float(v) if v else None
+    def _dt(k):
+        v = _f(k)
+        try:
+            return datetime.strptime(v, '%Y-%m-%d').date() if v else None
+        except ValueError:
+            return None
+
+    ss = StudyIntlStock(
+        user_id=current_user.id,
+        ticker=_f('ticker').upper(),
+        trend=_f('trend') or None,
+        rsi=_fl('rsi'),
+        volatility=_f('volatility') or None,
+        ve=_fl('ve'),
+        strategy=_f('strategy') or None,
+        study_date=_dt('study_date'),
+        strategy_active=_f('strategy_active') or None,
+        entry_date=_dt('entry_date'),
+    )
+    db.session.add(ss)
+    db.session.commit()
+    flash('Ação internacional de estudo adicionada.', 'success')
+    return redirect(url_for('estudos') + '#estudo-acoes-intl')
+
+
+@app.route('/estudos/edit_study_intl_stock/<int:sid>', methods=['POST'])
+@login_required
+def edit_study_intl_stock(sid):
+    ss = StudyIntlStock.query.filter_by(id=sid, user_id=current_user.id).first_or_404()
+    def _f(k): return request.form.get(k, '').strip()
+    def _fl(k):
+        v = _f(k)
+        return float(v) if v else None
+    def _dt(k):
+        v = _f(k)
+        try:
+            return datetime.strptime(v, '%Y-%m-%d').date() if v else None
+        except ValueError:
+            return None
+
+    ss.ticker = _f('ticker').upper()
+    ss.trend = _f('trend') or None
+    ss.rsi = _fl('rsi')
+    ss.volatility = _f('volatility') or None
+    ss.ve = _fl('ve')
+    ss.strategy = _f('strategy') or None
+    ss.study_date = _dt('study_date')
+    ss.strategy_active = _f('strategy_active') or None
+    ss.entry_date = _dt('entry_date')
+    db.session.commit()
+    flash('Ação internacional de estudo atualizada.', 'success')
+    return redirect(url_for('estudos') + '#estudo-acoes-intl')
+
+
+@app.route('/estudos/delete_study_intl_stock/<int:sid>', methods=['POST'])
+@login_required
+def delete_study_intl_stock(sid):
+    ss = StudyIntlStock.query.filter_by(id=sid, user_id=current_user.id).first_or_404()
+    db.session.delete(ss)
+    db.session.commit()
+    flash('Ação internacional de estudo removida.', 'success')
+    return redirect(url_for('estudos') + '#estudo-acoes-intl')
 
 
 @app.route('/profile', methods=['GET', 'POST'])

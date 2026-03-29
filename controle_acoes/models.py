@@ -276,6 +276,22 @@ class StudyOption(db.Model):
     gama  = db.Column(db.Float, nullable=True)
 
 
+class StudyIntlStock(db.Model):
+    """Análise de ações internacionais para decisão de estratégia."""
+    __tablename__ = 'study_intl_stock'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ticker = db.Column(db.String(15), nullable=False)
+    trend = db.Column(db.String(10), nullable=True)
+    rsi = db.Column(db.Float, nullable=True)
+    volatility = db.Column(db.String(10), nullable=True)
+    ve = db.Column(db.Float, nullable=True)
+    strategy = db.Column(db.String(60), nullable=True)
+    study_date = db.Column(db.Date, nullable=True)
+    strategy_active = db.Column(db.String(100), nullable=True)
+    entry_date = db.Column(db.Date, nullable=True)
+
+
 class StudyStock(db.Model):
     """Análise de ações para decisão de estratégia."""
     __tablename__ = 'study_stock'

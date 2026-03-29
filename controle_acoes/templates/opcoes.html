@@ -24,6 +24,7 @@
                 <th>Preço Médio</th>
                 <th>Strike</th>
                 <th>Vencimento</th>
+                <th>Dias</th>
                 <th>Valor Venda</th>
                 <th>Preço Exercício</th>
                 <th>Lastro</th>
@@ -48,6 +49,7 @@
                 <td>R$ {{ "%.2f"|format(item.avg_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
+                <td>{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.exercise_price)|replace('.', ',') }}</td>
                 <td class="{{ 'positive' if item.lastro >= 0 else 'negative' }}">
@@ -87,26 +89,14 @@
         <tfoot>
             <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
                 <td>TOTAL</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
+                <td></td><td></td><td></td><td></td><td></td><td></td>
+                <td></td><td></td><td></td>
                 <td>{{ options|sum(attribute='total_sold') | brl }}</td>
                 <td></td>
                 <td class="{{ 'positive' if options|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ options|sum(attribute='profit') | brl }}
                 </td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
+                <td></td><td></td><td></td><td></td><td></td><td></td>
             </tr>
         </tfoot>
     </table>
@@ -149,6 +139,7 @@
                 <th>Lastro BK R$</th>
                 <th>Lastro BK %</th>
                 <th>Vencimento</th>
+                <th>Dias</th>
                 <th>Prêmio Recebido</th>
                 <th>Total Recebido</th>
                 <th>Cotação Opção</th>
@@ -180,6 +171,7 @@
                     {{ "%.2f"|format(item.lastrobk_pct)|replace('.', ',') }}%
                 </td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
+                <td>{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.total_sold)|replace('.', ',') }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
@@ -205,7 +197,7 @@
                 <td>TOTAL</td>
                 <td></td><td></td><td></td><td></td>
                 <td></td><td></td><td></td><td></td><td></td>
-                <td></td><td></td>
+                <td></td><td></td><td></td>
                 <td>{{ venda_puts|sum(attribute='total_sold') | brl }}</td>
                 <td></td>
                 <td>{{ venda_puts|sum(attribute='current_val') | brl }}</td>
@@ -247,6 +239,7 @@
                 <th>Cotação Ativo</th>
                 <th>Strike</th>
                 <th>Vencimento</th>
+                <th>Dias</th>
                 <th>Valor Compra</th>
                 <th>Total Investido</th>
                 <th>Cotação Opção</th>
@@ -265,6 +258,7 @@
                 <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
+                <td>{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
@@ -288,20 +282,14 @@
         <tfoot>
             <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
                 <td>TOTAL</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
+                <td></td><td></td><td></td><td></td><td></td><td></td>
                 <td>{{ compra_calls|sum(attribute='total_invested') | brl }}</td>
                 <td></td>
                 <td>{{ compra_calls|sum(attribute='current_value') | brl }}</td>
                 <td class="{{ 'positive' if compra_calls|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ compra_calls|sum(attribute='profit') | brl }}
                 </td>
-                <td></td>
-                <td></td>
+                <td></td><td></td>
             </tr>
         </tfoot>
     </table>
@@ -336,6 +324,7 @@
                 <th>Cotação Ativo</th>
                 <th>Strike</th>
                 <th>Vencimento</th>
+                <th>Dias</th>
                 <th>Valor Compra</th>
                 <th>Total Investido</th>
                 <th>Cotação Opção</th>
@@ -354,6 +343,7 @@
                 <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
+                <td>{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
@@ -377,20 +367,14 @@
         <tfoot>
             <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
                 <td>TOTAL</td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
-                <td></td>
+                <td></td><td></td><td></td><td></td><td></td><td></td>
                 <td>{{ compra_puts|sum(attribute='total_invested') | brl }}</td>
                 <td></td>
                 <td>{{ compra_puts|sum(attribute='current_value') | brl }}</td>
                 <td class="{{ 'positive' if compra_puts|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ compra_puts|sum(attribute='profit') | brl }}
                 </td>
-                <td></td>
-                <td></td>
+                <td></td><td></td>
             </tr>
         </tfoot>
     </table>

@@ -190,7 +190,85 @@
 </div>
 
 {# ─────────────────────────────────────────────────────────────────
-   TABELA 3 — Ações Livres (sem venda coberta)
+   TABELA 3 — Estudo Ações Internacionais
+───────────────────────────────────────────────────────────────── #}
+<a id="estudo-acoes-intl"></a>
+<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.5rem;margin-top:2rem">
+  <h3 style="margin:0">Estudo Ações Internacionais</h3>
+  <button class="btn btn-primary btn-sm" onclick="openAddIntlAcao()">+ Adicionar</button>
+</div>
+
+<div class="card">
+  <table class="table table-dark table-striped table-bordered table-hover no-datatable" style="min-width:1000px;font-size:.85rem">
+    <thead>
+      <tr>
+        <th>Ação</th>
+        <th>Tendência</th>
+        <th>RSI</th>
+        <th>Volatilidade</th>
+        <th>VE</th>
+        <th>Estratégia Sugerida</th>
+        <th>Data Estudo</th>
+        <th>Estratégia Ativa</th>
+        <th>Data Entrada</th>
+        <th>Ações</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for ss in study_intl_stocks %}
+      <tr>
+        <td><strong>{{ ss.ticker }}</strong></td>
+        <td>
+          {% if ss.trend == 'Alta' %}<span class="positive">▲ Alta</span>
+          {% elif ss.trend and 'aixa' in ss.trend %}<span class="negative">▼ Baixa</span>
+          {% elif ss.trend %}<span style="color:#f59e0b">↔ Lateral</span>
+          {% else %}-{% endif %}
+        </td>
+        <td>
+          {% if ss.rsi is not none %}
+            {% if ss.rsi < 30 %}<span class="positive">{{ '%.1f'|format(ss.rsi) }}</span>
+            {% elif ss.rsi > 70 %}<span class="negative">{{ '%.1f'|format(ss.rsi) }}</span>
+            {% else %}{{ '%.1f'|format(ss.rsi) }}{% endif %}
+          {% else %}-{% endif %}
+        </td>
+        <td>
+          {% if ss.volatility %}
+            {% if ss.volatility|lower == 'alta' %}<span class="negative">Alta</span>
+            {% elif ss.volatility|lower == 'baixa' %}Baixa
+            {% else %}Neutra{% endif %}
+          {% else %}-{% endif %}
+        </td>
+        <td>{{ ss.ve if ss.ve is not none else '-' }}</td>
+        <td>{{ ss.strategy or '-' }}</td>
+        <td>{{ ss.study_date.strftime('%d/%m/%Y') if ss.study_date else '-' }}</td>
+        <td>{{ ss.strategy_active or '-' }}</td>
+        <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
+        <td>
+          <button class="btn btn-primary btn-sm"
+            onclick="openEditIntlAcao({{ ss.id }}, '{{ ss.ticker }}',
+              '{{ ss.trend or '' }}', '{{ ss.rsi or '' }}',
+              '{{ ss.volatility or '' }}', '{{ ss.ve or '' }}',
+              '{{ ss.strategy or '' }}',
+              '{{ ss.study_date.strftime('%Y-%m-%d') if ss.study_date else '' }}',
+              '{{ ss.strategy_active or '' }}',
+              '{{ ss.entry_date.strftime('%Y-%m-%d') if ss.entry_date else '' }}'
+            )">✏️</button>
+          <form method="POST" action="{{ url_for('delete_study_intl_stock', sid=ss.id) }}" style="display:inline"
+                onsubmit="return confirm('Excluir esta ação de estudo?')">
+            <button class="btn btn-danger btn-sm">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not study_intl_stocks %}
+      <tr><td colspan="10" style="text-align:center;color:var(--text-secondary)">Nenhuma ação internacional de estudo cadastrada.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+{# ─────────────────────────────────────────────────────────────────
+   TABELA 4 — Ações Livres (sem venda coberta)
 ───────────────────────────────────────────────────────────────── #}
 <a id="acoes-livres"></a>
 <h3 style="margin-top:2rem;margin-bottom:.5rem">Ações Livres (sem Venda Coberta)</h3>
@@ -514,6 +592,162 @@
   </div>
 </div>
 
+<!-- Modal: Adicionar Ação Internacional de Estudo -->
+<div id="modal-add-intl-acao" class="modal fade" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content bg-dark text-white">
+      <div class="modal-header">
+        <h5 class="modal-title">Adicionar Ação Internacional de Estudo</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" action="{{ url_for('add_study_intl_stock') }}">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label>Ação *</label>
+              <input type="text" name="ticker" class="form-control" required placeholder="ex: AAPL">
+            </div>
+            <div class="col-md-3">
+              <label>Tendência</label>
+              <select name="trend" class="form-control">
+                <option value="">—</option>
+                <option>Alta</option>
+                <option>Baixa</option>
+                <option>Lateral</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label>RSI</label>
+              <input type="number" step="0.01" name="rsi" class="form-control" placeholder="0-100">
+            </div>
+            <div class="col-md-3">
+              <label>Volatilidade</label>
+              <select name="volatility" class="form-control">
+                <option value="">—</option>
+                <option>Alta</option>
+                <option>Baixa</option>
+                <option>Neutra</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label>VE</label>
+              <input type="number" step="0.1" name="ve" class="form-control" placeholder="Vol. Estat.">
+            </div>
+            <div class="col-md-5">
+              <label>Estratégia Sugerida</label>
+              <select name="strategy" class="form-control">
+                <option value="">—</option>
+                {% for s in strategies %}
+                <option value="{{ s }}">{{ s }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label>Data Estudo</label>
+              <input type="date" name="study_date" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label>Estratégia Ativa</label>
+              <select name="strategy_active" class="form-control">
+                <option value="">—</option>
+                {% for s in strategies %}
+                <option value="{{ s }}">{{ s }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label>Data Entrada</label>
+              <input type="date" name="entry_date" class="form-control">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar Ação Internacional de Estudo -->
+<div id="modal-edit-intl-acao" class="modal fade" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content bg-dark text-white">
+      <div class="modal-header">
+        <h5 class="modal-title">Editar Ação Internacional de Estudo</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="form-edit-intl-acao">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label>Ação *</label>
+              <input type="text" name="ticker" id="eia-ticker" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+              <label>Tendência</label>
+              <select name="trend" id="eia-trend" class="form-control">
+                <option value="">—</option>
+                <option>Alta</option>
+                <option>Baixa</option>
+                <option>Lateral</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label>RSI</label>
+              <input type="number" step="0.01" name="rsi" id="eia-rsi" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label>Volatilidade</label>
+              <select name="volatility" id="eia-vol" class="form-control">
+                <option value="">—</option>
+                <option>Alta</option>
+                <option>Baixa</option>
+                <option>Neutra</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label>VE</label>
+              <input type="number" step="0.1" name="ve" id="eia-ve" class="form-control">
+            </div>
+            <div class="col-md-5">
+              <label>Estratégia Sugerida</label>
+              <select name="strategy" id="eia-strategy" class="form-control">
+                <option value="">—</option>
+                {% for s in strategies %}
+                <option value="{{ s }}">{{ s }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label>Data Estudo</label>
+              <input type="date" name="study_date" id="eia-study-date" class="form-control">
+            </div>
+            <div class="col-md-6">
+              <label>Estratégia Ativa</label>
+              <select name="strategy_active" id="eia-strat-active" class="form-control">
+                <option value="">—</option>
+                {% for s in strategies %}
+                <option value="{{ s }}">{{ s }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label>Data Entrada</label>
+              <input type="date" name="entry_date" id="eia-entry-date" class="form-control">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_scripts %}
@@ -557,6 +791,25 @@ function openEditAcao(id, ticker, trend, rsi, vol, ve, strategy, studyDate, stra
 
   document.getElementById('form-edit-acao').action = '/estudos/edit_study_stock/' + id;
   new bootstrap.Modal(document.getElementById('modal-edit-acao')).show();
+}
+
+function openAddIntlAcao() {
+  new bootstrap.Modal(document.getElementById('modal-add-intl-acao')).show();
+}
+function openEditIntlAcao(id, ticker, trend, rsi, vol, ve, strategy, studyDate, stratActive, entryDate) {
+  document.getElementById('eia-ticker').value      = ticker;
+  document.getElementById('eia-rsi').value         = rsi;
+  document.getElementById('eia-ve').value          = ve;
+  document.getElementById('eia-study-date').value  = studyDate;
+  document.getElementById('eia-entry-date').value  = entryDate;
+
+  setSelect('eia-trend',        trend);
+  setSelect('eia-vol',          vol);
+  setSelect('eia-strategy',     strategy);
+  setSelect('eia-strat-active', stratActive);
+
+  document.getElementById('form-edit-intl-acao').action = '/estudos/edit_study_intl_stock/' + id;
+  new bootstrap.Modal(document.getElementById('modal-edit-intl-acao')).show();
 }
 
 function setSelect(id, val) {

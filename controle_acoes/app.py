@@ -3236,19 +3236,19 @@ def importar_excel():
         if exp is not None:
             so.expiration_date = exp
             changed = True
-        # Delta (col X = 23) — só atualiza se não foi informado manualmente
+        # Delta (col X = 23) — sobrescreve sempre que a planilha tiver valor
         d = _rtd_float(row, 23)
-        if d is not None and so.delta is None:
+        if d is not None:
             so.delta = d
             changed = True
         # Gama (col Y = 24) — idem
         g = _rtd_float(row, 24)
-        if g is not None and so.gama is None:
+        if g is not None:
             so.gama = g
             changed = True
         # VE = Volatilidade Implícita (col W = 22) — idem
         ve = _rtd_float(row, 22)
-        if ve is not None and so.ve is None:
+        if ve is not None:
             so.ve = ve
             changed = True
         # Preço do ativo subjacente via rtd
@@ -3267,18 +3267,15 @@ def importar_excel():
         if key not in rtd_data:
             continue
         row = rtd_data[key]
-        if opt.delta is None:
-            d = _rtd_float(row, 23)
-            if d is not None:
-                opt.delta = d
-        if opt.gama is None:
-            g = _rtd_float(row, 24)
-            if g is not None:
-                opt.gama = g
-        if opt.ve is None:
-            v = _rtd_float(row, 22)  # col W = Volatilidade Implícita
-            if v is not None:
-                opt.ve = v
+        d = _rtd_float(row, 23)
+        if d is not None:
+            opt.delta = d
+        g = _rtd_float(row, 24)
+        if g is not None:
+            opt.gama = g
+        v = _rtd_float(row, 22)  # col W = Volatilidade Implícita
+        if v is not None:
+            opt.ve = v
 
     # Atualiza legs dos OptionSpreads do usuário
     spreads_atualizados = 0

@@ -94,10 +94,6 @@
         <td>
           <button class="btn btn-primary btn-sm"
             onclick="openEditOpcao({{ row.id }}, '{{ row.ticker }}', '{{ row.underlying }}',
-              '{{ row.underlying_price or '' }}', '{{ row.avg_price or '' }}',
-              '{{ row.strike or '' }}',
-              '{{ row.expiration.strftime('%Y-%m-%d') if row.expiration else '' }}',
-              '{{ row.option_price or '' }}',
               '{{ row.ve or '' }}', '{{ row.delta or '' }}', '{{ row.gama or '' }}'
             )">✏️</button>
           <form method="POST" action="{{ url_for('delete_study_option', sid=row.id) }}" style="display:inline"
@@ -249,49 +245,29 @@
       <form method="POST" action="{{ url_for('add_study_option') }}">
         <div class="modal-body">
           <div class="row g-3">
-            <div class="col-md-3">
+            <div class="col-md-6">
               <label>Ticker Opção *</label>
               <input type="text" name="ticker" class="form-control" required placeholder="ex: PETRB450">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-6">
               <label>Ativo Subjacente *</label>
               <input type="text" name="underlying_asset" class="form-control" required placeholder="ex: PETR4">
             </div>
-            <div class="col-md-3">
-              <label>Cotação Ativo</label>
-              <input type="number" step="0.01" name="underlying_price" class="form-control" placeholder="0.00">
+            <div class="col-md-4">
+              <label>VE <small class="text-muted">(opcional)</small></label>
+              <input type="number" step="0.01" name="ve" class="form-control" placeholder="do Excel col AD">
             </div>
-            <div class="col-md-3">
-              <label>Preço Médio Ação</label>
-              <input type="number" step="0.01" name="avg_price_stock" class="form-control" placeholder="0.00">
+            <div class="col-md-4">
+              <label>Delta <small class="text-muted">(opcional)</small></label>
+              <input type="number" step="0.0001" name="delta" class="form-control" placeholder="do Excel col X">
             </div>
-            <div class="col-md-3">
-              <label>Strike</label>
-              <input type="number" step="0.01" name="strike" class="form-control" placeholder="0.00">
-            </div>
-            <div class="col-md-3">
-              <label>Vencimento</label>
-              <input type="date" name="expiration_date" class="form-control">
-            </div>
-            <div class="col-md-3">
-              <label>Cotação Opção</label>
-              <input type="number" step="0.0001" name="option_price" class="form-control" placeholder="0.00">
-            </div>
-            <div class="col-md-3">
-              <label>VE <small class="text-muted">(Vol. Estatística)</small></label>
-              <input type="number" step="0.01" name="ve" class="form-control" placeholder="0.00">
-            </div>
-            <div class="col-md-3">
-              <label>Delta</label>
-              <input type="number" step="0.0001" name="delta" class="form-control" placeholder="0.0000">
-            </div>
-            <div class="col-md-3">
-              <label>Gama</label>
-              <input type="number" step="0.0001" name="gama" class="form-control" placeholder="0.0000">
+            <div class="col-md-4">
+              <label>Gama <small class="text-muted">(opcional)</small></label>
+              <input type="number" step="0.0001" name="gama" class="form-control" placeholder="do Excel col Y">
             </div>
           </div>
           <p class="mt-2 mb-0" style="font-size:.8rem;color:var(--text-secondary)">
-            VDX e NV são calculados automaticamente.</p>
+            Cotação, strike, vencimento, VE, Delta e Gama serão preenchidos automaticamente ao importar a planilha.</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -349,47 +325,29 @@
       <form method="POST" id="form-edit-opcao">
         <div class="modal-body">
           <div class="row g-3">
-            <div class="col-md-3">
+            <div class="col-md-6">
               <label>Ticker Opção *</label>
               <input type="text" name="ticker" id="eo-ticker" class="form-control" required>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-6">
               <label>Ativo Subjacente *</label>
               <input type="text" name="underlying_asset" id="eo-underlying" class="form-control" required>
             </div>
-            <div class="col-md-3">
-              <label>Cotação Ativo</label>
-              <input type="number" step="0.01" name="underlying_price" id="eo-uprice" class="form-control">
-            </div>
-            <div class="col-md-3">
-              <label>Preço Médio Ação</label>
-              <input type="number" step="0.01" name="avg_price_stock" id="eo-avgprice" class="form-control">
-            </div>
-            <div class="col-md-3">
-              <label>Strike</label>
-              <input type="number" step="0.01" name="strike" id="eo-strike" class="form-control">
-            </div>
-            <div class="col-md-3">
-              <label>Vencimento</label>
-              <input type="date" name="expiration_date" id="eo-exp" class="form-control">
-            </div>
-            <div class="col-md-3">
-              <label>Cotação Opção</label>
-              <input type="number" step="0.0001" name="option_price" id="eo-oprice" class="form-control">
-            </div>
-            <div class="col-md-3">
+            <div class="col-md-4">
               <label>VE</label>
               <input type="number" step="0.01" name="ve" id="eo-ve" class="form-control">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-4">
               <label>Delta</label>
               <input type="number" step="0.0001" name="delta" id="eo-delta" class="form-control">
             </div>
-            <div class="col-md-3">
+            <div class="col-md-4">
               <label>Gama</label>
               <input type="number" step="0.0001" name="gama" id="eo-gama" class="form-control">
             </div>
           </div>
+          <p class="mt-2 mb-0" style="font-size:.8rem;color:var(--text-secondary)">
+            Cotação, strike e vencimento são atualizados via importação da planilha.</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -563,14 +521,9 @@
 function openAddOpcao() {
   new bootstrap.Modal(document.getElementById('modal-add-opcao')).show();
 }
-function openEditOpcao(id, ticker, underlying, uprice, avgprice, strike, exp, oprice, ve, delta, gama) {
+function openEditOpcao(id, ticker, underlying, ve, delta, gama) {
   document.getElementById('eo-ticker').value     = ticker;
   document.getElementById('eo-underlying').value = underlying;
-  document.getElementById('eo-uprice').value     = uprice;
-  document.getElementById('eo-avgprice').value   = avgprice;
-  document.getElementById('eo-strike').value     = strike;
-  document.getElementById('eo-exp').value        = exp;
-  document.getElementById('eo-oprice').value     = oprice;
   document.getElementById('eo-ve').value         = ve;
   document.getElementById('eo-delta').value      = delta;
   document.getElementById('eo-gama').value       = gama;

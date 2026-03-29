@@ -3171,17 +3171,22 @@ def importar_excel():
                 asset.last_update = datetime.now()
                 ativos_atualizados += 1
 
-    # ── 3. Preços das opções (sheet "rtd", coluna Último) ────────────
-    # O sheet rtd contém todos os ativos (ações e opções) com preço em col D
+    # ── 3. Sheet "rtd" — preços de opções + greeks de estudo ─────────
+    # Colunas: A(0)=ticker, D(3)=Último, I(8)=Strike, S(18)=Vencimento,
+    #          X(23)=Delta, Y(24)=Gama, AD(29)=VE
     opcao_prices = {}
+    rtd_data = {}   # ticker → row completo
     if 'rtd' in wb.sheetnames:
         ws = wb['rtd']
         for row in ws.iter_rows(min_row=2, values_only=True):
             ticker = row[0]
             price  = row[3]
-            if not ticker or not isinstance(price, (int, float)):
+            if not ticker:
                 continue
-            opcao_prices[str(ticker).upper().strip()] = float(price)
+            key = str(ticker).upper().strip()
+            rtd_data[key] = row
+            if isinstance(price, (int, float)):
+                opcao_prices[key] = float(price)
 
     # Atualiza Option.current_option_price para todos os tipos
     for ticker, price in opcao_prices.items():
@@ -3191,33 +3196,89 @@ def importar_excel():
             opt.last_update = datetime.now()
             opcoes_atualizadas += 1
 
-    # ── 4. VDX / NV do sheet "estudo opcoes" ────────────────────────
+    # ── 4. Atualiza StudyOption com dados do rtd ─────────────────────
     estudo_opcoes_atualizados = 0
-    if 'estudo opcoes' in wb.sheetnames:
-        ws = wb['estudo opcoes']
-        for row in ws.iter_rows(min_row=3, values_only=True):  # row 1=title, row 2=header
-            ticker = row[0]
-            if not ticker or not str(ticker).strip():
-                continue
-            ticker = str(ticker).upper().strip()
-            vdx_val = row[7] if len(row) > 7 else None
-            nv_val  = row[8] if len(row) > 8 else None
-            # only store numeric values
-            vdx_f = float(vdx_val) if isinstance(vdx_val, (int, float)) else None
-            nv_f  = float(nv_val)  if isinstance(nv_val,  (int, float)) else None
-            # update VENDA_CALL Option
-            opt = Option.query.filter_by(ticker=ticker, user_id=current_user.id, option_type='VENDA_CALL').first()
-            if opt:
-                opt.vdx = vdx_f
-                opt.nv  = nv_f
-                estudo_opcoes_atualizados += 1
-            # update extra StudyOption
-            so = StudyOption.query.filter_by(ticker=ticker, user_id=current_user.id).first()
-            if so:
-                so.vdx = vdx_f
-                so.nv  = nv_f
-                if len(row) > 6 and isinstance(row[6], (int, float)):
-                    so.option_price = float(row[6])
+
+    def _rtd_float(row, idx):
+        v = row[idx] if len(row) > idx else None
+        return float(v) if isinstance(v, (int, float)) else None
+
+    def _rtd_date(row, idx):
+        v = row[idx] if len(row) > idx else None
+        if isinstance(v, date):
+            return v
+        if v:
+            for fmt in ('%d/%m/%Y', '%Y-%m-%d'):
+                try:
+                    return datetime.strptime(str(v).strip(), fmt).date()
+                except ValueError:
+                    pass
+        return None
+
+    for so in StudyOption.query.filter_by(user_id=current_user.id).all():
+        key = so.ticker.upper()
+        if key not in rtd_data:
+            continue
+        row = rtd_data[key]
+        changed = False
+        # Preço da opção
+        p = _rtd_float(row, 3)
+        if p is not None:
+            so.option_price = p
+            changed = True
+        # Strike (col I = 8)
+        s = _rtd_float(row, 8)
+        if s is not None:
+            so.strike = s
+            changed = True
+        # Vencimento (col S = 18)
+        exp = _rtd_date(row, 18)
+        if exp is not None:
+            so.expiration_date = exp
+            changed = True
+        # Delta (col X = 23) — só atualiza se não foi informado manualmente
+        d = _rtd_float(row, 23)
+        if d is not None and so.delta is None:
+            so.delta = d
+            changed = True
+        # Gama (col Y = 24) — idem
+        g = _rtd_float(row, 24)
+        if g is not None and so.gama is None:
+            so.gama = g
+            changed = True
+        # VE (col AD = 29) — idem
+        ve = _rtd_float(row, 29)
+        if ve is not None and so.ve is None:
+            so.ve = ve
+            changed = True
+        # Preço do ativo subjacente via rtd
+        und_key = so.underlying_asset.upper()
+        if und_key in rtd_data:
+            up = _rtd_float(rtd_data[und_key], 3)
+            if up is not None:
+                so.underlying_price = up
+                changed = True
+        if changed:
+            estudo_opcoes_atualizados += 1
+
+    # Atualiza greeks de VENDA_CALL Options a partir do rtd (só se vazios)
+    for opt in Option.query.filter_by(user_id=current_user.id, option_type='VENDA_CALL').all():
+        key = opt.ticker.upper()
+        if key not in rtd_data:
+            continue
+        row = rtd_data[key]
+        if opt.delta is None:
+            d = _rtd_float(row, 23)
+            if d is not None:
+                opt.delta = d
+        if opt.gama is None:
+            g = _rtd_float(row, 24)
+            if g is not None:
+                opt.gama = g
+        if opt.ve is None:
+            v = _rtd_float(row, 29)
+            if v is not None:
+                opt.ve = v
 
     # Atualiza legs dos OptionSpreads do usuário
     spreads_atualizados = 0

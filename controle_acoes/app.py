@@ -201,13 +201,14 @@ def run_migrations():
     if 'pop' not in spread_cols:
         cursor.execute("ALTER TABLE option_spread ADD COLUMN pop FLOAT")
 
-    # Add vdx / nv columns to option table
+    # Add study columns to option table
     cursor.execute("PRAGMA table_info(option)")
     opt_cols2 = {row[1] for row in cursor.fetchall()}
-    if 'vdx' not in opt_cols2:
-        cursor.execute("ALTER TABLE 'option' ADD COLUMN vdx FLOAT")
-    if 'nv' not in opt_cols2:
-        cursor.execute("ALTER TABLE 'option' ADD COLUMN nv FLOAT")
+    if 'vdx'   not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN vdx FLOAT")
+    if 'nv'    not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN nv FLOAT")
+    if 've'    not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN ve FLOAT")
+    if 'delta' not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN delta FLOAT")
+    if 'gama'  not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN gama FLOAT")
 
     # Create study_option table
     cursor.execute("""
@@ -223,9 +224,18 @@ def run_migrations():
             option_price FLOAT,
             vdx FLOAT,
             nv FLOAT,
+            ve FLOAT,
+            delta FLOAT,
+            gama FLOAT,
             FOREIGN KEY (user_id) REFERENCES user(id)
         )
     """)
+    # Add ve/delta/gama to study_option if table already existed
+    cursor.execute("PRAGMA table_info(study_option)")
+    so_cols = {row[1] for row in cursor.fetchall()}
+    if 've'    not in so_cols: cursor.execute("ALTER TABLE study_option ADD COLUMN ve FLOAT")
+    if 'delta' not in so_cols: cursor.execute("ALTER TABLE study_option ADD COLUMN delta FLOAT")
+    if 'gama'  not in so_cols: cursor.execute("ALTER TABLE study_option ADD COLUMN gama FLOAT")
 
     # Create study_stock table
     cursor.execute("""
@@ -3300,6 +3310,26 @@ def _normalize_strategy(value):
     return 'Outros'
 
 
+def _calc_vdx(option_price, underlying_price, days, strike):
+    """VDX = taxa * tempo * espaço"""
+    try:
+        if not all([option_price, underlying_price, days is not None, strike]):
+            return None
+        taxa   = option_price / underlying_price
+        tempo  = 120 - days
+        espaco = strike - underlying_price
+        return taxa * tempo * espaco
+    except (TypeError, ZeroDivisionError):
+        return None
+
+
+def _calc_nv(ve, delta, gama):
+    """NV = VE - delta - gama"""
+    if ve is None or delta is None or gama is None:
+        return None
+    return ve - delta - gama
+
+
 @app.route('/estudos')
 @login_required
 def estudos():
@@ -3317,26 +3347,34 @@ def estudos():
     study_calls_vc = []
     for opt in venda_calls:
         asset = assets_map.get(opt.underlying_asset.upper())
+        up = asset.current_price if asset else 0
         days = (opt.expiration_date - today).days if opt.expiration_date else None
+        vdx = _calc_vdx(opt.current_option_price, up, days, opt.strike_price)
+        nv  = _calc_nv(opt.ve, opt.delta, opt.gama)
         study_calls_vc.append({
             'source': 'venda_call',
             'id': opt.id,
             'ticker': opt.ticker,
             'underlying': opt.underlying_asset,
-            'underlying_price': asset.current_price if asset else 0,
+            'underlying_price': up,
             'avg_price': asset.avg_price if asset else 0,
             'strike': opt.strike_price,
             'expiration': opt.expiration_date,
             'days': days,
             'option_price': opt.current_option_price,
-            'vdx': opt.vdx,
-            'nv': opt.nv,
+            've': opt.ve,
+            'delta': opt.delta,
+            'gama': opt.gama,
+            'vdx': vdx,
+            'nv': nv,
         })
 
     # B) Opções extras adicionadas diretamente nesta página
     study_calls_extra = []
     for so in StudyOption.query.filter_by(user_id=uid).all():
         days = (so.expiration_date - today).days if so.expiration_date else None
+        vdx = _calc_vdx(so.option_price, so.underlying_price, days, so.strike)
+        nv  = _calc_nv(so.ve, so.delta, so.gama)
         study_calls_extra.append({
             'source': 'study',
             'id': so.id,
@@ -3348,8 +3386,11 @@ def estudos():
             'expiration': so.expiration_date,
             'days': days,
             'option_price': so.option_price,
-            'vdx': so.vdx,
-            'nv': so.nv,
+            've': so.ve,
+            'delta': so.delta,
+            'gama': so.gama,
+            'vdx': vdx,
+            'nv': nv,
         })
 
     # ── Tabela 2: Estudo Ações ───────────────────────────────────────
@@ -3368,6 +3409,22 @@ def estudos():
         free_stocks=free_stocks,
         strategies=STUDY_STRATEGIES,
     )
+
+
+@app.route('/estudos/edit_vc_greeks/<int:opt_id>', methods=['POST'])
+@login_required
+def edit_vc_greeks(opt_id):
+    """Salva VE, Delta e Gama de uma VENDA_CALL na tabela de estudo."""
+    opt = Option.query.filter_by(id=opt_id, user_id=current_user.id, option_type='VENDA_CALL').first_or_404()
+    def _fl(k):
+        v = request.form.get(k, '').strip()
+        return float(v) if v else None
+    opt.ve    = _fl('ve')
+    opt.delta = _fl('delta')
+    opt.gama  = _fl('gama')
+    db.session.commit()
+    flash('VE/Delta/Gama atualizados.', 'success')
+    return redirect(url_for('estudos') + '#estudo-opcoes')
 
 
 @app.route('/estudos/add_study_option', methods=['POST'])
@@ -3393,8 +3450,9 @@ def add_study_option():
         strike=_fl('strike'),
         expiration_date=_dt('expiration_date'),
         option_price=_fl('option_price'),
-        vdx=_fl('vdx'),
-        nv=_fl('nv'),
+        ve=_fl('ve'),
+        delta=_fl('delta'),
+        gama=_fl('gama'),
     )
     db.session.add(so)
     db.session.commit()
@@ -3424,8 +3482,9 @@ def edit_study_option(sid):
     so.strike = _fl('strike')
     so.expiration_date = _dt('expiration_date')
     so.option_price = _fl('option_price')
-    so.vdx = _fl('vdx')
-    so.nv = _fl('nv')
+    so.ve    = _fl('ve')
+    so.delta = _fl('delta')
+    so.gama  = _fl('gama')
     db.session.commit()
     flash('Opção de estudo atualizada.', 'success')
     return redirect(url_for('estudos') + '#estudo-opcoes')

@@ -117,9 +117,12 @@ class Option(db.Model):
     # Calculated/Fetched on fly, but maybe store last fetch for underlying?
     last_update = db.Column(db.DateTime, nullable=True)
 
-    # Study fields (populated from Excel import)
-    vdx = db.Column(db.Float, nullable=True)
-    nv  = db.Column(db.Float, nullable=True)
+    # Study fields
+    vdx   = db.Column(db.Float, nullable=True)   # calculado
+    nv    = db.Column(db.Float, nullable=True)   # calculado
+    ve    = db.Column(db.Float, nullable=True)   # informado manualmente
+    delta = db.Column(db.Float, nullable=True)
+    gama  = db.Column(db.Float, nullable=True)
 
     def to_dict(self):
         return {
@@ -266,8 +269,11 @@ class StudyOption(db.Model):
     strike = db.Column(db.Float, nullable=True)
     expiration_date = db.Column(db.Date, nullable=True)
     option_price = db.Column(db.Float, nullable=True)          # cotação da opção
-    vdx = db.Column(db.Float, nullable=True)
-    nv  = db.Column(db.Float, nullable=True)
+    vdx   = db.Column(db.Float, nullable=True)   # calculado
+    nv    = db.Column(db.Float, nullable=True)   # calculado
+    ve    = db.Column(db.Float, nullable=True)   # informado manualmente
+    delta = db.Column(db.Float, nullable=True)
+    gama  = db.Column(db.Float, nullable=True)
 
 
 class StudyStock(db.Model):

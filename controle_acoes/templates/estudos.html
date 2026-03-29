@@ -15,7 +15,7 @@
 </div>
 
 <div class="card">
-  <table class="table table-dark table-striped table-bordered table-hover no-datatable" style="min-width:900px;font-size:.85rem">
+  <table class="table table-dark table-striped table-bordered table-hover no-datatable" style="min-width:1100px;font-size:.85rem">
     <thead>
       <tr>
         <th>Asset</th>
@@ -26,13 +26,30 @@
         <th>Vencimento</th>
         <th>Dias</th>
         <th>Cot. Opção</th>
-        <th>VDX</th>
-        <th>NV</th>
+        <th title="Volatilidade Estatística informada">VE</th>
+        <th title="Delta informado">Delta</th>
+        <th title="Gama informado">Gama</th>
+        <th title="VDX = (Cot.Op/Cot.At) × (120-Dias) × (Strike-Cot.At)">VDX</th>
+        <th title="NV = VE - Delta - Gama">NV</th>
         <th>Origem</th>
         <th>Ações</th>
       </tr>
     </thead>
     <tbody>
+      {%- macro days_cell(days) -%}
+        {% if days is not none %}
+          {% if days <= 7 %}<span class="negative">{{ days }}d</span>
+          {% elif days <= 21 %}<span style="color:#f59e0b">{{ days }}d</span>
+          {% else %}{{ days }}d{% endif %}
+        {% else %}-{% endif %}
+      {%- endmacro -%}
+
+      {%- macro vdx_cell(v) -%}
+        <td class="{{ 'positive' if v and v > 0 else ('negative' if v and v < 0 else '') }}">
+          {{ '%.4f'|format(v) if v is not none else '-' }}
+        </td>
+      {%- endmacro -%}
+
       {% for row in study_calls_vc %}
       <tr>
         <td><span class="ticker-badge">{{ row.ticker.upper() }}</span></td>
@@ -41,20 +58,20 @@
         <td>{{ '%.2f'|format(row.avg_price) if row.avg_price else '-' }}</td>
         <td>{{ '%.2f'|format(row.strike) if row.strike else '-' }}</td>
         <td>{{ row.expiration.strftime('%d/%m/%Y') if row.expiration else '-' }}</td>
-        <td>
-          {% if row.days is not none %}
-            {% if row.days <= 7 %}<span class="negative">{{ row.days }}d</span>
-            {% elif row.days <= 21 %}<span style="color:#f59e0b">{{ row.days }}d</span>
-            {% else %}{{ row.days }}d{% endif %}
-          {% else %}-{% endif %}
-        </td>
-        <td>{{ '%.2f'|format(row.option_price) if row.option_price else '-' }}</td>
-        <td class="{{ 'positive' if row.vdx and row.vdx > 0 else ('negative' if row.vdx and row.vdx < 0 else '') }}">
-          {{ '%.4f'|format(row.vdx) if row.vdx is not none else '-' }}
-        </td>
+        <td>{{ days_cell(row.days) }}</td>
+        <td>{{ '%.4f'|format(row.option_price) if row.option_price else '-' }}</td>
+        <td>{{ '%.2f'|format(row.ve) if row.ve is not none else '-' }}</td>
+        <td>{{ '%.4f'|format(row.delta) if row.delta is not none else '-' }}</td>
+        <td>{{ '%.4f'|format(row.gama) if row.gama is not none else '-' }}</td>
+        {{ vdx_cell(row.vdx) }}
         <td>{{ '%.4f'|format(row.nv) if row.nv is not none else '-' }}</td>
         <td><span style="font-size:.75rem;color:var(--text-secondary)">V. Coberta</span></td>
-        <td><span style="color:var(--text-secondary);font-size:.75rem">—</span></td>
+        <td>
+          <button class="btn btn-primary btn-sm"
+            onclick="openEditGreeks({{ row.id }}, '{{ row.ticker }}',
+              '{{ row.ve or '' }}', '{{ row.delta or '' }}', '{{ row.gama or '' }}'
+            )">✏️</button>
+        </td>
       </tr>
       {% endfor %}
 
@@ -66,17 +83,12 @@
         <td>{{ '%.2f'|format(row.avg_price) if row.avg_price else '-' }}</td>
         <td>{{ '%.2f'|format(row.strike) if row.strike else '-' }}</td>
         <td>{{ row.expiration.strftime('%d/%m/%Y') if row.expiration else '-' }}</td>
-        <td>
-          {% if row.days is not none %}
-            {% if row.days <= 7 %}<span class="negative">{{ row.days }}d</span>
-            {% elif row.days <= 21 %}<span style="color:#f59e0b">{{ row.days }}d</span>
-            {% else %}{{ row.days }}d{% endif %}
-          {% else %}-{% endif %}
-        </td>
-        <td>{{ '%.2f'|format(row.option_price) if row.option_price else '-' }}</td>
-        <td class="{{ 'positive' if row.vdx and row.vdx > 0 else ('negative' if row.vdx and row.vdx < 0 else '') }}">
-          {{ '%.4f'|format(row.vdx) if row.vdx is not none else '-' }}
-        </td>
+        <td>{{ days_cell(row.days) }}</td>
+        <td>{{ '%.4f'|format(row.option_price) if row.option_price else '-' }}</td>
+        <td>{{ '%.2f'|format(row.ve) if row.ve is not none else '-' }}</td>
+        <td>{{ '%.4f'|format(row.delta) if row.delta is not none else '-' }}</td>
+        <td>{{ '%.4f'|format(row.gama) if row.gama is not none else '-' }}</td>
+        {{ vdx_cell(row.vdx) }}
         <td>{{ '%.4f'|format(row.nv) if row.nv is not none else '-' }}</td>
         <td><span style="font-size:.75rem;color:var(--success-color)">Estudo</span></td>
         <td>
@@ -86,7 +98,7 @@
               '{{ row.strike or '' }}',
               '{{ row.expiration.strftime('%Y-%m-%d') if row.expiration else '' }}',
               '{{ row.option_price or '' }}',
-              '{{ row.vdx or '' }}', '{{ row.nv or '' }}'
+              '{{ row.ve or '' }}', '{{ row.delta or '' }}', '{{ row.gama or '' }}'
             )">✏️</button>
           <form method="POST" action="{{ url_for('delete_study_option', sid=row.id) }}" style="display:inline"
                 onsubmit="return confirm('Excluir esta opção de estudo?')">
@@ -97,7 +109,7 @@
       {% endfor %}
 
       {% if not study_calls_vc and not study_calls_extra %}
-      <tr><td colspan="12" style="text-align:center;color:var(--text-secondary)">Nenhuma opção de estudo cadastrada.</td></tr>
+      <tr><td colspan="15" style="text-align:center;color:var(--text-secondary)">Nenhuma opção de estudo cadastrada.</td></tr>
       {% endif %}
     </tbody>
   </table>
@@ -266,14 +278,56 @@
               <input type="number" step="0.0001" name="option_price" class="form-control" placeholder="0.00">
             </div>
             <div class="col-md-3">
-              <label>VDX</label>
-              <input type="number" step="0.0001" name="vdx" class="form-control" placeholder="(do Excel)">
+              <label>VE <small class="text-muted">(Vol. Estatística)</small></label>
+              <input type="number" step="0.01" name="ve" class="form-control" placeholder="0.00">
             </div>
             <div class="col-md-3">
-              <label>NV</label>
-              <input type="number" step="0.0001" name="nv" class="form-control" placeholder="(do Excel)">
+              <label>Delta</label>
+              <input type="number" step="0.0001" name="delta" class="form-control" placeholder="0.0000">
+            </div>
+            <div class="col-md-3">
+              <label>Gama</label>
+              <input type="number" step="0.0001" name="gama" class="form-control" placeholder="0.0000">
             </div>
           </div>
+          <p class="mt-2 mb-0" style="font-size:.8rem;color:var(--text-secondary)">
+            VDX e NV são calculados automaticamente.</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar Greeks (VE/Delta/Gama) para Venda Coberta -->
+<div id="modal-edit-greeks" class="modal fade" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content bg-dark text-white">
+      <div class="modal-header">
+        <h5 class="modal-title">Editar VE / Delta / Gama — <span id="eg-ticker-label"></span></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <form method="POST" id="form-edit-greeks">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label>VE <small class="text-muted">(Vol. Estatística)</small></label>
+              <input type="number" step="0.01" name="ve" id="eg-ve" class="form-control" placeholder="0.00">
+            </div>
+            <div class="col-md-4">
+              <label>Delta</label>
+              <input type="number" step="0.0001" name="delta" id="eg-delta" class="form-control" placeholder="0.0000">
+            </div>
+            <div class="col-md-4">
+              <label>Gama</label>
+              <input type="number" step="0.0001" name="gama" id="eg-gama" class="form-control" placeholder="0.0000">
+            </div>
+          </div>
+          <p class="mt-2 mb-0" style="font-size:.8rem;color:var(--text-secondary)">
+            NV = VE − Delta − Gama (calculado automaticamente).</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -324,12 +378,16 @@
               <input type="number" step="0.0001" name="option_price" id="eo-oprice" class="form-control">
             </div>
             <div class="col-md-3">
-              <label>VDX</label>
-              <input type="number" step="0.0001" name="vdx" id="eo-vdx" class="form-control">
+              <label>VE</label>
+              <input type="number" step="0.01" name="ve" id="eo-ve" class="form-control">
             </div>
             <div class="col-md-3">
-              <label>NV</label>
-              <input type="number" step="0.0001" name="nv" id="eo-nv" class="form-control">
+              <label>Delta</label>
+              <input type="number" step="0.0001" name="delta" id="eo-delta" class="form-control">
+            </div>
+            <div class="col-md-3">
+              <label>Gama</label>
+              <input type="number" step="0.0001" name="gama" id="eo-gama" class="form-control">
             </div>
           </div>
         </div>
@@ -505,7 +563,7 @@
 function openAddOpcao() {
   new bootstrap.Modal(document.getElementById('modal-add-opcao')).show();
 }
-function openEditOpcao(id, ticker, underlying, uprice, avgprice, strike, exp, oprice, vdx, nv) {
+function openEditOpcao(id, ticker, underlying, uprice, avgprice, strike, exp, oprice, ve, delta, gama) {
   document.getElementById('eo-ticker').value     = ticker;
   document.getElementById('eo-underlying').value = underlying;
   document.getElementById('eo-uprice').value     = uprice;
@@ -513,10 +571,19 @@ function openEditOpcao(id, ticker, underlying, uprice, avgprice, strike, exp, op
   document.getElementById('eo-strike').value     = strike;
   document.getElementById('eo-exp').value        = exp;
   document.getElementById('eo-oprice').value     = oprice;
-  document.getElementById('eo-vdx').value        = vdx;
-  document.getElementById('eo-nv').value         = nv;
+  document.getElementById('eo-ve').value         = ve;
+  document.getElementById('eo-delta').value      = delta;
+  document.getElementById('eo-gama').value       = gama;
   document.getElementById('form-edit-opcao').action = '/estudos/edit_study_option/' + id;
   new bootstrap.Modal(document.getElementById('modal-edit-opcao')).show();
+}
+function openEditGreeks(optId, ticker, ve, delta, gama) {
+  document.getElementById('eg-ticker-label').textContent = ticker;
+  document.getElementById('eg-ve').value    = ve;
+  document.getElementById('eg-delta').value = delta;
+  document.getElementById('eg-gama').value  = gama;
+  document.getElementById('form-edit-greeks').action = '/estudos/edit_vc_greeks/' + optId;
+  new bootstrap.Modal(document.getElementById('modal-edit-greeks')).show();
 }
 
 function openAddAcao() {

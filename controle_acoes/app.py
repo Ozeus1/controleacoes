@@ -3246,8 +3246,8 @@ def importar_excel():
         if g is not None and so.gama is None:
             so.gama = g
             changed = True
-        # VE (col AD = 29) — idem
-        ve = _rtd_float(row, 29)
+        # VE = Volatilidade Implícita (col W = 22) — idem
+        ve = _rtd_float(row, 22)
         if ve is not None and so.ve is None:
             so.ve = ve
             changed = True
@@ -3276,7 +3276,7 @@ def importar_excel():
             if g is not None:
                 opt.gama = g
         if opt.ve is None:
-            v = _rtd_float(row, 29)
+            v = _rtd_float(row, 22)  # col W = Volatilidade Implícita
             if v is not None:
                 opt.ve = v
 

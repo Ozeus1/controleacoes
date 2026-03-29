@@ -3161,10 +3161,11 @@ def importar_excel():
                 asset.last_update = datetime.now()
                 ativos_atualizados += 1
 
-    # ── 3. Preços das opções (sheet "opcao", coluna Último) ─────────
+    # ── 3. Preços das opções (sheet "rtd", coluna Último) ────────────
+    # O sheet rtd contém todos os ativos (ações e opções) com preço em col D
     opcao_prices = {}
-    if 'opcao' in wb.sheetnames:
-        ws = wb['opcao']
+    if 'rtd' in wb.sheetnames:
+        ws = wb['rtd']
         for row in ws.iter_rows(min_row=2, values_only=True):
             ticker = row[0]
             price  = row[3]
@@ -3208,66 +3209,6 @@ def importar_excel():
                 if len(row) > 6 and isinstance(row[6], (int, float)):
                     so.option_price = float(row[6])
 
-    # ── 5. StudyStock do sheet "estudo acoes" ────────────────────────
-    estudo_acoes_atualizados = 0
-    if 'estudo acoes' in wb.sheetnames:
-        ws = wb['estudo acoes']
-        for row in ws.iter_rows(min_row=3, values_only=True):  # row 1=blank/title, row 2=header
-            ticker = row[1]  # col B
-            if not ticker or not str(ticker).strip():
-                continue
-            ticker = str(ticker).upper().strip()
-            # normaliza tendência
-            trend_raw = str(row[2]).strip() if row[2] else ''
-            trend_map = {'alta': 'Alta', 'baixa': 'Baixa', 'lateral': 'Lateral'}
-            trend = trend_map.get(trend_raw.lower().strip(), trend_raw or None)
-
-            rsi_val  = float(row[3]) if isinstance(row[3], (int, float)) else None
-
-            # normaliza volatilidade
-            volat_raw = str(row[4]).strip() if row[4] else ''
-            volat_map = {'alta': 'Alta', 'baixa': 'Baixa', 'neutra': 'Neutra'}
-            volat = volat_map.get(volat_raw.lower().strip(), volat_raw or None)
-
-            ve_val   = float(row[5]) if isinstance(row[5], (int, float)) else None
-            strat    = _normalize_strategy(str(row[6]).strip() if row[6] else None)
-            # study_date, strategy_active, entry_date may be None
-            study_dt = row[7] if isinstance(row[7], date) else None
-            strat_active = _normalize_strategy(str(row[8]).strip() if row[8] else None)
-            entry_dt = row[9] if isinstance(row[9], date) else None
-
-            ss = StudyStock.query.filter_by(ticker=ticker, user_id=current_user.id).first()
-            if ss:
-                ss.trend = trend
-                if rsi_val is not None:
-                    ss.rsi = rsi_val
-                ss.volatility = volat
-                if ve_val is not None:
-                    ss.ve = ve_val
-                ss.strategy = strat
-                if study_dt:
-                    ss.study_date = study_dt
-                if strat_active:
-                    ss.strategy_active = strat_active
-                if entry_dt:
-                    ss.entry_date = entry_dt
-                estudo_acoes_atualizados += 1
-            else:
-                new_ss = StudyStock(
-                    user_id=current_user.id,
-                    ticker=ticker.upper(),
-                    trend=trend,
-                    rsi=rsi_val,
-                    volatility=volat,
-                    ve=ve_val,
-                    strategy=strat,
-                    study_date=study_dt,
-                    strategy_active=strat_active,
-                    entry_date=entry_dt,
-                )
-                db.session.add(new_ss)
-                estudo_acoes_atualizados += 1
-
     # Atualiza legs dos OptionSpreads do usuário
     spreads_atualizados = 0
     user_spreads = OptionSpread.query.filter_by(user_id=current_user.id).all()
@@ -3290,8 +3231,7 @@ def importar_excel():
         return redirect(url_for('importar_excel'))
 
     msg = (f'Atualizado: {ativos_atualizados} ativo(s), {opcoes_atualizadas} opção(ões), '
-           f'{spreads_atualizados} spread(s), {estudo_opcoes_atualizados} VDX/NV e '
-           f'{estudo_acoes_atualizados} ação(ões) de estudo.')
+           f'{spreads_atualizados} spread(s) e {estudo_opcoes_atualizados} VDX/NV.')
     if erros:
         msg += f' Avisos: {"; ".join(erros)}'
     flash(msg, 'success')

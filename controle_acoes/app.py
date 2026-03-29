@@ -3368,7 +3368,7 @@ def estudos():
     study_stocks = StudyStock.query.filter_by(user_id=uid).order_by(StudyStock.ticker).all()
 
     # ── Tabela 3: Ações Livres (sem venda coberta ativa) ───────────
-    all_acoes = [a for a in Asset.query.filter_by(user_id=uid, type='ACAO').all()]
+    all_acoes = [a for a in Asset.query.filter_by(user_id=uid, type='ACAO').all() if a.quantity > 0]
     free_stocks = [a for a in all_acoes if a.ticker.upper() not in vc_underlying]
     free_stocks.sort(key=lambda a: a.ticker)
 

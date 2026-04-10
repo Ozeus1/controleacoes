@@ -3758,6 +3758,30 @@ def profile():
     return render_template('profile.html', oplab_configured=oplab_configured)
 
 
+@app.route('/oplab_test', methods=['POST'])
+@login_required
+def oplab_test():
+    """Retorna JSON bruto da API OpLab para diagnóstico."""
+    token = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token não configurado'}), 400
+    ticker = request.form.get('ticker', 'PETR4').strip().upper()
+    BASE = 'https://api.oplab.com.br/v3'
+    results = {}
+    endpoints = [
+        f'/instruments/{ticker}',
+        f'/market/instruments/{ticker}',
+        f'/market/spot/{ticker}',
+    ]
+    for ep in endpoints:
+        try:
+            r = requests.get(BASE + ep, headers={'Access-Token': token}, timeout=10)
+            results[ep] = {'status': r.status_code, 'body': r.json() if r.content else {}}
+        except Exception as e:
+            results[ep] = {'error': str(e)}
+    return jsonify(results)
+
+
 @app.route('/atualizar_oplab', methods=['POST'])
 @login_required
 def atualizar_oplab():
@@ -3774,27 +3798,31 @@ def atualizar_oplab():
 
     def _oplab_price(ticker):
         """Retorna o preço mais recente do instrumento ou None."""
-        try:
-            r = session.get(f'{BASE}/instruments/{ticker}', timeout=10)
-            if r.status_code != 200:
-                return None
-            data = r.json()
-            # Tenta caminhos comuns de resposta OpLab
-            for path in [
-                lambda d: d.get('spot', {}).get('close'),
-                lambda d: d.get('spot', {}).get('last'),
-                lambda d: d.get('close'),
-                lambda d: d.get('last'),
-                lambda d: d.get('financial', {}).get('close'),
-            ]:
-                try:
-                    v = path(data)
-                    if v is not None:
-                        return float(v)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        # Tenta os endpoints conhecidos da OpLab v3
+        for ep in [f'/instruments/{ticker}', f'/market/instruments/{ticker}']:
+            try:
+                r = session.get(f'{BASE}{ep}', timeout=10)
+                if r.status_code != 200:
+                    continue
+                data = r.json()
+                # Tenta caminhos comuns de resposta OpLab
+                for path in [
+                    lambda d: d.get('spot', {}).get('close'),
+                    lambda d: d.get('spot', {}).get('last'),
+                    lambda d: d.get('close'),
+                    lambda d: d.get('last'),
+                    lambda d: d.get('financial', {}).get('close'),
+                    lambda d: d.get('price'),
+                    lambda d: d.get('regularMarketPrice'),
+                ]:
+                    try:
+                        v = path(data)
+                        if v is not None:
+                            return float(v)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
         return None
 
     ativos_ok = 0

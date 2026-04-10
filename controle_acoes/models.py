@@ -168,16 +168,18 @@ class Settings(db.Model):
     
     # Unique constraint combo ideally: (user_id, key)
 
+    _ENCRYPTED_KEYS = {'brapi_token', 'oplab_token'}
+
     @staticmethod
     def get_value(key, user_id, default=None):
         setting = Settings.query.filter_by(key=key, user_id=user_id).first()
         if setting:
-            if key == 'brapi_token':
+            if key in Settings._ENCRYPTED_KEYS:
                 try:
                     cipher = get_cipher_suite()
                     return cipher.decrypt(setting.value.encode()).decode()
                 except Exception:
-                    return default # Or handle error
+                    return default
             return setting.value
         return default
 
@@ -187,14 +189,13 @@ class Settings(db.Model):
         if not setting:
             setting = Settings(key=key, user_id=user_id)
             db.session.add(setting)
-        
-        if key == 'brapi_token':
+
+        if key in Settings._ENCRYPTED_KEYS:
             cipher = get_cipher_suite()
-            encrypted_val = cipher.encrypt(value.encode()).decode()
-            setting.value = encrypted_val
+            setting.value = cipher.encrypt(value.encode()).decode()
         else:
             setting.value = value
-            
+
         db.session.commit()
 
 

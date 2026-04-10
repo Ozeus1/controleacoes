@@ -3729,20 +3729,115 @@ def delete_study_intl_stock(sid):
 @login_required
 def profile():
     if request.method == 'POST':
-        curr_pass = request.form.get('current_password')
-        new_pass = request.form.get('new_password')
-        confirm_pass = request.form.get('confirm_password')
-        
-        if not current_user.check_password(curr_pass):
-            flash('Senha atual incorreta.', 'danger')
-        elif new_pass != confirm_pass:
-            flash('Novas senhas não conferem.', 'danger')
+        action = request.form.get('action', 'change_password')
+
+        if action == 'change_password':
+            curr_pass = request.form.get('current_password')
+            new_pass = request.form.get('new_password')
+            confirm_pass = request.form.get('confirm_password')
+            if not current_user.check_password(curr_pass):
+                flash('Senha atual incorreta.', 'danger')
+            elif new_pass != confirm_pass:
+                flash('Novas senhas não conferem.', 'danger')
+            else:
+                current_user.set_password(new_pass)
+                db.session.commit()
+                flash('Senha alterada com sucesso!', 'success')
+
+        elif action == 'save_oplab':
+            token = request.form.get('oplab_token', '').strip()
+            if token:
+                Settings.set_value('oplab_token', token, user_id=current_user.id)
+                flash('Token OpLab salvo com sucesso!', 'success')
+            else:
+                flash('Informe o token OpLab.', 'danger')
+
+        return redirect(url_for('profile'))
+
+    oplab_configured = bool(Settings.get_value('oplab_token', user_id=current_user.id))
+    return render_template('profile.html', oplab_configured=oplab_configured)
+
+
+@app.route('/atualizar_oplab', methods=['POST'])
+@login_required
+def atualizar_oplab():
+    token = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        flash('Token OpLab não configurado. Configure em Perfil.', 'danger')
+        return redirect(url_for('profile'))
+
+    uid = current_user.id
+    BASE = 'https://api.oplab.com.br/v3'
+    headers = {'Access-Token': token}
+    session = requests.Session()
+    session.headers.update(headers)
+
+    def _oplab_price(ticker):
+        """Retorna o preço mais recente do instrumento ou None."""
+        try:
+            r = session.get(f'{BASE}/instruments/{ticker}', timeout=10)
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            # Tenta caminhos comuns de resposta OpLab
+            for path in [
+                lambda d: d.get('spot', {}).get('close'),
+                lambda d: d.get('spot', {}).get('last'),
+                lambda d: d.get('close'),
+                lambda d: d.get('last'),
+                lambda d: d.get('financial', {}).get('close'),
+            ]:
+                try:
+                    v = path(data)
+                    if v is not None:
+                        return float(v)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return None
+
+    ativos_ok = 0
+    opcoes_ok = 0
+    erros = []
+
+    # Atualiza cotações das ações/FIIs/ETFs com quantidade > 0
+    assets = Asset.query.filter(
+        Asset.user_id == uid,
+        Asset.quantity > 0
+    ).all()
+    for asset in assets:
+        price = _oplab_price(asset.ticker)
+        if price is not None:
+            asset.current_price = price
+            asset.last_update = datetime.now()
+            ativos_ok += 1
         else:
-            current_user.set_password(new_pass)
-            db.session.commit()
-            flash('Senha alterada com sucesso!', 'success')
-            
-    return render_template('profile.html')
+            erros.append(asset.ticker)
+
+    # Atualiza cotações das opções cadastradas
+    options = Option.query.filter_by(user_id=uid).all()
+    for opt in options:
+        price = _oplab_price(opt.ticker)
+        if price is not None:
+            opt.current_option_price = price
+            opt.last_update = datetime.now()
+            opcoes_ok += 1
+        else:
+            erros.append(opt.ticker)
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro ao salvar: {e}', 'danger')
+        return redirect(url_for('profile'))
+
+    msg = f'OpLab: {ativos_ok} ativo(s) e {opcoes_ok} opção(ões) atualizados.'
+    if erros:
+        msg += f' Sem cotação: {", ".join(erros[:10])}{"..." if len(erros) > 10 else ""}'
+    flash(msg, 'success' if not erros or ativos_ok + opcoes_ok > 0 else 'warning')
+    return redirect(url_for('profile'))
 
 
 # --- Dividends Module ---

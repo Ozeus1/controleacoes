@@ -97,43 +97,35 @@
         <form method="POST" action="{{ url_for('config') }}" style="max-width:480px;">
             <input type="hidden" name="action" value="save_oplab_config">
 
-            <!-- Checkbox enable -->
-            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.2rem;">
-                <label class="switch" style="position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0;">
-                    <input type="checkbox" name="oplab_auto_update" value="true" id="oplab_toggle"
-                           {% if oplab_auto %}checked{% endif %}>
-                    <span class="slider round" style="
-                        position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;
-                        background-color:{% if oplab_auto %}var(--success-color){% else %}#555{% endif %};
-                        transition:.3s;border-radius:26px;">
-                        <span style="
-                            position:absolute;content:'';height:20px;width:20px;left:3px;bottom:3px;
-                            background:white;border-radius:50%;transition:.3s;
-                            transform:{% if oplab_auto %}translateX(20px){% else %}translateX(0){% endif %};">
-                        </span>
-                    </span>
+            <!-- Ativar/desativar -->
+            <div class="form-check form-switch mb-3" style="font-size:1rem;">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       name="oplab_auto_update" value="true" id="oplab_toggle"
+                       {% if oplab_auto %}checked{% endif %}
+                       style="width:3em;height:1.5em;cursor:pointer;">
+                <label class="form-check-label ms-2" for="oplab_toggle" style="cursor:pointer;line-height:1.8;">
+                    {% if oplab_auto %}
+                    <span style="color:var(--success-color);font-weight:600;">Ativada</span>
+                    {% else %}
+                    <span style="color:var(--text-secondary);">Desativada</span>
+                    {% endif %}
+                    <span style="color:var(--text-secondary);font-size:.82rem;margin-left:.5rem;">(marque para ativar e clique em Salvar)</span>
                 </label>
-                <span id="oplab_toggle_label" style="font-size:.95rem;">
-                    {% if oplab_auto %}<span style="color:var(--success-color)">Ativada</span>
-                    {% else %}<span style="color:var(--text-secondary)">Desativada</span>{% endif %}
-                </span>
             </div>
 
             <!-- Intervalo -->
-            <div style="margin-bottom:1.2rem;">
+            <div class="mb-3">
                 <label style="display:block;margin-bottom:.5rem;font-size:.9rem;">Intervalo de atualização</label>
                 <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
-                    {% for v, label in [('1','1 min'),('2','2 min'),('5','5 min'),('10','10 min')] %}
-                    <label style="
-                        display:flex;align-items:center;gap:.35rem;padding:.45rem .9rem;
-                        border-radius:8px;cursor:pointer;font-size:.9rem;
-                        border:2px solid {% if oplab_interval == v %}var(--accent-color){% else %}var(--border-color){% endif %};
-                        background:{% if oplab_interval == v %}var(--hover-bg){% else %}transparent{% endif %};">
-                        <input type="radio" name="oplab_interval" value="{{ v }}"
-                               {% if oplab_interval == v %}checked{% endif %}
-                               style="accent-color:var(--accent-color);">
-                        {{ label }}
-                    </label>
+                    {% for v, lbl in [('1','1 min'),('2','2 min'),('5','5 min'),('10','10 min')] %}
+                    <div class="form-check" style="padding:.45rem .9rem;border-radius:8px;cursor:pointer;
+                         border:2px solid {% if oplab_interval == v %}var(--accent-color){% else %}var(--border-color){% endif %};
+                         background:{% if oplab_interval == v %}var(--hover-bg){% else %}transparent{% endif %};">
+                        <input class="form-check-input" type="radio" name="oplab_interval"
+                               id="intv_{{ v }}" value="{{ v }}"
+                               {% if oplab_interval == v %}checked{% endif %}>
+                        <label class="form-check-label" for="intv_{{ v }}" style="cursor:pointer;">{{ lbl }}</label>
+                    </div>
                     {% endfor %}
                 </div>
             </div>

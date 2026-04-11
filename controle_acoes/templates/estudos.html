@@ -54,12 +54,12 @@
       <tr>
         <td><span class="ticker-badge">{{ row.ticker.upper() }}</span></td>
         <td>{{ row.underlying }}</td>
-        <td>{{ '%.2f'|format(row.underlying_price) if row.underlying_price else '-' }}</td>
+        <td data-ticker="{{ row.underlying }}" data-estudos-field="underlying_price">{{ '%.2f'|format(row.underlying_price) if row.underlying_price else '-' }}</td>
         <td>{{ '%.2f'|format(row.avg_price) if row.avg_price else '-' }}</td>
         <td>{{ '%.2f'|format(row.strike) if row.strike else '-' }}</td>
         <td>{{ row.expiration.strftime('%d/%m/%Y') if row.expiration else '-' }}</td>
         <td>{{ days_cell(row.days) }}</td>
-        <td>{{ '%.4f'|format(row.option_price) if row.option_price else '-' }}</td>
+        <td data-optticker="{{ row.ticker }}" data-estudos-field="opt_price">{{ '%.4f'|format(row.option_price) if row.option_price else '-' }}</td>
         <td>{{ '%.2f'|format(row.ve) if row.ve is not none else '-' }}</td>
         <td>{{ '%.4f'|format(row.delta) if row.delta is not none else '-' }}</td>
         <td>{{ '%.4f'|format(row.gama) if row.gama is not none else '-' }}</td>
@@ -79,12 +79,12 @@
       <tr>
         <td><span class="ticker-badge" style="background:var(--success-color)">{{ row.ticker.upper() }}</span></td>
         <td>{{ row.underlying }}</td>
-        <td>{{ '%.2f'|format(row.underlying_price) if row.underlying_price else '-' }}</td>
+        <td data-ticker="{{ row.underlying }}" data-estudos-field="underlying_price">{{ '%.2f'|format(row.underlying_price) if row.underlying_price else '-' }}</td>
         <td>{{ '%.2f'|format(row.avg_price) if row.avg_price else '-' }}</td>
         <td>{{ '%.2f'|format(row.strike) if row.strike else '-' }}</td>
         <td>{{ row.expiration.strftime('%d/%m/%Y') if row.expiration else '-' }}</td>
         <td>{{ days_cell(row.days) }}</td>
-        <td>{{ '%.4f'|format(row.option_price) if row.option_price else '-' }}</td>
+        <td data-optticker="{{ row.ticker }}" data-estudos-field="opt_price">{{ '%.4f'|format(row.option_price) if row.option_price else '-' }}</td>
         <td>{{ '%.2f'|format(row.ve) if row.ve is not none else '-' }}</td>
         <td>{{ '%.4f'|format(row.delta) if row.delta is not none else '-' }}</td>
         <td>{{ '%.4f'|format(row.gama) if row.gama is not none else '-' }}</td>
@@ -822,5 +822,45 @@ function setSelect(id, val) {
   }
   sel.selectedIndex = 0;
 }
+
+// ── Live Polling (OpLab / MT5) ────────────────────────────────
+(function() {
+  var POLL_URL = "{{ url_for('api_current_quotes') }}";
+  var MT5_INTERVAL = 15000;
+  function fmt4(v) { return parseFloat(v).toFixed(4); }
+  function fmt2(v) { return parseFloat(v).toFixed(2); }
+  function applyQuotes(assets, options) {
+    // Cotação do ativo subjacente (coluna Cot.At)
+    document.querySelectorAll('[data-estudos-field="underlying_price"]').forEach(function(el) {
+      var d = assets[el.dataset.ticker]; if (d && d.price > 0) el.textContent = fmt2(d.price);
+    });
+    // Cotação da opção (coluna Cot.Op)
+    document.querySelectorAll('[data-estudos-field="opt_price"]').forEach(function(el) {
+      var d = options[el.dataset.optticker]; if (d && d.price > 0) el.textContent = fmt4(d.price);
+    });
+  }
+  function makeBadge(text, color) {
+    if (document.getElementById('live-badge')) return;
+    var b = document.createElement('div');
+    b.id = 'live-badge';
+    b.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:'+color+';color:#fff;padding:0.4rem 1rem;border-radius:20px;font-size:0.85rem;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+    b.textContent = text;
+    document.body.appendChild(b);
+  }
+  function poll() {
+    fetch(POLL_URL).then(function(r){ return r.json(); }).then(function(data) {
+      if (data.mode === 'mt5' || data.oplab_enabled) applyQuotes(data.assets, data.options);
+    }).catch(function(){});
+  }
+  fetch(POLL_URL).then(function(r){ return r.json(); }).then(function(data) {
+    var active = data.mode === 'mt5' || data.oplab_enabled;
+    if (!active) return;
+    applyQuotes(data.assets, data.options);
+    var interval = data.mode === 'mt5' ? MT5_INTERVAL : data.oplab_interval_ms;
+    setInterval(poll, interval);
+    if (data.mode === 'mt5') makeBadge('⚡ MT5 ao vivo', 'var(--success-color)');
+    else makeBadge('🔄 OpLab ' + (data.oplab_interval_ms/60000) + 'min', '#2563eb');
+  }).catch(function(){});
+})();
 </script>
 {% endblock %}

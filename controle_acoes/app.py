@@ -280,6 +280,9 @@ with app.app_context():
     db.create_all()
     run_migrations()
 
+# Scheduler OpLab iniciado ao carregar o módulo (Gunicorn + __main__)
+threading.Thread(target=lambda: (time.sleep(5), _start_oplab_scheduler()), daemon=True).start()
+
 
 # --- Options Module Routes ---
 
@@ -1815,13 +1818,26 @@ def config():
                 Settings.set_value('quote_mode', mode, user_id=current_user.id)
                 flash(f'Modo de cotação alterado para: {"Yahoo Finance" if mode == "yahoo" else "MT5 Feeder"}', 'success')
 
+        elif action == 'save_oplab_config':
+            auto     = 'true' if request.form.get('oplab_auto_update') == 'true' else 'false'
+            interval = request.form.get('oplab_interval', '5')
+            if interval not in ('1', '2', '5', '10'):
+                interval = '5'
+            Settings.set_value('oplab_auto_update', auto, user_id=current_user.id)
+            Settings.set_value('oplab_interval',    interval, user_id=current_user.id)
+            label = 'ativada' if auto == 'true' else 'desativada'
+            flash(f'Atualização automática OpLab {label} (intervalo: {interval} min).', 'success')
+
         return redirect(url_for('config'))
 
     current_key = Settings.get_value('brapi_token', user_id=current_user.id)
     if not current_key:
         current_key = os.environ.get('BRAPI_API_KEY', '')
 
-    quote_mode = Settings.get_value('quote_mode', user_id=current_user.id, default='yahoo')
+    quote_mode      = Settings.get_value('quote_mode',        user_id=current_user.id, default='yahoo')
+    oplab_auto      = Settings.get_value('oplab_auto_update', user_id=current_user.id, default='false') == 'true'
+    oplab_interval  = Settings.get_value('oplab_interval',    user_id=current_user.id, default='5')
+    oplab_token_ok  = bool(Settings.get_value('oplab_token',  user_id=current_user.id))
 
     # Generate TICKER_MAP and OPTION_MAP for mt5_feeder/config.py
     user_assets = Asset.query.filter(
@@ -1842,6 +1858,9 @@ def config():
     return render_template('config.html',
                            current_key=current_key,
                            quote_mode=quote_mode,
+                           oplab_auto=oplab_auto,
+                           oplab_interval=oplab_interval,
+                           oplab_token_ok=oplab_token_ok,
                            ticker_map_text=ticker_map_text,
                            option_map_text=option_map_text)
 
@@ -3790,81 +3809,14 @@ def atualizar_oplab():
         flash('Token OpLab não configurado. Configure em Perfil.', 'danger')
         return redirect(url_for('profile'))
 
-    uid = current_user.id
-    BASE = 'https://api.oplab.com.br/v3'
-    headers = {'Access-Token': token}
-    session = requests.Session()
-    session.headers.update(headers)
+    ativos_ok, opcoes_ok = _do_oplab_bulk_update(current_user.id, token)
+    _oplab_last_update[current_user.id] = datetime.now()
 
-    def _oplab_price(ticker):
-        """Retorna o preço mais recente do instrumento ou None."""
-        # Tenta os endpoints conhecidos da OpLab v3
-        for ep in [f'/instruments/{ticker}', f'/market/instruments/{ticker}']:
-            try:
-                r = session.get(f'{BASE}{ep}', timeout=10)
-                if r.status_code != 200:
-                    continue
-                data = r.json()
-                # Tenta caminhos comuns de resposta OpLab
-                for path in [
-                    lambda d: d.get('spot', {}).get('close'),
-                    lambda d: d.get('spot', {}).get('last'),
-                    lambda d: d.get('close'),
-                    lambda d: d.get('last'),
-                    lambda d: d.get('financial', {}).get('close'),
-                    lambda d: d.get('price'),
-                    lambda d: d.get('regularMarketPrice'),
-                ]:
-                    try:
-                        v = path(data)
-                        if v is not None:
-                            return float(v)
-                    except Exception:
-                        pass
-            except Exception:
-                pass
-        return None
-
-    ativos_ok = 0
-    opcoes_ok = 0
-    erros = []
-
-    # Atualiza cotações das ações/FIIs/ETFs com quantidade > 0
-    assets = Asset.query.filter(
-        Asset.user_id == uid,
-        Asset.quantity > 0
-    ).all()
-    for asset in assets:
-        price = _oplab_price(asset.ticker)
-        if price is not None:
-            asset.current_price = price
-            asset.last_update = datetime.now()
-            ativos_ok += 1
-        else:
-            erros.append(asset.ticker)
-
-    # Atualiza cotações das opções cadastradas
-    options = Option.query.filter_by(user_id=uid).all()
-    for opt in options:
-        price = _oplab_price(opt.ticker)
-        if price is not None:
-            opt.current_option_price = price
-            opt.last_update = datetime.now()
-            opcoes_ok += 1
-        else:
-            erros.append(opt.ticker)
-
-    try:
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Erro ao salvar: {e}', 'danger')
-        return redirect(url_for('profile'))
-
-    msg = f'OpLab: {ativos_ok} ativo(s) e {opcoes_ok} opção(ões) atualizados.'
-    if erros:
-        msg += f' Sem cotação: {", ".join(erros[:10])}{"..." if len(erros) > 10 else ""}'
-    flash(msg, 'success' if not erros or ativos_ok + opcoes_ok > 0 else 'warning')
+    total = ativos_ok + opcoes_ok
+    if total > 0:
+        flash(f'OpLab: {ativos_ok} ativo(s) e {opcoes_ok} opção(ões) atualizados.', 'success')
+    else:
+        flash('OpLab: nenhum ativo atualizado. Verifique o token ou os tickers cadastrados.', 'warning')
     return redirect(url_for('profile'))
 
 
@@ -4294,10 +4246,13 @@ def api_current_quotes():
     """
     from flask import jsonify
 
-    mode = Settings.get_value('quote_mode', user_id=current_user.id, default='yahoo')
+    uid  = current_user.id
+    mode = Settings.get_value('quote_mode',        user_id=uid, default='yahoo')
+    oplab_auto     = Settings.get_value('oplab_auto_update', user_id=uid, default='false') == 'true'
+    oplab_interval = int(Settings.get_value('oplab_interval', user_id=uid, default='5'))
 
     assets_data = {}
-    for a in Asset.query.filter_by(user_id=current_user.id).all():
+    for a in Asset.query.filter_by(user_id=uid).all():
         assets_data[a.ticker] = {
             'price':   round(a.current_price or 0, 2),
             'change':  round(a.daily_change  or 0, 2),
@@ -4305,20 +4260,126 @@ def api_current_quotes():
         }
 
     options_data = {}
-    for o in Option.query.filter_by(user_id=current_user.id).all():
+    for o in Option.query.filter_by(user_id=uid).all():
         options_data[o.ticker] = {
             'price':   round(o.current_option_price or 0, 2),
             'updated': o.last_update.strftime('%H:%M') if o.last_update else '-'
         }
 
     return jsonify({
-        'mode':    mode,
-        'assets':  assets_data,
-        'options': options_data,
+        'mode':              mode,
+        'assets':            assets_data,
+        'options':           options_data,
+        'oplab_enabled':     oplab_auto,
+        'oplab_interval_ms': oplab_interval * 60 * 1000,
     })
+
+
+# ─────────────────────────────────────────────────────────────────
+# OPLAB AUTO-UPDATE BACKGROUND SCHEDULER
+# ─────────────────────────────────────────────────────────────────
+
+_oplab_last_update: dict = {}   # user_id → datetime of last successful update
+
+
+def _do_oplab_bulk_update(uid: int, token: str):
+    """
+    Calls GET /v3/market/quote?tickers=... (bulk) for all assets + options
+    of user `uid` and updates the DB.  Returns (assets_ok, options_ok).
+    """
+    BASE = 'https://api.oplab.com.br/v3'
+    headers = {'Access-Token': token}
+
+    assets  = Asset.query.filter(Asset.user_id == uid, Asset.quantity > 0).all()
+    options = Option.query.filter_by(user_id=uid).all()
+
+    all_tickers = list({a.ticker for a in assets} | {o.ticker for o in options})
+    if not all_tickers:
+        return 0, 0
+
+    prices: dict = {}
+    # OpLab accepts up to ~200 tickers per call; chunk by 150 to be safe
+    CHUNK = 150
+    for i in range(0, len(all_tickers), CHUNK):
+        chunk = all_tickers[i:i + CHUNK]
+        try:
+            r = requests.get(
+                f'{BASE}/market/quote',
+                params={'tickers': ','.join(chunk)},
+                headers=headers,
+                timeout=15,
+            )
+            if r.status_code == 200:
+                for item in r.json():
+                    sym   = str(item.get('symbol', '')).upper()
+                    close = item.get('close')
+                    if sym and close is not None:
+                        prices[sym] = float(close)
+        except Exception:
+            pass
+
+    if not prices:
+        return 0, 0
+
+    now = datetime.now()
+    assets_ok = 0
+    for a in assets:
+        if a.ticker in prices:
+            a.current_price = prices[a.ticker]
+            a.last_update   = now
+            assets_ok += 1
+
+    options_ok = 0
+    for o in options:
+        if o.ticker in prices:
+            o.current_option_price = prices[o.ticker]
+            o.last_update          = now
+            options_ok += 1
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    return assets_ok, options_ok
+
+
+def _oplab_scheduler_loop():
+    """Daemon thread: checks every 30 s which users need an OpLab refresh."""
+    while True:
+        time.sleep(30)
+        with app.app_context():
+            try:
+                now = datetime.now()
+                rows = Settings.query.filter_by(key='oplab_auto_update', value='true').all()
+                for s in rows:
+                    uid   = s.user_id
+                    token = Settings.get_value('oplab_token', user_id=uid)
+                    if not token:
+                        continue
+                    interval_min = int(Settings.get_value('oplab_interval', user_id=uid, default='5'))
+                    last = _oplab_last_update.get(uid)
+                    if last and (now - last).total_seconds() < interval_min * 60:
+                        continue
+                    _do_oplab_bulk_update(uid, token)
+                    _oplab_last_update[uid] = now
+            except Exception:
+                pass
+
+
+# Start the scheduler once (guarded so it doesn't spawn in import-time checks)
+_oplab_scheduler_started = False
+
+def _start_oplab_scheduler():
+    global _oplab_scheduler_started
+    if not _oplab_scheduler_started:
+        _oplab_scheduler_started = True
+        t = threading.Thread(target=_oplab_scheduler_loop, daemon=True)
+        t.start()
 
 
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
+    _start_oplab_scheduler()
     app.run(debug=True, host='0.0.0.0')

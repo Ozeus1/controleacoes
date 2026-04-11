@@ -438,11 +438,11 @@
     </div>
 </div>
 
-<!-- MT5 Live Polling -->
+<!-- Live Polling (MT5 / OpLab) -->
 <script>
 (function() {
     const POLL_URL = "{{ url_for('api_current_quotes') }}";
-    const INTERVAL = 15000;
+    const MT5_INTERVAL = 15000;
     function fmtBRL(v) { return 'R$ ' + v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
     function fmtPct(v) { return v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) + '%'; }
     function setClass(el, val) { el.classList.remove('positive','negative'); el.classList.add(val >= 0 ? 'positive' : 'negative'); }
@@ -460,19 +460,28 @@
             const d = assets[el.dataset.ticker]; if (d) el.textContent = fmtBRL(parseFloat(el.dataset.qty) * d.price);
         });
     }
-    function poll() {
+    function makeBadge(text, color) {
+        if (document.getElementById('live-badge')) return;
+        var b = document.createElement('div');
+        b.id = 'live-badge';
+        b.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:'+color+';color:#fff;padding:0.4rem 1rem;border-radius:20px;font-size:0.85rem;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
+        b.textContent = text;
+        document.body.appendChild(b);
+    }
+    var _timer = null;
+    function poll(isMt5) {
         fetch(POLL_URL).then(r => r.json()).then(function(data) {
-            if (data.mode === 'mt5') applyQuotes(data.assets);
+            if (data.mode === 'mt5' || data.oplab_enabled) applyQuotes(data.assets);
         }).catch(function(){});
     }
     fetch(POLL_URL).then(r => r.json()).then(function(data) {
-        if (data.mode !== 'mt5') return;
+        var active = data.mode === 'mt5' || data.oplab_enabled;
+        if (!active) return;
         applyQuotes(data.assets);
-        setInterval(poll, INTERVAL);
-        var b = document.createElement('div');
-        b.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--success-color);color:#fff;padding:0.4rem 1rem;border-radius:20px;font-size:0.85rem;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,0.3);';
-        b.textContent = '⚡ MT5 ao vivo';
-        document.body.appendChild(b);
+        var interval = data.mode === 'mt5' ? MT5_INTERVAL : data.oplab_interval_ms;
+        _timer = setInterval(poll, interval);
+        if (data.mode === 'mt5') makeBadge('⚡ MT5 ao vivo', 'var(--success-color)');
+        else makeBadge('🔄 OpLab ' + (data.oplab_interval_ms/60000) + 'min', '#2563eb');
     }).catch(function(){});
 })();
 </script>

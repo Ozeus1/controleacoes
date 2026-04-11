@@ -81,6 +81,76 @@
         </form>
     </div>
 
+    <!-- OPLAB AUTO-UPDATE -->
+    <div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-bottom: 2rem;">
+        <h3>Atualização Automática via OpLab</h3>
+        <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: .9rem;">
+            Quando ativada, o servidor buscará cotações de <strong>Ações, FIIs, ETFs e Opções</strong> diretamente
+            na API OpLab no intervalo selecionado, atualizando as páginas
+            <em>Ações, FIIs, SwingTrade, Opções e Estudos</em> dinamicamente sem necessidade de recarregar.
+            {% if not oplab_token_ok %}
+            <br><strong style="color:var(--danger-color)">⚠ Token OpLab não configurado.
+            <a href="{{ url_for('profile') }}" style="color:var(--accent-color)">Configure em Perfil</a> antes de ativar.</strong>
+            {% endif %}
+        </p>
+
+        <form method="POST" action="{{ url_for('config') }}" style="max-width:480px;">
+            <input type="hidden" name="action" value="save_oplab_config">
+
+            <!-- Checkbox enable -->
+            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.2rem;">
+                <label class="switch" style="position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0;">
+                    <input type="checkbox" name="oplab_auto_update" value="true" id="oplab_toggle"
+                           {% if oplab_auto %}checked{% endif %}
+                           {% if not oplab_token_ok %}disabled title="Configure o token OpLab primeiro"{% endif %}>
+                    <span class="slider round" style="
+                        position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;
+                        background-color:{% if oplab_auto %}var(--success-color){% else %}#555{% endif %};
+                        transition:.3s;border-radius:26px;">
+                        <span style="
+                            position:absolute;content:'';height:20px;width:20px;left:3px;bottom:3px;
+                            background:white;border-radius:50%;transition:.3s;
+                            transform:{% if oplab_auto %}translateX(20px){% else %}translateX(0){% endif %};">
+                        </span>
+                    </span>
+                </label>
+                <span id="oplab_toggle_label" style="font-size:.95rem;">
+                    {% if oplab_auto %}<span style="color:var(--success-color)">Ativada</span>
+                    {% else %}<span style="color:var(--text-secondary)">Desativada</span>{% endif %}
+                </span>
+            </div>
+
+            <!-- Intervalo -->
+            <div style="margin-bottom:1.2rem;">
+                <label style="display:block;margin-bottom:.5rem;font-size:.9rem;">Intervalo de atualização</label>
+                <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
+                    {% for v, label in [('1','1 min'),('2','2 min'),('5','5 min'),('10','10 min')] %}
+                    <label style="
+                        display:flex;align-items:center;gap:.35rem;padding:.45rem .9rem;
+                        border-radius:8px;cursor:pointer;font-size:.9rem;
+                        border:2px solid {% if oplab_interval == v %}var(--accent-color){% else %}var(--border-color){% endif %};
+                        background:{% if oplab_interval == v %}var(--hover-bg){% else %}transparent{% endif %};">
+                        <input type="radio" name="oplab_interval" value="{{ v }}"
+                               {% if oplab_interval == v %}checked{% endif %}
+                               style="accent-color:var(--accent-color);">
+                        {{ label }}
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary">Salvar configuração OpLab</button>
+        </form>
+
+        {% if oplab_auto %}
+        <div style="margin-top:1rem;padding:.6rem 1rem;background:rgba(16,185,129,.12);border-radius:8px;
+                    border:1px solid var(--success-color);font-size:.85rem;color:var(--success-color);">
+            ✓ Atualização automática <strong>ativa</strong> — intervalo: {{ oplab_interval }} min.
+            As páginas atualizam os preços sem recarregar enquanto você as mantém abertas.
+        </div>
+        {% endif %}
+    </div>
+
     <div style="border-top: 1px solid var(--border-color); padding-top: 2rem;">
         <h3>Testar Conexão</h3>
         <p style="color: var(--text-secondary); margin-bottom: 1rem;">

@@ -89,8 +89,8 @@
             na API OpLab no intervalo selecionado, atualizando as páginas
             <em>Ações, FIIs, SwingTrade, Opções e Estudos</em> dinamicamente sem necessidade de recarregar.
             {% if not oplab_token_ok %}
-            <br><strong style="color:var(--danger-color)">⚠ Token OpLab não configurado.
-            <a href="{{ url_for('profile') }}" style="color:var(--accent-color)">Configure em Perfil</a> antes de ativar.</strong>
+            <br><strong style="color:var(--warning-color, #f59e0b)">⚠ Token OpLab não detectado na sessão atual.
+            Se já configurou em <a href="{{ url_for('profile') }}" style="color:var(--accent-color)">Perfil</a>, salve novamente o token lá e tente ativar.</strong>
             {% endif %}
         </p>
 
@@ -101,8 +101,7 @@
             <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.2rem;">
                 <label class="switch" style="position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0;">
                     <input type="checkbox" name="oplab_auto_update" value="true" id="oplab_toggle"
-                           {% if oplab_auto %}checked{% endif %}
-                           {% if not oplab_token_ok %}disabled title="Configure o token OpLab primeiro"{% endif %}>
+                           {% if oplab_auto %}checked{% endif %}>
                     <span class="slider round" style="
                         position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;
                         background-color:{% if oplab_auto %}var(--success-color){% else %}#555{% endif %};

@@ -3777,6 +3777,24 @@ def profile():
     return render_template('profile.html', oplab_configured=oplab_configured)
 
 
+@app.route('/oplab_debug')
+@login_required
+def oplab_debug():
+    """Diagnóstico: mostra estado do token no banco (apenas admins)."""
+    if not current_user.is_admin:
+        return jsonify({'error': 'Forbidden'}), 403
+    uid = current_user.id
+    raw = Settings.query.filter_by(key='oplab_token', user_id=uid).first()
+    token = Settings.get_value('oplab_token', user_id=uid)
+    return jsonify({
+        'user_id': uid,
+        'row_exists': raw is not None,
+        'raw_value_len': len(raw.value) if raw else 0,
+        'get_value_result': bool(token),
+        'token_prefix': token[:8] + '...' if token and len(token) > 8 else token,
+    })
+
+
 @app.route('/oplab_test', methods=['POST'])
 @login_required
 def oplab_test():

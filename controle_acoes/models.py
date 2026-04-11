@@ -179,7 +179,9 @@ class Settings(db.Model):
                     cipher = get_cipher_suite()
                     return cipher.decrypt(setting.value.encode()).decode()
                 except Exception:
-                    return default
+                    # Valor salvo antes da criptografia — retorna como texto plano
+                    # e re-salva criptografado para migrações futuras
+                    return setting.value
             return setting.value
         return default
 

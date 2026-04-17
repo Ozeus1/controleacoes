@@ -3238,9 +3238,7 @@ def importar_excel():
             opt.last_update = datetime.now()
             opcoes_atualizadas += 1
 
-    # ── 4. Atualiza StudyOption com dados do rtd ─────────────────────
-    estudo_opcoes_atualizados = 0
-
+    # ── Helpers rtd ──────────────────────────────────────────────────
     def _rtd_float(row, idx):
         v = row[idx] if len(row) > idx else None
         return float(v) if isinstance(v, (int, float)) else None
@@ -3256,6 +3254,26 @@ def importar_excel():
                 except ValueError:
                     pass
         return None
+
+    # ── 3b. Atualiza Asset.current_price via rtd (ações, FIIs, ETFs) ─
+    # O sheet rtd é real-time e cobre todos os tipos de ativo.
+    # Isso garante que FIIs e ações não presentes nos sheets "acao"/"ETF"
+    # também sejam atualizados, e que o underlying_price das opções em
+    # /estudos fique correto.
+    nao_encontrados_ativos = []
+    for asset in Asset.query.filter_by(user_id=current_user.id).all():
+        key = asset.ticker.upper()
+        if key in rtd_data:
+            p = _rtd_float(rtd_data[key], 3)
+            if p is not None and p > 0:
+                asset.current_price = p
+                asset.last_update   = datetime.now()
+                ativos_atualizados += 1
+        else:
+            nao_encontrados_ativos.append(asset.ticker)
+
+    # ── 4. Atualiza StudyOption com dados do rtd ─────────────────────
+    estudo_opcoes_atualizados = 0
 
     for so in StudyOption.query.filter_by(user_id=current_user.id).all():
         key = so.ticker.upper()
@@ -3341,10 +3359,15 @@ def importar_excel():
         return redirect(url_for('importar_excel'))
 
     msg = (f'Atualizado: {ativos_atualizados} ativo(s), {opcoes_atualizadas} opção(ões), '
-           f'{spreads_atualizados} spread(s) e {estudo_opcoes_atualizados} VDX/NV.')
+           f'{spreads_atualizados} spread(s) e {estudo_opcoes_atualizados} estudo(s).')
+    if nao_encontrados_ativos:
+        msg += f' Não encontrados no rtd: {", ".join(nao_encontrados_ativos[:10])}'
+        if len(nao_encontrados_ativos) > 10:
+            msg += f' (+{len(nao_encontrados_ativos)-10})'
     if erros:
         msg += f' Avisos: {"; ".join(erros)}'
-    flash(msg, 'success')
+    cat = 'success' if not nao_encontrados_ativos else 'warning'
+    flash(msg, cat)
     return redirect(url_for('importar_excel'))
 
 

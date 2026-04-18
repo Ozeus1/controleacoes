@@ -107,12 +107,13 @@
             <tbody id="legs-body">
             {% if sim and sim.legs %}
                 {% for leg in sim.legs %}
+                {% set isSt = leg.leg_type == 'STOCK' %}
                 <tr class="leg-row">
                     <td>
                         <select name="leg_type" onchange="legTypeChanged(this);scheduleRedraw();" style="width:72px;">
                             <option value="CALL"  {% if leg.leg_type=='CALL'  %}selected{% endif %}>CALL</option>
                             <option value="PUT"   {% if leg.leg_type=='PUT'   %}selected{% endif %}>PUT</option>
-                            <option value="STOCK" {% if leg.leg_type=='STOCK' %}selected{% endif %}>AÇÃO</option>
+                            <option value="STOCK" {% if isSt %}selected{% endif %}>AÇÃO</option>
                         </select>
                     </td>
                     <td>
@@ -121,34 +122,28 @@
                             <option value="SELL" {% if leg.side=='SELL' %}selected{% endif %}>VENDA</option>
                         </select>
                     </td>
-                    <td>
-                        <input type="text" name="leg_ticker" value="{{ leg.ticker }}"
-                               style="width:90px; text-transform:uppercase;">
+                    <td class="col-ticker" {% if isSt %}style="display:none;"{% endif %}>
+                        <input type="text" name="leg_ticker" value="{{ leg.ticker if not isSt else '' }}"
+                               style="width:90px; text-transform:uppercase;"
+                               {% if isSt %}disabled{% endif %}>
                     </td>
-                    <td>
-                        <input type="text" name="leg_qty" value="{{ leg.quantity }}"
-                               style="width:60px; text-align:center;" oninput="scheduleRedraw()">
-                    </td>
-                    <td>
-                        <input type="text" name="leg_premium"
+                    <td><input type="text" name="leg_qty" value="{{ leg.quantity }}"
+                               style="width:60px; text-align:center;" oninput="scheduleRedraw()"></td>
+                    <td><input type="text" name="leg_premium"
                                value="{{ '%.2f'|format(leg.premium)|replace('.', ',') }}"
-                               placeholder="0,00" style="width:85px; text-align:right;" oninput="scheduleRedraw()">
-                    </td>
-                    <td>
+                               placeholder="0,00" style="width:85px; text-align:right;" oninput="scheduleRedraw()"></td>
+                    <td class="col-exp" {% if isSt %}style="display:none;"{% endif %}>
                         <input type="date" name="leg_exp"
                                value="{{ leg.expiration.isoformat() if leg.expiration else '' }}"
-                               style="width:135px;"
-                               {% if leg.leg_type=='STOCK' %}disabled{% endif %}>
+                               style="width:135px;" {% if isSt %}disabled{% endif %}>
                     </td>
-                    <td>
+                    <td class="col-strike" {% if isSt %}style="display:none;"{% endif %}>
                         <input type="text" name="leg_strike"
                                value="{{ '%.2f'|format(leg.strike)|replace('.', ',') }}"
                                placeholder="0,00" style="width:80px; text-align:right;" oninput="scheduleRedraw()"
-                               {% if leg.leg_type=='STOCK' %}disabled{% endif %}>
+                               {% if isSt %}disabled{% endif %}>
                     </td>
-                    <td>
-                        <button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button>
-                    </td>
+                    <td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
                 </tr>
                 {% endfor %}
             {% else %}
@@ -166,11 +161,11 @@
                             <option value="SELL">VENDA</option>
                         </select>
                     </td>
-                    <td><input type="text" name="leg_ticker" style="width:90px; text-transform:uppercase;"></td>
+                    <td class="col-ticker"><input type="text" name="leg_ticker" style="width:90px; text-transform:uppercase;"></td>
                     <td><input type="text" name="leg_qty" value="1" style="width:60px; text-align:center;" oninput="scheduleRedraw()"></td>
                     <td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px; text-align:right;" oninput="scheduleRedraw()"></td>
-                    <td><input type="date" name="leg_exp" style="width:135px;"></td>
-                    <td><input type="text" name="leg_strike" placeholder="0,00" style="width:80px; text-align:right;" oninput="scheduleRedraw()"></td>
+                    <td class="col-exp"><input type="date" name="leg_exp" style="width:135px;"></td>
+                    <td class="col-strike"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px; text-align:right;" oninput="scheduleRedraw()"></td>
                     <td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
                 </tr>
             {% endif %}
@@ -210,6 +205,8 @@
 // ── Gestão de pernas ──────────────────────────────────────────────────────────
 function rowTemplate(type) {
     var isSt = type === 'STOCK';
+    var hide = isSt ? 'display:none;' : '';
+    var dis  = isSt ? ' disabled' : '';
     return '<tr class="leg-row">' +
         '<td><select name="leg_type" onchange="legTypeChanged(this);scheduleRedraw();" style="width:72px;">' +
             '<option value="CALL"'  + (type==='CALL' ?' selected':'') + '>CALL</option>' +
@@ -219,11 +216,11 @@ function rowTemplate(type) {
         '<td><select name="leg_side" onchange="scheduleRedraw();" style="width:90px;">' +
             '<option value="BUY">COMPRA</option><option value="SELL">VENDA</option>' +
         '</select></td>' +
-        '<td><input type="text" name="leg_ticker" style="width:90px;text-transform:uppercase;"></td>' +
+        '<td class="col-ticker" style="' + hide + '"><input type="text" name="leg_ticker" style="width:90px;text-transform:uppercase;"' + dis + '></td>' +
         '<td><input type="text" name="leg_qty" value="1" style="width:60px;text-align:center;" oninput="scheduleRedraw()"></td>' +
         '<td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px;text-align:right;" oninput="scheduleRedraw()"></td>' +
-        '<td><input type="date" name="leg_exp" style="width:135px;"' + (isSt?' disabled':'') + '></td>' +
-        '<td><input type="text" name="leg_strike" placeholder="0,00" style="width:80px;text-align:right;" oninput="scheduleRedraw()"' + (isSt?' disabled':'') + '></td>' +
+        '<td class="col-exp" style="' + hide + '"><input type="date" name="leg_exp" style="width:135px;"' + dis + '></td>' +
+        '<td class="col-strike" style="' + hide + '"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px;text-align:right;" oninput="scheduleRedraw()"' + dis + '></td>' +
         '<td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>' +
     '</tr>';
 }
@@ -241,13 +238,26 @@ function removeLeg(btn) {
 }
 
 function legTypeChanged(sel) {
-    var row = sel.closest('tr');
+    var row  = sel.closest('tr');
     var isSt = sel.value === 'STOCK';
     var strikeEl = row.querySelector('[name=leg_strike]');
     var expEl    = row.querySelector('[name=leg_exp]');
+    var tickerEl = row.querySelector('[name=leg_ticker]');
+    var tdTicker = row.querySelector('.col-ticker');
+    var tdExp    = row.querySelector('.col-exp');
+    var tdStrike = row.querySelector('.col-strike');
+
+    // Oculta/mostra células
+    tdTicker.style.display = isSt ? 'none' : '';
+    tdExp.style.display    = isSt ? 'none' : '';
+    tdStrike.style.display = isSt ? 'none' : '';
+
+    // Disable evita envio de valores espúrios
     strikeEl.disabled = isSt;
     expEl.disabled    = isSt;
-    if (isSt) { strikeEl.value = ''; expEl.value = ''; }
+    tickerEl.disabled = isSt;
+
+    if (isSt) { strikeEl.value = ''; expEl.value = ''; tickerEl.value = ''; }
 }
 
 // ── Leitura das pernas ────────────────────────────────────────────────────────

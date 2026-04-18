@@ -1034,7 +1034,7 @@ def simulacao_new():
                 strike=float(strikes[i].replace(',', '.')) if i < len(strikes) and strikes[i] else 0.0,
                 premium=float(premiums[i].replace(',', '.')) if i < len(premiums) and premiums[i] else 0.0,
                 expiration=exp,
-                ticker=(tickers[i].strip().upper() if i < len(tickers) and tickers[i] else ''),
+                ticker=(underlying if lt == 'STOCK' else (tickers[i].strip().upper() if i < len(tickers) and tickers[i] else '')),
             )
             db.session.add(leg)
 
@@ -1085,7 +1085,7 @@ def simulacao_edit(id):
                 strike=float(strikes[i].replace(',', '.')) if i < len(strikes) and strikes[i] else 0.0,
                 premium=float(premiums[i].replace(',', '.')) if i < len(premiums) and premiums[i] else 0.0,
                 expiration=exp,
-                ticker=(tickers[i].strip().upper() if i < len(tickers) and tickers[i] else ''),
+                ticker=(underlying if lt == 'STOCK' else (tickers[i].strip().upper() if i < len(tickers) and tickers[i] else '')),
             )
             db.session.add(leg)
 

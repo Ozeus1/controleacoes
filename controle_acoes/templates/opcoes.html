@@ -464,6 +464,7 @@
                 <td class="negative">R$ {{ "%.2f"|format(item.max_loss)|replace('.', ',') }}</td>
                 <td>{% if item.spread.pop %}{{ "%.1f"|format(item.spread.pop)|replace('.', ',') }}%{% else %}—{% endif %}</td>
                 <td class="actions">
+                    <a href="{{ url_for('payoff_spread', id=item.spread.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
                     <a href="{{ url_for('close_spread', id=item.spread.id) }}" class="btn btn-sm" style="background:var(--accent-color); color: white;" title="Encerrar">🛑</a>
                     <a href="{{ url_for('edit_spread', id=item.spread.id) }}" class="btn btn-sm btn-primary">✏️</a>
                     <a href="{{ url_for('delete_spread', id=item.spread.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Apagar?')">🗑️</a>
@@ -594,6 +595,7 @@
                     {% endif %}
                 </td>
                 <td class="actions">
+                    <a href="{{ url_for('payoff_estruturada', id=op.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
                     <a href="{{ url_for('edit_estruturada', id=op.id) }}" class="btn btn-sm btn-primary" title="Editar">✏️</a>
                     <form action="{{ url_for('close_estruturada', id=op.id) }}" method="post" style="display:inline;">
                         <button type="submit" class="btn btn-sm" style="background:var(--accent-color); color:white;"

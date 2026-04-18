@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width:960px; margin:0 auto; padding:1.5rem;">
+
+    <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1.2rem;">
+        <div>
+            <h2 style="margin:0;">{{ title }}</h2>
+            {% if underlying %}
+            <div style="color:var(--text-secondary); font-size:.9rem; margin-top:.25rem;">
+                Ativo: <strong>{{ underlying }}</strong>
+                {% if expiration %} &nbsp;·&nbsp; Vencimento: <strong>{{ expiration }}</strong>{% endif %}
+            </div>
+            {% endif %}
+        </div>
+        <a href="javascript:history.back()" class="btn btn-secondary btn-sm" style="margin-left:auto;">← Voltar</a>
+    </div>
+
+    {# ── Tabela de pernas ── #}
+    <div style="overflow-x:auto; margin-bottom:1.5rem;">
+        <table style="width:100%; border-collapse:collapse; font-size:.88rem;">
+            <thead>
+                <tr style="background:var(--hover-bg);">
+                    <th style="padding:.45rem .6rem; text-align:left;">C/V</th>
+                    <th style="padding:.45rem .6rem; text-align:left;">Qtd</th>
+                    <th style="padding:.45rem .6rem; text-align:left;">Ticker</th>
+                    <th style="padding:.45rem .6rem; text-align:left;">Tipo</th>
+                    <th style="padding:.45rem .6rem; text-align:right;">Strike</th>
+                    <th style="padding:.45rem .6rem; text-align:right;">Preço Entrada</th>
+                    <th style="padding:.45rem .6rem; text-align:right;">Total</th>
+                </tr>
+            </thead>
+            <tbody id="legs-tbody">
+            {% for leg in legs %}
+            {% set sign = 1 if leg.side == 'SELL' else -1 %}
+            {% set total = sign * leg.quantity * leg.entry_price %}
+                <tr style="border-bottom:1px solid var(--border-color);"
+                    data-side="{{ leg.side }}"
+                    data-opt-type="{{ leg.opt_type }}"
+                    data-qty="{{ leg.quantity }}"
+                    data-strike="{{ leg.strike }}"
+                    data-entry="{{ leg.entry_price }}"
+                    data-current="{{ leg.current_price }}">
+                    <td style="padding:.4rem .6rem;">
+                        <span style="display:inline-block; padding:.1rem .5rem; border-radius:4px; font-weight:700;
+                            background:{{ 'rgba(239,68,68,.15)' if leg.side=='SELL' else 'rgba(16,185,129,.15)' }};
+                            color:{{ 'var(--danger-color)' if leg.side=='SELL' else 'var(--success-color)' }};">
+                            {{ 'V' if leg.side == 'SELL' else 'C' }}
+                        </span>
+                    </td>
+                    <td style="padding:.4rem .6rem;">{{ leg.quantity }}</td>
+                    <td style="padding:.4rem .6rem;"><span class="ticker-badge">{{ leg.ticker }}</span></td>
+                    <td style="padding:.4rem .6rem;">{{ leg.opt_type }}</td>
+                    <td style="padding:.4rem .6rem; text-align:right;">R$ {{ "%.2f"|format(leg.strike)|replace('.', ',') }}</td>
+                    <td style="padding:.4rem .6rem; text-align:right;">R$ {{ "%.2f"|format(leg.entry_price)|replace('.', ',') }}</td>
+                    <td style="padding:.4rem .6rem; text-align:right;"
+                        class="{{ 'positive' if total >= 0 else 'negative' }}">
+                        R$ {{ "%.2f"|format(total|abs)|replace('.', ',') }}
+                        <small>{{ '(cred.)' if total >= 0 else '(déb.)' }}</small>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr style="font-weight:bold; background:var(--total-row-bg);">
+                    <td colspan="6" style="padding:.5rem .6rem; text-align:right;">Saldo da montagem:</td>
+                    <td id="tfoot-net" style="padding:.5rem .6rem; text-align:right;"></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    {# ── Métricas ── #}
+    <div id="metrics-bar" style="display:flex; gap:1.5rem; flex-wrap:wrap; margin-bottom:1.5rem;
+                                  background:var(--hover-bg); border-radius:8px; padding:.9rem 1.2rem;
+                                  border:1px solid var(--border-color); font-size:.88rem;">
+        <div><span style="color:var(--text-secondary);">Lucro máx.</span><br><strong id="m-max-gain" class="positive">—</strong></div>
+        <div><span style="color:var(--text-secondary);">Perda máx.</span><br><strong id="m-max-loss" class="negative">—</strong></div>
+        <div><span style="color:var(--text-secondary);">Breakeven(s)</span><br><strong id="m-be">—</strong></div>
+        <div><span style="color:var(--text-secondary);">Lucro atual</span><br><strong id="m-pnl">—</strong></div>
+    </div>
+
+    {# ── Gráfico ── #}
+    <div style="position:relative; height:380px;">
+        <canvas id="payoff-chart"></canvas>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    // ── Lê pernas da tabela ──────────────────────────────────────────────────
+    var legs = [];
+    document.querySelectorAll('#legs-tbody tr').forEach(function (tr) {
+        legs.push({
+            side:    tr.dataset.side,
+            type:    tr.dataset.optType,
+            qty:     parseFloat(tr.dataset.qty),
+            strike:  parseFloat(tr.dataset.strike) || 0,
+            entry:   parseFloat(tr.dataset.entry)  || 0,
+            current: parseFloat(tr.dataset.current) || 0,
+        });
+    });
+
+    // ── Funções de payoff ────────────────────────────────────────────────────
+    function netPremium() {
+        return legs.reduce(function (acc, l) {
+            return acc + (l.side === 'SELL' ? 1 : -1) * l.qty * l.entry;
+        }, 0);
+    }
+
+    function payoffAt(S) {
+        var total = netPremium();
+        legs.forEach(function (l) {
+            var sign = l.side === 'BUY' ? 1 : -1;
+            if (l.type === 'CALL') total += sign * l.qty * Math.max(0, S - l.strike);
+            else                    total += sign * l.qty * Math.max(0, l.strike - S);
+        });
+        return total;
+    }
+
+    function currentPnl() {
+        return legs.reduce(function (acc, l) {
+            return acc + (l.side === 'SELL'
+                ? l.qty * (l.entry - l.current)
+                : l.qty * (l.current - l.entry));
+        }, 0);
+    }
+
+    // ── Faixa de preços do ativo ─────────────────────────────────────────────
+    var strikes = legs.map(function (l) { return l.strike; }).filter(Boolean);
+    var minK = strikes.length ? Math.min.apply(null, strikes) : 10;
+    var maxK = strikes.length ? Math.max.apply(null, strikes) : 60;
+    var pad = (maxK - minK) * 0.6 || maxK * 0.5;
+    var Smin = Math.max(0, minK - pad);
+    var Smax = maxK + pad;
+    var N = 300;
+    var step = (Smax - Smin) / N;
+
+    var labels = [], data = [];
+    for (var i = 0; i <= N; i++) {
+        var S = Smin + i * step;
+        labels.push(S.toFixed(2));
+        data.push(parseFloat(payoffAt(S).toFixed(2)));
+    }
+
+    // ── Métricas ─────────────────────────────────────────────────────────────
+    var net = netPremium();
+    var allPayoffs = data;
+    var maxGain = Math.max.apply(null, allPayoffs);
+    var maxLoss = Math.min.apply(null, allPayoffs);
+
+    // Breakevens: cruzamentos de zero
+    var breakevens = [];
+    for (var j = 0; j < data.length - 1; j++) {
+        var p1 = data[j], p2 = data[j + 1];
+        if (p1 === 0 && breakevens.indexOf(parseFloat(labels[j])) < 0) {
+            breakevens.push(parseFloat(labels[j]));
+        } else if (p1 * p2 < 0) {
+            var S1 = parseFloat(labels[j]), S2 = parseFloat(labels[j + 1]);
+            var be = S1 + (-p1) * (S2 - S1) / (p2 - p1);
+            breakevens.push(parseFloat(be.toFixed(2)));
+        }
+    }
+
+    function fmtBRL(v) {
+        return 'R$ ' + Math.abs(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+
+    // Preenche métricas
+    var mgEl = document.getElementById('m-max-gain');
+    var mlEl = document.getElementById('m-max-loss');
+    var pnl  = currentPnl();
+
+    mgEl.textContent = maxGain > 1e6 ? '∞' : fmtBRL(maxGain);
+    mlEl.textContent = maxLoss < -1e6 ? '-∞' : fmtBRL(maxLoss);
+    document.getElementById('m-be').textContent =
+        breakevens.length ? breakevens.map(function(b){ return fmtBRL(b); }).join(' / ') : '—';
+    var pnlEl = document.getElementById('m-pnl');
+    pnlEl.textContent = fmtBRL(pnl);
+    pnlEl.className = pnl >= 0 ? 'positive' : 'negative';
+
+    // Tfoot saldo
+    var tfEl = document.getElementById('tfoot-net');
+    tfEl.textContent = fmtBRL(net) + (net >= 0 ? ' (crédito)' : ' (débito)');
+    tfEl.className = net >= 0 ? 'positive' : 'negative';
+
+    // ── Cores por segmento (verde acima do zero, vermelho abaixo) ────────────
+    function segmentColors(ctx) {
+        var chart = ctx.chart;
+        var yScale = chart.scales.y;
+        var yZero = yScale.getPixelForValue(0);
+        var gradient = chart.ctx.createLinearGradient(0, chart.chartArea.top, 0, chart.chartArea.bottom);
+        var topRatio = Math.max(0, Math.min(1, (chart.chartArea.top - yZero) / (chart.chartArea.top - chart.chartArea.bottom)));
+        var botRatio = 1 - topRatio;
+        // above zero = green, below zero = red
+        gradient.addColorStop(0,         'rgba(16,185,129,0.85)');
+        gradient.addColorStop(topRatio,   'rgba(16,185,129,0.85)');
+        gradient.addColorStop(topRatio,   'rgba(239,68,68,0.85)');
+        gradient.addColorStop(1,          'rgba(239,68,68,0.85)');
+        return gradient;
+    }
+
+    // ── Linhas verticais nos strikes e breakevens ────────────────────────────
+    var annotations = {};
+    strikes.forEach(function(K, idx) {
+        annotations['strike' + idx] = {
+            type: 'line',
+            xMin: K.toFixed(2), xMax: K.toFixed(2),
+            borderColor: 'rgba(148,163,184,0.6)',
+            borderWidth: 1,
+            borderDash: [4,4],
+            label: { display: true, content: 'K=' + K.toFixed(2), position: 'start', font: {size: 11} }
+        };
+    });
+    breakevens.forEach(function(be, idx) {
+        annotations['be' + idx] = {
+            type: 'line',
+            xMin: be.toFixed(2), xMax: be.toFixed(2),
+            borderColor: 'rgba(234,179,8,0.9)',
+            borderWidth: 2,
+            label: { display: true, content: 'BE ' + fmtBRL(be), position: 'end',
+                     color: '#ca8a04', font: {size: 11, weight:'bold'} }
+        };
+    });
+
+    // ── Chart.js ─────────────────────────────────────────────────────────────
+    var ctx = document.getElementById('payoff-chart').getContext('2d');
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Payoff no vencimento',
+                data: data,
+                borderColor: function(ctx2) { return segmentColors(ctx2); },
+                backgroundColor: function(ctx2) {
+                    var c = segmentColors(ctx2);
+                    return c;
+                },
+                borderWidth: 2.5,
+                fill: true,
+                tension: 0,
+                pointRadius: 0,
+                segment: {
+                    borderColor: function(ctx2) {
+                        return ctx2.p0.parsed.y >= 0 ? 'rgba(16,185,129,1)' : 'rgba(239,68,68,1)';
+                    },
+                    backgroundColor: function(ctx2) {
+                        return ctx2.p0.parsed.y >= 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)';
+                    }
+                }
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: function(items) { return 'Preço ativo: R$ ' + parseFloat(items[0].label).toLocaleString('pt-BR', {minimumFractionDigits:2}); },
+                        label: function(item) {
+                            var v = item.raw;
+                            return (v >= 0 ? 'Lucro: +' : 'Prejuízo: ') + fmtBRL(v);
+                        },
+                        labelColor: function(item) {
+                            return { backgroundColor: item.raw >= 0 ? '#10b981' : '#ef4444', borderColor: 'transparent' };
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: {
+                        maxTicksLimit: 12,
+                        callback: function(val, idx, ticks) {
+                            return parseFloat(this.getLabelForValue(val)).toLocaleString('pt-BR', {minimumFractionDigits:2});
+                        }
+                    },
+                    title: { display: true, text: 'Preço do Ativo no Vencimento (R$)' }
+                },
+                y: {
+                    grid: { color: function(ctx2) { return ctx2.tick.value === 0 ? 'rgba(100,116,139,0.6)' : 'rgba(100,116,139,0.15)'; } },
+                    ticks: {
+                        callback: function(v) { return (v >= 0 ? '' : '-') + fmtBRL(v); }
+                    },
+                    title: { display: true, text: 'Resultado (R$)' }
+                }
+            }
+        }
+    });
+})();
+</script>
+{% endblock %}

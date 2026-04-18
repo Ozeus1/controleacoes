@@ -960,6 +960,78 @@ def delete_estruturada(id):
     return redirect(url_for('opcoes'))
 
 
+@app.route('/payoff/spread/<int:id>')
+@login_required
+def payoff_spread(id):
+    sp = OptionSpread.query.get_or_404(id)
+    if sp.user_id != current_user.id:
+        flash('Sem permissão.', 'danger')
+        return redirect(url_for('opcoes'))
+
+    # Monta estrutura de legs para o template (mesma interface das estruturadas)
+    is_credit = (sp.leg_short_price - sp.leg_long_price) >= 0
+    type_labels = {
+        'TRAVA_ALTA_PUT':   'Trava de Alta com Puts',
+        'TRAVA_ALTA_CALL':  'Trava de Alta com Calls',
+        'TRAVA_BAIXA_PUT':  'Trava de Baixa com Puts',
+        'TRAVA_BAIXA_CALL': 'Trava de Baixa com Calls',
+    }
+    is_put = 'PUT' in sp.spread_type
+    legs = [
+        {
+            'ticker':      sp.leg_long_ticker,
+            'side':        'BUY',
+            'opt_type':    'PUT' if is_put else 'CALL',
+            'quantity':    sp.quantity,
+            'strike':      sp.leg_long_strike,
+            'entry_price': sp.leg_long_price,
+            'current_price': sp.leg_long_current,
+        },
+        {
+            'ticker':      sp.leg_short_ticker,
+            'side':        'SELL',
+            'opt_type':    'PUT' if is_put else 'CALL',
+            'quantity':    sp.quantity,
+            'strike':      sp.leg_short_strike,
+            'entry_price': sp.leg_short_price,
+            'current_price': sp.leg_short_current,
+        },
+    ]
+    return render_template('payoff.html',
+                           title=type_labels.get(sp.spread_type, sp.spread_type),
+                           underlying=sp.underlying_asset,
+                           expiration=sp.expiration_date.strftime('%d/%m/%Y') if sp.expiration_date else '',
+                           legs=legs)
+
+
+@app.route('/payoff/estruturada/<int:id>')
+@login_required
+def payoff_estruturada(id):
+    op = StructuredOp.query.get_or_404(id)
+    if op.user_id != current_user.id:
+        flash('Sem permissão.', 'danger')
+        return redirect(url_for('opcoes'))
+    legs = [
+        {
+            'ticker':       leg.ticker,
+            'side':         leg.side,
+            'opt_type':     leg.opt_type,
+            'quantity':     leg.quantity,
+            'strike':       leg.strike,
+            'entry_price':  leg.entry_price,
+            'current_price': leg.current_price,
+        }
+        for leg in op.legs
+    ]
+    exp_dates = [leg.expiration_date for leg in op.legs if leg.expiration_date]
+    expiration = max(exp_dates).strftime('%d/%m/%Y') if exp_dates else ''
+    return render_template('payoff.html',
+                           title=op.name,
+                           underlying=op.underlying_asset or '',
+                           expiration=expiration,
+                           legs=legs)
+
+
 @app.route('/edit_option/<int:id>', methods=['GET', 'POST'])
 @login_required
 def edit_option(id):

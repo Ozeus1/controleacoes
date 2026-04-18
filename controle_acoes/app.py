@@ -4325,21 +4325,51 @@ _oplab_last_update: dict = {}   # user_id → datetime of last successful update
 
 def _do_oplab_bulk_update(uid: int, token: str):
     """
-    Calls GET /v3/market/quote?tickers=... (bulk) for all assets + options
-    of user `uid` and updates the DB.  Returns (assets_ok, options_ok).
+    Busca cotações via GET /v3/market/quote?tickers=... e atualiza o DB para:
+      - Todos os Assets do usuário (qty ≥ 0 — inclui swingtrade sem posição)
+      - Todas as Options (VENDA_CALL, VENDA_PUT, COMPRA_CALL, COMPRA_PUT)
+      - Underlying assets das Options (para exibição correta em /opcoes e /estudos)
+      - StudyOption: option_price + underlying_price
+      - OptionSpread: leg_long_current + leg_short_current
+    Retorna (assets_ok, options_ok).
     """
-    BASE = 'https://api.oplab.com.br/v3'
+    BASE    = 'https://api.oplab.com.br/v3'
     headers = {'Access-Token': token}
 
-    assets  = Asset.query.filter(Asset.user_id == uid, Asset.quantity > 0).all()
-    options = Option.query.filter_by(user_id=uid).all()
+    # ── Coleta todos os registros ─────────────────────────────────
+    assets        = Asset.query.filter_by(user_id=uid).all()
+    options       = Option.query.filter_by(user_id=uid).all()
+    study_options = StudyOption.query.filter_by(user_id=uid).all()
+    spreads       = OptionSpread.query.filter_by(user_id=uid).all()
 
-    all_tickers = list({a.ticker for a in assets} | {o.ticker for o in options})
+    # ── Monta conjunto de tickers a buscar ────────────────────────
+    asset_tickers  = {a.ticker.upper() for a in assets}
+    option_tickers = {o.ticker.upper() for o in options}
+
+    # Underlying das options registradas (para atualizar current_price do ativo)
+    for o in options:
+        if o.underlying_asset:
+            asset_tickers.add(o.underlying_asset.upper())
+
+    # Tickers das StudyOptions e seus underlyings
+    for so in study_options:
+        option_tickers.add(so.ticker.upper())
+        if so.underlying_asset:
+            asset_tickers.add(so.underlying_asset.upper())
+
+    # Legs dos spreads
+    for sp in spreads:
+        if sp.leg_long_ticker:
+            option_tickers.add(sp.leg_long_ticker.upper())
+        if sp.leg_short_ticker:
+            option_tickers.add(sp.leg_short_ticker.upper())
+
+    all_tickers = list(asset_tickers | option_tickers)
     if not all_tickers:
         return 0, 0
 
+    # ── Busca preços em lotes de 150 ──────────────────────────────
     prices: dict = {}
-    # OpLab accepts up to ~200 tickers per call; chunk by 150 to be safe
     CHUNK = 150
     for i in range(0, len(all_tickers), CHUNK):
         chunk = all_tickers[i:i + CHUNK]
@@ -4363,19 +4393,56 @@ def _do_oplab_bulk_update(uid: int, token: str):
         return 0, 0
 
     now = datetime.now()
+
+    # ── Atualiza Assets (ações, FIIs, ETFs — todas as páginas) ────
     assets_ok = 0
     for a in assets:
-        if a.ticker in prices:
-            a.current_price = prices[a.ticker]
+        key = a.ticker.upper()
+        if key in prices and prices[key] > 0:
+            a.current_price = prices[key]
             a.last_update   = now
             assets_ok += 1
 
+    # ── Atualiza Options (todas as tabelas de /opcoes) ────────────
     options_ok = 0
     for o in options:
-        if o.ticker in prices:
-            o.current_option_price = prices[o.ticker]
+        key = o.ticker.upper()
+        if key in prices and prices[key] > 0:
+            o.current_option_price = prices[key]
             o.last_update          = now
             options_ok += 1
+        # Atualiza underlying do asset (para exibição em /opcoes e /estudos)
+        if o.underlying_asset:
+            uk = o.underlying_asset.upper()
+            if uk in prices and prices[uk] > 0:
+                asset = next((a for a in assets if a.ticker.upper() == uk), None)
+                if asset:
+                    asset.current_price = prices[uk]
+                    asset.last_update   = now
+
+    # ── Atualiza StudyOptions (/estudos) ──────────────────────────
+    for so in study_options:
+        changed = False
+        opt_key = so.ticker.upper()
+        if opt_key in prices and prices[opt_key] > 0:
+            so.option_price = prices[opt_key]
+            changed = True
+        if so.underlying_asset:
+            uk = so.underlying_asset.upper()
+            if uk in prices and prices[uk] > 0:
+                so.underlying_price = prices[uk]
+                changed = True
+
+    # ── Atualiza OptionSpreads (/spreads) ─────────────────────────
+    for sp in spreads:
+        if sp.leg_long_ticker:
+            k = sp.leg_long_ticker.upper()
+            if k in prices and prices[k] > 0:
+                sp.leg_long_current = prices[k]
+        if sp.leg_short_ticker:
+            k = sp.leg_short_ticker.upper()
+            if k in prices and prices[k] > 0:
+                sp.leg_short_current = prices[k]
 
     try:
         db.session.commit()

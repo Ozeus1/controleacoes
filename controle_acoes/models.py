@@ -110,7 +110,8 @@ class Option(db.Model):
     
     # Manual update field
     current_option_price = db.Column(db.Float, default=0.0)
-    
+    daily_change         = db.Column(db.Float, nullable=True)  # variação % no dia
+
     # Entry Date (Requested Feature)
     entry_date = db.Column(db.Date, nullable=True)
     

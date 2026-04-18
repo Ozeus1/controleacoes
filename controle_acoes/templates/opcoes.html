@@ -30,6 +30,7 @@
                 <th>Lastro</th>
                 <th>Total</th>
                 <th>Cotação Opção</th>
+                <th>Var dia %</th>
                 <th>Lucro R$</th>
                 <th>Lucro %</th>
                 <th>Lucro Ação Ex.R$</th>
@@ -57,6 +58,10 @@
                 </td>
                 <td>R$ {{ "%.2f"|format(item.total_sold)|replace('.', ',') }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td data-optticker="{{ item.option.ticker }}" data-field="opt_change"
+                    class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%
+                </td>
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
                     R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
                 </td>
@@ -92,7 +97,7 @@
                 <td></td><td></td><td></td><td></td><td></td><td></td>
                 <td></td><td></td><td></td>
                 <td>{{ options|sum(attribute='total_sold') | brl }}</td>
-                <td></td>
+                <td></td><td></td><td></td>
                 <td class="{{ 'positive' if options|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ options|sum(attribute='profit') | brl }}
                 </td>
@@ -143,6 +148,7 @@
                 <th>Prêmio Recebido</th>
                 <th>Total Recebido</th>
                 <th>Cotação Opção</th>
+                <th>Var dia %</th>
                 <th>Valor Atual</th>
                 <th>Lucro R$</th>
                 <th>Lucro %</th>
@@ -175,6 +181,10 @@
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.total_sold)|replace('.', ',') }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td data-optticker="{{ item.option.ticker }}" data-field="opt_change"
+                    class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%
+                </td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_value" data-qty="{{ item.option.quantity }}">R$ {{ "%.2f"|format(item.current_val)|replace('.', ',') }}</td>
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
                     R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
@@ -199,7 +209,7 @@
                 <td></td><td></td><td></td><td></td><td></td>
                 <td></td><td></td><td></td>
                 <td>{{ venda_puts|sum(attribute='total_sold') | brl }}</td>
-                <td></td>
+                <td></td><td></td>
                 <td>{{ venda_puts|sum(attribute='current_val') | brl }}</td>
                 <td class="{{ 'positive' if venda_puts|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ venda_puts|sum(attribute='profit') | brl }}
@@ -243,6 +253,7 @@
                 <th>Valor Compra</th>
                 <th>Total Investido</th>
                 <th>Cotação Opção</th>
+                <th>Var dia %</th>
                 <th>Valor Atual</th>
                 <th>Lucro R$</th>
                 <th>Lucro %</th>
@@ -262,6 +273,10 @@
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td data-optticker="{{ item.option.ticker }}" data-field="opt_change"
+                    class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%
+                </td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_value" data-qty="{{ item.option.quantity }}">R$ {{ "%.2f"|format(item.current_value)|replace('.', ',') }}</td>
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
                     R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
@@ -284,7 +299,7 @@
                 <td>TOTAL</td>
                 <td></td><td></td><td></td><td></td><td></td><td></td>
                 <td>{{ compra_calls|sum(attribute='total_invested') | brl }}</td>
-                <td></td>
+                <td></td><td></td>
                 <td>{{ compra_calls|sum(attribute='current_value') | brl }}</td>
                 <td class="{{ 'positive' if compra_calls|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ compra_calls|sum(attribute='profit') | brl }}
@@ -328,6 +343,7 @@
                 <th>Valor Compra</th>
                 <th>Total Investido</th>
                 <th>Cotação Opção</th>
+                <th>Var dia %</th>
                 <th>Valor Atual</th>
                 <th>Lucro R$</th>
                 <th>Lucro %</th>
@@ -347,6 +363,10 @@
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td data-optticker="{{ item.option.ticker }}" data-field="opt_change"
+                    class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%
+                </td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_value" data-qty="{{ item.option.quantity }}">R$ {{ "%.2f"|format(item.current_value)|replace('.', ',') }}</td>
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
                     R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
@@ -369,7 +389,7 @@
                 <td>TOTAL</td>
                 <td></td><td></td><td></td><td></td><td></td><td></td>
                 <td>{{ compra_puts|sum(attribute='total_invested') | brl }}</td>
-                <td></td>
+                <td></td><td></td>
                 <td>{{ compra_puts|sum(attribute='current_value') | brl }}</td>
                 <td class="{{ 'positive' if compra_puts|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ compra_puts|sum(attribute='profit') | brl }}
@@ -489,6 +509,13 @@
         document.querySelectorAll('[data-field="opt_value"]').forEach(function(el) {
             const d = options[el.dataset.optticker];
             if (d) el.textContent = fmtBRL(parseFloat(el.dataset.qty) * d.price);
+        });
+        document.querySelectorAll('[data-field="opt_change"]').forEach(function(el) {
+            const d = options[el.dataset.optticker];
+            if (d && d.change !== undefined) {
+                el.textContent = d.change.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) + '%';
+                el.className = d.change >= 0 ? 'positive' : 'negative';
+            }
         });
     }
     function makeBadge(text, color) {

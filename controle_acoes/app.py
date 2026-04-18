@@ -204,11 +204,12 @@ def run_migrations():
     # Add study columns to option table
     cursor.execute("PRAGMA table_info(option)")
     opt_cols2 = {row[1] for row in cursor.fetchall()}
-    if 'vdx'   not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN vdx FLOAT")
-    if 'nv'    not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN nv FLOAT")
-    if 've'    not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN ve FLOAT")
-    if 'delta' not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN delta FLOAT")
-    if 'gama'  not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN gama FLOAT")
+    if 'vdx'          not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN vdx FLOAT")
+    if 'nv'           not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN nv FLOAT")
+    if 've'           not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN ve FLOAT")
+    if 'delta'        not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN delta FLOAT")
+    if 'gama'         not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN gama FLOAT")
+    if 'daily_change' not in opt_cols2: cursor.execute("ALTER TABLE 'option' ADD COLUMN daily_change FLOAT")
 
     # Create study_option table
     cursor.execute("""
@@ -4304,6 +4305,7 @@ def api_current_quotes():
     for o in Option.query.filter_by(user_id=uid).all():
         options_data[o.ticker] = {
             'price':   round(o.current_option_price or 0, 2),
+            'change':  round(o.daily_change or 0, 2),
             'updated': o.last_update.strftime('%H:%M') if o.last_update else '-'
         }
 
@@ -4369,7 +4371,9 @@ def _do_oplab_bulk_update(uid: int, token: str):
         return 0, 0
 
     # ── Busca preços em lotes de 150 ──────────────────────────────
-    prices: dict = {}
+    prices:     dict = {}   # ticker → close price
+    variations: dict = {}   # ticker → variation % do dia
+
     CHUNK = 150
     for i in range(0, len(all_tickers), CHUNK):
         chunk = all_tickers[i:i + CHUNK]
@@ -4384,8 +4388,11 @@ def _do_oplab_bulk_update(uid: int, token: str):
                 for item in r.json():
                     sym   = str(item.get('symbol', '')).upper()
                     close = item.get('close')
+                    var   = item.get('variation')
                     if sym and close is not None:
                         prices[sym] = float(close)
+                    if sym and var is not None:
+                        variations[sym] = float(var)
         except Exception:
             pass
 
@@ -4411,6 +4418,8 @@ def _do_oplab_bulk_update(uid: int, token: str):
             o.current_option_price = prices[key]
             o.last_update          = now
             options_ok += 1
+        if key in variations:
+            o.daily_change = variations[key]
         # Atualiza underlying do asset (para exibição em /opcoes e /estudos)
         if o.underlying_asset:
             uk = o.underlying_asset.upper()

@@ -3231,12 +3231,18 @@ def importar_excel():
             if isinstance(price, (int, float)):
                 opcao_prices[key] = float(price)
 
-    # Atualiza Option.current_option_price para todos os tipos
+    # Atualiza Option.current_option_price + daily_change para todos os tipos
     for ticker, price in opcao_prices.items():
         opt = Option.query.filter_by(ticker=ticker, user_id=current_user.id).first()
         if opt:
             opt.current_option_price = price
             opt.last_update = datetime.now()
+            # Coluna J (índice 9) = VAR — variação diária %
+            row = rtd_data.get(ticker)
+            if row and len(row) > 9:
+                v = row[9]
+                if isinstance(v, (int, float)):
+                    opt.daily_change = float(v)
             opcoes_atualizadas += 1
 
     # ── Helpers rtd ──────────────────────────────────────────────────
@@ -3829,6 +3835,15 @@ def oplab_test():
     ticker = request.form.get('ticker', 'PETR4').strip().upper()
     BASE = 'https://api.oplab.com.br/v3'
     results = {}
+    # Testa endpoint bulk /market/quote (usado no auto-update)
+    try:
+        r = requests.get(f'{BASE}/market/quote',
+                         params={'tickers': ticker},
+                         headers={'Access-Token': token}, timeout=10)
+        results['/market/quote'] = {'status': r.status_code, 'body': r.json() if r.content else {}}
+    except Exception as e:
+        results['/market/quote'] = {'error': str(e)}
+    # Testa endpoints individuais para diagnóstico
     endpoints = [
         f'/instruments/{ticker}',
         f'/market/instruments/{ticker}',
@@ -4388,7 +4403,13 @@ def _do_oplab_bulk_update(uid: int, token: str):
                 for item in r.json():
                     sym   = str(item.get('symbol', '')).upper()
                     close = item.get('close')
-                    var   = item.get('variation')
+                    # Tenta múltiplos nomes de campo para variação diária %
+                    var = None
+                    for _vk in ('variation', 'change', 'pct_change',
+                                'percentChange', 'dailyChange', 'change_pct'):
+                        if _vk in item and item[_vk] is not None:
+                            var = item[_vk]
+                            break
                     if sym and close is not None:
                         prices[sym] = float(close)
                     if sym and var is not None:

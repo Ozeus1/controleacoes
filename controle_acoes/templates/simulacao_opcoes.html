@@ -1,239 +1,229 @@
 {% extends "base.html" %}
 {% block extra_scripts %}
 <style>
-/* ── Layout geral ── */
-#sim-layout {
-    display: flex;
-    gap: 1.2rem;
-    align-items: flex-start;
-    flex-wrap: wrap;
-}
-#sim-sidebar {
-    flex: 0 0 240px;
-    min-width: 200px;
-}
-#sim-main {
-    flex: 1;
-    min-width: 0;
-}
-/* ── Sidebar lista ── */
-.sim-item {
-    display: flex;
-    align-items: center;
-    gap: .4rem;
-    padding: .55rem .75rem;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: .87rem;
-    transition: background .15s;
-    border: 1px solid transparent;
-}
-.sim-item:hover { background: var(--hover-bg); }
-.sim-item.active { background: var(--hover-bg); border-color: var(--accent-color); }
-.sim-item-name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sim-item-date { font-size: .75rem; color: var(--text-secondary); }
 /* ── Tabela de pernas ── */
 #legs-table { width: 100%; border-collapse: collapse; font-size: .87rem; }
 #legs-table th { padding: .4rem .5rem; text-align: left; white-space: nowrap; background: var(--hover-bg); }
 #legs-table td { padding: .3rem .4rem; }
-#legs-table input, #legs-table select { background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px; padding: .2rem .4rem; }
+#legs-table input, #legs-table select {
+    background: var(--card-bg); color: var(--text-primary);
+    border: 1px solid var(--border-color); border-radius: 4px; padding: .25rem .4rem;
+}
+/* ── Lista de simulações ── */
+.sim-item {
+    display: flex; align-items: center; gap: .5rem;
+    padding: .5rem .7rem; border-radius: 6px; cursor: pointer;
+    font-size: .87rem; transition: background .15s; border: 1px solid transparent;
+}
+.sim-item:hover  { background: var(--hover-bg); }
+.sim-item.active { background: var(--hover-bg); border-color: var(--accent-color); }
+.sim-item-name { flex: 1; font-weight: 500; }
+.sim-item-meta { font-size: .75rem; color: var(--text-secondary); white-space: nowrap; }
 /* ── Gráfico ── */
-#chart-wrap { position: relative; width: 100%; background: var(--hover-bg); border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; margin-top: 1rem; }
+#chart-wrap { position: relative; width: 100%; background: var(--hover-bg);
+    border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; margin-top: 1rem; }
 #payoff-canvas { display: block; width: 100%; }
-#chart-tooltip { display: none; position: absolute; background: var(--card-bg, #1e293b); border: 1px solid var(--border-color); border-radius: 6px; padding: .35rem .65rem; font-size: .82rem; pointer-events: none; white-space: nowrap; z-index: 10; }
+#chart-tooltip { display: none; position: absolute; background: var(--card-bg,#1e293b);
+    border: 1px solid var(--border-color); border-radius: 6px; padding: .35rem .65rem;
+    font-size: .82rem; pointer-events: none; white-space: nowrap; z-index: 10; }
 /* ── Métricas ── */
-#metrics { display: flex; gap: 1.4rem; flex-wrap: wrap; background: var(--hover-bg); border: 1px solid var(--border-color); border-radius: 8px; padding: .8rem 1.1rem; font-size: .88rem; margin-top: .9rem; }
+#metrics { display: flex; gap: 1.4rem; flex-wrap: wrap; background: var(--hover-bg);
+    border: 1px solid var(--border-color); border-radius: 8px;
+    padding: .8rem 1.1rem; font-size: .88rem; margin-top: .9rem; }
 #metrics div span:first-child { color: var(--text-secondary); }
 </style>
 {% endblock %}
 
 {% block content %}
-<div style="margin-bottom:1rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+<div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1.2rem;">
     <h2 style="margin:0;">📈 Simulação de Opções</h2>
-    <button class="btn btn-primary btn-sm" onclick="novaSimulacao()">+ Nova Simulação</button>
+    <a href="{{ url_for('simulacao_new') }}" class="btn btn-primary btn-sm">+ Nova Simulação</a>
 </div>
 
-<div id="sim-layout">
-
-    {# ── Sidebar: estudos salvos ── #}
-    <div id="sim-sidebar" class="card" style="padding:.8rem;">
-        <div style="font-size:.8rem; color:var(--text-secondary); margin-bottom:.6rem; font-weight:600; text-transform:uppercase; letter-spacing:.04em;">Simulações Salvas</div>
-        {% if sims %}
-        <div id="sim-list">
-            {% for s in sims %}
-            <div class="sim-item {{ 'active' if sim and sim.id == s.id else '' }}"
-                 onclick="window.location='{{ url_for('simulacao_edit', id=s.id) }}'">
-                <div>
-                    <div class="sim-item-name">{{ s.name }}</div>
-                    <div class="sim-item-date">{{ s.underlying or '—' }} · {{ s.created_at.strftime('%d/%m/%y') if s.created_at else '' }}</div>
-                </div>
-                <form action="{{ url_for('simulacao_delete', id=s.id) }}" method="post" style="margin:0;"
-                      onclick="event.stopPropagation()">
-                    <button type="submit" class="btn btn-sm btn-danger" style="padding:.1rem .4rem; font-size:.8rem;"
-                            onclick="return confirm('Excluir?')">🗑️</button>
-                </form>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <p style="font-size:.85rem; color:var(--text-secondary);">Nenhuma simulação salva.</p>
-        {% endif %}
+{# ── 1. Lista de simulações salvas (topo, largura total) ── #}
+{% if sims %}
+<div class="card" style="padding:.9rem; margin-bottom:1.2rem;">
+    <div style="font-size:.8rem; color:var(--text-secondary); font-weight:600;
+                text-transform:uppercase; letter-spacing:.04em; margin-bottom:.6rem;">
+        Simulações Salvas
     </div>
-
-    {# ── Área principal: formulário + gráfico ── #}
-    <div id="sim-main">
-        <div class="card" style="padding:1.2rem;">
-
-            <form id="sim-form" method="POST"
-                  action="{{ url_for('simulacao_edit', id=sim.id) if sim else url_for('simulacao_new') }}">
-
-                {# Nome e ativo #}
-                <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;">
-                    <div class="form-group" style="flex:2; min-width:180px; margin-bottom:0;">
-                        <label>Nome / Descrição</label>
-                        <input type="text" name="name" required placeholder="Ex: Borboleta PETR4 Mai/25"
-                               value="{{ sim.name if sim else '' }}" style="width:100%;"
-                               oninput="scheduleRedraw()">
-                    </div>
-                    <div class="form-group" style="flex:1; min-width:110px; margin-bottom:0;">
-                        <label>Ativo Subjacente</label>
-                        <input type="text" name="underlying" placeholder="PETR4" style="width:100%; text-transform:uppercase;"
-                               value="{{ sim.underlying if sim else '' }}">
-                    </div>
-                </div>
-
-                {# Tabela de pernas #}
-                <div style="overflow-x:auto; margin-bottom:.8rem;">
-                <table id="legs-table">
-                    <thead>
-                        <tr>
-                            <th>Tipo</th>
-                            <th>C/V</th>
-                            <th style="text-align:center;">Qtd</th>
-                            <th style="text-align:right;">Strike</th>
-                            <th style="text-align:right;">Prêmio / Preço</th>
-                            <th>Vencimento</th>
-                            <th>Ticker</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody id="legs-body">
-                    {% if sim and sim.legs %}
-                        {% for leg in sim.legs %}
-                        <tr class="leg-row">
-                            <td>
-                                <select name="leg_type" onchange="legTypeChanged(this); scheduleRedraw();" style="width:70px;">
-                                    <option value="CALL" {% if leg.leg_type=='CALL' %}selected{% endif %}>CALL</option>
-                                    <option value="PUT"  {% if leg.leg_type=='PUT'  %}selected{% endif %}>PUT</option>
-                                    <option value="STOCK"{% if leg.leg_type=='STOCK'%}selected{% endif %}>AÇÃO</option>
-                                </select>
-                            </td>
-                            <td>
-                                <select name="leg_side" onchange="scheduleRedraw();" style="width:85px;">
-                                    <option value="BUY"  {% if leg.side=='BUY'  %}selected{% endif %}>COMPRA</option>
-                                    <option value="SELL" {% if leg.side=='SELL' %}selected{% endif %}>VENDA</option>
-                                </select>
-                            </td>
-                            <td><input type="number" name="leg_qty" value="{{ leg.quantity }}" min="1"
-                                       style="width:60px; text-align:center;" oninput="scheduleRedraw()"></td>
-                            <td><input type="text" name="leg_strike"
-                                       value="{{ '%.2f'|format(leg.strike)|replace('.', ',') }}"
-                                       placeholder="0,00" style="width:75px; text-align:right;"
-                                       {% if leg.leg_type=='STOCK' %}disabled{% endif %}
-                                       oninput="scheduleRedraw()"></td>
-                            <td><input type="text" name="leg_premium"
-                                       value="{{ '%.2f'|format(leg.premium)|replace('.', ',') }}"
-                                       placeholder="0,00" style="width:80px; text-align:right;"
-                                       oninput="scheduleRedraw()"></td>
-                            <td><input type="date" name="leg_exp"
-                                       value="{{ leg.expiration.isoformat() if leg.expiration else '' }}"
-                                       style="width:130px;" {% if leg.leg_type=='STOCK' %}disabled{% endif %}></td>
-                            <td><input type="text" name="leg_ticker" value="{{ leg.ticker }}"
-                                       style="width:80px; text-transform:uppercase;"></td>
-                            <td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
-                        </tr>
-                        {% endfor %}
-                    {% else %}
-                        {# linha inicial vazia #}
-                        <tr class="leg-row">
-                            <td>
-                                <select name="leg_type" onchange="legTypeChanged(this); scheduleRedraw();" style="width:70px;">
-                                    <option value="CALL">CALL</option>
-                                    <option value="PUT">PUT</option>
-                                    <option value="STOCK">AÇÃO</option>
-                                </select>
-                            </td>
-                            <td>
-                                <select name="leg_side" onchange="scheduleRedraw();" style="width:85px;">
-                                    <option value="BUY">COMPRA</option>
-                                    <option value="SELL">VENDA</option>
-                                </select>
-                            </td>
-                            <td><input type="number" name="leg_qty" value="1" min="1"
-                                       style="width:60px; text-align:center;" oninput="scheduleRedraw()"></td>
-                            <td><input type="text" name="leg_strike" placeholder="0,00"
-                                       style="width:75px; text-align:right;" oninput="scheduleRedraw()"></td>
-                            <td><input type="text" name="leg_premium" placeholder="0,00"
-                                       style="width:80px; text-align:right;" oninput="scheduleRedraw()"></td>
-                            <td><input type="date" name="leg_exp" style="width:130px;"></td>
-                            <td><input type="text" name="leg_ticker" style="width:80px; text-transform:uppercase;"></td>
-                            <td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
-                        </tr>
-                    {% endif %}
-                    </tbody>
-                </table>
-                </div>
-
-                <div style="display:flex; gap:.7rem; align-items:center; flex-wrap:wrap; margin-bottom:.5rem;">
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('CALL')">+ Call</button>
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('PUT')">+ Put</button>
-                    <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('STOCK')">+ Ação</button>
-                    <button type="submit" class="btn btn-primary btn-sm">💾 Salvar</button>
-                    {% if sim %}
-                    <a href="{{ url_for('simulacao_opcoes') }}" class="btn btn-secondary btn-sm">✕ Fechar</a>
-                    {% endif %}
-                </div>
-
+    <div style="display:flex; flex-wrap:wrap; gap:.4rem;">
+        {% for s in sims %}
+        <div class="sim-item {{ 'active' if sim and sim.id == s.id else '' }}"
+             style="flex:1; min-width:200px; max-width:320px;"
+             onclick="window.location='{{ url_for('simulacao_edit', id=s.id) }}'">
+            <div style="flex:1; min-width:0;">
+                <div class="sim-item-name">{{ s.name }}</div>
+                <div class="sim-item-meta">{{ s.underlying or '—' }} · {{ s.created_at.strftime('%d/%m/%y') if s.created_at else '' }}</div>
+            </div>
+            <form action="{{ url_for('simulacao_delete', id=s.id) }}" method="post" style="margin:0;"
+                  onclick="event.stopPropagation()">
+                <button type="submit" class="btn btn-sm btn-danger"
+                        style="padding:.1rem .4rem; font-size:.8rem;"
+                        onclick="return confirm('Excluir simulação?')">🗑️</button>
             </form>
-
-            {# ── Métricas ── #}
-            <div id="metrics">
-                <div><span>Saldo montagem</span><br><strong id="m-net">—</strong></div>
-                <div><span>Lucro máx.</span><br><strong id="m-gain" class="positive">—</strong></div>
-                <div><span>Perda máx.</span><br><strong id="m-loss" class="negative">—</strong></div>
-                <div><span>Breakeven(s)</span><br><strong id="m-be">—</strong></div>
-            </div>
-
-            {# ── Gráfico ── #}
-            <div id="chart-wrap">
-                <canvas id="payoff-canvas"></canvas>
-                <div id="chart-tooltip"></div>
-            </div>
-
         </div>
+        {% endfor %}
     </div>
+</div>
+{% endif %}
+
+{# ── 2. Formulário + gráfico (largura total) ── #}
+<div class="card" style="padding:1.2rem;">
+
+    <form id="sim-form" method="POST"
+          action="{{ url_for('simulacao_edit', id=sim.id) if sim else url_for('simulacao_new') }}">
+
+        {# Nome e ativo #}
+        <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;">
+            <div class="form-group" style="flex:3; min-width:200px; margin-bottom:0;">
+                <label>Nome / Descrição</label>
+                <input type="text" name="name" required placeholder="Ex: Borboleta PETR4 Mai/25"
+                       value="{{ sim.name if sim else '' }}" style="width:100%;" oninput="scheduleRedraw()">
+            </div>
+            <div class="form-group" style="flex:1; min-width:120px; margin-bottom:0;">
+                <label>Ativo Subjacente</label>
+                <input type="text" name="underlying" placeholder="PETR4"
+                       style="width:100%; text-transform:uppercase;"
+                       value="{{ sim.underlying if sim else '' }}">
+            </div>
+        </div>
+
+        {# Tabela de pernas #}
+        <div style="overflow-x:auto; margin-bottom:.8rem;">
+        <table id="legs-table">
+            <thead>
+                <tr>
+                    <th>Tipo</th>
+                    <th>C/V</th>
+                    <th>Ticker</th>
+                    <th>Qtd</th>
+                    <th style="text-align:right;">Prêmio / Preço</th>
+                    <th>Vencimento</th>
+                    <th style="text-align:right;">Strike</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="legs-body">
+            {% if sim and sim.legs %}
+                {% for leg in sim.legs %}
+                <tr class="leg-row">
+                    <td>
+                        <select name="leg_type" onchange="legTypeChanged(this);scheduleRedraw();" style="width:72px;">
+                            <option value="CALL"  {% if leg.leg_type=='CALL'  %}selected{% endif %}>CALL</option>
+                            <option value="PUT"   {% if leg.leg_type=='PUT'   %}selected{% endif %}>PUT</option>
+                            <option value="STOCK" {% if leg.leg_type=='STOCK' %}selected{% endif %}>AÇÃO</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select name="leg_side" onchange="scheduleRedraw();" style="width:90px;">
+                            <option value="BUY"  {% if leg.side=='BUY'  %}selected{% endif %}>COMPRA</option>
+                            <option value="SELL" {% if leg.side=='SELL' %}selected{% endif %}>VENDA</option>
+                        </select>
+                    </td>
+                    <td>
+                        <input type="text" name="leg_ticker" value="{{ leg.ticker }}"
+                               style="width:90px; text-transform:uppercase;">
+                    </td>
+                    <td>
+                        <input type="text" name="leg_qty" value="{{ leg.quantity }}"
+                               style="width:60px; text-align:center;" oninput="scheduleRedraw()">
+                    </td>
+                    <td>
+                        <input type="text" name="leg_premium"
+                               value="{{ '%.2f'|format(leg.premium)|replace('.', ',') }}"
+                               placeholder="0,00" style="width:85px; text-align:right;" oninput="scheduleRedraw()">
+                    </td>
+                    <td>
+                        <input type="date" name="leg_exp"
+                               value="{{ leg.expiration.isoformat() if leg.expiration else '' }}"
+                               style="width:135px;"
+                               {% if leg.leg_type=='STOCK' %}disabled{% endif %}>
+                    </td>
+                    <td>
+                        <input type="text" name="leg_strike"
+                               value="{{ '%.2f'|format(leg.strike)|replace('.', ',') }}"
+                               placeholder="0,00" style="width:80px; text-align:right;" oninput="scheduleRedraw()"
+                               {% if leg.leg_type=='STOCK' %}disabled{% endif %}>
+                    </td>
+                    <td>
+                        <button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr class="leg-row">
+                    <td>
+                        <select name="leg_type" onchange="legTypeChanged(this);scheduleRedraw();" style="width:72px;">
+                            <option value="CALL">CALL</option>
+                            <option value="PUT">PUT</option>
+                            <option value="STOCK">AÇÃO</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select name="leg_side" onchange="scheduleRedraw();" style="width:90px;">
+                            <option value="BUY">COMPRA</option>
+                            <option value="SELL">VENDA</option>
+                        </select>
+                    </td>
+                    <td><input type="text" name="leg_ticker" style="width:90px; text-transform:uppercase;"></td>
+                    <td><input type="text" name="leg_qty" value="1" style="width:60px; text-align:center;" oninput="scheduleRedraw()"></td>
+                    <td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px; text-align:right;" oninput="scheduleRedraw()"></td>
+                    <td><input type="date" name="leg_exp" style="width:135px;"></td>
+                    <td><input type="text" name="leg_strike" placeholder="0,00" style="width:80px; text-align:right;" oninput="scheduleRedraw()"></td>
+                    <td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
+                </tr>
+            {% endif %}
+            </tbody>
+        </table>
+        </div>
+
+        <div style="display:flex; gap:.7rem; align-items:center; flex-wrap:wrap;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('CALL')">+ Call</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('PUT')">+ Put</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('STOCK')">+ Ação</button>
+            <button type="submit" class="btn btn-primary btn-sm">💾 Salvar</button>
+            {% if sim %}
+            <a href="{{ url_for('simulacao_opcoes') }}" class="btn btn-secondary btn-sm">✕ Fechar</a>
+            {% endif %}
+        </div>
+
+    </form>
+
+    {# Métricas #}
+    <div id="metrics">
+        <div><span>Saldo montagem</span><br><strong id="m-net">—</strong></div>
+        <div><span>Lucro máx.</span><br><strong id="m-gain" class="positive">—</strong></div>
+        <div><span>Perda máx.</span><br><strong id="m-loss" class="negative">—</strong></div>
+        <div><span>Breakeven(s)</span><br><strong id="m-be">—</strong></div>
+    </div>
+
+    {# Gráfico #}
+    <div id="chart-wrap">
+        <canvas id="payoff-canvas"></canvas>
+        <div id="chart-tooltip"></div>
+    </div>
+
 </div>
 
 <script>
-// ────────────────────────────────────────────────────────────────────────────
-// Gestão de pernas
-// ────────────────────────────────────────────────────────────────────────────
+// ── Gestão de pernas ──────────────────────────────────────────────────────────
 function rowTemplate(type) {
     var isSt = type === 'STOCK';
     return '<tr class="leg-row">' +
-        '<td><select name="leg_type" onchange="legTypeChanged(this);scheduleRedraw();" style="width:70px;">' +
-            '<option value="CALL"' + (type==='CALL'?' selected':'') + '>CALL</option>' +
-            '<option value="PUT"'  + (type==='PUT' ?' selected':'') + '>PUT</option>'  +
-            '<option value="STOCK"'+ (isSt        ?' selected':'') + '>AÇÃO</option>' +
+        '<td><select name="leg_type" onchange="legTypeChanged(this);scheduleRedraw();" style="width:72px;">' +
+            '<option value="CALL"'  + (type==='CALL' ?' selected':'') + '>CALL</option>' +
+            '<option value="PUT"'   + (type==='PUT'  ?' selected':'') + '>PUT</option>'  +
+            '<option value="STOCK"' + (isSt          ?' selected':'') + '>AÇÃO</option>' +
         '</select></td>' +
-        '<td><select name="leg_side" onchange="scheduleRedraw();" style="width:85px;">' +
+        '<td><select name="leg_side" onchange="scheduleRedraw();" style="width:90px;">' +
             '<option value="BUY">COMPRA</option><option value="SELL">VENDA</option>' +
         '</select></td>' +
-        '<td><input type="number" name="leg_qty" value="1" min="1" style="width:60px;text-align:center;" oninput="scheduleRedraw()"></td>' +
-        '<td><input type="text" name="leg_strike" placeholder="0,00" style="width:75px;text-align:right;"' + (isSt?' disabled':'') + ' oninput="scheduleRedraw()"></td>' +
-        '<td><input type="text" name="leg_premium" placeholder="0,00" style="width:80px;text-align:right;" oninput="scheduleRedraw()"></td>' +
-        '<td><input type="date" name="leg_exp" style="width:130px;"' + (isSt?' disabled':'') + '></td>' +
-        '<td><input type="text" name="leg_ticker" style="width:80px;text-transform:uppercase;"></td>' +
+        '<td><input type="text" name="leg_ticker" style="width:90px;text-transform:uppercase;"></td>' +
+        '<td><input type="text" name="leg_qty" value="1" style="width:60px;text-align:center;" oninput="scheduleRedraw()"></td>' +
+        '<td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px;text-align:right;" oninput="scheduleRedraw()"></td>' +
+        '<td><input type="date" name="leg_exp" style="width:135px;"' + (isSt?' disabled':'') + '></td>' +
+        '<td><input type="text" name="leg_strike" placeholder="0,00" style="width:80px;text-align:right;" oninput="scheduleRedraw()"' + (isSt?' disabled':'') + '></td>' +
         '<td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>' +
     '</tr>';
 }
@@ -253,24 +243,14 @@ function removeLeg(btn) {
 function legTypeChanged(sel) {
     var row = sel.closest('tr');
     var isSt = sel.value === 'STOCK';
-    row.querySelector('[name=leg_strike]').disabled = isSt;
-    row.querySelector('[name=leg_exp]').disabled    = isSt;
-    if (isSt) {
-        row.querySelector('[name=leg_strike]').value = '';
-        row.querySelector('[name=leg_exp]').value    = '';
-    }
+    var strikeEl = row.querySelector('[name=leg_strike]');
+    var expEl    = row.querySelector('[name=leg_exp]');
+    strikeEl.disabled = isSt;
+    expEl.disabled    = isSt;
+    if (isSt) { strikeEl.value = ''; expEl.value = ''; }
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Novo estudo (limpa o formulário)
-// ────────────────────────────────────────────────────────────────────────────
-function novaSimulacao() {
-    window.location = '{{ url_for("simulacao_new") }}';
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// Leitura das pernas do DOM
-// ────────────────────────────────────────────────────────────────────────────
+// ── Leitura das pernas ────────────────────────────────────────────────────────
 function parseVal(s) {
     return parseFloat((s||'0').replace(/\./g,'').replace(',','.')) || 0;
 }
@@ -278,23 +258,20 @@ function parseVal(s) {
 function readLegs() {
     var legs = [];
     document.querySelectorAll('#legs-body .leg-row').forEach(function(row) {
-        var lt  = row.querySelector('[name=leg_type]').value;
-        var side= row.querySelector('[name=leg_side]').value;
-        var qty = parseInt(row.querySelector('[name=leg_qty]').value) || 1;
-        var k   = lt !== 'STOCK' ? parseVal(row.querySelector('[name=leg_strike]').value) : 0;
-        var p   = parseVal(row.querySelector('[name=leg_premium]').value);
+        var lt   = row.querySelector('[name=leg_type]').value;
+        var side = row.querySelector('[name=leg_side]').value;
+        var qty  = parseInt(row.querySelector('[name=leg_qty]').value) || 1;
+        var k    = lt !== 'STOCK' ? parseVal(row.querySelector('[name=leg_strike]').value) : 0;
+        var p    = parseVal(row.querySelector('[name=leg_premium]').value);
         legs.push({ type: lt, side: side, qty: qty, strike: k, premium: p });
     });
     return legs;
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Payoff
-// ────────────────────────────────────────────────────────────────────────────
+// ── Payoff ────────────────────────────────────────────────────────────────────
 function netPremium(legs) {
     return legs.reduce(function(acc, l) {
-        var sign = l.side === 'SELL' ? 1 : -1;
-        return acc + sign * l.qty * l.premium;
+        return acc + (l.side === 'SELL' ? 1 : -1) * l.qty * l.premium;
     }, 0);
 }
 
@@ -302,9 +279,9 @@ function payoffAt(S, legs) {
     var total = netPremium(legs);
     legs.forEach(function(l) {
         var sign = l.side === 'BUY' ? 1 : -1;
-        if (l.type === 'CALL')       total += sign * l.qty * Math.max(0, S - l.strike);
+        if      (l.type === 'CALL')  total += sign * l.qty * Math.max(0, S - l.strike);
         else if (l.type === 'PUT')   total += sign * l.qty * Math.max(0, l.strike - S);
-        else /* STOCK */             total += sign * l.qty * (S - l.premium);
+        else                          total += sign * l.qty * (S - l.premium);
     });
     return total;
 }
@@ -313,13 +290,23 @@ function fmtBRL(v) {
     return 'R$ ' + Math.abs(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Desenho do gráfico (canvas puro)
-// ────────────────────────────────────────────────────────────────────────────
+// ── Canvas ────────────────────────────────────────────────────────────────────
 var PAD = { top:28, right:16, bottom:54, left:96 };
 
-function computeSeries(legs) {
-    var strikes = legs.filter(function(l){ return l.type !== 'STOCK' && l.strike > 0; })
+function drawChart(legs) {
+    var canvas = document.getElementById('payoff-canvas');
+    var wrap   = document.getElementById('chart-wrap');
+    var W = wrap.clientWidth || 700;
+    var H = Math.max(300, Math.round(W * 0.38));
+    canvas.width  = W;
+    canvas.height = H;
+
+    var ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+    if (!legs.length) return;
+
+    // Série
+    var strikes = legs.filter(function(l){ return l.type!=='STOCK' && l.strike>0; })
                       .map(function(l){ return l.strike; });
     if (!strikes.length) strikes = [50];
     var minK = Math.min.apply(null, strikes);
@@ -327,203 +314,138 @@ function computeSeries(legs) {
     var pad  = Math.max((maxK - minK) * 0.6, maxK * 0.3);
     var Smin = Math.max(0.01, minK - pad);
     var Smax = maxK + pad;
-    var N    = 400;
-    var step = (Smax - Smin) / N;
+    var N = 400, step = (Smax - Smin) / N;
     var Sarr = [], Parr = [];
-    for (var i = 0; i <= N; i++) {
-        var S = Smin + i * step;
-        Sarr.push(S);
-        Parr.push(payoffAt(S, legs));
-    }
-    return { Sarr: Sarr, Parr: Parr, Smin: Smin, Smax: Smax, strikes: strikes };
-}
-
-function drawChart(legs) {
-    var canvas = document.getElementById('payoff-canvas');
-    var wrap   = document.getElementById('chart-wrap');
-    var W = wrap.clientWidth || 640;
-    var H = Math.max(300, Math.round(W * 0.42));
-    canvas.width  = W;
-    canvas.height = H;
-
-    var ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, W, H);
-
-    if (!legs.length) return;
-
-    var ser    = computeSeries(legs);
-    var Sarr   = ser.Sarr, Parr = ser.Parr;
-    var Smin   = ser.Smin, Smax = ser.Smax;
-    var strikes = ser.strikes;
+    for (var i = 0; i <= N; i++) { var S = Smin + i*step; Sarr.push(S); Parr.push(payoffAt(S, legs)); }
 
     var maxGain = Math.max.apply(null, Parr);
     var maxLoss = Math.min.apply(null, Parr);
     var ySpan   = Math.max(Math.abs(maxGain), Math.abs(maxLoss)) * 1.15 || 100;
     var yMin = -ySpan, yMax = ySpan;
-
     var cW = W - PAD.left - PAD.right;
     var cH = H - PAD.top  - PAD.bottom;
 
     function xPx(S) { return PAD.left + (S - Smin) / (Smax - Smin) * cW; }
     function yPx(P) { return PAD.top  + (1 - (P - yMin) / (yMax - yMin)) * cH; }
-
     var y0 = yPx(0);
 
     // Grade
-    ctx.strokeStyle = 'rgba(100,116,139,0.18)';
-    ctx.lineWidth = 1;
-    for (var yi = 0; yi <= 6; yi++) {
-        var yp = PAD.top + yi * cH / 6;
-        ctx.beginPath(); ctx.moveTo(PAD.left, yp); ctx.lineTo(W - PAD.right, yp); ctx.stroke();
-    }
+    ctx.strokeStyle = 'rgba(100,116,139,0.18)'; ctx.lineWidth = 1;
+    for (var yi = 0; yi <= 6; yi++) { var yp=PAD.top+yi*cH/6; ctx.beginPath(); ctx.moveTo(PAD.left,yp); ctx.lineTo(W-PAD.right,yp); ctx.stroke(); }
+
     // Eixo zero
-    ctx.strokeStyle = 'rgba(100,116,139,0.5)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(PAD.left, y0); ctx.lineTo(W - PAD.right, y0); ctx.stroke();
+    ctx.strokeStyle = 'rgba(100,116,139,0.5)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(PAD.left, y0); ctx.lineTo(W-PAD.right, y0); ctx.stroke();
 
     // Strikes
     strikes.forEach(function(K) {
         var xk = xPx(K);
-        ctx.setLineDash([5,4]); ctx.strokeStyle = 'rgba(148,163,184,0.5)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(xk, PAD.top); ctx.lineTo(xk, H - PAD.bottom); ctx.stroke();
+        ctx.setLineDash([5,4]); ctx.strokeStyle='rgba(148,163,184,0.5)'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(xk,PAD.top); ctx.lineTo(xk,H-PAD.bottom); ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = 'rgba(148,163,184,0.8)'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText('K=' + K.toLocaleString('pt-BR', {minimumFractionDigits:2}), xk, PAD.top - 8);
+        ctx.fillStyle='rgba(148,163,184,0.8)'; ctx.font='10px sans-serif'; ctx.textAlign='center';
+        ctx.fillText('K='+K.toLocaleString('pt-BR',{minimumFractionDigits:2}), xk, PAD.top-8);
     });
 
     // Breakevens
     var bes = [];
-    for (var j = 0; j < Parr.length - 1; j++) {
-        var p1 = Parr[j], p2 = Parr[j+1];
-        if (Math.abs(p1) < 0.5) {
-            var bv = Math.round(Sarr[j]*100)/100;
-            if (bes.indexOf(bv) < 0) bes.push(bv);
-        } else if (p1 * p2 < 0) {
-            var be = Sarr[j] + (-p1)*(Sarr[j+1]-Sarr[j])/(p2-p1);
-            bes.push(Math.round(be*100)/100);
-        }
+    for (var j = 0; j < Parr.length-1; j++) {
+        var p1=Parr[j], p2=Parr[j+1];
+        if (Math.abs(p1)<0.5 && bes.indexOf(Math.round(Sarr[j]*100)/100)<0) bes.push(Math.round(Sarr[j]*100)/100);
+        else if (p1*p2<0) { var be=Sarr[j]+(-p1)*(Sarr[j+1]-Sarr[j])/(p2-p1); bes.push(Math.round(be*100)/100); }
     }
     bes.forEach(function(be) {
-        var xb = xPx(be);
-        ctx.setLineDash([6,3]); ctx.strokeStyle = 'rgba(234,179,8,0.9)'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(xb, PAD.top); ctx.lineTo(xb, H - PAD.bottom); ctx.stroke();
+        var xb=xPx(be);
+        ctx.setLineDash([6,3]); ctx.strokeStyle='rgba(234,179,8,0.9)'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.moveTo(xb,PAD.top); ctx.lineTo(xb,H-PAD.bottom); ctx.stroke();
         ctx.setLineDash([]);
-        ctx.fillStyle = '#ca8a04'; ctx.font = 'bold 10px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText('BE ' + be.toLocaleString('pt-BR', {minimumFractionDigits:2}), xb, H - PAD.bottom + 14);
+        ctx.fillStyle='#ca8a04'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center';
+        ctx.fillText('BE '+be.toLocaleString('pt-BR',{minimumFractionDigits:2}), xb, H-PAD.bottom+14);
     });
 
-    // Fill verde (acima de zero)
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(xPx(Sarr[0]), y0);
-    for (var i = 0; i < Sarr.length; i++) ctx.lineTo(xPx(Sarr[i]), yPx(Parr[i]));
-    ctx.lineTo(xPx(Sarr[Sarr.length-1]), y0); ctx.closePath();
-    ctx.rect(PAD.left, PAD.top, cW, y0 - PAD.top);
-    ctx.clip(); ctx.fillStyle = 'rgba(16,185,129,0.18)'; ctx.fill();
-    ctx.restore();
+    // Fill verde
+    ctx.save(); ctx.beginPath(); ctx.moveTo(xPx(Sarr[0]),y0);
+    for (var i=0;i<Sarr.length;i++) ctx.lineTo(xPx(Sarr[i]),yPx(Parr[i]));
+    ctx.lineTo(xPx(Sarr[Sarr.length-1]),y0); ctx.closePath();
+    ctx.rect(PAD.left,PAD.top,cW,y0-PAD.top); ctx.clip();
+    ctx.fillStyle='rgba(16,185,129,0.18)'; ctx.fill(); ctx.restore();
 
-    // Fill vermelho (abaixo de zero)
-    ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(xPx(Sarr[0]), y0);
-    for (var i = 0; i < Sarr.length; i++) ctx.lineTo(xPx(Sarr[i]), yPx(Parr[i]));
-    ctx.lineTo(xPx(Sarr[Sarr.length-1]), y0); ctx.closePath();
-    ctx.rect(PAD.left, y0, cW, H - PAD.bottom - y0);
-    ctx.clip(); ctx.fillStyle = 'rgba(239,68,68,0.18)'; ctx.fill();
-    ctx.restore();
+    // Fill vermelho
+    ctx.save(); ctx.beginPath(); ctx.moveTo(xPx(Sarr[0]),y0);
+    for (var i=0;i<Sarr.length;i++) ctx.lineTo(xPx(Sarr[i]),yPx(Parr[i]));
+    ctx.lineTo(xPx(Sarr[Sarr.length-1]),y0); ctx.closePath();
+    ctx.rect(PAD.left,y0,cW,H-PAD.bottom-y0); ctx.clip();
+    ctx.fillStyle='rgba(239,68,68,0.18)'; ctx.fill(); ctx.restore();
 
-    // Curva segmentada
-    for (var i = 0; i < Sarr.length - 1; i++) {
-        var avg = (Parr[i] + Parr[i+1]) / 2;
-        ctx.strokeStyle = avg >= 0 ? 'rgba(16,185,129,1)' : 'rgba(239,68,68,1)';
-        ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.moveTo(xPx(Sarr[i]),   yPx(Parr[i]));
-        ctx.lineTo(xPx(Sarr[i+1]), yPx(Parr[i+1]));
-        ctx.stroke();
+    // Curva
+    for (var i=0;i<Sarr.length-1;i++) {
+        ctx.strokeStyle=(Parr[i]+Parr[i+1])/2>=0?'rgba(16,185,129,1)':'rgba(239,68,68,1)';
+        ctx.lineWidth=2.5;
+        ctx.beginPath(); ctx.moveTo(xPx(Sarr[i]),yPx(Parr[i])); ctx.lineTo(xPx(Sarr[i+1]),yPx(Parr[i+1])); ctx.stroke();
     }
 
     // Eixo X
-    ctx.fillStyle = 'rgba(148,163,184,0.85)'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
-    for (var xi = 0; xi <= 8; xi++) {
-        var sv = Smin + xi * (Smax - Smin) / 8;
-        ctx.fillText(sv.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}),
-                     xPx(sv), H - PAD.bottom + 28);
-    }
-    ctx.fillStyle = 'rgba(148,163,184,0.7)'; ctx.font = '10px sans-serif';
-    ctx.fillText('Preço do Ativo no Vencimento (R$)', PAD.left + cW/2, H - 4);
+    ctx.fillStyle='rgba(148,163,184,0.85)'; ctx.font='11px sans-serif'; ctx.textAlign='center';
+    for (var xi=0;xi<=8;xi++) { var sv=Smin+xi*(Smax-Smin)/8; ctx.fillText(sv.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),xPx(sv),H-PAD.bottom+28); }
+    ctx.fillStyle='rgba(148,163,184,0.7)'; ctx.font='10px sans-serif';
+    ctx.fillText('Preço do Ativo no Vencimento (R$)', PAD.left+cW/2, H-4);
 
     // Eixo Y
-    ctx.textAlign = 'right';
-    ctx.fillStyle = 'rgba(148,163,184,0.85)'; ctx.font = '11px sans-serif';
-    for (var yi = 0; yi <= 6; yi++) {
-        var yv = yMin + yi * (yMax - yMin) / 6;
-        var yp2 = yPx(yv);
-        ctx.fillText((yv >= 0 ? '' : '-') + fmtBRL(yv), PAD.left - 6, yp2 + 4);
-    }
+    ctx.textAlign='right'; ctx.fillStyle='rgba(148,163,184,0.85)'; ctx.font='11px sans-serif';
+    for (var yi=0;yi<=6;yi++) { var yv=yMin+yi*(yMax-yMin)/6; ctx.fillText((yv>=0?'':'-')+fmtBRL(yv), PAD.left-6, yPx(yv)+4); }
 
     // Borda
-    ctx.strokeStyle = 'rgba(100,116,139,0.22)'; ctx.lineWidth = 1;
-    ctx.strokeRect(PAD.left, PAD.top, cW, cH);
+    ctx.strokeStyle='rgba(100,116,139,0.22)'; ctx.lineWidth=1;
+    ctx.strokeRect(PAD.left,PAD.top,cW,cH);
 
     // Métricas
-    var net = netPremium(legs);
-    var netEl  = document.getElementById('m-net');
-    netEl.textContent = fmtBRL(net) + (net >= 0 ? ' (crédito)' : ' (débito)');
-    netEl.className   = net >= 0 ? 'positive' : 'negative';
-    var gainEl = document.getElementById('m-gain');
-    gainEl.textContent = maxGain > 1e7 ? '∞' : fmtBRL(maxGain);
-    var lossEl = document.getElementById('m-loss');
-    lossEl.textContent = maxLoss < -1e7 ? '-∞' : fmtBRL(maxLoss);
-    document.getElementById('m-be').textContent =
-        bes.length ? bes.map(fmtBRL).join(' / ') : '—';
+    var net=netPremium(legs);
+    var netEl=document.getElementById('m-net');
+    netEl.textContent=fmtBRL(net)+(net>=0?' (crédito)':' (débito)');
+    netEl.className=net>=0?'positive':'negative';
+    document.getElementById('m-gain').textContent=maxGain>1e7?'∞':fmtBRL(maxGain);
+    document.getElementById('m-loss').textContent=maxLoss<-1e7?'-∞':fmtBRL(maxLoss);
+    document.getElementById('m-be').textContent=bes.length?bes.map(fmtBRL).join(' / '):'—';
 
-    // Tooltip
-    canvas._ser = { Sarr: Sarr, Parr: Parr, Smin: Smin, Smax: Smax, legs: legs };
+    canvas._ser={Sarr:Sarr,Parr:Parr,Smin:Smin,Smax:Smax,legs:legs};
 }
 
-// ── Tooltip hover ────────────────────────────────────────────────────────────
+// Tooltip
 (function(){
-    var canvas  = document.getElementById('payoff-canvas');
-    var tooltip = document.getElementById('chart-tooltip');
-    canvas.addEventListener('mousemove', function(e) {
-        if (!canvas._ser) { tooltip.style.display='none'; return; }
-        var rect = canvas.getBoundingClientRect();
-        var mx   = (e.clientX - rect.left) * (canvas.width / rect.width);
-        var W    = canvas.width;
-        var cW   = W - PAD.left - PAD.right;
-        if (mx < PAD.left || mx > W - PAD.right) { tooltip.style.display='none'; return; }
-        var ser  = canvas._ser;
-        var S    = ser.Smin + (mx - PAD.left) / cW * (ser.Smax - ser.Smin);
-        var P    = payoffAt(S, ser.legs);
-        var clr  = P >= 0 ? '#10b981' : '#ef4444';
-        tooltip.innerHTML = '<span style="color:rgba(148,163,184,.8)">Preço: </span><strong>' +
-            S.toLocaleString('pt-BR',{minimumFractionDigits:2}) + '</strong><br>' +
+    var canvas=document.getElementById('payoff-canvas');
+    var tooltip=document.getElementById('chart-tooltip');
+    canvas.addEventListener('mousemove',function(e){
+        if(!canvas._ser){tooltip.style.display='none';return;}
+        var rect=canvas.getBoundingClientRect();
+        var mx=(e.clientX-rect.left)*(canvas.width/rect.width);
+        var cW=canvas.width-PAD.left-PAD.right;
+        if(mx<PAD.left||mx>canvas.width-PAD.right){tooltip.style.display='none';return;}
+        var ser=canvas._ser;
+        var S=ser.Smin+(mx-PAD.left)/cW*(ser.Smax-ser.Smin);
+        var P=payoffAt(S,ser.legs);
+        var clr=P>=0?'#10b981':'#ef4444';
+        tooltip.innerHTML='<span style="color:rgba(148,163,184,.8)">Preço: </span><strong>'+
+            S.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</strong><br>'+
             '<span style="color:'+clr+';">'+(P>=0?'Lucro: +':'Prejuízo: ')+fmtBRL(P)+'</span>';
-        tooltip.style.display = 'block';
-        var tx = e.clientX - rect.left + 14;
-        var ty = e.clientY - rect.top  - 10;
-        if (tx + 180 > rect.width) tx = e.clientX - rect.left - 188;
-        tooltip.style.left = tx + 'px';
-        tooltip.style.top  = ty + 'px';
+        tooltip.style.display='block';
+        var tx=e.clientX-rect.left+14, ty=e.clientY-rect.top-10;
+        if(tx+180>rect.width) tx=e.clientX-rect.left-188;
+        tooltip.style.left=tx+'px'; tooltip.style.top=ty+'px';
     });
-    canvas.addEventListener('mouseleave', function(){ tooltip.style.display='none'; });
+    canvas.addEventListener('mouseleave',function(){tooltip.style.display='none';});
 })();
 
-// ── Redraw agendado (evita flood) ────────────────────────────────────────────
-var _rdTimer = null;
-function scheduleRedraw() {
-    if (_rdTimer) clearTimeout(_rdTimer);
-    _rdTimer = setTimeout(function() { drawChart(readLegs()); }, 120);
+// Redraw agendado
+var _rdTimer=null;
+function scheduleRedraw(){
+    if(_rdTimer) clearTimeout(_rdTimer);
+    _rdTimer=setTimeout(function(){drawChart(readLegs());},120);
 }
 
-// ── Redraw no resize ─────────────────────────────────────────────────────────
-window.addEventListener('resize', function() { drawChart(readLegs()); });
+window.addEventListener('resize',function(){drawChart(readLegs());});
 
-// ── Init ─────────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', function() {
-    // Liga oninput ao tbody existente (delegação de evento)
-    document.getElementById('legs-body').addEventListener('change', scheduleRedraw);
+document.addEventListener('DOMContentLoaded',function(){
+    document.getElementById('legs-body').addEventListener('change',scheduleRedraw);
     drawChart(readLegs());
 });
 </script>

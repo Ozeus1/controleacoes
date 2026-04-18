@@ -4,7 +4,7 @@ import sys
 import sqlite3
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -300,6 +300,31 @@ def run_migrations():
             current_price FLOAT NOT NULL DEFAULT 0.0,
             last_update DATETIME,
             FOREIGN KEY (op_id) REFERENCES structured_op(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS simulacao_opcoes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name VARCHAR(120) NOT NULL DEFAULT '',
+            underlying VARCHAR(15) NOT NULL DEFAULT '',
+            created_at DATETIME,
+            FOREIGN KEY (user_id) REFERENCES user(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS simulacao_leg (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sim_id INTEGER NOT NULL,
+            leg_type VARCHAR(6) NOT NULL DEFAULT 'CALL',
+            side VARCHAR(4) NOT NULL DEFAULT 'BUY',
+            quantity INTEGER NOT NULL DEFAULT 1,
+            strike FLOAT NOT NULL DEFAULT 0.0,
+            premium FLOAT NOT NULL DEFAULT 0.0,
+            expiration DATE,
+            ticker VARCHAR(20) NOT NULL DEFAULT '',
+            FOREIGN KEY (sim_id) REFERENCES simulacao_opcoes(id)
         )
     """)
 
@@ -958,6 +983,131 @@ def delete_estruturada(id):
     db.session.commit()
     flash('Operação excluída.', 'success')
     return redirect(url_for('opcoes'))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Simulação de Opções — CRUD + API de dados
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/simulacao_opcoes')
+@login_required
+def simulacao_opcoes():
+    sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id).order_by(SimulacaoOpcoes.created_at.desc()).all()
+    return render_template('simulacao_opcoes.html', sims=sims, sim=None)
+
+
+@app.route('/simulacao_opcoes/new', methods=['GET', 'POST'])
+@login_required
+def simulacao_new():
+    if request.method == 'POST':
+        name       = request.form.get('name', '').strip()
+        underlying = request.form.get('underlying', '').strip().upper()
+        leg_types  = request.form.getlist('leg_type')
+        sides      = request.form.getlist('leg_side')
+        quantities = request.form.getlist('leg_qty')
+        strikes    = request.form.getlist('leg_strike')
+        premiums   = request.form.getlist('leg_premium')
+        exps       = request.form.getlist('leg_exp')
+        tickers    = request.form.getlist('leg_ticker')
+
+        if not name:
+            flash('Informe um nome para a simulação.', 'warning')
+            return redirect(url_for('simulacao_opcoes'))
+
+        sim = SimulacaoOpcoes(user_id=current_user.id, name=name, underlying=underlying, created_at=datetime.now())
+        db.session.add(sim)
+        db.session.flush()
+
+        for i, lt in enumerate(leg_types):
+            if not lt:
+                continue
+            exp = None
+            try:
+                exp = date.fromisoformat(exps[i]) if i < len(exps) and exps[i] else None
+            except ValueError:
+                pass
+            leg = SimulacaoLeg(
+                sim_id=sim.id,
+                leg_type=lt,
+                side=sides[i] if i < len(sides) else 'BUY',
+                quantity=int(quantities[i]) if i < len(quantities) and quantities[i] else 1,
+                strike=float(strikes[i].replace(',', '.')) if i < len(strikes) and strikes[i] else 0.0,
+                premium=float(premiums[i].replace(',', '.')) if i < len(premiums) and premiums[i] else 0.0,
+                expiration=exp,
+                ticker=(tickers[i].strip().upper() if i < len(tickers) and tickers[i] else ''),
+            )
+            db.session.add(leg)
+
+        db.session.commit()
+        flash('Simulação salva.', 'success')
+        return redirect(url_for('simulacao_edit', id=sim.id))
+
+    sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id).order_by(SimulacaoOpcoes.created_at.desc()).all()
+    return render_template('simulacao_opcoes.html', sims=sims, sim=None)
+
+
+@app.route('/simulacao_opcoes/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+def simulacao_edit(id):
+    sim = SimulacaoOpcoes.query.get_or_404(id)
+    if sim.user_id != current_user.id:
+        flash('Sem permissão.', 'danger')
+        return redirect(url_for('simulacao_opcoes'))
+
+    if request.method == 'POST':
+        sim.name       = request.form.get('name', '').strip()
+        sim.underlying = request.form.get('underlying', '').strip().upper()
+        leg_types  = request.form.getlist('leg_type')
+        sides      = request.form.getlist('leg_side')
+        quantities = request.form.getlist('leg_qty')
+        strikes    = request.form.getlist('leg_strike')
+        premiums   = request.form.getlist('leg_premium')
+        exps       = request.form.getlist('leg_exp')
+        tickers    = request.form.getlist('leg_ticker')
+
+        for leg in list(sim.legs):
+            db.session.delete(leg)
+        db.session.flush()
+
+        for i, lt in enumerate(leg_types):
+            if not lt:
+                continue
+            exp = None
+            try:
+                exp = date.fromisoformat(exps[i]) if i < len(exps) and exps[i] else None
+            except ValueError:
+                pass
+            leg = SimulacaoLeg(
+                sim_id=sim.id,
+                leg_type=lt,
+                side=sides[i] if i < len(sides) else 'BUY',
+                quantity=int(quantities[i]) if i < len(quantities) and quantities[i] else 1,
+                strike=float(strikes[i].replace(',', '.')) if i < len(strikes) and strikes[i] else 0.0,
+                premium=float(premiums[i].replace(',', '.')) if i < len(premiums) and premiums[i] else 0.0,
+                expiration=exp,
+                ticker=(tickers[i].strip().upper() if i < len(tickers) and tickers[i] else ''),
+            )
+            db.session.add(leg)
+
+        db.session.commit()
+        flash('Simulação atualizada.', 'success')
+        return redirect(url_for('simulacao_edit', id=sim.id))
+
+    sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id).order_by(SimulacaoOpcoes.created_at.desc()).all()
+    return render_template('simulacao_opcoes.html', sims=sims, sim=sim)
+
+
+@app.route('/simulacao_opcoes/<int:id>/delete', methods=['POST'])
+@login_required
+def simulacao_delete(id):
+    sim = SimulacaoOpcoes.query.get_or_404(id)
+    if sim.user_id != current_user.id:
+        flash('Sem permissão.', 'danger')
+        return redirect(url_for('simulacao_opcoes'))
+    db.session.delete(sim)
+    db.session.commit()
+    flash('Simulação excluída.', 'success')
+    return redirect(url_for('simulacao_opcoes'))
 
 
 @app.route('/payoff/spread/<int:id>')

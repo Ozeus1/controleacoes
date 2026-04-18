@@ -342,6 +342,33 @@ class StructuredLeg(db.Model):
     last_update    = db.Column(db.DateTime, nullable=True)
 
 
+class SimulacaoOpcoes(db.Model):
+    """Simulação/estudo de operação com opções — gráfico de payoff interativo."""
+    __tablename__ = 'simulacao_opcoes'
+    id           = db.Column(db.Integer, primary_key=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name         = db.Column(db.String(120), default='')
+    underlying   = db.Column(db.String(15), default='')
+    created_at   = db.Column(db.DateTime, default=datetime.now)
+    legs = db.relationship('SimulacaoLeg', backref='simulacao', lazy=True,
+                           cascade='all, delete-orphan',
+                           order_by='SimulacaoLeg.id')
+
+
+class SimulacaoLeg(db.Model):
+    """Uma perna de uma SimulacaoOpcoes."""
+    __tablename__ = 'simulacao_leg'
+    id          = db.Column(db.Integer, primary_key=True)
+    sim_id      = db.Column(db.Integer, db.ForeignKey('simulacao_opcoes.id'), nullable=False)
+    leg_type    = db.Column(db.String(6),  default='CALL')   # CALL | PUT | STOCK
+    side        = db.Column(db.String(4),  default='BUY')    # BUY | SELL
+    quantity    = db.Column(db.Integer, default=1)
+    strike      = db.Column(db.Float, default=0.0)           # 0 para STOCK
+    premium     = db.Column(db.Float, default=0.0)           # prêmio ou preço médio
+    expiration  = db.Column(db.Date, nullable=True)
+    ticker      = db.Column(db.String(20), default='')
+
+
 class Dividend(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     asset_id = db.Column(db.Integer, db.ForeignKey('asset.id'), nullable=False)

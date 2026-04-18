@@ -12,7 +12,7 @@
             </div>
             {% endif %}
         </div>
-        <a href="javascript:history.back()" class="btn btn-secondary btn-sm" style="margin-left:auto;">← Voltar</a>
+        <a href="{{ url_for('opcoes') }}" class="btn btn-secondary btn-sm" style="margin-left:auto;">← Voltar</a>
     </div>
 
     {# ── Tabela de pernas ── #}
@@ -70,9 +70,9 @@
     </div>
 
     {# ── Métricas ── #}
-    <div id="metrics-bar" style="display:flex; gap:1.5rem; flex-wrap:wrap; margin-bottom:1.5rem;
-                                  background:var(--hover-bg); border-radius:8px; padding:.9rem 1.2rem;
-                                  border:1px solid var(--border-color); font-size:.88rem;">
+    <div style="display:flex; gap:1.5rem; flex-wrap:wrap; margin-bottom:1.5rem;
+                background:var(--hover-bg); border-radius:8px; padding:.9rem 1.2rem;
+                border:1px solid var(--border-color); font-size:.88rem;">
         <div><span style="color:var(--text-secondary);">Lucro máx.</span><br><strong id="m-max-gain" class="positive">—</strong></div>
         <div><span style="color:var(--text-secondary);">Perda máx.</span><br><strong id="m-max-loss" class="negative">—</strong></div>
         <div><span style="color:var(--text-secondary);">Breakeven(s)</span><br><strong id="m-be">—</strong></div>
@@ -80,37 +80,38 @@
     </div>
 
     {# ── Gráfico ── #}
-    <div style="position:relative; height:380px;">
-        <canvas id="payoff-chart"></canvas>
+    <div style="position:relative; width:100%; background:var(--hover-bg); border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
+        <canvas id="payoff-chart" style="display:block; width:100%;"></canvas>
+        <div id="tooltip-box" style="display:none; position:absolute; background:var(--card-bg,#1e293b);
+             border:1px solid var(--border-color); border-radius:6px; padding:.4rem .7rem;
+             font-size:.82rem; pointer-events:none; white-space:nowrap; z-index:10;"></div>
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
 <script>
 (function () {
-    // ── Lê pernas da tabela ──────────────────────────────────────────────────
+    // ── Lê pernas ────────────────────────────────────────────────────────────
     var legs = [];
     document.querySelectorAll('#legs-tbody tr').forEach(function (tr) {
         legs.push({
             side:    tr.dataset.side,
             type:    tr.dataset.optType,
-            qty:     parseFloat(tr.dataset.qty),
-            strike:  parseFloat(tr.dataset.strike) || 0,
-            entry:   parseFloat(tr.dataset.entry)  || 0,
+            qty:     parseFloat(tr.dataset.qty)    || 0,
+            strike:  parseFloat(tr.dataset.strike)  || 0,
+            entry:   parseFloat(tr.dataset.entry)   || 0,
             current: parseFloat(tr.dataset.current) || 0,
         });
     });
 
-    // ── Funções de payoff ────────────────────────────────────────────────────
     function netPremium() {
-        return legs.reduce(function (acc, l) {
+        return legs.reduce(function(acc, l) {
             return acc + (l.side === 'SELL' ? 1 : -1) * l.qty * l.entry;
         }, 0);
     }
 
     function payoffAt(S) {
         var total = netPremium();
-        legs.forEach(function (l) {
+        legs.forEach(function(l) {
             var sign = l.side === 'BUY' ? 1 : -1;
             if (l.type === 'CALL') total += sign * l.qty * Math.max(0, S - l.strike);
             else                    total += sign * l.qty * Math.max(0, l.strike - S);
@@ -119,177 +120,235 @@
     }
 
     function currentPnl() {
-        return legs.reduce(function (acc, l) {
+        return legs.reduce(function(acc, l) {
             return acc + (l.side === 'SELL'
                 ? l.qty * (l.entry - l.current)
                 : l.qty * (l.current - l.entry));
         }, 0);
     }
 
-    // ── Faixa de preços do ativo ─────────────────────────────────────────────
-    var strikes = legs.map(function (l) { return l.strike; }).filter(Boolean);
-    var minK = strikes.length ? Math.min.apply(null, strikes) : 10;
-    var maxK = strikes.length ? Math.max.apply(null, strikes) : 60;
-    var pad = (maxK - minK) * 0.6 || maxK * 0.5;
-    var Smin = Math.max(0, minK - pad);
-    var Smax = maxK + pad;
-    var N = 300;
-    var step = (Smax - Smin) / N;
-
-    var labels = [], data = [];
-    for (var i = 0; i <= N; i++) {
-        var S = Smin + i * step;
-        labels.push(S.toFixed(2));
-        data.push(parseFloat(payoffAt(S).toFixed(2)));
-    }
-
-    // ── Métricas ─────────────────────────────────────────────────────────────
-    var net = netPremium();
-    var allPayoffs = data;
-    var maxGain = Math.max.apply(null, allPayoffs);
-    var maxLoss = Math.min.apply(null, allPayoffs);
-
-    // Breakevens: cruzamentos de zero
-    var breakevens = [];
-    for (var j = 0; j < data.length - 1; j++) {
-        var p1 = data[j], p2 = data[j + 1];
-        if (p1 === 0 && breakevens.indexOf(parseFloat(labels[j])) < 0) {
-            breakevens.push(parseFloat(labels[j]));
-        } else if (p1 * p2 < 0) {
-            var S1 = parseFloat(labels[j]), S2 = parseFloat(labels[j + 1]);
-            var be = S1 + (-p1) * (S2 - S1) / (p2 - p1);
-            breakevens.push(parseFloat(be.toFixed(2)));
-        }
-    }
-
     function fmtBRL(v) {
         return 'R$ ' + Math.abs(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
     }
 
-    // Preenche métricas
-    var mgEl = document.getElementById('m-max-gain');
-    var mlEl = document.getElementById('m-max-loss');
-    var pnl  = currentPnl();
+    // ── Faixa de S ───────────────────────────────────────────────────────────
+    var strikes = legs.map(function(l){ return l.strike; }).filter(Boolean);
+    var minK = strikes.length ? Math.min.apply(null, strikes) : 10;
+    var maxK = strikes.length ? Math.max.apply(null, strikes) : 60;
+    var pad  = Math.max((maxK - minK) * 0.55, maxK * 0.25);
+    var Smin = Math.max(0.01, minK - pad);
+    var Smax = maxK + pad;
+    var N    = 400;
+    var step = (Smax - Smin) / N;
 
-    mgEl.textContent = maxGain > 1e6 ? '∞' : fmtBRL(maxGain);
-    mlEl.textContent = maxLoss < -1e6 ? '-∞' : fmtBRL(maxLoss);
+    var Sarr = [], Parr = [];
+    for (var i = 0; i <= N; i++) {
+        var S = Smin + i * step;
+        Sarr.push(S);
+        Parr.push(payoffAt(S));
+    }
+
+    // ── Métricas ─────────────────────────────────────────────────────────────
+    var net     = netPremium();
+    var maxGain = Math.max.apply(null, Parr);
+    var maxLoss = Math.min.apply(null, Parr);
+    var pnl     = currentPnl();
+
+    var breakevens = [];
+    for (var j = 0; j < Parr.length - 1; j++) {
+        var p1 = Parr[j], p2 = Parr[j+1];
+        if (Math.abs(p1) < 0.01 && breakevens.indexOf(Math.round(Sarr[j]*100)/100) < 0) {
+            breakevens.push(Math.round(Sarr[j]*100)/100);
+        } else if (p1 * p2 < 0) {
+            var be = Sarr[j] + (-p1)*(Sarr[j+1]-Sarr[j])/(p2-p1);
+            breakevens.push(Math.round(be*100)/100);
+        }
+    }
+
+    // Preenche métricas no DOM
+    document.getElementById('m-max-gain').textContent = maxGain > 1e7 ? '∞' : fmtBRL(maxGain);
+    document.getElementById('m-max-loss').textContent = maxLoss < -1e7 ? '-∞' : fmtBRL(maxLoss);
     document.getElementById('m-be').textContent =
-        breakevens.length ? breakevens.map(function(b){ return fmtBRL(b); }).join(' / ') : '—';
+        breakevens.length ? breakevens.map(fmtBRL).join(' / ') : '—';
     var pnlEl = document.getElementById('m-pnl');
     pnlEl.textContent = fmtBRL(pnl);
     pnlEl.className = pnl >= 0 ? 'positive' : 'negative';
 
-    // Tfoot saldo
     var tfEl = document.getElementById('tfoot-net');
     tfEl.textContent = fmtBRL(net) + (net >= 0 ? ' (crédito)' : ' (débito)');
     tfEl.className = net >= 0 ? 'positive' : 'negative';
 
-    // ── Cores por segmento (verde acima do zero, vermelho abaixo) ────────────
-    function segmentColors(ctx) {
-        var chart = ctx.chart;
-        var yScale = chart.scales.y;
-        var yZero = yScale.getPixelForValue(0);
-        var gradient = chart.ctx.createLinearGradient(0, chart.chartArea.top, 0, chart.chartArea.bottom);
-        var topRatio = Math.max(0, Math.min(1, (chart.chartArea.top - yZero) / (chart.chartArea.top - chart.chartArea.bottom)));
-        var botRatio = 1 - topRatio;
-        // above zero = green, below zero = red
-        gradient.addColorStop(0,         'rgba(16,185,129,0.85)');
-        gradient.addColorStop(topRatio,   'rgba(16,185,129,0.85)');
-        gradient.addColorStop(topRatio,   'rgba(239,68,68,0.85)');
-        gradient.addColorStop(1,          'rgba(239,68,68,0.85)');
-        return gradient;
+    // ── Canvas ───────────────────────────────────────────────────────────────
+    var canvas  = document.getElementById('payoff-chart');
+    var tooltip = document.getElementById('tooltip-box');
+    var PAD = { top:24, right:20, bottom:50, left:90 };
+
+    function setSize() {
+        var w = canvas.parentElement.clientWidth;
+        var h = Math.max(320, Math.round(w * 0.42));
+        canvas.width  = w;
+        canvas.height = h;
+        draw();
     }
 
-    // ── Linhas verticais nos strikes e breakevens ────────────────────────────
-    var annotations = {};
-    strikes.forEach(function(K, idx) {
-        annotations['strike' + idx] = {
-            type: 'line',
-            xMin: K.toFixed(2), xMax: K.toFixed(2),
-            borderColor: 'rgba(148,163,184,0.6)',
-            borderWidth: 1,
-            borderDash: [4,4],
-            label: { display: true, content: 'K=' + K.toFixed(2), position: 'start', font: {size: 11} }
-        };
-    });
-    breakevens.forEach(function(be, idx) {
-        annotations['be' + idx] = {
-            type: 'line',
-            xMin: be.toFixed(2), xMax: be.toFixed(2),
-            borderColor: 'rgba(234,179,8,0.9)',
-            borderWidth: 2,
-            label: { display: true, content: 'BE ' + fmtBRL(be), position: 'end',
-                     color: '#ca8a04', font: {size: 11, weight:'bold'} }
-        };
-    });
+    function draw() {
+        var W = canvas.width, H = canvas.height;
+        var ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, W, H);
 
-    // ── Chart.js ─────────────────────────────────────────────────────────────
-    var ctx = document.getElementById('payoff-chart').getContext('2d');
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'Payoff no vencimento',
-                data: data,
-                borderColor: function(ctx2) { return segmentColors(ctx2); },
-                backgroundColor: function(ctx2) {
-                    var c = segmentColors(ctx2);
-                    return c;
-                },
-                borderWidth: 2.5,
-                fill: true,
-                tension: 0,
-                pointRadius: 0,
-                segment: {
-                    borderColor: function(ctx2) {
-                        return ctx2.p0.parsed.y >= 0 ? 'rgba(16,185,129,1)' : 'rgba(239,68,68,1)';
-                    },
-                    backgroundColor: function(ctx2) {
-                        return ctx2.p0.parsed.y >= 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)';
-                    }
-                }
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            interaction: { mode: 'index', intersect: false },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        title: function(items) { return 'Preço ativo: R$ ' + parseFloat(items[0].label).toLocaleString('pt-BR', {minimumFractionDigits:2}); },
-                        label: function(item) {
-                            var v = item.raw;
-                            return (v >= 0 ? 'Lucro: +' : 'Prejuízo: ') + fmtBRL(v);
-                        },
-                        labelColor: function(item) {
-                            return { backgroundColor: item.raw >= 0 ? '#10b981' : '#ef4444', borderColor: 'transparent' };
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    ticks: {
-                        maxTicksLimit: 12,
-                        callback: function(val, idx, ticks) {
-                            return parseFloat(this.getLabelForValue(val)).toLocaleString('pt-BR', {minimumFractionDigits:2});
-                        }
-                    },
-                    title: { display: true, text: 'Preço do Ativo no Vencimento (R$)' }
-                },
-                y: {
-                    grid: { color: function(ctx2) { return ctx2.tick.value === 0 ? 'rgba(100,116,139,0.6)' : 'rgba(100,116,139,0.15)'; } },
-                    ticks: {
-                        callback: function(v) { return (v >= 0 ? '' : '-') + fmtBRL(v); }
-                    },
-                    title: { display: true, text: 'Resultado (R$)' }
-                }
-            }
+        var cW = W - PAD.left - PAD.right;
+        var cH = H - PAD.top  - PAD.bottom;
+
+        // ── Escala ───────────────────────────────────────────────────────────
+        var yMax = Math.max(Math.abs(maxGain), Math.abs(maxLoss)) * 1.12 || 100;
+        var yMin = -yMax;
+
+        function xPx(S) { return PAD.left + (S - Smin) / (Smax - Smin) * cW; }
+        function yPx(P) { return PAD.top  + (1 - (P - yMin) / (yMax - yMin)) * cH; }
+
+        var y0 = yPx(0);
+
+        // ── Grade ─────────────────────────────────────────────────────────────
+        ctx.strokeStyle = 'rgba(100,116,139,0.18)';
+        ctx.lineWidth = 1;
+        var nY = 6;
+        for (var yi = 0; yi <= nY; yi++) {
+            var yv = yMin + yi * (yMax - yMin) / nY;
+            var yp = yPx(yv);
+            ctx.beginPath(); ctx.moveTo(PAD.left, yp); ctx.lineTo(W - PAD.right, yp); ctx.stroke();
         }
+
+        // ── Eixo zero ────────────────────────────────────────────────────────
+        ctx.strokeStyle = 'rgba(100,116,139,0.55)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(PAD.left, y0); ctx.lineTo(W - PAD.right, y0); ctx.stroke();
+
+        // ── Linhas de strike ─────────────────────────────────────────────────
+        strikes.forEach(function(K) {
+            var xk = xPx(K);
+            ctx.setLineDash([5,4]);
+            ctx.strokeStyle = 'rgba(148,163,184,0.55)';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(xk, PAD.top); ctx.lineTo(xk, H - PAD.bottom); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = 'rgba(148,163,184,0.85)';
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('K=' + K.toLocaleString('pt-BR', {minimumFractionDigits:2}), xk, PAD.top - 6);
+        });
+
+        // ── Linhas de breakeven ───────────────────────────────────────────────
+        breakevens.forEach(function(be) {
+            var xb = xPx(be);
+            ctx.setLineDash([6,3]);
+            ctx.strokeStyle = 'rgba(234,179,8,0.9)';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(xb, PAD.top); ctx.lineTo(xb, H - PAD.bottom); ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.fillStyle = '#ca8a04';
+            ctx.font = 'bold 11px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('BE ' + be.toLocaleString('pt-BR', {minimumFractionDigits:2}), xb, H - PAD.bottom + 14);
+        });
+
+        // ── Curva de payoff (fill segmentado) ────────────────────────────────
+        // Área verde (payoff > 0)
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(xPx(Sarr[0]), y0);
+        for (var i = 0; i < Sarr.length; i++) ctx.lineTo(xPx(Sarr[i]), yPx(Parr[i]));
+        ctx.lineTo(xPx(Sarr[Sarr.length-1]), y0);
+        ctx.closePath();
+        ctx.rect(PAD.left, PAD.top, cW, y0 - PAD.top); // clip acima do zero
+        ctx.clip();
+        ctx.fillStyle = 'rgba(16,185,129,0.18)';
+        ctx.fill();
+        ctx.restore();
+
+        // Área vermelha (payoff < 0)
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(xPx(Sarr[0]), y0);
+        for (var i = 0; i < Sarr.length; i++) ctx.lineTo(xPx(Sarr[i]), yPx(Parr[i]));
+        ctx.lineTo(xPx(Sarr[Sarr.length-1]), y0);
+        ctx.closePath();
+        ctx.rect(PAD.left, y0, cW, H - PAD.bottom - y0); // clip abaixo do zero
+        ctx.clip();
+        ctx.fillStyle = 'rgba(239,68,68,0.18)';
+        ctx.fill();
+        ctx.restore();
+
+        // Linha da curva com cor segmentada
+        for (var i = 0; i < Sarr.length - 1; i++) {
+            var avg = (Parr[i] + Parr[i+1]) / 2;
+            ctx.strokeStyle = avg >= 0 ? 'rgba(16,185,129,1)' : 'rgba(239,68,68,1)';
+            ctx.lineWidth = 2.5;
+            ctx.beginPath();
+            ctx.moveTo(xPx(Sarr[i]),   yPx(Parr[i]));
+            ctx.lineTo(xPx(Sarr[i+1]), yPx(Parr[i+1]));
+            ctx.stroke();
+        }
+
+        // ── Eixo X (labels de preço) ─────────────────────────────────────────
+        ctx.fillStyle = 'rgba(148,163,184,0.9)';
+        ctx.font = '11px sans-serif';
+        ctx.textAlign = 'center';
+        var nX = 8;
+        for (var xi = 0; xi <= nX; xi++) {
+            var sv = Smin + xi * (Smax - Smin) / nX;
+            var xp = xPx(sv);
+            ctx.fillText(sv.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}),
+                         xp, H - PAD.bottom + 28);
+        }
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(148,163,184,0.7)';
+        ctx.font = '11px sans-serif';
+        ctx.fillText('Preço do Ativo no Vencimento (R$)', PAD.left + cW/2, H - 4);
+
+        // ── Eixo Y (labels de resultado) ─────────────────────────────────────
+        ctx.textAlign = 'right';
+        ctx.fillStyle = 'rgba(148,163,184,0.9)';
+        ctx.font = '11px sans-serif';
+        for (var yi = 0; yi <= nY; yi++) {
+            var yv = yMin + yi * (yMax - yMin) / nY;
+            var yp = yPx(yv);
+            var sign = yv >= 0 ? '' : '-';
+            ctx.fillText(sign + fmtBRL(yv), PAD.left - 6, yp + 4);
+        }
+
+        // ── Borda ─────────────────────────────────────────────────────────────
+        ctx.strokeStyle = 'rgba(100,116,139,0.25)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(PAD.left, PAD.top, cW, cH);
+    }
+
+    // ── Tooltip ao mover o mouse ──────────────────────────────────────────────
+    canvas.addEventListener('mousemove', function(e) {
+        var rect = canvas.getBoundingClientRect();
+        var mx   = (e.clientX - rect.left) * (canvas.width / rect.width);
+        var W    = canvas.width, H = canvas.height;
+        var cW   = W - PAD.left - PAD.right;
+        if (mx < PAD.left || mx > W - PAD.right) { tooltip.style.display = 'none'; return; }
+
+        var S = Smin + (mx - PAD.left) / cW * (Smax - Smin);
+        var P = payoffAt(S);
+        var color = P >= 0 ? '#10b981' : '#ef4444';
+        tooltip.innerHTML =
+            '<span style="color:rgba(148,163,184,.8)">Preço: </span><strong>' +
+            S.toLocaleString('pt-BR', {minimumFractionDigits:2}) + '</strong><br>' +
+            '<span style="color:' + color + ';">' + (P >= 0 ? 'Lucro: +' : 'Prejuízo: ') + fmtBRL(P) + '</span>';
+        tooltip.style.display = 'block';
+        var tx = e.clientX - rect.left + 14;
+        var ty = e.clientY - rect.top  - 10;
+        if (tx + 160 > rect.width) tx = e.clientX - rect.left - 170;
+        tooltip.style.left = tx + 'px';
+        tooltip.style.top  = ty + 'px';
     });
+    canvas.addEventListener('mouseleave', function() { tooltip.style.display = 'none'; });
+
+    // ── Init ─────────────────────────────────────────────────────────────────
+    setSize();
+    window.addEventListener('resize', setSize);
 })();
 </script>
 {% endblock %}

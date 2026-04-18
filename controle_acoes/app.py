@@ -4,7 +4,7 @@ import sys
 import sqlite3
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -274,6 +274,35 @@ def run_migrations():
         )
     """)
 
+    # Create structured_op and structured_leg tables
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS structured_op (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name VARCHAR(100) NOT NULL DEFAULT '',
+            underlying_asset VARCHAR(15) NOT NULL DEFAULT '',
+            status VARCHAR(10) NOT NULL DEFAULT 'OPEN',
+            created_at DATETIME,
+            FOREIGN KEY (user_id) REFERENCES user(id)
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS structured_leg (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            op_id INTEGER NOT NULL,
+            ticker VARCHAR(20) NOT NULL DEFAULT '',
+            side VARCHAR(4) NOT NULL DEFAULT 'SELL',
+            opt_type VARCHAR(4) NOT NULL DEFAULT 'CALL',
+            quantity INTEGER NOT NULL DEFAULT 1,
+            strike FLOAT NOT NULL DEFAULT 0.0,
+            expiration_date DATE,
+            entry_price FLOAT NOT NULL DEFAULT 0.0,
+            current_price FLOAT NOT NULL DEFAULT 0.0,
+            last_update DATETIME,
+            FOREIGN KEY (op_id) REFERENCES structured_op(id)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -286,6 +315,84 @@ threading.Thread(target=lambda: (time.sleep(5), _start_oplab_scheduler()), daemo
 
 
 # --- Options Module Routes ---
+
+
+def _calc_structured_metrics(op):
+    """
+    Calcula métricas financeiras de uma StructuredOp.
+    Retorna dict com: net, current_pnl, max_profit, max_loss, breakevens,
+                      unlimited_profit, unlimited_loss.
+    """
+    legs = op.legs
+    if not legs:
+        return dict(net=0, current_pnl=0, max_profit=0, max_loss=0,
+                    breakevens=[], unlimited_profit=False, unlimited_loss=False)
+
+    # Crédito líquido na montagem (positivo = recebeu, negativo = pagou)
+    net = sum(
+        (leg.entry_price if leg.side == 'SELL' else -leg.entry_price) * leg.quantity
+        for leg in legs
+    )
+
+    # P&L atual vs. fechar tudo agora
+    current_pnl = sum(
+        ((leg.entry_price - leg.current_price) if leg.side == 'SELL'
+         else (leg.current_price - leg.entry_price)) * leg.quantity
+        for leg in legs
+    )
+
+    # Payoff no vencimento em função do preço do ativo (S)
+    def payoff_at(S):
+        total = net
+        for leg in legs:
+            q    = leg.quantity
+            K    = leg.strike or 0
+            sign = 1 if leg.side == 'BUY' else -1
+            if leg.opt_type == 'CALL':
+                total += sign * q * max(0, S - K)
+            else:
+                total += sign * q * max(0, K - S)
+        return total
+
+    strikes = sorted({l.strike for l in legs if l.strike})
+
+    # Delta líquido de CALLs → indica se payoff diverge para +∞ ou -∞
+    net_call_delta = sum(
+        leg.quantity * (1 if leg.side == 'BUY' else -1)
+        for leg in legs if leg.opt_type == 'CALL'
+    )
+    unlimited_profit = net_call_delta > 0
+    unlimited_loss   = net_call_delta < 0
+
+    # Pontos críticos: S=0, cada strike, e 3× strike máximo
+    max_K = max(strikes) if strikes else 100
+    test_prices = [0.0] + strikes + [max_K * 3]
+    payoffs = [(S, payoff_at(S)) for S in test_prices]
+
+    max_profit = float('inf')  if unlimited_profit else max(p for _, p in payoffs)
+    max_loss   = float('-inf') if unlimited_loss   else min(p for _, p in payoffs)
+
+    # Breakevens: zeros da função payoff (linear por partes entre strikes)
+    breakevens = []
+    for i in range(len(payoffs) - 1):
+        S1, P1 = payoffs[i]
+        S2, P2 = payoffs[i + 1]
+        if P1 == 0 and S1 not in breakevens:
+            breakevens.append(round(S1, 2))
+        elif P1 * P2 < 0:                         # mudança de sinal
+            be = S1 + (-P1) * (S2 - S1) / (P2 - P1)
+            breakevens.append(round(be, 2))
+    if payoffs and payoffs[-1][1] == 0:
+        be = round(payoffs[-1][0], 2)
+        if be not in breakevens:
+            breakevens.append(be)
+    breakevens = sorted(set(breakevens))
+
+    return dict(net=net, current_pnl=current_pnl,
+                max_profit=max_profit, max_loss=max_loss,
+                breakevens=breakevens,
+                unlimited_profit=unlimited_profit, unlimited_loss=unlimited_loss)
+
 
 @app.route('/opcoes')
 @login_required
@@ -448,13 +555,21 @@ def opcoes():
         else:
             spreads_baixa_call.append(item)
 
+    # Process operações estruturadas
+    raw_ops = StructuredOp.query.filter_by(user_id=current_user.id, status='OPEN').all()
+    structured_ops = []
+    for op in raw_ops:
+        metrics = _calc_structured_metrics(op)
+        structured_ops.append({'op': op, **metrics})
+
     return render_template('opcoes.html', options=processed_options,
                            venda_puts=venda_puts,
                            compra_calls=compra_calls, compra_puts=compra_puts,
                            spreads_alta_put=spreads_alta_put,
                            spreads_alta_call=spreads_alta_call,
                            spreads_baixa_put=spreads_baixa_put,
-                           spreads_baixa_call=spreads_baixa_call)
+                           spreads_baixa_call=spreads_baixa_call,
+                           structured_ops=structured_ops)
 
 @app.route('/add_option', methods=['GET', 'POST'])
 @login_required
@@ -661,6 +776,157 @@ def delete_spread(id):
     db.session.commit()
     flash("Trava excluída.", "success")
     return redirect(url_for('opcoes'))
+
+# ─── Operações Estruturadas ────────────────────────────────────────────────
+
+@app.route('/estruturada/add', methods=['GET', 'POST'])
+@login_required
+def add_estruturada():
+    if request.method == 'POST':
+        try:
+            name             = request.form.get('name', '').strip()
+            underlying_asset = request.form.get('underlying_asset', '').strip().upper()
+
+            # Lê arrays de pernas
+            tickers     = request.form.getlist('leg_ticker')
+            sides       = request.form.getlist('leg_side')
+            opt_types   = request.form.getlist('leg_opt_type')
+            quantities  = request.form.getlist('leg_quantity')
+            strikes     = request.form.getlist('leg_strike')
+            expirations = request.form.getlist('leg_expiration')
+            entry_prices = request.form.getlist('leg_entry_price')
+            current_prices = request.form.getlist('leg_current_price')
+
+            if not name or not tickers:
+                flash('Informe o nome e ao menos uma perna.', 'warning')
+                return redirect(url_for('add_estruturada'))
+
+            op = StructuredOp(
+                user_id=current_user.id,
+                name=name,
+                underlying_asset=underlying_asset,
+                status='OPEN',
+                created_at=datetime.now(),
+            )
+            db.session.add(op)
+            db.session.flush()  # gera op.id
+
+            for i, ticker in enumerate(tickers):
+                ticker = ticker.strip().upper()
+                if not ticker:
+                    continue
+                exp = None
+                try:
+                    exp = date.fromisoformat(expirations[i]) if i < len(expirations) and expirations[i] else None
+                except ValueError:
+                    pass
+                leg = StructuredLeg(
+                    op_id=op.id,
+                    ticker=ticker,
+                    side=sides[i] if i < len(sides) else 'SELL',
+                    opt_type=opt_types[i] if i < len(opt_types) else 'CALL',
+                    quantity=int(quantities[i]) if i < len(quantities) and quantities[i] else 1,
+                    strike=float(strikes[i].replace(',', '.')) if i < len(strikes) and strikes[i] else 0.0,
+                    expiration_date=exp,
+                    entry_price=float(entry_prices[i].replace(',', '.')) if i < len(entry_prices) and entry_prices[i] else 0.0,
+                    current_price=float(current_prices[i].replace(',', '.')) if i < len(current_prices) and current_prices[i] else 0.0,
+                )
+                db.session.add(leg)
+
+            db.session.commit()
+            flash('Operação estruturada criada com sucesso.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro ao salvar: {e}', 'danger')
+        return redirect(url_for('opcoes'))
+
+    return render_template('estruturada_form.html', op=None, edit=False)
+
+
+@app.route('/estruturada/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+def edit_estruturada(id):
+    op = StructuredOp.query.get_or_404(id)
+    if op.user_id != current_user.id:
+        flash('Sem permissão.', 'danger')
+        return redirect(url_for('opcoes'))
+
+    if request.method == 'POST':
+        try:
+            op.name             = request.form.get('name', '').strip()
+            op.underlying_asset = request.form.get('underlying_asset', '').strip().upper()
+
+            tickers      = request.form.getlist('leg_ticker')
+            sides        = request.form.getlist('leg_side')
+            opt_types    = request.form.getlist('leg_opt_type')
+            quantities   = request.form.getlist('leg_quantity')
+            strikes      = request.form.getlist('leg_strike')
+            expirations  = request.form.getlist('leg_expiration')
+            entry_prices = request.form.getlist('leg_entry_price')
+            current_prices = request.form.getlist('leg_current_price')
+
+            # Remove pernas antigas e recria
+            for leg in list(op.legs):
+                db.session.delete(leg)
+            db.session.flush()
+
+            for i, ticker in enumerate(tickers):
+                ticker = ticker.strip().upper()
+                if not ticker:
+                    continue
+                exp = None
+                try:
+                    exp = date.fromisoformat(expirations[i]) if i < len(expirations) and expirations[i] else None
+                except ValueError:
+                    pass
+                leg = StructuredLeg(
+                    op_id=op.id,
+                    ticker=ticker,
+                    side=sides[i] if i < len(sides) else 'SELL',
+                    opt_type=opt_types[i] if i < len(opt_types) else 'CALL',
+                    quantity=int(quantities[i]) if i < len(quantities) and quantities[i] else 1,
+                    strike=float(strikes[i].replace(',', '.')) if i < len(strikes) and strikes[i] else 0.0,
+                    expiration_date=exp,
+                    entry_price=float(entry_prices[i].replace(',', '.')) if i < len(entry_prices) and entry_prices[i] else 0.0,
+                    current_price=float(current_prices[i].replace(',', '.')) if i < len(current_prices) and current_prices[i] else 0.0,
+                )
+                db.session.add(leg)
+
+            db.session.commit()
+            flash('Operação atualizada.', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Erro: {e}', 'danger')
+        return redirect(url_for('opcoes'))
+
+    return render_template('estruturada_form.html', op=op, edit=True)
+
+
+@app.route('/estruturada/<int:id>/close', methods=['POST'])
+@login_required
+def close_estruturada(id):
+    op = StructuredOp.query.get_or_404(id)
+    if op.user_id != current_user.id:
+        flash('Sem permissão.', 'danger')
+        return redirect(url_for('opcoes'))
+    op.status = 'CLOSED'
+    db.session.commit()
+    flash('Operação encerrada.', 'success')
+    return redirect(url_for('opcoes'))
+
+
+@app.route('/estruturada/<int:id>/delete', methods=['POST'])
+@login_required
+def delete_estruturada(id):
+    op = StructuredOp.query.get_or_404(id)
+    if op.user_id != current_user.id:
+        flash('Sem permissão.', 'danger')
+        return redirect(url_for('opcoes'))
+    db.session.delete(op)
+    db.session.commit()
+    flash('Operação excluída.', 'success')
+    return redirect(url_for('opcoes'))
+
 
 @app.route('/edit_option/<int:id>', methods=['GET', 'POST'])
 @login_required
@@ -4381,6 +4647,13 @@ def _do_oplab_bulk_update(uid: int, token: str):
         if sp.leg_short_ticker:
             option_tickers.add(sp.leg_short_ticker.upper())
 
+    # Pernas de operações estruturadas abertas
+    struct_legs_bulk = StructuredLeg.query.join(StructuredOp).filter(
+        StructuredOp.user_id == uid, StructuredOp.status == 'OPEN'
+    ).all()
+    for leg in struct_legs_bulk:
+        option_tickers.add(leg.ticker.upper())
+
     all_tickers = list(asset_tickers | option_tickers)
     if not all_tickers:
         return 0, 0
@@ -4473,6 +4746,16 @@ def _do_oplab_bulk_update(uid: int, token: str):
             k = sp.leg_short_ticker.upper()
             if k in prices and prices[k] > 0:
                 sp.leg_short_current = prices[k]
+
+    # ── Atualiza pernas de OperaçõesEstruturadas ──────────────────
+    struct_legs = StructuredLeg.query.join(StructuredOp).filter(
+        StructuredOp.user_id == uid, StructuredOp.status == 'OPEN'
+    ).all()
+    for leg in struct_legs:
+        k = leg.ticker.upper()
+        if k in prices and prices[k] > 0:
+            leg.current_price = prices[k]
+            leg.last_update   = now
 
     try:
         db.session.commit()

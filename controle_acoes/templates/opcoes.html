@@ -496,6 +496,109 @@
 {{ spread_table(spreads_baixa_put, 'Trava de Baixa com Puts', 'TRAVA_BAIXA_PUT') }}
 {{ spread_table(spreads_baixa_call,'Trava de Baixa com Calls','TRAVA_BAIXA_CALL')}}
 
+{# ========== TABELA: OPERAÇÕES ESTRUTURADAS ========== #}
+<div class="card" style="margin-top: 2rem;">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Operações Estruturadas</h3>
+        <a href="{{ url_for('add_estruturada') }}" class="btn btn-primary btn-sm">+ Nova Operação</a>
+    </div>
+
+    {% if structured_ops %}
+    <div style="overflow-x: auto;">
+    <table>
+        <thead>
+            <tr>
+                <th>Nome</th>
+                <th>Ativo</th>
+                <th>Pernas</th>
+                <th>Montagem</th>
+                <th>Lucro Atual</th>
+                <th>Lucro Máx</th>
+                <th>Prejuízo Máx</th>
+                <th>Breakeven(s)</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in structured_ops %}
+            {% set op = item.op %}
+            <tr>
+                <td><strong>{{ op.name }}</strong><br>
+                    <small style="color:var(--text-secondary);">{{ op.created_at.strftime('%d/%m/%Y') if op.created_at else '' }}</small>
+                </td>
+                <td><span class="ticker-badge">{{ op.underlying_asset or '—' }}</span></td>
+                <td>
+                    {% for leg in op.legs %}
+                    <div style="font-size:.8rem; margin-bottom:.15rem; white-space:nowrap;">
+                        <span style="display:inline-block; padding:.1rem .4rem; border-radius:4px; font-weight:600;
+                            background:{{ 'rgba(239,68,68,.15)' if leg.side=='SELL' else 'rgba(16,185,129,.15)' }};
+                            color:{{ 'var(--danger-color)' if leg.side=='SELL' else 'var(--success-color)' }};">
+                            {{ 'V' if leg.side=='SELL' else 'C' }}
+                        </span>
+                        {{ leg.quantity }}× <span class="ticker-badge" style="font-size:.78rem; padding:.05rem .35rem;">{{ leg.ticker }}</span>
+                        {{ leg.opt_type }}
+                        K={{ "%.2f"|format(leg.strike)|replace('.', ',') }}
+                        @ {{ "%.2f"|format(leg.entry_price)|replace('.', ',') }}
+                    </div>
+                    {% endfor %}
+                </td>
+                <td class="{{ 'positive' if item.net >= 0 else 'negative' }}" style="white-space:nowrap;">
+                    {{ 'R$ ' + "%.2f"|format(item.net|abs)|replace('.', ',') }}
+                    <br><small>{{ '✅ crédito' if item.net >= 0 else '💰 débito' }}</small>
+                </td>
+                <td class="{{ 'positive' if item.current_pnl >= 0 else 'negative' }}" style="white-space:nowrap;">
+                    R$ {{ "%.2f"|format(item.current_pnl)|replace('.', ',') }}
+                </td>
+                <td class="positive" style="white-space:nowrap;">
+                    {% if item.unlimited_profit %}
+                    <span title="Ilimitado">∞</span>
+                    {% else %}
+                    R$ {{ "%.2f"|format(item.max_profit)|replace('.', ',') }}
+                    {% endif %}
+                </td>
+                <td class="negative" style="white-space:nowrap;">
+                    {% if item.unlimited_loss %}
+                    <span title="Ilimitado">-∞</span>
+                    {% else %}
+                    R$ {{ "%.2f"|format(item.max_loss)|replace('.', ',') }}
+                    {% endif %}
+                </td>
+                <td style="white-space:nowrap;">
+                    {% if item.breakevens %}
+                        {% for be in item.breakevens %}
+                        <span style="display:inline-block; background:var(--hover-bg); padding:.1rem .5rem;
+                                     border-radius:20px; font-size:.82rem; margin:.1rem;">
+                            R$ {{ "%.2f"|format(be)|replace('.', ',') }}
+                        </span>
+                        {% endfor %}
+                    {% else %}
+                    <span style="color:var(--text-secondary);">—</span>
+                    {% endif %}
+                </td>
+                <td class="actions">
+                    <a href="{{ url_for('edit_estruturada', id=op.id) }}" class="btn btn-sm btn-primary" title="Editar">✏️</a>
+                    <form action="{{ url_for('close_estruturada', id=op.id) }}" method="post" style="display:inline;">
+                        <button type="submit" class="btn btn-sm" style="background:var(--accent-color); color:white;"
+                                title="Encerrar operação" onclick="return confirm('Encerrar esta operação?')">🛑</button>
+                    </form>
+                    <form action="{{ url_for('delete_estruturada', id=op.id) }}" method="post" style="display:inline;">
+                        <button type="submit" class="btn btn-sm btn-danger" title="Excluir"
+                                onclick="return confirm('Excluir permanentemente?')">🗑️</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p style="text-align: center; padding: 2rem; color: var(--text-secondary);">
+        Nenhuma operação estruturada cadastrada.
+        <a href="{{ url_for('add_estruturada') }}">Criar primeira operação →</a>
+    </p>
+    {% endif %}
+</div>
+
 <!-- Live Polling (MT5 / OpLab) for Options -->
 <script>
 (function() {

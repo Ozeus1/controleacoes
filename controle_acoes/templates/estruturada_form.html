@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card" style="max-width: 860px; margin: 0 auto; padding: 2rem;">
+
+    <h2>{% if edit %}Editar{% else %}Nova{% endif %} Operação Estruturada</h2>
+    <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: .9rem;">
+        Monte uma operação com quantas pernas precisar — compra e venda de calls e puts. O sistema calculará
+        automaticamente o crédito/débito de montagem, lucro máximo, prejuízo máximo e breakeven(s).
+    </p>
+
+    <form method="POST" action="{{ url_for('edit_estruturada', id=op.id) if edit else url_for('add_estruturada') }}">
+
+        {# ── Dados gerais ── #}
+        <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem;">
+            <div class="form-group" style="flex:2; min-width:200px; margin-bottom:0;">
+                <label for="name">Nome / Descrição</label>
+                <input type="text" id="name" name="name" required placeholder="Ex: Borboleta PETR4 Mai/25"
+                       value="{{ op.name if op else '' }}" style="width:100%;">
+            </div>
+            <div class="form-group" style="flex:1; min-width:130px; margin-bottom:0;">
+                <label for="underlying_asset">Ativo Subjacente</label>
+                <input type="text" id="underlying_asset" name="underlying_asset"
+                       placeholder="Ex: PETR4" style="width:100%; text-transform:uppercase;"
+                       value="{{ op.underlying_asset if op else '' }}">
+            </div>
+        </div>
+
+        {# ── Tabela de pernas ── #}
+        <div style="overflow-x:auto; margin-bottom:1rem;">
+            <table id="legs-table" style="width:100%; border-collapse:collapse; font-size:.88rem;">
+                <thead>
+                    <tr style="background:var(--hover-bg);">
+                        <th style="padding:.5rem .4rem; text-align:left;">Ticker</th>
+                        <th style="padding:.5rem .4rem; text-align:left;">Tipo</th>
+                        <th style="padding:.5rem .4rem; text-align:left;">Lado</th>
+                        <th style="padding:.5rem .4rem; text-align:center;">Qtd</th>
+                        <th style="padding:.5rem .4rem; text-align:right;">Strike</th>
+                        <th style="padding:.5rem .4rem; text-align:left;">Vencimento</th>
+                        <th style="padding:.5rem .4rem; text-align:right;">Preço Entrada</th>
+                        <th style="padding:.5rem .4rem; text-align:right;">Cotação Atual</th>
+                        <th style="padding:.5rem .4rem;"></th>
+                    </tr>
+                </thead>
+                <tbody id="legs-body">
+                    {% if edit and op.legs %}
+                        {% for leg in op.legs %}
+                        <tr class="leg-row">
+                            <td style="padding:.35rem .4rem;">
+                                <input type="text" name="leg_ticker" value="{{ leg.ticker }}"
+                                       placeholder="PETRA40" style="width:90px; text-transform:uppercase;">
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <select name="leg_opt_type" style="width:70px;">
+                                    <option value="CALL" {% if leg.opt_type=='CALL' %}selected{% endif %}>CALL</option>
+                                    <option value="PUT"  {% if leg.opt_type=='PUT'  %}selected{% endif %}>PUT</option>
+                                </select>
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <select name="leg_side" style="width:90px;">
+                                    <option value="SELL" {% if leg.side=='SELL' %}selected{% endif %}>VENDA</option>
+                                    <option value="BUY"  {% if leg.side=='BUY'  %}selected{% endif %}>COMPRA</option>
+                                </select>
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <input type="number" name="leg_quantity" value="{{ leg.quantity }}"
+                                       min="1" style="width:60px; text-align:center;">
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <input type="text" name="leg_strike"
+                                       value="{{ '%.2f'|format(leg.strike)|replace('.', ',') }}"
+                                       placeholder="0,00" style="width:80px; text-align:right;">
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <input type="date" name="leg_expiration"
+                                       value="{{ leg.expiration_date.isoformat() if leg.expiration_date else '' }}"
+                                       style="width:130px;">
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <input type="text" name="leg_entry_price"
+                                       value="{{ '%.2f'|format(leg.entry_price)|replace('.', ',') }}"
+                                       placeholder="0,00" style="width:80px; text-align:right;"
+                                       oninput="recalc()">
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <input type="text" name="leg_current_price"
+                                       value="{{ '%.2f'|format(leg.current_price)|replace('.', ',') }}"
+                                       placeholder="0,00" style="width:80px; text-align:right;"
+                                       oninput="recalc()">
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        {# Linha inicial vazia #}
+                        <tr class="leg-row">
+                            <td style="padding:.35rem .4rem;">
+                                <input type="text" name="leg_ticker" placeholder="PETRA40"
+                                       style="width:90px; text-transform:uppercase;">
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <select name="leg_opt_type" style="width:70px;">
+                                    <option value="CALL">CALL</option>
+                                    <option value="PUT">PUT</option>
+                                </select>
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <select name="leg_side" style="width:90px;">
+                                    <option value="SELL">VENDA</option>
+                                    <option value="BUY">COMPRA</option>
+                                </select>
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <input type="number" name="leg_quantity" value="1"
+                                       min="1" style="width:60px; text-align:center;">
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <input type="text" name="leg_strike" placeholder="0,00"
+                                       style="width:80px; text-align:right;">
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <input type="date" name="leg_expiration" style="width:130px;">
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <input type="text" name="leg_entry_price" placeholder="0,00"
+                                       style="width:80px; text-align:right;" oninput="recalc()">
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <input type="text" name="leg_current_price" placeholder="0,00"
+                                       style="width:80px; text-align:right;" oninput="recalc()">
+                            </td>
+                            <td style="padding:.35rem .4rem;">
+                                <button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg()" style="margin-bottom:1.5rem;">
+            + Adicionar Perna
+        </button>
+
+        {# ── Preview automático ── #}
+        <div id="preview" style="background:var(--hover-bg); border-radius:8px; padding:1rem 1.2rem;
+                                  border:1px solid var(--border-color); margin-bottom:1.5rem; font-size:.9rem;">
+            <strong style="display:block; margin-bottom:.6rem;">Preview da Operação</strong>
+            <div style="display:flex; gap:2rem; flex-wrap:wrap;">
+                <div>
+                    <span style="color:var(--text-secondary);">Montagem (crédito/débito):</span><br>
+                    <strong id="prev-net" style="font-size:1.1rem;">—</strong>
+                </div>
+                <div>
+                    <span style="color:var(--text-secondary);">Lucro Atual Estimado:</span><br>
+                    <strong id="prev-pnl" style="font-size:1.1rem;">—</strong>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex; gap:1rem; flex-wrap:wrap;">
+            <button type="submit" class="btn btn-primary">💾 Salvar Operação</button>
+            <a href="{{ url_for('opcoes') }}" class="btn btn-secondary">Cancelar</a>
+        </div>
+    </form>
+</div>
+
+<script>
+function fmtBRL(v) {
+    return 'R$ ' + v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function parseVal(s) {
+    return parseFloat((s || '0').replace(/\./g, '').replace(',', '.')) || 0;
+}
+
+function addLeg() {
+    var tbody = document.getElementById('legs-body');
+    var tmpl = `<tr class="leg-row">
+        <td style="padding:.35rem .4rem;"><input type="text" name="leg_ticker" placeholder="PETRA40" style="width:90px; text-transform:uppercase;"></td>
+        <td style="padding:.35rem .4rem;"><select name="leg_opt_type" style="width:70px;"><option value="CALL">CALL</option><option value="PUT">PUT</option></select></td>
+        <td style="padding:.35rem .4rem;"><select name="leg_side" style="width:90px;"><option value="SELL">VENDA</option><option value="BUY">COMPRA</option></select></td>
+        <td style="padding:.35rem .4rem;"><input type="number" name="leg_quantity" value="1" min="1" style="width:60px; text-align:center;"></td>
+        <td style="padding:.35rem .4rem;"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px; text-align:right;"></td>
+        <td style="padding:.35rem .4rem;"><input type="date" name="leg_expiration" style="width:130px;"></td>
+        <td style="padding:.35rem .4rem;"><input type="text" name="leg_entry_price" placeholder="0,00" style="width:80px; text-align:right;" oninput="recalc()"></td>
+        <td style="padding:.35rem .4rem;"><input type="text" name="leg_current_price" placeholder="0,00" style="width:80px; text-align:right;" oninput="recalc()"></td>
+        <td style="padding:.35rem .4rem;"><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
+    </tr>`;
+    tbody.insertAdjacentHTML('beforeend', tmpl);
+}
+
+function removeLeg(btn) {
+    var rows = document.querySelectorAll('#legs-body .leg-row');
+    if (rows.length <= 1) { alert('A operação deve ter ao menos uma perna.'); return; }
+    btn.closest('.leg-row').remove();
+    recalc();
+}
+
+function recalc() {
+    var rows = document.querySelectorAll('#legs-body .leg-row');
+    var net = 0, pnl = 0;
+    rows.forEach(function(row) {
+        var side  = row.querySelector('[name=leg_side]').value;
+        var qty   = parseInt(row.querySelector('[name=leg_quantity]').value) || 1;
+        var entry = parseVal(row.querySelector('[name=leg_entry_price]').value);
+        var curr  = parseVal(row.querySelector('[name=leg_current_price]').value);
+        var sign  = side === 'SELL' ? 1 : -1;
+        net += sign * qty * entry;
+        pnl += sign === 1 ? qty * (entry - curr) : qty * (curr - entry);
+    });
+
+    var netEl = document.getElementById('prev-net');
+    var pnlEl = document.getElementById('prev-pnl');
+
+    netEl.textContent = fmtBRL(net) + (net >= 0 ? ' (crédito)' : ' (débito)');
+    netEl.style.color = net >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+
+    pnlEl.textContent = fmtBRL(pnl);
+    pnlEl.style.color = pnl >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+}
+
+// Inicializa preview ao carregar
+document.addEventListener('DOMContentLoaded', recalc);
+
+// Atualiza preview ao mudar lado ou qtd
+document.getElementById('legs-body').addEventListener('change', recalc);
+</script>
+{% endblock %}

@@ -312,6 +312,36 @@ class StudyStock(db.Model):
     entry_date = db.Column(db.Date, nullable=True)
 
 
+class StructuredOp(db.Model):
+    """Operação estruturada multi-perna (condors, borboletas, strangles, etc.)."""
+    __tablename__ = 'structured_op'
+    id            = db.Column(db.Integer, primary_key=True)
+    user_id       = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name          = db.Column(db.String(100), default='')
+    underlying_asset = db.Column(db.String(15), default='')
+    status        = db.Column(db.String(10), default='OPEN')   # OPEN | CLOSED
+    created_at    = db.Column(db.DateTime, default=datetime.now)
+    legs = db.relationship('StructuredLeg', backref='operation', lazy=True,
+                           cascade='all, delete-orphan',
+                           order_by='StructuredLeg.id')
+
+
+class StructuredLeg(db.Model):
+    """Uma perna de uma operação estruturada."""
+    __tablename__ = 'structured_leg'
+    id             = db.Column(db.Integer, primary_key=True)
+    op_id          = db.Column(db.Integer, db.ForeignKey('structured_op.id'), nullable=False)
+    ticker         = db.Column(db.String(20), default='')
+    side           = db.Column(db.String(4),  default='SELL')   # BUY | SELL
+    opt_type       = db.Column(db.String(4),  default='CALL')   # CALL | PUT
+    quantity       = db.Column(db.Integer, default=1)
+    strike         = db.Column(db.Float, default=0.0)
+    expiration_date = db.Column(db.Date, nullable=True)
+    entry_price    = db.Column(db.Float, default=0.0)
+    current_price  = db.Column(db.Float, default=0.0)
+    last_update    = db.Column(db.DateTime, nullable=True)
+
+
 class Dividend(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     asset_id = db.Column(db.Integer, db.ForeignKey('asset.id'), nullable=False)

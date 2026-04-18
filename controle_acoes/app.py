@@ -320,28 +320,38 @@ threading.Thread(target=lambda: (time.sleep(5), _start_oplab_scheduler()), daemo
 def _calc_structured_metrics(op):
     """
     Calcula métricas financeiras de uma StructuredOp.
-    Retorna dict com: net, current_pnl, max_profit, max_loss, breakevens,
-                      unlimited_profit, unlimited_loss.
+
+    current_pnl = P&L total se fechar agora:
+        Σ_VENDA qty×(entry-current) + Σ_COMPRA qty×(current-entry)
+        Equivalente a: net_recebido + valor_de_fechamento
+
+    Breakevens:
+        - Mathemático (payoff no vencimento): cruzamentos de zero da função payoff
+        - Ref. simplificada (mercado BR): min_strike_put − net/qty_call_vendida
+          e max_strike_call + net/qty_call_vendida
     """
     legs = op.legs
     if not legs:
         return dict(net=0, current_pnl=0, max_profit=0, max_loss=0,
-                    breakevens=[], unlimited_profit=False, unlimited_loss=False)
+                    breakevens=[], be_low=None, be_high=None,
+                    unlimited_profit=False, unlimited_loss=False)
 
-    # Crédito líquido na montagem (positivo = recebeu, negativo = pagou)
+    # ── Crédito/débito líquido na montagem ─────────────────────────
     net = sum(
         (leg.entry_price if leg.side == 'SELL' else -leg.entry_price) * leg.quantity
         for leg in legs
     )
 
-    # P&L atual vs. fechar tudo agora
+    # ── P&L atual = quanto receberia/pagaria fechando tudo agora ───
+    # Para VENDA: lucro = entry − current (ganha quando opção cai)
+    # Para COMPRA: lucro = current − entry (ganha quando opção sobe)
     current_pnl = sum(
         ((leg.entry_price - leg.current_price) if leg.side == 'SELL'
          else (leg.current_price - leg.entry_price)) * leg.quantity
         for leg in legs
     )
 
-    # Payoff no vencimento em função do preço do ativo (S)
+    # ── Payoff no vencimento ────────────────────────────────────────
     def payoff_at(S):
         total = net
         for leg in legs:
@@ -349,14 +359,14 @@ def _calc_structured_metrics(op):
             K    = leg.strike or 0
             sign = 1 if leg.side == 'BUY' else -1
             if leg.opt_type == 'CALL':
-                total += sign * q * max(0, S - K)
+                total += sign * q * max(0.0, S - K)
             else:
-                total += sign * q * max(0, K - S)
+                total += sign * q * max(0.0, K - S)
         return total
 
     strikes = sorted({l.strike for l in legs if l.strike})
 
-    # Delta líquido de CALLs → indica se payoff diverge para +∞ ou -∞
+    # Delta líquido de CALLs → define comportamento para S→∞
     net_call_delta = sum(
         leg.quantity * (1 if leg.side == 'BUY' else -1)
         for leg in legs if leg.opt_type == 'CALL'
@@ -364,22 +374,22 @@ def _calc_structured_metrics(op):
     unlimited_profit = net_call_delta > 0
     unlimited_loss   = net_call_delta < 0
 
-    # Pontos críticos: S=0, cada strike, e 3× strike máximo
+    # Pontos críticos: 0, cada strike, e 5× strike máximo
     max_K = max(strikes) if strikes else 100
-    test_prices = [0.0] + strikes + [max_K * 3]
+    test_prices = [0.0] + strikes + [max_K * 5]
     payoffs = [(S, payoff_at(S)) for S in test_prices]
 
     max_profit = float('inf')  if unlimited_profit else max(p for _, p in payoffs)
     max_loss   = float('-inf') if unlimited_loss   else min(p for _, p in payoffs)
 
-    # Breakevens: zeros da função payoff (linear por partes entre strikes)
+    # ── Breakevens matemáticos (cruzamentos de zero do payoff) ─────
     breakevens = []
     for i in range(len(payoffs) - 1):
         S1, P1 = payoffs[i]
         S2, P2 = payoffs[i + 1]
         if P1 == 0 and S1 not in breakevens:
             breakevens.append(round(S1, 2))
-        elif P1 * P2 < 0:                         # mudança de sinal
+        elif P1 * P2 < 0:
             be = S1 + (-P1) * (S2 - S1) / (P2 - P1)
             breakevens.append(round(be, 2))
     if payoffs and payoffs[-1][1] == 0:
@@ -388,9 +398,31 @@ def _calc_structured_metrics(op):
             breakevens.append(be)
     breakevens = sorted(set(breakevens))
 
+    # ── Breakevens simplificados (fórmula de mercado BR) ───────────
+    # BE_baixo = menor_strike_PUT − net_crédito / qty_calls_vendidas
+    # BE_alto  = maior_strike_CALL + net_crédito / qty_calls_vendidas
+    be_low = be_high = None
+    sell_call_qty = sum(l.quantity for l in legs
+                        if l.opt_type == 'CALL' and l.side == 'SELL')
+    buy_put_qty   = sum(l.quantity for l in legs
+                        if l.opt_type == 'PUT'  and l.side == 'BUY')
+    put_strikes  = [l.strike for l in legs if l.opt_type == 'PUT'  and l.strike]
+    call_strikes = [l.strike for l in legs if l.opt_type == 'CALL' and l.strike]
+
+    if net > 0 and sell_call_qty > 0:
+        if put_strikes:
+            be_low  = round(min(put_strikes)  - net / sell_call_qty, 2)
+        if call_strikes:
+            be_high = round(max(call_strikes) + net / sell_call_qty, 2)
+    elif net < 0 and buy_put_qty > 0:
+        # Estratégia de débito com puts compradas
+        if put_strikes:
+            be_low = round(min(put_strikes) - abs(net) / buy_put_qty, 2)
+
     return dict(net=net, current_pnl=current_pnl,
                 max_profit=max_profit, max_loss=max_loss,
                 breakevens=breakevens,
+                be_low=be_low, be_high=be_high,
                 unlimited_profit=unlimited_profit, unlimited_loss=unlimited_loss)
 
 

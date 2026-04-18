@@ -332,7 +332,7 @@ def run_migrations():
     conn.close()
 
 with app.app_context():
-    db.create_all()
+    db.create_all(checkfirst=True)
     run_migrations()
 
 # Scheduler OpLab iniciado ao carregar o módulo (Gunicorn + __main__)

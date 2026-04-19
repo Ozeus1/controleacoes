@@ -1056,7 +1056,8 @@ def simulacao_edit(id):
 
     if request.method == 'POST':
         sim.name       = request.form.get('name', '').strip()
-        sim.underlying = request.form.get('underlying', '').strip().upper()
+        underlying     = request.form.get('underlying', '').strip().upper()
+        sim.underlying = underlying
         leg_types  = request.form.getlist('leg_type')
         sides      = request.form.getlist('leg_side')
         quantities = request.form.getlist('leg_qty')

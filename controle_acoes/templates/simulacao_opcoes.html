@@ -90,6 +90,9 @@
         </div>
 
         {# Tabela de pernas #}
+        {# variável JS com Selic vinda do servidor #}
+        <script>var SELIC_RATE = {{ selic }};  /* % a.a. */</script>
+
         <div style="overflow-x:auto; margin-bottom:.8rem;">
         <table id="legs-table">
             <thead>
@@ -101,6 +104,7 @@
                     <th style="text-align:right;">Prêmio / Preço</th>
                     <th>Vencimento</th>
                     <th style="text-align:right;">Strike</th>
+                    <th class="col-iv-hdr" style="text-align:right; display:none;">VI %</th>
                     <th></th>
                 </tr>
             </thead>
@@ -143,6 +147,12 @@
                                placeholder="0,00" style="width:80px; text-align:right;" oninput="scheduleRedraw()"
                                {% if isSt %}disabled{% endif %}>
                     </td>
+                    <td class="col-iv" style="display:none;">
+                        <input type="text" name="leg_iv"
+                               value="{{ ('%.1f'|format(leg.iv) if leg.iv else '0,0')|replace('.', ',') }}"
+                               placeholder="0,0" style="width:60px; text-align:right;" oninput="scheduleRedraw()"
+                               {% if isSt %}disabled{% endif %}>
+                    </td>
                     <td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
                 </tr>
                 {% endfor %}
@@ -166,6 +176,7 @@
                     <td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px; text-align:right;" oninput="scheduleRedraw()"></td>
                     <td class="col-exp"><input type="date" name="leg_exp" style="width:135px;"></td>
                     <td class="col-strike"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px; text-align:right;" oninput="scheduleRedraw()"></td>
+                    <td class="col-iv" style="display:none;"><input type="text" name="leg_iv" placeholder="0,0" style="width:60px; text-align:right;" oninput="scheduleRedraw()"></td>
                     <td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
                 </tr>
             {% endif %}
@@ -230,6 +241,7 @@ function rowTemplate(type) {
         '<td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px;text-align:right;" oninput="scheduleRedraw()"></td>' +
         '<td class="col-exp" style="' + hide + '"><input type="date" name="leg_exp" style="width:135px;"' + dis + '></td>' +
         '<td class="col-strike" style="' + hide + '"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px;text-align:right;" oninput="scheduleRedraw()"' + dis + '></td>' +
+        '<td class="col-iv" style="display:none;"><input type="text" name="leg_iv" placeholder="0,0" style="width:60px;text-align:right;" oninput="scheduleRedraw()"' + dis + '></td>' +
         '<td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>' +
     '</tr>';
 }
@@ -252,21 +264,45 @@ function legTypeChanged(sel) {
     var strikeEl = row.querySelector('[name=leg_strike]');
     var expEl    = row.querySelector('[name=leg_exp]');
     var tickerEl = row.querySelector('[name=leg_ticker]');
+    var ivEl     = row.querySelector('[name=leg_iv]');
     var tdTicker = row.querySelector('.col-ticker');
     var tdExp    = row.querySelector('.col-exp');
     var tdStrike = row.querySelector('.col-strike');
 
-    // Oculta/mostra células
     tdTicker.style.display = isSt ? 'none' : '';
     tdExp.style.display    = isSt ? 'none' : '';
     tdStrike.style.display = isSt ? 'none' : '';
 
-    // Disable evita envio de valores espúrios
     strikeEl.disabled = isSt;
     expEl.disabled    = isSt;
     tickerEl.disabled = isSt;
+    if (ivEl) ivEl.disabled = isSt;
 
     if (isSt) { strikeEl.value = ''; expEl.value = ''; tickerEl.value = ''; }
+
+    updateIVVisibility();
+}
+
+function updateIVVisibility() {
+    var exps = [];
+    document.querySelectorAll('#legs-body .leg-row').forEach(function(row) {
+        var lt  = row.querySelector('[name=leg_type]').value;
+        var exp = row.querySelector('[name=leg_exp]');
+        if (lt !== 'STOCK' && exp && exp.value) {
+            if (exps.indexOf(exp.value) < 0) exps.push(exp.value);
+        }
+    });
+    var multi = exps.length > 1;
+    // Cabeçalho
+    document.querySelectorAll('.col-iv-hdr').forEach(function(th) { th.style.display = multi ? '' : 'none'; });
+    // Células — só mostra para pernas de opção
+    document.querySelectorAll('#legs-body .leg-row').forEach(function(row) {
+        var lt  = row.querySelector('[name=leg_type]').value;
+        var td  = row.querySelector('.col-iv');
+        var inp = row.querySelector('[name=leg_iv]');
+        if (td) td.style.display = (multi && lt !== 'STOCK') ? '' : 'none';
+        if (inp) inp.disabled = !(multi && lt !== 'STOCK');
+    });
 }
 
 // ── Leitura das pernas ────────────────────────────────────────────────────────
@@ -282,9 +318,45 @@ function readLegs() {
         var qty  = parseInt(row.querySelector('[name=leg_qty]').value) || 1;
         var k    = lt !== 'STOCK' ? parseVal(row.querySelector('[name=leg_strike]').value) : 0;
         var p    = parseVal(row.querySelector('[name=leg_premium]').value);
-        legs.push({ type: lt, side: side, qty: qty, strike: k, premium: p });
+        var expEl = row.querySelector('[name=leg_exp]');
+        var exp   = (expEl && expEl.value) ? expEl.value : null;  // 'YYYY-MM-DD'
+        var ivEl  = row.querySelector('[name=leg_iv]');
+        var iv    = ivEl ? (parseVal(ivEl.value) / 100) : 0;  // armazenar como fração (0.30 = 30%)
+        legs.push({ type: lt, side: side, qty: qty, strike: k, premium: p, exp: exp, iv: iv });
     });
     return legs;
+}
+
+// ── Black-Scholes ─────────────────────────────────────────────────────────────
+function normCDF(x) {
+    // Aproximação de Horner para N(x)
+    var a = [0.319381530, -0.356563782, 1.781477937, -1.821255978, 1.330274429];
+    var L = Math.abs(x);
+    var k = 1 / (1 + 0.2316419 * L);
+    var w = 1 - (1/Math.sqrt(2*Math.PI)) * Math.exp(-L*L/2) *
+            (a[0]*k + a[1]*k*k + a[2]*k*k*k + a[3]*k*k*k*k + a[4]*k*k*k*k*k);
+    return x < 0 ? 1 - w : w;
+}
+
+// S=spot, K=strike, T=anos, r=taxa (fração), sigma=IV (fração), isCall=bool
+function blackScholes(S, K, T, r, sigma, isCall) {
+    if (T <= 0 || sigma <= 0 || S <= 0 || K <= 0) {
+        return isCall ? Math.max(0, S - K) : Math.max(0, K - S);
+    }
+    var sqrtT = Math.sqrt(T);
+    var d1 = (Math.log(S/K) + (r + 0.5*sigma*sigma)*T) / (sigma*sqrtT);
+    var d2 = d1 - sigma*sqrtT;
+    if (isCall) return S*normCDF(d1) - K*Math.exp(-r*T)*normCDF(d2);
+    return            K*Math.exp(-r*T)*normCDF(-d2) - S*normCDF(-d1);
+}
+
+// Detecta se há múltiplos vencimentos entre pernas de opção
+function getExpDates(legs) {
+    var exps = [];
+    legs.forEach(function(l) {
+        if (l.type !== 'STOCK' && l.exp && exps.indexOf(l.exp) < 0) exps.push(l.exp);
+    });
+    return exps.sort();
 }
 
 // ── Payoff ────────────────────────────────────────────────────────────────────
@@ -296,13 +368,31 @@ function netPremium(legs) {
     }, 0);
 }
 
-function payoffAt(S, legs) {
+// payoffAt: calcula payoff em S.
+// Se multiExp=true e refDate=vencimento mais curto, usa BS para pernas com exp > refDate.
+function payoffAt(S, legs, multiExp, refDateStr) {
     var total = netPremium(legs);
+    var r = SELIC_RATE / 100;
+    var today = new Date(); today.setHours(0,0,0,0);
+    var refDate = refDateStr ? new Date(refDateStr) : null;
+
     legs.forEach(function(l) {
         var sign = l.side === 'BUY' ? 1 : -1;
-        if      (l.type === 'CALL')  total += sign * l.qty * Math.max(0, S - l.strike);
-        else if (l.type === 'PUT')   total += sign * l.qty * Math.max(0, l.strike - S);
-        else /* STOCK */             total += sign * l.qty * (S - l.premium);
+        if (l.type === 'STOCK') {
+            total += sign * l.qty * (S - l.premium);
+            return;
+        }
+        // Opção: verifica se usa BS (perna mais longa em cenário multi-exp)
+        if (multiExp && refDate && l.exp && l.exp > refDateStr && l.iv > 0) {
+            var legDate = new Date(l.exp);
+            var T = (legDate - refDate) / (365.25 * 24 * 3600 * 1000);  // anos restantes na refDate
+            var bsPrice = blackScholes(S, l.strike, T, r, l.iv, l.type === 'CALL');
+            total += sign * l.qty * bsPrice;
+        } else {
+            // Payoff intrínseco no vencimento
+            if (l.type === 'CALL') total += sign * l.qty * Math.max(0, S - l.strike);
+            else                   total += sign * l.qty * Math.max(0, l.strike - S);
+        }
     });
     return total;
 }
@@ -326,6 +416,11 @@ function drawChart(legs) {
     ctx.clearRect(0, 0, W, H);
     if (!legs.length) return;
 
+    // Detecção multi-vencimento
+    var expDates = getExpDates(legs);
+    var multiExp = expDates.length > 1;
+    var refDateStr = multiExp ? expDates[0] : null;  // vencimento mais curto
+
     // Série
     var strikes = legs.filter(function(l){ return l.type!=='STOCK' && l.strike>0; })
                       .map(function(l){ return l.strike; });
@@ -337,7 +432,7 @@ function drawChart(legs) {
     var Smax = maxK + pad;
     var N = 400, step = (Smax - Smin) / N;
     var Sarr = [], Parr = [];
-    for (var i = 0; i <= N; i++) { var S = Smin + i*step; Sarr.push(S); Parr.push(payoffAt(S, legs)); }
+    for (var i = 0; i <= N; i++) { var S = Smin + i*step; Sarr.push(S); Parr.push(payoffAt(S, legs, multiExp, refDateStr)); }
 
     var maxGain = Math.max.apply(null, Parr);
     var maxLoss = Math.min.apply(null, Parr);
@@ -434,18 +529,33 @@ function drawChart(legs) {
     document.getElementById('m-loss').textContent=maxLoss<-1e7?'-∞':fmtBRL(maxLoss);
     document.getElementById('m-be').textContent=bes.length?bes.map(fmtBRL).join(' / '):'—';
 
-    canvas._ser={Sarr:Sarr,Parr:Parr,Smin:Smin,Smax:Smax,legs:legs};
+    canvas._ser={Sarr:Sarr,Parr:Parr,Smin:Smin,Smax:Smax,legs:legs,multiExp:multiExp,refDateStr:refDateStr};
 
-    // Aviso trava horizontal: vencimentos distintos entre pernas de opção
-    var exps = [];
-    document.querySelectorAll('#legs-body .leg-row').forEach(function(row) {
-        var lt  = row.querySelector('[name=leg_type]').value;
-        var exp = row.querySelector('[name=leg_exp]');
-        if (lt !== 'STOCK' && exp && exp.value) {
-            if (exps.indexOf(exp.value) < 0) exps.push(exp.value);
+    // Aviso / status trava horizontal
+    var warnEl = document.getElementById('calendar-warning');
+    if (multiExp) {
+        var hasIV = legs.some(function(l){ return l.type !== 'STOCK' && l.exp && l.exp > refDateStr && l.iv > 0; });
+        if (hasIV) {
+            warnEl.style.display = 'block';
+            warnEl.style.background = 'rgba(16,185,129,0.10)';
+            warnEl.style.borderColor = 'rgba(16,185,129,0.4)';
+            warnEl.style.color = '#10b981';
+            warnEl.innerHTML = '✅ <strong>Trava horizontal / diagonal:</strong> gráfico calculado com Black-Scholes ' +
+                '(Selic ' + SELIC_RATE.toFixed(2).replace('.', ',') + '% a.a.) avaliado no vencimento mais curto (' + refDateStr + '). ' +
+                'Preencha o campo <strong>VI %</strong> de cada perna para precisão máxima.';
+        } else {
+            warnEl.style.display = 'block';
+            warnEl.style.background = 'rgba(234,179,8,0.12)';
+            warnEl.style.borderColor = 'rgba(234,179,8,0.4)';
+            warnEl.style.color = '#ca8a04';
+            warnEl.innerHTML = '⚠️ <strong>Trava horizontal / diagonal detectada:</strong> preencha <strong>VI %</strong> ' +
+                'das pernas mais longas para calcular com Black-Scholes. Sem VI, o gráfico mostra apenas payoff intrínseco.';
         }
-    });
-    document.getElementById('calendar-warning').style.display = exps.length > 1 ? 'block' : 'none';
+    } else {
+        warnEl.style.display = 'none';
+    }
+
+    updateIVVisibility();
 }
 
 // Tooltip
@@ -460,7 +570,7 @@ function drawChart(legs) {
         if(mx<PAD.left||mx>canvas.width-PAD.right){tooltip.style.display='none';return;}
         var ser=canvas._ser;
         var S=ser.Smin+(mx-PAD.left)/cW*(ser.Smax-ser.Smin);
-        var P=payoffAt(S,ser.legs);
+        var P=payoffAt(S,ser.legs,ser.multiExp,ser.refDateStr);
         var clr=P>=0?'#10b981':'#ef4444';
         tooltip.innerHTML='<span style="color:rgba(148,163,184,.8)">Preço: </span><strong>'+
             S.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</strong><br>'+
@@ -477,13 +587,14 @@ function drawChart(legs) {
 var _rdTimer=null;
 function scheduleRedraw(){
     if(_rdTimer) clearTimeout(_rdTimer);
-    _rdTimer=setTimeout(function(){drawChart(readLegs());},120);
+    _rdTimer=setTimeout(function(){ updateIVVisibility(); drawChart(readLegs()); },120);
 }
 
 window.addEventListener('resize',function(){drawChart(readLegs());});
 
 document.addEventListener('DOMContentLoaded',function(){
-    document.getElementById('legs-body').addEventListener('change',scheduleRedraw);
+    document.getElementById('legs-body').addEventListener('change', function(){ updateIVVisibility(); scheduleRedraw(); });
+    updateIVVisibility();
     drawChart(readLegs());
 });
 </script>

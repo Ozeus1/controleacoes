@@ -367,6 +367,7 @@ class SimulacaoLeg(db.Model):
     premium     = db.Column(db.Float, default=0.0)           # prêmio ou preço médio
     expiration  = db.Column(db.Date, nullable=True)
     ticker      = db.Column(db.String(20), default='')
+    iv          = db.Column(db.Float, default=0.0)   # volatilidade implícita % (ex: 30.0)
 
 
 class Dividend(db.Model):

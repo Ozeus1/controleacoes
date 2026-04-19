@@ -4,7 +4,25 @@
 <div class="card" style="max-width: 800px; margin: 0 auto;">
     <h2>Configuração</h2>
 
-    <div style="margin-bottom: 3rem;">
+    <div style="margin-bottom: 2rem;">
+        <h3>Taxa Selic (para precificação de opções)</h3>
+        <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size:.9rem;">
+            Usada no cálculo Black-Scholes da Simulação de Opções (travas horizontais/diagonais).
+        </p>
+        <form method="POST" action="{{ url_for('config') }}">
+            <input type="hidden" name="action" value="save_selic">
+            <div class="form-group">
+                <label>Taxa Selic % a.a.</label>
+                <div style="display:flex; gap:1rem; align-items:center;">
+                    <input type="text" name="selic" value="{{ '%.2f'|format(selic_rate)|replace('.', ',') }}"
+                           style="width:120px; margin-bottom:0;" placeholder="14,50">
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-bottom: 3rem;">
         <h3>Chave de API (BRAPI)</h3>
         <p style="color: var(--text-secondary); margin-bottom: 1rem;">
             Insira sua chave de acesso. Se estiver vazia, o sistema tentará usar a variável de ambiente ou o plano

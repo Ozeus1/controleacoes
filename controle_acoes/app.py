@@ -313,6 +313,12 @@ def run_migrations():
             FOREIGN KEY (user_id) REFERENCES user(id)
         )
     """)
+    # Add iv column to simulacao_leg if missing
+    cursor.execute("PRAGMA table_info(simulacao_leg)")
+    sim_leg_cols = {row[1] for row in cursor.fetchall()}
+    if 'iv' not in sim_leg_cols and sim_leg_cols:
+        cursor.execute("ALTER TABLE simulacao_leg ADD COLUMN iv FLOAT NOT NULL DEFAULT 0.0")
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS simulacao_leg (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -989,11 +995,14 @@ def delete_estruturada(id):
 # Simulação de Opções — CRUD + API de dados
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _selic():
+    return float(Settings.get_value('selic_rate', user_id=current_user.id, default='14.5'))
+
 @app.route('/simulacao_opcoes')
 @login_required
 def simulacao_opcoes():
     sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id).order_by(SimulacaoOpcoes.created_at.desc()).all()
-    return render_template('simulacao_opcoes.html', sims=sims, sim=None)
+    return render_template('simulacao_opcoes.html', sims=sims, sim=None, selic=_selic())
 
 
 @app.route('/simulacao_opcoes/new', methods=['GET', 'POST'])
@@ -1009,6 +1018,7 @@ def simulacao_new():
         premiums   = request.form.getlist('leg_premium')
         exps       = request.form.getlist('leg_exp')
         tickers    = request.form.getlist('leg_ticker')
+        ivs        = request.form.getlist('leg_iv')
 
         if not name:
             flash('Informe um nome para a simulação.', 'warning')
@@ -1035,6 +1045,7 @@ def simulacao_new():
                 premium=float(premiums[i].replace(',', '.')) if i < len(premiums) and premiums[i] else 0.0,
                 expiration=exp,
                 ticker=(underlying if lt == 'STOCK' else (tickers[i].strip().upper() if i < len(tickers) and tickers[i] else '')),
+                iv=float(ivs[i].replace(',', '.')) if i < len(ivs) and ivs[i] else 0.0,
             )
             db.session.add(leg)
 
@@ -1043,7 +1054,7 @@ def simulacao_new():
         return redirect(url_for('simulacao_edit', id=sim.id))
 
     sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id).order_by(SimulacaoOpcoes.created_at.desc()).all()
-    return render_template('simulacao_opcoes.html', sims=sims, sim=None)
+    return render_template('simulacao_opcoes.html', sims=sims, sim=None, selic=_selic())
 
 
 @app.route('/simulacao_opcoes/<int:id>/edit', methods=['GET', 'POST'])
@@ -1065,6 +1076,7 @@ def simulacao_edit(id):
         premiums   = request.form.getlist('leg_premium')
         exps       = request.form.getlist('leg_exp')
         tickers    = request.form.getlist('leg_ticker')
+        ivs        = request.form.getlist('leg_iv')
 
         for leg in list(sim.legs):
             db.session.delete(leg)
@@ -1087,6 +1099,7 @@ def simulacao_edit(id):
                 premium=float(premiums[i].replace(',', '.')) if i < len(premiums) and premiums[i] else 0.0,
                 expiration=exp,
                 ticker=(underlying if lt == 'STOCK' else (tickers[i].strip().upper() if i < len(tickers) and tickers[i] else '')),
+                iv=float(ivs[i].replace(',', '.')) if i < len(ivs) and ivs[i] else 0.0,
             )
             db.session.add(leg)
 
@@ -1095,7 +1108,7 @@ def simulacao_edit(id):
         return redirect(url_for('simulacao_edit', id=sim.id))
 
     sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id).order_by(SimulacaoOpcoes.created_at.desc()).all()
-    return render_template('simulacao_opcoes.html', sims=sims, sim=sim)
+    return render_template('simulacao_opcoes.html', sims=sims, sim=sim, selic=_selic())
 
 
 @app.route('/simulacao_opcoes/<int:id>/delete', methods=['POST'])
@@ -2340,6 +2353,15 @@ def config():
                 Settings.set_value('quote_mode', mode, user_id=current_user.id)
                 flash(f'Modo de cotação alterado para: {"Yahoo Finance" if mode == "yahoo" else "MT5 Feeder"}', 'success')
 
+        elif action == 'save_selic':
+            selic = request.form.get('selic', '14.5').replace(',', '.')
+            try:
+                selic = str(float(selic))
+            except ValueError:
+                selic = '14.5'
+            Settings.set_value('selic_rate', selic, user_id=current_user.id)
+            flash(f'Taxa Selic salva: {selic}% a.a.', 'success')
+
         elif action == 'save_oplab_config':
             auto     = 'true' if request.form.get('oplab_auto_update') == 'true' else 'false'
             interval = request.form.get('oplab_interval', '5')
@@ -2352,6 +2374,7 @@ def config():
 
         return redirect(url_for('config'))
 
+    selic_rate      = float(Settings.get_value('selic_rate', user_id=current_user.id, default='14.5'))
     current_key = Settings.get_value('brapi_token', user_id=current_user.id)
     if not current_key:
         current_key = os.environ.get('BRAPI_API_KEY', '')
@@ -2384,7 +2407,8 @@ def config():
                            oplab_interval=oplab_interval,
                            oplab_token_ok=oplab_token_ok,
                            ticker_map_text=ticker_map_text,
-                           option_map_text=option_map_text)
+                           option_map_text=option_map_text,
+                           selic_rate=selic_rate)
 
 @app.route('/test_api', methods=['POST'])
 @login_required

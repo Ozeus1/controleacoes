@@ -193,6 +193,15 @@
         <div><span>Breakeven(s)</span><br><strong id="m-be">—</strong></div>
     </div>
 
+    {# Aviso vencimentos diferentes #}
+    <div id="calendar-warning" style="display:none; margin-top:.8rem; padding:.6rem 1rem;
+         background:rgba(234,179,8,0.12); border:1px solid rgba(234,179,8,0.4);
+         border-radius:6px; font-size:.85rem; color:#ca8a04;">
+        ⚠️ <strong>Trava horizontal / diagonal detectada:</strong> as pernas têm vencimentos diferentes.
+        O gráfico mostra apenas o payoff no vencimento, sem considerar o valor temporal da perna mais longa.
+        O perfil real depende de volatilidade implícita e não pode ser calculado sem modelo de precificação.
+    </div>
+
     {# Gráfico #}
     <div id="chart-wrap">
         <canvas id="payoff-canvas"></canvas>
@@ -426,6 +435,17 @@ function drawChart(legs) {
     document.getElementById('m-be').textContent=bes.length?bes.map(fmtBRL).join(' / '):'—';
 
     canvas._ser={Sarr:Sarr,Parr:Parr,Smin:Smin,Smax:Smax,legs:legs};
+
+    // Aviso trava horizontal: vencimentos distintos entre pernas de opção
+    var exps = [];
+    document.querySelectorAll('#legs-body .leg-row').forEach(function(row) {
+        var lt  = row.querySelector('[name=leg_type]').value;
+        var exp = row.querySelector('[name=leg_exp]');
+        if (lt !== 'STOCK' && exp && exp.value) {
+            if (exps.indexOf(exp.value) < 0) exps.push(exp.value);
+        }
+    });
+    document.getElementById('calendar-warning').style.display = exps.length > 1 ? 'block' : 'none';
 }
 
 // Tooltip

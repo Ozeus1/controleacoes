@@ -279,8 +279,10 @@ function readLegs() {
 }
 
 // ── Payoff ────────────────────────────────────────────────────────────────────
+// netPremium: saldo de montagem das opções apenas (AÇÃO não é prêmio)
 function netPremium(legs) {
     return legs.reduce(function(acc, l) {
+        if (l.type === 'STOCK') return acc;
         return acc + (l.side === 'SELL' ? 1 : -1) * l.qty * l.premium;
     }, 0);
 }
@@ -291,7 +293,7 @@ function payoffAt(S, legs) {
         var sign = l.side === 'BUY' ? 1 : -1;
         if      (l.type === 'CALL')  total += sign * l.qty * Math.max(0, S - l.strike);
         else if (l.type === 'PUT')   total += sign * l.qty * Math.max(0, l.strike - S);
-        else                          total += sign * l.qty * (S - l.premium);
+        else /* STOCK */             total += sign * l.qty * (S - l.premium);
     });
     return total;
 }

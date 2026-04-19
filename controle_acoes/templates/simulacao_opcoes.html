@@ -359,12 +359,18 @@ function drawChart(legs) {
         ctx.fillText('K='+K.toLocaleString('pt-BR',{minimumFractionDigits:2}), xk, PAD.top-8);
     });
 
-    // Breakevens
+    // Breakevens — só calcula se há variação real no payoff
     var bes = [];
-    for (var j = 0; j < Parr.length-1; j++) {
-        var p1=Parr[j], p2=Parr[j+1];
-        if (Math.abs(p1)<0.5 && bes.indexOf(Math.round(Sarr[j]*100)/100)<0) bes.push(Math.round(Sarr[j]*100)/100);
-        else if (p1*p2<0) { var be=Sarr[j]+(-p1)*(Sarr[j+1]-Sarr[j])/(p2-p1); bes.push(Math.round(be*100)/100); }
+    var pRange = maxGain - maxLoss;
+    if (pRange > 0.01) {
+        var threshold = pRange * 0.005;
+        for (var j = 0; j < Parr.length-1; j++) {
+            var p1=Parr[j], p2=Parr[j+1];
+            if (p1*p2 < 0) {
+                var be = Sarr[j] + (-p1)*(Sarr[j+1]-Sarr[j])/(p2-p1);
+                bes.push(Math.round(be*100)/100);
+            }
+        }
     }
     bes.forEach(function(be) {
         var xb=xPx(be);

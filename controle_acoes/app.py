@@ -3722,84 +3722,14 @@ def importar_excel():
         flash(f'Erro ao abrir o arquivo: {e}', 'danger')
         return redirect(url_for('importar_excel'))
 
-    ativos_atualizados = 0
-    opcoes_atualizadas = 0
-    erros = []
-
-    # ── 1. Preços das ações (sheet "acao") ──────────────────────────
-    if 'acao' in wb.sheetnames:
-        ws = wb['acao']
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            ticker = row[0]
-            price  = row[3]
-            if not ticker or not isinstance(price, (int, float)):
-                continue
-            ticker = str(ticker).upper().strip()
-            asset = Asset.query.filter_by(ticker=ticker, user_id=current_user.id).first()
-            if asset:
-                asset.current_price = float(price)
-                asset.last_update = datetime.now()
-                ativos_atualizados += 1
-
-    # ── 2. Preços dos ETFs (sheet "ETF") — ignora linhas de opções ──
-    if 'ETF' in wb.sheetnames:
-        ws = wb['ETF']
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            ticker = row[0]
-            price  = row[3]
-            name   = str(row[11]) if row[11] else ''
-            if not ticker or not isinstance(price, (int, float)):
-                continue
-            if name.startswith('Opc ') or name.startswith('Opc\xa0'):
-                continue
-            ticker = str(ticker).upper().strip()
-            asset = Asset.query.filter_by(ticker=ticker, user_id=current_user.id).first()
-            if asset:
-                asset.current_price = float(price)
-                asset.last_update = datetime.now()
-                ativos_atualizados += 1
-
-    # ── 3. Sheet "rtd" — preços de opções + greeks de estudo ─────────
-    # Colunas: A(0)=ticker, D(3)=Último, I(8)=Strike, S(18)=Vencimento,
-    #          X(23)=Delta, Y(24)=Gama, AD(29)=VE
-    opcao_prices = {}
-    rtd_data = {}   # ticker → row completo
-    if 'rtd' in wb.sheetnames:
-        ws = wb['rtd']
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            ticker = row[0]
-            price  = row[3]
-            if not ticker:
-                continue
-            key = str(ticker).upper().strip()
-            rtd_data[key] = row
-            if isinstance(price, (int, float)):
-                opcao_prices[key] = float(price)
-
-    # Atualiza Option.current_option_price + daily_change para todos os tipos
-    for ticker, price in opcao_prices.items():
-        opt = Option.query.filter_by(ticker=ticker, user_id=current_user.id).first()
-        if opt:
-            opt.current_option_price = price
-            opt.last_update = datetime.now()
-            # Coluna J (índice 9) = VAR — variação diária %
-            row = rtd_data.get(ticker)
-            if row and len(row) > 9:
-                v = row[9]
-                if isinstance(v, (int, float)):
-                    opt.daily_change = float(v)
-            opcoes_atualizadas += 1
-
-    # ── Helpers rtd ──────────────────────────────────────────────────
-    def _rtd_float(row, idx):
-        v = row[idx] if len(row) > idx else None
+    # ── Helpers ──────────────────────────────────────────────────────
+    def _float(v):
         return float(v) if isinstance(v, (int, float)) else None
 
-    def _rtd_date(row, idx):
-        v = row[idx] if len(row) > idx else None
+    def _parse_date(v):
         if isinstance(v, date):
             return v
-        if v:
+        if v and str(v).strip() not in ('-', '31/12/9999', ''):
             for fmt in ('%d/%m/%Y', '%Y-%m-%d'):
                 try:
                     return datetime.strptime(str(v).strip(), fmt).date()
@@ -3807,101 +3737,178 @@ def importar_excel():
                     pass
         return None
 
-    # ── 3b. Atualiza Asset.current_price via rtd (ações, FIIs, ETFs) ─
-    # O sheet rtd é real-time e cobre todos os tipos de ativo.
-    # Isso garante que FIIs e ações não presentes nos sheets "acao"/"ETF"
-    # também sejam atualizados, e que o underlying_price das opções em
-    # /estudos fique correto.
+    def _is_option(name):
+        """Retorna True se o Nome do Ativo indica ser uma opção."""
+        n = str(name) if name else ''
+        return n.startswith('Opc ') or n.startswith('Opc\xa0')
+
+    # ── Leitura unificada de preços ───────────────────────────────────
+    # Mapa ticker → (price, row_tuple) para todos os ativos e opções.
+    # Colunas padrão dos sheets rtd/acao/ETF/opcao:
+    #   0=ticker, 3=último, 8=strike, 9=variação%, 11=nome,
+    #   18=vencimento, 22=VI, 23=delta, 24=gama
+    all_prices = {}   # ticker → float price
+    all_rows   = {}   # ticker → row tuple (para greeks)
+
+    def _load_sheet(ws, skip_options=False):
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            ticker = row[0]
+            if not ticker:
+                continue
+            key = str(ticker).upper().strip()
+            name = row[11] if len(row) > 11 else None
+            if skip_options and _is_option(name):
+                continue
+            price = _float(row[3]) if len(row) > 3 else None
+            if price is not None:
+                all_prices[key] = price
+            all_rows[key] = row
+
+    # Ordem de prioridade: rtd e opcao são fonte principal (tempo real),
+    # depois acao e ETF como fallback para ativos não cobertos pelo rtd.
+    for sheet_name in ('acao', 'ETF', 'opcao', 'rtd'):
+        if sheet_name in wb.sheetnames:
+            skip = (sheet_name == 'ETF')   # ETF: pula linhas de opções
+            _load_sheet(wb[sheet_name], skip_options=skip)
+
+    # Mapa extra de greeks vindos dos sheets especializados
+    # C_put / V_put / C_Call_ITM — colunas:
+    #   0=ticker, 3=último, 8=strike, 14=vencimento,
+    #   17=delta, 18=gama, 19=theta, 22=VI intrínseco, 23=VE extrínseco
+    extra_greeks = {}  # ticker → row
+    for sheet_name in ('C_put', 'V_put', 'C_Call_ITM'):
+        if sheet_name in wb.sheetnames:
+            for row in wb[sheet_name].iter_rows(min_row=2, values_only=True):
+                ticker = row[0]
+                if not ticker:
+                    continue
+                key = str(ticker).upper().strip()
+                extra_greeks[key] = row
+                # preço desses sheets também entra no mapa geral
+                p = _float(row[3]) if len(row) > 3 else None
+                if p is not None and p > 0:
+                    all_prices[key] = p
+                    all_rows[key] = row
+
+    now = datetime.now()
+    ativos_atualizados     = 0
+    opcoes_atualizadas     = 0
+    spreads_atualizados    = 0
+    estruturadas_atualizadas = 0
+    estudo_opcoes_atualizados = 0
     nao_encontrados_ativos = []
+
+    # ── 1. Atualiza Asset (ações, FIIs, ETFs) ────────────────────────
     for asset in Asset.query.filter_by(user_id=current_user.id).all():
         key = asset.ticker.upper()
-        if key in rtd_data:
-            p = _rtd_float(rtd_data[key], 3)
-            if p is not None and p > 0:
-                asset.current_price = p
-                asset.last_update   = datetime.now()
-                ativos_atualizados += 1
+        p = all_prices.get(key)
+        if p is not None and p > 0:
+            asset.current_price = p
+            asset.last_update   = now
+            # variação diária (col 9)
+            row = all_rows.get(key)
+            if row and len(row) > 9:
+                v = _float(row[9])
+                if v is not None:
+                    asset.daily_change = v
+            ativos_atualizados += 1
         else:
             nao_encontrados_ativos.append(asset.ticker)
 
-    # ── 4. Atualiza StudyOption com dados do rtd ─────────────────────
-    estudo_opcoes_atualizados = 0
+    # ── 2. Atualiza Option (venda/compra call/put) ───────────────────
+    for opt in Option.query.filter_by(user_id=current_user.id).all():
+        key = opt.ticker.upper()
+        p = all_prices.get(key)
+        row = all_rows.get(key) or extra_greeks.get(key)
+        if p is not None:
+            opt.current_option_price = p
+            opt.last_update = now
+            opcoes_atualizadas += 1
+        if row:
+            if len(row) > 9:
+                v = _float(row[9])
+                if v is not None:
+                    opt.daily_change = v
+            # greeks do rtd/opcao (cols 22=VI, 23=delta, 24=gama)
+            if len(row) > 22:
+                vi = _float(row[22]);  opt.ve    = vi if vi is not None else opt.ve
+            if len(row) > 23:
+                d  = _float(row[23]);  opt.delta = d  if d  is not None else opt.delta
+            if len(row) > 24:
+                g  = _float(row[24]);  opt.gama  = g  if g  is not None else opt.gama
+        # greeks extra dos sheets especializados (delta=17, gama=18 nesse layout)
+        erow = extra_greeks.get(key)
+        if erow:
+            if len(erow) > 17:
+                d = _float(erow[17]);  opt.delta = d if d is not None else opt.delta
+            if len(erow) > 18:
+                g = _float(erow[18]);  opt.gama  = g if g is not None else opt.gama
 
+    # ── 3. Atualiza OptionSpread (travas) ────────────────────────────
+    for sp in OptionSpread.query.filter_by(user_id=current_user.id).all():
+        changed = False
+        if sp.leg_long_ticker:
+            p = all_prices.get(sp.leg_long_ticker.upper())
+            if p is not None:
+                sp.leg_long_current = p
+                changed = True
+        if sp.leg_short_ticker:
+            p = all_prices.get(sp.leg_short_ticker.upper())
+            if p is not None:
+                sp.leg_short_current = p
+                changed = True
+        if changed:
+            spreads_atualizados += 1
+
+    # ── 4. Atualiza StructuredLeg (operações estruturadas) ───────────
+    for op in StructuredOp.query.filter_by(user_id=current_user.id, status='OPEN').all():
+        op_changed = False
+        for leg in op.legs:
+            key = leg.ticker.upper() if leg.ticker else ''
+            p = all_prices.get(key)
+            if p is not None:
+                leg.current_price = p
+                leg.last_update   = now
+                op_changed = True
+        if op_changed:
+            estruturadas_atualizadas += 1
+
+    # ── 5. Atualiza StudyOption ──────────────────────────────────────
     for so in StudyOption.query.filter_by(user_id=current_user.id).all():
         key = so.ticker.upper()
-        if key not in rtd_data:
-            continue
-        row = rtd_data[key]
+        row = all_rows.get(key) or extra_greeks.get(key)
         changed = False
-        # Preço da opção
-        p = _rtd_float(row, 3)
+        p = all_prices.get(key)
         if p is not None:
             so.option_price = p
             changed = True
-        # Strike (col I = 8)
-        s = _rtd_float(row, 8)
-        if s is not None:
-            so.strike = s
-            changed = True
-        # Vencimento (col S = 18)
-        exp = _rtd_date(row, 18)
-        if exp is not None:
-            so.expiration_date = exp
-            changed = True
-        # Delta (col X = 23) — sobrescreve sempre que a planilha tiver valor
-        d = _rtd_float(row, 23)
-        if d is not None:
-            so.delta = d
-            changed = True
-        # Gama (col Y = 24) — idem
-        g = _rtd_float(row, 24)
-        if g is not None:
-            so.gama = g
-            changed = True
-        # VE = Volatilidade Implícita (col W = 22) — idem
-        ve = _rtd_float(row, 22)
-        if ve is not None:
-            so.ve = ve
-            changed = True
-        # Preço do ativo subjacente via rtd
-        und_key = so.underlying_asset.upper()
-        if und_key in rtd_data:
-            up = _rtd_float(rtd_data[und_key], 3)
-            if up is not None:
-                so.underlying_price = up
-                changed = True
+        if row:
+            if len(row) > 8:
+                s = _float(row[8]);
+                if s is not None and s > 0:
+                    so.strike = s;  changed = True
+            exp = _parse_date(row[18] if len(row) > 18 else None)
+            if exp:
+                so.expiration_date = exp;  changed = True
+            if len(row) > 22:
+                vi = _float(row[22])
+                if vi is not None:
+                    so.ve = vi;  changed = True
+            if len(row) > 23:
+                d = _float(row[23])
+                if d is not None:
+                    so.delta = d;  changed = True
+            if len(row) > 24:
+                g = _float(row[24])
+                if g is not None:
+                    so.gama = g;  changed = True
+        # underlying price
+        und_key = (so.underlying_asset or '').upper()
+        up = all_prices.get(und_key)
+        if up is not None and up > 0:
+            so.underlying_price = up;  changed = True
         if changed:
             estudo_opcoes_atualizados += 1
-
-    # Atualiza greeks de VENDA_CALL Options a partir do rtd (só se vazios)
-    for opt in Option.query.filter_by(user_id=current_user.id, option_type='VENDA_CALL').all():
-        key = opt.ticker.upper()
-        if key not in rtd_data:
-            continue
-        row = rtd_data[key]
-        d = _rtd_float(row, 23)
-        if d is not None:
-            opt.delta = d
-        g = _rtd_float(row, 24)
-        if g is not None:
-            opt.gama = g
-        v = _rtd_float(row, 22)  # col W = Volatilidade Implícita
-        if v is not None:
-            opt.ve = v
-
-    # Atualiza legs dos OptionSpreads do usuário
-    spreads_atualizados = 0
-    user_spreads = OptionSpread.query.filter_by(user_id=current_user.id).all()
-    for sp in user_spreads:
-        changed = False
-        if sp.leg_long_ticker and sp.leg_long_ticker.upper() in opcao_prices:
-            sp.leg_long_current = opcao_prices[sp.leg_long_ticker.upper()]
-            changed = True
-        if sp.leg_short_ticker and sp.leg_short_ticker.upper() in opcao_prices:
-            sp.leg_short_current = opcao_prices[sp.leg_short_ticker.upper()]
-            changed = True
-        if changed:
-            spreads_atualizados += 1
 
     try:
         db.session.commit()
@@ -3911,15 +3918,13 @@ def importar_excel():
         return redirect(url_for('importar_excel'))
 
     msg = (f'Atualizado: {ativos_atualizados} ativo(s), {opcoes_atualizadas} opção(ões), '
-           f'{spreads_atualizados} spread(s) e {estudo_opcoes_atualizados} estudo(s).')
+           f'{spreads_atualizados} spread(s), {estruturadas_atualizadas} op. estruturada(s) '
+           f'e {estudo_opcoes_atualizados} estudo(s).')
     if nao_encontrados_ativos:
-        msg += f' Não encontrados no rtd: {", ".join(nao_encontrados_ativos[:10])}'
+        msg += f' Não encontrados: {", ".join(nao_encontrados_ativos[:10])}'
         if len(nao_encontrados_ativos) > 10:
             msg += f' (+{len(nao_encontrados_ativos)-10})'
-    if erros:
-        msg += f' Avisos: {"; ".join(erros)}'
-    cat = 'success' if not nao_encontrados_ativos else 'warning'
-    flash(msg, cat)
+    flash(msg, 'success' if not nao_encontrados_ativos else 'warning')
     return redirect(url_for('importar_excel'))
 
 

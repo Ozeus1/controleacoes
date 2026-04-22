@@ -1135,7 +1135,7 @@ def simulacao_delete(id):
 
 def _get_underlying_quote(ticker, user_id):
     """Retorna (price, daily_change) do ativo subjacente.
-    Busca em: Asset → StructuredOp → StudyOption."""
+    Busca em: Asset → StructuredOp.underlying_price → StudyOption → Option."""
     if not ticker:
         return None, None
     t = ticker.strip().upper()
@@ -1144,14 +1144,23 @@ def _get_underlying_quote(ticker, user_id):
     if a and a.current_price:
         return a.current_price, getattr(a, 'daily_change', None)
     # 2. StructuredOp — underlying_price salvo pelo import do Excel
-    op = StructuredOp.query.filter_by(underlying_asset=t, user_id=user_id)\
-                           .filter(StructuredOp.underlying_price.isnot(None)).first()
-    if op and op.underlying_price:
-        return op.underlying_price, op.underlying_change
+    try:
+        op = StructuredOp.query.filter_by(underlying_asset=t, user_id=user_id)\
+                               .filter(StructuredOp.underlying_price.isnot(None)).first()
+        if op and op.underlying_price:
+            return op.underlying_price, op.underlying_change
+    except Exception:
+        pass
     # 3. StudyOption — tem underlying_price salvo pelo import
     so = StudyOption.query.filter_by(underlying_asset=t, user_id=user_id).first()
     if so and so.underlying_price:
         return so.underlying_price, None
+    # 4. Option — qualquer opção cadastrada do mesmo subjacente tem o ativo em Asset
+    opt = Option.query.filter_by(underlying_asset=t, user_id=user_id).first()
+    if opt:
+        a2 = Asset.query.filter_by(ticker=t, user_id=user_id).first()
+        if a2 and a2.current_price:
+            return a2.current_price, getattr(a2, 'daily_change', None)
     return None, None
 
 

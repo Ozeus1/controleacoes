@@ -1161,11 +1161,14 @@ def payoff_spread(id):
             'current_price': sp.leg_short_current,
         },
     ]
+    und_asset = Asset.query.filter_by(ticker=sp.underlying_asset, user_id=current_user.id).first()
     return render_template('payoff.html',
                            title=type_labels.get(sp.spread_type, sp.spread_type),
                            underlying=sp.underlying_asset,
                            expiration=sp.expiration_date.strftime('%d/%m/%Y') if sp.expiration_date else '',
-                           legs=legs)
+                           legs=legs,
+                           underlying_price=und_asset.current_price if und_asset else None,
+                           underlying_change=und_asset.daily_change if und_asset else None)
 
 
 @app.route('/payoff/estruturada/<int:id>')
@@ -1189,11 +1192,14 @@ def payoff_estruturada(id):
     ]
     exp_dates = [leg.expiration_date for leg in op.legs if leg.expiration_date]
     expiration = max(exp_dates).strftime('%d/%m/%Y') if exp_dates else ''
+    und_asset = Asset.query.filter_by(ticker=op.underlying_asset, user_id=current_user.id).first()
     return render_template('payoff.html',
                            title=op.name,
                            underlying=op.underlying_asset or '',
                            expiration=expiration,
-                           legs=legs)
+                           legs=legs,
+                           underlying_price=und_asset.current_price if und_asset else None,
+                           underlying_change=und_asset.daily_change if und_asset else None)
 
 
 @app.route('/edit_option/<int:id>', methods=['GET', 'POST'])

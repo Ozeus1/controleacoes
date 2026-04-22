@@ -77,11 +77,25 @@
         <div><span style="color:var(--text-secondary);">Perda máx.</span><br><strong id="m-max-loss" class="negative">—</strong></div>
         <div><span style="color:var(--text-secondary);">Breakeven(s)</span><br><strong id="m-be">—</strong></div>
         <div><span style="color:var(--text-secondary);">Lucro atual</span><br><strong id="m-pnl">—</strong></div>
+        {% if underlying_price %}
+        <div style="border-left:1px solid var(--border-color); padding-left:1.5rem;">
+            <span style="color:var(--text-secondary);">{{ underlying }} agora</span><br>
+            <strong>R$ {{ '%.2f'|format(underlying_price)|replace('.', ',') }}</strong>
+            {% if underlying_change is not none %}
+            <span style="font-size:.8rem; margin-left:.4rem;
+                color:{{ 'var(--success-color)' if underlying_change >= 0 else 'var(--danger-color)' }};">
+                {{ '+' if underlying_change >= 0 else '' }}{{ '%.2f'|format(underlying_change)|replace('.', ',') }}%
+            </span>
+            {% endif %}
+        </div>
+        {% endif %}
     </div>
 
     {# ── Gráfico ── #}
     <div style="position:relative; width:100%; background:var(--hover-bg); border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
-        <canvas id="payoff-chart" style="display:block; width:100%;"></canvas>
+        <canvas id="payoff-chart" style="display:block; width:100%;"
+                data-spot="{{ underlying_price or '' }}"
+                data-change="{{ underlying_change if underlying_change is not none else '' }}"></canvas>
         <div id="tooltip-box" style="display:none; position:absolute; background:var(--card-bg,#1e293b);
              border:1px solid var(--border-color); border-radius:6px; padding:.4rem .7rem;
              font-size:.82rem; pointer-events:none; white-space:nowrap; z-index:10;"></div>
@@ -130,6 +144,10 @@
     function fmtBRL(v) {
         return 'R$ ' + Math.abs(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
     }
+
+    // Cotação atual do ativo subjacente (injetada pelo backend)
+    var spotPrice  = parseFloat(canvas.dataset.spot)   || 0;
+    var spotChange = parseFloat(canvas.dataset.change) || null;
 
     // ── Faixa de S ───────────────────────────────────────────────────────────
     var strikes = legs.map(function(l){ return l.strike; }).filter(Boolean);
@@ -250,6 +268,38 @@
             ctx.textAlign = 'center';
             ctx.fillText('BE ' + be.toLocaleString('pt-BR', {minimumFractionDigits:2}), xb, H - PAD.bottom + 14);
         });
+
+        // ── Cotação atual do subjacente ───────────────────────────────────────
+        if (spotPrice > 0 && spotPrice >= Smin && spotPrice <= Smax) {
+            var xs = xPx(spotPrice);
+            ctx.setLineDash([4, 3]);
+            ctx.strokeStyle = 'rgba(99,179,237,0.9)';   // azul claro
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(xs, PAD.top); ctx.lineTo(xs, H - PAD.bottom); ctx.stroke();
+            ctx.setLineDash([]);
+            // Rótulo acima
+            var spotLabel = spotPrice.toLocaleString('pt-BR', {minimumFractionDigits:2});
+            if (spotChange !== null) {
+                var chSign = spotChange >= 0 ? '+' : '';
+                spotLabel += ' (' + chSign + spotChange.toLocaleString('pt-BR', {minimumFractionDigits:2}) + '%)';
+            }
+            ctx.fillStyle = 'rgba(99,179,237,1)';
+            ctx.font = 'bold 10px sans-serif';
+            ctx.textAlign = 'center';
+            // Garante que o label não sai da área
+            var labelX = Math.max(PAD.left + 60, Math.min(xs, W - PAD.right - 60));
+            ctx.fillText(spotLabel, labelX, PAD.top - 6);
+            // Ponto de payoff atual
+            var pSpot = payoffAt(spotPrice);
+            var dotColor = pSpot >= 0 ? '#10b981' : '#ef4444';
+            ctx.beginPath();
+            ctx.arc(xs, yPx(pSpot), 5, 0, Math.PI * 2);
+            ctx.fillStyle = dotColor;
+            ctx.fill();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
 
         // ── Curva de payoff (fill segmentado) ────────────────────────────────
         // Área verde (payoff > 0)

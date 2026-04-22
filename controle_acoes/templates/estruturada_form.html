@@ -47,7 +47,7 @@
                         <tr class="leg-row">
                             <td style="padding:.35rem .4rem;">
                                 <input type="text" name="leg_ticker" value="{{ leg.ticker }}"
-                                       placeholder="PETRA40" style="width:90px; text-transform:uppercase;">
+                                       placeholder="PETRA40" style="width:120px; text-transform:uppercase;">
                             </td>
                             <td style="padding:.35rem .4rem;">
                                 <select name="leg_opt_type" style="width:70px;">
@@ -97,7 +97,7 @@
                         <tr class="leg-row">
                             <td style="padding:.35rem .4rem;">
                                 <input type="text" name="leg_ticker" placeholder="PETRA40"
-                                       style="width:90px; text-transform:uppercase;">
+                                       style="width:120px; text-transform:uppercase;">
                             </td>
                             <td style="padding:.35rem .4rem;">
                                 <select name="leg_opt_type" style="width:70px;">
@@ -177,7 +177,7 @@ function parseVal(s) {
 function addLeg() {
     var tbody = document.getElementById('legs-body');
     var tmpl = `<tr class="leg-row">
-        <td style="padding:.35rem .4rem;"><input type="text" name="leg_ticker" placeholder="PETRA40" style="width:90px; text-transform:uppercase;"></td>
+        <td style="padding:.35rem .4rem;"><input type="text" name="leg_ticker" placeholder="PETRA40" style="width:120px; text-transform:uppercase;"></td>
         <td style="padding:.35rem .4rem;"><select name="leg_opt_type" style="width:70px;"><option value="CALL">CALL</option><option value="PUT">PUT</option></select></td>
         <td style="padding:.35rem .4rem;"><select name="leg_side" style="width:90px;"><option value="SELL">VENDA</option><option value="BUY">COMPRA</option></select></td>
         <td style="padding:.35rem .4rem;"><input type="number" name="leg_quantity" value="1" min="1" style="width:60px; text-align:center;"></td>

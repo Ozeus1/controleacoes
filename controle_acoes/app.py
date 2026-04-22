@@ -1124,6 +1124,28 @@ def simulacao_delete(id):
     return redirect(url_for('simulacao_opcoes'))
 
 
+def _get_underlying_quote(ticker, user_id):
+    """Retorna (price, daily_change) do ativo subjacente buscando em Asset,
+    Option e StudyOption — na ordem, usando o primeiro valor não-None encontrado."""
+    if not ticker:
+        return None, None
+    t = ticker.strip().upper()
+    # 1. Asset direto
+    a = Asset.query.filter_by(ticker=t, user_id=user_id).first()
+    if a and a.current_price:
+        return a.current_price, getattr(a, 'daily_change', None)
+    # 2. Qualquer opção cujo underlying_asset bata
+    opt = Option.query.filter_by(underlying_asset=t, user_id=user_id).first()
+    if opt and opt.current_option_price:
+        # Não temos o preço do ativo aqui, mas podemos buscar via StudyOption
+        pass
+    # 3. StudyOption tem underlying_price
+    so = StudyOption.query.filter_by(underlying_asset=t, user_id=user_id).first()
+    if so and so.underlying_price:
+        return so.underlying_price, None
+    return None, None
+
+
 @app.route('/payoff/spread/<int:id>')
 @login_required
 def payoff_spread(id):
@@ -1161,14 +1183,14 @@ def payoff_spread(id):
             'current_price': sp.leg_short_current,
         },
     ]
-    und_asset = Asset.query.filter_by(ticker=sp.underlying_asset, user_id=current_user.id).first()
+    und_price, und_change = _get_underlying_quote(sp.underlying_asset, current_user.id)
     return render_template('payoff.html',
                            title=type_labels.get(sp.spread_type, sp.spread_type),
                            underlying=sp.underlying_asset,
                            expiration=sp.expiration_date.strftime('%d/%m/%Y') if sp.expiration_date else '',
                            legs=legs,
-                           underlying_price=und_asset.current_price if und_asset else None,
-                           underlying_change=und_asset.daily_change if und_asset else None)
+                           underlying_price=und_price,
+                           underlying_change=und_change)
 
 
 @app.route('/payoff/estruturada/<int:id>')
@@ -1192,14 +1214,14 @@ def payoff_estruturada(id):
     ]
     exp_dates = [leg.expiration_date for leg in op.legs if leg.expiration_date]
     expiration = max(exp_dates).strftime('%d/%m/%Y') if exp_dates else ''
-    und_asset = Asset.query.filter_by(ticker=op.underlying_asset, user_id=current_user.id).first()
+    und_price, und_change = _get_underlying_quote(op.underlying_asset, current_user.id)
     return render_template('payoff.html',
                            title=op.name,
                            underlying=op.underlying_asset or '',
                            expiration=expiration,
                            legs=legs,
-                           underlying_price=und_asset.current_price if und_asset else None,
-                           underlying_change=und_asset.daily_change if und_asset else None)
+                           underlying_price=und_price,
+                           underlying_change=und_change)
 
 
 @app.route('/edit_option/<int:id>', methods=['GET', 'POST'])

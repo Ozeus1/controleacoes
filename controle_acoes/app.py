@@ -303,6 +303,15 @@ def run_migrations():
         )
     """)
 
+    # Migração: underlying_price e underlying_change em structured_op
+    cursor.execute("PRAGMA table_info(structured_op)")
+    struct_cols = {row[1] for row in cursor.fetchall()}
+    if struct_cols:
+        if 'underlying_price' not in struct_cols:
+            cursor.execute("ALTER TABLE structured_op ADD COLUMN underlying_price FLOAT")
+        if 'underlying_change' not in struct_cols:
+            cursor.execute("ALTER TABLE structured_op ADD COLUMN underlying_change FLOAT")
+
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS simulacao_opcoes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1125,21 +1134,21 @@ def simulacao_delete(id):
 
 
 def _get_underlying_quote(ticker, user_id):
-    """Retorna (price, daily_change) do ativo subjacente buscando em Asset,
-    Option e StudyOption — na ordem, usando o primeiro valor não-None encontrado."""
+    """Retorna (price, daily_change) do ativo subjacente.
+    Busca em: Asset → StructuredOp → StudyOption."""
     if not ticker:
         return None, None
     t = ticker.strip().upper()
-    # 1. Asset direto
+    # 1. Asset (ações cadastradas em /acoes)
     a = Asset.query.filter_by(ticker=t, user_id=user_id).first()
     if a and a.current_price:
         return a.current_price, getattr(a, 'daily_change', None)
-    # 2. Qualquer opção cujo underlying_asset bata
-    opt = Option.query.filter_by(underlying_asset=t, user_id=user_id).first()
-    if opt and opt.current_option_price:
-        # Não temos o preço do ativo aqui, mas podemos buscar via StudyOption
-        pass
-    # 3. StudyOption tem underlying_price
+    # 2. StructuredOp — underlying_price salvo pelo import do Excel
+    op = StructuredOp.query.filter_by(underlying_asset=t, user_id=user_id)\
+                           .filter(StructuredOp.underlying_price.isnot(None)).first()
+    if op and op.underlying_price:
+        return op.underlying_price, op.underlying_change
+    # 3. StudyOption — tem underlying_price salvo pelo import
     so = StudyOption.query.filter_by(underlying_asset=t, user_id=user_id).first()
     if so and so.underlying_price:
         return so.underlying_price, None
@@ -3905,6 +3914,17 @@ def importar_excel():
                 leg.current_price = p
                 leg.last_update   = now
                 op_changed = True
+        # Atualiza cotação do ativo subjacente direto no rtd
+        und_key = (op.underlying_asset or '').upper()
+        und_p = all_prices.get(und_key)
+        if und_p is not None and und_p > 0:
+            op.underlying_price = und_p
+            row = all_rows.get(und_key)
+            if row and len(row) > 9:
+                v = _float(row[9])
+                if v is not None:
+                    op.underlying_change = v
+            op_changed = True
         if op_changed:
             estruturadas_atualizadas += 1
 

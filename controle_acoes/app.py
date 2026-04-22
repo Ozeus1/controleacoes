@@ -3724,7 +3724,14 @@ def importar_excel():
 
     # ── Helpers ──────────────────────────────────────────────────────
     def _float(v):
-        return float(v) if isinstance(v, (int, float)) else None
+        if isinstance(v, (int, float)):
+            return float(v)
+        if isinstance(v, str):
+            try:
+                return float(v.strip().replace('.', '').replace(',', '.'))
+            except ValueError:
+                pass
+        return None
 
     def _parse_date(v):
         if isinstance(v, date):

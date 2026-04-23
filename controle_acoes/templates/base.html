@@ -164,23 +164,52 @@
             </div>
 
             <!-- Nav row -->
-            <nav class="main-nav">
+            <nav class="main-nav" id="main-nav">
                 <a href="{{ url_for('resumo') }}"
                     class="{{ 'active' if request.endpoint == 'resumo' else '' }}">Resumo</a>
-                <a href="{{ url_for('acoes') }}"
-                    class="{{ 'active' if request.endpoint == 'acoes' else '' }}">Ações</a>
+
+                {# ── Ações (dropdown com Swingtrade) ── #}
+                <div class="nav-dropdown {{ 'active' if request.endpoint in ['acoes','swingtrade'] else '' }}">
+                    <a href="{{ url_for('acoes') }}"
+                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['acoes','swingtrade'] else '' }}"
+                       onclick="toggleNavDrop(this,event)">
+                        Ações <span class="nav-caret">▾</span>
+                    </a>
+                    <div class="nav-dropdown-menu">
+                        <a href="{{ url_for('acoes') }}"
+                           class="{{ 'active' if request.endpoint == 'acoes' else '' }}">📋 Carteira</a>
+                        <a href="{{ url_for('swingtrade') }}"
+                           class="{{ 'active' if request.endpoint == 'swingtrade' else '' }}">📊 Swingtrade</a>
+                    </div>
+                </div>
+
                 <a href="{{ url_for('fiis') }}"
                     class="{{ 'active' if request.endpoint == 'fiis' else '' }}">FIIs</a>
-                <a href="{{ url_for('swingtrade') }}"
-                    class="{{ 'active' if request.endpoint == 'swingtrade' else '' }}">Swingtrade</a>
-                <a href="{{ url_for('opcoes') }}"
-                    class="{{ 'active' if request.endpoint == 'opcoes' else '' }}">Opções</a>
+
+                {# ── Opções (dropdown com Estudos e Simulação) ── #}
+                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes'] else '' }}">
+                    <a href="{{ url_for('opcoes') }}"
+                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes'] else '' }}"
+                       onclick="toggleNavDrop(this,event)">
+                        Opções <span class="nav-caret">▾</span>
+                    </a>
+                    <div class="nav-dropdown-menu">
+                        <a href="{{ url_for('opcoes') }}"
+                           class="{{ 'active' if request.endpoint == 'opcoes' else '' }}">📋 Operações</a>
+                        <a href="{{ url_for('estudos') }}"
+                           class="{{ 'active' if request.endpoint == 'estudos' else '' }}">📚 Estudos</a>
+                        <a href="{{ url_for('simulacao_opcoes') }}"
+                           class="{{ 'active' if request.endpoint == 'simulacao_opcoes' else '' }}">📈 Simulação</a>
+                    </div>
+                </div>
+
                 <a href="{{ url_for('balanceamento') }}"
                     class="{{ 'active' if request.endpoint == 'balanceamento' else '' }}">Balanceamento</a>
                 <a href="{{ url_for('dividendos') }}"
                     class="{{ 'active' if request.endpoint == 'dividendos' else '' }}">Dividendos</a>
                 <a href="{{ url_for('history') }}"
                     class="{{ 'active' if request.endpoint == 'history' else '' }}">Histórico</a>
+
                 <!-- Mobile-only user section inside nav -->
                 <div class="nav-user-mobile">
                     <span class="welcome-text">Bem vindo, <strong>{{ current_user.username }}</strong></span>
@@ -192,12 +221,10 @@
                         {% if current_user.is_admin %}
                         <a href="{{ url_for('list_users') }}">👥 Usuários</a>
                         {% endif %}
-                        <span style="font-size: 0.75rem; color: var(--text-secondary); padding: 0.2rem 0; display: block;">🔧 Ferramentas</span>
+                        <span class="nav-mobile-section-label">🔧 Ferramentas</span>
                         <a href="{{ url_for('config') }}">⚙️ APIs</a>
                         <a href="{{ url_for('importar_excel') }}">📊 Importar Excel</a>
-                        <a href="{{ url_for('estudos') }}">📚 Estudos</a>
-                        <a href="{{ url_for('simulacao_opcoes') }}">📈 Simulação Opções</a>
-                        <span style="font-size: 0.75rem; color: var(--text-secondary); padding: 0.2rem 0; display: block;">⚙️ Preferências</span>
+                        <span class="nav-mobile-section-label">⚙️ Preferências</span>
                         <a href="#" onclick="toggleIndicators(); return false;">👁️ Alternar Barra</a>
                         <a href="#" onclick="toggleTheme(); return false;">🌓 Alternar Tema</a>
                         <a href="{{ url_for('logout') }}" style="color: var(--danger-color);">🚪 Sair</a>
@@ -238,17 +265,33 @@
     <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
     <script>
         function toggleMenu() {
-            var nav = document.querySelector('.main-nav');
+            var nav = document.getElementById('main-nav');
             if (!nav) return;
-            var isOpen = nav.classList.contains('active');
-            if (isOpen) {
-                nav.classList.remove('active');
-                nav.style.display = '';
-            } else {
-                nav.classList.add('active');
-                nav.style.display = 'flex';
-                nav.style.flexDirection = 'column';
+            nav.classList.toggle('open');
+        }
+
+        // Fecha o menu ao clicar fora (mobile)
+        document.addEventListener('click', function(e) {
+            var nav = document.getElementById('main-nav');
+            var btn = document.querySelector('.menu-toggle');
+            if (nav && !nav.contains(e.target) && btn && !btn.contains(e.target)) {
+                nav.classList.remove('open');
             }
+        });
+
+        // Submenu do nav: no desktop abre/fecha ao clicar no caret,
+        // no mobile expande inline
+        function toggleNavDrop(el, e) {
+            var isMobile = window.innerWidth <= 768;
+            if (!isMobile) return; // desktop: CSS hover cuida disso
+            e.preventDefault();
+            var drop = el.closest('.nav-dropdown');
+            var wasOpen = drop.classList.contains('open');
+            // Fecha todos os outros
+            document.querySelectorAll('.nav-dropdown.open').forEach(function(d) {
+                d.classList.remove('open');
+            });
+            if (!wasOpen) drop.classList.add('open');
         }
     </script>
     <script>

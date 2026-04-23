@@ -279,20 +279,33 @@
             }
         });
 
-        // Submenu do nav: no desktop abre/fecha ao clicar no caret,
-        // no mobile expande inline
+        // Submenu do nav: click abre/fecha em qualquer dispositivo
         function toggleNavDrop(el, e) {
-            var isMobile = window.innerWidth <= 768;
-            if (!isMobile) return; // desktop: CSS hover cuida disso
             e.preventDefault();
+            e.stopPropagation();
             var drop = el.closest('.nav-dropdown');
             var wasOpen = drop.classList.contains('open');
-            // Fecha todos os outros
+            // Fecha todos os outros submenus
             document.querySelectorAll('.nav-dropdown.open').forEach(function(d) {
                 d.classList.remove('open');
             });
             if (!wasOpen) drop.classList.add('open');
         }
+
+        // Fecha submenus ao clicar fora
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.nav-dropdown')) {
+                document.querySelectorAll('.nav-dropdown.open').forEach(function(d) {
+                    d.classList.remove('open');
+                });
+            }
+            // Fecha menu mobile ao clicar fora
+            var nav = document.getElementById('main-nav');
+            var btn = document.querySelector('.menu-toggle');
+            if (nav && !nav.contains(e.target) && btn && !btn.contains(e.target)) {
+                nav.classList.remove('open');
+            }
+        });
     </script>
     <script>
         $(document).ready(function () {

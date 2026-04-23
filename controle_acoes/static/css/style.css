@@ -381,8 +381,14 @@ tr.bg-primary.text-white td,
     padding: 1rem;
     box-shadow: 0 4px 6px -1px var(--shadow-color);
     margin-bottom: 2rem;
+}
+
+/* Wrapper de scroll para tabelas — sticky funciona APENAS quando overflow-x está aqui,
+   não no .card. overflow-y deve ficar visible para o sticky header funcionar. */
+.table-scroll {
     overflow-x: auto;
-    position: relative; /* garante que o sticky se ancora no card, não no viewport */
+    overflow-y: visible;
+    width: 100%;
 }
 
 table {

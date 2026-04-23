@@ -40,6 +40,11 @@
             border-collapse: separate !important;
             border-spacing: 0 !important;
         }
+
+        /* O dataTables_wrapper herda o table-scroll wrapper — sem overflow aqui */
+        .dataTables_wrapper {
+            width: 100%;
+        }
     </style>
 </head>
 
@@ -275,11 +280,20 @@
     </script>
     <script>
         $(document).ready(function () {
+            var dtLang = { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json" };
+
+            // Envolve cada tabela num div.table-scroll ANTES de inicializar DataTables
+            // Isso garante que o scroll horizontal fique no wrapper (não no .card),
+            // permitindo que position:sticky funcione corretamente nas células.
+            $('table:not(.no-datatable):not(#historyTable)').each(function() {
+                if (!$(this).parent().hasClass('table-scroll')) {
+                    $(this).wrap('<div class="table-scroll"></div>');
+                }
+            });
+
             // General tables (default - no paging)
             $('table:not(.no-datatable):not(.paginated):not(#historyTable)').DataTable({
-                "language": {
-                    "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
-                },
+                "language": dtLang,
                 "paging": false,
                 "info": false,
                 "searching": false
@@ -287,9 +301,7 @@
 
             // Paginated tables (Acoes/FIIs) - 25 items per page
             $('table.paginated').DataTable({
-                "language": {
-                    "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
-                },
+                "language": dtLang,
                 "paging": true,
                 "pageLength": 25,
                 "lengthChange": false,

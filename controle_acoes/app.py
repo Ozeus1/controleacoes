@@ -576,12 +576,37 @@ def _calc_structured_metrics_safe(op):
     try:
         return _calc_structured_metrics(op)
     except Exception as e:
+        import traceback as _tb
         print(f"[ERRO] _calc_structured_metrics op={op.id}: {e}")
+        _tb.print_exc()
+        # Fallback: calcula pelo menos net e current_pnl sem BS
+        legs = op.legs or []
         net = sum(
             (leg.entry_price if leg.side == 'SELL' else -leg.entry_price) * leg.quantity
-            for leg in op.legs
-        ) if op.legs else 0
-        return dict(net=net, current_pnl=0, max_profit=0, max_loss=0,
+            for leg in legs
+        )
+        current_pnl = sum(
+            ((leg.entry_price - (leg.current_price or leg.entry_price)) if leg.side == 'SELL'
+             else ((leg.current_price or leg.entry_price) - leg.entry_price)) * leg.quantity
+            for leg in legs
+        )
+        # Payoff intrínseco simples nos strikes como aproximação
+        strikes = sorted({l.strike for l in legs if l.strike})
+        def _simple_payoff(S):
+            t = net
+            for leg in legs:
+                sign = 1 if leg.side == 'BUY' else -1
+                K = leg.strike or 0
+                if leg.opt_type == 'CALL':
+                    t += sign * leg.quantity * max(0.0, S - K)
+                else:
+                    t += sign * leg.quantity * max(0.0, K - S)
+            return t
+        max_K = max(strikes) if strikes else 100
+        test = [0.0] + strikes + [max_K * 5]
+        payoffs = [_simple_payoff(s) for s in test]
+        return dict(net=net, current_pnl=current_pnl,
+                    max_profit=max(payoffs), max_loss=min(payoffs),
                     breakevens=[], be_low=None, be_high=None,
                     unlimited_profit=False, unlimited_loss=False)
 

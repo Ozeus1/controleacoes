@@ -451,21 +451,31 @@ def _calc_structured_metrics(op):
     is_calendar = len(exp_dates) > 1
     ref_date = exp_dates[0] if is_calendar else (exp_dates[0] if exp_dates else date.today())
 
-    # Taxa Selic contínua
-    r_cont = math.log(1 + _selic() / 100)
+    # Taxa Selic contínua — lê diretamente do Settings sem depender de current_user
+    try:
+        selic_val = float(Settings.get_value('selic_rate', user_id=op.user_id, default='14.5') or '14.5')
+    except Exception:
+        selic_val = 14.5
+    r_cont = math.log(1 + selic_val / 100)
 
     # Cotação do ativo subjacente (para bisecção de IV)
-    spot_ref, _ = _get_underlying_quote(op.underlying_asset, op.user_id)
+    try:
+        spot_ref, _ = _get_underlying_quote(op.underlying_asset, op.user_id)
+    except Exception:
+        spot_ref = None
     today_d = date.today()
 
     # IV implícita de cada perna (calculada uma vez, fora do loop de S)
     leg_ivs = {}
     for leg in legs:
         if is_calendar and leg.expiration_date and leg.expiration_date > ref_date:
-            S0 = spot_ref if spot_ref else (leg.strike or 50)
-            T_leg = max((leg.expiration_date - today_d).days / 365.25, 1 / 365)
-            leg_ivs[leg.id] = _implied_vol(S0, leg.strike or 1, T_leg, r_cont,
-                                           leg.entry_price, leg.opt_type == 'CALL')
+            try:
+                S0 = spot_ref if spot_ref else (leg.strike or 50)
+                T_leg = max((leg.expiration_date - today_d).days / 365.25, 1 / 365)
+                leg_ivs[leg.id] = _implied_vol(S0, leg.strike or 1, T_leg, r_cont,
+                                               leg.entry_price, leg.opt_type == 'CALL')
+            except Exception:
+                leg_ivs[leg.id] = 0.30
 
     # ── Payoff no vencimento ────────────────────────────────────────
     def payoff_at(S):
@@ -559,6 +569,21 @@ def _calc_structured_metrics(op):
                 breakevens=breakevens,
                 be_low=be_low, be_high=be_high,
                 unlimited_profit=unlimited_profit, unlimited_loss=unlimited_loss)
+
+
+def _calc_structured_metrics_safe(op):
+    """Wrapper com fallback para nunca derrubar a página de opções."""
+    try:
+        return _calc_structured_metrics(op)
+    except Exception as e:
+        print(f"[ERRO] _calc_structured_metrics op={op.id}: {e}")
+        net = sum(
+            (leg.entry_price if leg.side == 'SELL' else -leg.entry_price) * leg.quantity
+            for leg in op.legs
+        ) if op.legs else 0
+        return dict(net=net, current_pnl=0, max_profit=0, max_loss=0,
+                    breakevens=[], be_low=None, be_high=None,
+                    unlimited_profit=False, unlimited_loss=False)
 
 
 @app.route('/opcoes')
@@ -726,7 +751,7 @@ def opcoes():
     raw_ops = StructuredOp.query.filter_by(user_id=current_user.id, status='OPEN').all()
     structured_ops = []
     for op in raw_ops:
-        metrics = _calc_structured_metrics(op)
+        metrics = _calc_structured_metrics_safe(op)
         structured_ops.append({'op': op, **metrics})
 
     return render_template('opcoes.html', options=processed_options,

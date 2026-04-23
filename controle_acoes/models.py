@@ -372,6 +372,23 @@ class SimulacaoLeg(db.Model):
     iv          = db.Column(db.Float, default=0.0)   # volatilidade implícita % (ex: 30.0)
 
 
+class PutSale(db.Model):
+    """Simulação de venda de put."""
+    __tablename__ = 'put_sale'
+    id                = db.Column(db.Integer, primary_key=True)
+    user_id           = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ticker            = db.Column(db.String(20), nullable=False)
+    underlying_asset  = db.Column(db.String(15), nullable=False, default='')
+    underlying_price  = db.Column(db.Float, nullable=True)      # cotação do ativo
+    strike            = db.Column(db.Float, nullable=False)
+    expiration_date   = db.Column(db.Date, nullable=False)
+    premium           = db.Column(db.Float, nullable=False)     # prêmio recebido por ação
+    quantity          = db.Column(db.Integer, nullable=False, default=100)
+    entry_date        = db.Column(db.Date, nullable=True)
+    notes             = db.Column(db.String(200), nullable=True)
+    created_at        = db.Column(db.DateTime, default=datetime.now)
+
+
 class Dividend(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     asset_id = db.Column(db.Integer, db.ForeignKey('asset.id'), nullable=False)

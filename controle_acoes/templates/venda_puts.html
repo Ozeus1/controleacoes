@@ -1,0 +1,329 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card" style="margin-bottom:1.5rem;">
+    <h2 style="margin-bottom:1rem;">🔽 Venda de Puts</h2>
+
+    {# ── Formulário de cadastro / edição ── #}
+    <form method="POST"
+          action="{{ url_for('venda_puts_edit', id=edit.id) if edit else url_for('venda_puts_new') }}"
+          id="put-form">
+        <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:.75rem; align-items:end;">
+            <div>
+                <label class="form-label">Ticker da Opção</label>
+                <input class="form-control" name="ticker" required style="text-transform:uppercase"
+                       value="{{ edit.ticker if edit else '' }}" placeholder="ex: PETRB20">
+            </div>
+            <div>
+                <label class="form-label">Ativo Subjacente</label>
+                <input class="form-control" name="underlying_asset" required style="text-transform:uppercase"
+                       value="{{ edit.underlying_asset if edit else '' }}" placeholder="ex: PETR4">
+            </div>
+            <div>
+                <label class="form-label">Cotação do Ativo (R$)</label>
+                <input class="form-control" name="underlying_price" type="number" step="0.01" min="0"
+                       id="inp-spot"
+                       value="{{ '%.2f'|format(edit.underlying_price) if edit and edit.underlying_price else '' }}"
+                       placeholder="ex: 38,50">
+            </div>
+            <div>
+                <label class="form-label">Strike (R$)</label>
+                <input class="form-control" name="strike" type="number" step="0.01" min="0" required
+                       id="inp-strike"
+                       value="{{ '%.2f'|format(edit.strike) if edit else '' }}" placeholder="ex: 35,00">
+            </div>
+            <div>
+                <label class="form-label">Prêmio recebido (R$)</label>
+                <input class="form-control" name="premium" type="number" step="0.01" min="0" required
+                       id="inp-premium"
+                       value="{{ '%.2f'|format(edit.premium) if edit else '' }}" placeholder="ex: 0,80">
+            </div>
+            <div>
+                <label class="form-label">Quantidade</label>
+                <input class="form-control" name="quantity" type="number" min="1" required
+                       id="inp-qty"
+                       value="{{ edit.quantity if edit else 100 }}">
+            </div>
+            <div>
+                <label class="form-label">Vencimento</label>
+                <input class="form-control" name="expiration_date" type="date" required
+                       id="inp-exp"
+                       value="{{ edit.expiration_date.strftime('%Y-%m-%d') if edit else '' }}">
+            </div>
+            <div>
+                <label class="form-label">Data de Entrada</label>
+                <input class="form-control" name="entry_date" type="date"
+                       id="inp-entry"
+                       value="{{ edit.entry_date.strftime('%Y-%m-%d') if edit and edit.entry_date else today.strftime('%Y-%m-%d') }}">
+            </div>
+            <div style="grid-column:1/-1;">
+                <label class="form-label">Observações</label>
+                <input class="form-control" name="notes" maxlength="200"
+                       value="{{ edit.notes if edit else '' }}" placeholder="Opcional">
+            </div>
+        </div>
+
+        {# ── Painel de métricas calculadas ao vivo ── #}
+        <div id="metrics-panel" style="margin-top:1.25rem; display:none;">
+            <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:.75rem;">
+                <div class="metric-box">
+                    <span class="metric-label">Noção (Notional)</span>
+                    <span class="metric-value" id="m-notion">—</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-label">Prêmio Total Recebido</span>
+                    <span class="metric-value" id="m-total">—</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-label">Prazo (dias úteis)</span>
+                    <span class="metric-value" id="m-days">—</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-label">Remuneração % a.m.</span>
+                    <span class="metric-value" id="m-rem-am">—</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-label">Remuneração % a.a.</span>
+                    <span class="metric-value" id="m-rem-aa">—</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-label">% do CDI (a.a.)</span>
+                    <span class="metric-value" id="m-cdi">—</span>
+                </div>
+                <div class="metric-box" id="box-dist">
+                    <span class="metric-label">Distância ao Strike (OTM)</span>
+                    <span class="metric-value" id="m-dist">—</span>
+                </div>
+                <div class="metric-box" id="box-itm" style="display:none;">
+                    <span class="metric-label">Quanto entrou ITM</span>
+                    <span class="metric-value" id="m-itm">—</span>
+                </div>
+                <div class="metric-box">
+                    <span class="metric-label">Break-even</span>
+                    <span class="metric-value" id="m-be">—</span>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top:1rem; display:flex; gap:.5rem; flex-wrap:wrap;">
+            <button type="submit" class="btn btn-primary">
+                {{ '💾 Salvar Edição' if edit else '➕ Salvar' }}
+            </button>
+            {% if edit %}
+            <a href="{{ url_for('venda_puts') }}" class="btn btn-secondary">✖ Cancelar</a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+{# ── Tabela de simulações salvas ── #}
+{% if items %}
+<div class="card">
+    <h3 style="margin-bottom:1rem;">Simulações Salvas</h3>
+    <div style="overflow-x:auto;">
+        <table class="no-datatable" style="width:100%; border-collapse:collapse; font-size:.88rem;">
+            <thead>
+                <tr>
+                    <th>Ticker</th>
+                    <th>Subjacente</th>
+                    <th>Cotação</th>
+                    <th>Strike</th>
+                    <th>Prêmio</th>
+                    <th>Qtd</th>
+                    <th>Vencimento</th>
+                    <th>Entrada</th>
+                    <th>Noção</th>
+                    <th>Prêmio Total</th>
+                    <th>Prazo (du)</th>
+                    <th>Rem. a.m.</th>
+                    <th>Rem. a.a.</th>
+                    <th>% CDI</th>
+                    <th>Dist./ITM</th>
+                    <th>Break-even</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for p in items %}
+            {% set today_d = today %}
+            {% set entry_d = p.entry_date or today_d %}
+            {% set exp_d = p.expiration_date %}
+            {% set du = [(exp_d - today_d).days, 1] | max %}
+            {% set du_entry = [(exp_d - entry_d).days, 1] | max %}
+            {% set notion = p.strike * p.quantity %}
+            {% set total_prem = p.premium * p.quantity %}
+            {% set rem_periodo = (p.premium / p.strike) if p.strike > 0 else 0 %}
+            {% set rem_aa = (((1 + rem_periodo) ** (252.0 / du_entry)) - 1) * 100 %}
+            {% set rem_am = (((1 + rem_periodo) ** (21.0 / du_entry)) - 1) * 100 %}
+            {% set pct_cdi = (rem_aa / selic * 100) if selic > 0 else 0 %}
+            {% set be = p.strike - p.premium %}
+            {% set spot = p.underlying_price %}
+            {% set otm = (spot > p.strike) if spot else true %}
+            {% set dist = ((spot - p.strike) / p.strike * 100) if (spot and p.strike > 0) else None %}
+            {% set itm_val = (p.strike - spot) if (spot and spot < p.strike) else None %}
+            <tr class="{{ 'table-warning' if spot and spot < p.strike else '' }}">
+                <td><strong>{{ p.ticker }}</strong></td>
+                <td>{{ p.underlying_asset }}</td>
+                <td>{{ 'R$ %.2f'|format(spot)|replace('.',',') if spot else '—' }}</td>
+                <td>{{ 'R$ %.2f'|format(p.strike)|replace('.',',') }}</td>
+                <td>{{ 'R$ %.2f'|format(p.premium)|replace('.',',') }}</td>
+                <td>{{ p.quantity }}</td>
+                <td>{{ p.expiration_date | date_fmt }}</td>
+                <td>{{ p.entry_date | date_fmt if p.entry_date else '—' }}</td>
+                <td>{{ 'R$ %.2f'|format(notion)|replace('.',',') }}</td>
+                <td>{{ 'R$ %.2f'|format(total_prem)|replace('.',',') }}</td>
+                <td>{{ du }}</td>
+                <td class="{{ 'positive' if rem_am > 0 else '' }}">{{ '%.2f'|format(rem_am)|replace('.',',') }}%</td>
+                <td class="{{ 'positive' if rem_aa > 0 else '' }}">{{ '%.2f'|format(rem_aa)|replace('.',',') }}%</td>
+                <td class="{{ 'positive' if pct_cdi > 100 else '' }}">{{ '%.0f'|format(pct_cdi) }}%</td>
+                <td>
+                    {% if dist is not none %}
+                        {% if dist >= 0 %}
+                            <span class="positive">+{{ '%.1f'|format(dist)|replace('.',',') }}% OTM</span>
+                        {% else %}
+                            <span class="negative">{{ '%.1f'|format(dist)|replace('.',',') }}% ITM
+                            {% if itm_val %} / R$ {{ '%.2f'|format(itm_val)|replace('.',',') }}{% endif %}
+                            </span>
+                        {% endif %}
+                    {% else %}—{% endif %}
+                </td>
+                <td>{{ 'R$ %.2f'|format(be)|replace('.',',') }}</td>
+                <td style="white-space:nowrap;">
+                    <a href="{{ url_for('venda_puts_edit', id=p.id) }}" class="btn btn-sm btn-secondary">✏️</a>
+                    <form method="POST" action="{{ url_for('venda_puts_delete', id=p.id) }}"
+                          style="display:inline;" onsubmit="return confirm('Excluir?')">
+                        <button type="submit" class="btn btn-sm btn-danger">🗑</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<style>
+.metric-box {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: .6rem .9rem;
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+}
+.metric-label { font-size: .75rem; color: var(--text-secondary); }
+.metric-value { font-size: 1.05rem; font-weight: 600; color: var(--text-primary); }
+table.no-datatable th, table.no-datatable td {
+    padding: .4rem .6rem;
+    border-bottom: 1px solid var(--border-color);
+    text-align: right;
+    white-space: nowrap;
+}
+table.no-datatable th:first-child, table.no-datatable td:first-child { text-align: left; }
+table.no-datatable th { background: var(--table-header-bg); font-size: .8rem; }
+.positive { color: var(--positive-color, #4caf50); }
+.negative { color: var(--danger-color, #f44336); }
+</style>
+
+<script>
+(function() {
+    var SELIC = {{ selic }};  // CDI/Selic em % a.a.
+    var WORKING_DAYS_YEAR = 252;
+    var WORKING_DAYS_MONTH = 21;
+
+    function toFloat(v) {
+        var s = String(v).replace(',', '.').trim();
+        var n = parseFloat(s);
+        return isNaN(n) ? null : n;
+    }
+
+    function fmtBRL(v) {
+        return 'R$ ' + v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+    function fmtPct(v, dec) {
+        dec = dec == null ? 2 : dec;
+        return v.toLocaleString('pt-BR', {minimumFractionDigits:dec, maximumFractionDigits:dec}) + '%';
+    }
+
+    function calcDaysUtil(from, to) {
+        // Aproximação: 5/7 dos dias corridos
+        var ms = to - from;
+        var calDays = Math.max(ms / 86400000, 1);
+        return Math.max(Math.round(calDays * 5 / 7), 1);
+    }
+
+    function recalc() {
+        var strike  = toFloat(document.getElementById('inp-strike').value);
+        var premium = toFloat(document.getElementById('inp-premium').value);
+        var qty     = toFloat(document.getElementById('inp-qty').value);
+        var spot    = toFloat(document.getElementById('inp-spot').value);
+        var expStr  = document.getElementById('inp-exp').value;
+        var entStr  = document.getElementById('inp-entry').value;
+
+        var panel = document.getElementById('metrics-panel');
+
+        if (!strike || !premium || !qty || !expStr) {
+            panel.style.display = 'none';
+            return;
+        }
+
+        var today   = new Date(); today.setHours(0,0,0,0);
+        var exp     = new Date(expStr + 'T00:00:00');
+        var entry   = entStr ? new Date(entStr + 'T00:00:00') : today;
+
+        var du      = calcDaysUtil(today, exp);
+        var duEntry = calcDaysUtil(entry, exp);
+
+        var notion    = strike * qty;
+        var totalPrem = premium * qty;
+        var remPer    = premium / strike;               // rendimento no período
+        var remAA     = (Math.pow(1 + remPer, WORKING_DAYS_YEAR / duEntry) - 1) * 100;
+        var remAM     = (Math.pow(1 + remPer, WORKING_DAYS_MONTH / duEntry) - 1) * 100;
+        var pctCDI    = SELIC > 0 ? (remAA / SELIC * 100) : 0;
+        var be        = strike - premium;
+
+        document.getElementById('m-notion').textContent = fmtBRL(notion);
+        document.getElementById('m-total').textContent  = fmtBRL(totalPrem);
+        document.getElementById('m-days').textContent   = du + ' du';
+        document.getElementById('m-rem-am').textContent = fmtPct(remAM);
+        document.getElementById('m-rem-aa').textContent = fmtPct(remAA);
+        document.getElementById('m-cdi').textContent    = fmtPct(pctCDI, 0);
+        document.getElementById('m-be').textContent     = fmtBRL(be);
+
+        var boxDist = document.getElementById('box-dist');
+        var boxItm  = document.getElementById('box-itm');
+        var mDist   = document.getElementById('m-dist');
+        var mItm    = document.getElementById('m-itm');
+
+        if (spot && strike > 0) {
+            var distPct = (spot - strike) / strike * 100;
+            if (distPct >= 0) {
+                mDist.textContent = '+' + fmtPct(distPct, 1) + ' OTM';
+                mDist.style.color = 'var(--positive-color, #4caf50)';
+                boxDist.style.display = '';
+                boxItm.style.display  = 'none';
+            } else {
+                mDist.textContent = fmtPct(distPct, 1) + ' ITM';
+                mDist.style.color = 'var(--danger-color, #f44336)';
+                boxDist.style.display = '';
+                boxItm.style.display  = '';
+                mItm.textContent = fmtBRL(strike - spot) + ' (' + fmtPct(Math.abs(distPct), 1) + ')';
+            }
+        } else {
+            boxDist.style.display = 'none';
+            boxItm.style.display  = 'none';
+        }
+
+        panel.style.display = '';
+    }
+
+    ['inp-strike','inp-premium','inp-qty','inp-spot','inp-exp','inp-entry'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('input', recalc);
+    });
+
+    recalc();
+})();
+</script>
+{% endblock %}

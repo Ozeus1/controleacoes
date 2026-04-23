@@ -185,9 +185,9 @@
                     class="{{ 'active' if request.endpoint == 'fiis' else '' }}">FIIs</a>
 
                 {# ── Opções (dropdown com Estudos e Simulação) ── #}
-                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes'] else '' }}">
+                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','venda_puts'] else '' }}">
                     <a href="{{ url_for('opcoes') }}"
-                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes'] else '' }}"
+                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','venda_puts'] else '' }}"
                        onclick="toggleNavDrop(this,event)">
                         Opções <span class="nav-caret">▾</span>
                     </a>
@@ -198,6 +198,8 @@
                            class="{{ 'active' if request.endpoint == 'estudos' else '' }}">📚 Estudos</a>
                         <a href="{{ url_for('simulacao_opcoes') }}"
                            class="{{ 'active' if request.endpoint == 'simulacao_opcoes' else '' }}">📈 Simulação</a>
+                        <a href="{{ url_for('venda_puts') }}"
+                           class="{{ 'active' if request.endpoint == 'venda_puts' else '' }}">🔽 Venda de Puts</a>
                     </div>
                 </div>
 

@@ -4,7 +4,7 @@ import sys
 import sqlite3
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, PutSale
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -340,6 +340,24 @@ def run_migrations():
             expiration DATE,
             ticker VARCHAR(20) NOT NULL DEFAULT '',
             FOREIGN KEY (sim_id) REFERENCES simulacao_opcoes(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS put_sale (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            ticker VARCHAR(20) NOT NULL DEFAULT '',
+            underlying_asset VARCHAR(15) NOT NULL DEFAULT '',
+            underlying_price FLOAT,
+            strike FLOAT NOT NULL DEFAULT 0.0,
+            expiration_date DATE NOT NULL,
+            premium FLOAT NOT NULL DEFAULT 0.0,
+            quantity INTEGER NOT NULL DEFAULT 100,
+            entry_date DATE,
+            notes VARCHAR(200),
+            created_at DATETIME,
+            FOREIGN KEY (user_id) REFERENCES user(id)
         )
     """)
 
@@ -1131,6 +1149,92 @@ def simulacao_delete(id):
     db.session.commit()
     flash('Simulação excluída.', 'success')
     return redirect(url_for('simulacao_opcoes'))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Venda de Puts — CRUD
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/venda_puts')
+@login_required
+def venda_puts():
+    items = PutSale.query.filter_by(user_id=current_user.id).order_by(PutSale.created_at.desc()).all()
+    selic = _selic()
+    today = date.today()
+    return render_template('venda_puts.html', items=items, edit=None, selic=selic, today=today)
+
+
+@app.route('/venda_puts/new', methods=['POST'])
+@login_required
+def venda_puts_new():
+    def _f(k): return request.form.get(k, '').replace(',', '.').strip()
+    try:
+        exp = datetime.strptime(_f('expiration_date'), '%Y-%m-%d').date()
+    except ValueError:
+        flash('Data de vencimento inválida.', 'danger')
+        return redirect(url_for('venda_puts'))
+    entry_date_str = _f('entry_date')
+    entry_date = datetime.strptime(entry_date_str, '%Y-%m-%d').date() if entry_date_str else date.today()
+    p = PutSale(
+        user_id          = current_user.id,
+        ticker           = _f('ticker').upper(),
+        underlying_asset = _f('underlying_asset').upper(),
+        underlying_price = float(_f('underlying_price')) if _f('underlying_price') else None,
+        strike           = float(_f('strike')),
+        expiration_date  = exp,
+        premium          = float(_f('premium')),
+        quantity         = int(_f('quantity') or 100),
+        entry_date       = entry_date,
+        notes            = request.form.get('notes', ''),
+        created_at       = datetime.now(),
+    )
+    db.session.add(p)
+    db.session.commit()
+    flash('Venda de put salva.', 'success')
+    return redirect(url_for('venda_puts'))
+
+
+@app.route('/venda_puts/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+def venda_puts_edit(id):
+    p = PutSale.query.get_or_404(id)
+    if p.user_id != current_user.id:
+        flash('Sem permissão.', 'danger')
+        return redirect(url_for('venda_puts'))
+    if request.method == 'POST':
+        def _f(k): return request.form.get(k, '').replace(',', '.').strip()
+        try:
+            p.expiration_date = datetime.strptime(_f('expiration_date'), '%Y-%m-%d').date()
+        except ValueError:
+            flash('Data de vencimento inválida.', 'danger')
+            return redirect(url_for('venda_puts_edit', id=id))
+        entry_date_str = _f('entry_date')
+        p.entry_date       = datetime.strptime(entry_date_str, '%Y-%m-%d').date() if entry_date_str else p.entry_date
+        p.ticker           = _f('ticker').upper()
+        p.underlying_asset = _f('underlying_asset').upper()
+        p.underlying_price = float(_f('underlying_price')) if _f('underlying_price') else None
+        p.strike           = float(_f('strike'))
+        p.premium          = float(_f('premium'))
+        p.quantity         = int(_f('quantity') or 100)
+        p.notes            = request.form.get('notes', '')
+        db.session.commit()
+        flash('Venda de put atualizada.', 'success')
+        return redirect(url_for('venda_puts'))
+    items = PutSale.query.filter_by(user_id=current_user.id).order_by(PutSale.created_at.desc()).all()
+    return render_template('venda_puts.html', items=items, edit=p, selic=_selic(), today=date.today())
+
+
+@app.route('/venda_puts/<int:id>/delete', methods=['POST'])
+@login_required
+def venda_puts_delete(id):
+    p = PutSale.query.get_or_404(id)
+    if p.user_id != current_user.id:
+        flash('Sem permissão.', 'danger')
+        return redirect(url_for('venda_puts'))
+    db.session.delete(p)
+    db.session.commit()
+    flash('Venda de put excluída.', 'success')
+    return redirect(url_for('venda_puts'))
 
 
 def _get_underlying_quote(ticker, user_id):

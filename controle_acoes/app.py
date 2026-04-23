@@ -387,7 +387,7 @@ def _norm_cdf(x):
 
 def _bs_price(S, K, T, r, sigma, is_call):
     """Black-Scholes para call ou put."""
-    if T <= 0 or sigma <= 0:
+    if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
         return max(0.0, (S - K) if is_call else (K - S))
     d1 = (math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
     d2 = d1 - sigma * math.sqrt(T)
@@ -521,7 +521,7 @@ def _calc_structured_metrics(op):
     step  = (S_hi - S_lo) / N
     grid  = [S_lo + i * step for i in range(N + 1)] + strikes
     grid  = sorted(set(round(s, 4) for s in grid))
-    test_prices = [0.0] + grid + [max_K * 5]
+    test_prices = [0.01] + grid + [max_K * 5]
     payoffs = [(S, payoff_at(S)) for S in test_prices]
 
     max_profit = float('inf')  if unlimited_profit else max(p for _, p in payoffs)

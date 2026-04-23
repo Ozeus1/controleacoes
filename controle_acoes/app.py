@@ -999,9 +999,52 @@ def close_estruturada(id):
     if op.user_id != current_user.id:
         flash('Sem permissão.', 'danger')
         return redirect(url_for('opcoes'))
+
+    # Calcula P&L: SELL qty*(entry-current) + BUY qty*(current-entry)
+    pnl = 0.0
+    total_invested = 0.0
+    for leg in op.legs:
+        if leg.side == 'SELL':
+            pnl += leg.quantity * (leg.entry_price - (leg.current_price or leg.entry_price))
+        else:
+            pnl += leg.quantity * ((leg.current_price or leg.entry_price) - leg.entry_price)
+        total_invested += leg.quantity * leg.entry_price
+
+    exit_date = date.today()
+    entry_date = op.created_at.date() if op.created_at else exit_date
+    days_held  = (exit_date - entry_date).days
+
+    # Prêmio líquido recebido na montagem
+    net_credit = sum(
+        (leg.entry_price if leg.side == 'SELL' else -leg.entry_price) * leg.quantity
+        for leg in op.legs
+    )
+    # P&L total = crédito recebido + variação de fechamento
+    pnl_total = net_credit + pnl
+    pct = (pnl_total / abs(total_invested) * 100) if total_invested else 0
+
+    ticker_label = (op.name or op.underlying_asset or 'ESTRUT')[:10]
+    avg_entry = total_invested / sum(l.quantity for l in op.legs) if op.legs else 0
+    avg_exit  = avg_entry + (pnl_total / sum(l.quantity for l in op.legs)) if op.legs else avg_entry
+
+    history = TradeHistory(
+        user_id     = current_user.id,
+        ticker      = ticker_label,
+        strategy    = 'Opções',
+        entry_date  = entry_date,
+        exit_date   = exit_date,
+        buy_price   = round(avg_entry, 4),
+        sell_price  = round(avg_exit,  4),
+        quantity    = sum(l.quantity for l in op.legs),
+        profit_value= round(pnl_total, 2),
+        profit_pct  = round(pct, 2),
+        days_held   = days_held,
+        reason      = 'Encerramento',
+    )
+    db.session.add(history)
     op.status = 'CLOSED'
     db.session.commit()
-    flash('Operação encerrada.', 'success')
+    flash('Operação encerrada e registrada no histórico.', 'success')
     return redirect(url_for('opcoes'))
 
 

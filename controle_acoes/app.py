@@ -2,6 +2,7 @@
 import os
 import sys
 import sqlite3
+import math
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
 from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, PutSale
@@ -375,6 +376,42 @@ threading.Thread(target=lambda: (time.sleep(5), _start_oplab_scheduler()), daemo
 # --- Options Module Routes ---
 
 
+def _norm_cdf(x):
+    """Aproximação de Abramowitz & Stegun para N(x)."""
+    t = 1.0 / (1.0 + 0.2316419 * abs(x))
+    poly = t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))))
+    pdf  = math.exp(-0.5 * x * x) / math.sqrt(2 * math.pi)
+    c    = 1.0 - pdf * poly
+    return c if x >= 0 else 1.0 - c
+
+
+def _bs_price(S, K, T, r, sigma, is_call):
+    """Black-Scholes para call ou put."""
+    if T <= 0 or sigma <= 0:
+        return max(0.0, (S - K) if is_call else (K - S))
+    d1 = (math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
+    d2 = d1 - sigma * math.sqrt(T)
+    if is_call:
+        return S * _norm_cdf(d1) - K * math.exp(-r * T) * _norm_cdf(d2)
+    return K * math.exp(-r * T) * _norm_cdf(-d2) - S * _norm_cdf(-d1)
+
+
+def _implied_vol(S0, K, T, r, target, is_call):
+    """IV por bissecção a partir do prêmio de entrada."""
+    if target <= 0 or T <= 0:
+        return 0.30
+    lo, hi = 0.001, 5.0
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        if _bs_price(S0, K, T, r, mid, is_call) < target:
+            lo = mid
+        else:
+            hi = mid
+        if hi - lo < 1e-6:
+            break
+    return (lo + hi) / 2
+
+
 def _calc_structured_metrics(op):
     """
     Calcula métricas financeiras de uma StructuredOp.
@@ -409,32 +446,72 @@ def _calc_structured_metrics(op):
         for leg in legs
     )
 
+    # ── Detecta trava calendário (pernas com vencimentos diferentes) ─
+    exp_dates = sorted({l.expiration_date for l in legs if l.expiration_date})
+    is_calendar = len(exp_dates) > 1
+    ref_date = exp_dates[0] if is_calendar else (exp_dates[0] if exp_dates else date.today())
+
+    # Taxa Selic contínua
+    r_cont = math.log(1 + _selic() / 100)
+
+    # Cotação do ativo subjacente (para bisecção de IV)
+    spot_ref, _ = _get_underlying_quote(op.underlying_asset, op.user_id)
+    today_d = date.today()
+
+    # IV implícita de cada perna (calculada uma vez, fora do loop de S)
+    leg_ivs = {}
+    for leg in legs:
+        if is_calendar and leg.expiration_date and leg.expiration_date > ref_date:
+            S0 = spot_ref if spot_ref else (leg.strike or 50)
+            T_leg = max((leg.expiration_date - today_d).days / 365.25, 1 / 365)
+            leg_ivs[leg.id] = _implied_vol(S0, leg.strike or 1, T_leg, r_cont,
+                                           leg.entry_price, leg.opt_type == 'CALL')
+
     # ── Payoff no vencimento ────────────────────────────────────────
     def payoff_at(S):
         total = net
         for leg in legs:
-            q    = leg.quantity
-            K    = leg.strike or 0
-            sign = 1 if leg.side == 'BUY' else -1
-            if leg.opt_type == 'CALL':
-                total += sign * q * max(0.0, S - K)
+            q     = leg.quantity
+            K     = leg.strike or 0
+            sign  = 1 if leg.side == 'BUY' else -1
+            is_call = leg.opt_type == 'CALL'
+            if is_calendar and leg.id in leg_ivs:
+                # Perna longa de calendário: valor BS com tempo restante após vencimento curta
+                T_rem = max((leg.expiration_date - ref_date).days / 365.25, 0)
+                iv    = leg_ivs[leg.id]
+                total += sign * q * _bs_price(S, K, T_rem, r_cont, iv, is_call)
             else:
-                total += sign * q * max(0.0, K - S)
+                # Payoff intrínseco no vencimento
+                total += sign * q * max(0.0, (S - K) if is_call else (K - S))
         return total
 
     strikes = sorted({l.strike for l in legs if l.strike})
 
     # Delta líquido de CALLs → define comportamento para S→∞
-    net_call_delta = sum(
-        leg.quantity * (1 if leg.side == 'BUY' else -1)
-        for leg in legs if leg.opt_type == 'CALL'
-    )
-    unlimited_profit = net_call_delta > 0
-    unlimited_loss   = net_call_delta < 0
+    # Para calendário: o payoff intrínseco não descreve o máximo real,
+    # mas usamos a varredura densa para aproximar o pico.
+    if is_calendar:
+        unlimited_profit = False
+        unlimited_loss   = False
+    else:
+        net_call_delta = sum(
+            leg.quantity * (1 if leg.side == 'BUY' else -1)
+            for leg in legs if leg.opt_type == 'CALL'
+        )
+        unlimited_profit = net_call_delta > 0
+        unlimited_loss   = net_call_delta < 0
 
-    # Pontos críticos: 0, cada strike, e 5× strike máximo
+    # Varredura densa de pontos para capturar pico (inclui strikes e grade fina)
     max_K = max(strikes) if strikes else 100
-    test_prices = [0.0] + strikes + [max_K * 5]
+    min_K = min(strikes) if strikes else 1
+    pad   = max((max_K - min_K) * 0.6, max_K * 0.3)
+    S_lo  = max(0.01, min_K - pad)
+    S_hi  = max_K + pad
+    N     = 400
+    step  = (S_hi - S_lo) / N
+    grid  = [S_lo + i * step for i in range(N + 1)] + strikes
+    grid  = sorted(set(round(s, 4) for s in grid))
+    test_prices = [0.0] + grid + [max_K * 5]
     payoffs = [(S, payoff_at(S)) for S in test_prices]
 
     max_profit = float('inf')  if unlimited_profit else max(p for _, p in payoffs)

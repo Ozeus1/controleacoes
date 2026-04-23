@@ -382,6 +382,7 @@ tr.bg-primary.text-white td,
     box-shadow: 0 4px 6px -1px var(--shadow-color);
     margin-bottom: 2rem;
     overflow-x: auto;
+    position: relative; /* garante que o sticky se ancora no card, não no viewport */
 }
 
 table {
@@ -441,9 +442,25 @@ tbody td:first-child {
     position: sticky;
     left: 0;
     z-index: 90;
+    /* Fundo opaco absoluto — impede qualquer conteúdo de aparecer por trás */
     background-color: var(--card-bg) !important;
+    /* Cobre o fundo de linhas striped do Bootstrap (--bs-table-bg-type sobrescreve background-color) */
+    background: var(--card-bg) !important;
     border-right: 2px solid var(--border-color);
     box-shadow: 2px 0 2px -1px rgba(0, 0, 0, 0.4);
+}
+
+/* Neutraliza variáveis Bootstrap que causam fundo semitransparente na coluna sticky */
+tbody td:first-child {
+    --bs-table-bg-type: transparent;
+    --bs-table-bg-state: transparent;
+    --bs-table-color-type: var(--text-primary);
+    --bs-table-color-state: var(--text-primary);
+}
+
+/* Hover sobre linha não muda o fundo da coluna sticky */
+tr:hover > td:first-child {
+    background: var(--card-bg) !important;
 }
 
 .ticker-badge {

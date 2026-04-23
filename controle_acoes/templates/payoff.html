@@ -39,7 +39,8 @@
                     data-qty="{{ leg.quantity }}"
                     data-strike="{{ leg.strike }}"
                     data-entry="{{ leg.entry_price }}"
-                    data-current="{{ leg.current_price }}">
+                    data-current="{{ leg.current_price }}"
+                    data-exp="{{ leg.expiration_date if leg.expiration_date else '' }}">
                     <td style="padding:.4rem .6rem;">
                         <span style="display:inline-block; padding:.1rem .5rem; border-radius:4px; font-weight:700;
                             background:{{ 'rgba(239,68,68,.15)' if leg.side=='SELL' else 'rgba(16,185,129,.15)' }};
@@ -103,7 +104,35 @@
 </div>
 
 <script>
+var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
+</script>
+<script>
 (function () {
+    var r = Math.log(1 + SELIC_RATE / 100); // taxa contínua a.a.
+
+    // ── Black-Scholes (Abramowitz & Stegun) ──────────────────────────────────
+    function normCDF(x) {
+        var t = 1 / (1 + 0.2316419 * Math.abs(x));
+        var poly = t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+        var pdf  = Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+        var c    = 1 - pdf * poly;
+        return x >= 0 ? c : 1 - c;
+    }
+
+    function blackScholes(S, K, T, sigma, isCall) {
+        if (T <= 0 || sigma <= 0) return Math.max(0, isCall ? S - K : K - S);
+        var d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
+        var d2 = d1 - sigma * Math.sqrt(T);
+        if (isCall) return S * normCDF(d1) - K * Math.exp(-r * T) * normCDF(d2);
+        return         K * Math.exp(-r * T) * normCDF(-d2) - S * normCDF(-d1);
+    }
+
+    // Lê spotPrice cedo para usar em estimateIV
+    var canvas  = document.getElementById('payoff-chart');
+    var tooltip = document.getElementById('tooltip-box');
+    var spotPrice  = parseFloat(canvas.dataset.spot)   || 0;
+    var spotChange = canvas.dataset.change !== '' ? parseFloat(canvas.dataset.change) : null;
+
     // ── Lê pernas ────────────────────────────────────────────────────────────
     var legs = [];
     document.querySelectorAll('#legs-tbody tr').forEach(function (tr) {
@@ -114,8 +143,41 @@
             strike:  parseFloat(tr.dataset.strike)  || 0,
             entry:   parseFloat(tr.dataset.entry)   || 0,
             current: parseFloat(tr.dataset.current) || 0,
+            exp:     tr.dataset.exp || '',  // YYYY-MM-DD
         });
     });
+
+    // Detecta trava calendário: pernas com vencimentos diferentes
+    var expDates = legs.map(function(l) { return l.exp; }).filter(Boolean);
+    var uniqueExps = expDates.filter(function(v,i,a){ return a.indexOf(v) === i; }).sort();
+    var isCalendar = uniqueExps.length > 1;
+
+    // Para calendário: referência é o vencimento mais curto
+    var refDate = isCalendar ? uniqueExps[0] : (uniqueExps[0] || '');
+
+    // Estimativa de IV implícita de cada perna (prêmio / strike como proxy)
+    // Para valoração BS da perna longa no vencimento da curta
+    function estimateIV(leg) {
+        // IV estimada via ratio prêmio/strike — proxy simples (se não tiver IV real)
+        // Calcula T da perna em anos a partir de hoje
+        var today = new Date(); today.setHours(0,0,0,0);
+        var expD  = leg.exp ? new Date(leg.exp + 'T00:00:00') : today;
+        var T     = Math.max((expD - today) / (365.25 * 86400000), 1/365);
+        // Bisect: encontra sigma tal que BS(S0, K, T, sigma) = entry_price
+        // Usa cotação atual do ativo como proxy de S0
+        var S0 = spotPrice > 0 ? spotPrice : leg.strike;
+        var isCall = leg.type === 'CALL';
+        var target = leg.entry;
+        if (target <= 0) return 0.30; // padrão 30%
+        var lo = 0.001, hi = 5.0;
+        for (var i = 0; i < 60; i++) {
+            var mid = (lo + hi) / 2;
+            var val = blackScholes(S0, leg.strike, T, mid, isCall);
+            if (val < target) lo = mid; else hi = mid;
+            if (hi - lo < 1e-6) break;
+        }
+        return (lo + hi) / 2;
+    }
 
     function netPremium() {
         return legs.reduce(function(acc, l) {
@@ -123,12 +185,38 @@
         }, 0);
     }
 
+    // payoffAt para trava calendário: no vencimento da perna curta,
+    // a perna longa ainda tem valor de BS (tempo restante entre curta e longa)
     function payoffAt(S) {
         var total = netPremium();
+        if (!isCalendar) {
+            // Trava vertical simples — payoff intrínseco no vencimento
+            legs.forEach(function(l) {
+                var sign = l.side === 'BUY' ? 1 : -1;
+                if (l.type === 'CALL') total += sign * l.qty * Math.max(0, S - l.strike);
+                else                    total += sign * l.qty * Math.max(0, l.strike - S);
+            });
+            return total;
+        }
+
+        // Trava calendário: avalia cada perna no vencimento da mais curta (refDate)
+        var refD = new Date(refDate + 'T00:00:00');
         legs.forEach(function(l) {
-            var sign = l.side === 'BUY' ? 1 : -1;
-            if (l.type === 'CALL') total += sign * l.qty * Math.max(0, S - l.strike);
-            else                    total += sign * l.qty * Math.max(0, l.strike - S);
+            var sign  = l.side === 'BUY' ? 1 : -1;
+            var legD  = l.exp ? new Date(l.exp + 'T00:00:00') : refD;
+            var isCall = l.type === 'CALL';
+
+            // Tempo restante desta perna APÓS o vencimento da perna curta (em anos)
+            var Trem = Math.max((legD - refD) / (365.25 * 86400000), 0);
+
+            if (Trem < 1/365) {
+                // Perna curta: payoff intrínseco no vencimento
+                total += sign * l.qty * Math.max(0, isCall ? S - l.strike : l.strike - S);
+            } else {
+                // Perna longa: ainda tem valor temporal — usa Black-Scholes
+                var iv = estimateIV(l);
+                total += sign * l.qty * blackScholes(S, l.strike, Trem, iv, isCall);
+            }
         });
         return total;
     }
@@ -146,13 +234,7 @@
     }
 
     // ── Canvas ───────────────────────────────────────────────────────────────
-    var canvas  = document.getElementById('payoff-chart');
-    var tooltip = document.getElementById('tooltip-box');
     var PAD = { top:24, right:20, bottom:50, left:90 };
-
-    // Cotação atual do ativo subjacente (injetada pelo backend)
-    var spotPrice  = parseFloat(canvas.dataset.spot)   || 0;
-    var spotChange = canvas.dataset.change !== '' ? parseFloat(canvas.dataset.change) : null;
 
     // ── Faixa de S ───────────────────────────────────────────────────────────
     var strikes = legs.map(function(l){ return l.strike; }).filter(Boolean);

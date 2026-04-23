@@ -1285,24 +1285,27 @@ def payoff_spread(id):
         'TRAVA_BAIXA_CALL': 'Trava de Baixa com Calls',
     }
     is_put = 'PUT' in sp.spread_type
+    exp_str = sp.expiration_date.strftime('%Y-%m-%d') if sp.expiration_date else ''
     legs = [
         {
-            'ticker':      sp.leg_long_ticker,
-            'side':        'BUY',
-            'opt_type':    'PUT' if is_put else 'CALL',
-            'quantity':    sp.quantity,
-            'strike':      sp.leg_long_strike,
-            'entry_price': sp.leg_long_price,
-            'current_price': sp.leg_long_current,
+            'ticker':           sp.leg_long_ticker,
+            'side':             'BUY',
+            'opt_type':         'PUT' if is_put else 'CALL',
+            'quantity':         sp.quantity,
+            'strike':           sp.leg_long_strike,
+            'entry_price':      sp.leg_long_price,
+            'current_price':    sp.leg_long_current,
+            'expiration_date':  exp_str,
         },
         {
-            'ticker':      sp.leg_short_ticker,
-            'side':        'SELL',
-            'opt_type':    'PUT' if is_put else 'CALL',
-            'quantity':    sp.quantity,
-            'strike':      sp.leg_short_strike,
-            'entry_price': sp.leg_short_price,
-            'current_price': sp.leg_short_current,
+            'ticker':           sp.leg_short_ticker,
+            'side':             'SELL',
+            'opt_type':         'PUT' if is_put else 'CALL',
+            'quantity':         sp.quantity,
+            'strike':           sp.leg_short_strike,
+            'entry_price':      sp.leg_short_price,
+            'current_price':    sp.leg_short_current,
+            'expiration_date':  exp_str,
         },
     ]
     und_price, und_change = _get_underlying_quote(sp.underlying_asset, current_user.id)
@@ -1312,7 +1315,8 @@ def payoff_spread(id):
                            expiration=sp.expiration_date.strftime('%d/%m/%Y') if sp.expiration_date else '',
                            legs=legs,
                            underlying_price=und_price,
-                           underlying_change=und_change)
+                           underlying_change=und_change,
+                           selic=_selic())
 
 
 @app.route('/payoff/estruturada/<int:id>')
@@ -1324,13 +1328,14 @@ def payoff_estruturada(id):
         return redirect(url_for('opcoes'))
     legs = [
         {
-            'ticker':       leg.ticker,
-            'side':         leg.side,
-            'opt_type':     leg.opt_type,
-            'quantity':     leg.quantity,
-            'strike':       leg.strike,
-            'entry_price':  leg.entry_price,
-            'current_price': leg.current_price,
+            'ticker':           leg.ticker,
+            'side':             leg.side,
+            'opt_type':         leg.opt_type,
+            'quantity':         leg.quantity,
+            'strike':           leg.strike,
+            'entry_price':      leg.entry_price,
+            'current_price':    leg.current_price,
+            'expiration_date':  leg.expiration_date.strftime('%Y-%m-%d') if leg.expiration_date else '',
         }
         for leg in op.legs
     ]
@@ -1343,7 +1348,8 @@ def payoff_estruturada(id):
                            expiration=expiration,
                            legs=legs,
                            underlying_price=und_price,
-                           underlying_change=und_change)
+                           underlying_change=und_change,
+                           selic=_selic())
 
 
 @app.route('/edit_option/<int:id>', methods=['GET', 'POST'])

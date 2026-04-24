@@ -128,6 +128,37 @@
     </div>
 </div>
 
+<!-- Gráfico de Ganho Diário -->
+<div class="card mt-4">
+    <div style="padding:1rem; display:flex; align-items:center; flex-wrap:wrap; gap:.75rem;">
+        <h3 style="margin:0; flex:1;">Ganho Diário</h3>
+        <select id="dailyMonthFilter" style="padding:.4rem .8rem; font-size:.85rem; border-radius:.5rem;
+            background:var(--input-bg); border:1px solid var(--border-color); color:var(--input-color);">
+        </select>
+        <select id="dailyCatFilter" style="padding:.4rem .8rem; font-size:.85rem; border-radius:.5rem;
+            background:var(--input-bg); border:1px solid var(--border-color); color:var(--input-color);">
+            <option value="">Todas Categorias</option>
+            {% for s in all_strategies %}
+            <option value="{{ s }}">{{ s }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div style="padding:0 1rem 1rem; position:relative; height:340px;">
+        <canvas id="dailyChart"></canvas>
+    </div>
+    <div style="padding:0 1rem 1rem; display:flex; gap:1.5rem; flex-wrap:wrap; font-size:.88rem;">
+        <span style="color:var(--text-secondary);">Total do mês:
+            <strong id="daily-total" style="color:var(--text-primary);">—</strong>
+        </span>
+        <span style="color:var(--text-secondary);">Dias positivos:
+            <strong id="daily-pos" style="color:var(--success-color);">—</strong>
+        </span>
+        <span style="color:var(--text-secondary);">Dias negativos:
+            <strong id="daily-neg" style="color:var(--danger-color);">—</strong>
+        </span>
+    </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <script>
@@ -142,6 +173,175 @@ function filterByStrategy() {
         }
     });
 }
+
+// ── Gráfico de Ganho Diário ──────────────────────────────────────────────────
+(function() {
+    var dailyData    = {{ daily_data | tojson }};
+    var allStrats    = {{ all_strategies | tojson }};
+    var colors = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#f97316','#64748b','#84cc16'];
+
+    var monthSel = document.getElementById('dailyMonthFilter');
+    var catSel   = document.getElementById('dailyCatFilter');
+
+    // Popula select de meses (ordem decrescente)
+    var months = Object.keys(dailyData).sort().reverse();
+    months.forEach(function(m) {
+        var parts = m.split('-');
+        var opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = parts[1] + '/' + parts[0];
+        monthSel.appendChild(opt);
+    });
+
+    var dailyChart = null;
+
+    function fmtBRL(v) {
+        var sign = v < 0 ? '-R$ ' : 'R$ ';
+        return sign + Math.abs(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+
+    function buildChart() {
+        var month = monthSel.value;
+        var cat   = catSel.value;
+        if (!month || !dailyData[month]) return;
+
+        var days = Object.keys(dailyData[month]).sort();
+
+        // Agrega por dia e categoria
+        var datasets = [];
+        var stratagems = cat ? [cat] : allStrats;
+
+        // Verifica quais estratégias têm dados neste mês
+        var activeStrats = stratagems.filter(function(s) {
+            return days.some(function(d) { return dailyData[month][d][s]; });
+        });
+
+        // Se categoria única: uma barra por dia com a cor da categoria
+        if (cat) {
+            var data = days.map(function(d) {
+                return Math.round((dailyData[month][d][cat] || 0) * 100) / 100;
+            });
+            var cidx = allStrats.indexOf(cat);
+            datasets.push({
+                label: cat,
+                data: data,
+                backgroundColor: data.map(function(v){ return v >= 0 ? colors[cidx % colors.length] : '#ef4444'; }),
+                borderRadius: 4,
+                barPercentage: 0.7,
+            });
+        } else {
+            // Stacked por categoria
+            activeStrats.forEach(function(s, i) {
+                var data = days.map(function(d) {
+                    return Math.round((dailyData[month][d][s] || 0) * 100) / 100;
+                });
+                datasets.push({
+                    label: s,
+                    data: data,
+                    backgroundColor: colors[allStrats.indexOf(s) % colors.length],
+                    borderRadius: 3,
+                    stack: 'day',
+                });
+            });
+        }
+
+        // Labels: só o dia (DD)
+        var labels = days.map(function(d) { return d.split('-')[2]; });
+
+        // Totais para rodapé
+        var totals = days.map(function(d) {
+            var dayStrats = cat ? [cat] : allStrats;
+            return dayStrats.reduce(function(acc, s) { return acc + (dailyData[month][d][s] || 0); }, 0);
+        });
+        var grandTotal = totals.reduce(function(a, b){ return a + b; }, 0);
+        var posCount   = totals.filter(function(v){ return v > 0; }).length;
+        var negCount   = totals.filter(function(v){ return v < 0; }).length;
+
+        document.getElementById('daily-total').textContent = fmtBRL(grandTotal);
+        document.getElementById('daily-total').style.color = grandTotal >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        document.getElementById('daily-pos').textContent = posCount;
+        document.getElementById('daily-neg').textContent = negCount;
+
+        if (dailyChart) dailyChart.destroy();
+
+        var ctx2 = document.getElementById('dailyChart').getContext('2d');
+        dailyChart = new Chart(ctx2, {
+            type: 'bar',
+            data: { labels: labels, datasets: datasets },
+            plugins: [ChartDataLabels],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: themeColors.text } },
+                    tooltip: {
+                        callbacks: {
+                            title: function(items) { return 'Dia ' + items[0].label + '/' + month.replace('-','/'); },
+                            footer: function(items) {
+                                var total = items.reduce(function(a, i){ return a + i.parsed.y; }, 0);
+                                return 'Total: ' + fmtBRL(total);
+                            }
+                        }
+                    },
+                    datalabels: {
+                        display: function(ctx) {
+                            // Mostra label só na última stack positiva e primeira negativa por dia
+                            if (!cat) {
+                                var dsIdx = ctx.datasetIndex;
+                                var dataIdx = ctx.dataIndex;
+                                var val = ctx.dataset.data[dataIdx];
+                                if (val === 0) return false;
+                                // Só no último dataset com valor positivo (topo da stack)
+                                var isLast = true;
+                                for (var k = dsIdx + 1; k < datasets.length; k++) {
+                                    if ((datasets[k].data[dataIdx] || 0) > 0 && val > 0) { isLast = false; break; }
+                                    if ((datasets[k].data[dataIdx] || 0) < 0 && val < 0) { isLast = false; break; }
+                                }
+                                return isLast;
+                            }
+                            return true;
+                        },
+                        formatter: function(value, ctx) {
+                            if (!cat) {
+                                // Mostra total da pilha
+                                var dataIdx = ctx.dataIndex;
+                                var total = datasets.reduce(function(a, ds){ return a + (ds.data[dataIdx] || 0); }, 0);
+                                return total !== 0 ? fmtBRL(total) : '';
+                            }
+                            return value !== 0 ? fmtBRL(value) : '';
+                        },
+                        color: themeColors.text,
+                        anchor: function(ctx) { return ctx.dataset.data[ctx.dataIndex] >= 0 ? 'end' : 'start'; },
+                        align: function(ctx) { return ctx.dataset.data[ctx.dataIndex] >= 0 ? 'top' : 'bottom'; },
+                        font: { size: 9, weight: 'bold' },
+                    }
+                },
+                scales: {
+                    x: {
+                        stacked: !cat,
+                        ticks: { color: themeColors.textSecondary },
+                        grid: { color: 'var(--total-row-bg)' },
+                        title: { display: true, text: 'Dia do mês', color: themeColors.textSecondary }
+                    },
+                    y: {
+                        stacked: !cat,
+                        ticks: {
+                            color: themeColors.textSecondary,
+                            callback: function(v) { return 'R$ ' + v.toLocaleString('pt-BR'); }
+                        },
+                        grid: { color: 'var(--total-row-bg)' }
+                    }
+                }
+            }
+        });
+    }
+
+    monthSel.addEventListener('change', buildChart);
+    catSel.addEventListener('change', buildChart);
+
+    // Inicializa com o mês mais recente
+    if (months.length) buildChart();
+})();
 
 // Bar Chart
 const ctx = document.getElementById('historyChart').getContext('2d');

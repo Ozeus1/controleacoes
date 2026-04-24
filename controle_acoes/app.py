@@ -2649,13 +2649,32 @@ def history():
             'borderRadius': 4
         })
 
+    # Ganho diário: {YYYY-MM: {YYYY-MM-DD: {strategy: profit}}}
+    from collections import defaultdict as _dd
+    daily_by_month = _dd(lambda: _dd(lambda: _dd(float)))
+    for t in trades:
+        if t.exit_date and t.profit_value is not None:
+            month_key = t.exit_date.strftime('%Y-%m')
+            day_key   = t.exit_date.strftime('%Y-%m-%d')
+            strat     = t.strategy or 'Outros'
+            daily_by_month[month_key][day_key][strat] += t.profit_value
+
+    # Serializa para JSON: {YYYY-MM: {YYYY-MM-DD: {strat: val}}}
+    daily_data = {}
+    for month_key, days in daily_by_month.items():
+        daily_data[month_key] = {}
+        for day_key, strats in days.items():
+            daily_data[month_key][day_key] = dict(strats)
+
     return render_template('history.html',
         trades=trades,
         total_profit=total_profit,
         strategies=strategies,
         summary_table=summary_table,
         chart_labels=chart_labels,
-        chart_datasets=chart_datasets
+        chart_datasets=chart_datasets,
+        daily_data=daily_data,
+        all_strategies=all_strategies,
     )
 
 

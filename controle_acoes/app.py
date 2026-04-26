@@ -4037,7 +4037,7 @@ def add_user():
             flash('Usuário criado com sucesso!', 'success')
             return redirect(url_for('list_users'))
 
-    return render_template('add_user.html')
+    return render_template('add_user.html', user=None, edit=False)
 
 @app.route('/users/edit/<int:id>', methods=['GET', 'POST'])
 @login_required

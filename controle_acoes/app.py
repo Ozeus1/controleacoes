@@ -2488,21 +2488,20 @@ def resumo():
             month_key = h.exit_date.strftime('%Y-%m')
             monthly_profit[month_key] = monthly_profit.get(month_key, 0) + (h.profit_value or 0)
 
-    # 3. Dividendos mensais — de ações (tabela Dividend) e FIIs (mesmo modelo)
+    # 3. Dividendos mensais — de ações e FIIs (amount já inclui qty, igual à página Dividendos)
     all_dividends = Dividend.query.join(Asset).filter(
-        Asset.user_id == current_user.id
+        Asset.user_id == current_user.id,
+        Dividend.payment_date != None
     ).all()
     monthly_div_acoes = {}
     monthly_div_fiis  = {}
+    today_d = date.today()
     for d in all_dividends:
-        if not d.payment_date:
+        if not d.payment_date or d.payment_date > today_d:
             continue
-        mk = d.payment_date.strftime('%Y-%m')
-        asset = Asset.query.get(d.asset_id)
-        if not asset:
-            continue
-        val = (d.amount or 0) * (asset.quantity or 0)
-        if asset.type == 'FII':
+        mk  = d.payment_date.strftime('%Y-%m')
+        val = d.amount or 0          # já é amount * qty (gravado assim na importação)
+        if d.asset.type == 'FII':
             monthly_div_fiis[mk]  = monthly_div_fiis.get(mk, 0)  + val
         else:
             monthly_div_acoes[mk] = monthly_div_acoes.get(mk, 0) + val

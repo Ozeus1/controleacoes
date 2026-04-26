@@ -105,17 +105,17 @@ def run_migrations():
     conn = _sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Novos campos no modelo User
-    cursor.execute("PRAGMA table_info(user)")
-    user_cols = {row[1] for row in cursor.fetchall()}
-    if 'full_name'       not in user_cols:
-        cursor.execute("ALTER TABLE user ADD COLUMN full_name VARCHAR(120)")
-    if 'email'           not in user_cols:
-        cursor.execute("ALTER TABLE user ADD COLUMN email VARCHAR(120)")
-    if 'phone'           not in user_cols:
-        cursor.execute("ALTER TABLE user ADD COLUMN phone VARCHAR(30)")
-    if 'avatar_filename' not in user_cols:
-        cursor.execute("ALTER TABLE user ADD COLUMN avatar_filename VARCHAR(120)")
+    # Novos campos no modelo User — usa try/except por segurança (SQLite não tem IF NOT EXISTS no ALTER)
+    for _col, _def in [
+        ('full_name',       'VARCHAR(120)'),
+        ('email',           'VARCHAR(120)'),
+        ('phone',           'VARCHAR(30)'),
+        ('avatar_filename', 'VARCHAR(120)'),
+    ]:
+        try:
+            cursor.execute(f"ALTER TABLE user ADD COLUMN {_col} {_def}")
+        except Exception:
+            pass  # coluna já existe
 
     # Check existing columns in 'option' table
     cursor.execute("PRAGMA table_info(option)")

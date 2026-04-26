@@ -176,9 +176,15 @@ function filterByStrategy() {
 
 // ── Gráfico de Ganho Diário ──────────────────────────────────────────────────
 (function() {
-    var dailyData    = {{ daily_data | tojson }};
-    var allStrats    = {{ all_strategies | tojson }};
-    var colors = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#f97316','#64748b','#84cc16'];
+    var dailyData      = {{ daily_data | tojson }};
+    var allStrats      = {{ all_strategies | tojson }};
+    var stratColors    = {{ strategy_colors | tojson }};
+    var totalAcoesRef  = {{ total_acoes_ref }};
+    var fallbackColors = ['#64748b','#84cc16','#f59e0b','#ef4444'];
+
+    function stratColor(s, idx) {
+        return stratColors[s] || fallbackColors[idx % fallbackColors.length];
+    }
 
     var monthSel = document.getElementById('dailyMonthFilter');
     var catSel   = document.getElementById('dailyCatFilter');
@@ -218,14 +224,14 @@ function filterByStrategy() {
 
         // Se categoria única: uma barra por dia com a cor da categoria
         if (cat) {
+            var baseColor = stratColor(cat, allStrats.indexOf(cat));
             var data = days.map(function(d) {
                 return Math.round((dailyData[month][d][cat] || 0) * 100) / 100;
             });
-            var cidx = allStrats.indexOf(cat);
             datasets.push({
                 label: cat,
                 data: data,
-                backgroundColor: data.map(function(v){ return v >= 0 ? colors[cidx % colors.length] : '#ef4444'; }),
+                backgroundColor: data.map(function(v){ return v >= 0 ? baseColor : '#ef4444'; }),
                 borderRadius: 4,
                 barPercentage: 0.7,
             });
@@ -238,7 +244,7 @@ function filterByStrategy() {
                 datasets.push({
                     label: s,
                     data: data,
-                    backgroundColor: colors[allStrats.indexOf(s) % colors.length],
+                    backgroundColor: stratColor(s, allStrats.indexOf(s)),
                     borderRadius: 3,
                     stack: 'day',
                 });
@@ -277,21 +283,27 @@ function filterByStrategy() {
                     tooltip: {
                         callbacks: {
                             title: function(items) { return 'Dia ' + items[0].label + '/' + month.replace('-','/'); },
+                            label: function(item) {
+                                var v = item.parsed.y;
+                                var pct = totalAcoesRef > 0 ? (v / totalAcoesRef * 100) : 0;
+                                return item.dataset.label + ': ' + fmtBRL(v) +
+                                       '  (' + (pct >= 0 ? '+' : '') + pct.toFixed(2).replace('.', ',') + '% carteira)';
+                            },
                             footer: function(items) {
                                 var total = items.reduce(function(a, i){ return a + i.parsed.y; }, 0);
-                                return 'Total: ' + fmtBRL(total);
+                                var pct = totalAcoesRef > 0 ? (total / totalAcoesRef * 100) : 0;
+                                return 'Total: ' + fmtBRL(total) +
+                                       ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2).replace('.', ',') + '%)';
                             }
                         }
                     },
                     datalabels: {
                         display: function(ctx) {
-                            // Mostra label só na última stack positiva e primeira negativa por dia
                             if (!cat) {
                                 var dsIdx = ctx.datasetIndex;
                                 var dataIdx = ctx.dataIndex;
                                 var val = ctx.dataset.data[dataIdx];
                                 if (val === 0) return false;
-                                // Só no último dataset com valor positivo (topo da stack)
                                 var isLast = true;
                                 for (var k = dsIdx + 1; k < datasets.length; k++) {
                                     if ((datasets[k].data[dataIdx] || 0) > 0 && val > 0) { isLast = false; break; }
@@ -302,8 +314,8 @@ function filterByStrategy() {
                             return true;
                         },
                         formatter: function(value, ctx) {
+                            // Label da barra: valor em R$
                             if (!cat) {
-                                // Mostra total da pilha
                                 var dataIdx = ctx.dataIndex;
                                 var total = datasets.reduce(function(a, ds){ return a + (ds.data[dataIdx] || 0); }, 0);
                                 return total !== 0 ? fmtBRL(total) : '';
@@ -343,61 +355,68 @@ function filterByStrategy() {
     if (months.length) buildChart();
 })();
 
-// Bar Chart
-const ctx = document.getElementById('historyChart').getContext('2d');
-const rawDatasets = {{ chart_datasets | tojson }};
+// ── Gráfico Mensal ───────────────────────────────────────────────────────────
+(function() {
+    var rawDatasets   = {{ chart_datasets | tojson }};
+    var totalAcoesRef = {{ total_acoes_ref }};
 
-new Chart(ctx, {
-    type: 'bar',
-    data: {
-        labels: {{ chart_labels | tojson }},
-        datasets: rawDatasets
-    },
-    plugins: [ChartDataLabels],
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                labels: { color: themeColors.text }
-            },
-            datalabels: {
-                color: themeColors.text,
-                anchor: function(context) {
-                    return context.dataset.data[context.dataIndex] >= 0 ? 'end' : 'start';
-                },
-                align: function(context) {
-                    return context.dataset.data[context.dataIndex] >= 0 ? 'top' : 'bottom';
-                },
-                font: { size: 10, weight: 'bold' },
-                formatter: function(value, context) {
-                    const pctData = context.dataset.pct_data;
-                    if (pctData && pctData[context.dataIndex] !== undefined) {
-                        const pct = pctData[context.dataIndex];
-                        return pct !== 0 ? pct.toFixed(1).replace('.', ',') + '%' : '';
+    function fmtBRL(v) {
+        var sign = v < 0 ? '-R$ ' : 'R$ ';
+        return sign + Math.abs(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+
+    var ctx = document.getElementById('historyChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: {{ chart_labels | tojson }},
+            datasets: rawDatasets
+        },
+        plugins: [ChartDataLabels],
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { color: themeColors.text } },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            var v = context.parsed.y;
+                            var pctArr = context.dataset.pct_data;
+                            var pct = pctArr ? pctArr[context.dataIndex] : 0;
+                            return context.dataset.label + ': ' + fmtBRL(v) +
+                                   '  (' + (pct >= 0 ? '+' : '') + pct.toFixed(2).replace('.', ',') + '% carteira)';
+                        }
                     }
-                    return '';
+                },
+                datalabels: {
+                    color: themeColors.text,
+                    anchor: function(ctx) { return ctx.dataset.data[ctx.dataIndex] >= 0 ? 'end' : 'start'; },
+                    align:  function(ctx) { return ctx.dataset.data[ctx.dataIndex] >= 0 ? 'top'  : 'bottom'; },
+                    font: { size: 10, weight: 'bold' },
+                    formatter: function(value) {
+                        // Label: valor em R$
+                        return value !== 0 ? fmtBRL(value) : '';
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: false,
+                    ticks: { color: themeColors.textSecondary },
+                    grid:  { color: 'var(--total-row-bg)' }
+                },
+                y: {
+                    ticks: {
+                        color: themeColors.textSecondary,
+                        callback: function(v) { return 'R$ ' + v.toLocaleString('pt-BR'); }
+                    },
+                    grid: { color: 'var(--total-row-bg)' }
                 }
             }
-        },
-        scales: {
-            x: {
-                stacked: false,
-                ticks: { color: themeColors.textSecondary },
-                grid: { color: 'var(--total-row-bg)' }
-            },
-            y: {
-                ticks: {
-                    color: themeColors.textSecondary,
-                    callback: function(value) {
-                        return 'R$ ' + value.toLocaleString('pt-BR');
-                    }
-                },
-                grid: { color: 'var(--total-row-bg)' }
-            }
         }
-    }
-});
+    });
+})();
 </script>
 {% endblock %}
 

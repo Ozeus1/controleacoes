@@ -2604,6 +2604,12 @@ def history():
 
     total_profit = sum(t.profit_value for t in trades if t.profit_value)
 
+    # Total atual da carteira de ações (referência para cálculo de %)
+    acoes_assets = Asset.query.filter_by(user_id=current_user.id, type='ACAO').all()
+    total_acoes_ref = sum((a.current_price or a.avg_price or 0) * a.quantity for a in acoes_assets)
+    if total_acoes_ref <= 0:
+        total_acoes_ref = sum(a.avg_price * a.quantity for a in acoes_assets) or 1
+
     # Unique strategies for filter
     strategies = sorted(set((t.strategy or 'Outros') for t in trades))
 
@@ -2643,21 +2649,31 @@ def history():
         chart_labels.append(f"{parts[1]}/{parts[0]}")
 
     all_strategies = sorted(set(s for m in sorted_months for s in month_strategy_profit[m].keys()))
-    colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#f97316', '#64748b', '#84cc16']
+    # Mapa de cores fixo por estratégia — Opções=verde, Internacional=azul
+    STRATEGY_COLORS = {
+        'Opções':             '#10b981',  # verde
+        'Internacional':      '#3b82f6',  # azul
+        'Fundos Imobiliários':'#8b5cf6',  # roxo
+        'Recomendações':      '#ec4899',  # rosa
+        'Técnica':            '#06b6d4',  # ciano
+        'Outros':             '#f97316',  # laranja
+    }
+    fallback_colors = ['#64748b', '#84cc16', '#f59e0b', '#ef4444']
     chart_datasets = []
     for i, strat in enumerate(all_strategies):
         data = [round(month_strategy_profit[m].get(strat, 0), 2) for m in sorted_months]
         pct_data = []
         for m in sorted_months:
-            invested = month_strategy_invested[m].get(strat, 0)
             profit = month_strategy_profit[m].get(strat, 0)
-            pct = round(profit / invested * 100, 1) if invested > 0 else 0
+            # % em relação ao total da carteira de ações
+            pct = round(profit / total_acoes_ref * 100, 2) if total_acoes_ref > 0 else 0
             pct_data.append(pct)
+        color = STRATEGY_COLORS.get(strat, fallback_colors[i % len(fallback_colors)])
         chart_datasets.append({
             'label': strat,
             'data': data,
             'pct_data': pct_data,
-            'backgroundColor': colors[i % len(colors)],
+            'backgroundColor': color,
             'borderRadius': 4
         })
 
@@ -2687,6 +2703,8 @@ def history():
         chart_datasets=chart_datasets,
         daily_data=daily_data,
         all_strategies=all_strategies,
+        total_acoes_ref=total_acoes_ref,
+        strategy_colors=STRATEGY_COLORS,
     )
 
 

@@ -2604,11 +2604,29 @@ def history():
 
     total_profit = sum(t.profit_value for t in trades if t.profit_value)
 
-    # Total atual da carteira de ações (referência para cálculo de %)
+    # Total atual da carteira de ações
     acoes_assets = Asset.query.filter_by(user_id=current_user.id, type='ACAO').all()
-    total_acoes_ref = sum((a.current_price or a.avg_price or 0) * a.quantity for a in acoes_assets)
-    if total_acoes_ref <= 0:
-        total_acoes_ref = sum(a.avg_price * a.quantity for a in acoes_assets) or 1
+    total_acoes_atual = sum((a.current_price or a.avg_price or 0) * a.quantity for a in acoes_assets)
+    if total_acoes_atual <= 0:
+        total_acoes_atual = sum((a.avg_price or 0) * a.quantity for a in acoes_assets) or 1
+
+    # Lucro total por mês (todas estratégias) — para estimar patrimônio inicial de cada mês
+    # Lógica: patrimônio_inicio_mês[M] = valor_atual − soma_lucros_dos_meses_posteriores_a_M
+    month_total_profit = defaultdict(float)
+    for t in trades:
+        if t.exit_date and t.profit_value is not None:
+            mk = t.exit_date.strftime('%Y-%m')
+            month_total_profit[mk] += t.profit_value
+
+    # Reconstrói patrimônio início do mês subtraindo lucros futuros do valor atual
+    all_months_sorted = sorted(month_total_profit.keys())
+    # patrimônio no início do mês M = valor_atual - sum(lucros de meses > M)
+    def portfolio_start_of_month(month_key):
+        p = total_acoes_atual
+        for mk in all_months_sorted:
+            if mk > month_key:
+                p -= month_total_profit[mk]
+        return max(p, 1)  # nunca negativo
 
     # Unique strategies for filter
     strategies = sorted(set((t.strategy or 'Outros') for t in trades))
@@ -2659,14 +2677,24 @@ def history():
         'Outros':             '#f97316',  # laranja
     }
     fallback_colors = ['#64748b', '#84cc16', '#f59e0b', '#ef4444']
+    # Rentabilidade mensal total (soma de todas estratégias / patrimônio início do mês)
+    month_rentab = {}
+    for m in sorted_months:
+        total_m = sum(month_strategy_profit[m].values())
+        base    = portfolio_start_of_month(m)
+        month_rentab[m] = round(total_m / base * 100, 2)
+
+    # Para o gráfico diário: patrimônio início de cada mês serializado
+    month_portfolio_json = {m: round(portfolio_start_of_month(m), 2) for m in month_total_profit}
+
     chart_datasets = []
     for i, strat in enumerate(all_strategies):
         data = [round(month_strategy_profit[m].get(strat, 0), 2) for m in sorted_months]
         pct_data = []
         for m in sorted_months:
             profit = month_strategy_profit[m].get(strat, 0)
-            # % em relação ao total da carteira de ações
-            pct = round(profit / total_acoes_ref * 100, 2) if total_acoes_ref > 0 else 0
+            base   = portfolio_start_of_month(m)
+            pct    = round(profit / base * 100, 2) if base > 0 else 0
             pct_data.append(pct)
         color = STRATEGY_COLORS.get(strat, fallback_colors[i % len(fallback_colors)])
         chart_datasets.append({
@@ -2701,10 +2729,13 @@ def history():
         summary_table=summary_table,
         chart_labels=chart_labels,
         chart_datasets=chart_datasets,
+        sorted_months=sorted_months,
         daily_data=daily_data,
         all_strategies=all_strategies,
-        total_acoes_ref=total_acoes_ref,
+        total_acoes_ref=total_acoes_atual,
         strategy_colors=STRATEGY_COLORS,
+        month_portfolio=month_portfolio_json,
+        month_rentab=month_rentab,
     )
 
 

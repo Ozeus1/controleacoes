@@ -150,6 +150,9 @@
         <span style="color:var(--text-secondary);">Total do mês:
             <strong id="daily-total" style="color:var(--text-primary);">—</strong>
         </span>
+        <span style="color:var(--text-secondary);">Rentabilidade:
+            <strong id="daily-rentab" style="color:var(--text-primary);">—</strong>
+        </span>
         <span style="color:var(--text-secondary);">Dias positivos:
             <strong id="daily-pos" style="color:var(--success-color);">—</strong>
         </span>
@@ -180,6 +183,8 @@ function filterByStrategy() {
     var allStrats      = {{ all_strategies | tojson }};
     var stratColors    = {{ strategy_colors | tojson }};
     var totalAcoesRef  = {{ total_acoes_ref }};
+    var monthPortfolio = {{ month_portfolio | tojson }};  // patrimônio início de cada mês
+    var monthRentab    = {{ month_rentab | tojson }};     // rentabilidade mensal total
     var fallbackColors = ['#64748b','#84cc16','#f59e0b','#ef4444'];
 
     function stratColor(s, idx) {
@@ -263,10 +268,27 @@ function filterByStrategy() {
         var posCount   = totals.filter(function(v){ return v > 0; }).length;
         var negCount   = totals.filter(function(v){ return v < 0; }).length;
 
+        var basePortfolio = monthPortfolio[month] || totalAcoesRef;
+        var rentabMes = basePortfolio > 0 ? (grandTotal / basePortfolio * 100) : 0;
+
+        // Rentabilidade acumulada até cada dia (para tooltip)
+        var cumulProfits = [];
+        var running = 0;
+        days.forEach(function(d) {
+            var dayStrats = cat ? [cat] : allStrats;
+            running += dayStrats.reduce(function(acc, s) { return acc + (dailyData[month][d][s] || 0); }, 0);
+            cumulProfits.push(running);
+        });
+
         document.getElementById('daily-total').textContent = fmtBRL(grandTotal);
         document.getElementById('daily-total').style.color = grandTotal >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
         document.getElementById('daily-pos').textContent = posCount;
         document.getElementById('daily-neg').textContent = negCount;
+        var rentEl = document.getElementById('daily-rentab');
+        if (rentEl) {
+            rentEl.textContent = (rentabMes >= 0 ? '+' : '') + rentabMes.toFixed(2).replace('.', ',') + '%';
+            rentEl.style.color = rentabMes >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        }
 
         if (dailyChart) dailyChart.destroy();
 
@@ -285,15 +307,19 @@ function filterByStrategy() {
                             title: function(items) { return 'Dia ' + items[0].label + '/' + month.replace('-','/'); },
                             label: function(item) {
                                 var v = item.parsed.y;
-                                var pct = totalAcoesRef > 0 ? (v / totalAcoesRef * 100) : 0;
-                                return item.dataset.label + ': ' + fmtBRL(v) +
-                                       '  (' + (pct >= 0 ? '+' : '') + pct.toFixed(2).replace('.', ',') + '% carteira)';
+                                return item.dataset.label + ': ' + fmtBRL(v);
                             },
                             footer: function(items) {
-                                var total = items.reduce(function(a, i){ return a + i.parsed.y; }, 0);
-                                var pct = totalAcoesRef > 0 ? (total / totalAcoesRef * 100) : 0;
-                                return 'Total: ' + fmtBRL(total) +
-                                       ' (' + (pct >= 0 ? '+' : '') + pct.toFixed(2).replace('.', ',') + '%)';
+                                var dataIdx = items[0].dataIndex;
+                                var dayTotal = items.reduce(function(a, i){ return a + i.parsed.y; }, 0);
+                                var cumul    = cumulProfits[dataIdx] || 0;
+                                var base     = basePortfolio;
+                                var pctDay   = base > 0 ? (dayTotal / base * 100) : 0;
+                                var pctCumul = base > 0 ? (cumul   / base * 100) : 0;
+                                return [
+                                    'Dia: ' + fmtBRL(dayTotal) + ' (' + (pctDay >= 0 ? '+' : '') + pctDay.toFixed(2).replace('.', ',') + '% carteira)',
+                                    'Acumulado mês: ' + fmtBRL(cumul) + ' (' + (pctCumul >= 0 ? '+' : '') + pctCumul.toFixed(2).replace('.', ',') + '%)'
+                                ];
                             }
                         }
                     },
@@ -358,12 +384,35 @@ function filterByStrategy() {
 // ── Gráfico Mensal ───────────────────────────────────────────────────────────
 (function() {
     var rawDatasets   = {{ chart_datasets | tojson }};
-    var totalAcoesRef = {{ total_acoes_ref }};
+    var chartMonths   = {{ sorted_months | tojson }};  // YYYY-MM keys
+    var monthRentab   = {{ month_rentab | tojson }};
 
     function fmtBRL(v) {
         var sign = v < 0 ? '-R$ ' : 'R$ ';
         return sign + Math.abs(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
     }
+    function fmtPct(v) {
+        return (v >= 0 ? '+' : '') + v.toFixed(2).replace('.', ',') + '%';
+    }
+
+    // Rentabilidade total do mês (todas estratégias / patrimônio início)
+    var rentabData = chartMonths.map(function(m) { return monthRentab[m] || 0; });
+
+    // Adiciona linha de rentabilidade como eixo Y2
+    rawDatasets.push({
+        label: 'Rentabilidade mensal',
+        type: 'line',
+        data: rentabData,
+        borderColor: '#facc15',
+        backgroundColor: 'rgba(250,204,21,0.15)',
+        pointBackgroundColor: '#facc15',
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        borderWidth: 2,
+        fill: false,
+        yAxisID: 'y2',
+        datalabels: { display: false }
+    });
 
     var ctx = document.getElementById('historyChart').getContext('2d');
     new Chart(ctx, {
@@ -381,11 +430,14 @@ function filterByStrategy() {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
+                            if (context.dataset.label === 'Rentabilidade mensal') {
+                                return 'Rentab. total: ' + fmtPct(context.parsed.y);
+                            }
                             var v = context.parsed.y;
                             var pctArr = context.dataset.pct_data;
                             var pct = pctArr ? pctArr[context.dataIndex] : 0;
                             return context.dataset.label + ': ' + fmtBRL(v) +
-                                   '  (' + (pct >= 0 ? '+' : '') + pct.toFixed(2).replace('.', ',') + '% carteira)';
+                                   '  (' + fmtPct(pct) + ' carteira)';
                         }
                     }
                 },
@@ -394,8 +446,8 @@ function filterByStrategy() {
                     anchor: function(ctx) { return ctx.dataset.data[ctx.dataIndex] >= 0 ? 'end' : 'start'; },
                     align:  function(ctx) { return ctx.dataset.data[ctx.dataIndex] >= 0 ? 'top'  : 'bottom'; },
                     font: { size: 10, weight: 'bold' },
-                    formatter: function(value) {
-                        // Label: valor em R$
+                    formatter: function(value, ctx) {
+                        if (ctx.dataset.label === 'Rentabilidade mensal') return '';
                         return value !== 0 ? fmtBRL(value) : '';
                     }
                 }
@@ -407,11 +459,20 @@ function filterByStrategy() {
                     grid:  { color: 'var(--total-row-bg)' }
                 },
                 y: {
+                    position: 'left',
                     ticks: {
                         color: themeColors.textSecondary,
                         callback: function(v) { return 'R$ ' + v.toLocaleString('pt-BR'); }
                     },
                     grid: { color: 'var(--total-row-bg)' }
+                },
+                y2: {
+                    position: 'right',
+                    grid: { drawOnChartArea: false },
+                    ticks: {
+                        color: '#facc15',
+                        callback: function(v) { return v.toFixed(1).replace('.', ',') + '%'; }
+                    }
                 }
             }
         }

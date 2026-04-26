@@ -2480,30 +2480,70 @@ def resumo():
     # Sort table by Value desc
     fii_table_data.sort(key=lambda x: x['value'], reverse=True)
             
-    # 2. Monthly Profit from History
-    monthly_profit = {}
-            
-    # 2. Monthly Profit from History
+    # 2. Monthly Profit from History (trades)
+    from collections import defaultdict as _dd2
     monthly_profit = {}
     for h in history:
         if h.exit_date:
             month_key = h.exit_date.strftime('%Y-%m')
-            monthly_profit[month_key] = monthly_profit.get(month_key, 0) + h.profit_value
-            
-    # Sort months
-    sorted_months = sorted(monthly_profit.keys())
-    profit_data = [monthly_profit[k] for k in sorted_months]
-    
-    # NEW: Total Realized Profit Calculation
-    total_realized_profit = sum(h.profit_value for h in history)
-    
-    return render_template('resumo.html', 
-                         total_equity=total_equity, total_acoes=total_acoes, total_fiis=total_fiis, total_etfs=total_etfs,
-                         total_realized_profit=sum(profit_data),
+            monthly_profit[month_key] = monthly_profit.get(month_key, 0) + (h.profit_value or 0)
+
+    # 3. Dividendos mensais — de ações (tabela Dividend) e FIIs (mesmo modelo)
+    all_dividends = Dividend.query.join(Asset).filter(
+        Asset.user_id == current_user.id
+    ).all()
+    monthly_div_acoes = {}
+    monthly_div_fiis  = {}
+    for d in all_dividends:
+        if not d.payment_date:
+            continue
+        mk = d.payment_date.strftime('%Y-%m')
+        asset = Asset.query.get(d.asset_id)
+        if not asset:
+            continue
+        val = (d.amount or 0) * (asset.quantity or 0)
+        if asset.type == 'FII':
+            monthly_div_fiis[mk]  = monthly_div_fiis.get(mk, 0)  + val
+        else:
+            monthly_div_acoes[mk] = monthly_div_acoes.get(mk, 0) + val
+
+    # Todos os meses com pelo menos um dado
+    all_months_set = (set(monthly_profit.keys()) |
+                      set(monthly_div_acoes.keys()) |
+                      set(monthly_div_fiis.keys()))
+    sorted_months = sorted(all_months_set)
+    profit_data   = [round(monthly_profit.get(k, 0), 2) for k in sorted_months]
+    div_acoes_data= [round(monthly_div_acoes.get(k, 0), 2) for k in sorted_months]
+    div_fiis_data = [round(monthly_div_fiis.get(k, 0), 2)  for k in sorted_months]
+
+    # Patrimônio início de cada mês (mesmo algoritmo da página histórico)
+    total_acoes_atual = total_acoes or 1
+    month_total_profit_resumo = {k: monthly_profit.get(k, 0) for k in sorted_months}
+    def _port_start(month_key):
+        p = total_acoes_atual
+        for mk in sorted_months:
+            if mk > month_key:
+                p -= month_total_profit_resumo.get(mk, 0)
+        return max(p, 1)
+
+    # % de cada série em relação ao patrimônio início do mês
+    profit_pct_data   = [round(monthly_profit.get(k,0)    / _port_start(k) * 100, 2) for k in sorted_months]
+    div_acoes_pct     = [round(monthly_div_acoes.get(k,0)  / _port_start(k) * 100, 2) for k in sorted_months]
+    div_fiis_pct      = [round(monthly_div_fiis.get(k,0)   / _port_start(k) * 100, 2) for k in sorted_months]
+
+    total_realized_profit = sum(h.profit_value for h in history if h.profit_value)
+
+    return render_template('resumo.html',
+                         total_equity=total_equity, total_acoes=total_acoes,
+                         total_fiis=total_fiis, total_etfs=total_etfs,
+                         total_realized_profit=total_realized_profit,
                          fii_types=fii_types,
                          fii_table=fii_table_data,
                          broad_allocation=broad_allocation,
                          months=sorted_months, profits=profit_data,
+                         profit_pct=profit_pct_data,
+                         div_acoes=div_acoes_data, div_acoes_pct=div_acoes_pct,
+                         div_fiis=div_fiis_data,   div_fiis_pct=div_fiis_pct,
                          stock_sectors=stock_sectors)
 
 @app.route('/edit_history/<int:id>', methods=['GET', 'POST'])

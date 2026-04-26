@@ -146,10 +146,22 @@
         </div>
     </div>
 
-    <!-- Charts Row 2 -->
-    <div class="card" style="padding: 1.5rem; margin-bottom: 2rem;">
-        <h3 style="text-align: center; font-size: 1rem; margin-bottom: 1rem;">Lucro Mensal (Histórico)</h3>
-        <canvas id="profitChart"></canvas>
+    <!-- Charts Row 2: Lucro + Dividendos -->
+    <div class="card" style="padding:1.5rem; margin-bottom:2rem;">
+        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:.75rem; margin-bottom:1rem;">
+            <h3 style="margin:0; font-size:1rem; flex:1;">Resultado Mensal</h3>
+            <div style="display:flex; gap:.4rem; flex-wrap:wrap;" id="resumo-series-btns">
+                <button class="btn btn-sm resumo-tog active" data-series="lucro"
+                    style="background:#10b981; color:#fff; border:none;">📈 Lucro Operações</button>
+                <button class="btn btn-sm resumo-tog active" data-series="div_acoes"
+                    style="background:#3b82f6; color:#fff; border:none;">💰 Div. Ações</button>
+                <button class="btn btn-sm resumo-tog active" data-series="div_fiis"
+                    style="background:#8b5cf6; color:#fff; border:none;">🏢 Div. FIIs</button>
+            </div>
+        </div>
+        <div style="position:relative; height:320px;">
+            <canvas id="profitChart"></canvas>
+        </div>
     </div>
 
 </div>
@@ -282,38 +294,99 @@
         options: commonOptions
     });
 
-    // 5. Profit Chart (Bar) - Disable DataLabels for clarity or keep custom
-    // For Bar chart, we might not want the pie formatting logic.
-    const monthLabels = {{ months| tojson }};
-    const profitData = {{ profits| tojson }};
+    // 5. Resultado Mensal (Lucro + Dividendos Ações + Dividendos FIIs)
+    const monthLabels   = {{ months | tojson }};
+    const lucroData     = {{ profits | tojson }};
+    const lucroPct      = {{ profit_pct | tojson }};
+    const divAcoesData  = {{ div_acoes | tojson }};
+    const divAcoesPct   = {{ div_acoes_pct | tojson }};
+    const divFiisData   = {{ div_fiis | tojson }};
+    const divFiisPct    = {{ div_fiis_pct | tojson }};
+
+    function fmtBRL(v) {
+        return new Intl.NumberFormat('pt-BR', {style:'currency', currency:'BRL'}).format(v);
+    }
+    function fmtPct(v) {
+        return (v >= 0 ? '+' : '') + v.toFixed(2).replace('.', ',') + '%';
+    }
+
+    const ALL_SERIES = {
+        lucro:     { label:'Lucro Operações', data: lucroData,    pct: lucroPct,
+                     bg: lucroData.map(v => v >= 0 ? '#10b981' : '#ef4444') },
+        div_acoes: { label:'Div. Ações',      data: divAcoesData, pct: divAcoesPct,
+                     bg: '#3b82f6' },
+        div_fiis:  { label:'Div. FIIs',       data: divFiisData,  pct: divFiisPct,
+                     bg: '#8b5cf6' },
+    };
+
+    let activeSeries = new Set(['lucro','div_acoes','div_fiis']);
+
+    function buildDatasets() {
+        return Object.entries(ALL_SERIES)
+            .filter(([k]) => activeSeries.has(k))
+            .map(([, s]) => ({
+                label: s.label,
+                data:  s.data,
+                _pct:  s.pct,
+                backgroundColor: s.bg,
+                borderRadius: 4,
+                barPercentage: 0.7,
+            }));
+    }
+
     const ctxProfit = document.getElementById('profitChart').getContext('2d');
-    new Chart(ctxProfit, {
+    let resumoChart = new Chart(ctxProfit, {
         type: 'bar',
-        data: {
-            labels: monthLabels,
-            datasets: [{
-                label: 'Lucro (R$)',
-                data: profitData,
-                backgroundColor: profitData.map(v => v >= 0 ? '#10b981' : '#ef4444'),
-                borderRadius: 4
-            }]
-        },
+        data: { labels: monthLabels, datasets: buildDatasets() },
         options: {
             responsive: true,
-            scales: { y: { beginAtZero: true, ticks: { color: themeColors.text } }, x: { ticks: { color: themeColors.text } } },
+            maintainAspectRatio: false,
             plugins: {
-                legend: { display: false },
-                datalabels: { display: false }, // Disable datalabels for this bar chart
+                legend: { labels: { color: themeColors.text } },
+                datalabels: {
+                    color: themeColors.text,
+                    anchor: ctx => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'end' : 'start',
+                    align:  ctx => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'top'  : 'bottom',
+                    font: { size: 9, weight: 'bold' },
+                    formatter: (value) => value !== 0 ? fmtBRL(value) : ''
+                },
                 tooltip: {
                     callbacks: {
-                        label: function (context) {
-                            let value = context.parsed.y;
-                            return 'Lucro: ' + new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+                        label: function(ctx) {
+                            const v   = ctx.parsed.y;
+                            const pct = ctx.dataset._pct ? ctx.dataset._pct[ctx.dataIndex] : 0;
+                            return ctx.dataset.label + ': ' + fmtBRL(v) +
+                                   '  (' + fmtPct(pct) + ' carteira)';
                         }
                     }
                 }
+            },
+            scales: {
+                x: { ticks: { color: themeColors.textSecondary }, grid: { color: 'var(--total-row-bg)' } },
+                y: { ticks: { color: themeColors.textSecondary,
+                              callback: v => 'R$ ' + v.toLocaleString('pt-BR') },
+                     grid: { color: 'var(--total-row-bg)' } }
             }
         }
+    });
+
+    // Botões de toggle das séries
+    document.querySelectorAll('.resumo-tog').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const key = this.dataset.series;
+            if (activeSeries.has(key)) {
+                if (activeSeries.size === 1) return; // mantém pelo menos 1
+                activeSeries.delete(key);
+                this.style.opacity = '0.4';
+                this.classList.remove('active');
+            } else {
+                activeSeries.add(key);
+                this.style.opacity = '1';
+                this.classList.add('active');
+            }
+            resumoChart.data.datasets = buildDatasets();
+            resumoChart.update();
+        });
     });
     });
 </script>

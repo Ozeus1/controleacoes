@@ -105,6 +105,14 @@ def run_migrations():
     conn = _sqlite3.connect(db_path)
     cursor = conn.cursor()
 
+    # Novos campos no modelo User
+    cursor.execute("PRAGMA table_info(user)")
+    user_cols = {row[1] for row in cursor.fetchall()}
+    if 'full_name' not in user_cols:
+        cursor.execute("ALTER TABLE user ADD COLUMN full_name VARCHAR(120)")
+    if 'email' not in user_cols:
+        cursor.execute("ALTER TABLE user ADD COLUMN email VARCHAR(120)")
+
     # Check existing columns in 'option' table
     cursor.execute("PRAGMA table_info(option)")
     existing_columns = {row[1] for row in cursor.fetchall()}
@@ -2707,6 +2715,14 @@ def config():
             Settings.set_value('selic_rate', selic, user_id=current_user.id)
             flash(f'Taxa Selic salva: {selic}% a.a.', 'success')
 
+        elif action == 'save_oplab_token':
+            token = request.form.get('oplab_token', '').strip()
+            if token:
+                Settings.set_value('oplab_token', token, user_id=current_user.id)
+                flash('Token OpLab salvo com sucesso!', 'success')
+            else:
+                flash('Token não pode ser vazio.', 'warning')
+
         elif action == 'save_oplab_config':
             auto     = 'true' if request.form.get('oplab_auto_update') == 'true' else 'false'
             interval = request.form.get('oplab_interval', '5')
@@ -3992,18 +4008,20 @@ def add_user():
         password = request.form.get('password')
         role = request.form.get('role', 'user')
         expiry_str = request.form.get('expiry_date')
-        
+
         if User.query.filter_by(username=username).first():
             flash('Usuário já existe.', 'danger')
         else:
             expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date() if expiry_str else None
-            user = User(username=username, role=role, expiry_date=expiry_date)
+            user = User(username=username, role=role, expiry_date=expiry_date,
+                        full_name=request.form.get('full_name', ''),
+                        email=request.form.get('email', ''))
             user.set_password(password)
             db.session.add(user)
             db.session.commit()
             flash('Usuário criado com sucesso!', 'success')
             return redirect(url_for('list_users'))
-            
+
     return render_template('add_user.html')
 
 @app.route('/users/edit/<int:id>', methods=['GET', 'POST'])
@@ -4016,18 +4034,20 @@ def edit_user(id):
     user = User.query.get_or_404(id)
     
     if request.method == 'POST':
-        user.role = request.form.get('role')
-        expiry_str = request.form.get('expiry_date')
+        user.role      = request.form.get('role')
+        user.full_name = request.form.get('full_name', '')
+        user.email     = request.form.get('email', '')
+        expiry_str     = request.form.get('expiry_date')
         user.expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date() if expiry_str else None
-        
+
         new_pass = request.form.get('password')
         if new_pass:
             user.set_password(new_pass)
-            
+
         db.session.commit()
         flash('Usuário atualizado!', 'success')
         return redirect(url_for('list_users'))
-        
+
     return render_template('add_user.html', user=user, edit=True)
 
 @app.route('/users/delete/<int:id>')

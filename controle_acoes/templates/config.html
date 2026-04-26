@@ -99,6 +99,49 @@
         </form>
     </div>
 
+    <!-- OPLAB TOKEN -->
+    <div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-bottom: 2rem;">
+        <h3>OpLab API — Token de Acesso</h3>
+        <p style="color:var(--text-secondary); font-size:.9rem; margin-bottom:1rem;">
+            Configure seu token da <a href="https://oplab.com.br" target="_blank" rel="noopener"
+            style="color:var(--accent-color);">OpLab</a> para atualizar cotações de ações e opções
+            diretamente via API, sem precisar importar o Excel.
+        </p>
+        <div style="margin-bottom:1rem;">
+            {% if oplab_token_ok %}
+            <span style="display:inline-block; padding:.25rem .75rem; border-radius:20px; font-size:.8rem;
+                background:rgba(16,185,129,.15); color:var(--success-color); border:1px solid var(--success-color);">
+                ✓ Token configurado
+            </span>
+            {% else %}
+            <span style="display:inline-block; padding:.25rem .75rem; border-radius:20px; font-size:.8rem;
+                background:rgba(100,116,139,.15); color:var(--text-secondary); border:1px solid var(--border-color);">
+                Token não configurado
+            </span>
+            {% endif %}
+        </div>
+        <form method="POST" action="{{ url_for('config') }}" style="max-width:480px;">
+            <input type="hidden" name="action" value="save_oplab_token">
+            <label class="form-label">Access-Token OpLab</label>
+            <div style="display:flex; gap:.5rem; align-items:center; margin-bottom:.5rem;">
+                <input type="password" name="oplab_token" id="oplab_token_cfg"
+                       class="form-control" placeholder="Cole seu token aqui"
+                       autocomplete="new-password" style="flex:1; margin-bottom:0;">
+                <button type="button" class="btn btn-secondary btn-sm"
+                        onclick="var i=document.getElementById('oplab_token_cfg');i.type=i.type==='password'?'text':'password';">👁</button>
+            </div>
+            <small style="color:var(--text-secondary); font-size:.8rem;">O token é armazenado de forma criptografada.</small><br>
+            <button type="submit" class="btn btn-primary mt-2">Salvar Token</button>
+        </form>
+
+        {% if oplab_token_ok %}
+        <form method="POST" action="{{ url_for('atualizar_oplab') }}" style="margin-top:1rem; max-width:480px;"
+              onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Atualizando...'">
+            <button type="submit" class="btn btn-success w-100">Atualizar Cotações via OpLab</button>
+        </form>
+        {% endif %}
+    </div>
+
     <!-- OPLAB AUTO-UPDATE -->
     <div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-bottom: 2rem;">
         <h3>Atualização Automática via OpLab</h3>
@@ -107,8 +150,7 @@
             na API OpLab no intervalo selecionado, atualizando as páginas
             <em>Ações, FIIs, SwingTrade, Opções e Estudos</em> dinamicamente sem necessidade de recarregar.
             {% if not oplab_token_ok %}
-            <br><strong style="color:var(--warning-color, #f59e0b)">⚠ Token OpLab não detectado na sessão atual.
-            Se já configurou em <a href="{{ url_for('profile') }}" style="color:var(--accent-color)">Perfil</a>, salve novamente o token lá e tente ativar.</strong>
+            <br><strong style="color:var(--warning-color, #f59e0b)">⚠ Token OpLab não configurado. Configure o token na seção acima e tente ativar.</strong>
             {% endif %}
         </p>
 

@@ -1,146 +1,45 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="row justify-content-center g-4">
-
-  <!-- Card: Minha Conta -->
-  <div class="col-md-5">
-    <div class="card bg-dark text-white border-secondary h-100">
-      <div class="card-header text-center">
-        <h5>Minha Conta</h5>
-      </div>
-      <div class="card-body">
-        <div class="text-center mb-4">
-          <span style="font-size: 3rem;">👤</span>
-          <h4 class="mt-2">{{ current_user.username }}</h4>
-          <span class="badge {{ 'bg-danger' if current_user.is_admin else 'bg-primary' }}">
-            {{ current_user.role | upper }}
-          </span>
-          {% if current_user.expiry_date %}
-          <p class="mt-2 text-warning">Válido até: {{ current_user.expiry_date.strftime('%d/%m/%Y') }}</p>
-          {% endif %}
-        </div>
-
-        <hr class="border-secondary">
-
-        <h6 class="mb-3">Alterar Senha</h6>
-        <form method="POST">
-          <input type="hidden" name="action" value="change_password">
-          <div class="mb-3">
-            <label>Senha Atual</label>
-            <input type="password" name="current_password" class="form-control" required>
-          </div>
-          <div class="mb-3">
-            <label>Nova Senha</label>
-            <input type="password" name="new_password" class="form-control" required>
-          </div>
-          <div class="mb-3">
-            <label>Confirmar Nova Senha</label>
-            <input type="password" name="confirm_password" class="form-control" required>
-          </div>
-          <button type="submit" class="btn btn-primary w-100">Atualizar Senha</button>
-        </form>
-      </div>
-    </div>
-  </div>
-
-  <!-- Card: OpLab API -->
-  <div class="col-md-5">
-    <div class="card bg-dark text-white border-secondary h-100">
-      <div class="card-header text-center">
-        <h5>OpLab API</h5>
-      </div>
-      <div class="card-body d-flex flex-column">
-
-        <p style="color:var(--text-secondary);font-size:.88rem;">
-          Configure seu token de acesso da
-          <a href="https://oplab.com.br" target="_blank" rel="noopener" style="color:var(--accent-color)">OpLab</a>
-          para atualizar cotações de ações e opções diretamente via API, sem precisar importar o Excel.
-        </p>
-
-        <!-- Status -->
-        <div class="mb-3">
-          {% if oplab_configured %}
-          <span class="badge bg-success">Token configurado</span>
-          {% else %}
-          <span class="badge bg-secondary">Token não configurado</span>
-          {% endif %}
-        </div>
-
-        <!-- Salvar token -->
-        <form method="POST" class="mb-3">
-          <input type="hidden" name="action" value="save_oplab">
-          <label class="form-label">Access-Token OpLab</label>
-          <div class="input-group">
-            <input type="password" name="oplab_token" id="oplab_token_input"
-                   class="form-control" placeholder="Cole seu token aqui"
-                   autocomplete="new-password">
-            <button type="button" class="btn btn-outline-secondary"
-                    onclick="toggleTokenVisibility()"
-                    title="Mostrar/ocultar token">👁</button>
-          </div>
-          <div class="form-text text-secondary" style="font-size:.8rem;">
-            O token é armazenado de forma criptografada.
-          </div>
-          <button type="submit" class="btn btn-primary mt-2 w-100">Salvar Token</button>
-        </form>
-
-        <hr class="border-secondary">
-
-        <!-- Atualizar via OpLab -->
-        <p style="color:var(--text-secondary);font-size:.85rem;">
-          Atualiza a cotação de todos os ativos (ações, FIIs, ETFs com quantidade &gt; 0)
-          e opções cadastradas consultando a API OpLab.
-          As outras formas de atualização (Excel e Yahoo Finance) continuam disponíveis normalmente.
-        </p>
-
-        <!-- Testar API -->
-        {% if oplab_configured %}
-        <div class="mb-3">
-          <label class="form-label" style="font-size:.85rem;">Testar resposta da API (diagnóstico)</label>
-          <div class="input-group input-group-sm">
-            <input type="text" id="test-ticker" class="form-control" value="PETR4" placeholder="Ticker">
-            <button class="btn btn-outline-info" type="button" onclick="testOplab()">Testar</button>
-          </div>
-          <pre id="test-result" style="font-size:.75rem;max-height:200px;overflow:auto;background:#111;padding:.5rem;border-radius:4px;margin-top:.5rem;display:none"></pre>
-        </div>
+<div class="card" style="max-width:420px; margin:0 auto;">
+    <div style="text-align:center; padding:1.5rem 1rem 1rem;">
+        <span style="font-size:3.5rem;">👤</span>
+        <h3 style="margin:.5rem 0 .25rem;">{{ current_user.username }}</h3>
+        {% if current_user.full_name %}
+        <div style="color:var(--text-secondary); font-size:.9rem;">{{ current_user.full_name }}</div>
         {% endif %}
-
-        <form method="POST" action="{{ url_for('atualizar_oplab') }}" class="mt-auto"
-              onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Atualizando...'">
-          <button type="submit" class="btn btn-success w-100"
-                  {% if not oplab_configured %}disabled title="Configure o token antes de atualizar"{% endif %}>
-            Atualizar Cotações via OpLab
-          </button>
-        </form>
-
-      </div>
+        {% if current_user.email %}
+        <div style="color:var(--text-secondary); font-size:.85rem;">{{ current_user.email }}</div>
+        {% endif %}
+        <span style="display:inline-block; margin-top:.5rem; padding:.2rem .7rem; border-radius:20px; font-size:.75rem; font-weight:700;
+            background:{{ 'var(--danger-color)' if current_user.is_admin else 'var(--accent-color)' }}; color:#fff;">
+            {{ current_user.role | upper }}
+        </span>
+        {% if current_user.expiry_date %}
+        <p style="margin-top:.5rem; font-size:.85rem; color:#f59e0b;">
+            Válido até: {{ current_user.expiry_date.strftime('%d/%m/%Y') }}
+        </p>
+        {% endif %}
     </div>
-  </div>
 
+    <div style="border-top:1px solid var(--border-color); padding:1.25rem 1.25rem 1.5rem;">
+        <h5 style="margin-bottom:1rem;">Alterar Senha</h5>
+        <form method="POST">
+            <input type="hidden" name="action" value="change_password">
+            <div class="mb-3">
+                <label class="form-label">Senha Atual</label>
+                <input type="password" name="current_password" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Nova Senha</label>
+                <input type="password" name="new_password" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Confirmar Nova Senha</label>
+                <input type="password" name="confirm_password" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">Atualizar Senha</button>
+        </form>
+    </div>
 </div>
-
-{% block extra_scripts %}
-<script>
-function toggleTokenVisibility() {
-  const inp = document.getElementById('oplab_token_input');
-  inp.type = inp.type === 'password' ? 'text' : 'password';
-}
-async function testOplab() {
-  const ticker = document.getElementById('test-ticker').value.trim() || 'PETR4';
-  const pre = document.getElementById('test-result');
-  pre.style.display = 'block';
-  pre.textContent = 'Consultando...';
-  const fd = new FormData();
-  fd.append('ticker', ticker);
-  try {
-    const r = await fetch('/oplab_test', { method: 'POST', body: fd });
-    const data = await r.json();
-    pre.textContent = JSON.stringify(data, null, 2);
-  } catch(e) {
-    pre.textContent = 'Erro: ' + e;
-  }
-}
-</script>
-{% endblock %}
 {% endblock %}

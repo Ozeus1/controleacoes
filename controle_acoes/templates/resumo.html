@@ -385,7 +385,12 @@
                         label: function(ctx) {
                             const v = ctx.parsed.y;
                             if (ctx.dataset.label === 'Total') {
-                                return 'Total: ' + fmtBRL(v);
+                                // soma das % das séries ativas neste mês
+                                const i = ctx.dataIndex;
+                                const totalPct = Object.entries(ALL_SERIES)
+                                    .filter(([k]) => activeSeries.has(k))
+                                    .reduce((acc, [, s]) => acc + (s.pct[i] || 0), 0);
+                                return 'Total: ' + fmtBRL(v) + '  (' + fmtPct(totalPct) + ' carteira)';
                             }
                             const pct = ctx.dataset._pct ? ctx.dataset._pct[ctx.dataIndex] : 0;
                             return ctx.dataset.label + ': ' + fmtBRL(v) +

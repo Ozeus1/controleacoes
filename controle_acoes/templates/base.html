@@ -107,10 +107,11 @@
                     <button type="button" id="btn-update-desktop" data-update-btn onclick="startUpdateQuotes()" class="btn btn-secondary btn-sm">
                         🔄 <span class="btn-label">Atualizar Cotações</span>
                     </button>
-                    <div class="dropdown">
+                    <div class="dropdown" id="profile-dropdown">
                         <a href="#"
                             class="dropdown-toggle {{ 'active' if request.endpoint in ['profile', 'list_users', 'config'] else '' }}"
-                            style="display:flex; align-items:center; gap:.5rem;">
+                            style="display:flex; align-items:center; gap:.5rem;"
+                            onclick="toggleProfileMenu(event)">
                             {% set _avatar = current_user.avatar_filename if current_user.avatar_filename is defined else none %}
                             {% if _avatar %}
                             <img src="{{ url_for('static', filename='img/avatars/' ~ _avatar) }}"
@@ -277,6 +278,13 @@
         });
 
         // Submenu do nav: click abre/fecha em qualquer dispositivo
+        function toggleProfileMenu(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var drop = document.getElementById('profile-dropdown');
+            drop.classList.toggle('open');
+        }
+
         function toggleNavDrop(el, e) {
             e.preventDefault();
             e.stopPropagation();
@@ -289,12 +297,16 @@
             if (!wasOpen) drop.classList.add('open');
         }
 
-        // Fecha submenus ao clicar fora
+        // Fecha submenus e menu Perfil ao clicar fora
         document.addEventListener('click', function(e) {
             if (!e.target.closest('.nav-dropdown')) {
                 document.querySelectorAll('.nav-dropdown.open').forEach(function(d) {
                     d.classList.remove('open');
                 });
+            }
+            if (!e.target.closest('#profile-dropdown')) {
+                var pd = document.getElementById('profile-dropdown');
+                if (pd) pd.classList.remove('open');
             }
             // Fecha menu mobile ao clicar fora
             var nav = document.getElementById('main-nav');

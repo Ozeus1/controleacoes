@@ -108,10 +108,14 @@ def run_migrations():
     # Novos campos no modelo User
     cursor.execute("PRAGMA table_info(user)")
     user_cols = {row[1] for row in cursor.fetchall()}
-    if 'full_name' not in user_cols:
+    if 'full_name'       not in user_cols:
         cursor.execute("ALTER TABLE user ADD COLUMN full_name VARCHAR(120)")
-    if 'email' not in user_cols:
+    if 'email'           not in user_cols:
         cursor.execute("ALTER TABLE user ADD COLUMN email VARCHAR(120)")
+    if 'phone'           not in user_cols:
+        cursor.execute("ALTER TABLE user ADD COLUMN phone VARCHAR(30)")
+    if 'avatar_filename' not in user_cols:
+        cursor.execute("ALTER TABLE user ADD COLUMN avatar_filename VARCHAR(120)")
 
     # Check existing columns in 'option' table
     cursor.execute("PRAGMA table_info(option)")
@@ -4713,7 +4717,26 @@ def profile():
     if request.method == 'POST':
         action = request.form.get('action', 'change_password')
 
-        if action == 'change_password':
+        if action == 'update_profile':
+            current_user.full_name = request.form.get('full_name', '').strip()
+            current_user.email     = request.form.get('email', '').strip()
+            current_user.phone     = request.form.get('phone', '').strip()
+            # Upload de avatar
+            avatar = request.files.get('avatar')
+            if avatar and avatar.filename:
+                ext = avatar.filename.rsplit('.', 1)[-1].lower()
+                if ext in ('jpg', 'jpeg', 'png', 'gif', 'webp'):
+                    fname = f"avatar_{current_user.id}.{ext}"
+                    avatar_dir = os.path.join(basedir, 'static', 'img', 'avatars')
+                    os.makedirs(avatar_dir, exist_ok=True)
+                    avatar.save(os.path.join(avatar_dir, fname))
+                    current_user.avatar_filename = fname
+                else:
+                    flash('Formato de imagem não suportado. Use JPG, PNG, GIF ou WEBP.', 'warning')
+            db.session.commit()
+            flash('Perfil atualizado!', 'success')
+
+        elif action == 'change_password':
             curr_pass = request.form.get('current_password')
             new_pass = request.form.get('new_password')
             confirm_pass = request.form.get('confirm_password')

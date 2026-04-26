@@ -109,11 +109,35 @@
                     </button>
                     <div class="dropdown">
                         <a href="#"
-                            class="dropdown-toggle {{ 'active' if request.endpoint in ['profile', 'list_users', 'config'] else '' }}">
-                            👤 Perfil
+                            class="dropdown-toggle {{ 'active' if request.endpoint in ['profile', 'list_users', 'config'] else '' }}"
+                            style="display:flex; align-items:center; gap:.5rem;">
+                            {% if current_user.avatar_filename %}
+                            <img src="{{ url_for('static', filename='img/avatars/' ~ current_user.avatar_filename) }}"
+                                 alt="avatar" style="width:26px; height:26px; border-radius:50%; object-fit:cover; border:2px solid var(--border-color);">
+                            {% else %}
+                            👤
+                            {% endif %}
+                            Perfil
                         </a>
                         <div class="dropdown-content">
-                            <a href="{{ url_for('profile') }}">👤 Minha Conta</a>
+                            <a href="{{ url_for('profile') }}" style="align-items:flex-start; flex-direction:column; gap:2px;">
+                                <div style="display:flex; align-items:center; gap:.5rem;">
+                                    {% if current_user.avatar_filename %}
+                                    <img src="{{ url_for('static', filename='img/avatars/' ~ current_user.avatar_filename) }}"
+                                         alt="avatar" style="width:36px; height:36px; border-radius:50%; object-fit:cover; flex-shrink:0;">
+                                    {% else %}
+                                    <span style="font-size:1.5rem; line-height:1;">👤</span>
+                                    {% endif %}
+                                    <div>
+                                        <div style="font-weight:600; font-size:.85rem; color:var(--text-primary);">
+                                            {{ current_user.full_name or current_user.username }}
+                                        </div>
+                                        {% if current_user.email %}
+                                        <div style="font-size:.75rem; color:var(--text-secondary);">{{ current_user.email }}</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </a>
                             {% if current_user.is_admin %}
                             <a href="{{ url_for('list_users') }}">👥 Usuários</a>
                             {% endif %}

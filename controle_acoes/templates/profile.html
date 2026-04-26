@@ -1,45 +1,118 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="card" style="max-width:420px; margin:0 auto;">
-    <div style="text-align:center; padding:1.5rem 1rem 1rem;">
-        <span style="font-size:3.5rem;">👤</span>
-        <h3 style="margin:.5rem 0 .25rem;">{{ current_user.username }}</h3>
-        {% if current_user.full_name %}
-        <div style="color:var(--text-secondary); font-size:.9rem;">{{ current_user.full_name }}</div>
-        {% endif %}
-        {% if current_user.email %}
-        <div style="color:var(--text-secondary); font-size:.85rem;">{{ current_user.email }}</div>
-        {% endif %}
-        <span style="display:inline-block; margin-top:.5rem; padding:.2rem .7rem; border-radius:20px; font-size:.75rem; font-weight:700;
-            background:{{ 'var(--danger-color)' if current_user.is_admin else 'var(--accent-color)' }}; color:#fff;">
-            {{ current_user.role | upper }}
-        </span>
-        {% if current_user.expiry_date %}
-        <p style="margin-top:.5rem; font-size:.85rem; color:#f59e0b;">
-            Válido até: {{ current_user.expiry_date.strftime('%d/%m/%Y') }}
-        </p>
-        {% endif %}
+<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:1.5rem; align-items:start;">
+
+  <!-- Card: Dados Pessoais -->
+  <div class="card" style="padding:0; overflow:hidden;">
+
+    <!-- Header com avatar -->
+    <div style="background:linear-gradient(135deg,var(--accent-color) 0%,#1e40af 100%);
+                padding:2rem 1.5rem 3.5rem; text-align:center; position:relative;">
+        <h4 style="margin:0; color:#fff; opacity:.85; font-size:.9rem; font-weight:500;">Meu Perfil</h4>
     </div>
 
-    <div style="border-top:1px solid var(--border-color); padding:1.25rem 1.25rem 1.5rem;">
-        <h5 style="margin-bottom:1rem;">Alterar Senha</h5>
-        <form method="POST">
-            <input type="hidden" name="action" value="change_password">
-            <div class="mb-3">
-                <label class="form-label">Senha Atual</label>
-                <input type="password" name="current_password" class="form-control" required>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Nova Senha</label>
-                <input type="password" name="new_password" class="form-control" required>
-            </div>
-            <div class="mb-3">
-                <label class="form-label">Confirmar Nova Senha</label>
-                <input type="password" name="confirm_password" class="form-control" required>
-            </div>
-            <button type="submit" class="btn btn-primary" style="width:100%;">Atualizar Senha</button>
-        </form>
+    <!-- Avatar sobreposto -->
+    <div style="display:flex; flex-direction:column; align-items:center;
+                margin-top:-3rem; padding:0 1.5rem 0; position:relative; z-index:2;">
+        {% if current_user.avatar_filename %}
+        <img src="{{ url_for('static', filename='img/avatars/' ~ current_user.avatar_filename) }}"
+             alt="Avatar" id="avatar-preview"
+             style="width:96px; height:96px; border-radius:50%; object-fit:cover;
+                    border:4px solid var(--card-bg); box-shadow:0 4px 12px rgba(0,0,0,.35);">
+        {% else %}
+        <div id="avatar-preview" style="width:96px; height:96px; border-radius:50%;
+             background:var(--hover-bg); border:4px solid var(--card-bg);
+             display:flex; align-items:center; justify-content:center;
+             font-size:2.8rem; box-shadow:0 4px 12px rgba(0,0,0,.35);">👤</div>
+        {% endif %}
+        <label for="avatar-input" style="cursor:pointer; margin-top:.5rem;
+               font-size:.78rem; color:var(--accent-color);">📷 Alterar foto</label>
     </div>
+
+    <!-- Formulário de dados pessoais -->
+    <form method="POST" enctype="multipart/form-data" style="padding:1rem 1.5rem 1.5rem;">
+        <input type="hidden" name="action" value="update_profile">
+        <input type="file" id="avatar-input" name="avatar" accept="image/*"
+               style="display:none;" onchange="previewAvatar(this)">
+
+        <div style="text-align:center; margin-bottom:1rem;">
+            <strong style="font-size:1.15rem;">{{ current_user.username }}</strong><br>
+            <span style="display:inline-block; margin-top:.3rem; padding:.15rem .6rem; border-radius:20px;
+                font-size:.72rem; font-weight:700;
+                background:{{ 'var(--danger-color)' if current_user.is_admin else 'var(--accent-color)' }};
+                color:#fff;">{{ current_user.role | upper }}</span>
+        </div>
+
+        <div style="border-top:1px solid var(--border-color); padding-top:1rem;">
+            <div class="mb-3">
+                <label class="form-label">Nome Completo</label>
+                <input type="text" name="full_name" class="form-control"
+                       value="{{ current_user.full_name or '' }}" placeholder="Seu nome completo">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">E-mail</label>
+                <input type="email" name="email" class="form-control"
+                       value="{{ current_user.email or '' }}" placeholder="email@exemplo.com">
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Telefone / WhatsApp</label>
+                <input type="tel" name="phone" class="form-control"
+                       value="{{ current_user.phone or '' }}" placeholder="(85) 99999-9999">
+            </div>
+            <button type="submit" class="btn btn-primary" style="width:100%;">💾 Salvar Dados</button>
+        </div>
+    </form>
+  </div>
+
+  <!-- Card: Alterar Senha -->
+  <div class="card">
+    <h4 style="margin-bottom:1.25rem;">🔑 Alterar Senha</h4>
+    <form method="POST">
+        <input type="hidden" name="action" value="change_password">
+        <div class="mb-3">
+            <label class="form-label">Senha Atual</label>
+            <input type="password" name="current_password" class="form-control" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Nova Senha</label>
+            <input type="password" name="new_password" class="form-control" required>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Confirmar Nova Senha</label>
+            <input type="password" name="confirm_password" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Atualizar Senha</button>
+    </form>
+
+    {% if current_user.expiry_date %}
+    <div style="margin-top:1.5rem; padding:.75rem 1rem; border-radius:8px;
+                background:rgba(245,158,11,.1); border:1px solid #f59e0b; font-size:.85rem;">
+        ⚠ Acesso válido até: <strong>{{ current_user.expiry_date.strftime('%d/%m/%Y') }}</strong>
+    </div>
+    {% endif %}
+  </div>
+
 </div>
+
+<script>
+function previewAvatar(input) {
+    if (!input.files || !input.files[0]) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var prev = document.getElementById('avatar-preview');
+        if (prev.tagName === 'IMG') {
+            prev.src = e.target.result;
+        } else {
+            // Troca div por img
+            var img = document.createElement('img');
+            img.id = 'avatar-preview';
+            img.src = e.target.result;
+            img.style.cssText = prev.style.cssText;
+            prev.parentNode.replaceChild(img, prev);
+        }
+    };
+    reader.readAsDataURL(input.files[0]);
+}
+</script>
 {% endblock %}

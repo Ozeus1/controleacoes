@@ -1,11 +1,39 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="card" style="max-width:480px; margin:0 auto;">
-    <div style="padding:1rem 1rem .5rem;">
-        <h3>{% if edit %}Editar Usuário{% else %}Novo Usuário{% endif %}</h3>
+<div class="card" style="max-width:520px; margin:0 auto; padding:0; overflow:hidden;">
+
+    <!-- Header com avatar -->
+    <div style="background:linear-gradient(135deg,var(--accent-color) 0%,#1e40af 100%);
+                padding:1.5rem; text-align:center;">
+        <h4 style="margin:0; color:#fff;">
+            {% if edit %}Editar Usuário{% else %}Novo Usuário{% endif %}
+        </h4>
     </div>
-    <div style="padding:.5rem 1rem 1.5rem;">
-        <form method="POST">
+
+    <div style="padding:1.5rem;">
+        <form method="POST" enctype="multipart/form-data">
+
+            <!-- Avatar -->
+            <div style="display:flex; flex-direction:column; align-items:center; margin-bottom:1.25rem;">
+                {% if user and user.avatar_filename %}
+                <img src="{{ url_for('static', filename='img/avatars/' ~ user.avatar_filename) }}"
+                     id="avatar-preview" alt="Avatar"
+                     style="width:88px; height:88px; border-radius:50%; object-fit:cover;
+                            border:3px solid var(--border-color); margin-bottom:.5rem;">
+                {% else %}
+                <div id="avatar-preview" style="width:88px; height:88px; border-radius:50%;
+                     background:var(--hover-bg); border:3px solid var(--border-color);
+                     display:flex; align-items:center; justify-content:center;
+                     font-size:2.5rem; margin-bottom:.5rem;">👤</div>
+                {% endif %}
+                <label for="avatar-input" style="cursor:pointer; font-size:.82rem; color:var(--accent-color);">
+                    📷 {% if user and user.avatar_filename %}Alterar foto{% else %}Adicionar foto{% endif %}
+                </label>
+                <input type="file" id="avatar-input" name="avatar" accept="image/*"
+                       style="display:none;" onchange="previewAvatar(this)">
+            </div>
+
+            <!-- Login -->
             <div class="mb-3">
                 <label class="form-label">Login</label>
                 <input type="text" name="username" class="form-control"
@@ -13,42 +41,84 @@
                     {% if edit %}readonly{% endif %} required
                     placeholder="Nome de login (sem espaços)">
             </div>
+
+            <!-- Nome -->
             <div class="mb-3">
                 <label class="form-label">Nome Completo</label>
                 <input type="text" name="full_name" class="form-control"
                     value="{{ user.full_name if user and user.full_name else '' }}"
                     placeholder="Nome completo do usuário">
             </div>
+
+            <!-- E-mail -->
             <div class="mb-3">
                 <label class="form-label">E-mail</label>
                 <input type="email" name="email" class="form-control"
                     value="{{ user.email if user and user.email else '' }}"
                     placeholder="email@exemplo.com">
             </div>
+
+            <!-- Telefone -->
             <div class="mb-3">
-                <label class="form-label">Senha {% if edit %}<small style="color:var(--text-secondary);">(deixe em branco para manter)</small>{% endif %}</label>
+                <label class="form-label">Telefone / WhatsApp</label>
+                <input type="tel" name="phone" class="form-control"
+                    value="{{ user.phone if user and user.phone else '' }}"
+                    placeholder="(85) 99999-9999">
+            </div>
+
+            <!-- Senha -->
+            <div class="mb-3">
+                <label class="form-label">
+                    Senha
+                    {% if edit %}<small style="color:var(--text-secondary);">(deixe em branco para manter)</small>{% endif %}
+                </label>
                 <input type="password" name="password" class="form-control"
                     {% if not edit %}required{% endif %}
                     placeholder="{% if edit %}Nova senha (opcional){% else %}Senha{% endif %}">
             </div>
+
+            <!-- Role -->
             <div class="mb-3">
                 <label class="form-label">Nível de Acesso</label>
                 <select name="role" class="form-control">
-                    <option value="user" {% if user and user.role=='user' %}selected{% endif %}>Usuário Comum</option>
+                    <option value="user"  {% if user and user.role=='user'  %}selected{% endif %}>Usuário Comum</option>
                     <option value="admin" {% if user and user.role=='admin' %}selected{% endif %}>Administrador</option>
                 </select>
             </div>
+
+            <!-- Validade -->
             <div class="mb-3">
                 <label class="form-label">Validade do Acesso</label>
                 <input type="date" name="expiry_date" class="form-control"
                     value="{{ user.expiry_date if user and user.expiry_date else '' }}">
                 <small style="color:var(--text-secondary); font-size:.8rem;">Deixe em branco para acesso ilimitado.</small>
             </div>
-            <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+
+            <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-top:1rem;">
                 <button type="submit" class="btn btn-primary" style="flex:1;">💾 Salvar</button>
                 <a href="{{ url_for('list_users') }}" class="btn btn-secondary" style="flex:1;">✖ Cancelar</a>
             </div>
         </form>
     </div>
 </div>
+
+<script>
+function previewAvatar(input) {
+    if (!input.files || !input.files[0]) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        var prev = document.getElementById('avatar-preview');
+        if (prev.tagName === 'IMG') {
+            prev.src = e.target.result;
+        } else {
+            var img = document.createElement('img');
+            img.id = 'avatar-preview';
+            img.src = e.target.result;
+            img.style.cssText = 'width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid var(--border-color);margin-bottom:.5rem;';
+            prev.parentNode.replaceChild(img, prev);
+        }
+    };
+    reader.readAsDataURL(input.files[0]);
+}
+</script>
 {% endblock %}

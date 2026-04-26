@@ -4018,10 +4018,21 @@ def add_user():
         else:
             expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date() if expiry_str else None
             user = User(username=username, role=role, expiry_date=expiry_date,
-                        full_name=request.form.get('full_name', ''),
-                        email=request.form.get('email', ''))
+                        full_name=request.form.get('full_name', '').strip(),
+                        email=request.form.get('email', '').strip(),
+                        phone=request.form.get('phone', '').strip())
             user.set_password(password)
             db.session.add(user)
+            db.session.flush()  # gera user.id para salvar avatar
+            avatar = request.files.get('avatar')
+            if avatar and avatar.filename:
+                ext = avatar.filename.rsplit('.', 1)[-1].lower()
+                if ext in ('jpg', 'jpeg', 'png', 'gif', 'webp'):
+                    fname = f"avatar_{user.id}.{ext}"
+                    avatar_dir = os.path.join(basedir, 'static', 'img', 'avatars')
+                    os.makedirs(avatar_dir, exist_ok=True)
+                    avatar.save(os.path.join(avatar_dir, fname))
+                    user.avatar_filename = fname
             db.session.commit()
             flash('Usuário criado com sucesso!', 'success')
             return redirect(url_for('list_users'))
@@ -4039,10 +4050,21 @@ def edit_user(id):
     
     if request.method == 'POST':
         user.role      = request.form.get('role')
-        user.full_name = request.form.get('full_name', '')
-        user.email     = request.form.get('email', '')
+        user.full_name = request.form.get('full_name', '').strip()
+        user.email     = request.form.get('email', '').strip()
+        user.phone     = request.form.get('phone', '').strip()
         expiry_str     = request.form.get('expiry_date')
         user.expiry_date = datetime.strptime(expiry_str, '%Y-%m-%d').date() if expiry_str else None
+
+        avatar = request.files.get('avatar')
+        if avatar and avatar.filename:
+            ext = avatar.filename.rsplit('.', 1)[-1].lower()
+            if ext in ('jpg', 'jpeg', 'png', 'gif', 'webp'):
+                fname = f"avatar_{user.id}.{ext}"
+                avatar_dir = os.path.join(basedir, 'static', 'img', 'avatars')
+                os.makedirs(avatar_dir, exist_ok=True)
+                avatar.save(os.path.join(avatar_dir, fname))
+                user.avatar_filename = fname
 
         new_pass = request.form.get('password')
         if new_pass:

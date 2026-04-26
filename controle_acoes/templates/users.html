@@ -13,6 +13,7 @@
                 <th>Login</th>
                 <th>Nome</th>
                 <th>E-mail</th>
+                <th>Telefone</th>
                 <th>Role</th>
                 <th>Validade</th>
                 <th>Ações</th>
@@ -22,9 +23,20 @@
             {% for u in users %}
             <tr>
                 <td>{{ u.id }}</td>
-                <td><strong>{{ u.username }}</strong></td>
+                <td>
+                    <div style="display:flex; align-items:center; gap:.5rem;">
+                        {% if u.avatar_filename %}
+                        <img src="{{ url_for('static', filename='img/avatars/' ~ u.avatar_filename) }}"
+                             style="width:32px; height:32px; border-radius:50%; object-fit:cover; flex-shrink:0;">
+                        {% else %}
+                        <span style="font-size:1.4rem; line-height:1;">👤</span>
+                        {% endif %}
+                        <strong>{{ u.username }}</strong>
+                    </div>
+                </td>
                 <td>{{ u.full_name or '—' }}</td>
                 <td>{{ u.email or '—' }}</td>
+                <td>{{ u.phone or '—' }}</td>
                 <td>
                     {% if u.role == 'admin' %}
                     <span class="badge bg-danger" style="padding:.25rem .55rem; border-radius:.4rem; font-size:.75rem; background:var(--danger-color)!important; color:#fff;">Admin</span>

@@ -395,23 +395,36 @@ function filterByStrategy() {
         return (v >= 0 ? '+' : '') + v.toFixed(2).replace('.', ',') + '%';
     }
 
-    // Rentabilidade total do mês (todas estratégias / patrimônio início)
-    var rentabData = chartMonths.map(function(m) { return monthRentab[m] || 0; });
+    // Rentabilidade acumulada mês a mês (soma progressiva dos % mensais)
+    var acumRentab = [];
+    var running = 0;
+    chartMonths.forEach(function(m) {
+        running += monthRentab[m] || 0;
+        acumRentab.push(Math.round(running * 100) / 100);
+    });
 
-    // Adiciona linha de rentabilidade como eixo Y2
+    // Adiciona linha de rentabilidade acumulada como eixo Y2
     rawDatasets.push({
-        label: 'Rentabilidade mensal',
+        label: 'Rentab. acumulada',
         type: 'line',
-        data: rentabData,
+        data: acumRentab,
         borderColor: '#facc15',
-        backgroundColor: 'rgba(250,204,21,0.15)',
+        backgroundColor: 'rgba(250,204,21,0.12)',
         pointBackgroundColor: '#facc15',
         pointRadius: 5,
         pointHoverRadius: 7,
-        borderWidth: 2,
+        borderWidth: 2.5,
         fill: false,
+        tension: 0.3,
         yAxisID: 'y2',
-        datalabels: { display: false }
+        datalabels: {
+            display: true,
+            formatter: function(v) { return fmtPct(v); },
+            color: '#facc15',
+            font: { size: 10, weight: 'bold' },
+            anchor: function(ctx) { return ctx.dataset.data[ctx.dataIndex] >= 0 ? 'end' : 'start'; },
+            align:  function(ctx) { return ctx.dataset.data[ctx.dataIndex] >= 0 ? 'top'  : 'bottom'; },
+        }
     });
 
     var ctx = document.getElementById('historyChart').getContext('2d');
@@ -430,14 +443,17 @@ function filterByStrategy() {
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            if (context.dataset.label === 'Rentabilidade mensal') {
-                                return 'Rentab. total: ' + fmtPct(context.parsed.y);
+                            if (context.dataset.label === 'Rentab. acumulada') {
+                                var idx = context.dataIndex;
+                                var mes = monthRentab[chartMonths[idx]] || 0;
+                                return 'Acumulada: ' + fmtPct(context.parsed.y) +
+                                       '  |  Mês: ' + fmtPct(mes);
                             }
                             var v = context.parsed.y;
                             var pctArr = context.dataset.pct_data;
                             var pct = pctArr ? pctArr[context.dataIndex] : 0;
                             return context.dataset.label + ': ' + fmtBRL(v) +
-                                   '  (' + fmtPct(pct) + ' carteira)';
+                                   '  (' + fmtPct(pct) + ')';
                         }
                     }
                 },
@@ -445,10 +461,15 @@ function filterByStrategy() {
                     color: themeColors.text,
                     anchor: function(ctx) { return ctx.dataset.data[ctx.dataIndex] >= 0 ? 'end' : 'start'; },
                     align:  function(ctx) { return ctx.dataset.data[ctx.dataIndex] >= 0 ? 'top'  : 'bottom'; },
-                    font: { size: 10, weight: 'bold' },
+                    font: { size: 9, weight: 'bold' },
                     formatter: function(value, ctx) {
-                        if (ctx.dataset.label === 'Rentabilidade mensal') return '';
-                        return value !== 0 ? fmtBRL(value) : '';
+                        // Linha acumulada: já tem datalabels próprios
+                        if (ctx.dataset.label === 'Rentab. acumulada') return '';
+                        if (value === 0) return '';
+                        // Barras: mostra % do mês desta estratégia
+                        var pctArr = ctx.dataset.pct_data;
+                        var pct = pctArr ? pctArr[ctx.dataIndex] : 0;
+                        return pct !== 0 ? fmtPct(pct) : '';
                     }
                 }
             },

@@ -321,17 +321,53 @@
 
     let activeSeries = new Set(['lucro','div_acoes','div_fiis']);
 
+    function totalLine() {
+        // Soma mês a mês apenas das séries ativas
+        return monthLabels.map((_, i) =>
+            Object.entries(ALL_SERIES)
+                .filter(([k]) => activeSeries.has(k))
+                .reduce((acc, [, s]) => acc + (s.data[i] || 0), 0)
+        );
+    }
+
     function buildDatasets() {
-        return Object.entries(ALL_SERIES)
+        const bars = Object.entries(ALL_SERIES)
             .filter(([k]) => activeSeries.has(k))
             .map(([, s]) => ({
+                type: 'bar',
                 label: s.label,
                 data:  s.data,
                 _pct:  s.pct,
                 backgroundColor: s.bg,
                 borderRadius: 4,
                 barPercentage: 0.7,
+                yAxisID: 'y',
+                datalabels: {
+                    color: themeColors.text,
+                    anchor: ctx => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'end' : 'start',
+                    align:  ctx => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'top'  : 'bottom',
+                    font: { size: 9, weight: 'bold' },
+                    formatter: v => v !== 0 ? fmtBRL(v) : ''
+                }
             }));
+
+        bars.push({
+            type: 'line',
+            label: 'Total',
+            data: totalLine(),
+            borderColor: '#facc15',
+            backgroundColor: 'rgba(250,204,21,0.1)',
+            pointBackgroundColor: '#facc15',
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            borderWidth: 2.5,
+            fill: false,
+            tension: 0.3,
+            yAxisID: 'yLine',
+            datalabels: { display: false }
+        });
+
+        return bars;
     }
 
     const ctxProfit = document.getElementById('profitChart').getContext('2d');
@@ -343,17 +379,14 @@
             maintainAspectRatio: false,
             plugins: {
                 legend: { labels: { color: themeColors.text } },
-                datalabels: {
-                    color: themeColors.text,
-                    anchor: ctx => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'end' : 'start',
-                    align:  ctx => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'top'  : 'bottom',
-                    font: { size: 9, weight: 'bold' },
-                    formatter: (value) => value !== 0 ? fmtBRL(value) : ''
-                },
+                datalabels: { display: false },   // controlado por dataset
                 tooltip: {
                     callbacks: {
                         label: function(ctx) {
-                            const v   = ctx.parsed.y;
+                            const v = ctx.parsed.y;
+                            if (ctx.dataset.label === 'Total') {
+                                return 'Total: ' + fmtBRL(v);
+                            }
                             const pct = ctx.dataset._pct ? ctx.dataset._pct[ctx.dataIndex] : 0;
                             return ctx.dataset.label + ': ' + fmtBRL(v) +
                                    '  (' + fmtPct(pct) + ' carteira)';
@@ -363,9 +396,18 @@
             },
             scales: {
                 x: { ticks: { color: themeColors.textSecondary }, grid: { color: 'var(--total-row-bg)' } },
-                y: { ticks: { color: themeColors.textSecondary,
-                              callback: v => 'R$ ' + v.toLocaleString('pt-BR') },
-                     grid: { color: 'var(--total-row-bg)' } }
+                y: {
+                    position: 'left',
+                    ticks: { color: themeColors.textSecondary,
+                             callback: v => 'R$ ' + v.toLocaleString('pt-BR') },
+                    grid: { color: 'var(--total-row-bg)' }
+                },
+                yLine: {
+                    position: 'right',
+                    grid: { drawOnChartArea: false },
+                    ticks: { color: '#facc15',
+                             callback: v => 'R$ ' + v.toLocaleString('pt-BR', {maximumFractionDigits:0}) }
+                }
             }
         }
     });
@@ -375,7 +417,7 @@
         btn.addEventListener('click', function() {
             const key = this.dataset.series;
             if (activeSeries.has(key)) {
-                if (activeSeries.size === 1) return; // mantém pelo menos 1
+                if (activeSeries.size === 1) return;
                 activeSeries.delete(key);
                 this.style.opacity = '0.4';
                 this.classList.remove('active');

@@ -2687,6 +2687,21 @@ def history():
     # Para o gráfico diário: patrimônio início de cada mês serializado
     month_portfolio_json = {m: round(portfolio_start_of_month(m), 2) for m in month_total_profit}
 
+    # Série de patrimônio para gráfico de evolução:
+    # ponto = patrimônio início do mês + lucros acumulados até aquele mês
+    # Usa os sorted_months do gráfico mensal para manter escala consistente
+    portfolio_series = []
+    for m in sorted_months:
+        val = round(portfolio_start_of_month(m) + month_total_profit.get(m, 0), 2)
+        portfolio_series.append(val)
+    # Adiciona ponto inicial (patrimônio antes do primeiro mês) para dar contexto
+    if sorted_months:
+        portfolio_series_full = [round(portfolio_start_of_month(sorted_months[0]), 2)] + portfolio_series
+        portfolio_labels_full = ['Início'] + chart_labels
+    else:
+        portfolio_series_full = []
+        portfolio_labels_full = []
+
     chart_datasets = []
     for i, strat in enumerate(all_strategies):
         data = [round(month_strategy_profit[m].get(strat, 0), 2) for m in sorted_months]
@@ -2736,6 +2751,8 @@ def history():
         strategy_colors=STRATEGY_COLORS,
         month_portfolio=month_portfolio_json,
         month_rentab=month_rentab,
+        portfolio_series=portfolio_series_full,
+        portfolio_labels=portfolio_labels_full,
     )
 
 

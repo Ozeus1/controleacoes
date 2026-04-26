@@ -148,6 +148,9 @@
                             <div class="dropdown-section-label">🔧 Ferramentas</div>
                             <a href="{{ url_for('config') }}">⚙️ APIs</a>
                             <a href="{{ url_for('importar_excel') }}">📊 Importar Excel</a>
+                            {% if current_user.is_admin %}
+                            <a href="{{ url_for('selic_mensal') }}">📈 Selic Mensal</a>
+                            {% endif %}
                             <div class="dropdown-divider"></div>
                             <div class="dropdown-section-label">⚙️ Preferências</div>
                             <a href="#" onclick="toggleIndicators(); return false;">👁️ Alternar Barra</a>

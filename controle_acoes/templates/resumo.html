@@ -164,6 +164,20 @@
         </div>
     </div>
 
+    <!-- Gráfico: Rentabilidade Acumulada vs Selic -->
+    <div class="card" style="padding:1.5rem; margin-bottom:2rem;">
+        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:.75rem; margin-bottom:1rem;">
+            <h3 style="margin:0; font-size:1rem; flex:1;">Rentabilidade Acumulada vs Selic</h3>
+            {% if current_user.is_admin %}
+            <a href="{{ url_for('selic_mensal') }}" class="btn btn-sm btn-secondary"
+               style="font-size:.78rem;">⚙️ Editar Selic</a>
+            {% endif %}
+        </div>
+        <div style="position:relative; height:280px;">
+            <canvas id="selicChart"></canvas>
+        </div>
+    </div>
+
 </div>
 
 <!-- Chart.js -->
@@ -416,6 +430,99 @@
             }
         }
     });
+
+    // ── Gráfico Rentabilidade Acumulada vs Selic ──────────────────────────────
+    (function() {
+        const cartData  = {{ cart_acum_pct  | tojson }};
+        const selicData = {{ selic_acum_pct | tojson }};
+        const labels    = {{ months | tojson }};
+
+        function fmtP(v) {
+            if (v === null || v === undefined) return '—';
+            return (v >= 0 ? '+' : '') + v.toFixed(2).replace('.', ',') + '%';
+        }
+
+        const ctxS = document.getElementById('selicChart');
+        if (!ctxS) return;
+
+        new Chart(ctxS.getContext('2d'), {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Carteira (acumulado)',
+                        data: cartData,
+                        borderColor: '#10b981',
+                        backgroundColor: 'rgba(16,185,129,0.1)',
+                        pointBackgroundColor: '#10b981',
+                        pointRadius: 4,
+                        borderWidth: 2.5,
+                        fill: true,
+                        tension: 0.3,
+                        datalabels: { display: false }
+                    },
+                    {
+                        label: 'Selic (acumulado)',
+                        data: selicData,
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245,158,11,0.07)',
+                        pointBackgroundColor: '#f59e0b',
+                        pointRadius: 4,
+                        borderWidth: 2.5,
+                        fill: false,
+                        tension: 0.3,
+                        datalabels: { display: false }
+                    }
+                ]
+            },
+            plugins: [ChartDataLabels],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: themeColors.text } },
+                    datalabels: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(ctx) {
+                                const v   = ctx.parsed.y;
+                                const idx = ctx.dataIndex;
+                                if (ctx.dataset.label.startsWith('Carteira')) {
+                                    const mensal = idx > 0
+                                        ? cartData[idx] - cartData[idx-1]
+                                        : cartData[idx];
+                                    return 'Carteira: ' + fmtP(v) +
+                                           '  (mês: ' + fmtP(mensal) + ')';
+                                }
+                                const mensal = idx > 0
+                                    ? (selicData[idx] || 0) - (selicData[idx-1] || 0)
+                                    : (selicData[idx] || 0);
+                                return 'Selic: ' + fmtP(v) +
+                                       '  (mês: ' + fmtP(mensal) + ')';
+                            },
+                            footer: function(items) {
+                                const i    = items[0].dataIndex;
+                                const cart = cartData[i] || 0;
+                                const sel  = selicData[i] || 0;
+                                const diff = cart - sel;
+                                return 'Diferença: ' + fmtP(diff) +
+                                       (diff >= 0 ? ' ✅ acima da Selic' : ' ❌ abaixo da Selic');
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: themeColors.textSecondary }, grid: { color: 'var(--total-row-bg)' } },
+                    y: {
+                        ticks: { color: themeColors.textSecondary,
+                                 callback: v => v.toFixed(1).replace('.', ',') + '%' },
+                        grid: { color: 'var(--total-row-bg)' }
+                    }
+                }
+            }
+        });
+    })();
 
     // Botões de toggle das séries
     document.querySelectorAll('.resumo-tog').forEach(btn => {

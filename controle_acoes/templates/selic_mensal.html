@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="card" style="max-width:700px; margin:0 auto;">
+    <h3 style="margin-bottom:1rem;">📊 Selic Mensal</h3>
+
+    <form method="POST">
+        <label class="form-label">Colar dados (formato <code>MM/AAAA,taxa</code> ou <code>AAAA-MM,taxa</code> — uma por linha):</label>
+        <textarea name="selic_csv" rows="8" class="form-control"
+                  style="font-family:monospace; font-size:.85rem;"
+                  placeholder="01/2026,1.16&#10;02/2026,1.00&#10;03/2026,1.21"></textarea>
+        <button type="submit" class="btn btn-primary mt-2">💾 Salvar</button>
+    </form>
+
+    {% if rows %}
+    <div style="margin-top:2rem;">
+        <h5>Taxas cadastradas ({{ rows|length }} registros)</h5>
+        <div class="table-scroll" style="max-height:400px; overflow-y:auto;">
+            <table class="no-datatable" style="width:100%; font-size:.85rem;">
+                <thead><tr><th>Mês/Ano</th><th style="text-align:right;">Taxa % a.m.</th></tr></thead>
+                <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td>{{ r.mes_ano }}</td>
+                    <td style="text-align:right;">{{ '%.2f'|format(r.taxa)|replace('.',',') }}%</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -393,6 +393,14 @@ class PutSale(db.Model):
     created_at        = db.Column(db.DateTime, default=datetime.now)
 
 
+class SelicMensal(db.Model):
+    """Taxa Selic mensal (% ao mês) — compartilhada entre todos os usuários."""
+    __tablename__ = 'selic_mensal'
+    id         = db.Column(db.Integer, primary_key=True)
+    mes_ano    = db.Column(db.String(7), unique=True, nullable=False)  # 'YYYY-MM'
+    taxa       = db.Column(db.Float, nullable=False)                   # % a.m. ex: 1.16
+
+
 class Dividend(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     asset_id = db.Column(db.Integer, db.ForeignKey('asset.id'), nullable=False)

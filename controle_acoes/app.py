@@ -5,7 +5,7 @@ import sqlite3
 import math
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, PutSale
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, PutSale, SelicMensal
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -374,12 +374,111 @@ def run_migrations():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS selic_mensal (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mes_ano VARCHAR(7) UNIQUE NOT NULL,
+            taxa FLOAT NOT NULL
+        )
+    """)
+
     conn.commit()
     conn.close()
+
+# Dados históricos da Selic mensal (% a.m.)
+_SELIC_HISTORICO = """01/2020,0.38
+02/2020,0.29
+03/2020,0.34
+04/2020,0.28
+05/2020,0.24
+06/2020,0.21
+07/2020,0.19
+08/2020,0.16
+09/2020,0.16
+10/2020,0.16
+11/2020,0.15
+12/2020,0.16
+01/2021,0.15
+02/2021,0.13
+03/2021,0.20
+04/2021,0.21
+05/2021,0.27
+06/2021,0.31
+07/2021,0.36
+08/2021,0.43
+09/2021,0.44
+10/2021,0.49
+11/2021,0.59
+12/2021,0.77
+01/2022,0.73
+02/2022,0.76
+03/2022,0.93
+04/2022,0.83
+05/2022,1.03
+06/2022,1.02
+07/2022,1.03
+08/2022,1.17
+09/2022,1.07
+10/2022,1.02
+11/2022,1.02
+12/2022,1.12
+01/2023,1.12
+02/2023,0.92
+03/2023,1.17
+04/2023,0.92
+05/2023,1.12
+06/2023,1.07
+07/2023,1.07
+08/2023,1.14
+09/2023,0.97
+10/2023,1.00
+11/2023,0.92
+12/2023,0.89
+01/2024,0.97
+02/2024,0.80
+03/2024,0.83
+04/2024,0.89
+05/2024,0.83
+06/2024,0.79
+07/2024,0.91
+08/2024,0.87
+09/2024,0.84
+10/2024,0.93
+11/2024,0.79
+12/2024,0.93
+01/2025,1.01
+02/2025,0.99
+03/2025,0.96
+04/2025,1.06
+05/2025,1.14
+06/2025,1.10
+07/2025,1.28
+08/2025,1.16
+09/2025,1.22
+10/2025,1.28
+11/2025,1.05
+12/2025,1.22
+01/2026,1.16
+02/2026,1.00
+03/2026,1.21"""
 
 with app.app_context():
     run_migrations()
     db.create_all()
+    # Seed Selic histórica (INSERT OR IGNORE para não sobrescrever edições manuais)
+    for linha in _SELIC_HISTORICO.strip().splitlines():
+        partes = linha.split(',')
+        if len(partes) == 2:
+            mm_aa, taxa_str = partes
+            try:
+                taxa = float(taxa_str)
+                parts = mm_aa.strip().split('/')
+                mes_ano_fmt = f"{parts[1]}-{parts[0]}"  # MM/YYYY -> YYYY-MM
+                if not SelicMensal.query.filter_by(mes_ano=mes_ano_fmt).first():
+                    db.session.add(SelicMensal(mes_ano=mes_ano_fmt, taxa=taxa))
+            except Exception:
+                pass
+    db.session.commit()
 
 # Scheduler OpLab iniciado ao carregar o módulo (Gunicorn + __main__)
 threading.Thread(target=lambda: (time.sleep(5), _start_oplab_scheduler()), daemon=True).start()
@@ -2532,6 +2631,24 @@ def resumo():
 
     total_realized_profit = sum(h.profit_value for h in history if h.profit_value)
 
+    # Selic mensal para os meses do gráfico
+    selic_rows = {s.mes_ano: s.taxa for s in SelicMensal.query.all()}
+    selic_data = [selic_rows.get(k, None) for k in sorted_months]
+
+    # % acumulada carteira vs Selic — soma progressiva mês a mês
+    cart_acum_pct  = []   # soma acumulada (lucro+div_acoes+div_fiis) / patrimônio
+    selic_acum_pct = []
+    cart_running  = 0.0
+    selic_running = 0.0
+    for i, k in enumerate(sorted_months):
+        total_mes_pct = profit_pct_data[i] + div_acoes_pct[i] + div_fiis_pct[i]
+        cart_running  += total_mes_pct
+        selic_m = selic_data[i]
+        if selic_m is not None:
+            selic_running += selic_m
+        cart_acum_pct.append(round(cart_running, 2))
+        selic_acum_pct.append(round(selic_running, 2) if selic_m is not None else None)
+
     return render_template('resumo.html',
                          total_equity=total_equity, total_acoes=total_acoes,
                          total_fiis=total_fiis, total_etfs=total_etfs,
@@ -2543,7 +2660,50 @@ def resumo():
                          profit_pct=profit_pct_data,
                          div_acoes=div_acoes_data, div_acoes_pct=div_acoes_pct,
                          div_fiis=div_fiis_data,   div_fiis_pct=div_fiis_pct,
+                         selic_data=selic_data,
+                         cart_acum_pct=cart_acum_pct,
+                         selic_acum_pct=selic_acum_pct,
                          stock_sectors=stock_sectors)
+
+
+@app.route('/selic_mensal', methods=['GET', 'POST'])
+@login_required
+def selic_mensal():
+    if not current_user.is_admin:
+        flash('Acesso restrito a administradores.', 'danger')
+        return redirect(url_for('resumo'))
+    if request.method == 'POST':
+        raw = request.form.get('selic_csv', '').strip()
+        salvos = erros = 0
+        for linha in raw.splitlines():
+            linha = linha.strip()
+            if not linha or linha.startswith('#'):
+                continue
+            partes = linha.split(',')
+            if len(partes) != 2:
+                erros += 1; continue
+            try:
+                mm_aa, taxa_str = partes[0].strip(), partes[1].strip()
+                taxa = float(taxa_str.replace(',', '.'))
+                parts = mm_aa.split('/')
+                if len(parts) == 2:
+                    mes_ano_fmt = f"{parts[1]}-{parts[0]}"
+                else:
+                    mes_ano_fmt = mm_aa  # aceita YYYY-MM direto
+                row = SelicMensal.query.filter_by(mes_ano=mes_ano_fmt).first()
+                if row:
+                    row.taxa = taxa
+                else:
+                    db.session.add(SelicMensal(mes_ano=mes_ano_fmt, taxa=taxa))
+                salvos += 1
+            except Exception:
+                erros += 1
+        db.session.commit()
+        flash(f'{salvos} registros salvos. {erros} erros.', 'success' if not erros else 'warning')
+        return redirect(url_for('selic_mensal'))
+
+    rows = SelicMensal.query.order_by(SelicMensal.mes_ano.desc()).all()
+    return render_template('selic_mensal.html', rows=rows)
 
 @app.route('/edit_history/<int:id>', methods=['GET', 'POST'])
 @login_required

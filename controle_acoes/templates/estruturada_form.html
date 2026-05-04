@@ -25,6 +25,19 @@
             </div>
         </div>
 
+        {# ── Checkbox garantia ── #}
+        <div style="margin-bottom:1.25rem; display:flex; align-items:center; gap:.6rem;">
+            <input type="checkbox" id="uses_stock_collateral" name="uses_stock_collateral"
+                   value="1" style="width:18px; height:18px; cursor:pointer; margin:0;"
+                   {% if op and op.uses_stock_collateral %}checked{% endif %}>
+            <label for="uses_stock_collateral" style="cursor:pointer; margin:0; font-size:.9rem;">
+                🔒 Ações em carteira usadas como <strong>garantia (venda coberta)</strong> nesta operação
+                <span style="color:var(--text-secondary); font-size:.8rem; display:block;">
+                    Quando marcado, o ativo subjacente não aparece em "Ações Livres" na página Estudos.
+                </span>
+            </label>
+        </div>
+
         {# ── Tabela de pernas ── #}
         <div style="overflow-x:auto; margin-bottom:1rem;">
             <table id="legs-table" style="width:100%; border-collapse:collapse; font-size:.88rem;">
@@ -62,8 +75,9 @@
                                 </select>
                             </td>
                             <td style="padding:.35rem .4rem;">
-                                <input type="number" name="leg_quantity" value="{{ leg.quantity }}"
-                                       min="1" style="width:60px; text-align:center;">
+                                <input type="text" inputmode="numeric" name="leg_quantity"
+                                       value="{{ leg.quantity }}"
+                                       style="width:60px; text-align:center;">
                             </td>
                             <td style="padding:.35rem .4rem;">
                                 <input type="text" name="leg_strike"
@@ -112,8 +126,8 @@
                                 </select>
                             </td>
                             <td style="padding:.35rem .4rem;">
-                                <input type="number" name="leg_quantity" value="1"
-                                       min="1" style="width:60px; text-align:center;">
+                                <input type="text" inputmode="numeric" name="leg_quantity"
+                                       value="1" style="width:60px; text-align:center;">
                             </td>
                             <td style="padding:.35rem .4rem;">
                                 <input type="text" name="leg_strike" placeholder="0,00"
@@ -180,7 +194,7 @@ function addLeg() {
         <td style="padding:.35rem .4rem;"><input type="text" name="leg_ticker" placeholder="PETRA40" style="width:120px; text-transform:uppercase;"></td>
         <td style="padding:.35rem .4rem;"><select name="leg_opt_type" style="width:70px;"><option value="CALL">CALL</option><option value="PUT">PUT</option></select></td>
         <td style="padding:.35rem .4rem;"><select name="leg_side" style="width:90px;"><option value="SELL">VENDA</option><option value="BUY">COMPRA</option></select></td>
-        <td style="padding:.35rem .4rem;"><input type="number" name="leg_quantity" value="1" min="1" style="width:60px; text-align:center;"></td>
+        <td style="padding:.35rem .4rem;"><input type="text" inputmode="numeric" name="leg_quantity" value="1" style="width:60px; text-align:center;"></td>
         <td style="padding:.35rem .4rem;"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px; text-align:right;"></td>
         <td style="padding:.35rem .4rem;"><input type="date" name="leg_expiration" style="width:130px;"></td>
         <td style="padding:.35rem .4rem;"><input type="text" name="leg_entry_price" placeholder="0,00" style="width:80px; text-align:right;" oninput="recalc()"></td>

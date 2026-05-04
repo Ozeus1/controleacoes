@@ -316,7 +316,7 @@ def run_migrations():
         )
     """)
 
-    # Migração: underlying_price e underlying_change em structured_op
+    # Migração: colunas em structured_op
     cursor.execute("PRAGMA table_info(structured_op)")
     struct_cols = {row[1] for row in cursor.fetchall()}
     if struct_cols:
@@ -324,6 +324,8 @@ def run_migrations():
             cursor.execute("ALTER TABLE structured_op ADD COLUMN underlying_price FLOAT")
         if 'underlying_change' not in struct_cols:
             cursor.execute("ALTER TABLE structured_op ADD COLUMN underlying_change FLOAT")
+        if 'uses_stock_collateral' not in struct_cols:
+            cursor.execute("ALTER TABLE structured_op ADD COLUMN uses_stock_collateral BOOLEAN DEFAULT 0")
 
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS simulacao_opcoes (
@@ -1129,10 +1131,12 @@ def add_estruturada():
                 flash('Informe o nome e ao menos uma perna.', 'warning')
                 return redirect(url_for('add_estruturada'))
 
+            uses_collateral = request.form.get('uses_stock_collateral') == '1'
             op = StructuredOp(
                 user_id=current_user.id,
                 name=name,
                 underlying_asset=underlying_asset,
+                uses_stock_collateral=uses_collateral,
                 status='OPEN',
                 created_at=datetime.now(),
             )
@@ -1181,8 +1185,9 @@ def edit_estruturada(id):
 
     if request.method == 'POST':
         try:
-            op.name             = request.form.get('name', '').strip()
-            op.underlying_asset = request.form.get('underlying_asset', '').strip().upper()
+            op.name                  = request.form.get('name', '').strip()
+            op.underlying_asset      = request.form.get('underlying_asset', '').strip().upper()
+            op.uses_stock_collateral = request.form.get('uses_stock_collateral') == '1'
 
             tickers      = request.form.getlist('leg_ticker')
             sides        = request.form.getlist('leg_side')
@@ -4751,9 +4756,19 @@ def estudos():
     study_stocks = StudyStock.query.filter_by(user_id=uid).order_by(StudyStock.ticker).all()
     study_intl_stocks = StudyIntlStock.query.filter_by(user_id=uid).order_by(StudyIntlStock.ticker).all()
 
-    # ── Tabela 3: Ações Livres (sem venda coberta ativa) ───────────
+    # ── Tabela 3: Ações Livres (sem venda coberta ativa nem garantia em estruturada) ──
+    # Ações usadas como garantia em operações estruturadas abertas
+    collateral_tickers = {
+        op.underlying_asset.upper()
+        for op in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all()
+        if op.uses_stock_collateral and op.underlying_asset
+    }
     all_acoes = [a for a in Asset.query.filter_by(user_id=uid, type='ACAO').all() if a.quantity > 0]
-    free_stocks = [a for a in all_acoes if a.ticker.upper() not in vc_underlying]
+    free_stocks = [
+        a for a in all_acoes
+        if a.ticker.upper() not in vc_underlying
+        and a.ticker.upper() not in collateral_tickers
+    ]
     free_stocks.sort(key=lambda a: a.ticker)
 
     return render_template(

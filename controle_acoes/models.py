@@ -321,11 +321,12 @@ class StructuredOp(db.Model):
     __tablename__ = 'structured_op'
     id            = db.Column(db.Integer, primary_key=True)
     user_id       = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    name          = db.Column(db.String(100), default='')
-    underlying_asset   = db.Column(db.String(15), default='')
-    underlying_price   = db.Column(db.Float, nullable=True)
-    underlying_change  = db.Column(db.Float, nullable=True)
-    status        = db.Column(db.String(10), default='OPEN')   # OPEN | CLOSED
+    name                  = db.Column(db.String(100), default='')
+    underlying_asset      = db.Column(db.String(15), default='')
+    underlying_price      = db.Column(db.Float, nullable=True)
+    underlying_change     = db.Column(db.Float, nullable=True)
+    uses_stock_collateral = db.Column(db.Boolean, default=False)  # ação em carteira como garantia
+    status                = db.Column(db.String(10), default='OPEN')   # OPEN | CLOSED
     created_at    = db.Column(db.DateTime, default=datetime.now)
     legs = db.relationship('StructuredLeg', backref='operation', lazy=True,
                            cascade='all, delete-orphan',

@@ -98,10 +98,24 @@ def _get_price(symbol):
         return None, None
 
     price = round(price, 2)
-    info = mt5.symbol_info(symbol)
+
+    # Variação do dia: usa o candle D1 de hoje para pegar o open real do pregão
+    # (session_open do symbol_info pode ser o preço de referência, não o open do dia)
     change_pct = 0.0
-    if info and info.session_open > 0:
-        change_pct = round((price - info.session_open) / info.session_open * 100, 2)
+    try:
+        rates_d1 = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_D1, 0, 1)
+        if rates_d1 is not None and len(rates_d1) > 0:
+            day_open = float(rates_d1[0]['open'])
+            if day_open > 0:
+                change_pct = round((price - day_open) / day_open * 100, 2)
+        else:
+            # Fallback: session_open do symbol_info
+            info = mt5.symbol_info(symbol)
+            if info and info.session_open > 0:
+                change_pct = round((price - info.session_open) / info.session_open * 100, 2)
+    except Exception:
+        pass
+
     return price, change_pct
 
 

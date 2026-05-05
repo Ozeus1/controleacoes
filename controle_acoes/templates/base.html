@@ -494,24 +494,36 @@
             }, 2500);
         }
 
-        function showUpdateResult(msg, category) {
-            document.getElementById('update-overlay').style.display = 'none';
-            document.querySelectorAll('[data-update-btn]').forEach(function(b) { b.disabled = false; });
-
-            // Mostra horário da atualização na barra superior
+        function _setUpdateBadge(ts) {
             var badge = document.getElementById('last-update-badge');
             var timeEl = document.getElementById('last-update-time');
-            if (badge && timeEl) {
-                var now = new Date();
-                var dd   = String(now.getDate()).padStart(2,'0');
-                var mm   = String(now.getMonth()+1).padStart(2,'0');
-                var hh   = String(now.getHours()).padStart(2,'0');
-                var min  = String(now.getMinutes()).padStart(2,'0');
-                timeEl.textContent = dd + '/' + mm + ' ' + hh + ':' + min;
+            if (badge && timeEl && ts) {
+                timeEl.textContent = ts;
                 badge.style.display = 'inline-flex';
                 badge.style.alignItems = 'center';
                 badge.style.gap = '.25rem';
             }
+        }
+
+        // Restaura badge ao carregar a página
+        (function() {
+            var ts = localStorage.getItem('lastQuoteUpdate');
+            if (ts) _setUpdateBadge(ts);
+        })();
+
+        function showUpdateResult(msg, category) {
+            document.getElementById('update-overlay').style.display = 'none';
+            document.querySelectorAll('[data-update-btn]').forEach(function(b) { b.disabled = false; });
+
+            // Salva e mostra horário da atualização
+            var now = new Date();
+            var dd  = String(now.getDate()).padStart(2,'0');
+            var mm  = String(now.getMonth()+1).padStart(2,'0');
+            var hh  = String(now.getHours()).padStart(2,'0');
+            var min = String(now.getMinutes()).padStart(2,'0');
+            var ts  = dd + '/' + mm + ' ' + hh + ':' + min;
+            localStorage.setItem('lastQuoteUpdate', ts);
+            _setUpdateBadge(ts);
 
             var banner = document.getElementById('update-result-banner');
             banner.textContent = msg;

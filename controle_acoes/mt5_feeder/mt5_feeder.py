@@ -69,24 +69,40 @@ def conectar_mt5(log_fn):
 
 
 def _get_price(symbol):
+    # Garante que o símbolo está visível no Market Watch
+    if mt5.symbol_info(symbol) is None:
+        mt5.symbol_select(symbol, True)
+        time.sleep(1.0)
+
     tick = mt5.symbol_info_tick(symbol)
     if tick is None:
         mt5.symbol_select(symbol, True)
-        for _ in range(3):
-            time.sleep(0.5)
+        for _ in range(5):
+            time.sleep(0.8)
             tick = mt5.symbol_info_tick(symbol)
             if tick is not None:
                 break
-    if tick is None:
+
+    price = None
+    if tick is not None:
+        price = tick.last if tick.last > 0 else tick.bid
+
+    # Fallback: último candle M1 quando tick indisponível (fora do pregão)
+    if not price or price <= 0:
+        import MetaTrader5 as _mt5
+        rates = _mt5.copy_rates_from_pos(symbol, _mt5.TIMEFRAME_M1, 0, 1)
+        if rates is not None and len(rates) > 0:
+            price = round(float(rates[0]['close']), 2)
+
+    if not price or price <= 0:
         return None, None
-    price = tick.last if tick.last > 0 else tick.bid
-    if price <= 0:
-        return None, None
+
+    price = round(price, 2)
     info = mt5.symbol_info(symbol)
     change_pct = 0.0
     if info and info.session_open > 0:
         change_pct = round((price - info.session_open) / info.session_open * 100, 2)
-    return round(price, 2), change_pct
+    return price, change_pct
 
 
 def obter_cotacoes(ticker_map, log_fn):
@@ -119,7 +135,13 @@ def obter_cotacoes_opcoes(option_map, log_fn):
             log_fn(f"    {ticker_site:<12} ({simbolo_mt5:<15}) = R$ {price:.2f}")
         else:
             info = mt5.symbol_info(simbolo_mt5)
-            motivo = "não encontrado" if info is None else "preço indisponível"
+            if info is None:
+                motivo = "símbolo não existe no MT5 (verifique o nome)"
+            elif not info.visible:
+                motivo = "símbolo oculto — habilitando..."
+                mt5.symbol_select(simbolo_mt5, True)
+            else:
+                motivo = "sem tick disponível (fora do pregão ou sem volume)"
             log_fn(f"    {ticker_site:<12} ({simbolo_mt5:<15}) = sem preço ({motivo})")
     return options
 

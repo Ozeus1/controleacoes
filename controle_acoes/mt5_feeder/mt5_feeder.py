@@ -259,6 +259,64 @@ def map_to_text(d):
     return "\n".join(f'"{k}": "{v}",' for k, v in sorted(d.items()))
 
 
+# ── Gerador de planilha RTD ───────────────────────────────────────────────────
+
+# Campos RTD na ordem exata do arquivo rtd.txt
+_RTD_FIELDS = [
+    ("DAT", "Data"), ("HOR", "Hora"), ("ULT", "Último"), ("ABE", "Abertura"),
+    ("MAX", "Máximo"), ("MIN", "Mínimo"), ("FEC", "Fechamento Anterior"),
+    ("PEX", "Strike"), ("VAR", "Variação"), ("MED", "Média"), ("NOME", None),
+    ("NEG", "Negócios"), ("QTT", "Quantidade"), ("VOL", "Volume"),
+    ("OCP", "Of. Compra"), ("OVD", "Of. Venda"), ("VPJ", "Volume Projetado"),
+    ("VEN", "Vencimento"), ("VAL", "Validade"), ("CAB", "Cont. Abertos"),
+    ("BLACK", "Black Scholes"), ("IMPVT", "Volt. Implícita"),
+    ("DELTA", "Delta"), ("GAMA", "Gama"), ("THETA", "Theta"),
+    ("RHO", "Rho"), ("VEGA", "Vega"), ("VIA", "VI Ask"), ("VIB", "VI Bid"),
+    ("VIVH", "VI / VH"), ("VINT", "Valor Intrínseco"), ("VEXT", "Valor Extrínseco"),
+    ("204", "Dividend Yield"), ("1", "IFR (RSI)"),
+    ("387", "Volatilidade Implícita"), ("81", "Volatilidade Implícita - Opções"),
+]
+
+_HEADER_COLS = [
+    "Asset", "Data", "Hora", "Último", "Abertura", "Máximo", "Mínimo",
+    "Fechamento Anterior", "Strike", "Variação", "Média", "Nome do Ativo",
+    "Negócios", "Quantidade", "Volume", "Of. Compra", "Of. Venda",
+    "Volume Projetado", "Vencimento", "Validade", "Cont. Abertos",
+    "Black Scholes", "Volt. Implícita", "Delta", "Gama", "Theta", "Rho",
+    "Vega", "VI Ask", "VI Bid", "VI / VH", "Valor Intrínseco",
+    "Valor Extrínseco", "Dividend Yield", "IFR (RSI)",
+    "Volatilidade Implícita", "Volatilidade Implícita - Opções",
+]
+
+
+def generate_rtd_text(cfg):
+    """
+    Gera o conteúdo TSV no formato do rtd.txt a partir do TICKER_MAP + OPTION_MAP.
+    Cada linha: TICKER <tab> colunas RTD separadas por <tab>
+    A coluna 'Nome do Ativo' fica em branco (sem RTD disponível para nome).
+    """
+    # Linha de cabeçalho
+    lines = ["\t".join(_HEADER_COLS)]
+
+    all_tickers = {}
+    for site, mt5sym in sorted(cfg.get("TICKER_MAP", {}).items()):
+        all_tickers[site] = mt5sym
+    for site, mt5sym in sorted(cfg.get("OPTION_MAP", {}).items()):
+        all_tickers[site] = mt5sym
+
+    for ticker, mt5sym in sorted(all_tickers.items()):
+        base = f'"{mt5sym}_B_0"'
+        cols = [ticker]
+        for field, _ in _RTD_FIELDS:
+            if field == "NOME":
+                cols.append("")   # sem RTD para nome
+            else:
+                cols.append(f'=RTD("RTDTrading.RTDServer";;{base};"{field}")')
+        lines.append("\t".join(cols))
+
+    return "\n".join(lines)
+
+
 # ── Interface Gráfica ─────────────────────────────────────────────────────────
 
 class MT5FeederApp:
@@ -310,7 +368,12 @@ class MT5FeederApp:
         nb.add(tab_options, text="  📊 OPTION_MAP  ")
         self._build_tab_map(tab_options, "option")
 
-        # ── Aba 4: Log / Execução ──
+        # ── Aba 4: RTD Export ──
+        tab_rtd = ttk.Frame(nb)
+        nb.add(tab_rtd, text="  📄 RTD Export  ")
+        self._build_tab_rtd(tab_rtd)
+
+        # ── Aba 5: Log / Execução ──
         tab_run = ttk.Frame(nb)
         nb.add(tab_run, text="  ▶ Executar  ")
         self._build_tab_run(tab_run)
@@ -374,6 +437,82 @@ class MT5FeederApp:
 
         # Preenche com valores atuais
         txt.insert("1.0", map_to_text(self.cfg.get(map_key, {})))
+
+    def _build_tab_rtd(self, parent):
+        # Barra de ações
+        frm_top = ttk.Frame(parent)
+        frm_top.pack(fill="x", padx=10, pady=(10, 4))
+
+        ttk.Label(frm_top,
+                  text="Gera planilha TSV no formato RTDTrading para colar no Excel/LibreOffice.",
+                  foreground="gray").pack(side="left", padx=(0, 12))
+
+        ttk.Button(frm_top, text="🔄 Gerar",
+                   command=self._rtd_generate).pack(side="left", padx=4)
+        ttk.Button(frm_top, text="📋 Copiar tudo",
+                   command=self._rtd_copy).pack(side="left", padx=4)
+        ttk.Button(frm_top, text="💾 Salvar .txt/.tsv...",
+                   command=self._rtd_save).pack(side="left", padx=4)
+
+        # Área de texto somente-leitura para exibir o resultado
+        self._txt_rtd = scrolledtext.ScrolledText(
+            parent, font=("Consolas", 8), wrap="none", state="disabled",
+            background="#0f172a", foreground="#94a3b8")
+        self._txt_rtd.pack(fill="both", expand=True, padx=10, pady=(0, 8))
+
+        # Contador de linhas
+        self._rtd_count_var = tk.StringVar(value="")
+        ttk.Label(parent, textvariable=self._rtd_count_var,
+                  foreground="gray").pack(anchor="w", padx=10, pady=(0, 6))
+
+    def _rtd_generate(self):
+        """Lê os mapas da UI, gera o RTD e exibe."""
+        self._ui_to_cfg()
+        try:
+            content = generate_rtd_text(self.cfg)
+            self._txt_rtd.config(state="normal")
+            self._txt_rtd.delete("1.0", "end")
+            self._txt_rtd.insert("1.0", content)
+            self._txt_rtd.config(state="disabled")
+            n = len(content.splitlines()) - 1   # menos cabeçalho
+            self._rtd_count_var.set(f"✓ {n} ticker(s) gerado(s)")
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao gerar RTD:\n{e}")
+
+    def _rtd_copy(self):
+        content = self._txt_rtd.get("1.0", "end-1c")
+        if not content.strip():
+            messagebox.showinfo("Aviso", "Clique em 'Gerar' primeiro.")
+            return
+        self.root.clipboard_clear()
+        self.root.clipboard_append(content)
+        messagebox.showinfo("Copiado", "Conteúdo copiado para a área de transferência.\n"
+                            "Cole na célula A1 do Excel ou LibreOffice Calc.")
+
+    def _rtd_save(self):
+        content = self._txt_rtd.get("1.0", "end-1c")
+        if not content.strip():
+            messagebox.showinfo("Aviso", "Clique em 'Gerar' primeiro.")
+            return
+        path = filedialog.asksaveasfilename(
+            title="Salvar arquivo RTD",
+            defaultextension=".txt",
+            initialfile="rtd_export.txt",
+            filetypes=[
+                ("Texto tabulado", "*.txt"),
+                ("TSV", "*.tsv"),
+                ("Todos os arquivos", "*.*"),
+            ]
+        )
+        if not path:
+            return
+        try:
+            with open(path, "w", encoding="utf-8-sig") as f:  # BOM para Excel
+                f.write(content)
+            messagebox.showinfo("Salvo", f"Arquivo salvo:\n{path}\n\n"
+                                "Abra no Excel e selecione 'Tabulação' como separador.")
+        except Exception as e:
+            messagebox.showerror("Erro", f"Falha ao salvar:\n{e}")
 
     def _build_tab_run(self, parent):
         btn_frm = ttk.Frame(parent)

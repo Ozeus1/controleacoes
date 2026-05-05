@@ -59,6 +59,7 @@
                 </td>
                 <td>R$ {{ "%.2f"|format(item.total_sold)|replace('.', ',') }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td style="color:var(--text-secondary); font-size:.82rem;">{{ item.last_update }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_change"
                     class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%
@@ -183,6 +184,7 @@
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.total_sold)|replace('.', ',') }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td style="color:var(--text-secondary); font-size:.82rem;">{{ item.last_update }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_change"
                     class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%
@@ -276,6 +278,7 @@
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td style="color:var(--text-secondary); font-size:.82rem;">{{ item.last_update }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_change"
                     class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%
@@ -367,6 +370,7 @@
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td style="color:var(--text-secondary); font-size:.82rem;">{{ item.last_update }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_change"
                     class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%

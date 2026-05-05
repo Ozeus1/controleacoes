@@ -5648,11 +5648,38 @@ def api_update_quotes():
 
     for ticker, price in quotes.items():
         ticker = ticker.upper()
+        price_f  = float(price)
+        change_f = float(changes.get(ticker, changes.get(ticker.lower(), 0)))
+        found = False
+
+        # 1. Atualiza Asset em carteira
         asset = Asset.query.filter_by(ticker=ticker, user_id=user_id).first()
         if asset:
-            asset.current_price = float(price)
-            asset.daily_change  = float(changes.get(ticker, changes.get(ticker.lower(), 0)))
+            asset.current_price = price_f
+            asset.daily_change  = change_f
             asset.last_update   = now
+            found = True
+
+        # 2. Atualiza underlying_price em StructuredOp (ativos subjacentes de estruturadas)
+        ops = StructuredOp.query.filter_by(underlying_asset=ticker, user_id=user_id, status='OPEN').all()
+        for op in ops:
+            op.underlying_price  = price_f
+            op.underlying_change = change_f
+            found = True
+
+        # 3. Atualiza StudyOption
+        sos = StudyOption.query.filter_by(underlying_asset=ticker, user_id=user_id).all()
+        for so in sos:
+            so.underlying_price = price_f
+            found = True
+
+        # 4. Atualiza PutSale
+        pss = PutSale.query.filter_by(underlying_asset=ticker, user_id=user_id).all()
+        for ps in pss:
+            ps.underlying_price = price_f
+            found = True
+
+        if found:
             updated_assets.append(ticker)
         else:
             not_found_assets.append(ticker)
@@ -5662,11 +5689,37 @@ def api_update_quotes():
     updated_options, not_found_options = [], []
 
     for ticker, price in options_prices.items():
-        ticker = ticker.upper()
+        ticker  = ticker.upper()
+        price_f = float(price)
+        found   = False
+
+        # 1. Tabela Option (venda coberta, etc.)
         opt = Option.query.filter_by(ticker=ticker, user_id=user_id).first()
         if opt:
-            opt.current_option_price = float(price)
+            opt.current_option_price = price_f
             opt.last_update = now
+            found = True
+
+        # 2. StructuredLeg (pernas de estruturadas)
+        legs = StructuredLeg.query.join(StructuredOp).filter(
+            StructuredLeg.ticker == ticker,
+            StructuredOp.user_id == user_id,
+            StructuredOp.status  == 'OPEN'
+        ).all()
+        for leg in legs:
+            leg.current_price = price_f
+            leg.last_update   = now
+            found = True
+
+        # 3. PutSale — atualiza cotação do prêmio (campo underlying_price já tratado acima)
+        # O ticker aqui é o ticker da opção, não do subjacente
+        ps_opt = PutSale.query.filter_by(ticker=ticker, user_id=user_id).first()
+        if ps_opt:
+            # PutSale não tem campo current_price para a opção, apenas armazena prêmio de entrada
+            # Registra como found para não reportar como ausente
+            found = True
+
+        if found:
             updated_options.append(ticker)
         else:
             not_found_options.append(ticker)

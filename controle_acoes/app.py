@@ -85,6 +85,12 @@ db.init_app(app)
 _TASK_DIR = os.path.join(tempfile.gettempdir(), 'ca_update_tasks')
 os.makedirs(_TASK_DIR, exist_ok=True)
 
+_BRT = ZoneInfo('America/Sao_Paulo')
+
+def now_brt():
+    """Retorna datetime atual no fuso de Brasília."""
+    return datetime.now(_BRT)
+
 def _task_file(task_id):
     return os.path.join(_TASK_DIR, task_id + '.json')
 
@@ -779,7 +785,7 @@ def opcoes():
                 'lucro_ex_pct': lucro_ex_pct,
                 'lucro_at_pct': lucro_at_pct,
                 'lucro_ex_rs': lucro_ex_rs,
-                'lucro_at_rs': lucro_at_rs
+                'lucro_at_rs': lucro_at_rs,
             })
 
         elif option_type == 'VENDA_PUT':
@@ -833,10 +839,20 @@ def opcoes():
     from datetime import date as date_cls
     today = date_cls.today()
 
-    # Add days_left to every option item
+    # Add days_left and last_update to every option item
+    def _fmt_last_update(opt):
+        lu = opt.last_update
+        if not lu:
+            return '-'
+        try:
+            return lu.astimezone(_BRT).strftime('%H:%M')
+        except Exception:
+            return lu.strftime('%H:%M')
+
     for item in processed_options + venda_puts + compra_calls + compra_puts:
         exp = item['option'].expiration_date
-        item['days_left'] = (exp - today).days if exp else None
+        item['days_left']   = (exp - today).days if exp else None
+        item['last_update'] = _fmt_last_update(item['option'])
 
     # Process spreads
     all_spreads = OptionSpread.query.filter_by(user_id=current_user.id).all()
@@ -2034,7 +2050,7 @@ def add_asset():
                     if 'regularMarketPrice' in quote:
                         current_price = quote['regularMarketPrice']
                         daily_change = quote.get('regularMarketChangePercent', 0.0)
-                        last_update = datetime.now()
+                        last_update = now_brt()
             except Exception as e:
                 print(f"Error fetching initial quote for {ticker}: {e}")
 
@@ -4058,7 +4074,7 @@ def update_all_assets_logic(user_id=None):
                         if price and price > 0:
                             asset.current_price = price
                             asset.daily_change = quote_data.get('change_percent', 0.0)
-                            asset.last_update = datetime.now(ZoneInfo('America/Sao_Paulo'))
+                            asset.last_update = now_brt()
                             updated_count += 1
             
             # Commit after each chunk
@@ -4594,7 +4610,7 @@ def importar_excel():
                     all_prices[key] = p
                     all_rows[key] = row
 
-    now = datetime.now()
+    now = now_brt()
     ativos_atualizados     = 0
     opcoes_atualizadas     = 0
     spreads_atualizados    = 0
@@ -5594,7 +5610,7 @@ def update_market_indices():
                 
             idx.price = price
             idx.change_percent = change
-            idx.last_update = datetime.now().strftime('%H:%M')
+            idx.last_update = now_brt().strftime('%H:%M')
             
         except Exception as e:
             print(f"Error updating index {idx.ticker}: {e}")
@@ -5639,7 +5655,7 @@ def api_update_quotes():
         return jsonify({'error': 'Invalid payload — need at least quotes key'}), 400
 
     user_id = int(data.get('user_id', 1))
-    now = datetime.now()
+    now = now_brt()
 
     # ── Assets ────────────────────────────────────────────────────────────────
     quotes  = data.get('quotes', {})
@@ -5874,7 +5890,7 @@ def _do_oplab_bulk_update(uid: int, token: str):
     if not prices:
         return 0, 0
 
-    now = datetime.now()
+    now = now_brt()
 
     # ── Atualiza Assets (ações, FIIs, ETFs — todas as páginas) ────
     assets_ok = 0
@@ -5952,7 +5968,7 @@ def _oplab_scheduler_loop():
         time.sleep(30)
         with app.app_context():
             try:
-                now = datetime.now()
+                now = now_brt()
                 rows = Settings.query.filter_by(key='oplab_auto_update', value='true').all()
                 for s in rows:
                     uid   = s.user_id

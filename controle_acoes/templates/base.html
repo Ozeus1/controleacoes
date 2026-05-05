@@ -104,6 +104,11 @@
                 </div>
                 <div class="header-user">
                     <span class="welcome-text">Bem vindo, <strong>{{ current_user.username }}</strong></span>
+                    <span id="last-update-badge" style="display:none; font-size:.75rem; color:var(--text-secondary);
+                          background:var(--hover-bg); border:1px solid var(--border-color);
+                          border-radius:6px; padding:.2rem .55rem; white-space:nowrap;">
+                        🕐 <span id="last-update-time">—</span>
+                    </span>
                     <button type="button" id="btn-update-desktop" data-update-btn onclick="startUpdateQuotes()" class="btn btn-secondary btn-sm">
                         🔄 <span class="btn-label">Atualizar Cotações</span>
                     </button>
@@ -492,6 +497,21 @@
         function showUpdateResult(msg, category) {
             document.getElementById('update-overlay').style.display = 'none';
             document.querySelectorAll('[data-update-btn]').forEach(function(b) { b.disabled = false; });
+
+            // Mostra horário da atualização na barra superior
+            var badge = document.getElementById('last-update-badge');
+            var timeEl = document.getElementById('last-update-time');
+            if (badge && timeEl) {
+                var now = new Date();
+                var dd   = String(now.getDate()).padStart(2,'0');
+                var mm   = String(now.getMonth()+1).padStart(2,'0');
+                var hh   = String(now.getHours()).padStart(2,'0');
+                var min  = String(now.getMinutes()).padStart(2,'0');
+                timeEl.textContent = dd + '/' + mm + ' ' + hh + ':' + min;
+                badge.style.display = 'inline-flex';
+                badge.style.alignItems = 'center';
+                badge.style.gap = '.25rem';
+            }
 
             var banner = document.getElementById('update-result-banner');
             banner.textContent = msg;

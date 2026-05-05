@@ -238,11 +238,25 @@
 </div>
 
 <div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-top: 2rem;">
-    <h3>Gerador de config.py para MT5 Feeder</h3>
-    <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
-        Copie os blocos abaixo para o arquivo <code>mt5_feeder/config.py</code> no seu computador.
-        Os tickers são gerados automaticamente com base nos ativos e opções cadastrados no site.
-    </p>
+    <div style="display:flex; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1rem;">
+        <h3 style="margin:0;">Gerador de config.py para MT5 Feeder</h3>
+        <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-left:auto;">
+            <a href="{{ url_for('download_config_py') }}" class="btn btn-primary btn-sm">
+                ⬇️ Baixar config.py
+            </a>
+            <a href="{{ url_for('download_mt5_feeder_py') }}" class="btn btn-secondary btn-sm">
+                ⬇️ Baixar mt5_feeder.py
+            </a>
+        </div>
+    </div>
+
+    <div style="background:var(--hover-bg); border:1px solid var(--border-color); border-radius:8px;
+                padding:.75rem 1rem; margin-bottom:1.5rem; font-size:.85rem; color:var(--text-secondary);">
+        Fontes incluídas automaticamente:
+        <strong style="color:var(--text-primary);">
+            Carteira (Ações/FIIs/ETFs) · Opções lançadas · Pernas de Estruturadas abertas · Venda de Puts · Ativos subjacentes
+        </strong>
+    </div>
 
     <div style="margin-bottom: 1.5rem;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
@@ -251,7 +265,7 @@
         </div>
         <pre id="tickerMapBlock" style="background: var(--bg-color); color: var(--text-primary); padding: 1rem;
              border-radius: 0.5rem; border: 1px solid var(--border-color); font-family: monospace;
-             white-space: pre; overflow-x: auto; font-size: 0.85rem;">{{ ticker_map_text }}</pre>
+             white-space: pre; overflow-x: auto; font-size: 0.85rem; max-height:300px;">{{ ticker_map_text }}</pre>
     </div>
 
     <div style="margin-bottom: 1.5rem;">
@@ -261,7 +275,7 @@
         </div>
         <pre id="optionMapBlock" style="background: var(--bg-color); color: var(--text-primary); padding: 1rem;
              border-radius: 0.5rem; border: 1px solid var(--border-color); font-family: monospace;
-             white-space: pre; overflow-x: auto; font-size: 0.85rem;">{{ option_map_text }}</pre>
+             white-space: pre; overflow-x: auto; font-size: 0.85rem; max-height:300px;">{{ option_map_text }}</pre>
     </div>
 
     <script>

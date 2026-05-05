@@ -3019,20 +3019,58 @@ def config():
     oplab_interval  = Settings.get_value('oplab_interval',    user_id=current_user.id, default='5')
     oplab_token_ok  = bool(Settings.get_value('oplab_token',  user_id=current_user.id))
 
-    # Generate TICKER_MAP and OPTION_MAP for mt5_feeder/config.py
-    user_assets = Asset.query.filter(
-        Asset.user_id == current_user.id,
-        Asset.quantity > 0
-    ).order_by(Asset.type, Asset.ticker).all()
+    # ── Gera TICKER_MAP e OPTION_MAP completos para mt5_feeder/config.py ────────
+    uid = current_user.id
 
-    ticker_map_lines = [f'    "{a.ticker}": "{a.ticker}",  # {a.type}' for a in user_assets]
+    # TICKER_MAP: todos os ativos em carteira (qty > 0) + subjacentes de opções/estruturadas
+    asset_tickers = {
+        (a.ticker.upper(), a.type)
+        for a in Asset.query.filter(Asset.user_id == uid, Asset.quantity > 0).all()
+    }
+    # Subjacentes de Options abertas (não necessariamente em carteira, ex: BEEF3, TAEE11)
+    for o in Option.query.filter_by(user_id=uid).all():
+        if o.underlying_asset:
+            asset_tickers.add((o.underlying_asset.upper(), 'ACAO'))
+    # Subjacentes de StructuredOp abertas
+    for op in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all():
+        if op.underlying_asset:
+            asset_tickers.add((op.underlying_asset.upper(), 'ACAO'))
+    # Subjacentes de PutSale
+    for ps in PutSale.query.filter_by(user_id=uid).all():
+        if ps.underlying_asset:
+            asset_tickers.add((ps.underlying_asset.upper(), 'ACAO'))
+
+    ticker_map_lines = sorted(
+        [f'    "{t}": "{t}",  # {tp}' for t, tp in asset_tickers],
+        key=lambda x: x.strip()
+    )
     ticker_map_text = "TICKER_MAP = {\n" + "\n".join(ticker_map_lines) + "\n}"
 
-    user_options = Option.query.filter_by(user_id=current_user.id).order_by(Option.ticker).all()
-    option_map_lines = [
-        f'    "{o.ticker}": "{o.ticker}",  # {o.underlying_asset} | venc {o.expiration_date.strftime("%d/%m/%Y")}'
-        for o in user_options
-    ]
+    # OPTION_MAP: Options abertas + pernas de StructuredOp + tickers de PutSale
+    option_tickers = {}  # ticker -> info str
+
+    for o in Option.query.filter_by(user_id=uid).all():
+        if o.ticker:
+            exp_str = o.expiration_date.strftime('%d/%m/%Y') if o.expiration_date else '?'
+            option_tickers[o.ticker.upper()] = f'{o.underlying_asset} | venc {exp_str}'
+
+    for op in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all():
+        for leg in op.legs:
+            if leg.ticker:
+                exp_str = leg.expiration_date.strftime('%d/%m/%Y') if leg.expiration_date else '?'
+                option_tickers[leg.ticker.upper()] = (
+                    f'{op.underlying_asset} | {leg.opt_type} K={leg.strike:.2f} | venc {exp_str}'
+                )
+
+    for ps in PutSale.query.filter_by(user_id=uid).all():
+        if ps.ticker:
+            exp_str = ps.expiration_date.strftime('%d/%m/%Y') if ps.expiration_date else '?'
+            option_tickers[ps.ticker.upper()] = f'{ps.underlying_asset} | PUT K={ps.strike:.2f} | venc {exp_str}'
+
+    option_map_lines = sorted(
+        [f'    "{t}": "{t}",  # {info}' for t, info in option_tickers.items()],
+        key=lambda x: x.strip()
+    )
     option_map_text = "OPTION_MAP = {\n" + "\n".join(option_map_lines) + "\n}"
 
     return render_template('config.html',
@@ -3044,6 +3082,104 @@ def config():
                            ticker_map_text=ticker_map_text,
                            option_map_text=option_map_text,
                            selic_rate=selic_rate)
+
+@app.route('/download_config_py')
+@login_required
+def download_config_py():
+    """Gera e retorna o arquivo config.py completo para o mt5_feeder."""
+    from flask import Response
+    uid = current_user.id
+
+    # Reutiliza a mesma lógica de geração dos mapas
+    asset_tickers = {
+        (a.ticker.upper(), a.type)
+        for a in Asset.query.filter(Asset.user_id == uid, Asset.quantity > 0).all()
+    }
+    for o in Option.query.filter_by(user_id=uid).all():
+        if o.underlying_asset:
+            asset_tickers.add((o.underlying_asset.upper(), 'ACAO'))
+    for op in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all():
+        if op.underlying_asset:
+            asset_tickers.add((op.underlying_asset.upper(), 'ACAO'))
+    for ps in PutSale.query.filter_by(user_id=uid).all():
+        if ps.underlying_asset:
+            asset_tickers.add((ps.underlying_asset.upper(), 'ACAO'))
+
+    ticker_lines = sorted(
+        [f'    "{t}": "{t}",  # {tp}' for t, tp in asset_tickers],
+        key=lambda x: x.strip()
+    )
+
+    option_tickers = {}
+    for o in Option.query.filter_by(user_id=uid).all():
+        if o.ticker:
+            exp_str = o.expiration_date.strftime('%d/%m/%Y') if o.expiration_date else '?'
+            option_tickers[o.ticker.upper()] = f'{o.underlying_asset} | venc {exp_str}'
+    for op in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all():
+        for leg in op.legs:
+            if leg.ticker:
+                exp_str = leg.expiration_date.strftime('%d/%m/%Y') if leg.expiration_date else '?'
+                option_tickers[leg.ticker.upper()] = (
+                    f'{op.underlying_asset} | {leg.opt_type} K={leg.strike:.2f} | venc {exp_str}'
+                )
+    for ps in PutSale.query.filter_by(user_id=uid).all():
+        if ps.ticker:
+            exp_str = ps.expiration_date.strftime('%d/%m/%Y') if ps.expiration_date else '?'
+            option_tickers[ps.ticker.upper()] = f'{ps.underlying_asset} | PUT K={ps.strike:.2f} | venc {exp_str}'
+
+    option_lines = sorted(
+        [f'    "{t}": "{t}",  # {info}' for t, info in option_tickers.items()],
+        key=lambda x: x.strip()
+    )
+
+    api_url = request.host_url.rstrip('/') + '/api/update_quotes'
+    mt5_key = Settings.get_value('mt5_api_key', user_id=uid, default='chave_mtq5_2026') or 'chave_mtq5_2026'
+
+    content = f'''# config.py — gerado automaticamente em {datetime.now().strftime("%d/%m/%Y %H:%M")}
+# Coloque este arquivo na pasta mt5_feeder/ ao lado de mt5_feeder.py
+# NÃO compartilhe este arquivo (contém chave de API).
+
+# URL do endpoint no VPS
+API_URL = "{api_url}"
+
+# API Key — deve coincidir com MT5_API_KEY no .env do servidor
+API_KEY = "{mt5_key}"
+
+# ID do usuário no site (normalmente 1 para o admin)
+USER_ID = {uid}
+
+# Intervalo de atualização em segundos
+INTERVALO_SEGUNDOS = 30
+
+# Mapeamento: "TICKER_NO_SITE" -> "SÍMBOLO_NO_MT5"
+TICKER_MAP = {{
+{chr(10).join(ticker_lines)}
+}}
+
+# Mapeamento de opções: "TICKER_OPÇÃO" -> "SÍMBOLO_NO_MT5"
+OPTION_MAP = {{
+{chr(10).join(option_lines)}
+}}
+'''
+    return Response(
+        content,
+        mimetype='text/plain',
+        headers={'Content-Disposition': 'attachment; filename=config.py'}
+    )
+
+
+@app.route('/download_mt5_feeder_py')
+@login_required
+def download_mt5_feeder_py():
+    """Retorna o arquivo mt5_feeder.py para download direto."""
+    from flask import send_file
+    feeder_path = os.path.join(basedir, 'mt5_feeder', 'mt5_feeder.py')
+    if not os.path.exists(feeder_path):
+        flash('Arquivo mt5_feeder.py não encontrado no servidor.', 'danger')
+        return redirect(url_for('config'))
+    return send_file(feeder_path, as_attachment=True, download_name='mt5_feeder.py',
+                     mimetype='text/plain')
+
 
 @app.route('/test_api', methods=['POST'])
 @login_required

@@ -25,6 +25,9 @@
 /* Botões de ação no topo */
 .bal-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; }
 
+/* Wrapper de scroll horizontal para tabelas (sem limite de altura) */
+.table-scroll { overflow-x: auto; width: 100%; }
+
 /* Tabelas de resumo: texto centralizado, header escuro */
 .bal-table { width: 100%; font-size: .88rem; }
 .bal-table th { background: var(--table-header-bg); color: var(--text-secondary);
@@ -440,13 +443,12 @@
 
 <!-- SUMMARY SECTION -->
 <div style="margin-top:2rem;">
-        <h3 style="border-bottom:2px solid var(--border-color); padding-bottom:.5rem; margin-bottom:1rem;">Resumo e Balanceamento</h3>
-    </div>
+    <h3 style="border-bottom:2px solid var(--border-color); padding-bottom:.5rem; margin-bottom:1.5rem;">Resumo e Balanceamento</h3>
 
     <!-- Totals Table -->
-    <div style="margin-top:1rem;">
-        <h5 style="">Por Classe</h5>
-        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+    <div class="bal-section">
+        <h5>Por Classe</h5>
+        <div class="table-scroll">
             <table class="no-datatable bal-table">
                 <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                     <tr>
@@ -477,17 +479,18 @@
                 </tbody>
             </table>
         </div>
-        <!-- Class Chart -->
-        <div class="card chart-single">
-                    <div style="height:300px;">
-                        <canvas id="classChart"></canvas>
-                    </div>
-                </div>
+        <!-- Class Chart — altura maior para caber todas as legendas numa linha -->
+        <div class="card chart-single" style="margin-top:.75rem; max-width:900px;">
+            <div style="height:360px;">
+                <canvas id="classChart"></canvas>
+            </div>
+        </div>
+    </div>
 
     <!-- Maturity Summary (Detailed per Type) -->
-    <div style="margin-top:1rem;">
-        <h5 style="">Por Prazo (Detalhado Renda Fixa)</h5>
-        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+    <div class="bal-section">
+        <h5>Por Prazo (Detalhado Renda Fixa)</h5>
+        <div class="table-scroll">
             <table class="no-datatable bal-table">
                 <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                     <tr>
@@ -532,34 +535,28 @@
             </table>
         </div>
 
-        <!-- NEW RF CHARTS ROW -->
+        <!-- RF CHARTS GRID: 3 colunas desktop, 2 tablet, 1 mobile -->
         <h5 style="margin-top:1.5rem;">Gráficos Renda Fixa</h5>
         <div class="chart-grid">
-            <div class="card">
-                    <h6 style="font-size:.88rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Prazo</h6>
-                    <div style="height:260px;">
-                        <canvas id="rfTermChart"></canvas>
-                    </div>
-                </div>
-            <div class="card">
-                    <h6 style="font-size:.88rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Tipo (Categoria)</h6>
-                    <div style="height:260px;">
-                        <canvas id="rfTypeChart"></canvas>
-                    </div>
-                </div>
-            <div class="card">
-                    <h6 style="font-size:.88rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Subtipo (Detalhado)</h6>
-                    <div style="height:260px;">
-                        <canvas id="rfSubtypeChart"></canvas>
-                    </div>
-                </div>
-
+            <div class="card" style="padding:1rem;">
+                <h6 style="font-size:.82rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Prazo</h6>
+                <div style="height:260px;"><canvas id="rfTermChart"></canvas></div>
+            </div>
+            <div class="card" style="padding:1rem;">
+                <h6 style="font-size:.82rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Tipo (Categoria)</h6>
+                <div style="height:260px;"><canvas id="rfTypeChart"></canvas></div>
+            </div>
+            <div class="card" style="padding:1rem;">
+                <h6 style="font-size:.82rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Subtipo (Detalhado)</h6>
+                <div style="height:260px;"><canvas id="rfSubtypeChart"></canvas></div>
+            </div>
+        </div>
     </div>
 
     <!-- Type Summary with Chart -->
-    <div style="margin-top:1rem; margin-bottom:3rem;">
-        <h5 style="">Por Tipo</h5>
-        <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+    <div class="bal-section">
+        <h5>Por Tipo</h5>
+        <div class="table-scroll">
             <table class="no-datatable bal-table">
                 <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                     <tr>
@@ -594,12 +591,11 @@
                 </tbody>
             </table>
         </div>
-        <!-- Type Chart (Below Table) -->
-        <div class="card chart-single">
-                    <div style="height:300px;">
-                        <canvas id="typeChart"></canvas>
-                    </div>
-                </div>
+        <!-- Type Chart -->
+        <div class="card chart-single" style="margin-top:.75rem;">
+            <div style="height:300px;"><canvas id="typeChart"></canvas></div>
+        </div>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -795,9 +791,8 @@
     <h5 style="">Por Localização</h5>
 
     <!-- Table -->
-    <div class="card" style="margin-bottom:1.5rem;">
-        <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
-            <table class="no-datatable bal-table">
+    <div class="table-scroll" style="margin-bottom:1rem;">
+        <table class="no-datatable bal-table">
                 <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                     <tr>
                         <th>Localização</th>
@@ -840,14 +835,9 @@
         </div>
 
     <!-- Chart -->
-    <div>
-            <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
-                <div style="width:100%; max-width:700px; height:320px; margin:0 auto;">
-                    <canvas id="chartLocation"></canvas>
-                </div>
-            </div>
-        </div>
-</div>
+    <div class="card chart-single" style="margin-top:.75rem;">
+        <div style="height:300px;"><canvas id="chartLocation"></canvas></div>
+    </div>
 </div>
 
 <script>
@@ -973,104 +963,63 @@
             </table>
         </div>
 
-        <!-- NEW: HIERARCHY CHART CENTERED BELOW -->
-        <div>
-                <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
-                    <h5 style="font-size: 1.2rem; margin-bottom: 1rem;">Gráfico por Grandes Grupos</h5>
-                    <div style="height:260px;">
-                        <canvas id="chartHierarchy"></canvas>
-                    </div>
-                </div>
-
-    <!-- 2. EXPLODED BALANCE (CHART + TABLE STACKED) -->
-    <div style="margin-bottom:3rem;">
-        <h4 style="border-bottom:2px solid var(--border-color); padding-bottom:.5rem; margin-bottom:1rem;">Balanceamento Explodido</h4>
-
-        <!-- Table Centered -->
-        <div style="display:flex; justify-content:center;">
-            <div style="flex:8; min-width:280px;">
-                <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                    <table class="table table-dark table-sm table-striped no-datatable mb-0 table-center-forced">
-                        <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
-                            <tr>
-                                <th>Categoria</th>
-                                <th>Percentual</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for label, val in summary_exploded.items() %}
-                            <tr>
-                                <td>{{ label }}</td>
-                                <td>
-                                    {% if total_portfolio > 0 %}
-                                    {{ (val / total_portfolio * 100) | brl_fmt }}%
-                                    {% else %}
-                                    0,00%
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Chart Centered Below -->
-            <div>
-                    <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
-                        <div style="height:260px;">
-                            <canvas id="chartExploded"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-        <!-- 3. GENERAL BALANCE (CHART + TABLE STACKED) -->
-        <div style="margin-bottom:3rem;">
-            <h4 style="border-bottom:2px solid var(--border-color); padding-bottom:.5rem; margin-bottom:1rem;">Balanceamento Geral</h4>
-
-            <!-- Table Centered -->
-            <div style="display:flex; justify-content:center;">
-                <div style="flex:8; min-width:280px;">
-                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                        <table class="table table-dark table-sm table-striped no-datatable mb-0 table-center-forced">
-                            <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
-                                <tr>
-                                    <th>Categoria</th>
-                                    <th>Percentual</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for label, val in summary_general.items() %}
-                                <tr>
-                                    <td>{{ label }}</td>
-                                    <td>
-                                        {% if total_portfolio > 0 %}
-                                        {{ (val / total_portfolio * 100) | brl_fmt }}%
-                                        {% else %}
-                                        0,00%
-                                        {% endif %}
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                                <tr class="font-weight-bold border-top">
-                                    <td>TOTAL</td>
-                                    <td>100,00%</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-            <!-- Chart Centered Below -->
-            <div>
-                    <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
-                        <div style="height:260px;">
-                            <canvas id="chartGeneral"></canvas>
-                        </div>
-                    </div>
-                </div>
-
+        <!-- Hierarchy Chart -->
+        <div class="card chart-single" style="margin-top:.75rem;">
+            <h5 style="font-size:.9rem; margin-bottom:.75rem; color:var(--text-secondary);">Gráfico por Grandes Grupos</h5>
+            <div style="height:300px;"><canvas id="chartHierarchy"></canvas></div>
+        </div>
     </div>
+
+    <!-- 2. EXPLODED BALANCE -->
+    <div class="bal-section">
+        <h4 style="border-bottom:2px solid var(--border-color); padding-bottom:.5rem; margin-bottom:1rem;">Balanceamento Explodido</h4>
+        <div class="table-scroll">
+            <table class="no-datatable bal-table">
+                <thead>
+                    <tr><th>Categoria</th><th>Percentual</th></tr>
+                </thead>
+                <tbody>
+                    {% for label, val in summary_exploded.items() %}
+                    <tr>
+                        <td>{{ label }}</td>
+                        <td>{% if total_portfolio > 0 %}{{ (val / total_portfolio * 100) | brl_fmt }}%{% else %}0,00%{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card chart-single" style="margin-top:.75rem;">
+            <div style="height:300px;"><canvas id="chartExploded"></canvas></div>
+        </div>
+    </div>
+
+    <!-- 3. GENERAL BALANCE -->
+    <div class="bal-section">
+        <h4 style="border-bottom:2px solid var(--border-color); padding-bottom:.5rem; margin-bottom:1rem;">Balanceamento Geral</h4>
+        <div class="table-scroll">
+            <table class="no-datatable bal-table">
+                <thead>
+                    <tr><th>Categoria</th><th>Percentual</th></tr>
+                </thead>
+                <tbody>
+                    {% for label, val in summary_general.items() %}
+                    <tr>
+                        <td>{{ label }}</td>
+                        <td>{% if total_portfolio > 0 %}{{ (val / total_portfolio * 100) | brl_fmt }}%{% else %}0,00%{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="total-row">
+                        <td>TOTAL</td>
+                        <td>100,00%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="card chart-single" style="margin-top:.75rem;">
+            <div style="height:300px;"><canvas id="chartGeneral"></canvas></div>
+        </div>
+    </div>
+</div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {

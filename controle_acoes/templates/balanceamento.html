@@ -1,71 +1,13 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-<style>
-    /* Force Dark Theme Override */
-    body {
-        background-color: var(--bg-color) !important;
-        color: var(--text-primary) !important;
-    }
 
-    .card {
-        background-color: var(--card-bg) !important;
-        color: var(--text-primary) !important;
-        border-color: var(--border-color) !important;
-    }
-
-    .modal-content {
-        background-color: var(--card-bg);
-        color: var(--text-primary);
-        border: 1px solid var(--border-color);
-    }
-
-    .modal-header,
-    .modal-footer {
-        border-color: var(--border-color);
-    }
-
-    .form-control,
-    .form-select {
-        background-color: var(--input-bg);
-        /* Slate 700 */
-        color: #fff;
-        border-color: #475569;
-    }
-
-    .form-control:focus,
-    .form-select:focus {
-        background-color: var(--input-bg);
-        color: #fff;
-        border-color: var(--accent-color);
-        box-shadow: 0 0 0 0.25rem rgba(59, 130, 246, 0.25);
-    }
-
-    /* Fix table transparency */
-    .table {
-        color: var(--text-primary) !important;
-    }
-
-    .table-center-forced th,
-    .table-center-forced td {
-        text-align: center !important;
-        vertical-align: middle !important;
-    }
-</style>
-
-<div class="row mb-4">
-    <div class="col-12">
         <h2 class="text-white"><i class="fas fa-balance-scale"></i> Balanceamento de Carteira</h2>
     </div>
 </div>
 
 <!-- Add Buttons Row -->
-<div class="row mb-4">
-    <div class="col-12">
         <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#modalRFC"><i
                 class="fas fa-plus"></i> Renda Fixa Pós</button>
         <button class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#modalRFP"><i
@@ -88,12 +30,10 @@
 </div>
 
 <!-- RENDA FIXA TABLES -->
-<div class="row">
     <!-- POS FIXADA -->
-    <div class="col-12 mb-4">
-        <div class="card bg-dark text-white border-primary">
+        <div class="card">
             <div
-                class="card-header bg-primary text-white font-weight-bold d-flex justify-content-between align-items-center">
+                class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Renda Fixa Pós-Fixada</span>
                 <button class="btn btn-sm btn-light text-primary" data-bs-toggle="modal" data-bs-target="#modalRFC">
                     <i class="fas fa-plus"></i> Adicionar
@@ -145,10 +85,9 @@
     </div>
 
     <!-- PRE FIXADA -->
-    <div class="col-12 mb-4">
-        <div class="card bg-dark text-white border-warning">
+        <div class="card">
             <div
-                class="card-header bg-warning text-dark font-weight-bold d-flex justify-content-between align-items-center">
+                class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Renda Fixa Pré-Fixada</span>
                 <button class="btn btn-sm btn-dark text-warning" data-bs-toggle="modal" data-bs-target="#modalRFP">
                     <i class="fas fa-plus"></i> Adicionar
@@ -200,10 +139,9 @@
     </div>
 
     <!-- IPCA -->
-    <div class="col-12 mb-4">
-        <div class="card bg-dark text-white border-danger">
+        <div class="card">
             <div
-                class="card-header bg-danger text-white font-weight-bold d-flex justify-content-between align-items-center">
+                class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Renda Fixa Inflação (IPCA)</span>
                 <button class="btn btn-sm btn-light text-danger" data-bs-toggle="modal" data-bs-target="#modalRFI">
                     <i class="fas fa-plus"></i> Adicionar
@@ -256,12 +194,10 @@
 </div>
 
 <!-- FUNDS & OTHERS -->
-<div class="row">
     <!-- FUNDOS -->
-    <div class="col-12 mb-4">
-        <div class="card bg-dark text-white border-info">
+        <div class="card">
             <div
-                class="card-header bg-info text-white font-weight-bold d-flex justify-content-between align-items-center">
+                class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Fundos de Investimento</span>
                 <button class="btn btn-sm btn-light text-info" data-bs-toggle="modal" data-bs-target="#modalFund">
                     <i class="fas fa-plus"></i> Adicionar
@@ -311,8 +247,7 @@
     </div>
 
     <!-- CRIPTO -->
-    <div class="col-12 mb-4">
-        <div class="card bg-dark text-white border-secondary">
+        <div class="card">
             <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
                 <span>Criptoativos</span>
                 <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalCrypto">
@@ -384,12 +319,10 @@
     </div>
 </div>
 
-<div class="row">
     <!-- PREVIDENCIA -->
-    <div class="col-12 mb-4">
-        <div class="card bg-dark text-white border-success">
+        <div class="card">
             <div
-                class="card-header bg-success text-white font-weight-bold d-flex justify-content-between align-items-center">
+                class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Previdência</span>
                 <button class="btn btn-sm btn-light text-success" data-bs-toggle="modal" data-bs-target="#modalPension">
                     <i class="fas fa-plus"></i> Adicionar
@@ -492,13 +425,12 @@
 </div>
 
 <!-- SUMMARY SECTION -->
-<div class="row mt-5">
-    <div class="col-12">
+<div style="margin-top:2rem;">
         <h3 class="text-white border-bottom pb-2">Resumo e Balanceamento</h3>
     </div>
 
     <!-- Totals Table -->
-    <div class="col-12 mt-3">
+    <div style="margin-top:1rem;">
         <h5 class="text-white mb-2">Por Classe</h5>
         <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
             <table class="table table-dark table-bordered table-sm no-datatable table-center-forced">
@@ -532,8 +464,8 @@
             </table>
         </div>
         <!-- Class Chart -->
-        <div class="row justify-content-center mt-3">
-            <div class="col-12 col-md-8 text-center">
+        <div style="display:flex; justify-content:center; margin-top:1rem;">
+            <div style="text-align:center;">
                 <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
                     <div style="max-width: 500px; width: 100%; height: 300px;">
                         <canvas id="classChart"></canvas>
@@ -544,7 +476,7 @@
     </div>
 
     <!-- Maturity Summary (Detailed per Type) -->
-    <div class="col-12 mt-3">
+    <div style="margin-top:1rem;">
         <h5 class="text-white mb-2">Por Prazo (Detalhado Renda Fixa)</h5>
         <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
             <table class="table table-dark table-bordered table-sm no-datatable table-center-forced">
@@ -593,8 +525,8 @@
 
         <!-- NEW RF CHARTS ROW -->
         <h5 class="text-white mt-4 mb-2">Gráficos Renda Fixa</h5>
-        <div class="row justify-content-center mb-3">
-            <div class="col-12 col-md-8 text-center mb-4">
+        <div style="display:flex; justify-content:center; margin-bottom:1rem;">
+            <div style="text-align:center;">
                 <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
                     <h6 style="font-size: 1.2rem; margin-bottom: 1rem;">Por Prazo</h6>
                     <div style="max-width: 500px; width: 100%; height: 300px;">
@@ -602,7 +534,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-12 col-md-8 text-center mb-4">
+            <div style="text-align:center;">
                 <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
                     <h6 style="font-size: 1.2rem; margin-bottom: 1rem;">Por Tipo (Categoria)</h6>
                     <div style="max-width: 500px; width: 100%; height: 300px;">
@@ -610,7 +542,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-12 col-md-8 text-center mb-4">
+            <div style="text-align:center;">
                 <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
                     <h6 style="font-size: 1.2rem; margin-bottom: 1rem;">Por Subtipo (Detalhado)</h6>
                     <div style="max-width: 500px; width: 100%; height: 300px;">
@@ -623,7 +555,7 @@
     </div>
 
     <!-- Type Summary with Chart -->
-    <div class="col-12 mt-3 mb-5">
+    <div style="margin-top:1rem; margin-bottom:3rem;">
         <h5 class="text-white mb-2">Por Tipo</h5>
         <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
             <table class="table table-dark table-bordered table-sm no-datatable table-center-forced">
@@ -661,8 +593,8 @@
             </table>
         </div>
         <!-- Type Chart (Below Table) -->
-        <div class="row justify-content-center mt-3">
-            <div class="col-12 col-md-8 text-center">
+        <div style="display:flex; justify-content:center; margin-top:1rem;">
+            <div style="text-align:center;">
                 <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
                     <div style="max-width: 500px; width: 100%; height: 300px;">
                         <canvas id="typeChart"></canvas>
@@ -862,11 +794,11 @@
 
 <!-- LOCATION BREAKDOWN -->
 <!-- Stacked Layout: Table Top, Chart Bottom -->
-<div class="col-12 mt-5 mb-5">
+<div style="margin-top:2rem; margin-bottom:3rem;">
     <h5 class="text-white mb-2">Por Localização</h5>
 
     <!-- Table -->
-    <div class="card bg-dark text-white border-secondary mb-4">
+    <div class="card" style="margin-bottom:1.5rem;">
         <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
             <table class="table table-dark table-striped mb-0 table-center-forced">
                 <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
@@ -912,8 +844,8 @@
     </div>
 
     <!-- Chart -->
-    <div class="row justify-content-center mt-3">
-        <div class="col-12 col-md-8 text-center">
+    <div style="display:flex; justify-content:center; margin-top:1rem;">
+        <div style="text-align:center;">
             <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
                 <div style="max-width: 500px; width: 100%;">
                     <canvas id="chartLocation"></canvas>
@@ -992,10 +924,10 @@
 </script>
 
 <!-- NEW SUMMARIES (HIERARCHY / EXPLODED / GENERAL) -->
-<div class="row mt-5">
+<div style="margin-top:2rem;">
 
     <!-- 1. HIERARCHY TABLE -->
-    <div class="col-12 mb-5">
+    <div style="margin-bottom:3rem;">
         <h4 class="text-white border-bottom pb-2">Somatório Geral (Detalhado)</h4>
         <div class="table-responsive">
             <table class="table table-dark table-bordered table-sm no-datatable table-center-forced align-middle">
@@ -1048,8 +980,8 @@
         </div>
 
         <!-- NEW: HIERARCHY CHART CENTERED BELOW -->
-        <div class="row justify-content-center mt-4">
-            <div class="col-12 col-md-8 text-center">
+        <div style="display:flex; justify-content:center; margin-top:1.5rem;">
+            <div style="text-align:center;">
                 <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
                     <h5 style="font-size: 1.2rem; margin-bottom: 1rem;">Gráfico por Grandes Grupos</h5>
                     <div style="max-width: 500px; width: 100%; height: 300px;">
@@ -1061,12 +993,12 @@
     </div>
 
     <!-- 2. EXPLODED BALANCE (CHART + TABLE STACKED) -->
-    <div class="col-12 mb-5">
+    <div style="margin-bottom:3rem;">
         <h4 class="text-white border-bottom pb-2">Balanceamento Explodido</h4>
 
         <!-- Table Centered -->
-        <div class="row justify-content-center">
-            <div class="col-md-8">
+        <div style="display:flex; justify-content:center;">
+            <div style="flex:8; min-width:280px;">
                 <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                     <table class="table table-dark table-sm table-striped no-datatable mb-0 table-center-forced">
                         <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
@@ -1094,8 +1026,8 @@
             </div>
 
             <!-- Chart Centered Below -->
-            <div class="row justify-content-center mt-4">
-                <div class="col-12 col-md-8 text-center">
+            <div style="display:flex; justify-content:center; margin-top:1.5rem;">
+                <div style="text-align:center;">
                     <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
                         <div style="max-width: 500px; width: 100%; height: 300px;">
                             <canvas id="chartExploded"></canvas>
@@ -1106,12 +1038,12 @@
         </div>
 
         <!-- 3. GENERAL BALANCE (CHART + TABLE STACKED) -->
-        <div class="col-12 mb-5">
+        <div style="margin-bottom:3rem;">
             <h4 class="text-white border-bottom pb-2">Balanceamento Geral</h4>
 
             <!-- Table Centered -->
-            <div class="row justify-content-center">
-                <div class="col-md-8">
+            <div style="display:flex; justify-content:center;">
+                <div style="flex:8; min-width:280px;">
                     <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
                         <table class="table table-dark table-sm table-striped no-datatable mb-0 table-center-forced">
                             <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
@@ -1144,8 +1076,8 @@
             </div>
 
             <!-- Chart Centered Below -->
-            <div class="row justify-content-center mt-4">
-                <div class="col-12 col-md-8 text-center">
+            <div style="display:flex; justify-content:center; margin-top:1.5rem;">
+                <div style="text-align:center;">
                     <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
                         <div style="max-width: 500px; width: 100%; height: 300px;">
                             <canvas id="chartGeneral"></canvas>

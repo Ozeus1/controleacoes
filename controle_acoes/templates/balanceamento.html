@@ -428,11 +428,18 @@
         box-shadow: none !important;
     }
 
-    /* Cards compactos: largura máxima no desktop */
+    /* Cards compactos: centralizados e com largura ajustada ao conteúdo no desktop */
     @media (min-width: 992px) {
-        .card-narrow { max-width: fit-content; min-width: 600px; }
-        .card-narrow .dataTables_wrapper,
+        .card-narrow {
+            width: fit-content !important;
+            min-width: 700px;
+            max-width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .card-narrow .dataTables_wrapper { width: 100% !important; }
         .card-narrow .table-scroll { width: 100% !important; }
+        .card-narrow table { width: 100% !important; min-width: unset !important; }
     }
 
     /* Sem freeze na 1ª coluna nas tabelas desta página */

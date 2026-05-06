@@ -246,7 +246,7 @@
                 </button>
             </div>
             <div class="card-body p-0 table-responsive">
-                <table class="table table-dark table-striped mb-0 table-center-forced align-middle">
+                <table id="tbl-fundos" class="table table-dark table-striped mb-0 table-center-forced align-middle">
                     <thead>
                         <tr>
                             <th>Banco</th>
@@ -296,7 +296,7 @@
                 </button>
             </div>
             <div class="card-body p-0 table-responsive">
-                <table class="table table-dark table-striped mb-0 table-center-forced align-middle">
+                <table id="tbl-cripto" class="table table-dark table-striped mb-0 table-center-forced align-middle">
                     <thead>
                         <tr>
                             <th>Exchange</th>
@@ -369,7 +369,7 @@
                 </button>
             </div>
             <div class="card-body p-0 table-responsive">
-                <table class="table table-dark table-striped mb-0 table-center-forced align-middle">
+                <table id="tbl-prev" class="table table-dark table-striped mb-0 table-center-forced align-middle">
                     <thead>
                         <tr>
                             <th>Inst.</th>
@@ -426,6 +426,23 @@
     .bal-table thead th:first-child {
         position: static !important;
         box-shadow: none !important;
+    }
+
+    /* Desabilitar freeze nas tabelas de detalhe desta página */
+    #tbl-fundos thead th:first-child, #tbl-fundos tbody td:first-child,
+    #tbl-cripto thead th:first-child, #tbl-cripto tbody td:first-child,
+    #tbl-prev  thead th:first-child, #tbl-prev  tbody td:first-child {
+        position: static !important;
+        left: unset !important;
+        box-shadow: none !important;
+        border-right: none !important;
+    }
+    /* Restaurar fundo correto na 1ª coluna do corpo (striped Bootstrap) */
+    #tbl-fundos tbody td:first-child,
+    #tbl-cripto tbody td:first-child,
+    #tbl-prev  tbody td:first-child {
+        background-color: inherit !important;
+        background: inherit !important;
     }
 </style>
 

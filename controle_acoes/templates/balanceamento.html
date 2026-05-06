@@ -237,7 +237,7 @@
 
 <!-- FUNDS & OTHERS -->
     <!-- FUNDOS -->
-        <div class="card">
+        <div class="card card-narrow">
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Fundos de Investimento</span>
@@ -288,7 +288,7 @@
         </div>
 
     <!-- CRIPTO -->
-        <div class="card">
+        <div class="card card-narrow">
             <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
                 <span>Criptoativos</span>
                 <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalCrypto">
@@ -360,7 +360,7 @@
 </div>
 
     <!-- PREVIDENCIA -->
-        <div class="card">
+        <div class="card card-narrow">
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Previdência</span>
@@ -426,6 +426,13 @@
     .bal-table thead th:first-child {
         position: static !important;
         box-shadow: none !important;
+    }
+
+    /* Cards compactos: largura máxima no desktop */
+    @media (min-width: 992px) {
+        .card-narrow { max-width: fit-content; min-width: 600px; }
+        .card-narrow .dataTables_wrapper,
+        .card-narrow .table-scroll { width: 100% !important; }
     }
 
     /* Sem freeze na 1ª coluna nas tabelas desta página */

@@ -28,15 +28,17 @@
 /* Wrapper de scroll horizontal para tabelas (sem limite de altura) */
 .table-scroll { overflow-x: auto; width: 100%; }
 
-/* Tabelas de resumo: texto centralizado, header escuro */
-.bal-table { width: 100%; font-size: .88rem; }
+/* Tabelas de resumo: compactas, centralizado */
+.bal-table { width: auto; font-size: .88rem; border-collapse: collapse; }
 .bal-table th { background: var(--table-header-bg); color: var(--text-secondary);
                 font-size: .75rem; text-transform: uppercase; padding: .5rem .75rem;
                 text-align: center; white-space: nowrap; }
 .bal-table td { padding: .45rem .75rem; text-align: center;
-                border-bottom: 1px solid var(--border-color); }
-.bal-table td:first-child { text-align: left; }
+                border-bottom: 1px solid var(--border-color); white-space: nowrap; }
 .bal-table .total-row { font-weight: 700; background: var(--total-row-bg); }
+
+/* Wrapper que centraliza tabelas compactas */
+.bal-table-wrap { display: flex; justify-content: flex-start; overflow-x: auto; }
 </style>
 
 <h2 style="margin-bottom:1.5rem;">⚖️ Balanceamento de Carteira</h2>
@@ -448,13 +450,13 @@
     <!-- Totals Table -->
     <div class="bal-section">
         <h5>Por Classe</h5>
-        <div class="table-scroll">
-            <table class="no-datatable bal-table">
-                <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
+        <div class="bal-table-wrap">
+        <table class="no-datatable bal-table">
+                <thead>
                     <tr>
                         <th>Classe</th>
                         <th>Valor</th>
-                        <th>Percentual</th>
+                        <th>%</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -478,7 +480,7 @@
                     </tr>
                 </tbody>
             </table>
-        </div>
+        </div><!-- /bal-table-wrap -->
         <!-- Class Chart — altura maior para caber todas as legendas numa linha -->
         <div class="card chart-single" style="margin-top:.75rem; max-width:900px;">
             <div style="height:360px;">
@@ -490,14 +492,14 @@
     <!-- Maturity Summary (Detailed per Type) -->
     <div class="bal-section">
         <h5>Por Prazo (Detalhado Renda Fixa)</h5>
-        <div class="table-scroll">
-            <table class="no-datatable bal-table">
-                <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
+        <div class="bal-table-wrap">
+        <table class="no-datatable bal-table">
+                <thead>
                     <tr>
                         <th>Categoria</th>
                         <th>Prazo</th>
                         <th>Valor</th>
-                        <th>Percentual</th>
+                        <th>%</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -533,7 +535,7 @@
                     </tr>
                 </tbody>
             </table>
-        </div>
+        </div><!-- /bal-table-wrap -->
 
         <!-- RF CHARTS: empilhados verticalmente -->
         <h5 style="margin-top:1.5rem;">Gráficos Renda Fixa</h5>
@@ -554,13 +556,13 @@
     <!-- Type Summary with Chart -->
     <div class="bal-section">
         <h5>Por Tipo</h5>
-        <div class="table-scroll">
-            <table class="no-datatable bal-table">
-                <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
+        <div class="bal-table-wrap">
+        <table class="no-datatable bal-table">
+                <thead>
                     <tr>
                         <th>Tipo</th>
                         <th>Valor</th>
-                        <th>Percentual</th>
+                        <th>%</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -588,7 +590,7 @@
                     </tr>
                 </tbody>
             </table>
-        </div>
+        </div><!-- /bal-table-wrap -->
         <!-- Type Chart -->
         <div class="card chart-single" style="margin-top:.75rem;">
             <div style="height:300px;"><canvas id="typeChart"></canvas></div>
@@ -789,13 +791,13 @@
     <h5 style="">Por Localização</h5>
 
     <!-- Table -->
-    <div class="table-scroll" style="margin-bottom:1rem;">
+    <div class="bal-table-wrap" style="margin-bottom:1rem;">
         <table class="no-datatable bal-table">
-                <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
+                <thead>
                     <tr>
                         <th>Localização</th>
-                        <th>Valor Total</th>
-                        <th>Percentual</th>
+                        <th>Valor</th>
+                        <th>%</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -830,7 +832,7 @@
                     </tr>
                 </tfoot>
             </table>
-        </div>
+        </div><!-- /bal-table-wrap -->
 
     <!-- Chart -->
     <div class="card chart-single" style="margin-top:.75rem;">
@@ -911,15 +913,15 @@
     <!-- 1. HIERARCHY TABLE -->
     <div style="margin-bottom:3rem;">
         <h4 style="border-bottom:2px solid var(--border-color); padding-bottom:.5rem; margin-bottom:1rem;">Somatório Geral (Detalhado)</h4>
-        <div class="table-responsive">
-            <table class="table table-dark table-bordered table-sm no-datatable table-center-forced align-middle">
+        <div class="bal-table-wrap">
+            <table class="no-datatable bal-table">
                 <thead>
                     <tr>
                         <th>Grupo</th>
                         <th>Categoria</th>
                         <th>Valor</th>
-                        <th>Percentual Parcial</th>
-                        <th>Percentual Geral</th>
+                        <th>% Parcial</th>
+                        <th>% Geral</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -959,7 +961,7 @@
                     </tr>
                 </tbody>
             </table>
-        </div>
+        </div><!-- /bal-table-wrap -->
 
         <!-- Hierarchy Chart -->
         <div class="card chart-single" style="margin-top:.75rem;">
@@ -971,10 +973,10 @@
     <!-- 2. EXPLODED BALANCE -->
     <div class="bal-section">
         <h4 style="border-bottom:2px solid var(--border-color); padding-bottom:.5rem; margin-bottom:1rem;">Balanceamento Explodido</h4>
-        <div class="table-scroll">
+        <div class="bal-table-wrap">
             <table class="no-datatable bal-table">
                 <thead>
-                    <tr><th>Categoria</th><th>Percentual</th></tr>
+                    <tr><th>Categoria</th><th>%</th></tr>
                 </thead>
                 <tbody>
                     {% for label, val in summary_exploded.items() %}
@@ -985,7 +987,7 @@
                     {% endfor %}
                 </tbody>
             </table>
-        </div>
+        </div><!-- /bal-table-wrap -->
         <div class="card chart-single" style="margin-top:.75rem;">
             <div style="height:300px;"><canvas id="chartExploded"></canvas></div>
         </div>
@@ -994,10 +996,10 @@
     <!-- 3. GENERAL BALANCE -->
     <div class="bal-section">
         <h4 style="border-bottom:2px solid var(--border-color); padding-bottom:.5rem; margin-bottom:1rem;">Balanceamento Geral</h4>
-        <div class="table-scroll">
+        <div class="bal-table-wrap">
             <table class="no-datatable bal-table">
                 <thead>
-                    <tr><th>Categoria</th><th>Percentual</th></tr>
+                    <tr><th>Categoria</th><th>%</th></tr>
                 </thead>
                 <tbody>
                     {% for label, val in summary_general.items() %}
@@ -1012,7 +1014,7 @@
                     </tr>
                 </tbody>
             </table>
-        </div>
+        </div><!-- /bal-table-wrap -->
         <div class="card chart-single" style="margin-top:.75rem;">
             <div style="height:300px;"><canvas id="chartGeneral"></canvas></div>
         </div>

@@ -1327,6 +1327,81 @@ def delete_estruturada(id):
 def _selic():
     return float(Settings.get_value('selic_rate', user_id=current_user.id, default='14.5'))
 
+
+def _build_ticker_maps(uid):
+    """
+    Constrói TICKER_MAP e OPTION_MAP apenas com ativos/opções ATIVOS:
+    - Ativos em carteira com qty > 0
+    - Options cadastradas em /opcoes (sem filtro de data — o usuário exclui quando fecha)
+    - Pernas de StructuredOp com status='OPEN'
+    - PutSale com vencimento >= hoje
+    - Subjacentes de todas as acima
+    Retorna (asset_tickers: set, option_tickers: dict, ticker_map_text: str, option_map_text: str)
+    """
+    today = date.today()
+
+    # ── TICKER_MAP ──────────────────────────────────────────────────────────────
+    asset_tickers = {
+        (a.ticker.upper(), a.type)
+        for a in Asset.query.filter(Asset.user_id == uid, Asset.quantity > 0).all()
+    }
+
+    # Subjacentes de Options ativas (com vencimento >= hoje ou sem data)
+    for o in Option.query.filter_by(user_id=uid).all():
+        if o.underlying_asset:
+            if not o.expiration_date or o.expiration_date >= today:
+                asset_tickers.add((o.underlying_asset.upper(), 'ACAO'))
+
+    # Subjacentes de StructuredOp ABERTAS
+    for op in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all():
+        if op.underlying_asset:
+            asset_tickers.add((op.underlying_asset.upper(), 'ACAO'))
+
+    # Subjacentes de PutSale com vencimento >= hoje
+    for ps in PutSale.query.filter_by(user_id=uid).all():
+        if ps.underlying_asset and ps.expiration_date >= today:
+            asset_tickers.add((ps.underlying_asset.upper(), 'ACAO'))
+
+    # ── OPTION_MAP ──────────────────────────────────────────────────────────────
+    option_tickers = {}
+
+    # Options ativas (vencimento >= hoje)
+    for o in Option.query.filter_by(user_id=uid).all():
+        if o.ticker and (not o.expiration_date or o.expiration_date >= today):
+            exp_str = o.expiration_date.strftime('%d/%m/%Y') if o.expiration_date else '?'
+            option_tickers[o.ticker.upper()] = f'{o.underlying_asset} | venc {exp_str}'
+
+    # Pernas de StructuredOp ABERTAS (vencimento >= hoje)
+    for op in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all():
+        for leg in op.legs:
+            if leg.ticker and (not leg.expiration_date or leg.expiration_date >= today):
+                exp_str = leg.expiration_date.strftime('%d/%m/%Y') if leg.expiration_date else '?'
+                option_tickers[leg.ticker.upper()] = (
+                    f'{op.underlying_asset} | {leg.opt_type} K={leg.strike:.2f} | venc {exp_str}'
+                )
+
+    # PutSale com vencimento >= hoje
+    for ps in PutSale.query.filter_by(user_id=uid).all():
+        if ps.ticker and ps.expiration_date >= today:
+            exp_str = ps.expiration_date.strftime('%d/%m/%Y')
+            option_tickers[ps.ticker.upper()] = (
+                f'{ps.underlying_asset} | PUT K={ps.strike:.2f} | venc {exp_str}'
+            )
+
+    # ── Formata textos para exibição ────────────────────────────────────────────
+    ticker_map_lines = sorted(
+        [f'    "{t}": "{t}",  # {tp}' for t, tp in asset_tickers],
+        key=lambda x: x.strip()
+    )
+    option_map_lines = sorted(
+        [f'    "{t}": "{t}",  # {info}' for t, info in option_tickers.items()],
+        key=lambda x: x.strip()
+    )
+    ticker_map_text = "TICKER_MAP = {\n" + "\n".join(ticker_map_lines) + "\n}"
+    option_map_text = "OPTION_MAP = {\n" + "\n".join(option_map_lines) + "\n}"
+
+    return asset_tickers, option_tickers, ticker_map_text, option_map_text
+
 @app.route('/simulacao_opcoes')
 @login_required
 def simulacao_opcoes():
@@ -3035,59 +3110,8 @@ def config():
     oplab_interval  = Settings.get_value('oplab_interval',    user_id=current_user.id, default='5')
     oplab_token_ok  = bool(Settings.get_value('oplab_token',  user_id=current_user.id))
 
-    # ── Gera TICKER_MAP e OPTION_MAP completos para mt5_feeder/config.py ────────
     uid = current_user.id
-
-    # TICKER_MAP: todos os ativos em carteira (qty > 0) + subjacentes de opções/estruturadas
-    asset_tickers = {
-        (a.ticker.upper(), a.type)
-        for a in Asset.query.filter(Asset.user_id == uid, Asset.quantity > 0).all()
-    }
-    # Subjacentes de Options abertas (não necessariamente em carteira, ex: BEEF3, TAEE11)
-    for o in Option.query.filter_by(user_id=uid).all():
-        if o.underlying_asset:
-            asset_tickers.add((o.underlying_asset.upper(), 'ACAO'))
-    # Subjacentes de StructuredOp abertas
-    for op in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all():
-        if op.underlying_asset:
-            asset_tickers.add((op.underlying_asset.upper(), 'ACAO'))
-    # Subjacentes de PutSale
-    for ps in PutSale.query.filter_by(user_id=uid).all():
-        if ps.underlying_asset:
-            asset_tickers.add((ps.underlying_asset.upper(), 'ACAO'))
-
-    ticker_map_lines = sorted(
-        [f'    "{t}": "{t}",  # {tp}' for t, tp in asset_tickers],
-        key=lambda x: x.strip()
-    )
-    ticker_map_text = "TICKER_MAP = {\n" + "\n".join(ticker_map_lines) + "\n}"
-
-    # OPTION_MAP: Options abertas + pernas de StructuredOp + tickers de PutSale
-    option_tickers = {}  # ticker -> info str
-
-    for o in Option.query.filter_by(user_id=uid).all():
-        if o.ticker:
-            exp_str = o.expiration_date.strftime('%d/%m/%Y') if o.expiration_date else '?'
-            option_tickers[o.ticker.upper()] = f'{o.underlying_asset} | venc {exp_str}'
-
-    for op in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all():
-        for leg in op.legs:
-            if leg.ticker:
-                exp_str = leg.expiration_date.strftime('%d/%m/%Y') if leg.expiration_date else '?'
-                option_tickers[leg.ticker.upper()] = (
-                    f'{op.underlying_asset} | {leg.opt_type} K={leg.strike:.2f} | venc {exp_str}'
-                )
-
-    for ps in PutSale.query.filter_by(user_id=uid).all():
-        if ps.ticker:
-            exp_str = ps.expiration_date.strftime('%d/%m/%Y') if ps.expiration_date else '?'
-            option_tickers[ps.ticker.upper()] = f'{ps.underlying_asset} | PUT K={ps.strike:.2f} | venc {exp_str}'
-
-    option_map_lines = sorted(
-        [f'    "{t}": "{t}",  # {info}' for t, info in option_tickers.items()],
-        key=lambda x: x.strip()
-    )
-    option_map_text = "OPTION_MAP = {\n" + "\n".join(option_map_lines) + "\n}"
+    _, _, ticker_map_text, option_map_text = _build_ticker_maps(uid)
 
     return render_template('config.html',
                            current_key=current_key,
@@ -3106,43 +3130,12 @@ def download_config_py():
     from flask import Response
     uid = current_user.id
 
-    # Reutiliza a mesma lógica de geração dos mapas
-    asset_tickers = {
-        (a.ticker.upper(), a.type)
-        for a in Asset.query.filter(Asset.user_id == uid, Asset.quantity > 0).all()
-    }
-    for o in Option.query.filter_by(user_id=uid).all():
-        if o.underlying_asset:
-            asset_tickers.add((o.underlying_asset.upper(), 'ACAO'))
-    for op in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all():
-        if op.underlying_asset:
-            asset_tickers.add((op.underlying_asset.upper(), 'ACAO'))
-    for ps in PutSale.query.filter_by(user_id=uid).all():
-        if ps.underlying_asset:
-            asset_tickers.add((ps.underlying_asset.upper(), 'ACAO'))
+    asset_tickers, option_tickers, _, _ = _build_ticker_maps(uid)
 
     ticker_lines = sorted(
         [f'    "{t}": "{t}",  # {tp}' for t, tp in asset_tickers],
         key=lambda x: x.strip()
     )
-
-    option_tickers = {}
-    for o in Option.query.filter_by(user_id=uid).all():
-        if o.ticker:
-            exp_str = o.expiration_date.strftime('%d/%m/%Y') if o.expiration_date else '?'
-            option_tickers[o.ticker.upper()] = f'{o.underlying_asset} | venc {exp_str}'
-    for op in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all():
-        for leg in op.legs:
-            if leg.ticker:
-                exp_str = leg.expiration_date.strftime('%d/%m/%Y') if leg.expiration_date else '?'
-                option_tickers[leg.ticker.upper()] = (
-                    f'{op.underlying_asset} | {leg.opt_type} K={leg.strike:.2f} | venc {exp_str}'
-                )
-    for ps in PutSale.query.filter_by(user_id=uid).all():
-        if ps.ticker:
-            exp_str = ps.expiration_date.strftime('%d/%m/%Y') if ps.expiration_date else '?'
-            option_tickers[ps.ticker.upper()] = f'{ps.underlying_asset} | PUT K={ps.strike:.2f} | venc {exp_str}'
-
     option_lines = sorted(
         [f'    "{t}": "{t}",  # {info}' for t, info in option_tickers.items()],
         key=lambda x: x.strip()
@@ -3151,7 +3144,7 @@ def download_config_py():
     api_url = request.host_url.rstrip('/') + '/api/update_quotes'
     mt5_key = Settings.get_value('mt5_api_key', user_id=uid, default='chave_mtq5_2026') or 'chave_mtq5_2026'
 
-    content = f'''# config.py — gerado automaticamente em {datetime.now().strftime("%d/%m/%Y %H:%M")}
+    content = f'''# config.py — gerado automaticamente em {now_brt().strftime("%d/%m/%Y %H:%M")}
 # Coloque este arquivo na pasta mt5_feeder/ ao lado de mt5_feeder.py
 # NÃO compartilhe este arquivo (contém chave de API).
 

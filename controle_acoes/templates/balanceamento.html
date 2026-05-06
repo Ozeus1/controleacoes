@@ -428,7 +428,11 @@
         box-shadow: none !important;
     }
 
-    /* Desabilitar freeze nas tabelas de detalhe desta página */
+    /* Desabilitar freeze e min-width nas tabelas de detalhe desta página */
+    #tbl-fundos, #tbl-cripto, #tbl-prev {
+        min-width: unset !important;
+        width: 100% !important;
+    }
     #tbl-fundos thead th:first-child, #tbl-fundos tbody td:first-child,
     #tbl-cripto thead th:first-child, #tbl-cripto tbody td:first-child,
     #tbl-prev  thead th:first-child, #tbl-prev  tbody td:first-child {

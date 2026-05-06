@@ -237,7 +237,7 @@
 
 <!-- FUNDS & OTHERS -->
     <!-- FUNDOS -->
-        <div class="card card-compact-tbl">
+        <div class="card">
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Fundos de Investimento</span>
@@ -288,7 +288,7 @@
         </div>
 
     <!-- CRIPTO -->
-        <div class="card card-compact-tbl">
+        <div class="card">
             <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
                 <span>Criptoativos</span>
                 <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalCrypto">
@@ -360,7 +360,7 @@
 </div>
 
     <!-- PREVIDENCIA -->
-        <div class="card card-compact-tbl">
+        <div class="card">
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Previdência</span>
@@ -428,17 +428,7 @@
         box-shadow: none !important;
     }
 
-    /* Cards com tabelas compactas: wrapper DataTables não força 100% */
-    .card-compact-tbl .dataTables_wrapper,
-    .card-compact-tbl .table-scroll { width: auto !important; }
-    .card-compact-tbl .card-body { overflow-x: auto; }
-
-    /* Tabelas Fundos/Cripto/Previdência: sem min-width forçado */
-    #tbl-fundos, #tbl-cripto, #tbl-prev {
-        min-width: unset !important;
-        width: auto !important;
-    }
-    /* Sem freeze na 1ª coluna */
+    /* Sem freeze na 1ª coluna nas tabelas desta página */
     #tbl-fundos thead th:first-child, #tbl-fundos tbody td:first-child,
     #tbl-cripto thead th:first-child, #tbl-cripto tbody td:first-child,
     #tbl-prev  thead th:first-child, #tbl-prev  tbody td:first-child {

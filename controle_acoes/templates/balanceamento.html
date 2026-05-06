@@ -535,21 +535,19 @@
             </table>
         </div>
 
-        <!-- RF CHARTS GRID: 3 colunas desktop, 2 tablet, 1 mobile -->
+        <!-- RF CHARTS: empilhados verticalmente -->
         <h5 style="margin-top:1.5rem;">Gráficos Renda Fixa</h5>
-        <div class="chart-grid">
-            <div class="card" style="padding:1rem;">
-                <h6 style="font-size:.82rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Prazo</h6>
-                <div style="height:260px;"><canvas id="rfTermChart"></canvas></div>
-            </div>
-            <div class="card" style="padding:1rem;">
-                <h6 style="font-size:.82rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Tipo (Categoria)</h6>
-                <div style="height:260px;"><canvas id="rfTypeChart"></canvas></div>
-            </div>
-            <div class="card" style="padding:1rem;">
-                <h6 style="font-size:.82rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Subtipo (Detalhado)</h6>
-                <div style="height:260px;"><canvas id="rfSubtypeChart"></canvas></div>
-            </div>
+        <div class="card chart-single" style="padding:1rem;">
+            <h6 style="font-size:.82rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Prazo</h6>
+            <div style="height:320px;"><canvas id="rfTermChart"></canvas></div>
+        </div>
+        <div class="card chart-single" style="padding:1rem;">
+            <h6 style="font-size:.82rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Tipo (Categoria)</h6>
+            <div style="height:320px;"><canvas id="rfTypeChart"></canvas></div>
+        </div>
+        <div class="card chart-single" style="padding:1rem;">
+            <h6 style="font-size:.82rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Subtipo (Detalhado)</h6>
+            <div style="height:320px;"><canvas id="rfSubtypeChart"></canvas></div>
         </div>
     </div>
 

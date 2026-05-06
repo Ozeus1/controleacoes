@@ -28,17 +28,37 @@
 /* Wrapper de scroll horizontal para tabelas (sem limite de altura) */
 .table-scroll { overflow-x: auto; width: 100%; }
 
-/* Tabelas de resumo: compactas, centralizado */
-.bal-table { width: auto; font-size: .88rem; border-collapse: collapse; }
-.bal-table th { background: var(--table-header-bg); color: var(--text-secondary);
-                font-size: .75rem; text-transform: uppercase; padding: .5rem .75rem;
-                text-align: center; white-space: nowrap; }
-.bal-table td { padding: .45rem .75rem; text-align: center;
-                border-bottom: 1px solid var(--border-color); white-space: nowrap; }
-.bal-table .total-row { font-weight: 700; background: var(--total-row-bg); }
-
-/* Wrapper que centraliza tabelas compactas */
-.bal-table-wrap { display: flex; justify-content: flex-start; overflow-x: auto; }
+/* Tabelas de resumo: compactas e centralizadas */
+.bal-table-wrap { display: flex; justify-content: center; overflow-x: auto; margin-bottom: .5rem; }
+.bal-table {
+    width: auto;
+    border-collapse: collapse;
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+    font-size: .78rem;
+    letter-spacing: .01em;
+}
+.bal-table th {
+    background: var(--table-header-bg);
+    color: var(--text-secondary);
+    font-size: .68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    padding: .35rem .7rem;
+    text-align: center;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border-color);
+}
+.bal-table td {
+    padding: .3rem .7rem;
+    text-align: center;
+    white-space: nowrap;
+    border-bottom: 1px solid var(--border-color);
+    font-variant-numeric: tabular-nums;
+}
+.bal-table tbody tr:hover { background: rgba(255,255,255,.04); }
+.bal-table .total-row td,
+.bal-table tfoot td { font-weight: 700; background: var(--total-row-bg); }
 </style>
 
 <h2 style="margin-bottom:1.5rem;">⚖️ Balanceamento de Carteira</h2>
@@ -401,13 +421,11 @@
         vertical-align: middle !important;
     }
 
-    /* Disable Sticky/Freeze First Column for this page only */
-    table.dataTable tbody td:first-child,
-    table.dataTable thead th:first-child {
+    /* Desabilitar freeze/sticky de colunas em toda esta página */
+    table tbody td:first-child,
+    table thead th:first-child {
         position: static !important;
-        background-color: transparent !important;
         box-shadow: none !important;
-        border-right: none !important;
     }
 </style>
 

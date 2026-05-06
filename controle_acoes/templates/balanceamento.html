@@ -1,32 +1,52 @@
 {% extends 'base.html' %}
 
 {% block content %}
+<style>
+/* ── Balanceamento: layout responsivo ── */
+.bal-section { margin-bottom: 2rem; }
+.bal-section h5 { font-size: .95rem; font-weight: 700; color: var(--text-secondary);
+                   text-transform: uppercase; letter-spacing: .04em; margin-bottom: .75rem; }
 
+/* Grid de gráficos: 3 colunas em desktop, 2 em tablet, 1 em mobile */
+.chart-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1rem;
+    margin-top: .75rem;
+}
+/* Gráfico único centralizado com largura total */
+.chart-single {
+    width: 100%;
+    max-width: 720px;
+    margin: .75rem auto 0;
+}
+.chart-single canvas, .chart-grid canvas { display: block; }
 
-        <h2 class="text-white"><i class="fas fa-balance-scale"></i> Balanceamento de Carteira</h2>
-    </div>
-</div>
+/* Botões de ação no topo */
+.bal-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; }
 
-<!-- Add Buttons Row -->
-        <button class="btn btn-primary me-2" data-bs-toggle="modal" data-bs-target="#modalRFC"><i
-                class="fas fa-plus"></i> Renda Fixa Pós</button>
-        <button class="btn btn-warning me-2" data-bs-toggle="modal" data-bs-target="#modalRFP"><i
-                class="fas fa-plus"></i> Renda Fixa Pré</button>
-        <button class="btn btn-danger me-2" data-bs-toggle="modal" data-bs-target="#modalRFI"><i
-                class="fas fa-plus"></i> Renda Fixa IPCA</button>
-        <button class="btn btn-info me-2" data-bs-toggle="modal" data-bs-target="#modalFund"><i class="fas fa-plus"></i>
-            Fundos</button>
-        <button class="btn btn-dark me-2" data-bs-toggle="modal" data-bs-target="#modalCrypto"><i
-                class="fas fa-coins"></i> Cripto</button>
-        <button class="btn btn-success me-2" data-bs-toggle="modal" data-bs-target="#modalPension"><i
-                class="fas fa-piggy-bank"></i> Previdência</button>
-        <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#modalIntl"><i
-                class="fas fa-globe"></i> Internacional</button>
-        <a href="{{ url_for('update_intl_quotes') }}" class="btn btn-outline-light ms-2"
-            title="Atualizar Cotações Internacionais">
-            <i class="fas fa-sync-alt"></i> Atualizar Int.
-        </a>
-    </div>
+/* Tabelas de resumo: texto centralizado, header escuro */
+.bal-table { width: 100%; font-size: .88rem; }
+.bal-table th { background: var(--table-header-bg); color: var(--text-secondary);
+                font-size: .75rem; text-transform: uppercase; padding: .5rem .75rem;
+                text-align: center; white-space: nowrap; }
+.bal-table td { padding: .45rem .75rem; text-align: center;
+                border-bottom: 1px solid var(--border-color); }
+.bal-table td:first-child { text-align: left; }
+.bal-table .total-row { font-weight: 700; background: var(--total-row-bg); }
+</style>
+
+<h2 style="margin-bottom:1.5rem;">⚖️ Balanceamento de Carteira</h2>
+
+<div class="bal-actions">
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalRFC">➕ Renda Fixa Pós</button>
+    <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#modalRFP">➕ Renda Fixa Pré</button>
+    <button class="btn btn-danger"  data-bs-toggle="modal" data-bs-target="#modalRFI">➕ Renda Fixa IPCA</button>
+    <button class="btn btn-info"    data-bs-toggle="modal" data-bs-target="#modalFund">➕ Fundos</button>
+    <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#modalCrypto">🪙 Cripto</button>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modalPension">🐷 Previdência</button>
+    <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#modalIntl">🌐 Internacional</button>
+    <a href="{{ url_for('update_intl_quotes') }}" class="btn btn-secondary">🔄 Atualizar Int.</a>
 </div>
 
 <!-- RENDA FIXA TABLES -->
@@ -82,7 +102,6 @@
                 </table>
             </div>
         </div>
-    </div>
 
     <!-- PRE FIXADA -->
         <div class="card">
@@ -136,7 +155,6 @@
                 </table>
             </div>
         </div>
-    </div>
 
     <!-- IPCA -->
         <div class="card">
@@ -190,7 +208,6 @@
                 </table>
             </div>
         </div>
-    </div>
 </div>
 
 <!-- FUNDS & OTHERS -->
@@ -244,7 +261,6 @@
                 </table>
             </div>
         </div>
-    </div>
 
     <!-- CRIPTO -->
         <div class="card">
@@ -316,7 +332,6 @@
                 </table>
             </div>
         </div>
-    </div>
 </div>
 
     <!-- PREVIDENCIA -->
@@ -367,7 +382,6 @@
                 </table>
             </div>
         </div>
-    </div>
 
     <!-- INTERNATIONAL RV Removed -->
 
@@ -426,14 +440,14 @@
 
 <!-- SUMMARY SECTION -->
 <div style="margin-top:2rem;">
-        <h3 class="text-white border-bottom pb-2">Resumo e Balanceamento</h3>
+        <h3 style="border-bottom:2px solid var(--border-color); padding-bottom:.5rem; margin-bottom:1rem;">Resumo e Balanceamento</h3>
     </div>
 
     <!-- Totals Table -->
     <div style="margin-top:1rem;">
-        <h5 class="text-white mb-2">Por Classe</h5>
+        <h5 style="">Por Classe</h5>
         <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-            <table class="table table-dark table-bordered table-sm no-datatable table-center-forced">
+            <table class="no-datatable bal-table">
                 <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                     <tr>
                         <th>Classe</th>
@@ -464,22 +478,17 @@
             </table>
         </div>
         <!-- Class Chart -->
-        <div style="display:flex; justify-content:center; margin-top:1rem;">
-            <div style="text-align:center;">
-                <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
-                    <div style="max-width: 500px; width: 100%; height: 300px;">
+        <div class="card chart-single">
+                    <div style="height:300px;">
                         <canvas id="classChart"></canvas>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Maturity Summary (Detailed per Type) -->
     <div style="margin-top:1rem;">
-        <h5 class="text-white mb-2">Por Prazo (Detalhado Renda Fixa)</h5>
+        <h5 style="">Por Prazo (Detalhado Renda Fixa)</h5>
         <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-            <table class="table table-dark table-bordered table-sm no-datatable table-center-forced">
+            <table class="no-datatable bal-table">
                 <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                     <tr>
                         <th>Categoria</th>
@@ -524,41 +533,34 @@
         </div>
 
         <!-- NEW RF CHARTS ROW -->
-        <h5 class="text-white mt-4 mb-2">Gráficos Renda Fixa</h5>
-        <div style="display:flex; justify-content:center; margin-bottom:1rem;">
-            <div style="text-align:center;">
-                <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
-                    <h6 style="font-size: 1.2rem; margin-bottom: 1rem;">Por Prazo</h6>
-                    <div style="max-width: 500px; width: 100%; height: 300px;">
+        <h5 style="margin-top:1.5rem;">Gráficos Renda Fixa</h5>
+        <div class="chart-grid">
+            <div class="card">
+                    <h6 style="font-size:.88rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Prazo</h6>
+                    <div style="height:260px;">
                         <canvas id="rfTermChart"></canvas>
                     </div>
                 </div>
-            </div>
-            <div style="text-align:center;">
-                <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
-                    <h6 style="font-size: 1.2rem; margin-bottom: 1rem;">Por Tipo (Categoria)</h6>
-                    <div style="max-width: 500px; width: 100%; height: 300px;">
+            <div class="card">
+                    <h6 style="font-size:.88rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Tipo (Categoria)</h6>
+                    <div style="height:260px;">
                         <canvas id="rfTypeChart"></canvas>
                     </div>
                 </div>
-            </div>
-            <div style="text-align:center;">
-                <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
-                    <h6 style="font-size: 1.2rem; margin-bottom: 1rem;">Por Subtipo (Detalhado)</h6>
-                    <div style="max-width: 500px; width: 100%; height: 300px;">
+            <div class="card">
+                    <h6 style="font-size:.88rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Subtipo (Detalhado)</h6>
+                    <div style="height:260px;">
                         <canvas id="rfSubtypeChart"></canvas>
                     </div>
                 </div>
-            </div>
-        </div>
 
     </div>
 
     <!-- Type Summary with Chart -->
     <div style="margin-top:1rem; margin-bottom:3rem;">
-        <h5 class="text-white mb-2">Por Tipo</h5>
+        <h5 style="">Por Tipo</h5>
         <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-            <table class="table table-dark table-bordered table-sm no-datatable table-center-forced">
+            <table class="no-datatable bal-table">
                 <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                     <tr>
                         <th>Tipo</th>
@@ -593,16 +595,11 @@
             </table>
         </div>
         <!-- Type Chart (Below Table) -->
-        <div style="display:flex; justify-content:center; margin-top:1rem;">
-            <div style="text-align:center;">
-                <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
-                    <div style="max-width: 500px; width: 100%; height: 300px;">
+        <div class="card chart-single">
+                    <div style="height:300px;">
                         <canvas id="typeChart"></canvas>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -795,12 +792,12 @@
 <!-- LOCATION BREAKDOWN -->
 <!-- Stacked Layout: Table Top, Chart Bottom -->
 <div style="margin-top:2rem; margin-bottom:3rem;">
-    <h5 class="text-white mb-2">Por Localização</h5>
+    <h5 style="">Por Localização</h5>
 
     <!-- Table -->
     <div class="card" style="margin-bottom:1.5rem;">
         <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
-            <table class="table table-dark table-striped mb-0 table-center-forced">
+            <table class="no-datatable bal-table">
                 <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
                     <tr>
                         <th>Localização</th>
@@ -841,18 +838,15 @@
                 </tfoot>
             </table>
         </div>
-    </div>
 
     <!-- Chart -->
-    <div style="display:flex; justify-content:center; margin-top:1rem;">
-        <div style="text-align:center;">
+    <div>
             <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
-                <div style="max-width: 500px; width: 100%;">
+                <div style="width:100%; max-width:700px; height:320px; margin:0 auto;">
                     <canvas id="chartLocation"></canvas>
                 </div>
             </div>
         </div>
-    </div>
 </div>
 </div>
 
@@ -928,7 +922,7 @@
 
     <!-- 1. HIERARCHY TABLE -->
     <div style="margin-bottom:3rem;">
-        <h4 class="text-white border-bottom pb-2">Somatório Geral (Detalhado)</h4>
+        <h4 style="border-bottom:2px solid var(--border-color); padding-bottom:.5rem; margin-bottom:1rem;">Somatório Geral (Detalhado)</h4>
         <div class="table-responsive">
             <table class="table table-dark table-bordered table-sm no-datatable table-center-forced align-middle">
                 <thead>
@@ -980,21 +974,17 @@
         </div>
 
         <!-- NEW: HIERARCHY CHART CENTERED BELOW -->
-        <div style="display:flex; justify-content:center; margin-top:1.5rem;">
-            <div style="text-align:center;">
+        <div>
                 <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
                     <h5 style="font-size: 1.2rem; margin-bottom: 1rem;">Gráfico por Grandes Grupos</h5>
-                    <div style="max-width: 500px; width: 100%; height: 300px;">
+                    <div style="height:260px;">
                         <canvas id="chartHierarchy"></canvas>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
 
     <!-- 2. EXPLODED BALANCE (CHART + TABLE STACKED) -->
     <div style="margin-bottom:3rem;">
-        <h4 class="text-white border-bottom pb-2">Balanceamento Explodido</h4>
+        <h4 style="border-bottom:2px solid var(--border-color); padding-bottom:.5rem; margin-bottom:1rem;">Balanceamento Explodido</h4>
 
         <!-- Table Centered -->
         <div style="display:flex; justify-content:center;">
@@ -1026,20 +1016,17 @@
             </div>
 
             <!-- Chart Centered Below -->
-            <div style="display:flex; justify-content:center; margin-top:1.5rem;">
-                <div style="text-align:center;">
+            <div>
                     <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
-                        <div style="max-width: 500px; width: 100%; height: 300px;">
+                        <div style="height:260px;">
                             <canvas id="chartExploded"></canvas>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
         <!-- 3. GENERAL BALANCE (CHART + TABLE STACKED) -->
         <div style="margin-bottom:3rem;">
-            <h4 class="text-white border-bottom pb-2">Balanceamento Geral</h4>
+            <h4 style="border-bottom:2px solid var(--border-color); padding-bottom:.5rem; margin-bottom:1rem;">Balanceamento Geral</h4>
 
             <!-- Table Centered -->
             <div style="display:flex; justify-content:center;">
@@ -1073,19 +1060,15 @@
                         </table>
                     </div>
                 </div>
-            </div>
 
             <!-- Chart Centered Below -->
-            <div style="display:flex; justify-content:center; margin-top:1.5rem;">
-                <div style="text-align:center;">
+            <div>
                     <div class="card" style="padding: 1.5rem; display: flex; flex-direction: column; align-items: center;">
-                        <div style="max-width: 500px; width: 100%; height: 300px;">
+                        <div style="height:260px;">
                             <canvas id="chartGeneral"></canvas>
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
 
     </div>
 
@@ -1258,7 +1241,6 @@
                 </div>
             </form>
         </div>
-    </div>
 
     <!-- Modal RF Pré -->
     <div class="modal fade" id="modalRFP" tabindex="-1">
@@ -1299,7 +1281,6 @@
                 </div>
             </form>
         </div>
-    </div>
 
     <!-- Modal RF IPCA -->
     <div class="modal fade" id="modalRFI" tabindex="-1">
@@ -1340,7 +1321,6 @@
                 </div>
             </form>
         </div>
-    </div>
 
     <!-- Modal Fundos -->
     <div class="modal fade" id="modalFund" tabindex="-1">
@@ -1383,7 +1363,6 @@
                 </div>
             </form>
         </div>
-    </div>
 
     <!-- Modal Crypto -->
     <div class="modal fade" id="modalCrypto" tabindex="-1">
@@ -1412,7 +1391,6 @@
                 </div>
             </form>
         </div>
-    </div>
 
     <!-- Modal Pension -->
     <div class="modal fade" id="modalPension" tabindex="-1">
@@ -1444,7 +1422,6 @@
                 </div>
             </form>
         </div>
-    </div>
 
     <!-- Modal Intl RV -->
     <div class="modal fade" id="modalIntlRV" tabindex="-1">
@@ -1471,7 +1448,6 @@
                 </div>
             </form>
         </div>
-    </div>
 
     <!-- Modal Intl RF -->
     <div class="modal fade" id="modalIntlRF" tabindex="-1">
@@ -1495,7 +1471,6 @@
                 </div>
             </form>
         </div>
-    </div>
 
     </form>
 </div>

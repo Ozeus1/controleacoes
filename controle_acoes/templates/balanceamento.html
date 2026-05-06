@@ -237,7 +237,7 @@
 
 <!-- FUNDS & OTHERS -->
     <!-- FUNDOS -->
-        <div class="card">
+        <div class="card card-compact-tbl">
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Fundos de Investimento</span>
@@ -288,7 +288,7 @@
         </div>
 
     <!-- CRIPTO -->
-        <div class="card">
+        <div class="card card-compact-tbl">
             <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
                 <span>Criptoativos</span>
                 <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalCrypto">
@@ -360,7 +360,7 @@
 </div>
 
     <!-- PREVIDENCIA -->
-        <div class="card">
+        <div class="card card-compact-tbl">
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Previdência</span>
@@ -428,11 +428,17 @@
         box-shadow: none !important;
     }
 
-    /* Desabilitar freeze e min-width nas tabelas de detalhe desta página */
+    /* Cards com tabelas compactas: wrapper DataTables não força 100% */
+    .card-compact-tbl .dataTables_wrapper,
+    .card-compact-tbl .table-scroll { width: auto !important; }
+    .card-compact-tbl .card-body { overflow-x: auto; }
+
+    /* Tabelas Fundos/Cripto/Previdência: sem min-width forçado */
     #tbl-fundos, #tbl-cripto, #tbl-prev {
         min-width: unset !important;
-        width: 100% !important;
+        width: auto !important;
     }
+    /* Sem freeze na 1ª coluna */
     #tbl-fundos thead th:first-child, #tbl-fundos tbody td:first-child,
     #tbl-cripto thead th:first-child, #tbl-cripto tbody td:first-child,
     #tbl-prev  thead th:first-child, #tbl-prev  tbody td:first-child {
@@ -440,11 +446,6 @@
         left: unset !important;
         box-shadow: none !important;
         border-right: none !important;
-    }
-    /* Restaurar fundo correto na 1ª coluna do corpo (striped Bootstrap) */
-    #tbl-fundos tbody td:first-child,
-    #tbl-cripto tbody td:first-child,
-    #tbl-prev  tbody td:first-child {
         background-color: inherit !important;
         background: inherit !important;
     }

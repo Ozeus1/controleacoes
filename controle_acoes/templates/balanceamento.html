@@ -455,38 +455,6 @@
     }
 </style>
 
-<!-- ... (Leaving Summary Section intact based on line range) ... -->
-
-<!-- (Below at Modal Definitions) -->
-
-<!-- Modal Intl RF -->
-<div class="modal fade" id="modalIntlRF" tabindex="-1">
-    <div class="modal-dialog">
-        <form action="{{ url_for('add_intl') }}" method="POST">
-            <div class="modal-content bg-dark text-white">
-                <div class="modal-header">
-                    <h5 class="modal-title">Adicionar Renda Fixa Internacional</h5><button type="button"
-                        class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <input type="hidden" name="category" value="RF">
-                    <div class="mb-3"><label>Banco/Instituição</label><input type="text" name="institution"
-                            class="form-control" required></div>
-                    <div class="mb-3"><label>Código (Ticker ex: SHV)</label><input type="text" name="name"
-                            class="form-control" required style="text-transform: uppercase;"></div>
-                    <div class="mb-3"><label>Tipo (ex: Treasury Bond)</label><input type="text" name="description"
-                            class="form-control" required></div>
-                    <div class="mb-3"><label>Quantidade</label><input type="text" name="quantity" class="form-control"
-                            required></div>
-                    <div class="mb-3"><label>Custo Médio ($)</label><input type="text" name="avg_price"
-                            class="form-control" required></div>
-                </div>
-                <div class="modal-footer"><button type="submit" class="btn btn-secondary">Salvar</button></div>
-            </div>
-        </form>
-    </div>
-</div>
-
 <!-- SUMMARY SECTION -->
 <div style="margin-top:2rem;">
     <h3 style="border-bottom:2px solid var(--border-color); padding-bottom:.5rem; margin-bottom:1.5rem;">Resumo e Balanceamento</h3>
@@ -1464,8 +1432,6 @@
                 </div>
             </form>
         </div>
+    </div>
 
-    </form>
-</div>
-</div>
 {% endblock %}

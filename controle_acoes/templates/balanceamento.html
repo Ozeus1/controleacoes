@@ -1163,45 +1163,37 @@
     </script>
 
     <!-- MODALS -->
+
     <!-- Modal RF Pós -->
     <div class="modal fade" id="modalRFC" tabindex="-1">
         <div class="modal-dialog">
             <form action="{{ url_for('add_rf') }}" method="POST">
                 <div class="modal-content bg-dark text-white">
                     <div class="modal-header">
-                        <h5 class="modal-title">Adicionar Renda Fixa Pós</h5><button type="button"
-                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        <h5 class="modal-title">Adicionar Renda Fixa Pós</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
                         <input type="hidden" name="category" value="POS">
-                        <div class="mb-3">
-                            <label>Tipo</label>
+                        <div class="mb-3"><label>Tipo</label>
                             <select name="product_type" class="form-control mb-2">
-                                <option value="CDB">CDB</option>
-                                <option value="LCI">LCI</option>
-                                <option value="LCA">LCA</option>
-                                <option value="CRI">CRI</option>
-                                <option value="CRA">CRA</option>
-                                <option value="Tesouro">Tesouro</option>
-                                <option value="RDB">RDB</option>
-                                <option value="Outros">Outros</option>
+                                <option value="CDB">CDB</option><option value="LCI">LCI</option>
+                                <option value="LCA">LCA</option><option value="CRI">CRI</option>
+                                <option value="CRA">CRA</option><option value="Tesouro">Tesouro</option>
+                                <option value="RDB">RDB</option><option value="Outros">Outros</option>
                             </select>
                         </div>
-                        <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
-                                required></div>
-                        <div class="mb-3"><label>Fundo/Descrição</label><input type="text" name="name"
-                                class="form-control" required></div>
-                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
-                                required></div>
-                        <div class="mb-3"><label>Taxa (ex: 120% CDI)</label><input type="text" name="rate"
-                                class="form-control"></div>
-                        <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date"
-                                class="form-control"></div>
+                        <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control" required></div>
+                        <div class="mb-3"><label>Fundo/Descrição</label><input type="text" name="name" class="form-control" required></div>
+                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control" required></div>
+                        <div class="mb-3"><label>Taxa (ex: 120% CDI)</label><input type="text" name="rate" class="form-control"></div>
+                        <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date" class="form-control"></div>
                     </div>
                     <div class="modal-footer"><button type="submit" class="btn btn-primary">Salvar</button></div>
                 </div>
             </form>
         </div>
+    </div>
 
     <!-- Modal RF Pré -->
     <div class="modal fade" id="modalRFP" tabindex="-1">
@@ -1209,39 +1201,30 @@
             <form action="{{ url_for('add_rf') }}" method="POST">
                 <div class="modal-content bg-dark text-white">
                     <div class="modal-header">
-                        <h5 class="modal-title">Adicionar Renda Fixa Pré</h5><button type="button"
-                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        <h5 class="modal-title">Adicionar Renda Fixa Pré</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
                         <input type="hidden" name="category" value="PRE">
-                        <div class="mb-3">
-                            <label>Tipo</label>
+                        <div class="mb-3"><label>Tipo</label>
                             <select name="product_type" class="form-control mb-2">
-                                <option value="CDB">CDB</option>
-                                <option value="LCI">LCI</option>
-                                <option value="LCA">LCA</option>
-                                <option value="CRI">CRI</option>
-                                <option value="CRA">CRA</option>
-                                <option value="Tesouro">Tesouro</option>
-                                <option value="RDB">RDB</option>
-                                <option value="Outros">Outros</option>
+                                <option value="CDB">CDB</option><option value="LCI">LCI</option>
+                                <option value="LCA">LCA</option><option value="CRI">CRI</option>
+                                <option value="CRA">CRA</option><option value="Tesouro">Tesouro</option>
+                                <option value="RDB">RDB</option><option value="Outros">Outros</option>
                             </select>
                         </div>
-                        <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
-                                required></div>
-                        <div class="mb-3"><label>Descrição</label><input type="text" name="name" class="form-control"
-                                required></div>
-                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
-                                required></div>
-                        <div class="mb-3"><label>Taxa (ex: 12% a.a.)</label><input type="text" name="rate"
-                                class="form-control"></div>
-                        <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date"
-                                class="form-control"></div>
+                        <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control" required></div>
+                        <div class="mb-3"><label>Descrição</label><input type="text" name="name" class="form-control" required></div>
+                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control" required></div>
+                        <div class="mb-3"><label>Taxa (ex: 12% a.a.)</label><input type="text" name="rate" class="form-control"></div>
+                        <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date" class="form-control"></div>
                     </div>
                     <div class="modal-footer"><button type="submit" class="btn btn-warning">Salvar</button></div>
                 </div>
             </form>
         </div>
+    </div>
 
     <!-- Modal RF IPCA -->
     <div class="modal fade" id="modalRFI" tabindex="-1">
@@ -1249,39 +1232,30 @@
             <form action="{{ url_for('add_rf') }}" method="POST">
                 <div class="modal-content bg-dark text-white">
                     <div class="modal-header">
-                        <h5 class="modal-title">Adicionar Renda Fixa IPCA</h5><button type="button"
-                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        <h5 class="modal-title">Adicionar Renda Fixa IPCA</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
                         <input type="hidden" name="category" value="IPCA">
-                        <div class="mb-3">
-                            <label>Tipo</label>
+                        <div class="mb-3"><label>Tipo</label>
                             <select name="product_type" class="form-control mb-2">
-                                <option value="CDB">CDB</option>
-                                <option value="LCI">LCI</option>
-                                <option value="LCA">LCA</option>
-                                <option value="CRI">CRI</option>
-                                <option value="CRA">CRA</option>
-                                <option value="Tesouro">Tesouro</option>
-                                <option value="RDB">RDB</option>
-                                <option value="Outros">Outros</option>
+                                <option value="CDB">CDB</option><option value="LCI">LCI</option>
+                                <option value="LCA">LCA</option><option value="CRI">CRI</option>
+                                <option value="CRA">CRA</option><option value="Tesouro">Tesouro</option>
+                                <option value="RDB">RDB</option><option value="Outros">Outros</option>
                             </select>
                         </div>
-                        <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
-                                required></div>
-                        <div class="mb-3"><label>Descrição</label><input type="text" name="name" class="form-control"
-                                required></div>
-                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
-                                required></div>
-                        <div class="mb-3"><label>Taxa (ex: IPCA+6%)</label><input type="text" name="rate"
-                                class="form-control"></div>
-                        <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date"
-                                class="form-control"></div>
+                        <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control" required></div>
+                        <div class="mb-3"><label>Descrição</label><input type="text" name="name" class="form-control" required></div>
+                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control" required></div>
+                        <div class="mb-3"><label>Taxa (ex: IPCA+6%)</label><input type="text" name="rate" class="form-control"></div>
+                        <div class="mb-3"><label>Vencimento</label><input type="date" name="maturity_date" class="form-control"></div>
                     </div>
                     <div class="modal-footer"><button type="submit" class="btn btn-danger">Salvar</button></div>
                 </div>
             </form>
         </div>
+    </div>
 
     <!-- Modal Fundos -->
     <div class="modal fade" id="modalFund" tabindex="-1">
@@ -1289,144 +1263,107 @@
             <form action="{{ url_for('add_fund') }}" method="POST">
                 <div class="modal-content bg-dark text-white">
                     <div class="modal-header">
-                        <h5 class="modal-title">Adicionar Fundo</h5><button type="button"
-                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        <h5 class="modal-title">Adicionar Fundo</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                        <input type="hidden" name="category" value="IPCA">
-                        <div class="mb-3">
-                            <label>Tipo</label>
-                            <select name="product_type" class="form-control mb-2">
-                                <option value="CDB">CDB</option>
-                                <option value="LCI">LCI</option>
-                                <option value="LCA">LCA</option>
-                                <option value="CRI">CRI</option>
-                                <option value="CRA">CRA</option>
-                                <option value="Tesouro">Tesouro</option>
-                                <option value="RDB">RDB</option>
-                                <option value="Outros">Outros</option>
-                            </select>
-                        </div>
-                        <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control"
-                                required></div>
-                        <div class="mb-3"><label>Fundo</label><input type="text" name="name" class="form-control"
-                                required>
-                        </div>
-                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
-                                required></div>
-                        <div class="mb-3"><label>Indexador</label><input type="text" name="indexer"
-                                class="form-control">
-                        </div>
-                        <div class="mb-3"><label>Vencimento (Opcional)</label><input type="date" name="maturity_date"
-                                class="form-control"></div>
+                        <div class="mb-3"><label>Banco</label><input type="text" name="institution" class="form-control" required></div>
+                        <div class="mb-3"><label>Fundo</label><input type="text" name="name" class="form-control" required></div>
+                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control" required></div>
+                        <div class="mb-3"><label>Indexador</label><input type="text" name="indexer" class="form-control"></div>
+                        <div class="mb-3"><label>Vencimento (Opcional)</label><input type="date" name="maturity_date" class="form-control"></div>
                     </div>
                     <div class="modal-footer"><button type="submit" class="btn btn-info">Salvar</button></div>
                 </div>
             </form>
         </div>
+    </div>
 
-    <!-- Modal Crypto -->
+    <!-- Modal Cripto -->
     <div class="modal fade" id="modalCrypto" tabindex="-1">
         <div class="modal-dialog">
             <form action="{{ url_for('add_crypto') }}" method="POST">
                 <div class="modal-content bg-dark text-white">
                     <div class="modal-header">
-                        <h5 class="modal-title">Adicionar Cripto</h5><button type="button"
-                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        <h5 class="modal-title">Adicionar Cripto</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                        <div class="mb-3"><label>Exchange</label><input type="text" name="institution"
-                                class="form-control">
-                        </div>
-                        <div class="mb-3"><label>Nome (ex: BTC)</label><input type="text" name="name"
-                                class="form-control" required></div>
-                        <div class="mb-3"><label>Quantidade</label><input type="text" name="quantity"
-                                class="form-control">
-                        </div>
-                        <div class="mb-3"><label>Valor Investido (R$)</label><input type="text" name="invested_value"
-                                class="form-control"></div>
-                        <div class="mb-3"><label>Valor Atual (R$)</label><input type="text" name="current_value"
-                                class="form-control" required></div>
+                        <div class="mb-3"><label>Exchange</label><input type="text" name="institution" class="form-control"></div>
+                        <div class="mb-3"><label>Nome (ex: BTC)</label><input type="text" name="name" class="form-control" required></div>
+                        <div class="mb-3"><label>Quantidade</label><input type="text" name="quantity" class="form-control"></div>
+                        <div class="mb-3"><label>Valor Investido (R$)</label><input type="text" name="invested_value" class="form-control"></div>
+                        <div class="mb-3"><label>Valor Atual (R$)</label><input type="text" name="current_value" class="form-control" required></div>
                     </div>
                     <div class="modal-footer"><button type="submit" class="btn btn-dark">Salvar</button></div>
                 </div>
             </form>
         </div>
+    </div>
 
-    <!-- Modal Pension -->
+    <!-- Modal Previdência -->
     <div class="modal fade" id="modalPension" tabindex="-1">
         <div class="modal-dialog">
             <form action="{{ url_for('add_pension') }}" method="POST">
                 <div class="modal-content bg-dark text-white">
                     <div class="modal-header">
-                        <h5 class="modal-title">Adicionar Previdência</h5><button type="button"
-                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        <h5 class="modal-title">Adicionar Previdência</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
-                        <div class="mb-3"><label>Instituição</label><input type="text" name="institution"
-                                class="form-control" required></div>
-                        <div class="mb-3"><label>Plano</label><input type="text" name="name" class="form-control"
-                                required>
-                        </div>
-                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control"
-                                required></div>
+                        <div class="mb-3"><label>Instituição</label><input type="text" name="institution" class="form-control" required></div>
+                        <div class="mb-3"><label>Plano</label><input type="text" name="name" class="form-control" required></div>
+                        <div class="mb-3"><label>Valor (R$)</label><input type="text" name="value" class="form-control" required></div>
                         <div class="mb-3"><label>Tipo</label>
                             <select name="type" class="form-control">
                                 <option value="Renda Fixa">Renda Fixa</option>
                                 <option value="Acao">Ação</option>
                             </select>
                         </div>
-                        <div class="mb-3"><label>Certificado (Opcional)</label><input type="text" name="certificate"
-                                class="form-control"></div>
+                        <div class="mb-3"><label>Certificado (Opcional)</label><input type="text" name="certificate" class="form-control"></div>
                     </div>
                     <div class="modal-footer"><button type="submit" class="btn btn-success">Salvar</button></div>
                 </div>
             </form>
         </div>
+    </div>
 
-    <!-- Modal Intl RV -->
+    <!-- Modal Internacional RV -->
     <div class="modal fade" id="modalIntlRV" tabindex="-1">
         <div class="modal-dialog">
             <form action="{{ url_for('add_intl') }}" method="POST">
                 <div class="modal-content bg-dark text-white">
                     <div class="modal-header">
-                        <h5 class="modal-title">Adicionar Renda Variável Internacional</h5><button type="button"
-                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        <h5 class="modal-title">Adicionar RV Internacional</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
                         <input type="hidden" name="category" value="RV">
-                        <div class="mb-3"><label>Corretora/Instituição</label><input type="text" name="institution"
-                                class="form-control" required></div>
-                        <div class="mb-3"><label>Ticker (ex: AAPL)</label><input type="text" name="name"
-                                class="form-control" required style="text-transform: uppercase;"></div>
-                        <div class="mb-3"><label>Quantidade</label><input type="text" name="quantity"
-                                class="form-control" required></div>
-                        <div class="mb-3"><label>Preço Médio ($)</label><input type="text" name="avg_price"
-                                class="form-control" required>
-                        </div>
+                        <div class="mb-3"><label>Corretora</label><input type="text" name="institution" class="form-control" required></div>
+                        <div class="mb-3"><label>Ticker (ex: AAPL)</label><input type="text" name="name" class="form-control" required style="text-transform:uppercase;"></div>
+                        <div class="mb-3"><label>Quantidade</label><input type="text" name="quantity" class="form-control" required></div>
+                        <div class="mb-3"><label>Preço Médio ($)</label><input type="text" name="avg_price" class="form-control" required></div>
                     </div>
                     <div class="modal-footer"><button type="submit" class="btn btn-secondary">Salvar</button></div>
                 </div>
             </form>
         </div>
+    </div>
 
-    <!-- Modal Intl RF -->
+    <!-- Modal Internacional RF -->
     <div class="modal fade" id="modalIntlRF" tabindex="-1">
         <div class="modal-dialog">
             <form action="{{ url_for('add_intl') }}" method="POST">
                 <div class="modal-content bg-dark text-white">
                     <div class="modal-header">
-                        <h5 class="modal-title">Adicionar Renda Fixa Internacional</h5><button type="button"
-                            class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        <h5 class="modal-title">Adicionar RF Internacional</h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                     </div>
                     <div class="modal-body">
                         <input type="hidden" name="category" value="RF">
-                        <div class="mb-3"><label>Instituição</label><input type="text" name="institution"
-                                class="form-control" required></div>
-                        <div class="mb-3"><label>Descrição/Tipo</label><input type="text" name="description"
-                                class="form-control" required></div>
-                        <div class="mb-3"><label>Valor Investido ($)</label><input type="text" name="value_usd"
-                                class="form-control" required></div>
+                        <div class="mb-3"><label>Instituição</label><input type="text" name="institution" class="form-control" required></div>
+                        <div class="mb-3"><label>Descrição/Tipo</label><input type="text" name="description" class="form-control" required></div>
+                        <div class="mb-3"><label>Valor Investido ($)</label><input type="text" name="value_usd" class="form-control" required></div>
                     </div>
                     <div class="modal-footer"><button type="submit" class="btn btn-secondary">Salvar</button></div>
                 </div>

@@ -517,8 +517,8 @@
     <table>
         <thead>
             <tr>
-                <th>Nome</th>
                 <th>Ativo</th>
+                <th>Nome</th>
                 <th>Pernas</th>
                 <th>Montagem</th>
                 <th>Lucro Atual</th>
@@ -532,10 +532,10 @@
             {% for item in structured_ops %}
             {% set op = item.op %}
             <tr>
+                <td><span class="ticker-badge">{{ op.underlying_asset or '—' }}</span></td>
                 <td><strong>{{ op.name }}</strong><br>
                     <small style="color:var(--text-secondary);">{{ op.created_at.strftime('%d/%m/%Y') if op.created_at else '' }}</small>
                 </td>
-                <td><span class="ticker-badge">{{ op.underlying_asset or '—' }}</span></td>
                 <td>
                     {% for leg in op.legs %}
                     <div style="font-size:.8rem; margin-bottom:.15rem; white-space:nowrap;">

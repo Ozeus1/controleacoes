@@ -4,65 +4,60 @@
 
 {% block content %}
 <div class="container-fluid mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
         <h2><i class="fas fa-cloud-download-alt"></i> Importar Despesas do Supabase</h2>
+        <button class="btn btn-outline-secondary btn-sm" data-bs-toggle="modal" data-bs-target="#modalConfigSupabase">
+            <i class="fas fa-cog"></i> Configurações
+        </button>
     </div>
 
-    <!-- Configuração -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-light">
-            <h5 class="mb-0">Configuração da Conexão</h5>
+    <!-- Barra de Filtros Avançados -->
+    <div class="card shadow-sm mb-3">
+        <div class="card-header bg-light py-2 d-flex justify-content-between align-items-center">
+            <span class="fw-semibold"><i class="fas fa-filter me-1"></i>Filtros</span>
+            <button class="btn btn-sm btn-outline-secondary" id="btnLimparFiltros">Limpar Filtros</button>
         </div>
-        <div class="card-body">
-            <div class="row mb-3">
-                <div class="col-md-4">
-                    <label class="form-label">Método</label>
-                    <select class="form-select" disabled>
-                        <option selected>rest_api</option>
+        <div class="card-body py-2">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label form-label-sm mb-1">Descrição contém</label>
+                    <input type="text" class="form-control form-control-sm" id="filtro-descricao" placeholder="Parte do nome...">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm mb-1">Valor</label>
+                    <select class="form-select form-select-sm" id="filtro-valor-op">
+                        <option value="">Qualquer</option>
+                        <option value="gte">Acima de</option>
+                        <option value="lte">Abaixo de</option>
+                        <option value="eq">Igual a</option>
                     </select>
                 </div>
-                <div class="col-md-8 d-flex align-items-end justify-content-between">
-                    <div id="status-conexao" class="text-muted">
-                        Status: <span class="badge bg-secondary">Não conectado</span>
-                    </div>
-                    <div class="btn-group">
-                        <button class="btn btn-success" id="btnSalvarConfig">
-                            <i class="fas fa-save"></i> Salvar Config
-                        </button>
-                        <button class="btn btn-primary" id="btnCarregarDados">
-                            <i class="fas fa-sync"></i> Carregar Dados
-                        </button>
-                        <button class="btn btn-info text-white" id="btnTestarConexao">
-                            <i class="fas fa-plug"></i> Testar Conexão
-                        </button>
-                    </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm mb-1">&nbsp;</label>
+                    <input type="number" class="form-control form-control-sm" id="filtro-valor-num" placeholder="0,00" min="0" step="0.01">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm mb-1">Data — De</label>
+                    <input type="date" class="form-control form-control-sm" id="filtro-data-de">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label form-label-sm mb-1">Data — Até</label>
+                    <input type="date" class="form-control form-control-sm" id="filtro-data-ate">
+                </div>
+                <div class="col-md-1">
+                    <label class="form-label form-label-sm mb-1">&nbsp;</label>
+                    <button class="btn btn-primary btn-sm w-100" id="btnAplicarFiltros"><i class="fas fa-search"></i></button>
                 </div>
             </div>
-
-            <div class="mb-3">
-                <label class="form-label">Nome da Tabela</label>
-                <input type="text" class="form-control" id="supabase_table" value="{{ supabase_table }}"
-                    placeholder="Ex: transacoes_financeiras">
-            </div>
-
-            <div class="card bg-light">
-                <div class="card-body">
-                    <h6 class="card-title">Configurações REST API</h6>
-                    <div class="mb-2">
-                        <label class="form-label">URL do Projeto</label>
-                        <input type="text" class="form-control" id="supabase_url" value="{{ supabase_url }}"
-                            placeholder="https://seu-projeto.supabase.co">
-                    </div>
-                    <div class="mb-0">
-                        <label class="form-label">API Key</label>
-                        <input type="password" class="form-control" id="supabase_key" value="{{ supabase_key }}"
-                            placeholder="Sua API Key">
-                    </div>
+            <div class="row g-2 mt-1">
+                <div class="col-md-3">
+                    <input type="text" class="form-control form-control-sm" id="filtro-meio" placeholder="Meio de pagamento...">
+                    <small class="text-muted">Meio Pgto.</small>
                 </div>
-            </div>
-
-            <div class="mt-2 text-primary small">
-                <i class="fas fa-lightbulb"></i> Dica: Dê duplo-clique em qualquer campo para editá-lo antes de importar
+                <div class="col-md-3">
+                    <input type="text" class="form-control form-control-sm" id="filtro-categoria" placeholder="Categoria...">
+                    <small class="text-muted">Categoria</small>
+                </div>
             </div>
         </div>
     </div>
@@ -71,7 +66,13 @@
     <div class="card shadow-sm mb-4">
         <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center">
             <h5 class="mb-0">Dados para Importar</h5>
-            <span class="badge bg-light text-dark" id="contador-registros">0 registros</span>
+            <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-light text-dark" id="contador-visiveis">0 visíveis</span>
+                <span class="badge bg-info text-dark" id="contador-registros">0 registros</span>
+                <button class="btn btn-sm btn-light" id="btnCarregarDados">
+                    <i class="fas fa-sync"></i> Carregar
+                </button>
+            </div>
         </div>
         <div class="card-body p-0">
             <div class="table-responsive" style="max-height: 500px;">
@@ -81,43 +82,19 @@
                             <th class="text-center" style="width: 50px;">
                                 <input type="checkbox" id="check-todos">
                             </th>
-                            <th>
-                                Descrição
-                                <input type="text" class="form-control form-control-sm mt-1 filter-input" data-col="1"
-                                    placeholder="Filtrar...">
-                            </th>
-                            <th class="text-end">
-                                Valor
-                                <input type="text" class="form-control form-control-sm mt-1 filter-input" data-col="2"
-                                    placeholder="Filtrar...">
-                            </th>
-                            <th>
-                                Meio Pgto.
-                                <input type="text" class="form-control form-control-sm mt-1 filter-input" data-col="3"
-                                    placeholder="Filtrar...">
-                            </th>
-                            <th>
-                                Categoria
-                                <input type="text" class="form-control form-control-sm mt-1 filter-input" data-col="4"
-                                    placeholder="Filtrar...">
-                            </th>
-                            <th class="text-center">
-                                Parcelas
-                                <input type="text" class="form-control form-control-sm mt-1 filter-input" data-col="5"
-                                    placeholder="Filtrar...">
-                            </th>
-                            <th class="text-center">
-                                Data Despesa
-                                <input type="text" class="form-control form-control-sm mt-1 filter-input" data-col="6"
-                                    placeholder="Filtrar...">
-                            </th>
+                            <th>Descrição</th>
+                            <th class="text-end">Valor</th>
+                            <th>Meio Pgto.</th>
+                            <th>Categoria</th>
+                            <th class="text-center">Parcelas</th>
+                            <th class="text-center">Data Despesa</th>
                             <th class="text-center">Ações</th>
                         </tr>
                     </thead>
                     <tbody id="tbody-dados">
                         <tr>
                             <td colspan="8" class="text-center py-4 text-muted">
-                                Clique em "Carregar Dados" para buscar registros do Supabase
+                                Clique em "Carregar" para buscar registros do Supabase
                             </td>
                         </tr>
                     </tbody>
@@ -155,72 +132,29 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        const btnSalvar = document.getElementById('btnSalvarConfig');
-        const btnTestar = document.getElementById('btnTestarConexao');
         const btnCarregar = document.getElementById('btnCarregarDados');
         const btnImportarSel = document.getElementById('btnImportarSelecionados');
         const btnExcluirSel = document.getElementById('btnExcluirSelecionados');
         const btnImportarTodos = document.getElementById('btnImportarTodos');
+        const btnAplicar = document.getElementById('btnAplicarFiltros');
+        const btnLimpar = document.getElementById('btnLimparFiltros');
         const checkTodos = document.getElementById('check-todos');
         const tbody = document.getElementById('tbody-dados');
         const loading = document.getElementById('loading-overlay');
-        const statusDiv = document.getElementById('status-conexao');
+
+        // Dados carregados em memória para refiltrar sem nova requisição
+        let dadosCarregados = [];
 
         function showLoading() { loading.style.display = 'flex'; }
         function hideLoading() { loading.style.display = 'none'; }
 
         function getConfig() {
             return {
-                url: document.getElementById('supabase_url').value,
-                key: document.getElementById('supabase_key').value,
-                table: document.getElementById('supabase_table').value
+                url: document.getElementById('modal_supabase_url') ? document.getElementById('modal_supabase_url').value : '{{ supabase_url }}',
+                key: document.getElementById('modal_supabase_key') ? document.getElementById('modal_supabase_key').value : '{{ supabase_key }}',
+                table: document.getElementById('modal_supabase_table') ? document.getElementById('modal_supabase_table').value : '{{ supabase_table }}'
             };
         }
-
-        // Salvar Configuração
-        btnSalvar.addEventListener('click', function () {
-            showLoading();
-            fetch('{{ url_for("config.salvar_config_supabase") }}', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(getConfig())
-            })
-                .then(r => r.json())
-                .then(data => {
-                    hideLoading();
-                    if (data.success) alert('Configuração salva com sucesso!');
-                    else alert('Erro ao salvar: ' + data.message);
-                })
-                .catch(err => {
-                    hideLoading();
-                    alert('Erro: ' + err);
-                });
-        });
-
-        // Testar Conexão
-        btnTestar.addEventListener('click', function () {
-            showLoading();
-            fetch('{{ url_for("config.testar_conexao_supabase") }}', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(getConfig())
-            })
-                .then(r => r.json())
-                .then(data => {
-                    hideLoading();
-                    if (data.success) {
-                        statusDiv.innerHTML = 'Status: <span class="badge bg-success">Conectado via REST API</span>';
-                        alert(data.message);
-                    } else {
-                        statusDiv.innerHTML = 'Status: <span class="badge bg-danger">Erro de Conexão</span>';
-                        alert(data.message);
-                    }
-                })
-                .catch(err => {
-                    hideLoading();
-                    alert('Erro: ' + err);
-                });
-        });
 
         // Carregar Dados
         btnCarregar.addEventListener('click', function () {
@@ -234,33 +168,102 @@
                 .then(data => {
                     hideLoading();
                     if (data.success) {
-                        renderTable(data.data);
+                        dadosCarregados = data.data;
                         document.getElementById('contador-registros').textContent = `${data.data.length} registros`;
+                        aplicarFiltros();
                     } else {
                         alert('Erro ao buscar dados: ' + data.message);
                     }
                 })
-                .catch(err => {
-                    hideLoading();
-                    alert('Erro: ' + err);
-                });
+                .catch(err => { hideLoading(); alert('Erro: ' + err); });
         });
 
+        // ---------- Filtros ----------
+        function parseDateBR(str) {
+            // Aceita DD/MM/YYYY ou YYYY-MM-DD
+            if (!str) return null;
+            if (str.includes('/')) {
+                const [d, m, y] = str.split('/');
+                return new Date(`${y}-${m}-${d}`);
+            }
+            return new Date(str);
+        }
+
+        function aplicarFiltros() {
+            const textoDesc = document.getElementById('filtro-descricao').value.trim().toLowerCase();
+            const valorOp = document.getElementById('filtro-valor-op').value;
+            const valorNum = parseFloat(document.getElementById('filtro-valor-num').value);
+            const dataDe = document.getElementById('filtro-data-de').value ? new Date(document.getElementById('filtro-data-de').value) : null;
+            const dataAte = document.getElementById('filtro-data-ate').value ? new Date(document.getElementById('filtro-data-ate').value) : null;
+            const textoMeio = document.getElementById('filtro-meio').value.trim().toLowerCase();
+            const textoCateg = document.getElementById('filtro-categoria').value.trim().toLowerCase();
+
+            const filtrados = dadosCarregados.filter(item => {
+                // Descrição
+                if (textoDesc && !(item.descricao || '').toLowerCase().includes(textoDesc)) return false;
+                // Meio pagamento
+                if (textoMeio && !(item.forma_pagamento || '').toLowerCase().includes(textoMeio)) return false;
+                // Categoria
+                if (textoCateg && !(item.conta_despesa || '').toLowerCase().includes(textoCateg)) return false;
+                // Valor
+                const val = parseFloat(item.valor || 0);
+                if (valorOp && !isNaN(valorNum)) {
+                    if (valorOp === 'gte' && val < valorNum) return false;
+                    if (valorOp === 'lte' && val > valorNum) return false;
+                    if (valorOp === 'eq' && Math.abs(val - valorNum) > 0.005) return false;
+                }
+                // Data
+                if (dataDe || dataAte) {
+                    const dataItem = parseDateBR(item.data_despesa || '');
+                    if (dataItem) {
+                        if (dataDe && dataItem < dataDe) return false;
+                        if (dataAte && dataItem > dataAte) return false;
+                    }
+                }
+                return true;
+            });
+
+            renderTable(filtrados);
+            document.getElementById('contador-visiveis').textContent = `${filtrados.length} visíveis`;
+        }
+
+        btnAplicar.addEventListener('click', aplicarFiltros);
+
+        // Filtrar também em tempo real para campos de texto
+        ['filtro-descricao', 'filtro-meio', 'filtro-categoria'].forEach(id => {
+            document.getElementById(id).addEventListener('input', aplicarFiltros);
+        });
+        ['filtro-data-de', 'filtro-data-ate', 'filtro-valor-op', 'filtro-valor-num'].forEach(id => {
+            document.getElementById(id).addEventListener('change', aplicarFiltros);
+        });
+
+        btnLimpar.addEventListener('click', function () {
+            document.getElementById('filtro-descricao').value = '';
+            document.getElementById('filtro-valor-op').value = '';
+            document.getElementById('filtro-valor-num').value = '';
+            document.getElementById('filtro-data-de').value = '';
+            document.getElementById('filtro-data-ate').value = '';
+            document.getElementById('filtro-meio').value = '';
+            document.getElementById('filtro-categoria').value = '';
+            if (dadosCarregados.length) {
+                renderTable(dadosCarregados);
+                document.getElementById('contador-visiveis').textContent = `${dadosCarregados.length} visíveis`;
+            }
+        });
+
+        // ---------- Tabela ----------
         function renderTable(items) {
             tbody.innerHTML = '';
             if (items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center">Nenhum dado encontrado</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center py-3 text-muted">Nenhum dado encontrado</td></tr>';
                 return;
             }
 
             items.forEach(item => {
-                // Formatar valor
                 let valor = parseFloat(item.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
 
-                // Formatar data
                 let dataDespesa = item.data_despesa || '';
                 if (dataDespesa.includes('T')) dataDespesa = dataDespesa.split('T')[0];
-                // Converter YYYY-MM-DD para DD/MM/YYYY para exibição
                 if (dataDespesa.match(/^\d{4}-\d{2}-\d{2}$/)) {
                     const parts = dataDespesa.split('-');
                     dataDespesa = `${parts[2]}/${parts[1]}/${parts[0]}`;
@@ -285,7 +288,6 @@
                 tbody.appendChild(tr);
             });
 
-            // Adicionar eventos de exclusão
             document.querySelectorAll('.btn-excluir').forEach(btn => {
                 btn.addEventListener('click', function () {
                     if (confirm('Tem certeza que deseja excluir este item do Supabase?')) {
@@ -302,45 +304,38 @@
             fetch('{{ url_for("config.excluir_item_supabase") }}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: id,
-                    config: getConfig()
-                })
+                body: JSON.stringify({ id: id, config: getConfig() })
             })
                 .then(r => r.json())
                 .then(data => {
                     hideLoading();
                     if (data.success) {
+                        dadosCarregados = dadosCarregados.filter(d => String(d.id) !== String(id));
                         tr.remove();
+                        atualizarContador();
                     } else {
                         alert('Erro ao excluir: ' + data.message);
                     }
                 })
-                .catch(err => {
-                    hideLoading();
-                    alert('Erro: ' + err);
-                });
+                .catch(err => { hideLoading(); alert('Erro: ' + err); });
         }
 
-        // Selecionar Todos
+        function atualizarContador() {
+            const visiveis = document.querySelectorAll('#tbody-dados tr').length;
+            document.getElementById('contador-visiveis').textContent = `${visiveis} visíveis`;
+            document.getElementById('contador-registros').textContent = `${dadosCarregados.length} registros`;
+        }
+
         checkTodos.addEventListener('change', function () {
-            document.querySelectorAll('.check-item').forEach(check => {
-                check.checked = this.checked;
-            });
+            document.querySelectorAll('.check-item').forEach(check => { check.checked = this.checked; });
         });
 
-        // Importar
         function importar(selecionadosApenas) {
             const items = [];
-            const rows = document.querySelectorAll('#tbody-dados tr');
-
-            rows.forEach(row => {
+            document.querySelectorAll('#tbody-dados tr').forEach(row => {
                 const checkbox = row.querySelector('.check-item');
-                if (!checkbox) return; // Skip empty message row
-                if (row.style.display === 'none') return; // Skip hidden rows (filtered)
-
+                if (!checkbox) return;
                 if (selecionadosApenas && !checkbox.checked) return;
-
                 items.push({
                     id: row.dataset.id,
                     descricao: row.querySelector('[data-field="descricao"]').innerText,
@@ -352,137 +347,78 @@
                 });
             });
 
-            if (items.length === 0) {
-                alert('Nenhum item selecionado para importação.');
-                return;
-            }
-
+            if (items.length === 0) { alert('Nenhum item selecionado para importação.'); return; }
             if (!confirm(`Deseja importar ${items.length} itens?`)) return;
 
             showLoading();
             fetch('{{ url_for("config.importar_dados_supabase") }}', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    items: items,
-                    config: getConfig()
-                })
+                body: JSON.stringify({ items: items, config: getConfig() })
             })
                 .then(r => r.json())
                 .then(data => {
                     hideLoading();
                     if (data.success) {
                         alert(data.message);
-                        // Opcional: Recarregar dados ou remover itens importados da lista
                         btnCarregar.click();
                     } else {
                         alert('Erro na importação: ' + data.message);
                         if (data.erros) console.log(data.erros);
                     }
                 })
-                .catch(err => {
-                    hideLoading();
-                    alert('Erro: ' + err);
-                });
+                .catch(err => { hideLoading(); alert('Erro: ' + err); });
         }
 
         btnImportarSel.addEventListener('click', () => importar(true));
         btnImportarTodos.addEventListener('click', () => importar(false));
 
-        // Excluir Selecionados
         btnExcluirSel.addEventListener('click', function () {
             const selecionados = [];
             document.querySelectorAll('.check-item:checked').forEach(checkbox => {
                 const tr = checkbox.closest('tr');
-                // Only include visible rows
-                if (tr.style.display !== 'none') {
-                    selecionados.push({
-                        id: tr.dataset.id,
-                        element: tr
-                    });
-                }
+                selecionados.push({ id: tr.dataset.id, element: tr });
             });
 
-            if (selecionados.length === 0) {
-                alert('Nenhum item selecionado para exclusão.');
-                return;
-            }
-
+            if (selecionados.length === 0) { alert('Nenhum item selecionado para exclusão.'); return; }
             if (!confirm(`Tem certeza que deseja excluir ${selecionados.length} itens do Supabase?`)) return;
 
             showLoading();
-            let excluidos = 0;
-            let erros = 0;
+            let excluidos = 0, erros = 0;
 
-            // Processar exclusões em sequência para não sobrecarregar
-            const processarExclusao = async () => {
+            (async () => {
                 for (const item of selecionados) {
                     try {
                         const response = await fetch('{{ url_for("config.excluir_item_supabase") }}', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                id: item.id,
-                                config: getConfig()
-                            })
+                            body: JSON.stringify({ id: item.id, config: getConfig() })
                         });
                         const data = await response.json();
                         if (data.success) {
                             item.element.remove();
+                            dadosCarregados = dadosCarregados.filter(d => String(d.id) !== String(item.id));
                             excluidos++;
-                        } else {
-                            erros++;
-                        }
-                    } catch (e) {
-                        erros++;
-                    }
+                        } else { erros++; }
+                    } catch (e) { erros++; }
                 }
-
                 hideLoading();
-                alert(`${excluidos} itens excluídos com sucesso.${erros > 0 ? `\n${erros} erros.` : ''}`);
-
-                // Atualizar contador
-                const total = document.querySelectorAll('#tbody-dados tr').length;
-                const contador = document.getElementById('contador-registros');
-                if (contador) contador.textContent = `${total} registros`;
-            };
-
-            processarExclusao();
+                alert(`${excluidos} itens excluídos.${erros > 0 ? `\n${erros} erros.` : ''}`);
+                atualizarContador();
+            })();
         });
 
-        // Filtragem
-        document.querySelectorAll('.filter-input').forEach(input => {
-            input.addEventListener('keyup', function () {
-                const termo = this.value.toLowerCase();
-                const colIndex = this.dataset.col;
-                const rows = tbody.getElementsByTagName('tr');
-
-                Array.from(rows).forEach(row => {
-                    if (row.cells.length < 8) return; // Ignorar linha de "Nenhum dado"
-
-                    // Lógica de filtro: mostrar se corresponder ao termo
-                    // Mas precisamos considerar todos os filtros ativos
-                    let mostrar = true;
-
-                    // Verificar todos os inputs de filtro
-                    document.querySelectorAll('.filter-input').forEach(filter => {
-                        if (filter.value) {
-                            const filterCol = filter.dataset.col;
-                            const filterTerm = filter.value.toLowerCase();
-                            const targetCell = row.cells[filterCol];
-                            if (targetCell) {
-                                const targetText = targetCell.textContent || targetCell.innerText;
-                                if (!targetText.toLowerCase().includes(filterTerm)) {
-                                    mostrar = false;
-                                }
-                            }
-                        }
-                    });
-
-                    row.style.display = mostrar ? '' : 'none';
-                });
-            });
-        });
+        // Carregar config salva nos campos do modal ao abrir a página
+        fetch('/configuracao/importar-supabase/config')
+            .then(r => r.json())
+            .then(data => {
+                if (data.url && document.getElementById('modal_supabase_url'))
+                    document.getElementById('modal_supabase_url').value = data.url;
+                if (data.key && document.getElementById('modal_supabase_key'))
+                    document.getElementById('modal_supabase_key').value = data.key;
+                if (data.table && document.getElementById('modal_supabase_table'))
+                    document.getElementById('modal_supabase_table').value = data.table;
+            }).catch(() => {});
     });
 </script>
 
@@ -491,7 +427,6 @@
         background-color: #fff;
         cursor: text;
     }
-
     .editable:focus {
         background-color: #e8f0fe;
         outline: 2px solid #0d6efd;

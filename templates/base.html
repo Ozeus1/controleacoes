@@ -144,6 +144,10 @@
                             <li>
                                 <hr class="dropdown-divider">
                             </li>
+                            <li><a class="dropdown-item" href="#" data-bs-toggle="modal" data-bs-target="#modalConfigSupabase"><i class="fas fa-cog me-1"></i>Configurações</a></li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
                             <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}">Sair</a></li>
                         </ul>
                     </li>
@@ -179,6 +183,58 @@
         </div>
     </footer>
 
+    <!-- Modal Configurações Supabase -->
+    {% if current_user.is_authenticated %}
+    <div class="modal fade" id="modalConfigSupabase" tabindex="-1" aria-labelledby="modalConfigSupabaseLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalConfigSupabaseLabel"><i class="fas fa-database me-2"></i>Configurações — Importar do Supabase</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Método</label>
+                            <select class="form-select" disabled>
+                                <option selected>rest_api</option>
+                            </select>
+                        </div>
+                        <div class="col-md-8 d-flex align-items-end">
+                            <div id="modal-status-conexao" class="text-muted">
+                                Status: <span class="badge bg-secondary">Não conectado</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nome da Tabela</label>
+                        <input type="text" class="form-control" id="modal_supabase_table" placeholder="Ex: transacoes_financeiras">
+                    </div>
+                    <div class="card bg-light">
+                        <div class="card-body">
+                            <h6 class="card-title">Configurações REST API</h6>
+                            <div class="mb-2">
+                                <label class="form-label">URL do Projeto</label>
+                                <input type="text" class="form-control" id="modal_supabase_url" placeholder="https://seu-projeto.supabase.co">
+                            </div>
+                            <div class="mb-0">
+                                <label class="form-label">API Key</label>
+                                <input type="password" class="form-control" id="modal_supabase_key" placeholder="Sua API Key">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer flex-wrap gap-2">
+                    <button class="btn btn-info text-white" id="modal_btnTestarConexao"><i class="fas fa-plug"></i> Testar Conexão</button>
+                    <button class="btn btn-success" id="modal_btnSalvarConfig"><i class="fas fa-save"></i> Salvar Config</button>
+                    <a href="/configuracao/importar-supabase" class="btn btn-primary"><i class="fas fa-cloud-download-alt"></i> Ir para Importação</a>
+                    <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal">Fechar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Chart.js -->
@@ -187,6 +243,65 @@
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 
     {% block extra_js %}{% endblock %}
+
+    {% if current_user.is_authenticated %}
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const modalEl = document.getElementById('modalConfigSupabase');
+        if (!modalEl) return;
+
+        modalEl.addEventListener('show.bs.modal', function() {
+            fetch('/configuracao/importar-supabase/config')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.url) document.getElementById('modal_supabase_url').value = data.url;
+                    if (data.key) document.getElementById('modal_supabase_key').value = data.key;
+                    if (data.table) document.getElementById('modal_supabase_table').value = data.table;
+                    if (data.connected) {
+                        document.getElementById('modal-status-conexao').innerHTML = 'Status: <span class="badge bg-success">Conectado via REST API</span>';
+                    }
+                }).catch(() => {});
+        });
+
+        function getModalConfig() {
+            return {
+                url: document.getElementById('modal_supabase_url').value,
+                key: document.getElementById('modal_supabase_key').value,
+                table: document.getElementById('modal_supabase_table').value
+            };
+        }
+
+        document.getElementById('modal_btnSalvarConfig').addEventListener('click', function() {
+            fetch('/configuracao/importar-supabase/salvar-config', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(getModalConfig())
+            }).then(r => r.json()).then(data => {
+                if (data.success) alert('Configuração salva com sucesso!');
+                else alert('Erro: ' + data.message);
+            }).catch(err => alert('Erro: ' + err));
+        });
+
+        document.getElementById('modal_btnTestarConexao').addEventListener('click', function() {
+            const statusDiv = document.getElementById('modal-status-conexao');
+            statusDiv.innerHTML = 'Status: <span class="badge bg-secondary">Testando...</span>';
+            fetch('/configuracao/importar-supabase/testar', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(getModalConfig())
+            }).then(r => r.json()).then(data => {
+                if (data.success) {
+                    statusDiv.innerHTML = 'Status: <span class="badge bg-success">Conectado via REST API</span>';
+                    alert(data.message);
+                } else {
+                    statusDiv.innerHTML = 'Status: <span class="badge bg-danger">Erro de Conexão</span>';
+                    alert(data.message);
+                }
+            }).catch(err => { statusDiv.innerHTML = 'Status: <span class="badge bg-danger">Erro</span>'; alert('Erro: ' + err); });
+        });
+    });
+    </script>
+    {% endif %}
 </body>
 
 </html>

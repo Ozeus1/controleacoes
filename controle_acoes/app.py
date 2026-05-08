@@ -1362,6 +1362,11 @@ def _build_ticker_maps(uid):
         if ps.underlying_asset and ps.expiration_date >= today:
             asset_tickers.add((ps.underlying_asset.upper(), 'ACAO'))
 
+    # Subjacentes de OptionSpread (travas) com vencimento >= hoje
+    for sp in OptionSpread.query.filter_by(user_id=uid).all():
+        if sp.expiration_date >= today and sp.underlying_asset:
+            asset_tickers.add((sp.underlying_asset.upper(), 'ACAO'))
+
     # ── OPTION_MAP ──────────────────────────────────────────────────────────────
     option_tickers = {}
 
@@ -1386,6 +1391,20 @@ def _build_ticker_maps(uid):
             exp_str = ps.expiration_date.strftime('%d/%m/%Y')
             option_tickers[ps.ticker.upper()] = (
                 f'{ps.underlying_asset} | PUT K={ps.strike:.2f} | venc {exp_str}'
+            )
+
+    # OptionSpread (travas) com vencimento >= hoje — pernas long e short
+    for sp in OptionSpread.query.filter_by(user_id=uid).all():
+        if sp.expiration_date < today:
+            continue
+        exp_str = sp.expiration_date.strftime('%d/%m/%Y')
+        if sp.leg_long_ticker:
+            option_tickers[sp.leg_long_ticker.upper()] = (
+                f'{sp.underlying_asset} | {sp.spread_type} long K={sp.leg_long_strike:.2f} | venc {exp_str}'
+            )
+        if sp.leg_short_ticker:
+            option_tickers[sp.leg_short_ticker.upper()] = (
+                f'{sp.underlying_asset} | {sp.spread_type} short K={sp.leg_short_strike:.2f} | venc {exp_str}'
             )
 
     # ── Formata textos para exibição ────────────────────────────────────────────

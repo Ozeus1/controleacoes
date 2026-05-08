@@ -1651,11 +1651,17 @@ def _get_underlying_quote(ticker, user_id):
             return op.underlying_price, op.underlying_change
     except Exception:
         pass
-    # 3. StudyOption — tem underlying_price salvo pelo import
+    # 3. OptionSpread — underlying_asset com cotação salva no Asset
+    sp = OptionSpread.query.filter_by(underlying_asset=t, user_id=user_id).first()
+    if sp:
+        a3 = Asset.query.filter_by(ticker=t, user_id=user_id).first()
+        if a3 and a3.current_price:
+            return a3.current_price, getattr(a3, 'daily_change', None)
+    # 4. StudyOption — tem underlying_price salvo pelo import
     so = StudyOption.query.filter_by(underlying_asset=t, user_id=user_id).first()
     if so and so.underlying_price:
         return so.underlying_price, None
-    # 4. Option — qualquer opção cadastrada do mesmo subjacente tem o ativo em Asset
+    # 5. Option — qualquer opção cadastrada do mesmo subjacente tem o ativo em Asset
     opt = Option.query.filter_by(underlying_asset=t, user_id=user_id).first()
     if opt:
         a2 = Asset.query.filter_by(ticker=t, user_id=user_id).first()

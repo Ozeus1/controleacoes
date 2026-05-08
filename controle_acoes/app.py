@@ -5739,13 +5739,19 @@ def api_update_quotes():
             leg.last_update   = now
             found = True
 
-        # 3. PutSale — atualiza cotação do prêmio (campo underlying_price já tratado acima)
-        # O ticker aqui é o ticker da opção, não do subjacente
+        # 3. PutSale
         ps_opt = PutSale.query.filter_by(ticker=ticker, user_id=user_id).first()
         if ps_opt:
-            # PutSale não tem campo current_price para a opção, apenas armazena prêmio de entrada
-            # Registra como found para não reportar como ausente
             found = True
+
+        # 4. OptionSpread (travas) — perna comprada (long) ou vendida (short)
+        for sp in OptionSpread.query.filter_by(user_id=user_id).all():
+            if sp.leg_long_ticker and sp.leg_long_ticker.upper() == ticker:
+                sp.leg_long_current = price_f
+                found = True
+            if sp.leg_short_ticker and sp.leg_short_ticker.upper() == ticker:
+                sp.leg_short_current = price_f
+                found = True
 
         if found:
             updated_options.append(ticker)

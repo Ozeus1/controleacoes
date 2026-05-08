@@ -12,8 +12,29 @@
             </div>
             {% endif %}
         </div>
-        <a href="{{ url_for('opcoes') }}" class="btn btn-secondary btn-sm" style="margin-left:auto;">← Voltar</a>
+        <div style="display:flex; gap:.5rem; margin-left:auto;">
+            {% if underlying %}
+            <button class="btn btn-outline-info btn-sm" onclick="openChart()">📈 Gráfico {{ underlying }}</button>
+            {% endif %}
+            <a href="{{ url_for('opcoes') }}" class="btn btn-secondary btn-sm">← Voltar</a>
+        </div>
     </div>
+
+    {# ── Modal gráfico TradingView ── #}
+    {% if underlying %}
+    <div id="tv-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+         background:rgba(0,0,0,.75); align-items:center; justify-content:center;">
+        <div style="background:var(--card-bg,#1e293b); border-radius:10px; padding:1rem;
+                    width:min(96vw,1100px); max-height:90vh; display:flex; flex-direction:column; gap:.75rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-weight:600; font-size:1rem;">📈 {{ underlying }} — Gráfico Técnico</span>
+                <button onclick="closeChart()" style="background:none; border:none; font-size:1.4rem;
+                        color:var(--text-secondary); cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <div id="tv-container" style="flex:1; min-height:500px; border-radius:6px; overflow:hidden;"></div>
+        </div>
+    </div>
+    {% endif %}
 
     {# ── Tabela de pernas ── #}
     <div style="overflow-x:auto; margin-bottom:1.5rem;">
@@ -522,4 +543,67 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
     window.addEventListener('resize', setSize);
 })();
 </script>
+
+{% if underlying %}
+<script>
+(function() {
+    var tvLoaded = false;
+    var modal    = document.getElementById('tv-modal');
+    var ticker   = '{{ underlying | upper }}';
+    // TradingView usa sufixo BMFBOVESPA: para ações BR; ETFs e criptos têm prefixo diferente
+    var tvSymbol = 'BMFBOVESPA:' + ticker;
+
+    window.openChart = function() {
+        modal.style.display = 'flex';
+        if (tvLoaded) return;
+        tvLoaded = true;
+
+        // Carrega script TradingView sob demanda
+        var s = document.createElement('script');
+        s.src = 'https://s3.tradingview.com/tv.js';
+        s.onload = function() { buildWidget(); };
+        document.head.appendChild(s);
+    };
+
+    window.closeChart = function() {
+        modal.style.display = 'none';
+    };
+
+    // Fecha ao clicar fora do card
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) closeChart();
+    });
+
+    function buildWidget() {
+        var container = document.getElementById('tv-container');
+        container.innerHTML = '';   // limpa caso reabra
+        new TradingView.widget({
+            container_id: 'tv-container',
+            symbol:       tvSymbol,
+            interval:     'D',
+            timezone:     'America/Sao_Paulo',
+            theme:        'dark',
+            style:        '1',          // candlestick
+            locale:       'br',
+            toolbar_bg:   '#1e293b',
+            enable_publishing: false,
+            hide_side_toolbar: false,
+            allow_symbol_change: true,
+            save_image:   false,
+            height:       500,
+            width:        '100%',
+            studies: [
+                'MASimple@tv-basicstudies',   // MM simples
+                'MAExp@tv-basicstudies',      // MM exponencial
+                { id: 'MASimple@tv-basicstudies', inputs: { length: 200 } },
+            ],
+            studies_overrides: {
+                'moving average.length': 21,
+                'moving average exponential.length': 9,
+            },
+        });
+    }
+})();
+</script>
+{% endif %}
 {% endblock %}

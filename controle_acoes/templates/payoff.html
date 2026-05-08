@@ -351,38 +351,6 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
             ctx.fillText('BE ' + be.toLocaleString('pt-BR', {minimumFractionDigits:2}), xb, H - PAD.bottom + 14);
         });
 
-        // ── Cotação atual do subjacente ───────────────────────────────────────
-        if (spotPrice > 0 && spotPrice >= Smin && spotPrice <= Smax) {
-            var xs = xPx(spotPrice);
-            ctx.setLineDash([4, 3]);
-            ctx.strokeStyle = 'rgba(99,179,237,0.9)';   // azul claro
-            ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(xs, PAD.top); ctx.lineTo(xs, H - PAD.bottom); ctx.stroke();
-            ctx.setLineDash([]);
-            // Rótulo acima
-            var spotLabel = spotPrice.toLocaleString('pt-BR', {minimumFractionDigits:2});
-            if (spotChange !== null) {
-                var chSign = spotChange >= 0 ? '+' : '';
-                spotLabel += ' (' + chSign + spotChange.toLocaleString('pt-BR', {minimumFractionDigits:2}) + '%)';
-            }
-            ctx.fillStyle = 'rgba(99,179,237,1)';
-            ctx.font = 'bold 10px sans-serif';
-            ctx.textAlign = 'center';
-            // Garante que o label não sai da área
-            var labelX = Math.max(PAD.left + 60, Math.min(xs, W - PAD.right - 60));
-            ctx.fillText(spotLabel, labelX, PAD.top - 6);
-            // Ponto de payoff atual
-            var pSpot = payoffAt(spotPrice);
-            var dotColor = pSpot >= 0 ? '#10b981' : '#ef4444';
-            ctx.beginPath();
-            ctx.arc(xs, yPx(pSpot), 5, 0, Math.PI * 2);
-            ctx.fillStyle = dotColor;
-            ctx.fill();
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
-        }
-
         // ── Curva de payoff (fill segmentado) ────────────────────────────────
         // Área verde (payoff > 0)
         ctx.save();
@@ -452,6 +420,77 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
         ctx.strokeStyle = 'rgba(100,116,139,0.25)';
         ctx.lineWidth = 1;
         ctx.strokeRect(PAD.left, PAD.top, cW, cH);
+
+        // ── Cotação atual do subjacente (desenhado por último, sobre tudo) ────
+        if (spotPrice > 0 && spotPrice >= Smin && spotPrice <= Smax) {
+            var xs = xPx(spotPrice);
+            // Linha vertical azul
+            ctx.setLineDash([4, 3]);
+            ctx.strokeStyle = 'rgba(99,179,237,0.95)';
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(xs, PAD.top); ctx.lineTo(xs, H - PAD.bottom); ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Rótulo na base (abaixo do eixo X, à direita do BE)
+            var spotVal = spotPrice.toLocaleString('pt-BR', {minimumFractionDigits:2});
+            var chSign  = spotChange !== null ? (spotChange >= 0 ? '+' : '') : null;
+            var chStr   = spotChange !== null
+                ? ' ' + chSign + spotChange.toLocaleString('pt-BR', {minimumFractionDigits:2}) + '%'
+                : '';
+            var chColor = spotChange !== null ? (spotChange >= 0 ? '#10b981' : '#ef4444') : 'rgba(99,179,237,1)';
+
+            // Fundo do badge
+            var labelFull = 'S=' + spotVal + chStr;
+            ctx.font = 'bold 11px sans-serif';
+            var tw = ctx.measureText(labelFull).width + 10;
+            var lx = Math.max(PAD.left + tw/2 + 2, Math.min(xs, W - PAD.right - tw/2 - 2));
+            var ly = H - PAD.bottom + 26;
+            ctx.fillStyle = 'rgba(30,41,59,0.82)';
+            ctx.beginPath();
+            ctx.roundRect ? ctx.roundRect(lx - tw/2, ly - 12, tw, 16, 3)
+                          : ctx.rect(lx - tw/2, ly - 12, tw, 16);
+            ctx.fill();
+
+            // Texto: valor em azul
+            ctx.fillStyle = 'rgba(99,179,237,1)';
+            ctx.textAlign = 'center';
+            if (chStr) {
+                // Dois segmentos de cor
+                var valW = ctx.measureText('S=' + spotVal).width;
+                ctx.fillText('S=' + spotVal, lx - ctx.measureText(chStr).width / 2, ly);
+                ctx.fillStyle = chColor;
+                ctx.fillText(chStr, lx + valW / 2, ly);
+            } else {
+                ctx.fillText('S=' + spotVal, lx, ly);
+            }
+
+            // Ponto sobre a curva na cotação atual
+            var pSpot    = payoffAt(spotPrice);
+            var dotColor = pSpot >= 0 ? '#10b981' : '#ef4444';
+            ctx.beginPath();
+            ctx.arc(xs, yPx(pSpot), 5, 0, Math.PI * 2);
+            ctx.fillStyle = dotColor;
+            ctx.fill();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Valor do P&L no ponto (pequeno badge ao lado do ponto)
+            var pLabel   = (pSpot >= 0 ? '+' : '') + fmtBRL(pSpot);
+            ctx.font = 'bold 10px sans-serif';
+            var pw   = ctx.measureText(pLabel).width + 8;
+            var px   = xs + 8;
+            var py   = yPx(pSpot);
+            if (px + pw > W - PAD.right) px = xs - pw - 8;
+            ctx.fillStyle = 'rgba(30,41,59,0.82)';
+            ctx.beginPath();
+            ctx.roundRect ? ctx.roundRect(px - 2, py - 9, pw + 2, 14, 3)
+                          : ctx.rect(px - 2, py - 9, pw + 2, 14);
+            ctx.fill();
+            ctx.fillStyle = dotColor;
+            ctx.textAlign = 'left';
+            ctx.fillText(pLabel, px + 2, py + 2);
+        }
     }
 
     // ── Tooltip ao mover o mouse ──────────────────────────────────────────────

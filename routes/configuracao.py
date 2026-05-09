@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
+from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from routes.auth import admin_required, gerente_required
 from models import db, User, CategoriaDespesa, CategoriaReceita, MeioPagamento, MeioRecebimento, Orcamento, FechamentoCartao, Configuracao, Despesa
@@ -430,21 +430,6 @@ def importar_supabase():
                          supabase_url=config_url.valor if config_url else '',
                          supabase_key=config_key.valor if config_key else '',
                          supabase_table=config_table.valor if config_table else '')
-
-@config_bp.route('/importar-supabase/config', methods=['GET'])
-@login_required
-@admin_required
-def get_config_supabase():
-    """Retornar configurações salvas do Supabase (para o modal)"""
-    config_url = Configuracao.query.filter_by(chave='supabase_url').first()
-    config_key = Configuracao.query.filter_by(chave='supabase_key').first()
-    config_table = Configuracao.query.filter_by(chave='supabase_table').first()
-    return jsonify({
-        'url': config_url.valor if config_url else '',
-        'key': config_key.valor if config_key else '',
-        'table': config_table.valor if config_table else '',
-        'connected': bool(config_url and config_url.valor)
-    })
 
 @config_bp.route('/importar-supabase/salvar-config', methods=['POST'])
 @login_required

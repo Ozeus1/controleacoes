@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+/* Oculta campo de busca nativo do DataTables nesta página */
+#historyTable_filter { display: none !important; }
+</style>
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
         <h3>Histórico de Trades</h3>
@@ -636,18 +640,18 @@ $(document).ready(function () {
     var currentQ     = '';
     var currentStrat = '';
 
-    // Filtro personalizado: lê data-search da linha + coluna estratégia
-    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex, row) {
+    // Filtro personalizado: usa o nó DOM real da linha para ler data-search
+    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex, rowData, counter) {
         if (settings.nTable.id !== 'historyTable') return true;
-        var strat = currentStrat;
         var q     = currentQ.toUpperCase();
-        // Filtra estratégia pela coluna 1
-        if (strat && data[1] !== strat) return false;
-        // Filtra pela busca no atributo data-search da linha (ticker+underlying+notes)
+        var strat = currentStrat;
+        // data[1] é o texto da coluna Estratégia
+        if (strat && $.trim(data[1]) !== strat) return false;
         if (q) {
-            var $tr      = $(settings.nTable).find('tbody tr').eq(dataIndex);
-            var searchTxt = ($tr.attr('data-search') || '').toUpperCase();
-            if (!searchTxt.includes(q)) return false;
+            // nNodes() retorna os nós DOM na ordem interna do DT
+            var node = dt.row(dataIndex).node();
+            var searchTxt = ($(node).attr('data-search') || '').toUpperCase();
+            if (searchTxt.indexOf(q) === -1) return false;
         }
         return true;
     });
@@ -658,13 +662,15 @@ $(document).ready(function () {
         "pageLength":   25,
         "lengthChange": false,
         "info":         true,
-        "searching":    true,
+        "searching":    false,   // desativa busca nativa (usamos filtro personalizado)
         "order":        [[3, "desc"]],
-        "columnDefs": [{ "orderable": false, "targets": 10 }]
+        "columnDefs": [{ "orderable": false, "targets": 10 }],
+        "initComplete": function() {
+            // Garante ocultação do campo nativo após init
+            $('#historyTable_filter').hide();
+            $('#historyTable_filter').closest('.dataTables_filter').hide();
+        }
     });
-
-    // Oculta campo de busca nativo do DataTables
-    $('.dataTables_filter').hide();
 
     $('#searchInput').on('input', function () {
         currentQ = $(this).val().trim();

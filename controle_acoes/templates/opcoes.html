@@ -88,7 +88,8 @@
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
-                            onclick="openRollHistory({{ item.option.roll_history|tojson }}, '{{ item.option.ticker }}')">📋</button>
+                            data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}"
+                            onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
                         style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
@@ -207,7 +208,8 @@
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
-                            onclick="openRollHistory({{ item.option.roll_history|tojson }}, '{{ item.option.ticker }}')">📋</button>
+                            data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}"
+                            onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
                         style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
@@ -307,7 +309,8 @@
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
-                            onclick="openRollHistory({{ item.option.roll_history|tojson }}, '{{ item.option.ticker }}')">📋</button>
+                            data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}"
+                            onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
                         style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
@@ -405,7 +408,8 @@
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
-                            onclick="openRollHistory({{ item.option.roll_history|tojson }}, '{{ item.option.ticker }}')">📋</button>
+                            data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}"
+                            onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
                         style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
@@ -501,7 +505,8 @@
                             onclick="openRollSpread({{ item.spread.id }}, '{{ item.spread.underlying_asset }}', '{{ item.spread.spread_type }}', '{{ item.spread.leg_long_ticker }}', {{ item.spread.leg_long_strike }}, {{ item.spread.leg_long_price }}, '{{ item.spread.leg_short_ticker }}', {{ item.spread.leg_short_strike }}, {{ item.spread.leg_short_price }}, '{{ item.spread.expiration_date.strftime('%Y-%m-%d') }}')">🔄</button>
                     {% if item.spread.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
-                            onclick="openRollHistory({{ item.spread.roll_history|tojson }}, '{{ item.spread.underlying_asset }}')">📋</button>
+                            data-roll="{{ item.spread.roll_history|e }}" data-roll-title="{{ item.spread.underlying_asset }}"
+                            onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('close_spread', id=item.spread.id) }}" class="btn btn-sm" style="background:var(--accent-color); color: white;" title="Encerrar">🛑</a>
                     <a href="{{ url_for('edit_spread', id=item.spread.id) }}" class="btn btn-sm btn-primary">✏️</a>
@@ -638,7 +643,8 @@
                             onclick="openRollEstruturada({{ op.id }}, '{{ op.name }}', [{% for l in op.legs %}{'id':{{ l.id }},'ticker':'{{ l.ticker }}','side':'{{ l.side }}','opt_type':'{{ l.opt_type }}','strike':{{ l.strike or 0 }},'entry_price':{{ l.entry_price or 0 }},'current_price':{{ l.current_price or 0 }},'expiration_date':'{{ l.expiration_date.isoformat() if l.expiration_date else '' }}'}{% if not loop.last %},{% endif %}{% endfor %}])">🔄</button>
                     {% if op.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
-                            onclick="openRollHistory({{ op.roll_history|tojson }}, '{{ op.name }}')">📋</button>
+                            data-roll="{{ op.roll_history|e }}" data-roll-title="{{ op.name }}"
+                            onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('edit_estruturada', id=op.id) }}" class="btn btn-sm btn-primary" title="Editar">✏️</a>
                     <form action="{{ url_for('close_estruturada', id=op.id) }}" method="post" style="display:inline;">
@@ -857,6 +863,12 @@ function openRollEstruturada(id, name, legs) {
 }
 
 // ── Histórico de rolagens ────────────────────────────────────────────────────
+function openRollHistoryBtn(btn) {
+    var raw   = btn.getAttribute('data-roll') || '[]';
+    var title = btn.getAttribute('data-roll-title') || '';
+    try { openRollHistory(JSON.parse(raw), title); }
+    catch(e) { alert('Erro ao ler histórico: ' + e.message); }
+}
 function openRollHistory(history, title) {
     document.getElementById('roll-hist-title').textContent = title;
     var body = document.getElementById('roll-hist-body');

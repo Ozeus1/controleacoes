@@ -191,6 +191,16 @@ def run_migrations():
     if cursor.rowcount > 0:
         print(f"[MIGRATION] Reclassified {cursor.rowcount} trade_history strategy records.")
 
+    # Add underlying and notes columns to trade_history if missing
+    cursor.execute("PRAGMA table_info(trade_history)")
+    th_cols = {row[1] for row in cursor.fetchall()}
+    if 'underlying' not in th_cols:
+        cursor.execute("ALTER TABLE trade_history ADD COLUMN underlying VARCHAR(15)")
+        print("[MIGRATION] Added trade_history.underlying")
+    if 'notes' not in th_cols:
+        cursor.execute("ALTER TABLE trade_history ADD COLUMN notes TEXT")
+        print("[MIGRATION] Added trade_history.notes")
+
     # Create option_spread table if it doesn't exist
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS option_spread (
@@ -1087,20 +1097,33 @@ def close_spread(id):
             profit_pct = (profit_val / abs(max_loss_ref) * 100) if max_loss_ref != 0 else 0
             days_held = (exit_date - sp.entry_date).days if sp.entry_date else 0
 
-            label = f"TRAVA {sp.leg_long_ticker}/{sp.leg_short_ticker}"
+            type_labels = {
+                'TRAVA_ALTA_PUT': 'T.Alta Put', 'TRAVA_ALTA_CALL': 'T.Alta Call',
+                'TRAVA_BAIXA_PUT': 'T.Baixa Put', 'TRAVA_BAIXA_CALL': 'T.Baixa Call',
+            }
+            label = type_labels.get(sp.spread_type, 'TRAVA')
+            notes = (
+                f"{sp.spread_type} | {sp.underlying_asset} | "
+                f"C:{sp.leg_long_ticker} K={sp.leg_long_strike:.2f} @{sp.leg_long_price:.2f}"
+                f"→@{close_long_price:.2f} | "
+                f"V:{sp.leg_short_ticker} K={sp.leg_short_strike:.2f} @{sp.leg_short_price:.2f}"
+                f"→@{close_short_price:.2f}"
+            )
             history = TradeHistory(
                 user_id=current_user.id,
-                ticker=label[:10],
+                ticker=label,
                 strategy='Opções',
                 entry_date=sp.entry_date,
                 exit_date=exit_date,
-                buy_price=close_long_price,
-                sell_price=sp.leg_short_price,
+                buy_price=round(sp.leg_long_price - sp.leg_short_price, 4),   # custo líquido montagem
+                sell_price=round(close_long_price - close_short_price, 4),    # custo líquido fechamento
                 quantity=sp.quantity,
                 profit_value=profit_val,
                 profit_pct=profit_pct,
                 days_held=days_held,
-                reason=reason
+                reason=reason,
+                underlying=sp.underlying_asset,
+                notes=notes,
             )
             db.session.add(history)
             db.session.delete(sp)
@@ -1282,9 +1305,18 @@ def close_estruturada(id):
     pnl_total = net_credit + pnl
     pct = (pnl_total / abs(total_invested) * 100) if total_invested else 0
 
-    ticker_label = (op.name or op.underlying_asset or 'ESTRUT')[:10]
-    avg_entry = total_invested / sum(l.quantity for l in op.legs) if op.legs else 0
-    avg_exit  = avg_entry + (pnl_total / sum(l.quantity for l in op.legs)) if op.legs else avg_entry
+    ticker_label = (op.name or op.underlying_asset or 'ESTRUT')[:20]
+    total_qty    = sum(l.quantity for l in op.legs) if op.legs else 1
+    avg_entry    = total_invested / total_qty
+    avg_exit     = avg_entry + (pnl_total / total_qty)
+
+    # Detalhes das pernas para pesquisa
+    legs_detail = ' | '.join(
+        f"{'V' if l.side=='SELL' else 'C'}:{l.ticker} {l.opt_type} K={l.strike:.2f}"
+        f" @{l.entry_price:.2f}→@{l.current_price or l.entry_price:.2f}"
+        for l in op.legs
+    )
+    notes = f"{op.underlying_asset} | {legs_detail}"
 
     history = TradeHistory(
         user_id     = current_user.id,
@@ -1294,11 +1326,13 @@ def close_estruturada(id):
         exit_date   = exit_date,
         buy_price   = round(avg_entry, 4),
         sell_price  = round(avg_exit,  4),
-        quantity    = sum(l.quantity for l in op.legs),
+        quantity    = total_qty,
         profit_value= round(pnl_total, 2),
         profit_pct  = round(pct, 2),
         days_held   = days_held,
         reason      = 'Encerramento',
+        underlying  = op.underlying_asset,
+        notes       = notes,
     )
     db.session.add(history)
     op.status = 'CLOSED'
@@ -2610,8 +2644,19 @@ def exit_intl(id):
 @app.route('/historico')
 @login_required
 def historico():
-    trades = TradeHistory.query.filter_by(user_id=current_user.id).order_by(TradeHistory.exit_date.desc()).all()
-    return render_template('historico.html', history=trades)
+    q = request.args.get('q', '').strip().upper()
+    query = TradeHistory.query.filter_by(user_id=current_user.id)
+    if q:
+        like = f'%{q}%'
+        query = query.filter(
+            db.or_(
+                TradeHistory.ticker.ilike(like),
+                TradeHistory.underlying.ilike(like),
+                TradeHistory.notes.ilike(like),
+            )
+        )
+    trades = query.order_by(TradeHistory.exit_date.desc()).all()
+    return render_template('historico.html', history=trades, q=q)
 
 @app.route('/resumo')
 @login_required

@@ -27,18 +27,40 @@
             <a href="{{ url_for('add_history') }}" class="btn btn-primary">+ Adicionar Registro</a>
         </header>
 
+        {# ── Barra de busca ── #}
+        <div class="card" style="padding:1rem; margin-bottom:1rem;">
+            <form method="get" action="{{ url_for('historico') }}"
+                  style="display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;">
+                <input type="text" name="q" value="{{ q or '' }}"
+                       placeholder="Buscar por ticker, ativo base ou perna (ex: VALE3, VALEQ789)..."
+                       style="flex:1; min-width:260px; padding:.45rem .75rem; border-radius:6px;
+                              border:1px solid var(--border-color); background:var(--input-bg,#1e293b);
+                              color:var(--text-primary); font-size:.9rem;"
+                       autofocus>
+                <button type="submit" class="btn btn-primary btn-sm">🔍 Buscar</button>
+                {% if q %}
+                <a href="{{ url_for('historico') }}" class="btn btn-secondary btn-sm">✕ Limpar</a>
+                {% endif %}
+            </form>
+            {% if q %}
+            <div style="margin-top:.5rem; font-size:.85rem; color:var(--text-secondary);">
+                {{ history|length }} resultado(s) para "<strong>{{ q }}</strong>"
+            </div>
+            {% endif %}
+        </div>
+
         {% if history %}
         <div class="card">
-            <table>
+            <table id="historyTable">
                 <thead>
                     <tr>
-                        <th>Ticker</th>
+                        <th>Ticker / Ativo</th>
                         <th>Estratégia</th>
                         <th>Entrada</th>
                         <th>Saída</th>
                         <th>Qtd</th>
-                        <th>Compra</th>
-                        <th>Venda</th>
+                        <th>Pr. Compra</th>
+                        <th>Pr. Venda</th>
                         <th>Lucro R$</th>
                         <th>Lucro %</th>
                         <th>Dias</th>
@@ -49,7 +71,21 @@
                 <tbody>
                     {% for item in history %}
                     <tr>
-                        <td><span class="ticker-badge">{{ item.ticker }}</span></td>
+                        <td>
+                            <span class="ticker-badge">{{ item.ticker }}</span>
+                            {% if item.underlying and item.underlying|upper != item.ticker|upper %}
+                            <br><small style="color:var(--text-secondary); font-size:.75rem;">
+                                📌 {{ item.underlying }}
+                            </small>
+                            {% endif %}
+                            {% if item.notes %}
+                            <br><small style="color:var(--text-secondary); font-size:.72rem;
+                                         white-space:normal; display:block; max-width:220px;
+                                         line-height:1.3; margin-top:.15rem;">
+                                {{ item.notes }}
+                            </small>
+                            {% endif %}
+                        </td>
                         <td>{{ item.strategy or '-' }}</td>
                         <td>{{ item.entry_date.strftime('%d/%m/%Y') if item.entry_date else '-' }}</td>
                         <td>{{ item.exit_date.strftime('%d/%m/%Y') if item.exit_date else '-' }}</td>
@@ -77,16 +113,19 @@
                         <td class="{{ 'positive' if history|sum(attribute='profit_value') >= 0 else 'negative' }}">
                             R$ {{ "%.2f"|format(history|sum(attribute='profit_value'))|replace('.', ',') }}
                         </td>
-                        <td></td>
-                        <td></td>
-                        <td></td>
+                        <td></td><td></td><td></td><td></td>
                     </tr>
                 </tbody>
             </table>
         </div>
         {% else %}
         <div class="card" style="text-align: center; padding: 3rem;">
+            {% if q %}
+            <h3>Nenhum resultado para "{{ q }}"</h3>
+            <a href="{{ url_for('historico') }}" class="btn btn-secondary" style="margin-top:1rem;">Ver todos</a>
+            {% else %}
             <h3>Nenhuma operação registrada</h3>
+            {% endif %}
         </div>
         {% endif %}
     </div>

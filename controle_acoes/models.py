@@ -89,7 +89,7 @@ class Asset(db.Model):
 class TradeHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, default=1)
-    ticker = db.Column(db.String(10), nullable=False)
+    ticker = db.Column(db.String(20), nullable=False)
     strategy = db.Column(db.String(50)) # Previously recommendation
     entry_date = db.Column(db.Date)
     exit_date = db.Column(db.Date)
@@ -100,6 +100,8 @@ class TradeHistory(db.Model):
     profit_pct = db.Column(db.Float)
     days_held = db.Column(db.Integer)
     reason = db.Column(db.String(20)) # StopLoss, Gain, Partial, etc.
+    underlying = db.Column(db.String(15), nullable=True)   # ativo base (PETR4, VALE3...)
+    notes = db.Column(db.Text, nullable=True)              # tickers das pernas, detalhes
 
 class Option(db.Model):
     id = db.Column(db.Integer, primary_key=True)

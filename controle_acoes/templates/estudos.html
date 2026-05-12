@@ -15,7 +15,7 @@
 </div>
 
 <div class="card">
-  <table class="table table-dark table-striped table-bordered table-hover no-datatable" style="min-width:1100px;font-size:.85rem">
+  <table class="table table-dark table-striped table-hover no-datatable align-middle" style="min-width:1100px;font-size:.85rem">
     <thead>
       <tr>
         <th>Asset</th>
@@ -66,7 +66,8 @@
         {{ vdx_cell(row.vdx) }}
         <td>{{ '%.4f'|format(row.nv) if row.nv is not none else '-' }}</td>
         <td><span style="font-size:.75rem;color:var(--text-secondary)">V. Coberta</span></td>
-        <td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm" onclick="openTVChart('{{ row.underlying }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditGreeks({{ row.id }}, '{{ row.ticker }}',
               '{{ row.ve or '' }}', '{{ row.delta or '' }}', '{{ row.gama or '' }}'
@@ -91,7 +92,8 @@
         {{ vdx_cell(row.vdx) }}
         <td>{{ '%.4f'|format(row.nv) if row.nv is not none else '-' }}</td>
         <td><span style="font-size:.75rem;color:var(--success-color)">Estudo</span></td>
-        <td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm" onclick="openTVChart('{{ row.underlying }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditOpcao({{ row.id }}, '{{ row.ticker }}', '{{ row.underlying }}',
               '{{ row.ve or '' }}', '{{ row.delta or '' }}', '{{ row.gama or '' }}'
@@ -121,7 +123,7 @@
 </div>
 
 <div class="card">
-  <table class="table table-dark table-striped table-bordered table-hover no-datatable" style="min-width:1000px;font-size:.85rem">
+  <table class="table table-dark table-striped table-hover no-datatable align-middle" style="min-width:1000px;font-size:.85rem">
     <thead>
       <tr>
         <th>Ação</th>
@@ -139,7 +141,7 @@
     <tbody>
       {% for ss in study_stocks %}
       <tr>
-        <td><strong>{{ ss.ticker }}</strong></td>
+        <td><span class="ticker-badge">{{ ss.ticker }}</span></td>
         <td>
           {% if ss.trend == 'Alta' %}<span class="positive">▲ Alta</span>
           {% elif ss.trend and 'aixa' in ss.trend %}<span class="negative">▼ Baixa</span>
@@ -165,7 +167,8 @@
         <td>{{ ss.study_date.strftime('%d/%m/%Y') if ss.study_date else '-' }}</td>
         <td>{{ ss.strategy_active or '-' }}</td>
         <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
-        <td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm" onclick="openTVChart('{{ ss.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditAcao({{ ss.id }}, '{{ ss.ticker }}',
               '{{ ss.trend or '' }}', '{{ ss.rsi or '' }}',
@@ -199,7 +202,7 @@
 </div>
 
 <div class="card">
-  <table class="table table-dark table-striped table-bordered table-hover no-datatable" style="min-width:1000px;font-size:.85rem">
+  <table class="table table-dark table-striped table-hover no-datatable align-middle" style="min-width:1000px;font-size:.85rem">
     <thead>
       <tr>
         <th>Ação</th>
@@ -243,7 +246,8 @@
         <td>{{ ss.study_date.strftime('%d/%m/%Y') if ss.study_date else '-' }}</td>
         <td>{{ ss.strategy_active or '-' }}</td>
         <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
-        <td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm" onclick="openTVChart('{{ ss.ticker }}', true)" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditIntlAcao({{ ss.id }}, '{{ ss.ticker }}',
               '{{ ss.trend or '' }}', '{{ ss.rsi or '' }}',
@@ -861,6 +865,73 @@ function setSelect(id, val) {
     if (data.mode === 'mt5') makeBadge('⚡ MT5 ao vivo', 'var(--success-color)');
     else makeBadge('🔄 OpLab ' + (data.oplab_interval_ms/60000) + 'min', '#2563eb');
   }).catch(function(){});
+})();
+</script>
+
+<!-- Modal gráfico TradingView -->
+<div id="tv-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+     background:rgba(0,0,0,.75); align-items:center; justify-content:center;">
+  <div style="background:var(--card-bg,#1e293b); border-radius:10px; padding:1rem;
+              width:min(96vw,1100px); max-height:90vh; display:flex; flex-direction:column; gap:.75rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span id="tv-modal-title" style="font-weight:600; font-size:1rem;"></span>
+      <button onclick="closeTVChart()" style="background:none; border:none; font-size:1.4rem;
+              color:var(--text-secondary); cursor:pointer; line-height:1;">&times;</button>
+    </div>
+    <div id="tv-container" style="flex:1; min-height:500px; border-radius:6px; overflow:hidden;"></div>
+  </div>
+</div>
+<script>
+(function() {
+    var tvScriptLoaded = false;
+    var modal = document.getElementById('tv-modal');
+
+    // isIntl=true → ticker sem prefixo BMFBOVESPA (ações internacionais)
+    window.openTVChart = function(ticker, isIntl) {
+        ticker = (ticker || '').toUpperCase();
+        var isBR = !isIntl && /^[A-Z]{4}[0-9]/.test(ticker);
+        var symbol = isBR ? 'BMFBOVESPA:' + ticker : ticker;
+        document.getElementById('tv-modal-title').textContent = '📈 ' + ticker + ' — Gráfico Técnico';
+        modal.style.display = 'flex';
+        if (!tvScriptLoaded) {
+            tvScriptLoaded = true;
+            var s = document.createElement('script');
+            s.src = 'https://s3.tradingview.com/tv.js';
+            s.onload = function() { buildWidget(symbol); };
+            document.head.appendChild(s);
+        } else {
+            buildWidget(symbol);
+        }
+    };
+
+    window.closeTVChart = function() { modal.style.display = 'none'; };
+    modal.addEventListener('click', function(e) { if (e.target === modal) closeTVChart(); });
+
+    function buildWidget(symbol) {
+        var container = document.getElementById('tv-container');
+        container.innerHTML = '';
+        new TradingView.widget({
+            container_id: 'tv-container',
+            symbol:        symbol,
+            interval:      'D',
+            timezone:      'America/Sao_Paulo',
+            theme:         'dark',
+            style:         '1',
+            locale:        'br',
+            toolbar_bg:    '#1e293b',
+            enable_publishing: false,
+            hide_side_toolbar: false,
+            allow_symbol_change: true,
+            save_image:    false,
+            height:        500,
+            width:         '100%',
+            studies: [
+                { id: 'MASimple@tv-basicstudies', inputs: { length: 21  } },
+                { id: 'MAExp@tv-basicstudies',    inputs: { length: 9   } },
+                { id: 'MASimple@tv-basicstudies', inputs: { length: 200 } },
+            ],
+        });
+    }
 })();
 </script>
 {% endblock %}

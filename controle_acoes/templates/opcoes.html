@@ -872,38 +872,129 @@ function openRollHistoryBtn(btn) {
 function openRollHistory(history, title) {
     document.getElementById('roll-hist-title').textContent = title;
     var body = document.getElementById('roll-hist-body');
+
     if (!history || !history.length) {
-        body.innerHTML = '<p style="color:var(--text-secondary);text-align:center;">Nenhuma rolagem registrada.</p>';
-    } else {
-        body.innerHTML = history.map(function(r, i) {
-            var bg = 'var(--hover-bg)';
-            var net = r.net_roll != null ? r.net_roll : (r.net || 0);
-            var netColor = net >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
-            var netSign  = net >= 0 ? '+' : '';
-            var html = '<div style="background:' + bg + ';border-radius:8px;padding:.9rem;margin-bottom:.6rem;border-left:3px solid ' + (net >= 0 ? 'var(--success-color)' : 'var(--danger-color)') + ';">' +
-                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem;">' +
-                '<strong>Rolagem #' + (i+1) + ' — ' + (r.roll_type||'') + '</strong>' +
-                '<span style="font-size:.8rem;color:var(--text-secondary);">' + (r.rolled_at||'') + '</span></div>' +
-                '<div style="font-size:.85rem;color:var(--text-secondary);">';
-            // Opção individual
-            if (r.old_ticker) html += 'De: <strong>' + r.old_ticker + ' K=' + (r.old_strike||'') + ' @' + (r.old_premium||'') + '</strong> → ' +
-                'Para: <strong>' + (r.new_ticker||'') + ' K=' + (r.new_strike||'') + ' @' + (r.new_premium||'') + '</strong><br>' +
-                'Recompra: R$&nbsp;' + (r.close_premium||'—') + ' | ';
-            // Trava
-            if (r.old_long_ticker) html += 'Long: ' + r.old_long_ticker + '→' + (r.new_long_ticker||'') +
-                ' K:' + (r.old_long_strike||'') + '→' + (r.new_long_strike||'') + ' | ' +
-                'Short: ' + r.old_short_ticker + '→' + (r.new_short_ticker||'') +
-                ' K:' + (r.old_short_strike||'') + '→' + (r.new_short_strike||'') + '<br>';
-            // Estruturada
-            if (r.legs) html += r.legs.map(function(l) {
-                return (l.side==='SELL'?'V':'C') + ':' + l.old_ticker + '→' + l.new_ticker + ' K:' + l.old_strike + '→' + l.new_strike;
-            }).join(' | ') + '<br>';
-            html += '<span style="color:' + netColor + ';font-weight:600;">Crédito/Débito líquido: ' + netSign + 'R$ ' + Math.abs(net).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</span>';
-            if (r.notes) html += '<br><em>' + r.notes + '</em>';
-            html += '</div></div>';
-            return html;
-        }).join('');
+        body.innerHTML = '<p style="color:var(--text-secondary);text-align:center;padding:1rem;">Nenhuma rolagem registrada.</p>';
+        document.getElementById('modal-roll-history').style.display = 'flex';
+        return;
     }
+
+    function brl(v) {
+        if (v == null) return '—';
+        var n = parseFloat(v);
+        return isNaN(n) ? '—' : 'R$ ' + n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+    }
+    function thStyle() { return 'padding:.35rem .6rem;text-align:left;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);white-space:nowrap;border-bottom:1px solid var(--border-color);'; }
+    function tdStyle(align) { return 'padding:.35rem .6rem;font-size:.83rem;border-bottom:1px solid var(--border-color);' + (align==='r'?'text-align:right;':''); }
+
+    var totalNet = 0;
+    var html = '';
+
+    history.forEach(function(r, i) {
+        var net = r.net_roll != null ? r.net_roll : (r.net || 0);
+        totalNet += net;
+        var netColor = net >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        var borderCol = net >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+
+        html += '<div style="margin-bottom:1.2rem;border-left:3px solid ' + borderCol + ';padding-left:.75rem;">';
+        // Cabeçalho da rolagem
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;">' +
+            '<strong style="font-size:.9rem;">Rolagem #' + (i+1) + ' — ' + (r.roll_type||'TEMPO') + '</strong>' +
+            '<span style="font-size:.78rem;color:var(--text-secondary);">' + (r.rolled_at||'') + '</span></div>';
+
+        // Tabela de tickers negociados
+        html += '<div style="overflow-x:auto;">' +
+            '<table style="width:100%;border-collapse:collapse;background:var(--hover-bg);border-radius:6px;overflow:hidden;">' +
+            '<thead><tr>' +
+            '<th style="' + thStyle() + '">C/V</th>' +
+            '<th style="' + thStyle() + '">Ticker Saiu</th>' +
+            '<th style="' + thStyle() + 'text-align:right;">Strike Saiu</th>' +
+            '<th style="' + thStyle() + 'text-align:right;">Preço Saída</th>' +
+            '<th style="' + thStyle() + '">Ticker Entrou</th>' +
+            '<th style="' + thStyle() + 'text-align:right;">Strike Entrou</th>' +
+            '<th style="' + thStyle() + 'text-align:right;">Preço Entrada</th>' +
+            '<th style="' + thStyle() + '">Novo Venc.</th>' +
+            '</tr></thead><tbody>';
+
+        // Opção individual
+        if (r.old_ticker) {
+            var isShort = (r.option_type||'').indexOf('VENDA') >= 0;
+            html += '<tr>' +
+                '<td style="' + tdStyle() + '"><span style="padding:.1rem .4rem;border-radius:4px;font-size:.75rem;font-weight:700;background:rgba(239,68,68,.15);color:var(--danger-color);">V</span></td>' +
+                '<td style="' + tdStyle() + '"><strong>' + (r.old_ticker||'') + '</strong></td>' +
+                '<td style="' + tdStyle('r') + '">' + brl(r.old_strike) + '</td>' +
+                '<td style="' + tdStyle('r') + '">' + brl(r.close_premium) + '</td>' +
+                '<td style="' + tdStyle() + '"><strong>' + (r.new_ticker||'') + '</strong></td>' +
+                '<td style="' + tdStyle('r') + '">' + brl(r.new_strike) + '</td>' +
+                '<td style="' + tdStyle('r') + '">' + brl(r.new_premium) + '</td>' +
+                '<td style="' + tdStyle() + '">' + (r.new_exp ? r.new_exp.split('-').reverse().join('/') : '—') + '</td>' +
+                '</tr>';
+        }
+
+        // Trava (long + short)
+        if (r.old_long_ticker) {
+            html += '<tr>' +
+                '<td style="' + tdStyle() + '"><span style="padding:.1rem .4rem;border-radius:4px;font-size:.75rem;font-weight:700;background:rgba(16,185,129,.15);color:var(--success-color);">C</span></td>' +
+                '<td style="' + tdStyle() + '"><strong>' + (r.old_long_ticker||'') + '</strong></td>' +
+                '<td style="' + tdStyle('r') + '">' + brl(r.old_long_strike) + '</td>' +
+                '<td style="' + tdStyle('r') + '">' + brl(r.close_long_price) + '</td>' +
+                '<td style="' + tdStyle() + '"><strong>' + (r.new_long_ticker||'') + '</strong></td>' +
+                '<td style="' + tdStyle('r') + '">' + brl(r.new_long_strike) + '</td>' +
+                '<td style="' + tdStyle('r') + '">' + brl(r.new_long_price) + '</td>' +
+                '<td style="' + tdStyle() + '">' + (r.new_exp ? r.new_exp.split('-').reverse().join('/') : '—') + '</td>' +
+                '</tr>';
+            html += '<tr>' +
+                '<td style="' + tdStyle() + '"><span style="padding:.1rem .4rem;border-radius:4px;font-size:.75rem;font-weight:700;background:rgba(239,68,68,.15);color:var(--danger-color);">V</span></td>' +
+                '<td style="' + tdStyle() + '"><strong>' + (r.old_short_ticker||'') + '</strong></td>' +
+                '<td style="' + tdStyle('r') + '">' + brl(r.old_short_strike) + '</td>' +
+                '<td style="' + tdStyle('r') + '">' + brl(r.close_short_price) + '</td>' +
+                '<td style="' + tdStyle() + '"><strong>' + (r.new_short_ticker||'') + '</strong></td>' +
+                '<td style="' + tdStyle('r') + '">' + brl(r.new_short_strike) + '</td>' +
+                '<td style="' + tdStyle('r') + '">' + brl(r.new_short_price) + '</td>' +
+                '<td style="' + tdStyle() + '">' + (r.new_exp ? r.new_exp.split('-').reverse().join('/') : '—') + '</td>' +
+                '</tr>';
+        }
+
+        // Estruturada (múltiplas pernas)
+        if (r.legs) {
+            r.legs.forEach(function(l) {
+                var isS = l.side === 'SELL';
+                var cvBg  = isS ? 'rgba(239,68,68,.15)' : 'rgba(16,185,129,.15)';
+                var cvCol = isS ? 'var(--danger-color)' : 'var(--success-color)';
+                var newExp = l.new_exp ? l.new_exp.split('-').reverse().join('/') : '—';
+                html += '<tr>' +
+                    '<td style="' + tdStyle() + '"><span style="padding:.1rem .4rem;border-radius:4px;font-size:.75rem;font-weight:700;background:' + cvBg + ';color:' + cvCol + ';">' + (isS?'V':'C') + '</span></td>' +
+                    '<td style="' + tdStyle() + '"><strong>' + (l.old_ticker||'') + '</strong></td>' +
+                    '<td style="' + tdStyle('r') + '">' + brl(l.old_strike) + '</td>' +
+                    '<td style="' + tdStyle('r') + '">' + brl(l.close_price) + '</td>' +
+                    '<td style="' + tdStyle() + '"><strong>' + (l.new_ticker||'') + '</strong></td>' +
+                    '<td style="' + tdStyle('r') + '">' + brl(l.new_strike) + '</td>' +
+                    '<td style="' + tdStyle('r') + '">' + brl(l.new_premium) + '</td>' +
+                    '<td style="' + tdStyle() + '">' + newExp + '</td>' +
+                    '</tr>';
+            });
+        }
+
+        html += '</tbody></table></div>';
+
+        // Resumo da rolagem
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:.5rem;padding:.4rem .2rem;">' +
+            '<span style="font-size:.82rem;color:var(--text-secondary);">' + (r.notes ? '<em>📝 ' + r.notes + '</em>' : '') + '</span>' +
+            '<span style="font-size:.88rem;font-weight:700;color:' + netColor + ';">Líquido da rolagem: ' + (net>=0?'+':'') + brl(net) + '</span>' +
+            '</div>';
+
+        html += '</div>';
+    });
+
+    // Resumo geral acumulado
+    var totalColor = totalNet >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+    html += '<div style="margin-top:.5rem;padding:.75rem 1rem;background:var(--hover-bg);border-radius:8px;' +
+        'display:flex;justify-content:space-between;align-items:center;border:1px solid var(--border-color);">' +
+        '<strong style="font-size:.88rem;">Total acumulado de rolagens (' + history.length + ')</strong>' +
+        '<strong style="font-size:1rem;color:' + totalColor + ';">' + (totalNet>=0?'+':'') + brl(totalNet) + '</strong>' +
+        '</div>';
+
+    body.innerHTML = html;
     document.getElementById('modal-roll-history').style.display = 'flex';
 }
 

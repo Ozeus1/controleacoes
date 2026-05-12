@@ -168,6 +168,7 @@
         <td>{{ ss.strategy_active or '-' }}</td>
         <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
         <td style="white-space:nowrap;">
+          <button class="btn btn-sm" onclick="openRadar('{{ ss.ticker }}')" title="Análise Radar" style="background:#8b5cf6;color:white;">📊</button>
           <button class="btn btn-sm" onclick="openTVChart('{{ ss.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditAcao({{ ss.id }}, '{{ ss.ticker }}',
@@ -247,6 +248,7 @@
         <td>{{ ss.strategy_active or '-' }}</td>
         <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
         <td style="white-space:nowrap;">
+          <button class="btn btn-sm" onclick="openRadar('{{ ss.ticker }}')" title="Análise Radar" style="background:#8b5cf6;color:white;">📊</button>
           <button class="btn btn-sm" onclick="openTVChart('{{ ss.ticker }}', true)" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditIntlAcao({{ ss.id }}, '{{ ss.ticker }}',
@@ -931,6 +933,256 @@ function setSelect(id, val) {
                 { id: 'MASimple@tv-basicstudies', inputs: { length: 200 } },
             ],
         });
+    }
+})();
+</script>
+
+<!-- ── Modal Radar de Análise ── -->
+<div id="radar-modal" style="display:none; position:fixed; inset:0; z-index:10000;
+     background:rgba(0,0,0,.8); align-items:flex-start; justify-content:center; overflow-y:auto; padding:2rem 1rem;">
+  <div style="background:#0f172a; border-radius:12px; width:min(96vw,860px);
+              margin:auto; padding:1.5rem; position:relative; color:#e2e8f0;">
+
+    <!-- Header -->
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.2rem;">
+      <div>
+        <span id="radar-ticker" style="font-size:1.4rem; font-weight:700; color:#fff;"></span>
+        <span id="radar-company" style="font-size:.9rem; color:#94a3b8; margin-left:.6rem;"></span>
+      </div>
+      <button onclick="closeRadar()" style="background:none;border:none;font-size:1.6rem;
+              color:#94a3b8;cursor:pointer;line-height:1;">&times;</button>
+    </div>
+
+    <!-- Loading / Error -->
+    <div id="radar-loading" style="text-align:center;padding:2rem;color:#94a3b8;">⏳ Carregando análise...</div>
+    <div id="radar-error"   style="display:none;text-align:center;padding:2rem;color:#ef4444;"></div>
+
+    <!-- Conteúdo -->
+    <div id="radar-body" style="display:none;">
+
+      <!-- Preço + Sinal -->
+      <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem;">
+        <div style="font-size:2rem; font-weight:700;" id="radar-price"></div>
+        <div id="radar-signal-badge" style="padding:.3rem .9rem; border-radius:20px; font-weight:600; font-size:.9rem;"></div>
+        <div id="radar-change" style="font-size:.9rem;"></div>
+      </div>
+
+      <!-- Resumo técnico -->
+      <div style="background:#1e293b; border-radius:8px; padding:1rem; margin-bottom:1rem;
+                  font-size:.88rem; color:#cbd5e1; font-style:italic;" id="radar-rationale"></div>
+
+      <!-- Grid: Níveis + Técnicos -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+
+        <!-- Níveis de Trading -->
+        <div style="background:#1e293b; border-radius:8px; padding:1rem;">
+          <div style="font-weight:700; color:#94a3b8; font-size:.75rem; text-transform:uppercase;
+                      letter-spacing:.06em; margin-bottom:.6rem;">Níveis de Negociação</div>
+          <table style="width:100%; font-size:.85rem; border-collapse:collapse;">
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">Entrada</td>
+                <td style="text-align:right;" id="r-entry"></td></tr>
+            <tr><td style="color:#ef4444; padding:.25rem 0;">Stop Loss</td>
+                <td style="text-align:right; color:#ef4444;" id="r-stop"></td></tr>
+            <tr><td style="color:#10b981; padding:.25rem 0;">Alvo</td>
+                <td style="text-align:right; color:#10b981;" id="r-target"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">Suporte</td>
+                <td style="text-align:right;" id="r-support"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">Resistência</td>
+                <td style="text-align:right;" id="r-resist"></td></tr>
+          </table>
+        </div>
+
+        <!-- Indicadores Técnicos -->
+        <div style="background:#1e293b; border-radius:8px; padding:1rem;">
+          <div style="font-weight:700; color:#94a3b8; font-size:.75rem; text-transform:uppercase;
+                      letter-spacing:.06em; margin-bottom:.6rem;">Indicadores Técnicos</div>
+          <table style="width:100%; font-size:.85rem; border-collapse:collapse;">
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">RSI 14</td>
+                <td style="text-align:right;" id="r-rsi"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">ATR 14</td>
+                <td style="text-align:right;" id="r-atr"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">SMA 9</td>
+                <td style="text-align:right;" id="r-sma9"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">SMA 21</td>
+                <td style="text-align:right;" id="r-sma21"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">SMA 50</td>
+                <td style="text-align:right;" id="r-sma50"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">MACD</td>
+                <td style="text-align:right;" id="r-macd"></td></tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- Grid: Mercado + Fundamentos -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+
+        <!-- Dados de Mercado -->
+        <div style="background:#1e293b; border-radius:8px; padding:1rem;">
+          <div style="font-weight:700; color:#94a3b8; font-size:.75rem; text-transform:uppercase;
+                      letter-spacing:.06em; margin-bottom:.6rem;">Dados de Mercado</div>
+          <table style="width:100%; font-size:.85rem; border-collapse:collapse;">
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">Abertura</td>
+                <td style="text-align:right;" id="r-open"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">Máx/Mín dia</td>
+                <td style="text-align:right;" id="r-hilo"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">52 semanas</td>
+                <td style="text-align:right;" id="r-52w"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">Volume</td>
+                <td style="text-align:right;" id="r-vol"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">Tendência Diária</td>
+                <td style="text-align:right;" id="r-trend-d"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">Tendência Semanal</td>
+                <td style="text-align:right;" id="r-trend-w"></td></tr>
+          </table>
+        </div>
+
+        <!-- Fundamentos -->
+        <div style="background:#1e293b; border-radius:8px; padding:1rem;">
+          <div style="font-weight:700; color:#94a3b8; font-size:.75rem; text-transform:uppercase;
+                      letter-spacing:.06em; margin-bottom:.6rem;">Fundamentos</div>
+          <table style="width:100%; font-size:.85rem; border-collapse:collapse;">
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">P/L</td>
+                <td style="text-align:right;" id="r-pe"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">LPA/EPS</td>
+                <td style="text-align:right;" id="r-eps"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">Setor</td>
+                <td style="text-align:right;" id="r-sector"></td></tr>
+            <tr><td style="color:#94a3b8; padding:.25rem 0;">Indústria</td>
+                <td style="text-align:right;" id="r-industry"></td></tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- Gráfico TradingView embutido -->
+      <div id="radar-tv-wrap" style="border-radius:8px; overflow:hidden; margin-top:.5rem;"></div>
+
+    </div><!-- /radar-body -->
+  </div>
+</div>
+
+<script>
+(function() {
+    var radarModal = document.getElementById('radar-modal');
+    var API_KEY = 'radar_8acddd4976bc3c1e9b9c814c3b408f9dcbf1dfd0d75795f9';
+    var tvBuiltFor = '';
+    var tvScriptRadar = false;
+
+    window.openRadar = function(ticker) {
+        ticker = ticker.toUpperCase();
+        document.getElementById('radar-ticker').textContent   = ticker;
+        document.getElementById('radar-company').textContent  = '';
+        document.getElementById('radar-loading').style.display = '';
+        document.getElementById('radar-error').style.display   = 'none';
+        document.getElementById('radar-body').style.display    = 'none';
+        radarModal.style.display = 'flex';
+        radarModal.scrollTop = 0;
+
+        fetch('/api/radar_analise?ticker=' + ticker)
+            .then(function(r) { return r.json(); })
+            .then(function(d) { renderRadar(d, ticker); })
+            .catch(function(e) {
+                document.getElementById('radar-loading').style.display = 'none';
+                document.getElementById('radar-error').style.display   = '';
+                document.getElementById('radar-error').textContent     = 'Erro ao buscar análise: ' + e.message;
+            });
+    };
+
+    window.closeRadar = function() { radarModal.style.display = 'none'; };
+    radarModal.addEventListener('click', function(e) { if (e.target === radarModal) closeRadar(); });
+
+    function brl(v) {
+        if (v == null) return '—';
+        return 'R$ ' + parseFloat(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+    function dash(v) { return (v != null && v !== '' && v !== 'None') ? v : '—'; }
+
+    function renderRadar(d, ticker) {
+        document.getElementById('radar-loading').style.display = 'none';
+        if (d.error) {
+            document.getElementById('radar-error').style.display  = '';
+            document.getElementById('radar-error').textContent    = d.error;
+            return;
+        }
+        document.getElementById('radar-body').style.display = '';
+        document.getElementById('radar-company').textContent = dash(d.company);
+        document.getElementById('radar-price').textContent   = brl(d.price);
+
+        // Sinal
+        var sb   = document.getElementById('radar-signal-badge');
+        var sig  = (d.signal || '').toLowerCase();
+        var sigColors = { comprar:'#10b981', vender:'#ef4444', aguardar:'#f59e0b', neutro:'#64748b' };
+        var col = sigColors[sig] || '#64748b';
+        sb.textContent        = d.signal || '—';
+        sb.style.background   = col + '22';
+        sb.style.color        = col;
+        sb.style.border       = '1px solid ' + col;
+
+        // Variação
+        var chEl = document.getElementById('radar-change');
+        var ch   = parseFloat(d.day_change);
+        chEl.textContent  = (isNaN(ch) ? '—' : (ch >= 0 ? '+' : '') + ch.toFixed(2) + '%');
+        chEl.style.color  = isNaN(ch) ? '#94a3b8' : (ch >= 0 ? '#10b981' : '#ef4444');
+
+        document.getElementById('radar-rationale').textContent = dash(d.rationale);
+
+        // Níveis
+        document.getElementById('r-entry').textContent   = d.entry_min && d.entry_max ? brl(d.entry_min) + ' – ' + brl(d.entry_max) : '—';
+        document.getElementById('r-stop').textContent    = brl(d.stop_loss);
+        document.getElementById('r-target').textContent  = brl(d.target);
+        document.getElementById('r-support').textContent = brl(d.support);
+        document.getElementById('r-resist').textContent  = brl(d.resistance);
+
+        // Técnicos
+        document.getElementById('r-rsi').textContent   = dash(d.rsi);
+        document.getElementById('r-atr').textContent   = brl(d.atr);
+        document.getElementById('r-sma9').textContent  = brl(d.sma9);
+        document.getElementById('r-sma21').textContent = brl(d.sma21);
+        document.getElementById('r-sma50').textContent = brl(d.sma50);
+        document.getElementById('r-macd').textContent  = d.macd_line != null ? d.macd_line.toFixed(3) : '—';
+
+        // Mercado
+        document.getElementById('r-open').textContent    = brl(d.open);
+        document.getElementById('r-hilo').textContent    = (d.day_high && d.day_low) ? brl(d.day_high) + ' / ' + brl(d.day_low) : '—';
+        document.getElementById('r-52w').textContent     = (d.week52_low && d.week52_high) ? brl(d.week52_low) + ' – ' + brl(d.week52_high) : '—';
+        document.getElementById('r-vol').textContent     = d.volume ? parseInt(d.volume).toLocaleString('pt-BR') : '—';
+        document.getElementById('r-trend-d').textContent = dash(d.daily_trend);
+        document.getElementById('r-trend-w').textContent = dash(d.weekly_trend);
+
+        // Fundamentos
+        document.getElementById('r-pe').textContent       = dash(d.pe_ratio);
+        document.getElementById('r-eps').textContent      = dash(d.eps);
+        document.getElementById('r-sector').textContent   = dash(d.sector);
+        document.getElementById('r-industry').textContent = dash(d.industry);
+
+        // Gráfico TV embutido
+        var tvWrap = document.getElementById('radar-tv-wrap');
+        if (tvBuiltFor !== ticker) {
+            tvBuiltFor = ticker;
+            tvWrap.innerHTML = '';
+            var sym = 'BMFBOVESPA:' + ticker;
+            function buildRadarTV() {
+                new TradingView.widget({
+                    container_id: 'radar-tv-wrap', symbol: sym,
+                    interval: 'D', timezone: 'America/Sao_Paulo', theme: 'dark',
+                    style: '1', locale: 'br', toolbar_bg: '#1e293b',
+                    enable_publishing: false, hide_side_toolbar: true,
+                    allow_symbol_change: false, save_image: false,
+                    height: 380, width: '100%',
+                    studies: [
+                        { id: 'MASimple@tv-basicstudies', inputs: { length: 21  } },
+                        { id: 'MAExp@tv-basicstudies',    inputs: { length: 9   } },
+                    ],
+                });
+            }
+            if (typeof TradingView !== 'undefined') { buildRadarTV(); }
+            else if (!tvScriptRadar) {
+                tvScriptRadar = true;
+                var s = document.createElement('script');
+                s.src = 'https://s3.tradingview.com/tv.js';
+                s.onload = buildRadarTV;
+                document.head.appendChild(s);
+            }
+        }
     }
 })();
 </script>

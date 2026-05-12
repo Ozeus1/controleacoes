@@ -5924,6 +5924,61 @@ def api_update_quotes():
     }), 200
 
 
+@app.route('/api/radar_analise')
+@login_required
+def api_radar_analise():
+    """Proxy para a API de análise de ações — evita CORS e esconde a API key."""
+    import requests as _req
+    from flask import jsonify
+    ticker = request.args.get('ticker', '').strip().upper()
+    if not ticker:
+        return jsonify({'error': 'ticker obrigatório'}), 400
+    RADAR_URL = 'https://acoes.receberbemevinhos.com.br/api_res.php'
+    RADAR_KEY  = 'radar_8acddd4976bc3c1e9b9c814c3b408f9dcbf1dfd0d75795f9'
+    try:
+        resp = _req.get(RADAR_URL, params={'ticker': ticker, 'api_key': RADAR_KEY}, timeout=10)
+        data = resp.json()
+        # Normaliza campos para o frontend
+        out = {
+            'company':      data.get('company') or data.get('name', ''),
+            'price':        data.get('price') or data.get('current_price'),
+            'signal':       data.get('signal', ''),
+            'day_change':   data.get('day_change') or data.get('change_pct'),
+            'rationale':    data.get('rationale') or data.get('analysis', ''),
+            'entry_min':    data.get('entry_min'),
+            'entry_max':    data.get('entry_max'),
+            'stop_loss':    data.get('stop_loss') or data.get('stop'),
+            'target':       data.get('target') or data.get('alvo'),
+            'support':      data.get('support') or data.get('suporte'),
+            'resistance':   data.get('resistance') or data.get('resistencia'),
+            'rsi':          data.get('rsi') or data.get('rsi_14'),
+            'atr':          data.get('atr') or data.get('atr_14'),
+            'sma9':         data.get('sma9')  or data.get('sma_9'),
+            'sma21':        data.get('sma21') or data.get('sma_21'),
+            'sma50':        data.get('sma50') or data.get('sma_50'),
+            'macd_line':    data.get('macd_line') or data.get('macd'),
+            'daily_trend':  data.get('daily_trend')  or data.get('trend_daily'),
+            'weekly_trend': data.get('weekly_trend') or data.get('trend_weekly'),
+            'open':         data.get('open'),
+            'day_high':     data.get('day_high') or data.get('high'),
+            'day_low':      data.get('day_low')  or data.get('low'),
+            'week52_high':  data.get('week52_high') or data.get('high_52w'),
+            'week52_low':   data.get('week52_low')  or data.get('low_52w'),
+            'volume':       data.get('volume'),
+            'pe_ratio':     data.get('pe_ratio') or data.get('pl'),
+            'eps':          data.get('eps') or data.get('lpa'),
+            'sector':       data.get('sector') or data.get('setor'),
+            'industry':     data.get('industry') or data.get('industria'),
+        }
+        # Inclui todos os campos originais para cobertura total
+        for k, v in data.items():
+            if k not in out:
+                out[k] = v
+        return jsonify(out)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/current_quotes')
 @login_required
 def api_current_quotes():

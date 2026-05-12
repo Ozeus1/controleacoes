@@ -46,8 +46,7 @@
         </thead>
         <tbody>
             {% for trade in trades %}
-            <tr data-strategy="{{ trade.strategy or 'Outros' }}"
-                data-search="{{ trade.ticker }} {{ trade.underlying or '' }} {{ trade.notes or '' }}">
+            <tr data-strategy="{{ trade.strategy or 'Outros' }}">
                 <td>
                     <span class="ticker-badge">{{ trade.ticker }}</span>
                     {% if trade.underlying and trade.underlying|upper != trade.ticker|upper %}
@@ -61,6 +60,8 @@
                         {{ trade.notes }}
                     </small>
                     {% endif %}
+                    {# Coluna oculta para busca: ticker + underlying + notes #}
+                    <span class="d-none search-data">{{ trade.ticker }} {{ trade.underlying or '' }} {{ trade.notes or '' }}</span>
                 </td>
                 <td>{{ trade.strategy or 'Outros' }}</td>
                 <td data-order="{{ trade.entry_date.strftime('%Y-%m-%d') if trade.entry_date else '' }}">
@@ -633,20 +634,50 @@ function filterByStrategy() { applyFilters(); }
 {% block extra_scripts %}
 <script>
 $(document).ready(function () {
-    $('#historyTable').DataTable({
-        "language": {
-            "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json"
-        },
-        "paging": true,
-        "pageLength": 25,
+    var dt = $('#historyTable').DataTable({
+        "language": { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json" },
+        "paging":       true,
+        "pageLength":   25,
         "lengthChange": false,
-        "info": true,
-        "searching": false,
-        "order": [[3, "desc"]],
+        "info":         true,
+        "searching":    true,   // ativa busca interna do DT
+        "search":       { "regex": false, "smart": true },
+        "order":        [[3, "desc"]],
         "columnDefs": [
             { "orderable": false, "targets": 10 }
         ]
     });
+
+    // Oculta o campo de busca nativo do DataTables (usamos o nosso)
+    $('.dataTables_filter').hide();
+
+    // Conecta nosso campo de busca ao DataTables
+    $('#searchInput').on('input', function () {
+        var q = $(this).val().trim();
+        dt.search(q).draw();
+        updateSearchInfo(q, $('#strategyFilter').val());
+    });
+
+    // Filtro de estratégia via coluna 1
+    $('#strategyFilter').on('change', function () {
+        var strat = $(this).val();
+        // Busca exata na coluna estratégia (col 1) usando regex
+        dt.column(1).search(strat ? '^' + strat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$' : '', true, false).draw();
+        updateSearchInfo($('#searchInput').val().trim(), strat);
+    });
+
+    function updateSearchInfo(q, strat) {
+        var info = document.getElementById('search-info');
+        var count = dt.rows({ search: 'applied' }).count();
+        if (q || strat) {
+            info.style.display = '';
+            info.textContent = count + ' resultado(s)' +
+                (q    ? ' para "' + q + '"' : '') +
+                (strat ? ' — ' + strat      : '');
+        } else {
+            info.style.display = 'none';
+        }
+    }
 });
 </script>
 {% endblock %}

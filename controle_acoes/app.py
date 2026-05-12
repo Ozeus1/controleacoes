@@ -2914,6 +2914,64 @@ def delete_history(id):
     db.session.commit()
     return redirect(url_for('history'))
 
+@app.route('/admin/migrate_history_notes')
+@login_required
+def migrate_history_notes():
+    """Migra registros antigos de travas/estruturadas adicionando underlying e notes."""
+    if not current_user.is_admin:
+        return "Sem permissão", 403
+
+    import re
+    updated = 0
+    trades = TradeHistory.query.filter_by(user_id=current_user.id).all()
+
+    # Mapa de tickers de opções para underlying (Option + StructuredLeg + OptionSpread)
+    ticker_to_under = {}
+    for o in Option.query.filter_by(user_id=current_user.id).all():
+        if o.ticker and o.underlying_asset:
+            ticker_to_under[o.ticker.upper()] = o.underlying_asset.upper()
+    for op in StructuredOp.query.filter_by(user_id=current_user.id).all():
+        for leg in op.legs:
+            if leg.ticker and op.underlying_asset:
+                ticker_to_under[leg.ticker.upper()] = op.underlying_asset.upper()
+    for sp in OptionSpread.query.filter_by(user_id=current_user.id).all():
+        if sp.leg_long_ticker:
+            ticker_to_under[sp.leg_long_ticker.upper()] = sp.underlying_asset.upper()
+        if sp.leg_short_ticker:
+            ticker_to_under[sp.leg_short_ticker.upper()] = sp.underlying_asset.upper()
+
+    for t in trades:
+        if t.underlying and t.notes:
+            continue  # já migrado
+
+        # Detecta se é uma opção pelo padrão do ticker (4 letras + 3 dígitos+letra)
+        tk = (t.ticker or '').upper().strip()
+        is_option_ticker = bool(re.match(r'^[A-Z]{4,5}[A-Z]\d{2,3}$', tk))
+
+        # Registros de opções individuais — o ticker É a opção
+        if is_option_ticker and not t.underlying:
+            und = ticker_to_under.get(tk)
+            if und:
+                t.underlying = und
+                if not t.notes:
+                    t.notes = tk
+                updated += 1
+
+        # Registros de travas antigas (ticker truncado como "TRAVA CAL", "T.Baixa C" etc.)
+        elif any(x in tk for x in ('TRAVA', 'T.ALTA', 'T.BAIXA', 'SLIDE', 'ESTRUT', 'BORBOL', 'STRADDLE')):
+            # Tenta extrair tickers de opções do campo notes existente
+            if t.notes:
+                tickers_in_notes = re.findall(r'[A-Z]{4,5}[A-Z]\d{2,3}', t.notes.upper())
+                underlyings = list({ticker_to_under.get(tk2, '') for tk2 in tickers_in_notes} - {''})
+                if underlyings and not t.underlying:
+                    t.underlying = underlyings[0]
+                    updated += 1
+
+    db.session.commit()
+    flash(f'Migração concluída: {updated} registros atualizados.', 'success')
+    return redirect(url_for('history'))
+
+
 @app.route('/add_history', methods=['GET', 'POST'])
 @login_required
 def add_history():

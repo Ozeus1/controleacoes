@@ -191,6 +191,16 @@ def run_migrations():
     if cursor.rowcount > 0:
         print(f"[MIGRATION] Reclassified {cursor.rowcount} trade_history strategy records.")
 
+    # Add underlying_price / underlying_change to option_spread if missing
+    cursor.execute("PRAGMA table_info(option_spread)")
+    os_cols = {row[1] for row in cursor.fetchall()}
+    if 'underlying_price' not in os_cols:
+        cursor.execute("ALTER TABLE option_spread ADD COLUMN underlying_price FLOAT")
+        print("[MIGRATION] Added option_spread.underlying_price")
+    if 'underlying_change' not in os_cols:
+        cursor.execute("ALTER TABLE option_spread ADD COLUMN underlying_change FLOAT")
+        print("[MIGRATION] Added option_spread.underlying_change")
+
     # Add underlying and notes columns to trade_history if missing
     cursor.execute("PRAGMA table_info(trade_history)")
     th_cols = {row[1] for row in cursor.fetchall()}
@@ -1698,12 +1708,10 @@ def _get_underlying_quote(ticker, user_id):
             return op.underlying_price, op.underlying_change
     except Exception:
         pass
-    # 3. OptionSpread — underlying_asset com cotação salva no Asset
+    # 3. OptionSpread — cotação salva diretamente no modelo
     sp = OptionSpread.query.filter_by(underlying_asset=t, user_id=user_id).first()
-    if sp:
-        a3 = Asset.query.filter_by(ticker=t, user_id=user_id).first()
-        if a3 and a3.current_price:
-            return a3.current_price, getattr(a3, 'daily_change', None)
+    if sp and sp.underlying_price:
+        return sp.underlying_price, sp.underlying_change
     # 4. StudyOption — tem underlying_price salvo pelo import
     so = StudyOption.query.filter_by(underlying_asset=t, user_id=user_id).first()
     if so and so.underlying_price:
@@ -4819,6 +4827,17 @@ def importar_excel():
             if p is not None:
                 sp.leg_short_current = p
                 changed = True
+        # Atualiza cotação do ativo subjacente da trava
+        und_key = (sp.underlying_asset or '').upper()
+        und_p = all_prices.get(und_key)
+        if und_p is not None and und_p > 0:
+            sp.underlying_price = und_p
+            und_row = all_rows.get(und_key)
+            if und_row and len(und_row) > 9:
+                v = _float(und_row[9])
+                if v is not None:
+                    sp.underlying_change = v
+            changed = True
         if changed:
             spreads_atualizados += 1
 
@@ -5835,6 +5854,12 @@ def api_update_quotes():
         pss = PutSale.query.filter_by(underlying_asset=ticker, user_id=user_id).all()
         for ps in pss:
             ps.underlying_price = price_f
+            found = True
+
+        # 5. Atualiza OptionSpread (underlying das travas)
+        for sp in OptionSpread.query.filter_by(underlying_asset=ticker, user_id=user_id).all():
+            sp.underlying_price  = price_f
+            sp.underlying_change = float(changes.get(ticker, changes.get(ticker.lower(), 0)))
             found = True
 
         if found:

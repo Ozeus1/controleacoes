@@ -166,6 +166,10 @@ class OptionSpread(db.Model):
     # Probability of Profit informado na montagem
     pop = db.Column(db.Float, nullable=True)
 
+    # Cotação do ativo subjacente (atualizado via MT5/Excel/Yahoo)
+    underlying_price  = db.Column(db.Float, nullable=True)
+    underlying_change = db.Column(db.Float, nullable=True)
+
 
 class Settings(db.Model):
     id = db.Column(db.Integer, primary_key=True)

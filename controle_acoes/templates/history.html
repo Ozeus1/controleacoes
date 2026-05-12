@@ -5,7 +5,12 @@
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
         <h3>Histórico de Trades</h3>
         <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-            <select id="strategyFilter" onchange="filterByStrategy()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 0.5rem; background-color: var(--input-bg); border: 1px solid var(--border-color); color: var(--input-color);">
+            <input id="searchInput" type="text" placeholder="🔍 Buscar ticker, ativo, perna..."
+                   oninput="applyFilters()"
+                   style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 0.5rem;
+                          background-color: var(--input-bg); border: 1px solid var(--border-color);
+                          color: var(--input-color); min-width: 240px;">
+            <select id="strategyFilter" onchange="applyFilters()" style="padding: 0.4rem 0.8rem; font-size: 0.85rem; border-radius: 0.5rem; background-color: var(--input-bg); border: 1px solid var(--border-color); color: var(--input-color);">
                 <option value="">Todas Estratégias</option>
                 {% for s in strategies %}
                 <option value="{{ s }}">{{ s }}</option>
@@ -14,6 +19,7 @@
             <a href="{{ url_for('add_history') }}" class="btn btn-primary btn-sm">+ Adicionar Trade</a>
         </div>
     </div>
+    <div id="search-info" style="display:none; padding: 0 1rem .5rem; font-size:.85rem; color:var(--text-secondary);"></div>
 
     <div style="font-size: 1.1rem; padding: 0 1rem 1rem;">
         Lucro Total: <span class="{{ 'positive' if total_profit >= 0 else 'negative' }}" style="font-weight: 700;">
@@ -40,8 +46,22 @@
         </thead>
         <tbody>
             {% for trade in trades %}
-            <tr data-strategy="{{ trade.strategy or 'Outros' }}">
-                <td><span class="ticker-badge">{{ trade.ticker }}</span></td>
+            <tr data-strategy="{{ trade.strategy or 'Outros' }}"
+                data-search="{{ trade.ticker }} {{ trade.underlying or '' }} {{ trade.notes or '' }}">
+                <td>
+                    <span class="ticker-badge">{{ trade.ticker }}</span>
+                    {% if trade.underlying and trade.underlying|upper != trade.ticker|upper %}
+                    <br><small style="color:var(--text-secondary); font-size:.75rem;">📌 {{ trade.underlying }}</small>
+                    {% endif %}
+                    {% if trade.notes %}
+                    <br><small title="{{ trade.notes }}"
+                               style="color:var(--text-secondary); font-size:.72rem; display:block;
+                                      max-width:200px; white-space:nowrap; overflow:hidden;
+                                      text-overflow:ellipsis; cursor:help;">
+                        {{ trade.notes }}
+                    </small>
+                    {% endif %}
+                </td>
                 <td>{{ trade.strategy or 'Outros' }}</td>
                 <td data-order="{{ trade.entry_date.strftime('%Y-%m-%d') if trade.entry_date else '' }}">
                     {{ trade.entry_date.strftime('%d/%m/%Y') if trade.entry_date else '-' }}
@@ -180,17 +200,29 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <script>
-function filterByStrategy() {
-    const val = document.getElementById('strategyFilter').value;
-    const rows = document.querySelectorAll('#historyTable tbody tr');
+function applyFilters() {
+    const strat  = document.getElementById('strategyFilter').value;
+    const q      = (document.getElementById('searchInput').value || '').trim().toUpperCase();
+    const rows   = document.querySelectorAll('#historyTable tbody tr');
+    let visible  = 0;
     rows.forEach(row => {
-        if (!val || row.dataset.strategy === val) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
+        const matchStrat  = !strat || row.dataset.strategy === strat;
+        const searchText  = (row.dataset.search || '').toUpperCase();
+        const matchSearch = !q || searchText.includes(q);
+        const show = matchStrat && matchSearch;
+        row.style.display = show ? '' : 'none';
+        if (show) visible++;
     });
+    const info = document.getElementById('search-info');
+    if (q || strat) {
+        info.style.display = '';
+        info.textContent = visible + ' resultado(s)' + (q ? ' para "' + q + '"' : '') + (strat ? ' — ' + strat : '');
+    } else {
+        info.style.display = 'none';
+    }
 }
+// manter compatibilidade com chamadas antigas
+function filterByStrategy() { applyFilters(); }
 
 // ── Gráfico de Evolução do Patrimônio ────────────────────────────────────────
 (function() {

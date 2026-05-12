@@ -191,6 +191,14 @@ def run_migrations():
     if cursor.rowcount > 0:
         print(f"[MIGRATION] Reclassified {cursor.rowcount} trade_history strategy records.")
 
+    # Add roll_history to option, option_spread, structured_op, put_sale
+    for tbl in ('option', 'option_spread', 'structured_op', 'put_sale'):
+        cursor.execute(f"PRAGMA table_info({tbl})")
+        cols = {row[1] for row in cursor.fetchall()}
+        if 'roll_history' not in cols:
+            cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN roll_history TEXT")
+            print(f"[MIGRATION] Added {tbl}.roll_history")
+
     # Add underlying_price / underlying_change to option_spread if missing
     cursor.execute("PRAGMA table_info(option_spread)")
     os_cols = {row[1] for row in cursor.fetchall()}
@@ -935,7 +943,8 @@ def opcoes():
                            spreads_alta_call=spreads_alta_call,
                            spreads_baixa_put=spreads_baixa_put,
                            spreads_baixa_call=spreads_baixa_call,
-                           structured_ops=structured_ops)
+                           structured_ops=structured_ops,
+                           today=date.today())
 
 @app.route('/add_option', methods=['GET', 'POST'])
 @login_required
@@ -1939,6 +1948,299 @@ def close_option(id):
 
     # Render exit form for option
     return render_template('close_option.html', option=opt, today=date.today())
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ROLAGEM DE OPERAÇÕES
+# Não gera TradeHistory — registra no roll_history da operação e atualiza campos
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _append_roll(obj, entry: dict):
+    """Acrescenta uma entrada de rolagem ao roll_history JSON do objeto."""
+    import json as _json
+    history = _json.loads(obj.roll_history) if obj.roll_history else []
+    entry['rolled_at'] = now_brt().strftime('%d/%m/%Y %H:%M')
+    history.append(entry)
+    obj.roll_history = _json.dumps(history, ensure_ascii=False)
+
+
+@app.route('/roll_option/<int:id>', methods=['POST'])
+@login_required
+def roll_option(id):
+    """Rola opção individual (strike ou tempo).
+    Salva os dados antigos no roll_history e atualiza os campos com os novos valores.
+    NÃO gera registro de P&L em TradeHistory.
+    """
+    opt = Option.query.get_or_404(id)
+    if opt.user_id != current_user.id:
+        return {'error': 'Sem permissão'}, 403
+
+    roll_type      = request.form.get('roll_type', 'TEMPO')   # STRIKE | TEMPO | AMBOS
+    new_ticker     = request.form.get('new_ticker', '').upper().strip()
+    new_strike     = request.form.get('new_strike', '').replace(',', '.')
+    new_exp        = request.form.get('new_exp', '')
+    new_premium    = request.form.get('new_premium', '').replace(',', '.')
+    close_premium  = request.form.get('close_premium', '').replace(',', '.')  # prêmio recompra do antigo
+    roll_date      = request.form.get('roll_date', date.today().isoformat())
+    notes          = request.form.get('notes', '')
+
+    try:
+        close_p  = float(close_premium) if close_premium else 0.0
+        new_p    = float(new_premium)   if new_premium   else opt.sale_price
+        new_k    = float(new_strike)    if new_strike    else opt.strike_price
+        new_exp_d = datetime.strptime(new_exp, '%Y-%m-%d').date() if new_exp else opt.expiration_date
+
+        # Débito/crédito líquido da rolagem (do ponto de vista da posição)
+        # SELL (venda): recomprou por close_p e vendeu novo por new_p → crédito = new_p - close_p
+        # BUY (compra): vendeu por close_p e comprou novo por new_p  → débito  = new_p - close_p
+        if opt.option_type in ('VENDA_CALL', 'VENDA_PUT'):
+            net_roll = new_p - close_p   # positivo = crédito adicional
+        else:
+            net_roll = close_p - new_p   # positivo = recebeu mais do que pagou
+
+        _append_roll(opt, {
+            'roll_type':     roll_type,
+            'old_ticker':    opt.ticker,
+            'old_strike':    opt.strike_price,
+            'old_exp':       opt.expiration_date.isoformat() if opt.expiration_date else None,
+            'old_premium':   opt.sale_price,
+            'close_premium': close_p,
+            'new_ticker':    new_ticker or opt.ticker,
+            'new_strike':    new_k,
+            'new_exp':       new_exp_d.isoformat(),
+            'new_premium':   new_p,
+            'net_roll':      round(net_roll, 4),
+            'notes':         notes,
+        })
+
+        # Atualiza a operação com os novos dados
+        if new_ticker:
+            opt.ticker = new_ticker
+        opt.strike_price     = new_k
+        opt.expiration_date  = new_exp_d
+        opt.sale_price       = new_p
+        opt.entry_date       = datetime.strptime(roll_date, '%Y-%m-%d').date()
+        opt.current_option_price = new_p
+
+        db.session.commit()
+        flash(f'Rolagem registrada! Crédito/Débito líquido: R$ {net_roll:.2f}', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro na rolagem: {e}', 'danger')
+
+    return redirect(url_for('opcoes'))
+
+
+@app.route('/roll_spread/<int:id>', methods=['POST'])
+@login_required
+def roll_spread(id):
+    """Rola trava (strike ou tempo). Atualiza ambas as pernas."""
+    sp = OptionSpread.query.get_or_404(id)
+    if sp.user_id != current_user.id:
+        return {'error': 'Sem permissão'}, 403
+
+    roll_type = request.form.get('roll_type', 'TEMPO')
+    roll_date = request.form.get('roll_date', date.today().isoformat())
+    notes     = request.form.get('notes', '')
+
+    # Perna long (comprada)
+    new_long_ticker  = request.form.get('new_long_ticker', '').upper().strip()
+    new_long_strike  = request.form.get('new_long_strike', '').replace(',', '.')
+    new_long_price   = request.form.get('new_long_price',  '').replace(',', '.')
+    close_long_price = request.form.get('close_long_price','').replace(',', '.')
+
+    # Perna short (vendida)
+    new_short_ticker  = request.form.get('new_short_ticker', '').upper().strip()
+    new_short_strike  = request.form.get('new_short_strike', '').replace(',', '.')
+    new_short_price   = request.form.get('new_short_price',  '').replace(',', '.')
+    close_short_price = request.form.get('close_short_price','').replace(',', '.')
+
+    new_exp = request.form.get('new_exp', '')
+
+    try:
+        cl_long  = float(close_long_price)  if close_long_price  else sp.leg_long_current
+        cl_short = float(close_short_price) if close_short_price else sp.leg_short_current
+        nl_p     = float(new_long_price)    if new_long_price     else sp.leg_long_price
+        ns_p     = float(new_short_price)   if new_short_price    else sp.leg_short_price
+        nl_k     = float(new_long_strike)   if new_long_strike    else sp.leg_long_strike
+        ns_k     = float(new_short_strike)  if new_short_strike   else sp.leg_short_strike
+        new_exp_d = datetime.strptime(new_exp, '%Y-%m-%d').date() if new_exp else sp.expiration_date
+
+        # Custo de fechar a trava antiga + crédito de abrir a nova
+        cost_close = cl_short - cl_long   # custo fechar (paga short, recebe long)
+        credit_open = ns_p - nl_p          # crédito abrir nova (recebe short, paga long)
+        net_roll    = credit_open - cost_close
+
+        _append_roll(sp, {
+            'roll_type':        roll_type,
+            'old_long_ticker':  sp.leg_long_ticker,
+            'old_long_strike':  sp.leg_long_strike,
+            'old_long_price':   sp.leg_long_price,
+            'close_long_price': cl_long,
+            'old_short_ticker': sp.leg_short_ticker,
+            'old_short_strike': sp.leg_short_strike,
+            'old_short_price':  sp.leg_short_price,
+            'close_short_price':cl_short,
+            'new_long_ticker':  new_long_ticker  or sp.leg_long_ticker,
+            'new_long_strike':  nl_k,
+            'new_long_price':   nl_p,
+            'new_short_ticker': new_short_ticker or sp.leg_short_ticker,
+            'new_short_strike': ns_k,
+            'new_short_price':  ns_p,
+            'new_exp':          new_exp_d.isoformat(),
+            'net_roll':         round(net_roll, 4),
+            'notes':            notes,
+        })
+
+        if new_long_ticker:   sp.leg_long_ticker  = new_long_ticker
+        if new_short_ticker:  sp.leg_short_ticker = new_short_ticker
+        sp.leg_long_strike   = nl_k
+        sp.leg_long_price    = nl_p
+        sp.leg_long_current  = nl_p
+        sp.leg_short_strike  = ns_k
+        sp.leg_short_price   = ns_p
+        sp.leg_short_current = ns_p
+        sp.expiration_date   = new_exp_d
+        sp.entry_date        = datetime.strptime(roll_date, '%Y-%m-%d').date()
+
+        db.session.commit()
+        flash(f'Rolagem da trava registrada! Crédito/Débito: R$ {net_roll:.2f}', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro na rolagem: {e}', 'danger')
+
+    return redirect(url_for('opcoes'))
+
+
+@app.route('/roll_estruturada/<int:id>', methods=['POST'])
+@login_required
+def roll_estruturada(id):
+    """Rola operação estruturada: registra histórico e atualiza pernas."""
+    op = StructuredOp.query.get_or_404(id)
+    if op.user_id != current_user.id:
+        return {'error': 'Sem permissão'}, 403
+
+    roll_type  = request.form.get('roll_type', 'TEMPO')
+    roll_date  = request.form.get('roll_date', date.today().isoformat())
+    notes_text = request.form.get('notes', '')
+    new_exp    = request.form.get('new_exp', '')
+
+    # Listas paralelas para cada perna (por leg_id)
+    leg_ids         = request.form.getlist('leg_id')
+    close_prices    = request.form.getlist('leg_close_price')
+    new_tickers     = request.form.getlist('leg_new_ticker')
+    new_strikes     = request.form.getlist('leg_new_strike')
+    new_premiums    = request.form.getlist('leg_new_premium')
+    new_exps        = request.form.getlist('leg_new_exp')
+
+    try:
+        roll_entry = {
+            'roll_type': roll_type,
+            'roll_date': roll_date,
+            'notes':     notes_text,
+            'legs':      [],
+        }
+
+        for i, lid in enumerate(leg_ids):
+            leg = StructuredLeg.query.get(int(lid))
+            if not leg or leg.operation.user_id != current_user.id:
+                continue
+
+            cp  = float(close_prices[i].replace(',','.'))  if i < len(close_prices)  and close_prices[i]  else leg.current_price or leg.entry_price
+            nt  = new_tickers[i].upper().strip()            if i < len(new_tickers)   and new_tickers[i]   else leg.ticker
+            nk  = float(new_strikes[i].replace(',','.'))   if i < len(new_strikes)   and new_strikes[i]   else leg.strike
+            np_ = float(new_premiums[i].replace(',','.'))  if i < len(new_premiums)  and new_premiums[i]  else leg.entry_price
+            ne  = new_exps[i]                               if i < len(new_exps)      and new_exps[i]      else (leg.expiration_date.isoformat() if leg.expiration_date else '')
+
+            roll_entry['legs'].append({
+                'old_ticker':    leg.ticker,
+                'old_strike':    leg.strike,
+                'old_exp':       leg.expiration_date.isoformat() if leg.expiration_date else None,
+                'old_premium':   leg.entry_price,
+                'close_price':   cp,
+                'new_ticker':    nt,
+                'new_strike':    nk,
+                'new_premium':   np_,
+                'new_exp':       ne,
+                'side':          leg.side,
+            })
+
+            # Atualiza a perna
+            leg.ticker          = nt
+            leg.strike          = nk
+            leg.entry_price     = np_
+            leg.current_price   = np_
+            if ne:
+                try:
+                    leg.expiration_date = datetime.strptime(ne, '%Y-%m-%d').date()
+                except ValueError:
+                    pass
+
+        _append_roll(op, roll_entry)
+        op.created_at = datetime.strptime(roll_date, '%Y-%m-%d')
+
+        db.session.commit()
+        flash('Rolagem da estruturada registrada com sucesso!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro na rolagem: {e}', 'danger')
+
+    return redirect(url_for('opcoes'))
+
+
+@app.route('/roll_put_sale/<int:id>', methods=['POST'])
+@login_required
+def roll_put_sale(id):
+    """Rola venda de put (strike ou tempo)."""
+    ps = PutSale.query.get_or_404(id)
+    if ps.user_id != current_user.id:
+        return {'error': 'Sem permissão'}, 403
+
+    roll_type      = request.form.get('roll_type', 'TEMPO')
+    new_ticker     = request.form.get('new_ticker', '').upper().strip()
+    new_strike     = request.form.get('new_strike', '').replace(',', '.')
+    new_exp        = request.form.get('new_exp', '')
+    new_premium    = request.form.get('new_premium', '').replace(',', '.')
+    close_premium  = request.form.get('close_premium', '').replace(',', '.')
+    roll_date      = request.form.get('roll_date', date.today().isoformat())
+    notes          = request.form.get('notes', '')
+
+    try:
+        cp   = float(close_premium) if close_premium else 0.0
+        np_  = float(new_premium)   if new_premium   else ps.premium
+        nk   = float(new_strike)    if new_strike     else ps.strike
+        ne   = datetime.strptime(new_exp, '%Y-%m-%d').date() if new_exp else ps.expiration_date
+
+        net_roll = np_ - cp  # crédito recebido no net da rolagem
+
+        _append_roll(ps, {
+            'roll_type':     roll_type,
+            'old_ticker':    ps.ticker,
+            'old_strike':    ps.strike,
+            'old_exp':       ps.expiration_date.isoformat() if ps.expiration_date else None,
+            'old_premium':   ps.premium,
+            'close_premium': cp,
+            'new_ticker':    new_ticker or ps.ticker,
+            'new_strike':    nk,
+            'new_exp':       ne.isoformat(),
+            'new_premium':   np_,
+            'net_roll':      round(net_roll, 4),
+            'notes':         notes,
+        })
+
+        if new_ticker:       ps.ticker          = new_ticker
+        ps.strike           = nk
+        ps.expiration_date  = ne
+        ps.premium          = np_
+        ps.entry_date       = datetime.strptime(roll_date, '%Y-%m-%d').date()
+
+        db.session.commit()
+        flash(f'Rolagem da put registrada! Crédito/Débito: R$ {net_roll:.2f}', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Erro na rolagem: {e}', 'danger')
+
+    return redirect(url_for('opcoes'))
 
 
 @login_manager.user_loader

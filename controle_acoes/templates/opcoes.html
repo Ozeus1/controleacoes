@@ -83,7 +83,13 @@
                     {{ "%.2f"|format(item.lucro_at_pct)|replace('.', ',') }}%
                 </td>
 
-                <td class="actions">
+                <td class="actions" style="white-space:nowrap;">
+                    <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar operação"
+                            onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
+                    {% if item.option.roll_history %}
+                    <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
+                            onclick="openRollHistory({{ item.option.roll_history|tojson }}, '{{ item.option.ticker }}')">📋</button>
+                    {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
                         style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
                     <a href="{{ url_for('edit_option', id=item.option.id) }}" class="btn btn-sm btn-primary">✏️</a>
@@ -196,7 +202,13 @@
                 <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
                 </td>
-                <td class="actions">
+                <td class="actions" style="white-space:nowrap;">
+                    <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar operação"
+                            onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
+                    {% if item.option.roll_history %}
+                    <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
+                            onclick="openRollHistory({{ item.option.roll_history|tojson }}, '{{ item.option.ticker }}')">📋</button>
+                    {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
                         style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
                     <a href="{{ url_for('edit_option', id=item.option.id) }}" class="btn btn-sm btn-primary">✏️</a>
@@ -290,7 +302,13 @@
                 <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
                 </td>
-                <td class="actions">
+                <td class="actions" style="white-space:nowrap;">
+                    <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar operação"
+                            onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
+                    {% if item.option.roll_history %}
+                    <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
+                            onclick="openRollHistory({{ item.option.roll_history|tojson }}, '{{ item.option.ticker }}')">📋</button>
+                    {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
                         style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
                     <a href="{{ url_for('edit_option', id=item.option.id) }}" class="btn btn-sm btn-primary">✏️</a>
@@ -382,7 +400,13 @@
                 <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
                 </td>
-                <td class="actions">
+                <td class="actions" style="white-space:nowrap;">
+                    <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar operação"
+                            onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
+                    {% if item.option.roll_history %}
+                    <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
+                            onclick="openRollHistory({{ item.option.roll_history|tojson }}, '{{ item.option.ticker }}')">📋</button>
+                    {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
                         style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
                     <a href="{{ url_for('edit_option', id=item.option.id) }}" class="btn btn-sm btn-primary">✏️</a>
@@ -471,8 +495,14 @@
                 <td class="positive">R$ {{ "%.2f"|format(item.max_gain)|replace('.', ',') }}</td>
                 <td class="negative">R$ {{ "%.2f"|format(item.max_loss)|replace('.', ',') }}</td>
                 <td>{% if item.spread.pop %}{{ "%.1f"|format(item.spread.pop)|replace('.', ',') }}%{% else %}—{% endif %}</td>
-                <td class="actions">
+                <td class="actions" style="white-space:nowrap;">
                     <a href="{{ url_for('payoff_spread', id=item.spread.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
+                    <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar trava"
+                            onclick="openRollSpread({{ item.spread.id }}, '{{ item.spread.underlying_asset }}', '{{ item.spread.spread_type }}', '{{ item.spread.leg_long_ticker }}', {{ item.spread.leg_long_strike }}, {{ item.spread.leg_long_price }}, '{{ item.spread.leg_short_ticker }}', {{ item.spread.leg_short_strike }}, {{ item.spread.leg_short_price }}, '{{ item.spread.expiration_date.strftime('%Y-%m-%d') }}')">🔄</button>
+                    {% if item.spread.roll_history %}
+                    <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
+                            onclick="openRollHistory({{ item.spread.roll_history|tojson }}, '{{ item.spread.underlying_asset }}')">📋</button>
+                    {% endif %}
                     <a href="{{ url_for('close_spread', id=item.spread.id) }}" class="btn btn-sm" style="background:var(--accent-color); color: white;" title="Encerrar">🛑</a>
                     <a href="{{ url_for('edit_spread', id=item.spread.id) }}" class="btn btn-sm btn-primary">✏️</a>
                     <a href="{{ url_for('delete_spread', id=item.spread.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Apagar?')">🗑️</a>
@@ -602,8 +632,14 @@
                     <span style="color:var(--text-secondary);">—</span>
                     {% endif %}
                 </td>
-                <td class="actions">
+                <td class="actions" style="white-space:nowrap;">
                     <a href="{{ url_for('payoff_estruturada', id=op.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
+                    <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar estruturada"
+                            onclick="openRollEstruturada({{ op.id }}, '{{ op.name }}', [{% for l in op.legs %}{'id':{{ l.id }},'ticker':'{{ l.ticker }}','side':'{{ l.side }}','opt_type':'{{ l.opt_type }}','strike':{{ l.strike or 0 }},'entry_price':{{ l.entry_price or 0 }},'current_price':{{ l.current_price or 0 }},'expiration_date':'{{ l.expiration_date.isoformat() if l.expiration_date else '' }}'}{% if not loop.last %},{% endif %}{% endfor %}])">🔄</button>
+                    {% if op.roll_history %}
+                    <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
+                            onclick="openRollHistory({{ op.roll_history|tojson }}, '{{ op.name }}')">📋</button>
+                    {% endif %}
                     <a href="{{ url_for('edit_estruturada', id=op.id) }}" class="btn btn-sm btn-primary" title="Editar">✏️</a>
                     <form action="{{ url_for('close_estruturada', id=op.id) }}" method="post" style="display:inline;">
                         <button type="submit" class="btn btn-sm" style="background:var(--accent-color); color:white;"
@@ -626,6 +662,245 @@
     </p>
     {% endif %}
 </div>
+
+<!-- ═══ MODAL: Rolagem de Opção Individual ═══ -->
+<div id="modal-roll-option" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);align-items:center;justify-content:center;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.5rem;width:min(96vw,520px);color:var(--text-primary);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+      <h5 style="margin:0;">🔄 Rolar Opção — <span id="roll-opt-ticker"></span></h5>
+      <button onclick="document.getElementById('modal-roll-option').style.display='none'" style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;">&times;</button>
+    </div>
+    <form id="form-roll-option" method="POST">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;">
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Tipo de Rolagem</label>
+          <select name="roll_type" class="form-control form-control-sm">
+            <option value="TEMPO">Tempo (vencimento)</option>
+            <option value="STRIKE">Strike</option>
+            <option value="AMBOS">Tempo + Strike</option>
+          </select></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Data da Rolagem</label>
+          <input type="date" name="roll_date" class="form-control form-control-sm" value="{{ today.isoformat() if today else '' }}"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Prêmio de Recompra (R$)</label>
+          <input type="text" name="close_premium" class="form-control form-control-sm" placeholder="0,00" id="roll-opt-close-prem"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Novo Ticker</label>
+          <input type="text" name="new_ticker" class="form-control form-control-sm" style="text-transform:uppercase;" id="roll-opt-new-ticker" placeholder="ex: PETRQ46"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Novo Strike (R$)</label>
+          <input type="text" name="new_strike" class="form-control form-control-sm" placeholder="0,00" id="roll-opt-new-strike"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Novo Vencimento</label>
+          <input type="date" name="new_exp" class="form-control form-control-sm" id="roll-opt-new-exp"></div>
+        <div style="grid-column:span 2;"><label style="font-size:.8rem;color:var(--text-secondary);">Novo Prêmio Recebido/Pago (R$)</label>
+          <input type="text" name="new_premium" class="form-control form-control-sm" placeholder="0,00" id="roll-opt-new-prem"></div>
+        <div style="grid-column:span 2;"><label style="font-size:.8rem;color:var(--text-secondary);">Observações</label>
+          <input type="text" name="notes" class="form-control form-control-sm" placeholder="Motivo da rolagem..."></div>
+      </div>
+      <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('modal-roll-option').style.display='none'">Cancelar</button>
+        <button type="submit" class="btn btn-warning btn-sm">🔄 Confirmar Rolagem</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══ MODAL: Rolagem de Trava ═══ -->
+<div id="modal-roll-spread" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);align-items:center;justify-content:center;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.5rem;width:min(96vw,620px);color:var(--text-primary);max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+      <h5 style="margin:0;">🔄 Rolar Trava — <span id="roll-sp-label"></span></h5>
+      <button onclick="document.getElementById('modal-roll-spread').style.display='none'" style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;">&times;</button>
+    </div>
+    <form id="form-roll-spread" method="POST">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:1rem;">
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Tipo de Rolagem</label>
+          <select name="roll_type" class="form-control form-control-sm">
+            <option value="TEMPO">Tempo (vencimento)</option>
+            <option value="STRIKE">Strike</option>
+            <option value="AMBOS">Tempo + Strike</option>
+          </select></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Data da Rolagem</label>
+          <input type="date" name="roll_date" class="form-control form-control-sm" value="{{ today.isoformat() if today else '' }}"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Novo Vencimento</label>
+          <input type="date" name="new_exp" class="form-control form-control-sm" id="roll-sp-new-exp"></div>
+      </div>
+      <!-- Perna Comprada (Long) -->
+      <div style="background:rgba(16,185,129,.08);border-radius:6px;padding:.75rem;margin-bottom:.75rem;">
+        <div style="font-size:.8rem;font-weight:600;color:var(--success-color);margin-bottom:.5rem;">COMPRA (Long) — <span id="roll-sp-long-old"></span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:.5rem;">
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Prêmio Venda (Fechar)</label>
+            <input type="text" name="close_long_price" class="form-control form-control-sm" placeholder="0,00" id="roll-sp-close-long"></div>
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Novo Ticker</label>
+            <input type="text" name="new_long_ticker" class="form-control form-control-sm" style="text-transform:uppercase;" id="roll-sp-new-long-tk" placeholder="ticker"></div>
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Novo Strike</label>
+            <input type="text" name="new_long_strike" class="form-control form-control-sm" placeholder="0,00" id="roll-sp-new-long-k"></div>
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Novo Prêmio</label>
+            <input type="text" name="new_long_price" class="form-control form-control-sm" placeholder="0,00" id="roll-sp-new-long-p"></div>
+        </div>
+      </div>
+      <!-- Perna Vendida (Short) -->
+      <div style="background:rgba(239,68,68,.08);border-radius:6px;padding:.75rem;margin-bottom:.75rem;">
+        <div style="font-size:.8rem;font-weight:600;color:var(--danger-color);margin-bottom:.5rem;">VENDA (Short) — <span id="roll-sp-short-old"></span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:.5rem;">
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Prêmio Recompra (Fechar)</label>
+            <input type="text" name="close_short_price" class="form-control form-control-sm" placeholder="0,00" id="roll-sp-close-short"></div>
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Novo Ticker</label>
+            <input type="text" name="new_short_ticker" class="form-control form-control-sm" style="text-transform:uppercase;" id="roll-sp-new-short-tk" placeholder="ticker"></div>
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Novo Strike</label>
+            <input type="text" name="new_short_strike" class="form-control form-control-sm" placeholder="0,00" id="roll-sp-new-short-k"></div>
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Novo Prêmio</label>
+            <input type="text" name="new_short_price" class="form-control form-control-sm" placeholder="0,00" id="roll-sp-new-short-p"></div>
+        </div>
+      </div>
+      <div><label style="font-size:.8rem;color:var(--text-secondary);">Observações</label>
+        <input type="text" name="notes" class="form-control form-control-sm" placeholder="Motivo da rolagem..."></div>
+      <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('modal-roll-spread').style.display='none'">Cancelar</button>
+        <button type="submit" class="btn btn-warning btn-sm">🔄 Confirmar Rolagem</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══ MODAL: Rolagem de Estruturada ═══ -->
+<div id="modal-roll-estruturada" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);align-items:center;justify-content:center;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.5rem;width:min(96vw,680px);color:var(--text-primary);max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+      <h5 style="margin:0;">🔄 Rolar Estruturada — <span id="roll-est-name"></span></h5>
+      <button onclick="document.getElementById('modal-roll-estruturada').style.display='none'" style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;">&times;</button>
+    </div>
+    <form id="form-roll-estruturada" method="POST">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:1rem;">
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Tipo de Rolagem</label>
+          <select name="roll_type" class="form-control form-control-sm">
+            <option value="TEMPO">Tempo (vencimento)</option>
+            <option value="STRIKE">Strike</option>
+            <option value="AMBOS">Tempo + Strike</option>
+          </select></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Data da Rolagem</label>
+          <input type="date" name="roll_date" class="form-control form-control-sm" value="{{ today.isoformat() if today else '' }}"></div>
+      </div>
+      <div id="roll-est-legs" style="display:flex;flex-direction:column;gap:.6rem;"></div>
+      <div style="margin-top:.75rem;"><label style="font-size:.8rem;color:var(--text-secondary);">Observações</label>
+        <input type="text" name="notes" class="form-control form-control-sm" placeholder="Motivo da rolagem..."></div>
+      <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('modal-roll-estruturada').style.display='none'">Cancelar</button>
+        <button type="submit" class="btn btn-warning btn-sm">🔄 Confirmar Rolagem</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══ MODAL: Histórico de Rolagens ═══ -->
+<div id="modal-roll-history" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);align-items:center;justify-content:center;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.5rem;width:min(96vw,720px);color:var(--text-primary);max-height:85vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+      <h5 style="margin:0;">📋 Histórico de Rolagens — <span id="roll-hist-title"></span></h5>
+      <button onclick="document.getElementById('modal-roll-history').style.display='none'" style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;">&times;</button>
+    </div>
+    <div id="roll-hist-body"></div>
+  </div>
+</div>
+
+<script>
+// ── Rolagem de opção individual ──────────────────────────────────────────────
+function openRollOption(id, ticker, optType, strike, exp, premium) {
+    document.getElementById('roll-opt-ticker').textContent = ticker + ' (K=' + strike.toLocaleString('pt-BR',{minimumFractionDigits:2}) + ' / venc ' + exp + ')';
+    document.getElementById('roll-opt-new-ticker').value = ticker;
+    document.getElementById('roll-opt-new-strike').value = strike.toString().replace('.', ',');
+    document.getElementById('roll-opt-new-exp').value    = exp;
+    document.getElementById('roll-opt-new-prem').value   = premium.toString().replace('.', ',');
+    document.getElementById('form-roll-option').action   = '/roll_option/' + id;
+    document.getElementById('modal-roll-option').style.display = 'flex';
+}
+
+// ── Rolagem de trava ─────────────────────────────────────────────────────────
+function openRollSpread(id, underlying, type, longTk, longK, longP, shortTk, shortK, shortP, exp) {
+    document.getElementById('roll-sp-label').textContent     = underlying + ' — ' + type;
+    document.getElementById('roll-sp-long-old').textContent  = longTk + ' K=' + longK.toLocaleString('pt-BR',{minimumFractionDigits:2}) + ' @' + longP.toLocaleString('pt-BR',{minimumFractionDigits:2});
+    document.getElementById('roll-sp-short-old').textContent = shortTk + ' K=' + shortK.toLocaleString('pt-BR',{minimumFractionDigits:2}) + ' @' + shortP.toLocaleString('pt-BR',{minimumFractionDigits:2});
+    document.getElementById('roll-sp-new-exp').value         = exp;
+    document.getElementById('roll-sp-new-long-tk').value     = longTk;
+    document.getElementById('roll-sp-new-long-k').value      = longK.toString().replace('.', ',');
+    document.getElementById('roll-sp-new-long-p').value      = longP.toString().replace('.', ',');
+    document.getElementById('roll-sp-new-short-tk').value    = shortTk;
+    document.getElementById('roll-sp-new-short-k').value     = shortK.toString().replace('.', ',');
+    document.getElementById('roll-sp-new-short-p').value     = shortP.toString().replace('.', ',');
+    document.getElementById('form-roll-spread').action       = '/roll_spread/' + id;
+    document.getElementById('modal-roll-spread').style.display = 'flex';
+}
+
+// ── Rolagem de estruturada ───────────────────────────────────────────────────
+function openRollEstruturada(id, name, legs) {
+    document.getElementById('roll-est-name').textContent = name;
+    document.getElementById('form-roll-estruturada').action = '/roll_estruturada/' + id;
+    var container = document.getElementById('roll-est-legs');
+    container.innerHTML = '';
+    legs.forEach(function(leg) {
+        var color = leg.side === 'SELL' ? 'rgba(239,68,68,.08)' : 'rgba(16,185,129,.08)';
+        var label = (leg.side === 'SELL' ? 'V' : 'C') + ' — ' + leg.ticker + ' ' + leg.opt_type + ' K=' + (leg.strike||0).toLocaleString('pt-BR',{minimumFractionDigits:2});
+        var exp = leg.expiration_date || '';
+        container.innerHTML += '<div style="background:' + color + ';border-radius:6px;padding:.6rem;">' +
+            '<div style="font-size:.8rem;font-weight:600;margin-bottom:.4rem;">' + label + '</div>' +
+            '<input type="hidden" name="leg_id" value="' + leg.id + '">' +
+            '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;">' +
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Preço Fechamento</label>' +
+            '<input type="text" name="leg_close_price" class="form-control form-control-sm" placeholder="0,00" value="' + ((leg.current_price||leg.entry_price||0).toFixed(2).replace('.',',')) + '"></div>' +
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Novo Ticker</label>' +
+            '<input type="text" name="leg_new_ticker" class="form-control form-control-sm" style="text-transform:uppercase;" value="' + (leg.ticker||'') + '"></div>' +
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Novo Strike</label>' +
+            '<input type="text" name="leg_new_strike" class="form-control form-control-sm" placeholder="0,00" value="' + ((leg.strike||0).toFixed(2).replace('.',',')) + '"></div>' +
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Novo Prêmio</label>' +
+            '<input type="text" name="leg_new_premium" class="form-control form-control-sm" placeholder="0,00" value="' + ((leg.entry_price||0).toFixed(2).replace('.',',')) + '"></div>' +
+            '<div style="grid-column:span 2;"><label style="font-size:.72rem;color:var(--text-secondary);">Novo Vencimento</label>' +
+            '<input type="date" name="leg_new_exp" class="form-control form-control-sm" value="' + exp + '"></div>' +
+            '</div></div>';
+    });
+    document.getElementById('modal-roll-estruturada').style.display = 'flex';
+}
+
+// ── Histórico de rolagens ────────────────────────────────────────────────────
+function openRollHistory(history, title) {
+    document.getElementById('roll-hist-title').textContent = title;
+    var body = document.getElementById('roll-hist-body');
+    if (!history || !history.length) {
+        body.innerHTML = '<p style="color:var(--text-secondary);text-align:center;">Nenhuma rolagem registrada.</p>';
+    } else {
+        body.innerHTML = history.map(function(r, i) {
+            var bg = 'var(--hover-bg)';
+            var net = r.net_roll != null ? r.net_roll : (r.net || 0);
+            var netColor = net >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+            var netSign  = net >= 0 ? '+' : '';
+            var html = '<div style="background:' + bg + ';border-radius:8px;padding:.9rem;margin-bottom:.6rem;border-left:3px solid ' + (net >= 0 ? 'var(--success-color)' : 'var(--danger-color)') + ';">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.4rem;">' +
+                '<strong>Rolagem #' + (i+1) + ' — ' + (r.roll_type||'') + '</strong>' +
+                '<span style="font-size:.8rem;color:var(--text-secondary);">' + (r.rolled_at||'') + '</span></div>' +
+                '<div style="font-size:.85rem;color:var(--text-secondary);">';
+            // Opção individual
+            if (r.old_ticker) html += 'De: <strong>' + r.old_ticker + ' K=' + (r.old_strike||'') + ' @' + (r.old_premium||'') + '</strong> → ' +
+                'Para: <strong>' + (r.new_ticker||'') + ' K=' + (r.new_strike||'') + ' @' + (r.new_premium||'') + '</strong><br>' +
+                'Recompra: R$&nbsp;' + (r.close_premium||'—') + ' | ';
+            // Trava
+            if (r.old_long_ticker) html += 'Long: ' + r.old_long_ticker + '→' + (r.new_long_ticker||'') +
+                ' K:' + (r.old_long_strike||'') + '→' + (r.new_long_strike||'') + ' | ' +
+                'Short: ' + r.old_short_ticker + '→' + (r.new_short_ticker||'') +
+                ' K:' + (r.old_short_strike||'') + '→' + (r.new_short_strike||'') + '<br>';
+            // Estruturada
+            if (r.legs) html += r.legs.map(function(l) {
+                return (l.side==='SELL'?'V':'C') + ':' + l.old_ticker + '→' + l.new_ticker + ' K:' + l.old_strike + '→' + l.new_strike;
+            }).join(' | ') + '<br>';
+            html += '<span style="color:' + netColor + ';font-weight:600;">Crédito/Débito líquido: ' + netSign + 'R$ ' + Math.abs(net).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</span>';
+            if (r.notes) html += '<br><em>' + r.notes + '</em>';
+            html += '</div></div>';
+            return html;
+        }).join('');
+    }
+    document.getElementById('modal-roll-history').style.display = 'flex';
+}
+
+// Fechar modais clicando fora
+['modal-roll-option','modal-roll-spread','modal-roll-estruturada','modal-roll-history'].forEach(function(mid) {
+    var el = document.getElementById(mid);
+    if (el) el.addEventListener('click', function(e) { if (e.target === el) el.style.display = 'none'; });
+});
+</script>
 
 <!-- Live Polling (MT5 / OpLab) for Options -->
 <script>

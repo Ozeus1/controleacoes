@@ -131,6 +131,9 @@ class Option(db.Model):
     delta = db.Column(db.Float, nullable=True)
     gama  = db.Column(db.Float, nullable=True)
 
+    # Histórico de rolagens (JSON array)
+    roll_history = db.Column(db.Text, nullable=True)
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -169,6 +172,9 @@ class OptionSpread(db.Model):
     # Cotação do ativo subjacente (atualizado via MT5/Excel/Yahoo)
     underlying_price  = db.Column(db.Float, nullable=True)
     underlying_change = db.Column(db.Float, nullable=True)
+
+    # Histórico de rolagens (JSON array)
+    roll_history = db.Column(db.Text, nullable=True)
 
 
 class Settings(db.Model):
@@ -334,6 +340,7 @@ class StructuredOp(db.Model):
     uses_stock_collateral = db.Column(db.Boolean, default=False)  # ação em carteira como garantia
     status                = db.Column(db.String(10), default='OPEN')   # OPEN | CLOSED
     created_at    = db.Column(db.DateTime, default=datetime.now)
+    roll_history  = db.Column(db.Text, nullable=True)  # JSON array de rolagens
     legs = db.relationship('StructuredLeg', backref='operation', lazy=True,
                            cascade='all, delete-orphan',
                            order_by='StructuredLeg.id')
@@ -398,6 +405,7 @@ class PutSale(db.Model):
     entry_date        = db.Column(db.Date, nullable=True)
     notes             = db.Column(db.String(200), nullable=True)
     created_at        = db.Column(db.DateTime, default=datetime.now)
+    roll_history      = db.Column(db.Text, nullable=True)  # JSON array de rolagens
 
 
 class SelicMensal(db.Model):

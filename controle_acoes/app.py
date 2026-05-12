@@ -1089,13 +1089,21 @@ def close_spread(id):
             exit_date = datetime.strptime(request.form.get('date'), '%Y-%m-%d').date()
             reason = request.form.get('reason', 'ENCERRAMENTO')
 
-            net_credit = sp.leg_short_price - sp.leg_long_price
-            cost_to_close = close_short_price - close_long_price
-            profit_val = (net_credit - cost_to_close) * sp.quantity
+            # Lógica de fluxo de caixa da trava:
+            # Na montagem: recebe leg_short_price (venda) e paga leg_long_price (compra)
+            #   crédito líquido = leg_short_price - leg_long_price  (>0 = crédito, <0 = débito)
+            # No fechamento: recebe close_long_price (venda da comprada) e paga close_short_price (recompra da vendida)
+            #   custo de fechamento = close_short_price - close_long_price
+            # Lucro = (crédito_montagem - custo_fechamento) * qty
+            net_open  = sp.leg_short_price - sp.leg_long_price   # crédito líquido de entrada (>0=crédito)
+            net_close = close_short_price - close_long_price      # custo líquido de fechamento (>0=débito)
+            profit_val = (net_open - net_close) * sp.quantity
+
             width = abs(sp.leg_short_strike - sp.leg_long_strike)
-            max_loss_ref = (width - net_credit) * sp.quantity
-            profit_pct = (profit_val / abs(max_loss_ref) * 100) if max_loss_ref != 0 else 0
-            days_held = (exit_date - sp.entry_date).days if sp.entry_date else 0
+            # Referência de risco: máximo risco na montagem
+            max_risk = (width - net_open) * sp.quantity if net_open >= 0 else (width + abs(net_open)) * sp.quantity
+            profit_pct = (profit_val / abs(max_risk) * 100) if max_risk != 0 else 0
+            days_held  = (exit_date - sp.entry_date).days if sp.entry_date else 0
 
             type_labels = {
                 'TRAVA_ALTA_PUT': 'T.Alta Put', 'TRAVA_ALTA_CALL': 'T.Alta Call',
@@ -1104,26 +1112,26 @@ def close_spread(id):
             label = type_labels.get(sp.spread_type, 'TRAVA')
             notes = (
                 f"{sp.spread_type} | {sp.underlying_asset} | "
-                f"C:{sp.leg_long_ticker} K={sp.leg_long_strike:.2f} @{sp.leg_long_price:.2f}"
-                f"→@{close_long_price:.2f} | "
-                f"V:{sp.leg_short_ticker} K={sp.leg_short_strike:.2f} @{sp.leg_short_price:.2f}"
-                f"→@{close_short_price:.2f}"
+                f"C:{sp.leg_long_ticker} K={sp.leg_long_strike:.2f} entrada@{sp.leg_long_price:.2f} saída@{close_long_price:.2f} | "
+                f"V:{sp.leg_short_ticker} K={sp.leg_short_strike:.2f} entrada@{sp.leg_short_price:.2f} saída@{close_short_price:.2f}"
             )
             history = TradeHistory(
-                user_id=current_user.id,
-                ticker=label,
-                strategy='Opções',
-                entry_date=sp.entry_date,
-                exit_date=exit_date,
-                buy_price=round(sp.leg_long_price - sp.leg_short_price, 4),   # custo líquido montagem
-                sell_price=round(close_long_price - close_short_price, 4),    # custo líquido fechamento
-                quantity=sp.quantity,
-                profit_value=profit_val,
-                profit_pct=profit_pct,
-                days_held=days_held,
-                reason=reason,
-                underlying=sp.underlying_asset,
-                notes=notes,
+                user_id    = current_user.id,
+                ticker     = label,
+                strategy   = 'Opções',
+                entry_date = sp.entry_date,
+                exit_date  = exit_date,
+                # buy_price  = custo líquido de abertura (negativo = crédito recebido)
+                # sell_price = custo líquido de fechamento (negativo = crédito recebido ao fechar)
+                buy_price  = round(net_open,  4),
+                sell_price = round(net_close, 4),
+                quantity   = sp.quantity,
+                profit_value = round(profit_val, 2),
+                profit_pct   = round(profit_pct, 2),
+                days_held    = days_held,
+                reason       = reason,
+                underlying   = sp.underlying_asset,
+                notes        = notes,
             )
             db.session.add(history)
             db.session.delete(sp)
@@ -1282,57 +1290,62 @@ def close_estruturada(id):
         flash('Sem permissão.', 'danger')
         return redirect(url_for('opcoes'))
 
-    # Calcula P&L: SELL qty*(entry-current) + BUY qty*(current-entry)
-    pnl = 0.0
-    total_invested = 0.0
-    for leg in op.legs:
-        if leg.side == 'SELL':
-            pnl += leg.quantity * (leg.entry_price - (leg.current_price or leg.entry_price))
-        else:
-            pnl += leg.quantity * ((leg.current_price or leg.entry_price) - leg.entry_price)
-        total_invested += leg.quantity * leg.entry_price
+    # Lógica de P&L para estruturadas:
+    # Cada perna contribui de forma independente:
+    #   SELL: recebeu entry_price, pagou current_price para fechar → lucro = entry - current
+    #   BUY:  pagou entry_price, recebeu current_price ao fechar  → lucro = current - entry
+    # Crédito líquido de abertura = Σ(SELL entry * qty) - Σ(BUY entry * qty)
+    # Custo líquido de fechamento = Σ(SELL current * qty) - Σ(BUY current * qty)
+    # Lucro total = crédito_abertura - custo_fechamento
 
-    exit_date = date.today()
+    net_open  = 0.0   # crédito líquido recebido na montagem
+    net_close = 0.0   # custo líquido para fechar (recomprar vendidas, vender compradas)
+    total_risk = 0.0  # soma dos prêmios pagos (posições BUY) como referência de risco
+
+    for leg in op.legs:
+        cur = leg.current_price if leg.current_price else leg.entry_price
+        if leg.side == 'SELL':
+            net_open  += leg.entry_price * leg.quantity
+            net_close += cur             * leg.quantity
+        else:
+            net_open  -= leg.entry_price * leg.quantity
+            net_close -= cur             * leg.quantity
+            total_risk += leg.entry_price * leg.quantity
+
+    pnl_total = net_open - net_close
+    # % sobre o risco total engajado (prêmios pagos nas compras, ou crédito líquido se tudo vendas)
+    risk_ref = total_risk if total_risk > 0 else abs(net_open)
+    pct = (pnl_total / risk_ref * 100) if risk_ref != 0 else 0
+
+    exit_date  = date.today()
     entry_date = op.created_at.date() if op.created_at else exit_date
     days_held  = (exit_date - entry_date).days
 
-    # Prêmio líquido recebido na montagem
-    net_credit = sum(
-        (leg.entry_price if leg.side == 'SELL' else -leg.entry_price) * leg.quantity
-        for leg in op.legs
-    )
-    # P&L total = crédito recebido + variação de fechamento
-    pnl_total = net_credit + pnl
-    pct = (pnl_total / abs(total_invested) * 100) if total_invested else 0
-
     ticker_label = (op.name or op.underlying_asset or 'ESTRUT')[:20]
-    total_qty    = sum(l.quantity for l in op.legs) if op.legs else 1
-    avg_entry    = total_invested / total_qty
-    avg_exit     = avg_entry + (pnl_total / total_qty)
 
-    # Detalhes das pernas para pesquisa
+    # Detalhes completos de cada perna para rastreabilidade
     legs_detail = ' | '.join(
         f"{'V' if l.side=='SELL' else 'C'}:{l.ticker} {l.opt_type} K={l.strike:.2f}"
-        f" @{l.entry_price:.2f}→@{l.current_price or l.entry_price:.2f}"
+        f" entrada@{l.entry_price:.2f} saída@{l.current_price or l.entry_price:.2f}"
         for l in op.legs
     )
     notes = f"{op.underlying_asset} | {legs_detail}"
 
     history = TradeHistory(
-        user_id     = current_user.id,
-        ticker      = ticker_label,
-        strategy    = 'Opções',
-        entry_date  = entry_date,
-        exit_date   = exit_date,
-        buy_price   = round(avg_entry, 4),
-        sell_price  = round(avg_exit,  4),
-        quantity    = total_qty,
-        profit_value= round(pnl_total, 2),
-        profit_pct  = round(pct, 2),
-        days_held   = days_held,
-        reason      = 'Encerramento',
-        underlying  = op.underlying_asset,
-        notes       = notes,
+        user_id      = current_user.id,
+        ticker       = ticker_label,
+        strategy     = 'Opções',
+        entry_date   = entry_date,
+        exit_date    = exit_date,
+        buy_price    = round(net_open,  4),   # crédito líquido de abertura (>0=crédito)
+        sell_price   = round(net_close, 4),   # custo líquido de fechamento
+        quantity     = 1,                     # quantidade não faz sentido para multi-perna; P&L é em R$
+        profit_value = round(pnl_total, 2),
+        profit_pct   = round(pct, 2),
+        days_held    = days_held,
+        reason       = 'Encerramento',
+        underlying   = op.underlying_asset,
+        notes        = notes,
     )
     db.session.add(history)
     op.status = 'CLOSED'
@@ -1870,29 +1883,37 @@ def close_option(id):
         if opt.entry_date:
             days_held = (date_exit - opt.entry_date).days
 
-        # Profit Calculation depends on position type
+        # Profit Calculation:
+        # LONG  (COMPRA_CALL / COMPRA_PUT): comprou por sale_price, vendeu por buy_back_price
+        #   lucro = (saída - entrada) * qty  → buy_price=entrada, sell_price=saída
+        # SHORT (VENDA_CALL / VENDA_PUT):   vendeu por sale_price, recomprou por buy_back_price
+        #   lucro = (entrada - saída) * qty  → buy_price=recompra, sell_price=prêmio recebido
         if opt.option_type in ('COMPRA_CALL', 'COMPRA_PUT'):
-            # LONG position: Profit = (Sell Price - Buy Price) * Qty
-            profit_val = (buy_back_price - opt.sale_price) * qty_exit
+            entry_p = opt.sale_price
+            exit_p  = buy_back_price
+            profit_val = (exit_p - entry_p) * qty_exit
         else:
-            # SHORT position (VENDA_CALL, VENDA_PUT): Profit = (Sale Price - Buy Back Price) * Qty
-            profit_val = (opt.sale_price - buy_back_price) * qty_exit
-        strategy = 'Opções'
-        profit_pct = (profit_val / (qty_exit * opt.sale_price) * 100) if opt.sale_price > 0 else 0
+            entry_p = opt.sale_price     # prêmio recebido na venda
+            exit_p  = buy_back_price     # prêmio pago para recomprar
+            profit_val = (entry_p - exit_p) * qty_exit
+
+        profit_pct = (profit_val / (qty_exit * entry_p) * 100) if entry_p > 0 else 0
 
         history = TradeHistory(
-            user_id=current_user.id,
-            ticker=opt.ticker,
-            strategy=strategy,
-            entry_date=opt.entry_date,
-            exit_date=date_exit,
-            buy_price=buy_back_price,
-            sell_price=opt.sale_price,
-            quantity=qty_exit,
-            profit_value=profit_val,
-            profit_pct=profit_pct,
-            days_held=days_held,
-            reason=reason
+            user_id    = current_user.id,
+            ticker     = opt.ticker,
+            strategy   = 'Opções',
+            entry_date = opt.entry_date,
+            exit_date  = date_exit,
+            buy_price  = round(entry_p, 4),   # sempre o preço de entrada da posição
+            sell_price = round(exit_p,  4),   # sempre o preço de saída da posição
+            quantity   = qty_exit,
+            profit_value = round(profit_val, 2),
+            profit_pct   = round(profit_pct, 2),
+            days_held    = days_held,
+            reason       = reason,
+            underlying   = opt.underlying_asset,
+            notes        = f"{opt.option_type} | {opt.underlying_asset} | K={opt.strike_price:.2f} | venc {opt.expiration_date.strftime('%d/%m/%Y') if opt.expiration_date else '?'}",
         )
         db.session.add(history)
 

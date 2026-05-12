@@ -188,6 +188,7 @@
                 </td>
                 <td>{{ 'R$ %.2f'|format(be)|replace('.',',') }}</td>
                 <td style="white-space:nowrap;">
+                    <button class="btn btn-sm" onclick="openTVChart('{{ p.underlying_asset }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
                     <a href="{{ url_for('venda_puts_edit', id=p.id) }}" class="btn btn-sm btn-secondary">✏️</a>
                     <form method="POST" action="{{ url_for('venda_puts_delete', id=p.id) }}"
                           style="display:inline;" onsubmit="return confirm('Excluir?')">
@@ -321,6 +322,60 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
     });
 
     recalc();
+})();
+</script>
+
+<!-- Modal gráfico TradingView -->
+<div id="tv-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+     background:rgba(0,0,0,.75); align-items:center; justify-content:center;">
+  <div style="background:var(--card-bg,#1e293b); border-radius:10px; padding:1rem;
+              width:min(96vw,1100px); max-height:90vh; display:flex; flex-direction:column; gap:.75rem;">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <span id="tv-modal-title" style="font-weight:600; font-size:1rem;"></span>
+      <button onclick="closeTVChart()" style="background:none; border:none; font-size:1.4rem;
+              color:var(--text-secondary); cursor:pointer; line-height:1;">&times;</button>
+    </div>
+    <div id="tv-container" style="flex:1; min-height:500px; border-radius:6px; overflow:hidden;"></div>
+  </div>
+</div>
+<script>
+(function() {
+    var tvScriptLoaded = false;
+    var modal = document.getElementById('tv-modal');
+
+    window.openTVChart = function(ticker) {
+        ticker = (ticker || '').toUpperCase();
+        var symbol = /^[A-Z]{4}[0-9]/.test(ticker) ? 'BMFBOVESPA:' + ticker : ticker;
+        document.getElementById('tv-modal-title').textContent = '📈 ' + ticker + ' — Gráfico Técnico';
+        modal.style.display = 'flex';
+        if (!tvScriptLoaded) {
+            tvScriptLoaded = true;
+            var s = document.createElement('script');
+            s.src = 'https://s3.tradingview.com/tv.js';
+            s.onload = function() { buildWidget(symbol); };
+            document.head.appendChild(s);
+        } else { buildWidget(symbol); }
+    };
+
+    window.closeTVChart = function() { modal.style.display = 'none'; };
+    modal.addEventListener('click', function(e) { if (e.target === modal) closeTVChart(); });
+
+    function buildWidget(symbol) {
+        var c = document.getElementById('tv-container');
+        c.innerHTML = '';
+        new TradingView.widget({
+            container_id: 'tv-container', symbol: symbol,
+            interval: 'D', timezone: 'America/Sao_Paulo', theme: 'dark',
+            style: '1', locale: 'br', toolbar_bg: '#1e293b',
+            enable_publishing: false, hide_side_toolbar: false,
+            allow_symbol_change: true, save_image: false, height: 500, width: '100%',
+            studies: [
+                { id: 'MASimple@tv-basicstudies', inputs: { length: 21  } },
+                { id: 'MAExp@tv-basicstudies',    inputs: { length: 9   } },
+                { id: 'MASimple@tv-basicstudies', inputs: { length: 200 } },
+            ],
+        });
+    }
 })();
 </script>
 {% endblock %}

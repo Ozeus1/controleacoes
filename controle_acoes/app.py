@@ -5937,43 +5937,51 @@ def api_radar_analise():
     RADAR_KEY  = 'radar_8acddd4976bc3c1e9b9c814c3b408f9dcbf1dfd0d75795f9'
     try:
         resp = _req.get(RADAR_URL, params={'ticker': ticker, 'api_key': RADAR_KEY}, timeout=10)
-        data = resp.json()
-        # Normaliza campos para o frontend
+        raw  = resp.json()
+        # A API retorna { ok, data: { ... } }
+        d = raw.get('data', raw)
+        sig  = d.get('signal', {})
+        mc   = d.get('market_context', {})
+        tr   = d.get('technical_reading', {})
+        fund = d.get('fundamentals_summary', {})
+        macd = tr.get('macd', {})
+        entry = d.get('entry', {})
         out = {
-            'company':      data.get('company') or data.get('name', ''),
-            'price':        data.get('price') or data.get('current_price'),
-            'signal':       data.get('signal', ''),
-            'day_change':   data.get('day_change') or data.get('change_pct'),
-            'rationale':    data.get('rationale') or data.get('analysis', ''),
-            'entry_min':    data.get('entry_min'),
-            'entry_max':    data.get('entry_max'),
-            'stop_loss':    data.get('stop_loss') or data.get('stop'),
-            'target':       data.get('target') or data.get('alvo'),
-            'support':      data.get('support') or data.get('suporte'),
-            'resistance':   data.get('resistance') or data.get('resistencia'),
-            'rsi':          data.get('rsi') or data.get('rsi_14'),
-            'atr':          data.get('atr') or data.get('atr_14'),
-            'sma9':         data.get('sma9')  or data.get('sma_9'),
-            'sma21':        data.get('sma21') or data.get('sma_21'),
-            'sma50':        data.get('sma50') or data.get('sma_50'),
-            'macd_line':    data.get('macd_line') or data.get('macd'),
-            'daily_trend':  data.get('daily_trend')  or data.get('trend_daily'),
-            'weekly_trend': data.get('weekly_trend') or data.get('trend_weekly'),
-            'open':         data.get('open'),
-            'day_high':     data.get('day_high') or data.get('high'),
-            'day_low':      data.get('day_low')  or data.get('low'),
-            'week52_high':  data.get('week52_high') or data.get('high_52w'),
-            'week52_low':   data.get('week52_low')  or data.get('low_52w'),
-            'volume':       data.get('volume'),
-            'pe_ratio':     data.get('pe_ratio') or data.get('pl'),
-            'eps':          data.get('eps') or data.get('lpa'),
-            'sector':       data.get('sector') or data.get('setor'),
-            'industry':     data.get('industry') or data.get('industria'),
+            'company':      d.get('company_name', ''),
+            'price':        d.get('price'),
+            'signal':       sig.get('label', '') if isinstance(sig, dict) else str(sig),
+            'signal_code':  sig.get('code', '')  if isinstance(sig, dict) else '',
+            'rationale':    sig.get('reason', '') if isinstance(sig, dict) else '',
+            'day_change':   mc.get('change_percent'),
+            'entry_min':    entry.get('low')  if isinstance(entry, dict) else None,
+            'entry_max':    entry.get('high') if isinstance(entry, dict) else None,
+            'stop_loss':    d.get('stop'),
+            'target':       d.get('target'),
+            'support':      d.get('support'),
+            'resistance':   d.get('resistance'),
+            'rsi14':        d.get('rsi14') or tr.get('rsi14'),
+            'atr14':        d.get('atr14'),
+            'sma9':         tr.get('sma9'),
+            'sma21':        tr.get('sma21'),
+            'sma50':        tr.get('sma50'),
+            'macd_line':    macd.get('line')      if isinstance(macd, dict) else None,
+            'macd_signal':  macd.get('signal')    if isinstance(macd, dict) else None,
+            'macd_hist':    macd.get('histogram') if isinstance(macd, dict) else None,
+            'daily_trend':  d.get('trend_daily',  {}).get('label') if isinstance(d.get('trend_daily'), dict)  else d.get('trend_daily'),
+            'weekly_trend': d.get('trend_weekly', {}).get('label') if isinstance(d.get('trend_weekly'), dict) else d.get('trend_weekly'),
+            'open':         mc.get('open'),
+            'day_high':     mc.get('day_high'),
+            'day_low':      mc.get('day_low'),
+            'week52_low':   mc.get('fifty_two_week_low'),
+            'week52_high':  mc.get('fifty_two_week_high'),
+            'volume':       mc.get('volume'),
+            'pl':           fund.get('pl'),
+            'pvp':          fund.get('pvp'),
+            'dy':           fund.get('dividend_yield'),
+            'eps':          fund.get('eps'),
+            'sector':       fund.get('sector'),
+            'industry':     fund.get('industry'),
         }
-        # Inclui todos os campos originais para cobertura total
-        for k, v in data.items():
-            if k not in out:
-                out[k] = v
         return jsonify(out)
     except Exception as e:
         return jsonify({'error': str(e)}), 500

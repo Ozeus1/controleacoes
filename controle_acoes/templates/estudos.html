@@ -939,122 +939,104 @@ function setSelect(id, val) {
 
 <!-- ── Modal Radar de Análise ── -->
 <div id="radar-modal" style="display:none; position:fixed; inset:0; z-index:10000;
-     background:rgba(0,0,0,.8); align-items:flex-start; justify-content:center; overflow-y:auto; padding:2rem 1rem;">
-  <div style="background:#0f172a; border-radius:12px; width:min(96vw,860px);
-              margin:auto; padding:1.5rem; position:relative; color:#e2e8f0;">
+     background:rgba(0,0,0,.82); align-items:flex-start; justify-content:center; overflow-y:auto; padding:2rem 1rem;">
+  <div style="background:#fff; border-radius:12px; width:min(96vw,900px);
+              margin:auto; padding:0; position:relative; color:#1e293b; overflow:hidden;">
 
-    <!-- Header -->
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.2rem;">
-      <div>
-        <span id="radar-ticker" style="font-size:1.4rem; font-weight:700; color:#fff;"></span>
-        <span id="radar-company" style="font-size:.9rem; color:#94a3b8; margin-left:.6rem;"></span>
+    <!-- Topo branco: empresa + sinal + preço -->
+    <div style="padding:1.2rem 1.5rem; background:#fff; border-bottom:1px solid #e2e8f0;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div id="radar-company" style="font-size:.82rem; color:#64748b; margin-bottom:.1rem;"></div>
+          <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;">
+            <span id="radar-ticker" style="font-size:1.5rem; font-weight:700; color:#0f172a;"></span>
+            <span id="radar-signal-badge" style="padding:.25rem .8rem; border-radius:6px; font-weight:600; font-size:.85rem;"></span>
+          </div>
+          <div style="font-size:2rem; font-weight:700; color:#0f172a; margin:.3rem 0;" id="radar-price"></div>
+          <!-- Pills de entrada/stop/alvo -->
+          <div id="radar-pills" style="display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.4rem; font-size:.78rem;"></div>
+        </div>
+        <button onclick="closeRadar()" style="background:none;border:none;font-size:1.6rem;
+                color:#94a3b8;cursor:pointer;line-height:1; margin-top:-.2rem;">&times;</button>
       </div>
-      <button onclick="closeRadar()" style="background:none;border:none;font-size:1.6rem;
-              color:#94a3b8;cursor:pointer;line-height:1;">&times;</button>
     </div>
 
     <!-- Loading / Error -->
-    <div id="radar-loading" style="text-align:center;padding:2rem;color:#94a3b8;">⏳ Carregando análise...</div>
-    <div id="radar-error"   style="display:none;text-align:center;padding:2rem;color:#ef4444;"></div>
+    <div id="radar-loading" style="text-align:center;padding:2rem;color:#64748b;background:#fff;">⏳ Carregando análise...</div>
+    <div id="radar-error"   style="display:none;text-align:center;padding:2rem;color:#ef4444;background:#fff;"></div>
 
-    <!-- Conteúdo -->
-    <div id="radar-body" style="display:none;">
+    <!-- Corpo -->
+    <div id="radar-body" style="display:none; padding:1.2rem 1.5rem; background:#f8fafc;">
 
-      <!-- Preço + Sinal -->
-      <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem;">
-        <div style="font-size:2rem; font-weight:700;" id="radar-price"></div>
-        <div id="radar-signal-badge" style="padding:.3rem .9rem; border-radius:20px; font-weight:600; font-size:.9rem;"></div>
-        <div id="radar-change" style="font-size:.9rem;"></div>
-      </div>
+      <!-- Rationale -->
+      <p id="radar-rationale" style="font-size:.9rem; color:#334155; margin:0 0 1rem; padding:.75rem 1rem;
+         background:#fff; border-radius:8px; border-left:3px solid #3b82f6;"></p>
 
-      <!-- Resumo técnico -->
-      <div style="background:#1e293b; border-radius:8px; padding:1rem; margin-bottom:1rem;
-                  font-size:.88rem; color:#cbd5e1; font-style:italic;" id="radar-rationale"></div>
-
-      <!-- Grid: Níveis + Técnicos -->
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
-
-        <!-- Níveis de Trading -->
-        <div style="background:#1e293b; border-radius:8px; padding:1rem;">
-          <div style="font-weight:700; color:#94a3b8; font-size:.75rem; text-transform:uppercase;
-                      letter-spacing:.06em; margin-bottom:.6rem;">Níveis de Negociação</div>
-          <table style="width:100%; font-size:.85rem; border-collapse:collapse;">
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">Entrada</td>
-                <td style="text-align:right;" id="r-entry"></td></tr>
-            <tr><td style="color:#ef4444; padding:.25rem 0;">Stop Loss</td>
-                <td style="text-align:right; color:#ef4444;" id="r-stop"></td></tr>
-            <tr><td style="color:#10b981; padding:.25rem 0;">Alvo</td>
-                <td style="text-align:right; color:#10b981;" id="r-target"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">Suporte</td>
-                <td style="text-align:right;" id="r-support"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">Resistência</td>
-                <td style="text-align:right;" id="r-resist"></td></tr>
-          </table>
+      <!-- Grid 2 colunas: Suporte/Resistência + RSI/ATR / Tendências -->
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:.75rem; margin-bottom:1rem;">
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase; letter-spacing:.05em;">Suporte</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#10b981;" id="r-support"></div>
         </div>
-
-        <!-- Indicadores Técnicos -->
-        <div style="background:#1e293b; border-radius:8px; padding:1rem;">
-          <div style="font-weight:700; color:#94a3b8; font-size:.75rem; text-transform:uppercase;
-                      letter-spacing:.06em; margin-bottom:.6rem;">Indicadores Técnicos</div>
-          <table style="width:100%; font-size:.85rem; border-collapse:collapse;">
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">RSI 14</td>
-                <td style="text-align:right;" id="r-rsi"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">ATR 14</td>
-                <td style="text-align:right;" id="r-atr"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">SMA 9</td>
-                <td style="text-align:right;" id="r-sma9"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">SMA 21</td>
-                <td style="text-align:right;" id="r-sma21"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">SMA 50</td>
-                <td style="text-align:right;" id="r-sma50"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">MACD</td>
-                <td style="text-align:right;" id="r-macd"></td></tr>
-          </table>
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase; letter-spacing:.05em;">Resistência</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#3b82f6;" id="r-resist"></div>
+        </div>
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase; letter-spacing:.05em;">RSI 14</div>
+          <div style="font-size:1.2rem; font-weight:700;" id="r-rsi"></div>
+        </div>
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase; letter-spacing:.05em;">ATR 14</div>
+          <div style="font-size:1.2rem; font-weight:700;" id="r-atr"></div>
         </div>
       </div>
 
-      <!-- Grid: Mercado + Fundamentos -->
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem;">
+      <!-- Tendências -->
+      <div style="display:flex; gap:.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+        <span id="r-trend-d" style="padding:.3rem .8rem; border-radius:20px; font-size:.82rem; background:#e2e8f0; color:#334155;"></span>
+        <span id="r-trend-w" style="padding:.3rem .8rem; border-radius:20px; font-size:.82rem; background:#e2e8f0; color:#334155;"></span>
+      </div>
 
-        <!-- Dados de Mercado -->
-        <div style="background:#1e293b; border-radius:8px; padding:1rem;">
-          <div style="font-weight:700; color:#94a3b8; font-size:.75rem; text-transform:uppercase;
-                      letter-spacing:.06em; margin-bottom:.6rem;">Dados de Mercado</div>
-          <table style="width:100%; font-size:.85rem; border-collapse:collapse;">
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">Abertura</td>
-                <td style="text-align:right;" id="r-open"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">Máx/Mín dia</td>
-                <td style="text-align:right;" id="r-hilo"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">52 semanas</td>
-                <td style="text-align:right;" id="r-52w"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">Volume</td>
-                <td style="text-align:right;" id="r-vol"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">Tendência Diária</td>
-                <td style="text-align:right;" id="r-trend-d"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">Tendência Semanal</td>
-                <td style="text-align:right;" id="r-trend-w"></td></tr>
-          </table>
-        </div>
-
-        <!-- Fundamentos -->
-        <div style="background:#1e293b; border-radius:8px; padding:1rem;">
-          <div style="font-weight:700; color:#94a3b8; font-size:.75rem; text-transform:uppercase;
-                      letter-spacing:.06em; margin-bottom:.6rem;">Fundamentos</div>
-          <table style="width:100%; font-size:.85rem; border-collapse:collapse;">
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">P/L</td>
-                <td style="text-align:right;" id="r-pe"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">LPA/EPS</td>
-                <td style="text-align:right;" id="r-eps"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">Setor</td>
-                <td style="text-align:right;" id="r-sector"></td></tr>
-            <tr><td style="color:#94a3b8; padding:.25rem 0;">Indústria</td>
-                <td style="text-align:right;" id="r-industry"></td></tr>
-          </table>
+      <!-- Leitura técnica -->
+      <div style="background:#fff; border-radius:8px; padding:.9rem 1rem; margin-bottom:1rem; border:1px solid #e2e8f0;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.5rem;">Leitura Técnica</div>
+        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:.2rem; font-size:.85rem; color:#334155;">
+          <span>SMA 9: <strong id="r-sma9"></strong></span>
+          <span>SMA 21: <strong id="r-sma21"></strong></span>
+          <span>SMA 50: <strong id="r-sma50"></strong></span>
+          <span>RSI 14: <strong id="r-rsi2"></strong></span>
+          <span>MACD linha: <strong id="r-macd-l"></strong></span>
+          <span>MACD sinal: <strong id="r-macd-s"></strong></span>
+          <span>MACD hist.: <strong id="r-macd-h"></strong></span>
         </div>
       </div>
 
-      <!-- Gráfico TradingView embutido -->
-      <div id="radar-tv-wrap" style="border-radius:8px; overflow:hidden; margin-top:.5rem;"></div>
+      <!-- Contexto de mercado -->
+      <div style="background:#fff; border-radius:8px; padding:.9rem 1rem; margin-bottom:1rem; border:1px solid #e2e8f0;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.5rem;">Contexto de Mercado</div>
+        <div style="font-size:.85rem; color:#334155; line-height:1.7;">
+          <div>Variação do dia: <strong id="r-change"></strong></div>
+          <div>Volume: <strong id="r-vol"></strong></div>
+          <div>Abertura: <strong id="r-open"></strong></div>
+          <div>Máx./mín. dia: <strong id="r-hilo"></strong></div>
+          <div>52 semanas: <strong id="r-52w"></strong></div>
+        </div>
+      </div>
+
+      <!-- Fundamentos resumidos -->
+      <div style="background:#fff; border-radius:8px; padding:.9rem 1rem; margin-bottom:1rem; border:1px solid #e2e8f0;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:.05em; margin-bottom:.5rem;">Fundamentos Resumidos</div>
+        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:.2rem; font-size:.85rem; color:#334155; line-height:1.7;">
+          <span>P/L: <strong id="r-pe"></strong></span>
+          <span>LPA/EPS: <strong id="r-eps"></strong></span>
+          <span>Setor: <strong id="r-sector"></strong></span>
+          <span>Indústria: <strong id="r-industry"></strong></span>
+        </div>
+      </div>
+
+      <!-- Gráfico TradingView -->
+      <div id="radar-tv-wrap" style="border-radius:8px; overflow:hidden;"></div>
 
     </div><!-- /radar-body -->
   </div>
@@ -1094,83 +1076,118 @@ function setSelect(id, val) {
         if (v == null) return '—';
         return 'R$ ' + parseFloat(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
     }
-    function dash(v) { return (v != null && v !== '' && v !== 'None') ? v : '—'; }
+    function num(v, dec) {
+        if (v == null) return '—';
+        return parseFloat(v).toLocaleString('pt-BR', {minimumFractionDigits: dec||2, maximumFractionDigits: dec||2});
+    }
+    function dash(v) { return (v != null && v !== '' && v !== 'None' && v !== 'undefined') ? v : '—'; }
+    function set(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
 
     function renderRadar(d, ticker) {
         document.getElementById('radar-loading').style.display = 'none';
         if (d.error) {
-            document.getElementById('radar-error').style.display  = '';
-            document.getElementById('radar-error').textContent    = d.error;
+            document.getElementById('radar-error').style.display = '';
+            document.getElementById('radar-error').textContent   = d.error;
             return;
         }
         document.getElementById('radar-body').style.display = '';
-        document.getElementById('radar-company').textContent = dash(d.company);
-        document.getElementById('radar-price').textContent   = brl(d.price);
+
+        // Empresa / ticker
+        set('radar-company', dash(d.company));
+        set('radar-ticker',  ticker);
+        set('radar-price',   brl(d.price));
 
         // Sinal
-        var sb   = document.getElementById('radar-signal-badge');
-        var sig  = (d.signal || '').toLowerCase();
-        var sigColors = { comprar:'#10b981', vender:'#ef4444', aguardar:'#f59e0b', neutro:'#64748b' };
-        var col = sigColors[sig] || '#64748b';
-        sb.textContent        = d.signal || '—';
-        sb.style.background   = col + '22';
-        sb.style.color        = col;
-        sb.style.border       = '1px solid ' + col;
+        var sb  = document.getElementById('radar-signal-badge');
+        var sig = (d.signal_code || d.signal || '').toLowerCase();
+        var sigMap = { comprar:'#16a34a', vender:'#dc2626', aguardar:'#d97706', wait:'#d97706', buy:'#16a34a', sell:'#dc2626' };
+        var col = sigMap[sig] || '#64748b';
+        sb.textContent      = d.signal || '—';
+        sb.style.background = col + '18';
+        sb.style.color      = col;
+        sb.style.border     = '1px solid ' + col + '44';
 
-        // Variação
-        var chEl = document.getElementById('radar-change');
-        var ch   = parseFloat(d.day_change);
-        chEl.textContent  = (isNaN(ch) ? '—' : (ch >= 0 ? '+' : '') + ch.toFixed(2) + '%');
-        chEl.style.color  = isNaN(ch) ? '#94a3b8' : (ch >= 0 ? '#10b981' : '#ef4444');
+        // Pills de entrada/stop/alvo
+        var pills = document.getElementById('radar-pills');
+        pills.innerHTML = '';
+        function pill(label, val, c) {
+            if (!val) return;
+            var s = document.createElement('span');
+            s.style.cssText = 'padding:.2rem .6rem;border-radius:4px;background:' + c + '15;color:' + c + ';border:1px solid ' + c + '33;';
+            s.textContent = label + ': ' + brl(val);
+            pills.appendChild(s);
+        }
+        if (d.entry_min && d.entry_max)
+            pill('Entrada', null, '#64748b'),
+            (function(){
+                var s = document.createElement('span');
+                s.style.cssText = 'padding:.2rem .6rem;border-radius:4px;background:#64748b15;color:#475569;border:1px solid #64748b33;';
+                s.textContent = 'Entrada: ' + brl(d.entry_min) + ' a ' + brl(d.entry_max);
+                pills.appendChild(s);
+            })();
+        pill('Stop', d.stop_loss, '#dc2626');
+        pill('Alvo', d.target,   '#16a34a');
 
-        document.getElementById('radar-rationale').textContent = dash(d.rationale);
+        // Variação do dia (na pill de contexto, não visível no topo mas preenchemos o campo)
+        var ch = parseFloat(d.day_change);
 
-        // Níveis
-        document.getElementById('r-entry').textContent   = d.entry_min && d.entry_max ? brl(d.entry_min) + ' – ' + brl(d.entry_max) : '—';
-        document.getElementById('r-stop').textContent    = brl(d.stop_loss);
-        document.getElementById('r-target').textContent  = brl(d.target);
-        document.getElementById('r-support').textContent = brl(d.support);
-        document.getElementById('r-resist').textContent  = brl(d.resistance);
+        // Rationale
+        set('radar-rationale', dash(d.rationale));
 
-        // Técnicos
-        document.getElementById('r-rsi').textContent   = dash(d.rsi);
-        document.getElementById('r-atr').textContent   = brl(d.atr);
-        document.getElementById('r-sma9').textContent  = brl(d.sma9);
-        document.getElementById('r-sma21').textContent = brl(d.sma21);
-        document.getElementById('r-sma50').textContent = brl(d.sma50);
-        document.getElementById('r-macd').textContent  = d.macd_line != null ? d.macd_line.toFixed(3) : '—';
+        // Cards de destaque
+        set('r-support', brl(d.support));
+        set('r-resist',  brl(d.resistance));
+        var rsiVal = d.rsi14 != null ? num(d.rsi14, 2) : '—';
+        set('r-rsi',  rsiVal);
+        set('r-rsi2', rsiVal);
+        set('r-atr',  brl(d.atr14));
 
-        // Mercado
-        document.getElementById('r-open').textContent    = brl(d.open);
-        document.getElementById('r-hilo').textContent    = (d.day_high && d.day_low) ? brl(d.day_high) + ' / ' + brl(d.day_low) : '—';
-        document.getElementById('r-52w').textContent     = (d.week52_low && d.week52_high) ? brl(d.week52_low) + ' – ' + brl(d.week52_high) : '—';
-        document.getElementById('r-vol').textContent     = d.volume ? parseInt(d.volume).toLocaleString('pt-BR') : '—';
-        document.getElementById('r-trend-d').textContent = dash(d.daily_trend);
-        document.getElementById('r-trend-w').textContent = dash(d.weekly_trend);
+        // Tendências (chips)
+        var td = document.getElementById('r-trend-d');
+        var tw = document.getElementById('r-trend-w');
+        if (td) td.textContent = 'Tendência diária: ' + dash(d.daily_trend);
+        if (tw) tw.textContent = 'Tendência semanal: ' + dash(d.weekly_trend);
+
+        // Leitura técnica
+        set('r-sma9',   brl(d.sma9));
+        set('r-sma21',  brl(d.sma21));
+        set('r-sma50',  brl(d.sma50));
+        set('r-macd-l', d.macd_line   != null ? num(d.macd_line,   3) : '—');
+        set('r-macd-s', d.macd_signal != null ? num(d.macd_signal, 3) : '—');
+        set('r-macd-h', d.macd_hist   != null ? num(d.macd_hist,   3) : '—');
+
+        // Contexto de mercado
+        var chStr = isNaN(ch) ? '—' : (ch >= 0 ? '+' : '') + num(ch, 2) + '%';
+        set('r-change', chStr);
+        set('r-vol',  d.volume ? parseInt(d.volume).toLocaleString('pt-BR') : '—');
+        set('r-open', brl(d.open));
+        set('r-hilo', (d.day_high && d.day_low) ? brl(d.day_high) + ' / ' + brl(d.day_low) : '—');
+        set('r-52w',  (d.week52_low && d.week52_high) ? brl(d.week52_low) + ' até ' + brl(d.week52_high) : '—');
 
         // Fundamentos
-        document.getElementById('r-pe').textContent       = dash(d.pe_ratio);
-        document.getElementById('r-eps').textContent      = dash(d.eps);
-        document.getElementById('r-sector').textContent   = dash(d.sector);
-        document.getElementById('r-industry').textContent = dash(d.industry);
+        set('r-pe',       d.pl     != null ? num(d.pl, 2) : '—');
+        set('r-eps',      d.eps    != null ? num(d.eps, 2) : '—');
+        set('r-sector',   dash(d.sector));
+        set('r-industry', dash(d.industry));
 
         // Gráfico TV embutido
         var tvWrap = document.getElementById('radar-tv-wrap');
         if (tvBuiltFor !== ticker) {
             tvBuiltFor = ticker;
             tvWrap.innerHTML = '';
-            var sym = 'BMFBOVESPA:' + ticker;
+            var sym = /^[A-Z]{4}[0-9]/.test(ticker) ? 'BMFBOVESPA:' + ticker : ticker;
             function buildRadarTV() {
                 new TradingView.widget({
                     container_id: 'radar-tv-wrap', symbol: sym,
-                    interval: 'D', timezone: 'America/Sao_Paulo', theme: 'dark',
-                    style: '1', locale: 'br', toolbar_bg: '#1e293b',
-                    enable_publishing: false, hide_side_toolbar: true,
+                    interval: 'D', timezone: 'America/Sao_Paulo', theme: 'light',
+                    style: '1', locale: 'br',
+                    enable_publishing: false, hide_side_toolbar: false,
                     allow_symbol_change: false, save_image: false,
-                    height: 380, width: '100%',
+                    height: 420, width: '100%',
                     studies: [
-                        { id: 'MASimple@tv-basicstudies', inputs: { length: 21  } },
-                        { id: 'MAExp@tv-basicstudies',    inputs: { length: 9   } },
+                        { id: 'MASimple@tv-basicstudies', inputs: { length: 21 } },
+                        { id: 'MAExp@tv-basicstudies',    inputs: { length: 9  } },
+                        { id: 'MASimple@tv-basicstudies', inputs: { length: 50 } },
                     ],
                 });
             }

@@ -46,7 +46,8 @@
         </thead>
         <tbody>
             {% for trade in trades %}
-            <tr data-strategy="{{ trade.strategy or 'Outros' }}">
+            <tr data-strategy="{{ trade.strategy or 'Outros' }}"
+                data-search="{{ trade.ticker }} {{ trade.underlying or '' }} {{ trade.notes or '' }}">
                 <td>
                     <span class="ticker-badge">{{ trade.ticker }}</span>
                     {% if trade.underlying and trade.underlying|upper != trade.ticker|upper %}
@@ -60,8 +61,6 @@
                         {{ trade.notes }}
                     </small>
                     {% endif %}
-                    {# Coluna oculta para busca: ticker + underlying + notes #}
-                    <span class="d-none search-data">{{ trade.ticker }} {{ trade.underlying or '' }} {{ trade.notes or '' }}</span>
                 </td>
                 <td>{{ trade.strategy or 'Outros' }}</td>
                 <td data-order="{{ trade.entry_date.strftime('%Y-%m-%d') if trade.entry_date else '' }}">
@@ -634,46 +633,59 @@ function filterByStrategy() { applyFilters(); }
 {% block extra_scripts %}
 <script>
 $(document).ready(function () {
+    var currentQ     = '';
+    var currentStrat = '';
+
+    // Filtro personalizado: lê data-search da linha + coluna estratégia
+    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex, row) {
+        if (settings.nTable.id !== 'historyTable') return true;
+        var strat = currentStrat;
+        var q     = currentQ.toUpperCase();
+        // Filtra estratégia pela coluna 1
+        if (strat && data[1] !== strat) return false;
+        // Filtra pela busca no atributo data-search da linha (ticker+underlying+notes)
+        if (q) {
+            var $tr      = $(settings.nTable).find('tbody tr').eq(dataIndex);
+            var searchTxt = ($tr.attr('data-search') || '').toUpperCase();
+            if (!searchTxt.includes(q)) return false;
+        }
+        return true;
+    });
+
     var dt = $('#historyTable').DataTable({
         "language": { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/pt-BR.json" },
         "paging":       true,
         "pageLength":   25,
         "lengthChange": false,
         "info":         true,
-        "searching":    true,   // ativa busca interna do DT
-        "search":       { "regex": false, "smart": true },
+        "searching":    true,
         "order":        [[3, "desc"]],
-        "columnDefs": [
-            { "orderable": false, "targets": 10 }
-        ]
+        "columnDefs": [{ "orderable": false, "targets": 10 }]
     });
 
-    // Oculta o campo de busca nativo do DataTables (usamos o nosso)
+    // Oculta campo de busca nativo do DataTables
     $('.dataTables_filter').hide();
 
-    // Conecta nosso campo de busca ao DataTables
     $('#searchInput').on('input', function () {
-        var q = $(this).val().trim();
-        dt.search(q).draw();
-        updateSearchInfo(q, $('#strategyFilter').val());
+        currentQ = $(this).val().trim();
+        dt.draw();
+        updateInfo();
     });
 
-    // Filtro de estratégia via coluna 1
     $('#strategyFilter').on('change', function () {
-        var strat = $(this).val();
-        // Busca exata na coluna estratégia (col 1) usando regex
-        dt.column(1).search(strat ? '^' + strat.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$' : '', true, false).draw();
-        updateSearchInfo($('#searchInput').val().trim(), strat);
+        currentStrat = $(this).val();
+        dt.draw();
+        updateInfo();
     });
 
-    function updateSearchInfo(q, strat) {
-        var info = document.getElementById('search-info');
+    function updateInfo() {
+        var info  = document.getElementById('search-info');
         var count = dt.rows({ search: 'applied' }).count();
-        if (q || strat) {
+        if (currentQ || currentStrat) {
             info.style.display = '';
             info.textContent = count + ' resultado(s)' +
-                (q    ? ' para "' + q + '"' : '') +
-                (strat ? ' — ' + strat      : '');
+                (currentQ    ? ' para "' + currentQ + '"' : '') +
+                (currentStrat ? ' — ' + currentStrat       : '');
         } else {
             info.style.display = 'none';
         }

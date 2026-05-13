@@ -6341,7 +6341,7 @@ def api_radar_update_study():
     RADAR_URL = 'https://acoes.receberbemevinhos.com.br/api_res.php'
     RADAR_KEY  = 'radar_8acddd4976bc3c1e9b9c814c3b408f9dcbf1dfd0d75795f9'
     try:
-        resp = _req.get(RADAR_URL, params={'ticker': ticker, 'api_key': RADAR_KEY}, timeout=10)
+        resp = _req.get(RADAR_URL, params={'ticker': ticker, 'api_key': RADAR_KEY}, timeout=30)
         raw  = resp.json()
         d    = raw.get('data', raw)
         rsi14 = d.get('rsi14')
@@ -6376,7 +6376,7 @@ def api_radar_analise():
     RADAR_URL = 'https://acoes.receberbemevinhos.com.br/api_res.php'
     RADAR_KEY  = 'radar_8acddd4976bc3c1e9b9c814c3b408f9dcbf1dfd0d75795f9'
     try:
-        resp = _req.get(RADAR_URL, params={'ticker': ticker, 'api_key': RADAR_KEY}, timeout=10)
+        resp = _req.get(RADAR_URL, params={'ticker': ticker, 'api_key': RADAR_KEY}, timeout=30)
         raw  = resp.json()
         # A API retorna { ok, data: { ... } }
         d = raw.get('data', raw)

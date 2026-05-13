@@ -871,12 +871,25 @@ function _radarCacheSet(ticker, data) {
     _radarCache[ticker.toUpperCase()] = { data: data, ts: Date.now() };
 }
 // Busca dados do Radar com cache — retorna Promise
+// Qualquer falha (timeout, rede, erro da API) invalida o cache existente
 function fetchRadar(ticker) {
+    var key    = ticker.toUpperCase();
     var cached = _radarCacheGet(ticker);
     if (cached) return Promise.resolve({ data: cached, fromCache: true });
     return fetch('/api/radar_analise?ticker=' + encodeURIComponent(ticker))
         .then(function(r) { return r.json(); })
-        .then(function(d) { if (!d.error) _radarCacheSet(ticker, d); return { data: d, fromCache: false }; });
+        .then(function(d) {
+            if (d.error) {
+                delete _radarCache[key];   // resposta com erro → não cacheia
+                return { data: d, fromCache: false };
+            }
+            _radarCacheSet(ticker, d);
+            return { data: d, fromCache: false };
+        })
+        .catch(function(e) {
+            delete _radarCache[key];   // timeout ou erro de rede → invalida cache
+            return Promise.reject(e);
+        });
 }
 
 // Abre Radar de dentro do modal de edição
@@ -973,9 +986,9 @@ function openRadarAndUpdate(sid, ticker, table) {
             body: JSON.stringify({ id: sid, ticker: ticker, table: table })
         }).then(function(r) { return r.json(); }).then(function(d) {
             applyUpdate(d);
-            // Também atualiza o cache com os dados básicos
             if (!d.error) _radarCacheSet(ticker, d);
-        }).catch(function(){});
+            else delete _radarCache[ticker.toUpperCase()];
+        }).catch(function(){ delete _radarCache[ticker.toUpperCase()]; });
     }
 }
 
@@ -1229,6 +1242,7 @@ function setSelect(id, val) {
                 .then(function(r) { return r.json(); })
                 .then(function(d) {
                     if (!d.error && typeof _radarCacheSet === 'function') _radarCacheSet(ticker, d);
+                    else if (typeof _radarCache !== 'undefined') delete _radarCache[ticker.toUpperCase()];
                     renderRadar(d, ticker);
                 })
                 .catch(function(e) {

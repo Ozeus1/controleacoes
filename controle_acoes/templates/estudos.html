@@ -534,11 +534,20 @@
 <div id="modal-edit-acao" class="modal fade" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content bg-dark text-white">
-      <div class="modal-header">
+      <div class="modal-header" style="flex-wrap:wrap; gap:.5rem;">
         <h5 class="modal-title">Editar Ação de Estudo</h5>
+        <div style="display:flex; gap:.4rem; margin-left:auto; margin-right:.5rem;">
+          <button type="button" class="btn btn-sm" id="ea-btn-radar"
+                  style="background:#8b5cf6;color:white;" title="Análise Radar (atualiza RSI/ATR)"
+                  onclick="openRadarFromModal('ea')">📊 Radar</button>
+          <button type="button" class="btn btn-sm" id="ea-btn-tv"
+                  style="background:#0ea5e9;color:white;" title="Gráfico TradingView"
+                  onclick="openTVFromModal('ea')">📈 Gráfico</button>
+        </div>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <form method="POST" id="form-edit-acao">
+        <input type="hidden" id="ea-sid" value="">
         <div class="modal-body">
           <div class="row g-3">
             <div class="col-md-3">
@@ -694,11 +703,20 @@
 <div id="modal-edit-intl-acao" class="modal fade" tabindex="-1">
   <div class="modal-dialog modal-lg">
     <div class="modal-content bg-dark text-white">
-      <div class="modal-header">
+      <div class="modal-header" style="flex-wrap:wrap; gap:.5rem;">
         <h5 class="modal-title">Editar Ação Internacional de Estudo</h5>
+        <div style="display:flex; gap:.4rem; margin-left:auto; margin-right:.5rem;">
+          <button type="button" class="btn btn-sm" id="eia-btn-radar"
+                  style="background:#8b5cf6;color:white;" title="Análise Radar (atualiza RSI/ATR)"
+                  onclick="openRadarFromModal('eia')">📊 Radar</button>
+          <button type="button" class="btn btn-sm" id="eia-btn-tv"
+                  style="background:#0ea5e9;color:white;" title="Gráfico TradingView"
+                  onclick="openTVFromModal('eia')">📈 Gráfico</button>
+        </div>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <form method="POST" id="form-edit-intl-acao">
+        <input type="hidden" id="eia-sid" value="">
         <div class="modal-body">
           <div class="row g-3">
             <div class="col-md-3">
@@ -801,6 +819,7 @@ function openAddAcao() {
   new bootstrap.Modal(document.getElementById('modal-add-acao')).show();
 }
 function openEditAcao(id, ticker, trend, rsi, vol, ve, strategy, studyDate, stratActive, entryDate, atrPct) {
+  document.getElementById('ea-sid').value         = id;
   document.getElementById('ea-ticker').value      = ticker;
   document.getElementById('ea-rsi').value         = rsi;
   document.getElementById('ea-ve').value          = ve;
@@ -821,6 +840,7 @@ function openAddIntlAcao() {
   new bootstrap.Modal(document.getElementById('modal-add-intl-acao')).show();
 }
 function openEditIntlAcao(id, ticker, trend, rsi, vol, ve, strategy, studyDate, stratActive, entryDate, atrPct) {
+  document.getElementById('eia-sid').value         = id;
   document.getElementById('eia-ticker').value      = ticker;
   document.getElementById('eia-rsi').value         = rsi;
   document.getElementById('eia-ve').value          = ve;
@@ -837,34 +857,126 @@ function openEditIntlAcao(id, ticker, trend, rsi, vol, ve, strategy, studyDate, 
   new bootstrap.Modal(document.getElementById('modal-edit-intl-acao')).show();
 }
 
-// Abre modal Radar E atualiza RSI/ATR no banco via API
-function openRadarAndUpdate(sid, ticker, table) {
-    openRadar(ticker);   // abre o modal visual normalmente
+// ── Cache de 10 minutos para chamadas à API Radar ──────────────────────────
+var _radarCache = {};   // { TICKER: { data: {...}, ts: timestamp } }
+var RADAR_TTL   = 10 * 60 * 1000;   // 10 minutos em ms
 
-    // Atualiza RSI e ATR% no banco em background
-    fetch('/api/radar_update_study', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ id: sid, ticker: ticker, table: table })
-    })
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
+function _radarCacheGet(ticker) {
+    var entry = _radarCache[ticker.toUpperCase()];
+    if (!entry) return null;
+    if (Date.now() - entry.ts > RADAR_TTL) { delete _radarCache[ticker.toUpperCase()]; return null; }
+    return entry.data;
+}
+function _radarCacheSet(ticker, data) {
+    _radarCache[ticker.toUpperCase()] = { data: data, ts: Date.now() };
+}
+// Busca dados do Radar com cache — retorna Promise
+function fetchRadar(ticker) {
+    var cached = _radarCacheGet(ticker);
+    if (cached) return Promise.resolve({ data: cached, fromCache: true });
+    return fetch('/api/radar_analise?ticker=' + encodeURIComponent(ticker))
+        .then(function(r) { return r.json(); })
+        .then(function(d) { if (!d.error) _radarCacheSet(ticker, d); return { data: d, fromCache: false }; });
+}
+
+// Abre Radar de dentro do modal de edição
+function openRadarFromModal(prefix) {
+    var ticker = document.getElementById(prefix + '-ticker').value.trim().toUpperCase();
+    var sid    = document.getElementById(prefix + '-sid').value;
+    var table  = (prefix === 'ea') ? 'stock' : 'intl';
+    if (!ticker) return;
+
+    // Mostra badge "Buscando..." no botão
+    var btn = document.getElementById(prefix + '-btn-radar');
+    var origText = btn.innerHTML;
+    btn.innerHTML = '⏳';
+    btn.disabled  = true;
+
+    fetchRadar(ticker).then(function(res) {
+        btn.innerHTML = origText;
+        btn.disabled  = false;
+        var d = res.data;
+
+        // Atualiza campos do modal com os dados recebidos
+        if (d.rsi14 != null)   { document.getElementById(prefix + '-rsi').value     = parseFloat(d.rsi14).toFixed(2); }
+        if (d.atr14 != null && d.price) {
+            var atrPct = (d.atr14 / d.price * 100);
+            document.getElementById(prefix + '-atr-pct').value = atrPct.toFixed(2);
+        }
+
+        // Atualiza banco e células da tabela em background
+        if (sid) {
+            fetch('/api/radar_update_study', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ id: parseInt(sid), ticker: ticker, table: table })
+            }).then(function(r) { return r.json(); }).then(function(upd) {
+                var rsiCell = document.getElementById('study-rsi-' + sid);
+                var atrCell = document.getElementById('study-atr-' + sid);
+                if (rsiCell && upd.rsi != null) {
+                    var rsi = parseFloat(upd.rsi);
+                    var c   = rsi < 30 ? 'var(--success-color)' : (rsi > 70 ? 'var(--danger-color)' : '');
+                    rsiCell.innerHTML = c ? '<span style="color:' + c + '">' + rsi.toFixed(1) + '</span>' : rsi.toFixed(1);
+                }
+                if (atrCell && upd.atr_pct != null) atrCell.textContent = parseFloat(upd.atr_pct).toFixed(1) + '%';
+            }).catch(function(){});
+        }
+
+        // Abre o modal visual Radar
+        openRadar(ticker);
+        var cacheMsg = res.fromCache ? ' (cache)' : '';
+        btn.title = 'RSI/ATR atualizados' + cacheMsg;
+    }).catch(function() {
+        btn.innerHTML = origText;
+        btn.disabled  = false;
+        alert('Erro ao buscar análise Radar.');
+    });
+}
+
+// Abre TradingView de dentro do modal de edição
+function openTVFromModal(prefix) {
+    var ticker = document.getElementById(prefix + '-ticker').value.trim().toUpperCase();
+    var isIntl = (prefix === 'eia');
+    if (ticker) openTVChart(ticker, isIntl);
+}
+
+// Abre modal Radar E atualiza RSI/ATR (usa cache de 10 min)
+function openRadarAndUpdate(sid, ticker, table) {
+    openRadar(ticker);   // abre o modal visual (usa cache interno do openRadar)
+
+    // Só chama API se não tiver em cache — atualiza tabela e banco
+    var cached = _radarCacheGet(ticker);
+    function applyUpdate(d) {
         if (d.error) return;
-        // Atualiza células na linha da tabela sem recarregar
         var rsiCell = document.getElementById('study-rsi-' + sid);
         var atrCell = document.getElementById('study-atr-' + sid);
         if (rsiCell && d.rsi != null) {
             var rsi = parseFloat(d.rsi);
-            var rsiColor = rsi < 30 ? 'var(--success-color)' : (rsi > 70 ? 'var(--danger-color)' : '');
-            rsiCell.innerHTML = rsiColor
-                ? '<span style="color:' + rsiColor + '">' + rsi.toFixed(1) + '</span>'
-                : rsi.toFixed(1);
+            var c   = rsi < 30 ? 'var(--success-color)' : (rsi > 70 ? 'var(--danger-color)' : '');
+            rsiCell.innerHTML = c ? '<span style="color:' + c + '">' + rsi.toFixed(1) + '</span>' : rsi.toFixed(1);
         }
-        if (atrCell && d.atr_pct != null) {
-            atrCell.textContent = parseFloat(d.atr_pct).toFixed(1) + '%';
-        }
-    })
-    .catch(function() {});
+        if (atrCell && d.atr_pct != null) atrCell.textContent = parseFloat(d.atr_pct).toFixed(1) + '%';
+    }
+
+    if (cached) {
+        // Dados em cache: apenas atualiza banco com o que já temos
+        fetch('/api/radar_update_study', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id: sid, ticker: ticker, table: table })
+        }).then(function(r) { return r.json(); }).then(applyUpdate).catch(function(){});
+    } else {
+        // Cache expirado: busca API e atualiza tudo
+        fetch('/api/radar_update_study', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id: sid, ticker: ticker, table: table })
+        }).then(function(r) { return r.json(); }).then(function(d) {
+            applyUpdate(d);
+            // Também atualiza o cache com os dados básicos
+            if (!d.error) _radarCacheSet(ticker, d);
+        }).catch(function(){});
+    }
 }
 
 function setSelect(id, val) {
@@ -1108,14 +1220,23 @@ function setSelect(id, val) {
         radarModal.style.display = 'flex';
         radarModal.scrollTop = 0;
 
-        fetch('/api/radar_analise?ticker=' + ticker)
-            .then(function(r) { return r.json(); })
-            .then(function(d) { renderRadar(d, ticker); })
-            .catch(function(e) {
-                document.getElementById('radar-loading').style.display = 'none';
-                document.getElementById('radar-error').style.display   = '';
-                document.getElementById('radar-error').textContent     = 'Erro ao buscar análise: ' + e.message;
-            });
+        // Usa cache de 10 min se disponível
+        var cached = (typeof _radarCacheGet === 'function') ? _radarCacheGet(ticker) : null;
+        if (cached) {
+            renderRadar(cached, ticker);
+        } else {
+            fetch('/api/radar_analise?ticker=' + ticker)
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    if (!d.error && typeof _radarCacheSet === 'function') _radarCacheSet(ticker, d);
+                    renderRadar(d, ticker);
+                })
+                .catch(function(e) {
+                    document.getElementById('radar-loading').style.display = 'none';
+                    document.getElementById('radar-error').style.display   = '';
+                    document.getElementById('radar-error').textContent     = 'Erro ao buscar análise: ' + e.message;
+                });
+        }
     };
 
     window.closeRadar = function() { radarModal.style.display = 'none'; };

@@ -3245,6 +3245,98 @@ def delete_history(id):
     db.session.commit()
     return redirect(url_for('history'))
 
+
+@app.route('/history/export_excel')
+@login_required
+def export_history_excel():
+    """Exporta todo o histórico de trades para Excel (.xlsx)."""
+    import io
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        flash('Biblioteca openpyxl não instalada. Execute: pip install openpyxl', 'danger')
+        return redirect(url_for('history'))
+
+    trades = TradeHistory.query.filter_by(user_id=current_user.id)\
+                               .order_by(TradeHistory.exit_date.desc()).all()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Histórico'
+
+    # Estilos
+    hdr_fill  = PatternFill('solid', fgColor='1E293B')
+    hdr_font  = Font(bold=True, color='FFFFFF', size=10)
+    hdr_align = Alignment(horizontal='center', vertical='center')
+    pos_font  = Font(color='16A34A', size=10)
+    neg_font  = Font(color='DC2626', size=10)
+    border    = Border(bottom=Side(style='thin', color='E2E8F0'))
+
+    headers = ['Ticker', 'Ativo Base', 'Estratégia', 'Data Entrada', 'Data Saída',
+               'Qtd', 'Preço Compra (R$)', 'Preço Venda (R$)',
+               'Resultado (R$)', 'Resultado (%)', 'Dias', 'Motivo', 'Observações']
+
+    # Cabeçalho
+    ws.append(headers)
+    for col, _ in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col)
+        cell.fill  = hdr_fill
+        cell.font  = hdr_font
+        cell.alignment = hdr_align
+
+    # Dados
+    for t in trades:
+        row = [
+            t.ticker or '',
+            t.underlying or '',
+            t.strategy or '',
+            t.entry_date.strftime('%d/%m/%Y') if t.entry_date else '',
+            t.exit_date.strftime('%d/%m/%Y')  if t.exit_date  else '',
+            t.quantity or 0,
+            round(t.buy_price or 0, 4),
+            round(t.sell_price or 0, 4),
+            round(t.profit_value or 0, 2),
+            round(t.profit_pct or 0, 2),
+            t.days_held or 0,
+            t.reason or '',
+            t.notes or '',
+        ]
+        ws.append(row)
+        r = ws.max_row
+        # Cor no resultado
+        pv = t.profit_value or 0
+        ws.cell(r, 9).font = pos_font if pv >= 0 else neg_font
+        ws.cell(r, 10).font = pos_font if pv >= 0 else neg_font
+        for col in range(1, len(headers) + 1):
+            ws.cell(r, col).border = border
+
+    # Linha de totais
+    total = sum(t.profit_value or 0 for t in trades)
+    ws.append(['', '', '', '', 'TOTAL', len(trades), '', '',
+               round(total, 2), '', '', '', ''])
+    tr = ws.max_row
+    for col in range(1, len(headers) + 1):
+        ws.cell(tr, col).font = Font(bold=True, color='FFFFFF')
+        ws.cell(tr, col).fill = PatternFill('solid', fgColor='1E293B')
+    ws.cell(tr, 9).font = Font(bold=True, color='16A34A' if total >= 0 else 'DC2626')
+
+    # Largura automática das colunas
+    col_widths = [14, 12, 12, 14, 14, 7, 18, 18, 16, 14, 7, 12, 40]
+    for i, w in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(i)].width = w
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f'historico_trades_{now_brt().strftime("%Y%m%d_%H%M")}.xlsx'
+    from flask import send_file
+    return send_file(buf, as_attachment=True, download_name=filename,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
 @app.route('/admin/migrate_history_notes')
 @login_required
 def migrate_history_notes():

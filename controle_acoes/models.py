@@ -306,6 +306,7 @@ class StudyIntlStock(db.Model):
     rsi = db.Column(db.Float, nullable=True)
     volatility = db.Column(db.String(10), nullable=True)
     ve = db.Column(db.Float, nullable=True)
+    atr_pct = db.Column(db.Float, nullable=True)   # ATR14 / preço × 100 (%)
     strategy = db.Column(db.String(60), nullable=True)
     study_date = db.Column(db.Date, nullable=True)
     strategy_active = db.Column(db.String(100), nullable=True)
@@ -322,6 +323,7 @@ class StudyStock(db.Model):
     rsi = db.Column(db.Float, nullable=True)
     volatility = db.Column(db.String(10), nullable=True)       # Alta / Baixa / Neutra
     ve = db.Column(db.Float, nullable=True)
+    atr_pct = db.Column(db.Float, nullable=True)   # ATR14 / preço × 100 (%)
     strategy = db.Column(db.String(60), nullable=True)
     study_date = db.Column(db.Date, nullable=True)
     strategy_active = db.Column(db.String(100), nullable=True)

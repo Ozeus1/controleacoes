@@ -129,6 +129,7 @@
         <th>Ticker</th>
         <th>Tendência</th>
         <th>RSI</th>
+        <th>ATR %</th>
         <th>Volatilidade</th>
         <th>VE</th>
         <th>Estratégia Sugerida</th>
@@ -140,7 +141,7 @@
     </thead>
     <tbody>
       {% for ss in study_stocks %}
-      <tr>
+      <tr id="study-row-{{ ss.id }}">
         <td><span class="ticker-badge">{{ ss.ticker }}</span></td>
         <td>
           {% if ss.trend == 'Alta' %}<span class="positive">▲ Alta</span>
@@ -148,12 +149,15 @@
           {% elif ss.trend %}<span style="color:#f59e0b">↔ Lateral</span>
           {% else %}-{% endif %}
         </td>
-        <td>
+        <td id="study-rsi-{{ ss.id }}">
           {% if ss.rsi is not none %}
             {% if ss.rsi < 30 %}<span class="positive">{{ '%.1f'|format(ss.rsi) }}</span>
             {% elif ss.rsi > 70 %}<span class="negative">{{ '%.1f'|format(ss.rsi) }}</span>
             {% else %}{{ '%.1f'|format(ss.rsi) }}{% endif %}
           {% else %}-{% endif %}
+        </td>
+        <td id="study-atr-{{ ss.id }}" style="font-size:.82rem;">
+          {{ ('%.1f'|format(ss.atr_pct) + '%') if ss.atr_pct is not none else '-' }}
         </td>
         <td>
           {% if ss.volatility %}
@@ -168,7 +172,7 @@
         <td>{{ ss.strategy_active or '-' }}</td>
         <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
         <td style="white-space:nowrap;">
-          <button class="btn btn-sm" onclick="openRadar('{{ ss.ticker }}')" title="Análise Radar" style="background:#8b5cf6;color:white;">📊</button>
+          <button class="btn btn-sm" onclick="openRadarAndUpdate({{ ss.id }}, '{{ ss.ticker }}', 'stock')" title="Análise Radar + atualizar RSI/ATR" style="background:#8b5cf6;color:white;">📊</button>
           <button class="btn btn-sm" onclick="openTVChart('{{ ss.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditAcao({{ ss.id }}, '{{ ss.ticker }}',
@@ -177,7 +181,8 @@
               '{{ ss.strategy or '' }}',
               '{{ ss.study_date.strftime('%Y-%m-%d') if ss.study_date else '' }}',
               '{{ ss.strategy_active or '' }}',
-              '{{ ss.entry_date.strftime('%Y-%m-%d') if ss.entry_date else '' }}'
+              '{{ ss.entry_date.strftime('%Y-%m-%d') if ss.entry_date else '' }}',
+              '{{ ss.atr_pct or '' }}'
             )">✏️</button>
           <form method="POST" action="{{ url_for('delete_study_stock', sid=ss.id) }}" style="display:inline"
                 onsubmit="return confirm('Excluir esta ação de estudo?')">
@@ -187,7 +192,7 @@
       </tr>
       {% endfor %}
       {% if not study_stocks %}
-      <tr><td colspan="10" style="text-align:center;color:var(--text-secondary)">Nenhuma ação de estudo cadastrada. Use "Importar Excel" para carregar do arquivo.</td></tr>
+      <tr><td colspan="11" style="text-align:center;color:var(--text-secondary)">Nenhuma ação de estudo cadastrada. Use "Importar Excel" para carregar do arquivo.</td></tr>
       {% endif %}
     </tbody>
   </table>
@@ -209,6 +214,7 @@
         <th>Ticker</th>
         <th>Tendência</th>
         <th>RSI</th>
+        <th>ATR %</th>
         <th>Volatilidade</th>
         <th>VE</th>
         <th>Estratégia Sugerida</th>
@@ -220,7 +226,7 @@
     </thead>
     <tbody>
       {% for ss in study_intl_stocks %}
-      <tr>
+      <tr id="study-row-{{ ss.id }}">
         <td><span class="ticker-badge">{{ ss.ticker }}</span></td>
         <td>
           {% if ss.trend == 'Alta' %}<span class="positive">▲ Alta</span>
@@ -228,12 +234,15 @@
           {% elif ss.trend %}<span style="color:#f59e0b">↔ Lateral</span>
           {% else %}-{% endif %}
         </td>
-        <td>
+        <td id="study-rsi-{{ ss.id }}">
           {% if ss.rsi is not none %}
             {% if ss.rsi < 30 %}<span class="positive">{{ '%.1f'|format(ss.rsi) }}</span>
             {% elif ss.rsi > 70 %}<span class="negative">{{ '%.1f'|format(ss.rsi) }}</span>
             {% else %}{{ '%.1f'|format(ss.rsi) }}{% endif %}
           {% else %}-{% endif %}
+        </td>
+        <td id="study-atr-{{ ss.id }}" style="font-size:.82rem;">
+          {{ ('%.1f'|format(ss.atr_pct) + '%') if ss.atr_pct is not none else '-' }}
         </td>
         <td>
           {% if ss.volatility %}
@@ -248,7 +257,7 @@
         <td>{{ ss.strategy_active or '-' }}</td>
         <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
         <td style="white-space:nowrap;">
-          <button class="btn btn-sm" onclick="openRadar('{{ ss.ticker }}')" title="Análise Radar" style="background:#8b5cf6;color:white;">📊</button>
+          <button class="btn btn-sm" onclick="openRadarAndUpdate({{ ss.id }}, '{{ ss.ticker }}', 'intl')" title="Análise Radar + atualizar RSI/ATR" style="background:#8b5cf6;color:white;">📊</button>
           <button class="btn btn-sm" onclick="openTVChart('{{ ss.ticker }}', true)" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditIntlAcao({{ ss.id }}, '{{ ss.ticker }}',
@@ -257,7 +266,8 @@
               '{{ ss.strategy or '' }}',
               '{{ ss.study_date.strftime('%Y-%m-%d') if ss.study_date else '' }}',
               '{{ ss.strategy_active or '' }}',
-              '{{ ss.entry_date.strftime('%Y-%m-%d') if ss.entry_date else '' }}'
+              '{{ ss.entry_date.strftime('%Y-%m-%d') if ss.entry_date else '' }}',
+              '{{ ss.atr_pct or '' }}'
             )">✏️</button>
           <form method="POST" action="{{ url_for('delete_study_intl_stock', sid=ss.id) }}" style="display:inline"
                 onsubmit="return confirm('Excluir esta ação de estudo?')">
@@ -267,7 +277,7 @@
       </tr>
       {% endfor %}
       {% if not study_intl_stocks %}
-      <tr><td colspan="10" style="text-align:center;color:var(--text-secondary)">Nenhuma ação internacional de estudo cadastrada.</td></tr>
+      <tr><td colspan="11" style="text-align:center;color:var(--text-secondary)">Nenhuma ação internacional de estudo cadastrada.</td></tr>
       {% endif %}
     </tbody>
   </table>
@@ -561,6 +571,10 @@
               <label>VE</label>
               <input type="number" step="0.1" name="ve" id="ea-ve" class="form-control">
             </div>
+            <div class="col-md-2">
+              <label>ATR %</label>
+              <input type="number" step="0.01" name="atr_pct" id="ea-atr-pct" class="form-control" placeholder="0.00">
+            </div>
             <div class="col-md-5">
               <label>Estratégia Sugerida</label>
               <select name="strategy" id="ea-strategy" class="form-control">
@@ -717,6 +731,10 @@
               <label>VE</label>
               <input type="number" step="0.1" name="ve" id="eia-ve" class="form-control">
             </div>
+            <div class="col-md-2">
+              <label>ATR %</label>
+              <input type="number" step="0.01" name="atr_pct" id="eia-atr-pct" class="form-control" placeholder="0.00">
+            </div>
             <div class="col-md-5">
               <label>Estratégia Sugerida</label>
               <select name="strategy" id="eia-strategy" class="form-control">
@@ -782,14 +800,14 @@ function openEditGreeks(optId, ticker, ve, delta, gama) {
 function openAddAcao() {
   new bootstrap.Modal(document.getElementById('modal-add-acao')).show();
 }
-function openEditAcao(id, ticker, trend, rsi, vol, ve, strategy, studyDate, stratActive, entryDate) {
-  document.getElementById('ea-ticker').value       = ticker;
-  document.getElementById('ea-rsi').value          = rsi;
-  document.getElementById('ea-ve').value           = ve;
-  document.getElementById('ea-study-date').value = studyDate;
+function openEditAcao(id, ticker, trend, rsi, vol, ve, strategy, studyDate, stratActive, entryDate, atrPct) {
+  document.getElementById('ea-ticker').value      = ticker;
+  document.getElementById('ea-rsi').value         = rsi;
+  document.getElementById('ea-ve').value          = ve;
+  document.getElementById('ea-atr-pct').value     = atrPct || '';
+  document.getElementById('ea-study-date').value  = studyDate;
   document.getElementById('ea-entry-date').value  = entryDate;
 
-  // selects
   setSelect('ea-trend',        trend);
   setSelect('ea-vol',          vol);
   setSelect('ea-strategy',     strategy);
@@ -802,10 +820,11 @@ function openEditAcao(id, ticker, trend, rsi, vol, ve, strategy, studyDate, stra
 function openAddIntlAcao() {
   new bootstrap.Modal(document.getElementById('modal-add-intl-acao')).show();
 }
-function openEditIntlAcao(id, ticker, trend, rsi, vol, ve, strategy, studyDate, stratActive, entryDate) {
+function openEditIntlAcao(id, ticker, trend, rsi, vol, ve, strategy, studyDate, stratActive, entryDate, atrPct) {
   document.getElementById('eia-ticker').value      = ticker;
   document.getElementById('eia-rsi').value         = rsi;
   document.getElementById('eia-ve').value          = ve;
+  document.getElementById('eia-atr-pct').value     = atrPct || '';
   document.getElementById('eia-study-date').value  = studyDate;
   document.getElementById('eia-entry-date').value  = entryDate;
 
@@ -816,6 +835,36 @@ function openEditIntlAcao(id, ticker, trend, rsi, vol, ve, strategy, studyDate, 
 
   document.getElementById('form-edit-intl-acao').action = '/estudos/edit_study_intl_stock/' + id;
   new bootstrap.Modal(document.getElementById('modal-edit-intl-acao')).show();
+}
+
+// Abre modal Radar E atualiza RSI/ATR no banco via API
+function openRadarAndUpdate(sid, ticker, table) {
+    openRadar(ticker);   // abre o modal visual normalmente
+
+    // Atualiza RSI e ATR% no banco em background
+    fetch('/api/radar_update_study', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ id: sid, ticker: ticker, table: table })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (d.error) return;
+        // Atualiza células na linha da tabela sem recarregar
+        var rsiCell = document.getElementById('study-rsi-' + sid);
+        var atrCell = document.getElementById('study-atr-' + sid);
+        if (rsiCell && d.rsi != null) {
+            var rsi = parseFloat(d.rsi);
+            var rsiColor = rsi < 30 ? 'var(--success-color)' : (rsi > 70 ? 'var(--danger-color)' : '');
+            rsiCell.innerHTML = rsiColor
+                ? '<span style="color:' + rsiColor + '">' + rsi.toFixed(1) + '</span>'
+                : rsi.toFixed(1);
+        }
+        if (atrCell && d.atr_pct != null) {
+            atrCell.textContent = parseFloat(d.atr_pct).toFixed(1) + '%';
+        }
+    })
+    .catch(function() {});
 }
 
 function setSelect(id, val) {

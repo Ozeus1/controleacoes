@@ -191,6 +191,14 @@ def run_migrations():
     if cursor.rowcount > 0:
         print(f"[MIGRATION] Reclassified {cursor.rowcount} trade_history strategy records.")
 
+    # Add atr_pct to study_stock and study_intl_stock if missing
+    for tbl in ('study_stock', 'study_intl_stock'):
+        cursor.execute(f"PRAGMA table_info({tbl})")
+        cols = {row[1] for row in cursor.fetchall()}
+        if 'atr_pct' not in cols:
+            cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN atr_pct FLOAT")
+            print(f"[MIGRATION] Added {tbl}.atr_pct")
+
     # Add roll_history to option, option_spread, structured_op, put_sale
     for tbl in ('option', 'option_spread', 'structured_op', 'put_sale'):
         cursor.execute(f"PRAGMA table_info({tbl})")
@@ -5630,8 +5638,9 @@ def edit_study_stock(sid):
     ss.rsi = _fl('rsi')
     ss.volatility = _f('volatility') or None
     ss.ve = _fl('ve')
+    ss.atr_pct = _fl('atr_pct')
     ss.strategy = _f('strategy') or None
-    ss.study_date = _dt('study_date')
+    ss.study_date = date.today()   # sempre atualiza para data de hoje ao salvar
     ss.strategy_active = _f('strategy_active') or None
     ss.entry_date = _dt('entry_date')
     db.session.commit()
@@ -5701,8 +5710,9 @@ def edit_study_intl_stock(sid):
     ss.rsi = _fl('rsi')
     ss.volatility = _f('volatility') or None
     ss.ve = _fl('ve')
+    ss.atr_pct = _fl('atr_pct')
     ss.strategy = _f('strategy') or None
-    ss.study_date = _dt('study_date')
+    ss.study_date = date.today()   # sempre atualiza para data de hoje ao salvar
     ss.strategy_active = _f('strategy_active') or None
     ss.entry_date = _dt('entry_date')
     db.session.commit()
@@ -6316,6 +6326,42 @@ def api_update_quotes():
         'not_found_assets':  not_found_assets,
         'not_found_options': not_found_options,
     }), 200
+
+
+@app.route('/api/radar_update_study', methods=['POST'])
+@login_required
+def api_radar_update_study():
+    """Atualiza RSI e ATR% do estudo a partir dos dados da API Radar."""
+    import requests as _req
+    from flask import jsonify
+    data = request.get_json()
+    sid      = data.get('id')
+    table    = data.get('table', 'stock')   # 'stock' | 'intl'
+    ticker   = data.get('ticker', '').upper()
+    RADAR_URL = 'https://acoes.receberbemevinhos.com.br/api_res.php'
+    RADAR_KEY  = 'radar_8acddd4976bc3c1e9b9c814c3b408f9dcbf1dfd0d75795f9'
+    try:
+        resp = _req.get(RADAR_URL, params={'ticker': ticker, 'api_key': RADAR_KEY}, timeout=10)
+        raw  = resp.json()
+        d    = raw.get('data', raw)
+        rsi14 = d.get('rsi14')
+        atr14 = d.get('atr14')
+        price = d.get('price')
+        atr_pct = round(atr14 / price * 100, 2) if (atr14 and price and price > 0) else None
+
+        Model = StudyStock if table == 'stock' else StudyIntlStock
+        ss = Model.query.filter_by(id=sid, user_id=current_user.id).first()
+        if not ss:
+            return jsonify({'error': 'Registro não encontrado'}), 404
+
+        if rsi14 is not None:
+            ss.rsi = round(rsi14, 2)
+        if atr_pct is not None:
+            ss.atr_pct = atr_pct
+        db.session.commit()
+        return jsonify({'rsi': ss.rsi, 'atr_pct': ss.atr_pct, 'price': price, 'atr14': atr14})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/api/radar_analise')

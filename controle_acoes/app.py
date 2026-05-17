@@ -5970,6 +5970,28 @@ def api_oplab_iv():
     return jsonify({'iv_rank': iv_rank, 'iv_percentil': iv_percentil})
 
 
+@app.route('/api/oplab_raw_debug')
+@login_required
+def api_oplab_raw_debug():
+    """Retorna JSON bruto do OpLab para diagnóstico — remover após uso."""
+    from flask import jsonify
+    import requests as _req
+    ticker = request.args.get('ticker', 'BBASR241').strip().upper()
+    token  = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'sem token'}), 400
+    BASE    = 'https://api.oplab.com.br/v3'
+    headers = {'Access-Token': token}
+    out = {}
+    for ep in (f'/market/instruments/{ticker}', f'/instruments/{ticker}'):
+        try:
+            r = _req.get(BASE + ep, headers=headers, timeout=15)
+            out[ep] = {'status': r.status_code, 'body': r.json() if r.content else {}}
+        except Exception as e:
+            out[ep] = {'error': str(e)}
+    return jsonify(out)
+
+
 @app.route('/api/oplab_greeks')
 @login_required
 def api_oplab_greeks():

@@ -5983,12 +5983,32 @@ def api_oplab_raw_debug():
     BASE    = 'https://api.oplab.com.br/v3'
     headers = {'Access-Token': token}
     out = {}
-    for ep in (f'/market/instruments/{ticker}', f'/instruments/{ticker}'):
+    # Busca subjacente
+    underlying = None
+    try:
+        r = _req.get(f'{BASE}/market/instruments/{ticker}', headers=headers, timeout=15)
+        out[f'/market/instruments/{ticker}'] = {'status': r.status_code, 'body': r.json() if r.content else {}}
+        if r.status_code == 200:
+            d = r.json()
+            underlying = d.get('parent_symbol') or d.get('underlying') if isinstance(d, dict) else None
+    except Exception as e:
+        out[f'/market/instruments/{ticker}'] = {'error': str(e)}
+    # Busca cadeia
+    if underlying:
         try:
-            r = _req.get(BASE + ep, headers=headers, timeout=15)
-            out[ep] = {'status': r.status_code, 'body': r.json() if r.content else {}}
+            r = _req.get(f'{BASE}/market/options/{underlying}', headers=headers, timeout=15)
+            data = r.json() if r.content else {}
+            # Mostra só a primeira opção para não poluir
+            if isinstance(data, list) and data:
+                out[f'/market/options/{underlying}'] = {
+                    'status': r.status_code,
+                    'first_option_keys': list(data[0].keys()) if isinstance(data[0], dict) else str(type(data[0])),
+                    'first_option': data[0]
+                }
+            else:
+                out[f'/market/options/{underlying}'] = {'status': r.status_code, 'body': data}
         except Exception as e:
-            out[ep] = {'error': str(e)}
+            out[f'/market/options/{underlying}'] = {'error': str(e)}
     return jsonify(out)
 
 
@@ -6014,50 +6034,62 @@ def api_oplab_greeks():
     headers = {'Access-Token': token}
 
     ve = delta = gama = None
-    debug_keys = {}
 
-    # Tenta múltiplos endpoints — opções podem estar em /market/instruments ou /market/options
-    for ep in (f'/market/instruments/{ticker}', f'/instruments/{ticker}'):
-        try:
-            r = _req.get(BASE + ep, headers=headers, timeout=15)
-            if r.status_code != 200:
-                continue
+    # O endpoint /market/instruments não retorna greeks para opções.
+    # O endpoint /market/options/{underlying} retorna a cadeia completa com greeks.
+    # Precisamos do parent_symbol (subjacente) para buscar a cadeia.
+
+    # Passo 1: busca o subjacente da opção
+    underlying = None
+    try:
+        r = _req.get(f'{BASE}/market/instruments/{ticker}', headers=headers, timeout=15)
+        if r.status_code == 200:
             d = r.json()
-            # Achata lista se necessário
-            if isinstance(d, list):
-                d = d[0] if d else {}
-            if not isinstance(d, dict):
-                continue
-            debug_keys[ep] = list(d.keys())
-            # Delta — OpLab retorna como 'delta' (float negativo para puts)
-            for k in ('delta', 'Delta', 'greeks_delta'):
-                v = d.get(k)
-                if v is not None:
-                    try: delta = float(v); break
-                    except (TypeError, ValueError): pass
-            # Gama
-            for k in ('gamma', 'gama', 'Gamma', 'greeks_gamma'):
-                v = d.get(k)
-                if v is not None:
-                    try: gama = float(v); break
-                    except (TypeError, ValueError): pass
-            # VE — volatilidade implícita (bs_iv é o campo principal no OpLab)
-            for k in ('bs_iv', 'implied_volatility', 'iv', 'iv_current',
-                      'volatility', 'financial_volume'):
-                v = d.get(k)
-                if v is not None:
-                    try: ve = float(v); break
-                    except (TypeError, ValueError): pass
-            if delta is not None or gama is not None:
+            if isinstance(d, dict):
+                underlying = d.get('parent_symbol') or d.get('underlying')
+    except Exception:
+        pass
+
+    if not underlying:
+        return jsonify({'error': f'Não foi possível identificar o ativo subjacente de {ticker} no OpLab.'}), 404
+
+    # Passo 2: busca cadeia de opções do subjacente e filtra pelo ticker
+    try:
+        r = _req.get(f'{BASE}/market/options/{underlying}', headers=headers, timeout=15)
+        if r.status_code == 200:
+            chain = r.json()
+            # Resposta pode ser lista de opções ou dict com chaves 'calls'/'puts'
+            opt_list = []
+            if isinstance(chain, list):
+                opt_list = chain
+            elif isinstance(chain, dict):
+                opt_list = chain.get('calls', []) + chain.get('puts', []) + chain.get('options', [])
+
+            for opt in opt_list:
+                sym = str(opt.get('symbol', opt.get('ticker', ''))).upper()
+                if sym != ticker:
+                    continue
+                for k in ('delta', 'Delta'):
+                    v = opt.get(k)
+                    if v is not None:
+                        try: delta = float(v); break
+                        except (TypeError, ValueError): pass
+                for k in ('gamma', 'gama', 'Gamma'):
+                    v = opt.get(k)
+                    if v is not None:
+                        try: gama = float(v); break
+                        except (TypeError, ValueError): pass
+                for k in ('bs_iv', 'implied_volatility', 'iv', 'vega'):
+                    v = opt.get(k)
+                    if v is not None:
+                        try: ve = float(v); break
+                        except (TypeError, ValueError): pass
                 break
-        except Exception:
-            pass
+    except Exception as e:
+        return jsonify({'error': f'Erro ao buscar cadeia de opções: {e}'}), 500
 
     if delta is None and gama is None and ve is None:
-        return jsonify({
-            'error': f'Greeks não encontrados para {ticker} no OpLab.',
-            'debug_keys': debug_keys
-        }), 404
+        return jsonify({'error': f'Greeks não encontrados para {ticker} (subjacente: {underlying}) no OpLab.'}), 404
 
     # Salva no banco
     if rec_id:

@@ -856,7 +856,8 @@ def _calc_structured_metrics_safe(op):
         return dict(net=net, current_pnl=current_pnl,
                     max_profit=max(payoffs), max_loss=min(payoffs),
                     breakevens=[], be_low=None, be_high=None,
-                    unlimited_profit=False, unlimited_loss=False)
+                    unlimited_profit=False, unlimited_loss=False,
+                    pop=None)
 
 
 @app.route('/opcoes')

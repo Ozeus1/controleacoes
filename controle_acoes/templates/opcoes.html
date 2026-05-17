@@ -524,7 +524,7 @@
                 <td class="{{ 'positive' if item.result_pct >= 0 else 'negative' }}">{{ "%.1f"|format(item.result_pct)|replace('.', ',') }}%</td>
                 <td class="positive">R$ {{ "%.2f"|format(item.max_gain)|replace('.', ',') }}</td>
                 <td class="negative">R$ {{ "%.2f"|format(item.max_loss)|replace('.', ',') }}</td>
-                {% set pop_val = item.spread.pop if item.spread.pop else item.pop %}
+                {% set pop_val = item.spread.pop if item.spread.pop else item['pop'] %}
                 <td title="{{ 'Manual' if item.spread.pop else 'Calculado via BS' }}">
                     {% if pop_val %}
                     <span class="{{ 'positive' if pop_val >= 50 else '' }}">{{ "%.1f"|format(pop_val)|replace('.', ',') }}%</span>
@@ -677,9 +677,9 @@
                     {% endif %}
                 </td>
                 <td style="text-align:center; white-space:nowrap;" title="Probability of Profit via Black-Scholes">
-                    {% if item.pop is not none %}
-                    <span class="{{ 'positive' if item.pop >= 50 else 'negative' }}"
-                          style="font-weight:600;">{{ "%.1f"|format(item.pop)|replace('.', ',') }}%</span>
+                    {% if item['pop'] is not none %}
+                    <span class="{{ 'positive' if item['pop'] >= 50 else 'negative' }}"
+                          style="font-weight:600;">{{ "%.1f"|format(item['pop'])|replace('.', ',') }}%</span>
                     {% else %}
                     <span style="color:var(--text-secondary);">—</span>
                     {% endif %}

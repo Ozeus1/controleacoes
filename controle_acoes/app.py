@@ -5876,6 +5876,78 @@ def oplab_test():
     return jsonify(results)
 
 
+@app.route('/api/oplab_iv')
+@login_required
+def api_oplab_iv():
+    """Busca IV Rank e IV Percentil de uma ação via OpLab e salva no registro de estudo."""
+    from flask import jsonify
+    import requests as _req
+    ticker = request.args.get('ticker', '').strip().upper()
+    sid    = request.args.get('sid', type=int)
+    table  = request.args.get('table', 'stock')   # 'stock' | 'intl'
+    if not ticker:
+        return jsonify({'error': 'ticker obrigatório'}), 400
+
+    token = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado. Configure em Perfil → OpLab.'}), 400
+
+    BASE    = 'https://api.oplab.com.br/v3'
+    headers = {'Access-Token': token}
+
+    iv_rank    = None
+    iv_percentil = None
+    raw_data   = {}
+
+    # Tenta endpoint /market/instruments/{ticker} — retorna IV Rank e IV Percentil
+    for ep in (f'/market/instruments/{ticker}', f'/instruments/{ticker}'):
+        try:
+            r = _req.get(BASE + ep, headers=headers, timeout=15)
+            if r.status_code == 200:
+                d = r.json()
+                raw_data = d
+                # OpLab pode retornar dict com campos diretos ou dentro de 'data'
+                if isinstance(d, list) and d:
+                    d = d[0]
+                if isinstance(d, dict):
+                    d = d.get('data', d)
+                # Tenta múltiplos nomes de campo
+                for k in ('iv_rank', 'ivRank', 'iv_rank_52w', 'rank'):
+                    if d.get(k) is not None:
+                        iv_rank = float(d[k])
+                        break
+                for k in ('iv_percentile', 'ivPercentile', 'iv_percentil', 'percentile'):
+                    if d.get(k) is not None:
+                        iv_percentil = float(d[k])
+                        break
+                if iv_rank is not None or iv_percentil is not None:
+                    break
+        except Exception:
+            pass
+
+    if iv_rank is None and iv_percentil is None:
+        return jsonify({
+            'error': f'IV Rank/Percentil não disponível para {ticker} no OpLab.',
+            'raw': str(raw_data)[:500]
+        }), 404
+
+    # Salva no banco se sid fornecido
+    if sid:
+        try:
+            Model = StudyStock if table == 'stock' else StudyIntlStock
+            ss = Model.query.filter_by(id=sid, user_id=current_user.id).first()
+            if ss:
+                if iv_rank is not None:
+                    ss.iv_rank = round(iv_rank, 2)
+                if iv_percentil is not None:
+                    ss.iv_percentil = round(iv_percentil, 2)
+                db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+
+    return jsonify({'iv_rank': iv_rank, 'iv_percentil': iv_percentil})
+
+
 @app.route('/atualizar_oplab', methods=['POST'])
 @login_required
 def atualizar_oplab():

@@ -525,9 +525,12 @@
       <div class="modal-header" style="flex-wrap:wrap; gap:.5rem;">
         <h5 class="modal-title">Editar Ação de Estudo</h5>
         <div style="display:flex; gap:.4rem; margin-left:auto; margin-right:.5rem;">
+          <button type="button" class="btn btn-sm" id="ea-btn-iv"
+                  style="background:#10b981;color:white;" title="Buscar IV Rank e IV Percentil via OpLab"
+                  onclick="fetchIVOplab('ea')">📊 IV OpLab</button>
           <button type="button" class="btn btn-sm" id="ea-btn-radar"
                   style="background:#8b5cf6;color:white;" title="Análise Radar (atualiza RSI/ATR)"
-                  onclick="openRadarFromModal('ea')">📊 Radar</button>
+                  onclick="openRadarFromModal('ea')">🔍 Radar</button>
           <button type="button" class="btn btn-sm" id="ea-btn-tv"
                   style="background:#0ea5e9;color:white;" title="Gráfico TradingView"
                   onclick="openTVFromModal('ea')">📈 Gráfico</button>
@@ -689,9 +692,12 @@
       <div class="modal-header" style="flex-wrap:wrap; gap:.5rem;">
         <h5 class="modal-title">Editar Ação Internacional de Estudo</h5>
         <div style="display:flex; gap:.4rem; margin-left:auto; margin-right:.5rem;">
+          <button type="button" class="btn btn-sm" id="eia-btn-iv"
+                  style="background:#10b981;color:white;" title="Buscar IV Rank e IV Percentil via OpLab"
+                  onclick="fetchIVOplab('eia')">📊 IV OpLab</button>
           <button type="button" class="btn btn-sm" id="eia-btn-radar"
                   style="background:#8b5cf6;color:white;" title="Análise Radar (atualiza RSI/ATR)"
-                  onclick="openRadarFromModal('eia')">📊 Radar</button>
+                  onclick="openRadarFromModal('eia')">🔍 Radar</button>
           <button type="button" class="btn btn-sm" id="eia-btn-tv"
                   style="background:#0ea5e9;color:white;" title="Gráfico TradingView"
                   onclick="openTVFromModal('eia')">📈 Gráfico</button>
@@ -867,6 +873,53 @@ function fetchRadar(ticker) {
         .catch(function(e) {
             delete _radarCache[key];   // timeout ou erro de rede → invalida cache
             return Promise.reject(e);
+        });
+}
+
+// Busca IV Rank e IV Percentil via OpLab e preenche os campos do modal
+function fetchIVOplab(prefix) {
+    var ticker = document.getElementById(prefix + '-ticker').value.trim().toUpperCase();
+    var sid    = document.getElementById(prefix + '-sid').value;
+    var table  = (prefix === 'ea') ? 'stock' : 'intl';
+    if (!ticker) { alert('Informe o ticker primeiro.'); return; }
+
+    var btn = document.getElementById(prefix + '-btn-iv');
+    var origHTML = btn.innerHTML;
+    btn.innerHTML = '⏳';
+    btn.disabled  = true;
+
+    var url = '/api/oplab_iv?ticker=' + encodeURIComponent(ticker) + '&table=' + table;
+    if (sid) url += '&sid=' + sid;
+
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            btn.innerHTML = origHTML;
+            btn.disabled  = false;
+            if (d.error) {
+                alert('OpLab IV: ' + d.error);
+                return;
+            }
+            // Preenche os campos no modal
+            var ivRankEl = document.getElementById(prefix + '-vol');
+            var ivPercEl = document.getElementById(prefix + '-ve');
+            if (ivRankEl && d.iv_rank != null)    ivRankEl.value = parseFloat(d.iv_rank).toFixed(1);
+            if (ivPercEl && d.iv_percentil != null) ivPercEl.value = parseFloat(d.iv_percentil).toFixed(1);
+
+            // Atualiza células na tabela em tempo real
+            if (sid) {
+                var rankCell = document.querySelector('#study-row-' + sid + ' td:nth-child(5)');
+                var percCell = document.querySelector('#study-row-' + sid + ' td:nth-child(6)');
+                if (rankCell && d.iv_rank != null)    rankCell.textContent = parseFloat(d.iv_rank).toFixed(1) + '%';
+                if (percCell && d.iv_percentil != null) percCell.textContent = parseFloat(d.iv_percentil).toFixed(1) + '%';
+            }
+            btn.title = 'IV Rank: ' + (d.iv_rank != null ? d.iv_rank.toFixed(1) + '%' : '—') +
+                        ' | IV Perc: ' + (d.iv_percentil != null ? d.iv_percentil.toFixed(1) + '%' : '—');
+        })
+        .catch(function(e) {
+            btn.innerHTML = origHTML;
+            btn.disabled  = false;
+            alert('Erro ao buscar IV via OpLab: ' + e.message);
         });
 }
 

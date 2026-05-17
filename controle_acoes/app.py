@@ -4844,27 +4844,29 @@ def update_quotes_async():
         with app.app_context():
             try:
                 update_market_indices()
+                # Ativos/FIIs/ETFs via Yahoo (sempre)
                 count, tried, errs = update_all_assets_logic(user_id=user_id)
                 intl_success, intl_msgs = update_intl_quotes_logic(user_id)
 
                 final_msg = f'Nacionais: {count}/{tried} atualizados. '
                 if intl_success:
-                    final_msg += f'Internacional/Cripto: Sucesso ({", ".join(intl_msgs)}). '
+                    final_msg += f'Internacional/Cripto: Sucesso. '
                 else:
-                    final_msg += f'Internacional: Falha ({", ".join(intl_msgs)}). '
+                    final_msg += f'Internacional: Falha. '
+
+                # Opções via OpLab (se token configurado) — independente do quote_mode
+                oplab_token = Settings.get_value('oplab_token', user_id=user_id)
+                if oplab_token:
+                    try:
+                        opts_ok, assets_ok = _do_oplab_bulk_update(user_id, oplab_token)
+                        final_msg += f'Opções via OpLab: {opts_ok} atualizadas. '
+                    except Exception as oe:
+                        final_msg += f'OpLab: falha ({oe}). '
 
                 if errs:
-                    _set_task(task_id, {
-                        'status': 'done',
-                        'msg': f'{final_msg} Erros: {len(errs)}. {errs[0]}',
-                        'category': 'warning'
-                    })
+                    _set_task(task_id, {'status': 'done', 'msg': f'{final_msg}Erros Yahoo: {len(errs)}.', 'category': 'warning'})
                 else:
-                    _set_task(task_id, {
-                        'status': 'done',
-                        'msg': f'{final_msg} Fonte: Yahoo Finance',
-                        'category': 'success'
-                    })
+                    _set_task(task_id, {'status': 'done', 'msg': final_msg.strip(), 'category': 'success'})
             except Exception as e:
                 import traceback
                 traceback.print_exc()
@@ -6599,6 +6601,29 @@ def _do_oplab_bulk_update(uid: int, token: str):
     if not prices:
         return 0, 0
 
+    # ── Busca delta das opções via /v3/market/options/{underlying} ──
+    # Agrupa opções por underlying para minimizar chamadas à API
+    deltas: dict = {}   # ticker_opcao → delta
+    underlyings_com_opcoes = list({o.underlying_asset.upper() for o in options if o.underlying_asset})
+    for underlying in underlyings_com_opcoes:
+        try:
+            r = requests.get(
+                f'{BASE}/market/options/{underlying}',
+                headers=headers,
+                timeout=15,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                # Resposta pode ser lista de opções ou dict com chave 'options'
+                opt_list = data if isinstance(data, list) else data.get('options', data.get('calls', []) + data.get('puts', []))
+                for item in opt_list:
+                    sym   = str(item.get('symbol', item.get('ticker', ''))).upper()
+                    delta = item.get('delta') or item.get('greeks', {}).get('delta') if isinstance(item.get('greeks'), dict) else item.get('delta')
+                    if sym and delta is not None:
+                        deltas[sym] = float(delta)
+        except Exception:
+            pass
+
     now = now_brt()
 
     # ── Atualiza Assets (ações, FIIs, ETFs — todas as páginas) ────
@@ -6620,6 +6645,9 @@ def _do_oplab_bulk_update(uid: int, token: str):
             options_ok += 1
         if key in variations:
             o.daily_change = variations[key]
+        # Atualiza delta se disponível (não zera se API não retornar)
+        if key in deltas:
+            o.delta = deltas[key]
         # Atualiza underlying do asset (para exibição em /opcoes e /estudos)
         if o.underlying_asset:
             uk = o.underlying_asset.upper()

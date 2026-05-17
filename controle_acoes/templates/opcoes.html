@@ -579,6 +579,7 @@
                 <th>Pernas</th>
                 <th>Montagem</th>
                 <th>Lucro Atual</th>
+                <th title="Lucro atual / Lucro máximo">Lucro %</th>
                 <th>Lucro Máx</th>
                 <th>Prejuízo Máx</th>
                 <th>Breakeven(s)</th>
@@ -614,6 +615,12 @@
                 </td>
                 <td class="{{ 'positive' if item.current_pnl >= 0 else 'negative' }}" style="white-space:nowrap;">
                     R$ {{ "%.2f"|format(item.current_pnl)|replace('.', ',') }}
+                </td>
+                <td style="white-space:nowrap; font-size:.85rem;">
+                    {% if not item.unlimited_profit and item.max_profit and item.max_profit != 0 %}
+                        {% set pct = (item.current_pnl / item.max_profit * 100) %}
+                        <span class="{{ 'positive' if pct >= 0 else 'negative' }}">{{ "%.1f"|format(pct)|replace('.', ',') }}%</span>
+                    {% else %}—{% endif %}
                 </td>
                 <td class="positive" style="white-space:nowrap;">
                     {% if item.unlimited_profit %}

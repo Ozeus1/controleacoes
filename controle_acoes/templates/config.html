@@ -41,118 +41,107 @@
         </form>
     </div>
 
-    <!-- MODO DE COTAÇÃO -->
+    <!-- MODO DE COTAÇÃO DE ATIVOS -->
     <div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-bottom: 2rem;">
-        <h3>Modo de Atualização de Cotações</h3>
-        <p style="color: var(--text-secondary); margin-bottom: 1.5rem;">
-            Escolha como as cotações de ações e opções serão atualizadas nas tabelas do site.
+        <h3>Fonte de Cotações — Ações, FIIs e ETFs</h3>
+        <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size:.9rem;">
+            Escolha a fonte para cotações de <strong>ações, FIIs e ETFs</strong>.
+            <br>
+            <span style="color:var(--success-color); font-size:.85rem;">
+                ✓ <strong>Opções</strong> sempre são atualizadas via OpLab quando o token estiver configurado,
+                independente do modo escolhido aqui.
+            </span>
         </p>
 
-        <div style="display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
-            <!-- Card Yahoo -->
-            <div style="flex: 1; min-width: 220px; padding: 1.2rem; border-radius: 10px;
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <div style="flex: 1; min-width: 200px; padding: 1rem; border-radius: 8px;
                         border: 2px solid {{ 'var(--accent-color)' if quote_mode == 'yahoo' else 'var(--border-color)' }};
                         background: {{ 'var(--hover-bg)' if quote_mode == 'yahoo' else 'var(--card-bg)' }};">
-                <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">📈</div>
+                <div style="font-size:1.3rem;">📈</div>
                 <strong>Yahoo Finance</strong>
-                <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 0.5rem 0 0;">
-                    Cotações atualizadas via internet (Yahoo Finance). Não atualiza preços de opções.
-                    Funciona em qualquer lugar.
+                <p style="color:var(--text-secondary); font-size:.85rem; margin:.4rem 0 0;">
+                    Atualiza ações/FIIs/ETFs via internet. Funciona em qualquer lugar.
                 </p>
-                {% if quote_mode == 'yahoo' %}
-                <span style="display: inline-block; margin-top: 0.8rem; padding: 0.2rem 0.8rem;
-                             background: var(--accent-color); color: white; border-radius: 20px; font-size: 0.8rem;">
-                    ✓ Modo ativo
-                </span>
-                {% endif %}
+                {% if quote_mode == 'yahoo' %}<span style="display:inline-block;margin-top:.5rem;padding:.15rem .6rem;background:var(--accent-color);color:white;border-radius:20px;font-size:.75rem;">✓ Ativo</span>{% endif %}
             </div>
-
-            <!-- Card MT5 -->
-            <div style="flex: 1; min-width: 220px; padding: 1.2rem; border-radius: 10px;
+            <div style="flex: 1; min-width: 200px; padding: 1rem; border-radius: 8px;
                         border: 2px solid {{ 'var(--success-color)' if quote_mode == 'mt5' else 'var(--border-color)' }};
                         background: {{ 'var(--hover-bg)' if quote_mode == 'mt5' else 'var(--card-bg)' }};">
-                <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">⚡</div>
+                <div style="font-size:1.3rem;">⚡</div>
                 <strong>MT5 Feeder (Tempo Real)</strong>
-                <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 0.5rem 0 0;">
-                    Cotações enviadas pelo script local conectado ao MetaTrader 5.
-                    Atualiza ações <strong>e opções</strong> em tempo real. Requer feeder rodando no seu PC.
+                <p style="color:var(--text-secondary); font-size:.85rem; margin:.4rem 0 0;">
+                    Dados do MetaTrader 5 em tempo real. Requer feeder rodando no PC.
                 </p>
-                {% if quote_mode == 'mt5' %}
-                <span style="display: inline-block; margin-top: 0.8rem; padding: 0.2rem 0.8rem;
-                             background: var(--success-color); color: white; border-radius: 20px; font-size: 0.8rem;">
-                    ✓ Modo ativo
-                </span>
-                {% endif %}
+                {% if quote_mode == 'mt5' %}<span style="display:inline-block;margin-top:.5rem;padding:.15rem .6rem;background:var(--success-color);color:white;border-radius:20px;font-size:.75rem;">✓ Ativo</span>{% endif %}
             </div>
         </div>
 
-        <form method="POST" action="{{ url_for('config') }}" style="display: flex; gap: 1rem; flex-wrap: wrap;">
+        <form method="POST" action="{{ url_for('config') }}" style="display:flex; gap:.75rem; flex-wrap:wrap;">
             <input type="hidden" name="action" value="set_quote_mode">
-            <button type="submit" name="quote_mode" value="yahoo"
-                class="btn {{ 'btn-primary' if quote_mode == 'yahoo' else 'btn-secondary' }}">
-                Usar Yahoo Finance
-            </button>
-            <button type="submit" name="quote_mode" value="mt5"
-                class="btn {{ 'btn-success' if quote_mode == 'mt5' else 'btn-secondary' }}">
-                Usar MT5 Feeder
-            </button>
+            <button type="submit" name="quote_mode" value="yahoo" class="btn {{ 'btn-primary' if quote_mode == 'yahoo' else 'btn-secondary' }}">Usar Yahoo Finance</button>
+            <button type="submit" name="quote_mode" value="mt5"   class="btn {{ 'btn-success' if quote_mode == 'mt5'   else 'btn-secondary' }}">Usar MT5 Feeder</button>
         </form>
     </div>
 
-    <!-- OPLAB TOKEN -->
+    <!-- OPLAB — TOKEN + AUTO-UPDATE + MANUAL (seção unificada) -->
     <div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-bottom: 2rem;">
-        <h3>OpLab API — Token de Acesso</h3>
-        <p style="color:var(--text-secondary); font-size:.9rem; margin-bottom:1rem;">
-            Configure seu token da <a href="https://oplab.com.br" target="_blank" rel="noopener"
-            style="color:var(--accent-color);">OpLab</a> para atualizar cotações de ações e opções
-            diretamente via API, sem precisar importar o Excel.
-        </p>
-        <div style="margin-bottom:1rem;">
+        <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-bottom:.75rem;">
+            <h3 style="margin:0;">OpLab — Cotações de Opções</h3>
             {% if oplab_token_ok %}
-            <span style="display:inline-block; padding:.25rem .75rem; border-radius:20px; font-size:.8rem;
+            <span style="padding:.2rem .7rem; border-radius:20px; font-size:.78rem;
                 background:rgba(16,185,129,.15); color:var(--success-color); border:1px solid var(--success-color);">
                 ✓ Token configurado
             </span>
             {% else %}
-            <span style="display:inline-block; padding:.25rem .75rem; border-radius:20px; font-size:.8rem;
+            <span style="padding:.2rem .7rem; border-radius:20px; font-size:.78rem;
                 background:rgba(100,116,139,.15); color:var(--text-secondary); border:1px solid var(--border-color);">
                 Token não configurado
             </span>
             {% endif %}
         </div>
-        <form method="POST" action="{{ url_for('config') }}" style="max-width:480px;">
-            <input type="hidden" name="action" value="save_oplab_token">
-            <label class="form-label">Access-Token OpLab</label>
-            <div style="display:flex; gap:.5rem; align-items:center; margin-bottom:.5rem;">
-                <input type="password" name="oplab_token" id="oplab_token_cfg"
-                       class="form-control" placeholder="Cole seu token aqui"
-                       autocomplete="new-password" style="flex:1; margin-bottom:0;">
-                <button type="button" class="btn btn-secondary btn-sm"
-                        onclick="var i=document.getElementById('oplab_token_cfg');i.type=i.type==='password'?'text':'password';">👁</button>
-            </div>
-            <small style="color:var(--text-secondary); font-size:.8rem;">O token é armazenado de forma criptografada.</small><br>
-            <button type="submit" class="btn btn-primary mt-2">Salvar Token</button>
-        </form>
-
-        {% if oplab_token_ok %}
-        <form method="POST" action="{{ url_for('atualizar_oplab') }}" style="margin-top:1rem; max-width:480px;"
-              onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='Atualizando...'">
-            <button type="submit" class="btn btn-success w-100">Atualizar Cotações via OpLab</button>
-        </form>
-        {% endif %}
-    </div>
-
-    <!-- OPLAB AUTO-UPDATE -->
-    <div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-bottom: 2rem;">
-        <h3>Atualização Automática via OpLab</h3>
-        <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size: .9rem;">
-            Quando ativada, o servidor buscará cotações de <strong>Ações, FIIs, ETFs e Opções</strong> diretamente
-            na API OpLab no intervalo selecionado, atualizando as páginas
-            <em>Ações, FIIs, SwingTrade, Opções e Estudos</em> dinamicamente sem necessidade de recarregar.
+        <p style="color:var(--text-secondary); font-size:.88rem; margin-bottom:1.2rem;">
+            O token OpLab é usado <strong>exclusivamente para atualizar opções</strong> (preço, delta e variação).
+            Configure o token e habilite a atualização automática no intervalo desejado. O botão "Atualizar Cotações"
+            da barra superior também aciona o OpLab para opções quando o token estiver configurado.
             {% if not oplab_token_ok %}
-            <br><strong style="color:var(--warning-color, #f59e0b)">⚠ Token OpLab não configurado. Configure o token na seção acima e tente ativar.</strong>
+            <br><strong style="color:#f59e0b;">⚠ Configure o token abaixo para ativar.</strong>
             {% endif %}
         </p>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:1.5rem; align-items:start; flex-wrap:wrap;">
+
+            <!-- Token -->
+            <div>
+                <form method="POST" action="{{ url_for('config') }}">
+                    <input type="hidden" name="action" value="save_oplab_token">
+                    <label class="form-label" style="font-weight:600;">Access-Token</label>
+                    <div style="display:flex; gap:.4rem; align-items:center; margin-bottom:.4rem;">
+                        <input type="password" name="oplab_token" id="oplab_token_cfg"
+                               class="form-control" placeholder="Cole seu token aqui"
+                               autocomplete="new-password" style="flex:1; margin-bottom:0;">
+                        <button type="button" class="btn btn-secondary btn-sm"
+                                onclick="var i=document.getElementById('oplab_token_cfg');i.type=i.type==='password'?'text':'password';">👁</button>
+                    </div>
+                    <small style="color:var(--text-secondary);">Armazenado de forma criptografada.</small><br>
+                    <button type="submit" class="btn btn-primary btn-sm mt-2">Salvar Token</button>
+                </form>
+                {% if oplab_token_ok %}
+                <form method="POST" action="{{ url_for('atualizar_oplab') }}" style="margin-top:.75rem;"
+                      onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Atualizando...'">
+                    <button type="submit" class="btn btn-success btn-sm">🔄 Atualizar Opções Agora</button>
+                </form>
+                {% endif %}
+            </div>
+
+            <!-- Auto-update -->
+            <div>
+                <form method="POST" action="{{ url_for('config') }}">
+                    <input type="hidden" name="action" value="save_oplab_config">
+                    <label class="form-label" style="font-weight:600;">Atualização Automática</label>
+                    <p style="color:var(--text-secondary); font-size:.82rem; margin:.2rem 0 .75rem;">
+                        Atualiza opções em background no intervalo selecionado, sem precisar clicar.
+                        {% if not oplab_token_ok %}<br><em>Configure o token primeiro.</em>{% endif %}
+                    </p>
 
         <form method="POST" action="{{ url_for('config') }}" style="max-width:480px;">
             <input type="hidden" name="action" value="save_oplab_config">
@@ -190,20 +179,20 @@
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-primary">Salvar configuração OpLab</button>
-        </form>
+            <button type="submit" class="btn btn-primary btn-sm">Salvar configuração</button>
 
-        {% if oplab_auto %}
-        <div style="margin-top:1rem;padding:.6rem 1rem;background:rgba(16,185,129,.12);border-radius:8px;
-                    border:1px solid var(--success-color);font-size:.85rem;color:var(--success-color);">
-            ✓ Atualização automática <strong>ativa</strong> — intervalo: {{ oplab_interval }} min.
-            As páginas atualizam os preços sem recarregar enquanto você as mantém abertas.
-        </div>
-        {% endif %}
-    </div>
+            {% if oplab_auto %}
+            <div style="margin-top:.75rem;padding:.5rem .9rem;background:rgba(16,185,129,.12);border-radius:8px;
+                        border:1px solid var(--success-color);font-size:.82rem;color:var(--success-color);">
+                ✓ Ativa — a cada {{ oplab_interval }} min.
+            </div>
+            {% endif %}
+        </form>
+        </div><!-- /grid -->
+    </div><!-- /OpLab section -->
 
     <div style="border-top: 1px solid var(--border-color); padding-top: 2rem;">
-        <h3>Testar Conexão</h3>
+        <h3>Testar Conexão OpLab</h3>
         <p style="color: var(--text-secondary); margin-bottom: 1rem;">
             Informe um ticker para verificar se a API está retornando dados corretamente com a chave configurada.
         </p>

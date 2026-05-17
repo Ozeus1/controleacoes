@@ -582,6 +582,54 @@ def _implied_vol(S0, K, T, r, target, is_call):
     return (lo + hi) / 2
 
 
+def _calc_pop(S, breakevens, T, sigma, r=0.0):
+    """
+    Probability of Profit (POP) via Black-Scholes log-normal.
+
+    P(S_T > B) = N(d2)   onde d2 = [ln(S/B) + (r - σ²/2)T] / (σ√T)
+    P(S_T < B) = N(-d2)
+
+    Para múltiplos breakevens:
+      - 1 BE (trava, venda simples): POP = P(lucro no vencimento)
+      - 2 BEs [low, high] (Iron Condor, borboleta): POP = P(low < S_T < high)
+        = N(d2_high) - N(d2_low)
+    """
+    if not breakevens or S <= 0 or T <= 0 or sigma <= 0:
+        return None
+
+    def _d2(B):
+        if B <= 0:
+            return None
+        try:
+            return (math.log(S / B) + (r - 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
+        except (ValueError, ZeroDivisionError):
+            return None
+
+    bes = sorted(breakevens)
+
+    if len(bes) == 1:
+        d = _d2(bes[0])
+        if d is None:
+            return None
+        # Crédito acima do BE → lucra se S_T > BE
+        return round(_norm_cdf(d) * 100, 1)
+
+    if len(bes) == 2:
+        d_low  = _d2(bes[0])
+        d_high = _d2(bes[1])
+        if d_low is None or d_high is None:
+            return None
+        # Lucra se BE_low < S_T < BE_high
+        return round((_norm_cdf(d_high) - _norm_cdf(d_low)) * 100, 1)
+
+    # Mais de 2 BEs: usa o par extremo
+    d_low  = _d2(bes[0])
+    d_high = _d2(bes[-1])
+    if d_low is None or d_high is None:
+        return None
+    return round((_norm_cdf(d_high) - _norm_cdf(d_low)) * 100, 1)
+
+
 def _calc_structured_metrics(op):
     """
     Calcula métricas financeiras de uma StructuredOp.
@@ -734,11 +782,41 @@ def _calc_structured_metrics(op):
         if put_strikes:
             be_low = round(min(put_strikes) - abs(net) / buy_put_qty, 2)
 
+    # ── POP via BS log-normal ───────────────────────────────────────
+    pop = None
+    try:
+        S0 = op.underlying_price or 0
+        if S0 > 0 and breakevens:
+            # Estima sigma médio das pernas vendidas (ou primeira perna)
+            sell_legs = [l for l in legs if l.side == 'SELL' and l.entry_price > 0]
+            ref_legs  = sell_legs or [l for l in legs if l.entry_price > 0]
+            sigmas = []
+            for l in ref_legs:
+                exp_dates = [x.expiration_date for x in legs if x.expiration_date]
+                T_leg = max(((max(exp_dates) - date.today()).days / 252.0), 1/252) if exp_dates else 30/252
+                is_c  = (l.opt_type == 'CALL')
+                try:
+                    iv = _implied_vol(S0, l.strike or 1, T_leg,
+                                      math.log(1 + _selic() / 100),
+                                      l.entry_price, is_c)
+                    sigmas.append(iv)
+                except Exception:
+                    pass
+            if sigmas:
+                sigma_avg = sum(sigmas) / len(sigmas)
+                exp_dates = [l.expiration_date for l in legs if l.expiration_date]
+                T = max(((max(exp_dates) - date.today()).days / 252.0), 1/252) if exp_dates else 30/252
+                pop = _calc_pop(S0, breakevens, T, sigma_avg,
+                                r=math.log(1 + _selic() / 100))
+    except Exception:
+        pass
+
     return dict(net=net, current_pnl=current_pnl,
                 max_profit=max_profit, max_loss=max_loss,
                 breakevens=breakevens,
                 be_low=be_low, be_high=be_high,
-                unlimited_profit=unlimited_profit, unlimited_loss=unlimited_loss)
+                unlimited_profit=unlimited_profit, unlimited_loss=unlimited_loss,
+                pop=pop)
 
 
 def _calc_structured_metrics_safe(op):
@@ -930,6 +1008,34 @@ def opcoes():
         result_pct = (result / max_loss * 100) if max_loss != 0 else 0
         days_left = du_count(today, sp.expiration_date)
 
+        # ── POP da trava via BS ───────────────────────────────────────
+        pop_spread = None
+        try:
+            S0 = sp.underlying_price or underlying_price or 0
+            if S0 > 0 and sp.expiration_date:
+                T_sp = max((sp.expiration_date - today).days / 252.0, 1/252)
+                r_cont = math.log(1 + _selic() / 100)
+                is_put = 'PUT' in sp.spread_type
+                # IV da perna vendida (define o sigma da estrutura)
+                ref_p = sp.leg_short_price
+                ref_k = sp.leg_short_strike
+                if ref_p > 0 and ref_k > 0:
+                    sigma_sp = _implied_vol(S0, ref_k, T_sp, r_cont, ref_p, not is_put)
+                    # Breakeven da trava
+                    if is_credit:
+                        if is_put:
+                            be_sp = sp.leg_short_strike - net   # breakeven put crédito
+                        else:
+                            be_sp = sp.leg_short_strike + net   # breakeven call crédito
+                        pop_spread = _calc_pop(S0, [be_sp], T_sp, sigma_sp, r_cont)
+                        # Ajusta sinal: put crédito lucra acima do BE; call crédito lucra abaixo
+                        if is_put and pop_spread is not None:
+                            pop_spread = pop_spread   # P(S>BE) já correto
+                        elif not is_put and pop_spread is not None:
+                            pop_spread = round(100 - pop_spread, 1)
+        except Exception:
+            pass
+
         item = {
             'spread': sp,
             'underlying_price': underlying_price,
@@ -942,6 +1048,7 @@ def opcoes():
             'max_gain': max_gain,
             'max_loss': max_loss,
             'days_left': days_left,
+            'pop': pop_spread,
         }
         if sp.spread_type == 'TRAVA_ALTA_PUT':
             spreads_alta_put.append(item)

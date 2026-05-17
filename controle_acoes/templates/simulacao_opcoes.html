@@ -203,6 +203,9 @@
         <div><span>Lucro máx.</span><br><strong id="m-gain" class="positive">—</strong></div>
         <div><span>Perda máx.</span><br><strong id="m-loss" class="negative">—</strong></div>
         <div><span>Breakeven(s)</span><br><strong id="m-be">—</strong></div>
+        <div title="Probability of Profit — probabilidade de lucro no vencimento via Black-Scholes">
+            <span>POP</span><br><strong id="m-pop">—</strong>
+        </div>
     </div>
 
     {# Aviso vencimentos diferentes #}
@@ -529,6 +532,51 @@ function drawChart(legs) {
     document.getElementById('m-gain').textContent=maxGain>1e7?'∞':fmtBRL(maxGain);
     document.getElementById('m-loss').textContent=maxLoss<-1e7?'-∞':fmtBRL(maxLoss);
     document.getElementById('m-be').textContent=bes.length?bes.map(fmtBRL).join(' / '):'—';
+
+    // POP via log-normal (Black-Scholes)
+    (function() {
+        var popEl = document.getElementById('m-pop');
+        if (!bes.length) { popEl.textContent = '—'; popEl.className = ''; return; }
+        // Estima spot e sigma a partir das pernas vendidas
+        var spotLeg = legs.find(function(l){ return l.type === 'STOCK'; });
+        var S = spotLeg ? spotLeg.entry : (legs[0] ? legs[0].strike : 0);
+        if (!S || S <= 0) { popEl.textContent = '—'; return; }
+        // Usa vencimento mais próximo em dias
+        var today = new Date(); today.setHours(0,0,0,0);
+        var minExp = null;
+        legs.forEach(function(l){ if (l.exp && l.exp < (minExp || '9999')) minExp = l.exp; });
+        if (!minExp) { popEl.textContent = '—'; return; }
+        var T = Math.max((new Date(minExp + 'T00:00:00') - today) / (365.25 * 86400000), 1/365);
+        // IV média das pernas (usa campo iv se preenchido, senão estima como entrada/spot)
+        var sigmas = [];
+        legs.forEach(function(l){
+            if (l.type === 'STOCK') return;
+            if (l.iv > 0) { sigmas.push(l.iv / 100); return; }
+            // Proxy simples: prêmio / strike como IV estimada
+            if (l.entry > 0 && l.strike > 0) sigmas.push(Math.min(l.entry / l.strike * Math.sqrt(252 / Math.max(T * 252, 1)), 2));
+        });
+        if (!sigmas.length) { popEl.textContent = '—'; return; }
+        var sigma = sigmas.reduce(function(a,b){ return a+b; }, 0) / sigmas.length;
+        var r = Math.log(1 + SELIC_RATE / 100);
+        function normCDF(x) {
+            var t = 1 / (1 + 0.2316419 * Math.abs(x));
+            var p = t*(0.319381530+t*(-0.356563782+t*(1.781477937+t*(-1.821255978+t*1.330274429))));
+            var pdf = Math.exp(-0.5*x*x) / Math.sqrt(2*Math.PI);
+            var c = 1 - pdf*p;
+            return x >= 0 ? c : 1-c;
+        }
+        function d2(B) { return (Math.log(S/B) + (r - 0.5*sigma*sigma)*T) / (sigma*Math.sqrt(T)); }
+        var besSorted = bes.slice().sort(function(a,b){return a-b;});
+        var pop;
+        if (besSorted.length === 1) {
+            pop = normCDF(d2(besSorted[0])) * 100;
+        } else {
+            pop = (normCDF(d2(besSorted[besSorted.length-1])) - normCDF(d2(besSorted[0]))) * 100;
+        }
+        pop = Math.max(0, Math.min(100, pop));
+        popEl.textContent = pop.toFixed(1).replace('.', ',') + '%';
+        popEl.className = pop >= 50 ? 'positive' : 'negative';
+    })();
 
     canvas._ser={Sarr:Sarr,Parr:Parr,Smin:Smin,Smax:Smax,legs:legs,multiExp:multiExp,refDateStr:refDateStr};
 

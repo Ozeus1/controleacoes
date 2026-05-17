@@ -5899,35 +5899,34 @@ def api_oplab_iv():
     iv_percentil = None
     debug_info   = {}   # coleta responses para diagnóstico
 
-    # Endpoints conhecidos do OpLab que podem trazer IV Rank/Percentil
+    # Prioridade: /market/instruments retorna iv_1y_rank e iv_1y_percentile confirmados
     endpoints_to_try = [
         f'/market/instruments/{ticker}',
         f'/instruments/{ticker}',
-        f'/market/spot/{ticker}',
-        f'/market/options/{ticker}',      # pode ter summary com IV
     ]
 
     def _extract_iv(d):
-        """Tenta extrair iv_rank e iv_percentil de um dict, qualquer nível."""
+        """Extrai iv_rank e iv_percentil de um dict retornado pelo OpLab."""
         if not isinstance(d, dict):
             return None, None
-        # Achata subchaves 'data', 'spot', 'summary', 'iv', 'greeks'
+        # Achata subchaves comuns
         for sub in ('data', 'spot', 'summary', 'iv', 'implied_volatility', 'greeks'):
             if isinstance(d.get(sub), dict):
                 d.update(d[sub])
         ivr = None
         ivp = None
-        for k in ('iv_rank', 'ivRank', 'iv_rank_52w', 'rank', 'IV Rank',
-                  'iv_rank_current', 'historical_iv_rank'):
+        # Campos reais retornados por /market/instruments (confirmados no debug)
+        for k in ('iv_1y_rank', 'ewma_1y_rank', 'iv_6m_rank',
+                  'iv_rank', 'ivRank', 'iv_rank_52w'):
             v = d.get(k)
             if v is not None:
-                try: ivr = float(v); break
+                try: ivr = round(float(v) * 100, 1) if float(v) <= 1.0 else round(float(v), 1); break
                 except (TypeError, ValueError): pass
-        for k in ('iv_percentile', 'ivPercentile', 'iv_percentil', 'percentile',
-                  'IV Percentile', 'iv_percentile_current', 'historical_iv_percentile'):
+        for k in ('iv_1y_percentile', 'ewma_1y_percentile', 'iv_6m_percentile',
+                  'iv_percentile', 'ivPercentile', 'iv_percentil'):
             v = d.get(k)
             if v is not None:
-                try: ivp = float(v); break
+                try: ivp = round(float(v) * 100, 1) if float(v) <= 1.0 else round(float(v), 1); break
                 except (TypeError, ValueError): pass
         return ivr, ivp
 

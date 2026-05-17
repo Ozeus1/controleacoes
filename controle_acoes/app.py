@@ -5895,40 +5895,63 @@ def api_oplab_iv():
     BASE    = 'https://api.oplab.com.br/v3'
     headers = {'Access-Token': token}
 
-    iv_rank    = None
+    iv_rank      = None
     iv_percentil = None
-    raw_data   = {}
+    debug_info   = {}   # coleta responses para diagnóstico
 
-    # Tenta endpoint /market/instruments/{ticker} — retorna IV Rank e IV Percentil
-    for ep in (f'/market/instruments/{ticker}', f'/instruments/{ticker}'):
+    # Endpoints conhecidos do OpLab que podem trazer IV Rank/Percentil
+    endpoints_to_try = [
+        f'/market/instruments/{ticker}',
+        f'/instruments/{ticker}',
+        f'/market/spot/{ticker}',
+        f'/market/options/{ticker}',      # pode ter summary com IV
+    ]
+
+    def _extract_iv(d):
+        """Tenta extrair iv_rank e iv_percentil de um dict, qualquer nível."""
+        if not isinstance(d, dict):
+            return None, None
+        # Achata subchaves 'data', 'spot', 'summary', 'iv', 'greeks'
+        for sub in ('data', 'spot', 'summary', 'iv', 'implied_volatility', 'greeks'):
+            if isinstance(d.get(sub), dict):
+                d.update(d[sub])
+        ivr = None
+        ivp = None
+        for k in ('iv_rank', 'ivRank', 'iv_rank_52w', 'rank', 'IV Rank',
+                  'iv_rank_current', 'historical_iv_rank'):
+            v = d.get(k)
+            if v is not None:
+                try: ivr = float(v); break
+                except (TypeError, ValueError): pass
+        for k in ('iv_percentile', 'ivPercentile', 'iv_percentil', 'percentile',
+                  'IV Percentile', 'iv_percentile_current', 'historical_iv_percentile'):
+            v = d.get(k)
+            if v is not None:
+                try: ivp = float(v); break
+                except (TypeError, ValueError): pass
+        return ivr, ivp
+
+    for ep in endpoints_to_try:
         try:
             r = _req.get(BASE + ep, headers=headers, timeout=15)
+            debug_info[ep] = {'status': r.status_code}
             if r.status_code == 200:
                 d = r.json()
-                raw_data = d
-                # OpLab pode retornar dict com campos diretos ou dentro de 'data'
-                if isinstance(d, list) and d:
-                    d = d[0]
-                if isinstance(d, dict):
-                    d = d.get('data', d)
-                # Tenta múltiplos nomes de campo
-                for k in ('iv_rank', 'ivRank', 'iv_rank_52w', 'rank'):
-                    if d.get(k) is not None:
-                        iv_rank = float(d[k])
-                        break
-                for k in ('iv_percentile', 'ivPercentile', 'iv_percentil', 'percentile'):
-                    if d.get(k) is not None:
-                        iv_percentil = float(d[k])
-                        break
-                if iv_rank is not None or iv_percentil is not None:
+                debug_info[ep]['keys'] = list(d.keys()) if isinstance(d, dict) else (
+                    list(d[0].keys()) if isinstance(d, list) and d else str(type(d)))
+                # Tenta no nível raiz
+                ivr, ivp = _extract_iv(d if isinstance(d, dict) else (d[0] if d else {}))
+                if ivr is not None or ivp is not None:
+                    iv_rank, iv_percentil = ivr, ivp
                     break
-        except Exception:
-            pass
+        except Exception as e:
+            debug_info[ep] = {'error': str(e)}
 
     if iv_rank is None and iv_percentil is None:
         return jsonify({
-            'error': f'IV Rank/Percentil não disponível para {ticker} no OpLab.',
-            'raw': str(raw_data)[:500]
+            'error': f'IV Rank/Percentil não encontrado para {ticker}. '
+                     f'Verifique se o OpLab disponibiliza este dado para ações (não apenas opções).',
+            'debug': debug_info
         }), 404
 
     # Salva no banco se sid fornecido

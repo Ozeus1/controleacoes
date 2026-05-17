@@ -897,7 +897,16 @@ function fetchIVOplab(prefix) {
             btn.innerHTML = origHTML;
             btn.disabled  = false;
             if (d.error) {
-                alert('OpLab IV: ' + d.error);
+                var msg = 'OpLab IV: ' + d.error;
+                if (d.debug) {
+                    msg += '\n\nEndpoints testados:\n' +
+                        Object.entries(d.debug).map(function(e) {
+                            return e[0] + ': status=' + (e[1].status||'erro') +
+                                (e[1].keys ? ' keys=[' + e[1].keys.join(',') + ']' : '') +
+                                (e[1].error ? ' ('+e[1].error+')' : '');
+                        }).join('\n');
+                }
+                alert(msg);
                 return;
             }
             // Preenche os campos no modal

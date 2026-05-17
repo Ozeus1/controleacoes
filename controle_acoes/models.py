@@ -304,8 +304,10 @@ class StudyIntlStock(db.Model):
     ticker = db.Column(db.String(15), nullable=False)
     trend = db.Column(db.String(10), nullable=True)
     rsi = db.Column(db.Float, nullable=True)
-    volatility = db.Column(db.String(10), nullable=True)
-    ve = db.Column(db.Float, nullable=True)
+    volatility = db.Column(db.String(10), nullable=True)   # legado
+    ve = db.Column(db.Float, nullable=True)                # legado
+    iv_rank = db.Column(db.Float, nullable=True)
+    iv_percentil = db.Column(db.Float, nullable=True)
     atr_pct = db.Column(db.Float, nullable=True)   # ATR14 / preço × 100 (%)
     strategy = db.Column(db.String(60), nullable=True)
     study_date = db.Column(db.Date, nullable=True)
@@ -321,8 +323,10 @@ class StudyStock(db.Model):
     ticker = db.Column(db.String(15), nullable=False)
     trend = db.Column(db.String(10), nullable=True)            # Alta / Baixa / Lateral
     rsi = db.Column(db.Float, nullable=True)
-    volatility = db.Column(db.String(10), nullable=True)       # Alta / Baixa / Neutra
-    ve = db.Column(db.Float, nullable=True)
+    volatility = db.Column(db.String(10), nullable=True)       # legado — não usado
+    ve = db.Column(db.Float, nullable=True)                    # legado — não usado
+    iv_rank = db.Column(db.Float, nullable=True)               # IV Rank % (0-100)
+    iv_percentil = db.Column(db.Float, nullable=True)          # IV Percentil % (0-100)
     atr_pct = db.Column(db.Float, nullable=True)   # ATR14 / preço × 100 (%)
     strategy = db.Column(db.String(60), nullable=True)
     study_date = db.Column(db.Date, nullable=True)

@@ -91,6 +91,20 @@ def now_brt():
     """Retorna datetime atual no fuso de Brasília."""
     return datetime.now(_BRT)
 
+
+def du_count(start: date, end: date) -> int:
+    """Conta dias úteis (seg-sex) entre start e end, exclusive start, inclusive end."""
+    if not start or not end or end <= start:
+        return 0
+    count = 0
+    cur = start + timedelta(days=1)
+    while cur <= end:
+        if cur.weekday() < 5:   # 0=Seg … 4=Sex
+            count += 1
+        cur += timedelta(days=1)
+    return count
+
+
 def _task_file(task_id):
     return os.path.join(_TASK_DIR, task_id + '.json')
 
@@ -191,13 +205,14 @@ def run_migrations():
     if cursor.rowcount > 0:
         print(f"[MIGRATION] Reclassified {cursor.rowcount} trade_history strategy records.")
 
-    # Add atr_pct to study_stock and study_intl_stock if missing
+    # Add atr_pct, iv_rank, iv_percentil to study_stock and study_intl_stock if missing
     for tbl in ('study_stock', 'study_intl_stock'):
         cursor.execute(f"PRAGMA table_info({tbl})")
         cols = {row[1] for row in cursor.fetchall()}
-        if 'atr_pct' not in cols:
-            cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN atr_pct FLOAT")
-            print(f"[MIGRATION] Added {tbl}.atr_pct")
+        for col in ('atr_pct', 'iv_rank', 'iv_percentil'):
+            if col not in cols:
+                cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} FLOAT")
+                print(f"[MIGRATION] Added {tbl}.{col}")
 
     # Add roll_history to option, option_spread, structured_op, put_sale
     for tbl in ('option', 'option_spread', 'structured_op', 'put_sale'):
@@ -887,7 +902,7 @@ def opcoes():
 
     for item in processed_options + venda_puts + compra_calls + compra_puts:
         exp = item['option'].expiration_date
-        item['days_left']   = (exp - today).days if exp else None
+        item['days_left']   = du_count(today, exp) if exp else None
         item['last_update'] = _fmt_last_update(item['option'])
 
     # Process spreads
@@ -913,7 +928,7 @@ def opcoes():
         max_gain = net * sp.quantity if is_credit else (width + net) * sp.quantity
         max_loss = (width - net) * sp.quantity if is_credit else abs(net) * sp.quantity
         result_pct = (result / max_loss * 100) if max_loss != 0 else 0
-        days_left = (sp.expiration_date - today).days
+        days_left = du_count(today, sp.expiration_date)
 
         item = {
             'spread': sp,
@@ -1824,6 +1839,24 @@ def payoff_estruturada(id):
                            underlying_price=und_price,
                            underlying_change=und_change,
                            selic=_selic())
+
+
+@app.route('/api/option/<int:id>/delta', methods=['POST'])
+@login_required
+def api_set_option_delta(id):
+    """Atualiza delta manualmente para uma opção (venda put ou qualquer tipo)."""
+    from flask import jsonify
+    opt = Option.query.get_or_404(id)
+    if opt.user_id != current_user.id:
+        return jsonify({'error': 'Sem permissão'}), 403
+    try:
+        val = request.json.get('delta')
+        opt.delta = float(val) if val is not None and val != '' else None
+        db.session.commit()
+        return jsonify({'delta': opt.delta})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 400
 
 
 @app.route('/edit_option/<int:id>', methods=['GET', 'POST'])
@@ -5636,11 +5669,11 @@ def edit_study_stock(sid):
     ss.ticker = _f('ticker').upper()
     ss.trend = _f('trend') or None
     ss.rsi = _fl('rsi')
-    ss.volatility = _f('volatility') or None
-    ss.ve = _fl('ve')
+    ss.iv_rank = _fl('iv_rank')
+    ss.iv_percentil = _fl('iv_percentil')
     ss.atr_pct = _fl('atr_pct')
     ss.strategy = _f('strategy') or None
-    ss.study_date = date.today()   # sempre atualiza para data de hoje ao salvar
+    ss.study_date = date.today()
     ss.strategy_active = _f('strategy_active') or None
     ss.entry_date = _dt('entry_date')
     db.session.commit()
@@ -5708,11 +5741,11 @@ def edit_study_intl_stock(sid):
     ss.ticker = _f('ticker').upper()
     ss.trend = _f('trend') or None
     ss.rsi = _fl('rsi')
-    ss.volatility = _f('volatility') or None
-    ss.ve = _fl('ve')
+    ss.iv_rank = _fl('iv_rank')
+    ss.iv_percentil = _fl('iv_percentil')
     ss.atr_pct = _fl('atr_pct')
     ss.strategy = _f('strategy') or None
-    ss.study_date = date.today()   # sempre atualiza para data de hoje ao salvar
+    ss.study_date = date.today()
     ss.strategy_active = _f('strategy_active') or None
     ss.entry_date = _dt('entry_date')
     db.session.commit()

@@ -159,6 +159,7 @@
                 <th>Cotação Opção</th>
                 <th>Atualiz.</th>
                 <th>Var dia %</th>
+                <th title="Delta em módulo — verde ≤0,30 | laranja 0,30-0,50 | vermelho ≥0,70">Δ Delta</th>
                 <th>Valor Atual</th>
                 <th>Lucro R$</th>
                 <th>Lucro %</th>
@@ -196,6 +197,27 @@
                     class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%
                 </td>
+                {# Delta em módulo: verde ≤0,30 | laranja 0,30-0,50 | vermelho ≥0,70 #}
+                {% set delta_abs = (item.option.delta|abs) if item.option.delta is not none else none %}
+                <td style="font-size:.85rem; font-weight:600;
+                    {% if delta_abs is not none %}
+                        {% if delta_abs <= 0.30 %}color:#10b981;
+                        {% elif delta_abs <= 0.50 %}color:#f97316;
+                        {% elif delta_abs <= 0.70 %}color:#f59e0b;
+                        {% else %}color:#ef4444;{% endif %}
+                    {% endif %}">
+                    {% if delta_abs is not none %}
+                        {{ "%.2f"|format(delta_abs)|replace('.', ',') }}
+                        <button class="btn btn-sm" style="padding:0 .3rem;font-size:.7rem;margin-left:.2rem;opacity:.5;"
+                                title="Editar delta manualmente"
+                                onclick="editDeltaPut({{ item.option.id }}, {{ delta_abs }})">✏️</button>
+                    {% else %}
+                        <span style="color:var(--text-secondary);">—</span>
+                        <button class="btn btn-sm" style="padding:0 .3rem;font-size:.7rem;margin-left:.2rem;opacity:.5;"
+                                title="Inserir delta"
+                                onclick="editDeltaPut({{ item.option.id }}, '')">✏️</button>
+                    {% endif %}
+                </td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_value" data-qty="{{ item.option.quantity }}">R$ {{ "%.2f"|format(item.current_val)|replace('.', ',') }}</td>
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
                     R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
@@ -227,7 +249,7 @@
                 <td></td><td></td><td></td><td></td><td></td>
                 <td></td><td></td><td></td>
                 <td>{{ venda_puts|sum(attribute='total_sold') | brl }}</td>
-                <td></td><td></td>
+                <td></td><td></td><td></td>
                 <td>{{ venda_puts|sum(attribute='current_val') | brl }}</td>
                 <td class="{{ 'positive' if venda_puts|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ venda_puts|sum(attribute='profit') | brl }}
@@ -1003,6 +1025,22 @@ function openRollHistory(history, title) {
     var el = document.getElementById(mid);
     if (el) el.addEventListener('click', function(e) { if (e.target === el) el.style.display = 'none'; });
 });
+</script>
+
+<!-- Edição manual de delta em venda puts -->
+<script>
+function editDeltaPut(optId, current) {
+    var val = prompt('Delta (em módulo, ex: 0.25):', current);
+    if (val === null) return;
+    val = val.replace(',', '.');
+    fetch('/api/option/' + optId + '/delta', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ delta: val === '' ? null : parseFloat(val) })
+    }).then(function(r) { return r.json(); })
+      .then(function() { location.reload(); })
+      .catch(function(e) { alert('Erro: ' + e); });
+}
 </script>
 
 <!-- Live Polling (MT5 / OpLab) for Options -->

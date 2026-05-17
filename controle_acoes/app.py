@@ -5970,6 +5970,73 @@ def api_oplab_iv():
     return jsonify({'iv_rank': iv_rank, 'iv_percentil': iv_percentil})
 
 
+@app.route('/api/oplab_greeks')
+@login_required
+def api_oplab_greeks():
+    """Busca VE, Delta e Gama de uma opção via OpLab e salva no modelo indicado.
+    Parâmetros: ticker (da opção), model='option'|'study_option', id (pk do registro)
+    """
+    from flask import jsonify
+    import requests as _req
+    ticker   = request.args.get('ticker', '').strip().upper()
+    model    = request.args.get('model', 'option')   # 'option' | 'study_option'
+    rec_id   = request.args.get('id', type=int)
+    if not ticker:
+        return jsonify({'error': 'ticker obrigatório'}), 400
+
+    token = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado.'}), 400
+
+    BASE    = 'https://api.oplab.com.br/v3'
+    headers = {'Access-Token': token}
+
+    ve = delta = gama = None
+    try:
+        # /market/instruments/{ticker} retorna greeks para opções
+        r = _req.get(f'{BASE}/market/instruments/{ticker}', headers=headers, timeout=15)
+        if r.status_code == 200:
+            d = r.json()
+            if isinstance(d, dict):
+                # Campos de greeks retornados pelo OpLab
+                for k in ('delta', 'Delta'):
+                    if d.get(k) is not None:
+                        try: delta = float(d[k]); break
+                        except (TypeError, ValueError): pass
+                for k in ('gamma', 'gama', 'Gamma'):
+                    if d.get(k) is not None:
+                        try: gama = float(d[k]); break
+                        except (TypeError, ValueError): pass
+                # VE = volatilidade implícita
+                for k in ('financial_volume', 'implied_volatility', 'iv', 'volatility',
+                          'iv_current', 'bs_iv'):
+                    if d.get(k) is not None:
+                        try: ve = float(d[k]); break
+                        except (TypeError, ValueError): pass
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    if delta is None and gama is None and ve is None:
+        return jsonify({'error': f'Greeks não encontrados para {ticker} no OpLab.'}), 404
+
+    # Salva no banco
+    if rec_id:
+        try:
+            if model == 'study_option':
+                rec = StudyOption.query.filter_by(id=rec_id, user_id=current_user.id).first()
+            else:
+                rec = Option.query.filter_by(id=rec_id, user_id=current_user.id).first()
+            if rec:
+                if delta is not None: rec.delta = round(delta, 4)
+                if gama  is not None: rec.gama  = round(gama,  4)
+                if ve    is not None: rec.ve    = round(ve,    4)
+                db.session.commit()
+        except Exception:
+            db.session.rollback()
+
+    return jsonify({'ve': ve, 'delta': delta, 'gama': gama})
+
+
 @app.route('/atualizar_oplab', methods=['POST'])
 @login_required
 def atualizar_oplab():

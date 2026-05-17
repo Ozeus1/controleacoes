@@ -206,14 +206,18 @@
                         {% elif delta_abs <= 0.70 %}color:#f59e0b;
                         {% else %}color:#ef4444;{% endif %}
                     {% endif %}">
+                    <button class="btn btn-sm" id="put-delta-btn-{{ item.option.id }}"
+                            style="padding:0 .35rem;font-size:.72rem;background:#10b981;color:white;"
+                            title="Atualizar delta via OpLab"
+                            onclick="fetchPutDeltaOplab({{ item.option.id }}, '{{ item.option.ticker }}', this)">⚡</button>
                     {% if delta_abs is not none %}
-                        {{ "%.2f"|format(delta_abs)|replace('.', ',') }}
-                        <button class="btn btn-sm" style="padding:0 .3rem;font-size:.7rem;margin-left:.2rem;opacity:.5;"
+                        <span id="put-delta-val-{{ item.option.id }}">{{ "%.2f"|format(delta_abs)|replace('.', ',') }}</span>
+                        <button class="btn btn-sm" style="padding:0 .3rem;font-size:.7rem;margin-left:.1rem;opacity:.5;"
                                 title="Editar delta manualmente"
                                 onclick="editDeltaPut({{ item.option.id }}, {{ delta_abs }})">✏️</button>
                     {% else %}
-                        <span style="color:var(--text-secondary);">—</span>
-                        <button class="btn btn-sm" style="padding:0 .3rem;font-size:.7rem;margin-left:.2rem;opacity:.5;"
+                        <span id="put-delta-val-{{ item.option.id }}" style="color:var(--text-secondary);">—</span>
+                        <button class="btn btn-sm" style="padding:0 .3rem;font-size:.7rem;margin-left:.1rem;opacity:.5;"
                                 title="Inserir delta"
                                 onclick="editDeltaPut({{ item.option.id }}, '')">✏️</button>
                     {% endif %}
@@ -1036,6 +1040,26 @@ function openRollHistory(history, title) {
 
 <!-- Edição manual de delta em venda puts -->
 <script>
+function fetchPutDeltaOplab(optId, ticker, btn) {
+    var origHTML = btn.innerHTML;
+    btn.innerHTML = '⏳'; btn.disabled = true;
+    fetch('/api/oplab_greeks?ticker=' + encodeURIComponent(ticker) + '&model=option&id=' + optId)
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            btn.innerHTML = origHTML; btn.disabled = false;
+            if (d.error) { alert('OpLab Delta: ' + d.error); return; }
+            if (d.delta == null) { alert('Delta não retornado pelo OpLab para ' + ticker); return; }
+            var abs = Math.abs(d.delta);
+            var el  = document.getElementById('put-delta-val-' + optId);
+            if (el) {
+                el.textContent = abs.toFixed(2).replace('.', ',');
+                el.style.color = abs <= 0.30 ? '#10b981' : abs <= 0.50 ? '#f97316' : abs <= 0.70 ? '#f59e0b' : '#ef4444';
+            }
+            btn.title = 'Δ=' + d.delta.toFixed(4) + (d.gama ? ' Γ=' + d.gama.toFixed(4) : '');
+        })
+        .catch(function(e) { btn.innerHTML = origHTML; btn.disabled = false; alert('Erro: ' + e); });
+}
+
 function editDeltaPut(optId, current) {
     var val = prompt('Delta (em módulo, ex: 0.25):', current);
     if (val === null) return;

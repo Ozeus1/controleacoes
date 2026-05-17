@@ -67,6 +67,9 @@
         <td>{{ '%.4f'|format(row.nv) if row.nv is not none else '-' }}</td>
         <td><span style="font-size:.75rem;color:var(--text-secondary)">V. Coberta</span></td>
         <td style="white-space:nowrap;">
+          <button class="btn btn-sm" id="vc-greeks-btn-{{ row.id }}"
+                  style="background:#10b981;color:white;" title="Atualizar VE/Delta/Gama via OpLab"
+                  onclick="fetchGreeksOplab('{{ row.ticker }}', 'option', {{ row.id }}, 'vc', this)">⚡</button>
           <button class="btn btn-sm" onclick="openTVChart('{{ row.underlying }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditGreeks({{ row.id }}, '{{ row.ticker }}',
@@ -93,6 +96,9 @@
         <td>{{ '%.4f'|format(row.nv) if row.nv is not none else '-' }}</td>
         <td><span style="font-size:.75rem;color:var(--success-color)">Estudo</span></td>
         <td style="white-space:nowrap;">
+          <button class="btn btn-sm" id="so-greeks-btn-{{ row.id }}"
+                  style="background:#10b981;color:white;" title="Atualizar VE/Delta/Gama via OpLab"
+                  onclick="fetchGreeksOplab('{{ row.ticker }}', 'study_option', {{ row.id }}, 'so', this)">⚡</button>
           <button class="btn btn-sm" onclick="openTVChart('{{ row.underlying }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditOpcao({{ row.id }}, '{{ row.ticker }}', '{{ row.underlying }}',
@@ -874,6 +880,35 @@ function fetchRadar(ticker) {
             delete _radarCache[key];   // timeout ou erro de rede → invalida cache
             return Promise.reject(e);
         });
+}
+
+// Busca VE/Delta/Gama de uma opção via OpLab e atualiza células na tabela
+function fetchGreeksOplab(ticker, model, recId, prefix, btn) {
+    var origHTML = btn.innerHTML;
+    btn.innerHTML = '⏳'; btn.disabled = true;
+    var url = '/api/oplab_greeks?ticker=' + encodeURIComponent(ticker) +
+              '&model=' + model + '&id=' + recId;
+    fetch(url)
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            btn.innerHTML = origHTML; btn.disabled = false;
+            if (d.error) { alert('OpLab Greeks: ' + d.error); return; }
+            // Atualiza células diretamente na linha (procura por posição de coluna)
+            var row = btn.closest('tr');
+            if (row) {
+                var cells = row.querySelectorAll('td');
+                // VE=col8, Delta=col9, Gama=col10 (0-indexed em ambas as tabelas)
+                if (d.ve    != null && cells[8])  cells[8].textContent  = parseFloat(d.ve).toFixed(4);
+                if (d.delta != null && cells[9])  cells[9].textContent  = parseFloat(d.delta).toFixed(4);
+                if (d.gama  != null && cells[10]) cells[10].textContent = parseFloat(d.gama).toFixed(4);
+            }
+            var msg = [];
+            if (d.ve    != null) msg.push('VE=' + d.ve.toFixed(4));
+            if (d.delta != null) msg.push('Δ=' + d.delta.toFixed(4));
+            if (d.gama  != null) msg.push('Γ=' + d.gama.toFixed(4));
+            btn.title = msg.length ? msg.join(' | ') : 'Atualizado';
+        })
+        .catch(function(e) { btn.innerHTML = origHTML; btn.disabled = false; alert('Erro: ' + e); });
 }
 
 // Busca IV Rank e IV Percentil via OpLab e preenche os campos do modal

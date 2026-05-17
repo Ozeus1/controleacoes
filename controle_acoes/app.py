@@ -5970,47 +5970,6 @@ def api_oplab_iv():
     return jsonify({'iv_rank': iv_rank, 'iv_percentil': iv_percentil})
 
 
-@app.route('/api/oplab_raw_debug')
-@login_required
-def api_oplab_raw_debug():
-    """Retorna JSON bruto do OpLab para diagnóstico — remover após uso."""
-    from flask import jsonify
-    import requests as _req
-    ticker = request.args.get('ticker', 'BBASR241').strip().upper()
-    token  = Settings.get_value('oplab_token', user_id=current_user.id)
-    if not token:
-        return jsonify({'error': 'sem token'}), 400
-    BASE    = 'https://api.oplab.com.br/v3'
-    headers = {'Access-Token': token}
-    out = {}
-    # Busca subjacente
-    underlying = None
-    try:
-        r = _req.get(f'{BASE}/market/instruments/{ticker}', headers=headers, timeout=15)
-        out[f'/market/instruments/{ticker}'] = {'status': r.status_code, 'body': r.json() if r.content else {}}
-        if r.status_code == 200:
-            d = r.json()
-            underlying = d.get('parent_symbol') or d.get('underlying') if isinstance(d, dict) else None
-    except Exception as e:
-        out[f'/market/instruments/{ticker}'] = {'error': str(e)}
-    # Busca cadeia
-    if underlying:
-        try:
-            r = _req.get(f'{BASE}/market/options/{underlying}', headers=headers, timeout=15)
-            data = r.json() if r.content else {}
-            # Mostra só a primeira opção para não poluir
-            if isinstance(data, list) and data:
-                out[f'/market/options/{underlying}'] = {
-                    'status': r.status_code,
-                    'first_option_keys': list(data[0].keys()) if isinstance(data[0], dict) else str(type(data[0])),
-                    'first_option': data[0]
-                }
-            else:
-                out[f'/market/options/{underlying}'] = {'status': r.status_code, 'body': data}
-        except Exception as e:
-            out[f'/market/options/{underlying}'] = {'error': str(e)}
-    return jsonify(out)
-
 
 @app.route('/api/oplab_greeks')
 @login_required
@@ -6035,61 +5994,51 @@ def api_oplab_greeks():
 
     ve = delta = gama = None
 
-    # O endpoint /market/instruments não retorna greeks para opções.
-    # O endpoint /market/options/{underlying} retorna a cadeia completa com greeks.
-    # Precisamos do parent_symbol (subjacente) para buscar a cadeia.
-
-    # Passo 1: busca o subjacente da opção
-    underlying = None
+    # OpLab v3 não retorna greeks via API — calculamos via Black-Scholes
+    # usando spot_price, strike, days_to_maturity e close (prêmio) retornados por
+    # /market/instruments/{ticker}
     try:
         r = _req.get(f'{BASE}/market/instruments/{ticker}', headers=headers, timeout=15)
-        if r.status_code == 200:
-            d = r.json()
-            if isinstance(d, dict):
-                underlying = d.get('parent_symbol') or d.get('underlying')
-    except Exception:
-        pass
+        if r.status_code != 200:
+            return jsonify({'error': f'OpLab retornou status {r.status_code} para {ticker}.'}), 404
+        d = r.json()
+        if not isinstance(d, dict):
+            return jsonify({'error': 'Resposta inesperada do OpLab.'}), 500
 
-    if not underlying:
-        return jsonify({'error': f'Não foi possível identificar o ativo subjacente de {ticker} no OpLab.'}), 404
+        S       = float(d.get('spot_price') or 0)
+        K       = float(d.get('strike') or 0)
+        T_days  = float(d.get('days_to_maturity') or 0)
+        premium = float(d.get('close') or 0)
+        cat     = str(d.get('category', 'CALL')).upper()
+        is_call = (cat == 'CALL')
+        T       = T_days / 252.0       # anos úteis
+        r_cont  = math.log(1 + _selic() / 100)
 
-    # Passo 2: busca cadeia de opções do subjacente e filtra pelo ticker
-    try:
-        r = _req.get(f'{BASE}/market/options/{underlying}', headers=headers, timeout=15)
-        if r.status_code == 200:
-            chain = r.json()
-            # Resposta pode ser lista de opções ou dict com chaves 'calls'/'puts'
-            opt_list = []
-            if isinstance(chain, list):
-                opt_list = chain
-            elif isinstance(chain, dict):
-                opt_list = chain.get('calls', []) + chain.get('puts', []) + chain.get('options', [])
+        if S <= 0 or K <= 0 or T <= 0:
+            return jsonify({'error': f'Dados insuficientes para calcular greeks de {ticker} '
+                                     f'(S={S}, K={K}, T_dias={T_days}).'}), 404
 
-            for opt in opt_list:
-                sym = str(opt.get('symbol', opt.get('ticker', ''))).upper()
-                if sym != ticker:
-                    continue
-                for k in ('delta', 'Delta'):
-                    v = opt.get(k)
-                    if v is not None:
-                        try: delta = float(v); break
-                        except (TypeError, ValueError): pass
-                for k in ('gamma', 'gama', 'Gamma'):
-                    v = opt.get(k)
-                    if v is not None:
-                        try: gama = float(v); break
-                        except (TypeError, ValueError): pass
-                for k in ('bs_iv', 'implied_volatility', 'iv', 'vega'):
-                    v = opt.get(k)
-                    if v is not None:
-                        try: ve = float(v); break
-                        except (TypeError, ValueError): pass
-                break
+        # Calcula IV implícita pelo prêmio de mercado
+        if premium > 0:
+            sigma = _implied_vol(S, K, T, r_cont, premium, is_call)
+        else:
+            sigma = 0.30   # fallback 30%
+
+        # Delta via BS
+        d1    = (math.log(S / K) + (r_cont + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
+        delta = _norm_cdf(d1) if is_call else _norm_cdf(d1) - 1.0
+
+        # Gama via BS
+        pdf_d1 = math.exp(-0.5 * d1 * d1) / math.sqrt(2 * math.pi)
+        gama   = pdf_d1 / (S * sigma * math.sqrt(T))
+
+        # VE = IV implícita em %
+        ve = round(sigma * 100, 2)
+        delta = round(delta, 4)
+        gama  = round(gama, 4)
+
     except Exception as e:
-        return jsonify({'error': f'Erro ao buscar cadeia de opções: {e}'}), 500
-
-    if delta is None and gama is None and ve is None:
-        return jsonify({'error': f'Greeks não encontrados para {ticker} (subjacente: {underlying}) no OpLab.'}), 404
+        return jsonify({'error': f'Erro ao calcular greeks: {e}'}), 500
 
     # Salva no banco
     if rec_id:

@@ -1047,7 +1047,11 @@ function fetchPutDeltaOplab(optId, ticker, btn) {
         .then(function(r) { return r.json(); })
         .then(function(d) {
             btn.innerHTML = origHTML; btn.disabled = false;
-            if (d.error) { alert('OpLab Delta: ' + d.error); return; }
+            if (d.error) {
+                var msg = 'OpLab Delta: ' + d.error;
+                if (d.debug_keys) msg += '\nChaves disponíveis: ' + JSON.stringify(d.debug_keys);
+                alert(msg); return;
+            }
             if (d.delta == null) { alert('Delta não retornado pelo OpLab para ' + ticker); return; }
             var abs = Math.abs(d.delta);
             var el  = document.getElementById('put-delta-val-' + optId);

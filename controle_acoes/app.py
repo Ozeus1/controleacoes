@@ -5992,32 +5992,50 @@ def api_oplab_greeks():
     headers = {'Access-Token': token}
 
     ve = delta = gama = None
-    try:
-        # /market/instruments/{ticker} retorna greeks para opções
-        r = _req.get(f'{BASE}/market/instruments/{ticker}', headers=headers, timeout=15)
-        if r.status_code == 200:
+    debug_keys = {}
+
+    # Tenta múltiplos endpoints — opções podem estar em /market/instruments ou /market/options
+    for ep in (f'/market/instruments/{ticker}', f'/instruments/{ticker}'):
+        try:
+            r = _req.get(BASE + ep, headers=headers, timeout=15)
+            if r.status_code != 200:
+                continue
             d = r.json()
-            if isinstance(d, dict):
-                # Campos de greeks retornados pelo OpLab
-                for k in ('delta', 'Delta'):
-                    if d.get(k) is not None:
-                        try: delta = float(d[k]); break
-                        except (TypeError, ValueError): pass
-                for k in ('gamma', 'gama', 'Gamma'):
-                    if d.get(k) is not None:
-                        try: gama = float(d[k]); break
-                        except (TypeError, ValueError): pass
-                # VE = volatilidade implícita
-                for k in ('financial_volume', 'implied_volatility', 'iv', 'volatility',
-                          'iv_current', 'bs_iv'):
-                    if d.get(k) is not None:
-                        try: ve = float(d[k]); break
-                        except (TypeError, ValueError): pass
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+            # Achata lista se necessário
+            if isinstance(d, list):
+                d = d[0] if d else {}
+            if not isinstance(d, dict):
+                continue
+            debug_keys[ep] = list(d.keys())
+            # Delta — OpLab retorna como 'delta' (float negativo para puts)
+            for k in ('delta', 'Delta', 'greeks_delta'):
+                v = d.get(k)
+                if v is not None:
+                    try: delta = float(v); break
+                    except (TypeError, ValueError): pass
+            # Gama
+            for k in ('gamma', 'gama', 'Gamma', 'greeks_gamma'):
+                v = d.get(k)
+                if v is not None:
+                    try: gama = float(v); break
+                    except (TypeError, ValueError): pass
+            # VE — volatilidade implícita (bs_iv é o campo principal no OpLab)
+            for k in ('bs_iv', 'implied_volatility', 'iv', 'iv_current',
+                      'volatility', 'financial_volume'):
+                v = d.get(k)
+                if v is not None:
+                    try: ve = float(v); break
+                    except (TypeError, ValueError): pass
+            if delta is not None or gama is not None:
+                break
+        except Exception:
+            pass
 
     if delta is None and gama is None and ve is None:
-        return jsonify({'error': f'Greeks não encontrados para {ticker} no OpLab.'}), 404
+        return jsonify({
+            'error': f'Greeks não encontrados para {ticker} no OpLab.',
+            'debug_keys': debug_keys
+        }), 404
 
     # Salva no banco
     if rec_id:

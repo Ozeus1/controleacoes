@@ -3705,6 +3705,10 @@ def config():
     uid = current_user.id
     _, _, ticker_map_text, option_map_text = _build_ticker_maps(uid)
 
+    from flask import session as _session
+    test_result  = _session.pop('test_result',  None)
+    test_success = _session.pop('test_success', False)
+
     return render_template('config.html',
                            current_key=current_key,
                            quote_mode=quote_mode,
@@ -3713,7 +3717,9 @@ def config():
                            oplab_token_ok=oplab_token_ok,
                            ticker_map_text=ticker_map_text,
                            option_map_text=option_map_text,
-                           selic_rate=selic_rate)
+                           selic_rate=selic_rate,
+                           test_result=test_result,
+                           success=test_success)
 
 @app.route('/download_config_py')
 @login_required
@@ -3789,19 +3795,21 @@ def test_api():
     if not ticker:
         flash("Informe um ticker.")
         return redirect(url_for('config'))
-    
+
     import json
     success, data = get_raw_quote_data(ticker.strip().upper())
     formatted_data = json.dumps(data, indent=4, ensure_ascii=False)
-    
-    current_key = Settings.get_value('brapi_token', user_id=current_user.id)
-    if not current_key:
-        current_key = os.environ.get('BRAPI_API_KEY', '')
-    
-    return render_template('config.html', 
-                           current_key=current_key, 
-                           test_result=formatted_data, 
-                           success=success)
+
+    # Guarda resultado na sessão para exibir na rota config
+    from flask import session as _session
+    _session['test_result'] = formatted_data
+    _session['test_success'] = success
+
+    if success:
+        flash(f'Conexão OK para {ticker.upper()}.', 'success')
+    else:
+        flash(f'Erro ao testar {ticker.upper()}: verifique o ticker e o token.', 'warning')
+    return redirect(url_for('config'))
 
 # Auth Routes
 @app.route('/login', methods=['GET', 'POST'])

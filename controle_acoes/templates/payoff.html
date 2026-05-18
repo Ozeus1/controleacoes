@@ -99,6 +99,7 @@
         <div><span style="color:var(--text-secondary);">Perda máx.</span><br><strong id="m-max-loss" class="negative">—</strong></div>
         <div><span style="color:var(--text-secondary);">Breakeven(s)</span><br><strong id="m-be">—</strong></div>
         <div><span style="color:var(--text-secondary);">Lucro atual</span><br><strong id="m-pnl">—</strong></div>
+        <div><span style="color:var(--text-secondary);">POP</span><br><strong id="m-pop">—</strong></div>
         {% if underlying_price %}
         <div style="border-left:1px solid var(--border-color); padding-left:1.5rem;">
             <span style="color:var(--text-secondary);">{{ underlying }} agora</span><br>
@@ -299,6 +300,64 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
     var pnlEl = document.getElementById('m-pnl');
     pnlEl.textContent = fmtBRL(pnl);
     pnlEl.className = pnl >= 0 ? 'positive' : 'negative';
+
+    // ── POP via Black-Scholes (JS) ────────────────────────────────────────────
+    (function() {
+        var spot = parseFloat('{{ underlying_price or 0 }}');
+        if (spot <= 0 && breakevens.length) spot = breakevens.reduce(function(a,b){return a+b;},0)/breakevens.length;
+        if (spot <= 0) return;
+        var T = {{ T_days or 30 }} / 252.0;
+        if (T <= 0) T = 1/252;
+        var sigma = 0.30; // fallback; refinado abaixo via IV implícita
+        // Tenta estimar IV a partir das pernas (primeira perna vendida)
+        var legs = {{ legs_json | safe }};
+        function bsPrice(S, K, t, sig, isCall) {
+            if (t<=0||sig<=0||S<=0||K<=0) return Math.max(0, isCall ? S-K : K-S);
+            var d1 = (Math.log(S/K) + (0.5*sig*sig)*t) / (sig*Math.sqrt(t));
+            var d2 = d1 - sig*Math.sqrt(t);
+            function N(x) {
+                var t2=1/(1+0.2316419*Math.abs(x)), p=t2*(0.31938153+t2*(-0.356563782+t2*(1.781477937+t2*(-1.821255978+t2*1.330274429))));
+                var pdf=Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI), c=1-pdf*p;
+                return x>=0?c:1-c;
+            }
+            return isCall ? S*N(d1)-K*Math.exp(0)*N(d2) : K*Math.exp(0)*N(-d2)-S*N(-d1);
+        }
+        function normCDF(x) {
+            var t2=1/(1+0.2316419*Math.abs(x)), p=t2*(0.31938153+t2*(-0.356563782+t2*(1.781477937+t2*(-1.821255978+t2*1.330274429))));
+            var pdf=Math.exp(-0.5*x*x)/Math.sqrt(2*Math.PI), c=1-pdf*p;
+            return x>=0?c:1-c;
+        }
+        // IV implícita via bissecção para primeira perna de referência
+        var sigmaEst = null;
+        for (var li=0; li<legs.length; li++) {
+            var l = legs[li];
+            if (l.entry_price > 0 && l.strike > 0 && T > 0) {
+                var target = l.entry_price, isC = (l.opt_type === 'CALL');
+                var lo=0.001, hi=5.0;
+                for (var it=0; it<60; it++) {
+                    var mid=(lo+hi)/2;
+                    if (bsPrice(spot, l.strike, T, mid, isC) < target) lo=mid; else hi=mid;
+                    if (hi-lo < 1e-6) break;
+                }
+                sigmaEst = (lo+hi)/2;
+                break;
+            }
+        }
+        if (sigmaEst && sigmaEst > 0.01) sigma = sigmaEst;
+        function d2fn(B) { return (Math.log(spot/B) + (-0.5*sigma*sigma)*T) / (sigma*Math.sqrt(T)); }
+        var pop = null;
+        var bes = breakevens.slice().sort(function(a,b){return a-b;});
+        if (bes.length === 1) {
+            pop = normCDF(d2fn(bes[0])) * 100;
+        } else if (bes.length >= 2) {
+            pop = (normCDF(d2fn(bes[bes.length-1])) - normCDF(d2fn(bes[0]))) * 100;
+        }
+        var popEl = document.getElementById('m-pop');
+        if (pop !== null && isFinite(pop)) {
+            popEl.textContent = pop.toFixed(1).replace('.', ',') + '%';
+            popEl.className = pop >= 50 ? 'positive' : 'negative';
+        }
+    })();
 
     var tfEl = document.getElementById('tfoot-net');
     tfEl.textContent = fmtBRL(net) + (net >= 0 ? ' (crédito)' : ' (débito)');

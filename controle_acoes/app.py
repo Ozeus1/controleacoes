@@ -1924,6 +1924,8 @@ def payoff_spread(id):
         },
     ]
     und_price, und_change = _get_underlying_quote(sp.underlying_asset, current_user.id)
+    t_days = max((sp.expiration_date - date.today()).days, 1) if sp.expiration_date else 30
+    import json as _json
     return render_template('payoff.html',
                            title=type_labels.get(sp.spread_type, sp.spread_type),
                            underlying=sp.underlying_asset,
@@ -1931,7 +1933,9 @@ def payoff_spread(id):
                            legs=legs,
                            underlying_price=und_price,
                            underlying_change=und_change,
-                           selic=_selic())
+                           selic=_selic(),
+                           T_days=t_days,
+                           legs_json=_json.dumps(legs))
 
 
 @app.route('/payoff/estruturada/<int:id>')
@@ -1957,6 +1961,8 @@ def payoff_estruturada(id):
     exp_dates = [leg.expiration_date for leg in op.legs if leg.expiration_date]
     expiration = max(exp_dates).strftime('%d/%m/%Y') if exp_dates else ''
     und_price, und_change = _get_underlying_quote(op.underlying_asset, current_user.id)
+    t_days = max((max(exp_dates) - date.today()).days, 1) if exp_dates else 30
+    import json as _json
     return render_template('payoff.html',
                            title=op.name,
                            underlying=op.underlying_asset or '',
@@ -1964,7 +1970,9 @@ def payoff_estruturada(id):
                            legs=legs,
                            underlying_price=und_price,
                            underlying_change=und_change,
-                           selic=_selic())
+                           selic=_selic(),
+                           T_days=t_days,
+                           legs_json=_json.dumps(legs))
 
 
 @app.route('/api/option/<int:id>/delta', methods=['POST'])

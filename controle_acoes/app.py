@@ -786,7 +786,7 @@ def _calc_structured_metrics(op):
     pop = None
     try:
         S0 = op.underlying_price or 0
-        # Fallback: busca underlying_price em Option ou PutSale com mesmo ativo
+        # Fallback 1: busca underlying_price em Option ou PutSale com mesmo ativo
         if S0 <= 0 and op.underlying_asset:
             asset = op.underlying_asset
             opt_ref = Option.query.filter_by(
@@ -800,6 +800,11 @@ def _calc_structured_metrics(op):
                 ).filter(PutSale.underlying_price > 0).first()
                 if ps_ref:
                     S0 = ps_ref.underlying_price
+        # Fallback 2: usa strike médio das pernas como proxy do spot
+        if S0 <= 0:
+            strikes = [l.strike for l in legs if l.strike and l.strike > 0]
+            if strikes:
+                S0 = sum(strikes) / len(strikes)
         if S0 > 0 and breakevens:
             # Estima sigma médio das pernas vendidas (ou primeira perna)
             sell_legs = [l for l in legs if l.side == 'SELL' and l.entry_price > 0]
@@ -816,14 +821,13 @@ def _calc_structured_metrics(op):
                     sigmas.append(iv)
                 except Exception:
                     pass
-            if sigmas:
-                sigma_avg = sum(sigmas) / len(sigmas)
-                exp_dates = [l.expiration_date for l in legs if l.expiration_date]
-                T = max(((max(exp_dates) - date.today()).days / 252.0), 1/252) if exp_dates else 30/252
-                pop = _calc_pop(S0, breakevens, T, sigma_avg,
-                                r=math.log(1 + _selic() / 100))
-    except Exception:
-        pass
+            sigma_avg = (sum(sigmas) / len(sigmas)) if sigmas else 0.30
+            exp_dates = [l.expiration_date for l in legs if l.expiration_date]
+            T = max(((max(exp_dates) - date.today()).days / 252.0), 1/252) if exp_dates else 30/252
+            pop = _calc_pop(S0, breakevens, T, sigma_avg,
+                            r=math.log(1 + _selic() / 100))
+    except Exception as _e:
+        print(f"[POP] erro em _calc_structured_metrics op={op.id}: {_e}")
 
     return dict(net=net, current_pnl=current_pnl,
                 max_profit=max_profit, max_loss=max_loss,

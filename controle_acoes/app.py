@@ -647,7 +647,7 @@ def _calc_structured_metrics(op):
     if not legs:
         return dict(net=0, current_pnl=0, max_profit=0, max_loss=0,
                     breakevens=[], be_low=None, be_high=None,
-                    unlimited_profit=False, unlimited_loss=False)
+                    unlimited_profit=False, unlimited_loss=False, pop=None)
 
     # ── Crédito/débito líquido na montagem ─────────────────────────
     net = sum(
@@ -786,6 +786,20 @@ def _calc_structured_metrics(op):
     pop = None
     try:
         S0 = op.underlying_price or 0
+        # Fallback: busca underlying_price em Option ou PutSale com mesmo ativo
+        if S0 <= 0 and op.underlying_asset:
+            asset = op.underlying_asset
+            opt_ref = Option.query.filter_by(
+                underlying_asset=asset, user_id=op.user_id
+            ).filter(Option.underlying_price > 0).first()
+            if opt_ref:
+                S0 = opt_ref.underlying_price
+            else:
+                ps_ref = PutSale.query.filter_by(
+                    underlying_asset=asset, user_id=op.user_id
+                ).filter(PutSale.underlying_price > 0).first()
+                if ps_ref:
+                    S0 = ps_ref.underlying_price
         if S0 > 0 and breakevens:
             # Estima sigma médio das pernas vendidas (ou primeira perna)
             sell_legs = [l for l in legs if l.side == 'SELL' and l.entry_price > 0]

@@ -56,6 +56,9 @@ if not os.path.exists(instance_path):
 db_path = os.path.join(instance_path, 'investments.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'connect_args': {'timeout': 30},  # espera até 30s por lock do SQLite
+}
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
@@ -80,6 +83,14 @@ def format_date(value):
 
 
 db.init_app(app)
+
+# WAL mode: leituras simultâneas com escrita → reduz bloqueios do scheduler OpLab
+from sqlalchemy import event as _sa_event
+@_sa_event.listens_for(db.engine, 'connect', insert=True)
+def _set_sqlite_pragma(conn, _rec):
+    conn.execute('PRAGMA journal_mode=WAL')
+    conn.execute('PRAGMA synchronous=NORMAL')
+    conn.execute('PRAGMA busy_timeout=30000')
 
 # File-based task store (shared across gunicorn workers)
 _TASK_DIR = os.path.join(tempfile.gettempdir(), 'ca_update_tasks')

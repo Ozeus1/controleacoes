@@ -86,11 +86,14 @@ db.init_app(app)
 
 # WAL mode: leituras simultâneas com escrita → reduz bloqueios do scheduler OpLab
 from sqlalchemy import event as _sa_event
-@_sa_event.listens_for(db.engine, 'connect', insert=True)
+from sqlalchemy.engine import Engine as _Engine
+import sqlite3 as _sqlite3_pragma
+@_sa_event.listens_for(_Engine, 'connect')
 def _set_sqlite_pragma(conn, _rec):
-    conn.execute('PRAGMA journal_mode=WAL')
-    conn.execute('PRAGMA synchronous=NORMAL')
-    conn.execute('PRAGMA busy_timeout=30000')
+    if isinstance(conn, _sqlite3_pragma.Connection):
+        conn.execute('PRAGMA journal_mode=WAL')
+        conn.execute('PRAGMA synchronous=NORMAL')
+        conn.execute('PRAGMA busy_timeout=30000')
 
 # File-based task store (shared across gunicorn workers)
 _TASK_DIR = os.path.join(tempfile.gettempdir(), 'ca_update_tasks')

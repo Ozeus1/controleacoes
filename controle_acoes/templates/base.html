@@ -191,9 +191,9 @@
                     class="{{ 'active' if request.endpoint == 'fiis' else '' }}">FIIs</a>
 
                 {# ── Opções (dropdown com Estudos e Simulação) ── #}
-                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','venda_puts'] else '' }}">
+                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','venda_puts','ranking_volatilidade'] else '' }}">
                     <a href="{{ url_for('opcoes') }}"
-                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','venda_puts'] else '' }}"
+                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','venda_puts','ranking_volatilidade'] else '' }}"
                        onclick="toggleNavDrop(this,event)">
                         Opções <span class="nav-caret">▾</span>
                     </a>
@@ -206,6 +206,8 @@
                            class="{{ 'active' if request.endpoint == 'simulacao_opcoes' else '' }}">📈 Simulação</a>
                         <a href="{{ url_for('venda_puts') }}"
                            class="{{ 'active' if request.endpoint == 'venda_puts' else '' }}">🔽 Venda de Puts</a>
+                        <a href="{{ url_for('ranking_volatilidade') }}"
+                           class="{{ 'active' if request.endpoint == 'ranking_volatilidade' else '' }}">📊 Ranking Vol.</a>
                     </div>
                 </div>
 

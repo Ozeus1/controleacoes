@@ -5652,8 +5652,6 @@ def estudos():
     ]
     free_stocks.sort(key=lambda a: a.ticker)
 
-    ranking_vol = RankingVol.query.filter_by(user_id=uid).order_by(RankingVol.ticker).all()
-
     return render_template(
         'estudos.html',
         study_calls_vc=study_calls_vc,
@@ -5661,7 +5659,6 @@ def estudos():
         study_stocks=study_stocks,
         study_intl_stocks=study_intl_stocks,
         free_stocks=free_stocks,
-        ranking_vol=ranking_vol,
         strategies=STUDY_STRATEGIES,
     )
 
@@ -5901,21 +5898,28 @@ def delete_study_intl_stock(sid):
 
 # ── Ranking Volatilidade ─────────────────────────────────────────
 
+@app.route('/ranking-volatilidade')
+@login_required
+def ranking_volatilidade():
+    ranking_vol = RankingVol.query.filter_by(user_id=current_user.id).order_by(RankingVol.ticker).all()
+    return render_template('ranking_vol.html', ranking_vol=ranking_vol)
+
+
 @app.route('/estudos/ranking_vol/add', methods=['POST'])
 @login_required
 def ranking_vol_add():
     ticker = request.form.get('ticker', '').strip().upper()
     if not ticker:
         flash('Ticker obrigatório.', 'danger')
-        return redirect(url_for('estudos') + '#ranking-vol')
+        return redirect(url_for('ranking_volatilidade'))
     exists = RankingVol.query.filter_by(user_id=current_user.id, ticker=ticker).first()
     if exists:
         flash(f'{ticker} já está no ranking.', 'warning')
-        return redirect(url_for('estudos') + '#ranking-vol')
+        return redirect(url_for('ranking_volatilidade'))
     db.session.add(RankingVol(user_id=current_user.id, ticker=ticker))
     db.session.commit()
     flash(f'{ticker} adicionado ao Ranking de Volatilidade.', 'success')
-    return redirect(url_for('estudos') + '#ranking-vol')
+    return redirect(url_for('ranking_volatilidade'))
 
 
 @app.route('/estudos/ranking_vol/delete/<int:rid>', methods=['POST'])
@@ -5924,7 +5928,7 @@ def ranking_vol_delete(rid):
     rv = RankingVol.query.filter_by(id=rid, user_id=current_user.id).first_or_404()
     db.session.delete(rv)
     db.session.commit()
-    return redirect(url_for('estudos') + '#ranking-vol')
+    return redirect(url_for('ranking_volatilidade'))
 
 
 @app.route('/api/ranking_vol/update', methods=['POST'])

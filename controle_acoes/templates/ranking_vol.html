@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+{% block title %}Ranking Volatilidade{% endblock %}
+
+{% block content %}
+<div class="container">
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+  <h2 style="margin:0">📊 Ranking Volatilidade</h2>
+  <div style="display:flex;gap:.5rem">
+    <button id="btn-rv-update" class="btn btn-sm btn-primary" onclick="rvUpdate()">
+      ⟳ Atualizar
+    </button>
+    <button class="btn btn-sm btn-success" onclick="document.getElementById('modal-add-rv').style.display='flex'">
+      + Adicionar
+    </button>
+  </div>
+</div>
+<p style="color:var(--text-secondary);font-size:.85rem;margin-bottom:.75rem">
+  Dados via OpLab (IV Rank, IV Percentil, Vol. Implícita) e brapi/Yahoo Finance (preço, variação).
+  Clique nos cabeçalhos para ordenar. Use o campo de busca para filtrar.
+</p>
+
+<!-- Filtro + status -->
+<div style="display:flex;gap:.75rem;align-items:center;margin-bottom:.75rem;flex-wrap:wrap">
+  <input id="rv-filter" type="text" placeholder="Filtrar ticker…"
+         oninput="rvApplyFilter()"
+         style="padding:.35rem .7rem;background:var(--input-bg,#0f172a);border:1px solid var(--border-color);
+                color:var(--text-primary);border-radius:6px;width:180px;font-size:.85rem">
+  <span id="rv-status" style="font-size:.82rem;color:var(--text-secondary)"></span>
+</div>
+
+<div class="card" style="overflow-x:auto">
+  <table id="rv-table" class="table table-dark table-striped table-bordered table-hover no-datatable"
+         style="min-width:700px;font-size:.88rem">
+    <thead>
+      <tr>
+        <th onclick="rvSort('ticker')"      style="cursor:pointer;user-select:none;white-space:nowrap">Ativo <span class="rv-arrow" data-col="ticker"></span></th>
+        <th onclick="rvSort('var_pct')"     style="cursor:pointer;user-select:none;white-space:nowrap">Var. % <span class="rv-arrow" data-col="var_pct"></span></th>
+        <th onclick="rvSort('last_price')"  style="cursor:pointer;user-select:none;white-space:nowrap">Últ. <span class="rv-arrow" data-col="last_price"></span></th>
+        <th style="white-space:nowrap">Data / Hora</th>
+        <th onclick="rvSort('iv_rank')"     style="cursor:pointer;user-select:none;white-space:nowrap">IV Rank <span class="rv-arrow" data-col="iv_rank"></span></th>
+        <th onclick="rvSort('iv_percentil')" style="cursor:pointer;user-select:none;white-space:nowrap">Perc. <span class="rv-arrow" data-col="iv_percentil"></span></th>
+        <th onclick="rvSort('vol_impl')"    style="cursor:pointer;user-select:none;white-space:nowrap">Vol. Impl. <span class="rv-arrow" data-col="vol_impl"></span></th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="rv-tbody">
+      {% for rv in ranking_vol %}
+      <tr data-ticker="{{ rv.ticker }}"
+          data-var="{{ rv.var_pct if rv.var_pct is not none else '' }}"
+          data-price="{{ rv.last_price if rv.last_price is not none else '' }}"
+          data-ivr="{{ rv.iv_rank if rv.iv_rank is not none else '' }}"
+          data-ivp="{{ rv.iv_percentil if rv.iv_percentil is not none else '' }}"
+          data-vol="{{ rv.vol_impl if rv.vol_impl is not none else '' }}">
+        <td><span class="ticker-badge">{{ rv.ticker }}</span></td>
+        <td class="rv-var {% if rv.var_pct is not none %}{{ 'positive' if rv.var_pct >= 0 else 'negative' }}{% endif %}">
+          {% if rv.var_pct is not none %}{{ '%+.2f'|format(rv.var_pct) }}%{% else %}—{% endif %}
+        </td>
+        <td class="rv-price">
+          {% if rv.last_price is not none %}{{ '%.2f'|format(rv.last_price)|replace('.',',') }}{% else %}—{% endif %}
+        </td>
+        <td class="rv-date" style="white-space:nowrap;color:var(--text-secondary);font-size:.8rem">
+          {{ rv.last_date or '—' }}{% if rv.updated_at %} {{ rv.updated_at.strftime('%H:%M') }}{% endif %}
+        </td>
+        <td class="rv-ivr">
+          {% if rv.iv_rank is not none %}
+          <span style="display:inline-block;padding:.15rem .5rem;border-radius:4px;font-weight:600;
+            background:{% if rv.iv_rank < 30 %}#1e3a5f{% elif rv.iv_rank > 70 %}#7f1d1d{% else %}#1a2e1a{% endif %}">
+            {{ '%.1f'|format(rv.iv_rank) }}
+          </span>
+          {% else %}—{% endif %}
+        </td>
+        <td class="rv-ivp">
+          {% if rv.iv_percentil is not none %}
+          <span style="display:inline-block;padding:.15rem .5rem;border-radius:4px;font-weight:600;
+            background:{% if rv.iv_percentil < 30 %}#1e3a5f{% elif rv.iv_percentil > 70 %}#7f1d1d{% else %}#1a2e1a{% endif %}">
+            {{ '%.1f'|format(rv.iv_percentil) }}
+          </span>
+          {% else %}—{% endif %}
+        </td>
+        <td class="rv-vol">
+          {% if rv.vol_impl is not none %}{{ '%.1f'|format(rv.vol_impl) }}{% else %}—{% endif %}
+        </td>
+        <td>
+          <form method="POST" action="{{ url_for('ranking_vol_delete', rid=rv.id) }}" style="display:inline"
+                onsubmit="return confirm('Remover {{ rv.ticker }} do ranking?')">
+            <button class="btn btn-sm btn-danger" style="padding:.1rem .45rem;font-size:.75rem" title="Remover">🗑</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not ranking_vol %}
+      <tr id="rv-empty">
+        <td colspan="8" style="text-align:center;color:var(--text-secondary);padding:1.5rem">
+          Nenhuma ação no ranking. Clique em "+ Adicionar" para começar.
+        </td>
+      </tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Legenda badges -->
+<div style="display:flex;gap:1rem;margin-top:.6rem;font-size:.78rem;color:var(--text-secondary);flex-wrap:wrap">
+  <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#1e3a5f;margin-right:4px"></span>Baixa (&lt;30)</span>
+  <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#1a2e1a;margin-right:4px"></span>Média (30-70)</span>
+  <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#7f1d1d;margin-right:4px"></span>Alta (&gt;70)</span>
+</div>
+
+</div>{# /container #}
+
+<!-- Modal Adicionar -->
+<div id="modal-add-rv" style="display:none;position:fixed;inset:0;z-index:9999;
+     background:rgba(0,0,0,.6);align-items:center;justify-content:center">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.5rem;
+              width:min(95vw,380px);border:1px solid var(--border-color)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <strong>Adicionar ao Ranking</strong>
+      <button onclick="document.getElementById('modal-add-rv').style.display='none'"
+              style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer">&times;</button>
+    </div>
+    <form method="POST" action="{{ url_for('ranking_vol_add') }}">
+      <label style="font-size:.85rem;margin-bottom:.3rem;display:block">Ticker (ex: PETR4, VALE3)</label>
+      <input type="text" name="ticker" class="form-control" required
+             style="text-transform:uppercase;margin-bottom:.75rem" placeholder="ABEV3">
+      <div style="display:flex;gap:.5rem;justify-content:flex-end">
+        <button type="button" class="btn btn-sm btn-secondary"
+                onclick="document.getElementById('modal-add-rv').style.display='none'">Cancelar</button>
+        <button type="submit" class="btn btn-sm btn-success">Adicionar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Quote Hint Tooltip -->
+<div id="qhint" style="display:none;position:fixed;z-index:99999;background:#1e293b;border:1px solid #334155;
+     border-radius:8px;padding:.6rem .9rem;min-width:170px;box-shadow:0 4px 18px rgba(0,0,0,.55);
+     font-size:.82rem;pointer-events:none">
+  <div style="font-weight:700;font-size:.9rem;margin-bottom:.35rem" id="qh-ticker"></div>
+  <div style="color:#94a3b8;font-size:.72rem;margin-bottom:.4rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px" id="qh-name"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:.2rem .7rem">
+    <span style="color:#94a3b8">Último</span>  <span id="qh-price" style="font-weight:600"></span>
+    <span style="color:#94a3b8">Var %</span>   <span id="qh-change"></span>
+    <span style="color:#94a3b8">Ask</span>     <span id="qh-ask" style="color:#f87171"></span>
+    <span style="color:#94a3b8">Bid</span>     <span id="qh-bid" style="color:#4ade80"></span>
+  </div>
+  <div id="qh-loading" style="color:#94a3b8;text-align:center;padding:.3rem 0">carregando…</div>
+</div>
+
+<script>
+(function(){
+  // ── Ordenação ──────────────────────────────────────────────────
+  var _col = null, _asc = true;
+  var _map = {ticker:'ticker',var_pct:'var',last_price:'price',iv_rank:'ivr',iv_percentil:'ivp',vol_impl:'vol'};
+
+  window.rvSort = function(col){
+    if(_col===col) _asc=!_asc; else {_col=col; _asc=(col==='ticker');}
+    var tbody=document.getElementById('rv-tbody');
+    var rows=Array.from(tbody.querySelectorAll('tr[data-ticker]'));
+    var attr='data-'+(_map[col]||col);
+    rows.sort(function(a,b){
+      var av=a.getAttribute(attr), bv=b.getAttribute(attr);
+      if(col==='ticker'){av=av||'';bv=bv||'';return _asc?av.localeCompare(bv):bv.localeCompare(av);}
+      av=av===''||av===null?(_asc?Infinity:-Infinity):parseFloat(av);
+      bv=bv===''||bv===null?(_asc?Infinity:-Infinity):parseFloat(bv);
+      return _asc?av-bv:bv-av;
+    });
+    rows.forEach(function(r){tbody.appendChild(r);});
+    document.querySelectorAll('.rv-arrow').forEach(function(sp){
+      sp.textContent=sp.dataset.col===col?(_asc?'▲':'▼'):'';
+    });
+  };
+
+  // ── Filtro ─────────────────────────────────────────────────────
+  window.rvApplyFilter = function(){
+    var q=document.getElementById('rv-filter').value.trim().toUpperCase();
+    document.querySelectorAll('#rv-tbody tr[data-ticker]').forEach(function(r){
+      r.style.display=(!q||r.dataset.ticker.includes(q))?'':'none';
+    });
+  };
+
+  // ── Atualizar via API ──────────────────────────────────────────
+  window.rvUpdate = function(){
+    var btn=document.getElementById('btn-rv-update');
+    var stat=document.getElementById('rv-status');
+    btn.disabled=true; btn.textContent='⟳ Atualizando…'; stat.textContent='';
+    fetch('/api/ranking_vol/update',{method:'POST',
+      headers:{'X-CSRFToken':document.querySelector('meta[name=csrf-token]')?.content||''}})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.error){stat.textContent='✗ '+d.error;btn.disabled=false;btn.textContent='⟳ Atualizar';return;}
+      stat.textContent='✓ '+d.updated+'/'+d.total+' atualizados';
+      (d.results||[]).forEach(function(row){
+        if(!row.ok) return;
+        var tr=document.querySelector('#rv-tbody tr[data-ticker="'+row.ticker+'"]');
+        if(!tr) return;
+        // var%
+        var varEl=tr.querySelector('.rv-var');
+        if(row.change!=null){
+          var c=parseFloat(row.change);
+          varEl.textContent=(c>=0?'+':'')+c.toFixed(2)+'%';
+          varEl.className='rv-var '+(c>=0?'positive':'negative');
+          tr.setAttribute('data-var',c);
+        }
+        // preço
+        if(row.price){
+          tr.querySelector('.rv-price').textContent=parseFloat(row.price).toFixed(2).replace('.',',');
+          tr.setAttribute('data-price',row.price);
+        }
+        // data/hora
+        var now=new Date();
+        var pad=function(n){return String(n).padStart(2,'0');};
+        tr.querySelector('.rv-date').textContent=pad(now.getDate())+'/'+pad(now.getMonth()+1)+' '+pad(now.getHours())+':'+pad(now.getMinutes());
+        // badges IV
+        function badge(val){
+          if(val==null) return '—';
+          var v=parseFloat(val), bg=v<30?'#1e3a5f':(v>70?'#7f1d1d':'#1a2e1a');
+          return '<span style="display:inline-block;padding:.15rem .5rem;border-radius:4px;font-weight:600;background:'+bg+'">'+v.toFixed(1)+'</span>';
+        }
+        tr.querySelector('.rv-ivr').innerHTML=badge(row.iv_rank);    tr.setAttribute('data-ivr',row.iv_rank??'');
+        tr.querySelector('.rv-ivp').innerHTML=badge(row.iv_percentil); tr.setAttribute('data-ivp',row.iv_percentil??'');
+        if(row.vol_impl!=null){tr.querySelector('.rv-vol').textContent=parseFloat(row.vol_impl).toFixed(1);tr.setAttribute('data-vol',row.vol_impl);}
+        var empty=document.getElementById('rv-empty'); if(empty) empty.remove();
+      });
+      btn.disabled=false; btn.textContent='⟳ Atualizar';
+    })
+    .catch(function(e){stat.textContent='✗ Erro: '+e;btn.disabled=false;btn.textContent='⟳ Atualizar';});
+  };
+
+  // Fecha modal clicando fora
+  document.getElementById('modal-add-rv').addEventListener('click',function(e){
+    if(e.target===this) this.style.display='none';
+  });
+
+  // ── Quote Hint Tooltip ─────────────────────────────────────────
+  var hint=document.getElementById('qhint'), cache={}, active=null;
+  function fmt(v){return 'R$ '+parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  function fmtPct(v){var f=parseFloat(v);return(f>=0?'+':'')+f.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';}
+  function showHint(ticker,x,y){
+    active=ticker;
+    document.getElementById('qh-ticker').textContent=ticker;
+    ['qh-name','qh-price','qh-change','qh-ask','qh-bid'].forEach(function(id){document.getElementById(id).textContent='';});
+    document.getElementById('qh-loading').style.display='block';
+    posHint(x,y); hint.style.display='block';
+    if(cache[ticker]){renderHint(cache[ticker]);return;}
+    fetch('/api/quote_hint/'+encodeURIComponent(ticker))
+      .then(function(r){return r.json();})
+      .then(function(d){cache[ticker]=d;if(active===ticker)renderHint(d);})
+      .catch(function(){document.getElementById('qh-loading').textContent='erro';});
+  }
+  function renderHint(d){
+    document.getElementById('qh-loading').style.display='none';
+    document.getElementById('qh-name').textContent=d.name!==d.ticker?d.name:'';
+    document.getElementById('qh-price').textContent=fmt(d.price);
+    var cel=document.getElementById('qh-change');
+    cel.textContent=fmtPct(d.change); cel.style.color=d.change>=0?'#4ade80':'#f87171';
+    document.getElementById('qh-ask').textContent=d.ask>0?fmt(d.ask):'—';
+    document.getElementById('qh-bid').textContent=d.bid>0?fmt(d.bid):'—';
+  }
+  function posHint(x,y){
+    var w=window.innerWidth,h=window.innerHeight,hw=hint.offsetWidth||190,hh=hint.offsetHeight||130;
+    var left=x+14; if(left+hw>w-8) left=x-hw-8;
+    var top=y+14;  if(top+hh>h-8)  top=y-hh-8;
+    hint.style.left=left+'px'; hint.style.top=top+'px';
+  }
+  document.addEventListener('mouseover',function(e){
+    var b=e.target.closest('.ticker-badge'); if(!b) return;
+    var t=b.textContent.trim().split('\n')[0].trim(); if(!t) return;
+    showHint(t,e.clientX,e.clientY);
+  });
+  document.addEventListener('mousemove',function(e){if(hint.style.display==='none')return;posHint(e.clientX,e.clientY);});
+  document.addEventListener('mouseout',function(e){
+    var b=e.target.closest('.ticker-badge'); if(!b) return;
+    if(!e.relatedTarget||!e.relatedTarget.closest('.ticker-badge')){hint.style.display='none';active=null;}
+  });
+})();
+</script>
+{% endblock %}

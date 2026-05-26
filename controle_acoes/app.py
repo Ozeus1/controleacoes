@@ -6824,7 +6824,56 @@ def api_quote_hint(ticker):
     price = change = ask = bid = 0.0
     name  = ticker
 
-    # ── tenta brapi ──────────────────────────────────────────────
+    # ── 1. Tenta banco local: Option / StructuredLeg ─────────────
+    # Opções BR (ex: LRENF155) não existem em APIs de ativos normais.
+    # O OpLab já mantém current_option_price atualizado no DB.
+    try:
+        opt = (Option.query.filter_by(user_id=uid, ticker=ticker).first() or
+               Option.query.filter(Option.user_id == uid,
+                                   Option.ticker.ilike(ticker)).first())
+        if opt and opt.current_option_price and opt.current_option_price > 0:
+            price  = float(opt.current_option_price)
+            change = float(opt.daily_change or 0)
+            name   = f'{opt.option_type} K={opt.strike_price:.2f} venc {opt.expiration_date.strftime("%d/%m/%y") if opt.expiration_date else "?"}'
+    except Exception:
+        pass
+
+    if price == 0:
+        try:
+            from models import StructuredLeg, StructuredOp
+            leg = (StructuredLeg.query
+                   .join(StructuredOp)
+                   .filter(StructuredOp.user_id == uid,
+                           StructuredLeg.ticker.ilike(ticker))
+                   .first())
+            if leg and leg.current_price and leg.current_price > 0:
+                price = float(leg.current_price)
+        except Exception:
+            pass
+
+    if price == 0:
+        try:
+            so = (StudyOption.query
+                  .filter_by(user_id=uid, ticker=ticker).first() or
+                  StudyOption.query.filter(StudyOption.user_id == uid,
+                                          StudyOption.ticker.ilike(ticker)).first())
+            if so and so.option_price and so.option_price > 0:
+                price = float(so.option_price)
+        except Exception:
+            pass
+
+    # Se já temos preço do banco, retorna sem chamar API externa
+    if price > 0 and ask == 0:
+        return jsonify({
+            'ticker': ticker,
+            'name':   name,
+            'price':  round(price,  2),
+            'change': round(change, 2),
+            'ask':    0.0,
+            'bid':    0.0,
+        })
+
+    # ── 2. tenta brapi (ativos, FIIs, ETFs) ──────────────────────
     if token:
         try:
             r = _req.get(

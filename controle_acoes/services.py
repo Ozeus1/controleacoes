@@ -1,14 +1,12 @@
 
 import requests
 import os
-
+import time
 
 from flask import current_app
-# Circular import note: models imports db, services might need db/Settings inside function to avoid init issues
-# or pass the token. Best to import Settings inside function if we are outside of app context scope issue, but we are inside Flask.
-# Actually, services.py is just utils. Let's do a late import.
 
 BASE_URL = "https://brapi.dev/api/quote"
+
 
 def get_token(user_id=None):
     try:
@@ -17,202 +15,178 @@ def get_token(user_id=None):
             token = Settings.get_value('brapi_token', user_id=user_id)
             if token:
                 return token
-        # Fallback to env or maybe a "System Admin" user (ID 1)?
-        # For now, if no user specific token, maybe return None or Env
     except Exception:
         pass
     return os.environ.get('BRAPI_API_KEY', '')
 
-def _fetch_single_ticker(yf_t, clean_key):
-    """Fetch a single ticker using yf.Ticker — usa regularMarketPrice para maior precisão."""
+
+def _brapi_quotes(tickers, token):
+    """Busca cotações via brapi.dev (requer token). Retorna dict {ticker: {price, change_percent}}."""
+    if not tickers or not token:
+        return {}
+    joined = ','.join(tickers)
+    params = {'range': '1d', 'interval': '1d', 'fundamental': 'false', 'dividends': 'false', 'token': token}
+    try:
+        r = requests.get(f"{BASE_URL}/{joined}", params=params, timeout=15)
+        if r.status_code != 200:
+            return {}
+        results = {}
+        for item in r.json().get('results', []):
+            sym = item.get('symbol', '').upper()
+            price = item.get('regularMarketPrice') or item.get('currentPrice')
+            change = item.get('regularMarketChangePercent', 0.0)
+            if price and price > 0:
+                results[sym] = {
+                    'price': float(price),
+                    'change_percent': float(change or 0),
+                    'logo': item.get('logourl', ''),
+                    'shortName': item.get('shortName', sym),
+                }
+        return results
+    except Exception as e:
+        print(f"brapi error: {e}")
+        return {}
+
+
+def _yf_fast_info(yf_t, clean_key):
+    """Busca cotação individual via yfinance fast_info (preço atual de mercado)."""
     import yfinance as yf
     try:
-        t_obj = yf.Ticker(yf_t)
-        info = t_obj.fast_info
-        last_price = info.last_price
-        prev_close = info.previous_close
-        if last_price and last_price > 0:
-            change = 0.0
-            if prev_close and prev_close > 0:
-                change = ((last_price - prev_close) / prev_close) * 100
-            # Sanity check: variação >20% em ativo BR é suspeita para ETF/FII
-            # Tenta pegar regularMarketChangePercent direto do info completo
-            try:
-                full = t_obj.info
-                chg = full.get('regularMarketChangePercent')
-                if chg is not None:
-                    change = float(chg)
-                price2 = full.get('regularMarketPrice') or full.get('currentPrice')
-                if price2 and price2 > 0:
-                    last_price = price2
-            except Exception:
-                pass
-            return {
-                'price': float(last_price),
-                'change_percent': float(change),
-                'logo': '',
-                'shortName': clean_key
-            }
+        fi = yf.Ticker(yf_t).fast_info
+        price = fi.last_price
+        prev  = fi.previous_close
+        if price and price > 0:
+            change = ((price - prev) / prev * 100) if prev and prev > 0 else 0.0
+            return {'price': float(price), 'change_percent': float(change), 'logo': '', 'shortName': clean_key}
     except Exception as e:
-        print(f"Fallback fetch failed for {yf_t}: {e}")
+        print(f"yf fast_info failed for {yf_t}: {e}")
     return None
 
 
-def _parse_bulk_download(data, yf_tickers, map_yf_to_clean):
-    """Parse results from yf.download for a chunk of tickers."""
+def _yf_bulk(yf_tickers, map_yf_to_clean):
+    """Busca em batch via yf.download — rápido mas usa fechamento histórico."""
+    import yfinance as yf
     import pandas as pd
     results = {}
     failed = []
-
-    # Para qualquer quantidade, _fetch_single_ticker é mais preciso (usa fast_info + regularMarketChangePercent)
-    if len(yf_tickers) <= 2:
+    try:
+        data = yf.download(' '.join(yf_tickers), period='2d', progress=False, group_by='ticker', timeout=15)
         for yf_t in yf_tickers:
             clean_key = map_yf_to_clean[yf_t]
-            result = _fetch_single_ticker(yf_t, clean_key)
-            if result:
-                results[clean_key] = result
-            else:
-                failed.append(yf_t)
-        return results, failed
-
-    # Multiple tickers: parse MultiIndex DataFrame
-    for yf_t in yf_tickers:
-        try:
-            df_t = None
-            # Try MultiIndex access (group_by='ticker')
-            if hasattr(data.columns, 'levels') and len(data.columns.levels) > 0:
-                if yf_t in data.columns.levels[0]:
+            try:
+                df_t = None
+                if hasattr(data.columns, 'levels') and yf_t in data.columns.levels[0]:
                     df_t = data[yf_t]
-            # Try direct column access (newer yfinance or flat structure)
-            if df_t is None:
-                try:
+                if df_t is None:
                     df_t = data[yf_t]
-                except (KeyError, TypeError):
-                    pass
-
-            if df_t is None or len(df_t) == 0:
+                if df_t is None or len(df_t) == 0:
+                    failed.append(yf_t)
+                    continue
+                price = df_t.iloc[-1]['Close']
+                if hasattr(price, 'iloc'):
+                    price = price.iloc[0]
+                if pd.isna(price):
+                    failed.append(yf_t)
+                    continue
+                prev = 0.0
+                if len(df_t) > 1:
+                    pc = df_t.iloc[-2]['Close']
+                    if hasattr(pc, 'iloc'):
+                        pc = pc.iloc[0]
+                    if not pd.isna(pc):
+                        prev = float(pc)
+                change = ((float(price) - prev) / prev * 100) if prev > 0 else 0.0
+                results[clean_key] = {'price': float(price), 'change_percent': change, 'logo': '', 'shortName': clean_key}
+            except Exception:
                 failed.append(yf_t)
-                continue
-
-            last_row = df_t.iloc[-1]
-            price = last_row['Close']
-
-            # Handle Series (when Close has sub-index)
-            if hasattr(price, 'iloc'):
-                price = price.iloc[0]
-
-            if pd.isna(price):
-                failed.append(yf_t)
-                continue
-
-            prev_close = 0.0
-            if len(df_t) > 1:
-                pc = df_t.iloc[-2]['Close']
-                if hasattr(pc, 'iloc'):
-                    pc = pc.iloc[0]
-                if not pd.isna(pc):
-                    prev_close = pc
-            elif len(df_t) == 1:
-                pc = df_t.iloc[-1]['Open']
-                if hasattr(pc, 'iloc'):
-                    pc = pc.iloc[0]
-                if not pd.isna(pc):
-                    prev_close = pc
-
-            change = 0.0
-            if prev_close and prev_close > 0:
-                change = ((price - prev_close) / prev_close) * 100
-
-            clean_key = map_yf_to_clean[yf_t]
-            results[clean_key] = {
-                'price': float(price),
-                'change_percent': float(change),
-                'logo': '',
-                'shortName': clean_key
-            }
-        except Exception as inner_e:
-            print(f"Error parsing {yf_t}: {inner_e}")
-            failed.append(yf_t)
-            continue
-
+    except Exception as e:
+        print(f"yf.download error: {e}")
+        failed = list(yf_tickers)
     return results, failed
 
 
 def get_quotes(tickers, user_id=None):
     """
-    Fetches quotes via yf.Tickers (fast_info batch) — retorna preço de mercado atual,
-    não fechamento histórico. Mais preciso para ETFs/FIIs BR.
+    Busca cotações de ações/FIIs/ETFs BR.
+    - Com token brapi: usa brapi.dev (rápido, preciso, um request).
+    - Sem token brapi: yf.download em batch + fast_info para corrigir variações absurdas.
     """
     if not tickers:
         return {}
 
-    import yfinance as yf
-    import time
+    clean_tickers = [t.strip().upper() for t in tickers]
+    token = get_token(user_id)
 
-    yf_tickers = []
-    map_yf_to_clean = {}
-    for t in tickers:
-        clean = t.strip().upper()
-        yf_t = clean if '.' in clean else f"{clean}.SA"
-        yf_tickers.append(yf_t)
-        map_yf_to_clean[yf_t] = clean
+    if token:
+        # brapi em chunks de 50
+        results = {}
+        for i in range(0, len(clean_tickers), 50):
+            chunk = clean_tickers[i:i + 50]
+            results.update(_brapi_quotes(chunk, token))
+        # fallback para tickers não retornados
+        missing = [t for t in clean_tickers if t not in results]
+        for t in missing:
+            r = _yf_fast_info(f"{t}.SA" if '.' not in t else t, t)
+            if r:
+                results[t] = r
+            time.sleep(0.2)
+        return results
 
-    results = {}
+    # Sem token: yf.download em batch (rápido)
+    yf_map = {}
+    for t in clean_tickers:
+        yf_t = t if '.' in t else f"{t}.SA"
+        yf_map[yf_t] = t
+
     chunk_size = 10
-    chunks = [yf_tickers[i:i + chunk_size] for i in range(0, len(yf_tickers), chunk_size)]
+    yf_list = list(yf_map.keys())
+    results = {}
+    all_failed = []
 
-    for chunk in chunks:
-        try:
-            tickers_obj = yf.Tickers(' '.join(chunk))
-            for yf_t in chunk:
-                clean_key = map_yf_to_clean[yf_t]
-                try:
-                    fi = tickers_obj.tickers[yf_t].fast_info
-                    price = fi.last_price
-                    prev  = fi.previous_close
-                    if price and price > 0:
-                        change = ((price - prev) / prev * 100) if prev and prev > 0 else 0.0
-                        results[clean_key] = {
-                            'price': float(price),
-                            'change_percent': float(change),
-                            'logo': '',
-                            'shortName': clean_key,
-                        }
-                except Exception:
-                    result = _fetch_single_ticker(yf_t, clean_key)
-                    if result:
-                        results[clean_key] = result
-        except Exception as e:
-            print(f"Error fetching chunk {chunk}: {e}")
-            for yf_t in chunk:
-                clean_key = map_yf_to_clean[yf_t]
-                result = _fetch_single_ticker(yf_t, clean_key)
-                if result:
-                    results[clean_key] = result
+    for i in range(0, len(yf_list), chunk_size):
+        chunk = yf_list[i:i + chunk_size]
+        sub_map = {k: yf_map[k] for k in chunk}
+        if len(chunk) == 1:
+            r = _yf_fast_info(chunk[0], sub_map[chunk[0]])
+            if r:
+                results[sub_map[chunk[0]]] = r
+        else:
+            got, failed = _yf_bulk(chunk, sub_map)
+            results.update(got)
+            all_failed.extend(failed)
+        if i + chunk_size < len(yf_list):
+            time.sleep(1)
 
-        if len(chunks) > 1:
-            time.sleep(0.5)
+    # Para tickers com variação absurda (>20%) corrige via fast_info
+    for clean, v in list(results.items()):
+        if abs(v.get('change_percent', 0)) > 20:
+            yf_t = clean if '.' in clean else f"{clean}.SA"
+            r = _yf_fast_info(yf_t, clean)
+            if r:
+                results[clean] = r
+
+    # Fallback para os que falharam
+    for yf_t in all_failed:
+        clean = yf_map.get(yf_t, yf_t)
+        if clean not in results:
+            r = _yf_fast_info(yf_t, clean)
+            if r:
+                results[clean] = r
+            time.sleep(0.3)
 
     return results
 
+
 def get_raw_quote_data(ticker):
-    """
-    Fetches raw JSON for a single ticker to display to the user.
-    """
+    """Retorna dados brutos da brapi.dev para um ticker."""
     token = get_token()
-    params = {}
+    params = {'range': '1d', 'interval': '1d'}
     if token:
         params['token'] = token
-    
-    url = f"{BASE_URL}/{ticker}"
-    
     try:
-        response = requests.get(url, params=params, timeout=10)
-        # We return the JSON body even if error status, or construct error dict
+        response = requests.get(f"{BASE_URL}/{ticker}", params=params, timeout=10)
         if response.status_code == 200:
             return True, response.json()
-        else:
-            return False, {'error': f"Status {response.status_code}", 'body': response.text}
+        return False, {'error': f"Status {response.status_code}", 'body': response.text}
     except Exception as e:
         return False, {'error': str(e)}
-

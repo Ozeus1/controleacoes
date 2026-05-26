@@ -537,7 +537,7 @@ _SELIC_HISTORICO = """01/2020,0.38
 
 with app.app_context():
     run_migrations()
-    db.create_all()
+    db.create_all(checkfirst=True)
     # Seed Selic histórica (INSERT OR IGNORE para não sobrescrever edições manuais)
     for linha in _SELIC_HISTORICO.strip().splitlines():
         partes = linha.split(',')
@@ -2441,7 +2441,7 @@ def load_user(user_id):
 
 with app.app_context():
     try:
-        db.create_all()
+        db.create_all(checkfirst=True)
     except Exception as e:
         # In a multi-worker environment (Gunicorn), multiple workers might try to create tables simultaneously.
         # If one succeeds, the others might fail with "table already exists".
@@ -7280,6 +7280,6 @@ def _start_oplab_scheduler():
 
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all()
+        db.create_all(checkfirst=True)
     _start_oplab_scheduler()
     app.run(debug=True, host='0.0.0.0')

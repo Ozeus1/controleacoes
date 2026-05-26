@@ -455,6 +455,21 @@ def run_migrations():
         )
     """)
 
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ranking_vol (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES user(id),
+            ticker VARCHAR(15) NOT NULL,
+            var_pct FLOAT,
+            last_price FLOAT,
+            last_date VARCHAR(10),
+            iv_rank FLOAT,
+            iv_percentil FLOAT,
+            vol_impl FLOAT,
+            updated_at DATETIME
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -537,7 +552,7 @@ _SELIC_HISTORICO = """01/2020,0.38
 
 with app.app_context():
     run_migrations()
-    db.create_all(checkfirst=True)
+    db.create_all()
     # Seed Selic histórica (INSERT OR IGNORE para não sobrescrever edições manuais)
     for linha in _SELIC_HISTORICO.strip().splitlines():
         partes = linha.split(',')
@@ -2441,7 +2456,7 @@ def load_user(user_id):
 
 with app.app_context():
     try:
-        db.create_all(checkfirst=True)
+        db.create_all()
     except Exception as e:
         # In a multi-worker environment (Gunicorn), multiple workers might try to create tables simultaneously.
         # If one succeeds, the others might fail with "table already exists".
@@ -7280,6 +7295,6 @@ def _start_oplab_scheduler():
 
 if __name__ == '__main__':
     with app.app_context():
-        db.create_all(checkfirst=True)
+        db.create_all()
     _start_oplab_scheduler()
     app.run(debug=True, host='0.0.0.0')

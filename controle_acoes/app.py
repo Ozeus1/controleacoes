@@ -7108,6 +7108,24 @@ def api_quote_hint(ticker):
         except Exception:
             pass
 
+    # ── OptionSpread (travas: perna comprada ou vendida) ──────────
+    if price == 0:
+        try:
+            sp = OptionSpread.query.filter(
+                OptionSpread.user_id == uid,
+                db.or_(
+                    OptionSpread.leg_long_ticker.ilike(ticker),
+                    OptionSpread.leg_short_ticker.ilike(ticker)
+                )
+            ).first()
+            if sp:
+                if sp.leg_long_ticker and sp.leg_long_ticker.upper() == ticker and sp.leg_long_current and sp.leg_long_current > 0:
+                    price = float(sp.leg_long_current)
+                elif sp.leg_short_ticker and sp.leg_short_ticker.upper() == ticker and sp.leg_short_current and sp.leg_short_current > 0:
+                    price = float(sp.leg_short_current)
+        except Exception:
+            pass
+
     # Se já temos preço do banco, retorna sem chamar API externa
     if price > 0 and ask == 0:
         return jsonify({

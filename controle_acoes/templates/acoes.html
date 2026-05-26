@@ -105,7 +105,7 @@
 {% endif %}
 
 {% if etfs %}
-<div class="card mt-4">
+<div class="card mt-4" id="etf-section">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem;">
         <h3>Carteira de ETFs</h3>
         <a href="{{ url_for('add_asset', type='ETF', strategy='HOLDER') }}" class="btn btn-primary btn-sm">Adicionar ETF</a>

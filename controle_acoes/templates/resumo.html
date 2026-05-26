@@ -13,7 +13,7 @@
                 {{ total_equity | brl }}
             </div>
         </div>
-        <div class="card" style="padding: 1.5rem; text-align: center;">
+        <a href="{{ url_for('acoes') }}" class="card kpi-link" style="padding: 1.5rem; text-align: center;">
             <div style="color: var(--text-secondary); font-size: 0.9rem;">Ações</div>
             <div style="font-size: 1.5rem; font-weight: bold; margin-top: 0.5rem;">
                 {{ total_acoes | brl }}
@@ -21,8 +21,8 @@
             <div style="font-size: 0.8rem; color: var(--text-secondary);">
                 {{ ((total_acoes / total_equity * 100) if total_equity > 0 else 0) | pct }}
             </div>
-        </div>
-        <div class="card" style="padding: 1.5rem; text-align: center;">
+        </a>
+        <a href="{{ url_for('fiis') }}" class="card kpi-link" style="padding: 1.5rem; text-align: center;">
             <div style="color: var(--text-secondary); font-size: 0.9rem;">FIIs</div>
             <div style="font-size: 1.5rem; font-weight: bold; margin-top: 0.5rem;">
                 {{ total_fiis | brl }}
@@ -30,8 +30,8 @@
             <div style="font-size: 0.8rem; color: var(--text-secondary);">
                 {{ ((total_fiis / total_equity * 100) if total_equity > 0 else 0) | pct }}
             </div>
-        </div>
-        <div class="card" style="padding: 1.5rem; text-align: center;">
+        </a>
+        <a href="{{ url_for('acoes') }}#etf-section" class="card kpi-link" style="padding: 1.5rem; text-align: center;">
             <div style="color: var(--text-secondary); font-size: 0.9rem;">ETFs</div>
             <div style="font-size: 1.5rem; font-weight: bold; margin-top: 0.5rem;">
                 {{ total_etfs | brl }}
@@ -39,14 +39,14 @@
             <div style="font-size: 0.8rem; color: var(--text-secondary);">
                 {{ ((total_etfs / total_equity * 100) if total_equity > 0 else 0) | pct }}
             </div>
-        </div>
-        <div class="card" style="padding: 1.5rem; text-align: center;">
+        </a>
+        <a href="{{ url_for('historico') }}" class="card kpi-link" style="padding: 1.5rem; text-align: center;">
             <div style="color: var(--text-secondary); font-size: 0.9rem;">Lucro Realizado (Histórico)</div>
             <div
                 style="font-size: 1.5rem; font-weight: bold; margin-top: 0.5rem; color: {{ 'var(--success-color)' if total_realized_profit >= 0 else 'var(--danger-color)' }};">
                 {{ total_realized_profit | brl }}
             </div>
-        </div>
+        </a>
     </div>
 
     <!-- Charts Stacked -->
@@ -105,6 +105,24 @@
         .table-center-forced td {
             text-align: center !important;
             vertical-align: middle !important;
+        }
+        a.kpi-link {
+            display: block;
+            text-decoration: none;
+            color: inherit;
+            cursor: pointer;
+            transition: transform .15s, box-shadow .15s;
+        }
+        a.kpi-link:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,.35);
+            color: inherit;
+        }
+        a.kpi-link::after {
+            content: ' ↗';
+            font-size: .65rem;
+            opacity: .45;
+            vertical-align: super;
         }
     </style>
     <div class="card mb-4 d-none d-md-block" style="padding: 1.5rem;">

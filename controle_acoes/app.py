@@ -6146,6 +6146,90 @@ def oplab_test():
     return jsonify(results)
 
 
+@app.route('/api/liquidez/<ticker>')
+@login_required
+def api_liquidez(ticker):
+    """Retorna liquidez de opções de um ativo via OpLab /market/options/{ticker}."""
+    from flask import jsonify
+    import requests as _req
+
+    ticker = ticker.strip().upper()
+    token  = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado. Configure em Perfil → OpLab.'}), 400
+
+    BASE    = 'https://api.oplab.com.br/v3'
+    headers = {'Access-Token': token}
+
+    try:
+        r = _req.get(f'{BASE}/market/options/{ticker}', headers=headers, timeout=15)
+        if r.status_code != 200:
+            return jsonify({'error': f'OpLab retornou status {r.status_code}'}), 400
+        data = r.json()
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    # Normaliza — resposta pode ser lista ou dict com chave 'options'/'calls'/'puts'
+    if isinstance(data, list):
+        opt_list = data
+    elif isinstance(data, dict):
+        opt_list = (data.get('options') or
+                    data.get('calls', []) + data.get('puts', []) or
+                    [])
+    else:
+        opt_list = []
+
+    calls, puts = [], []
+    vol_total_call = vol_total_put = 0.0
+
+    for o in opt_list:
+        sym      = str(o.get('symbol') or o.get('ticker') or '').upper()
+        cat      = str(o.get('category') or o.get('type') or o.get('option_type') or '').upper()
+        strike   = o.get('strike') or o.get('strike_price') or 0
+        close    = o.get('close') or o.get('last') or o.get('price') or 0
+        volume   = o.get('volume_financial') or o.get('financial_volume') or o.get('volume') or 0
+        open_int = o.get('open_interest') or o.get('openInterest') or 0
+        var_pct  = o.get('variation') or o.get('change') or o.get('pct_change') or 0
+        bid      = o.get('bid') or 0
+        ask      = o.get('ask') or 0
+        due_date = o.get('due_date') or o.get('expiration_date') or o.get('maturity') or ''
+        # extrai só a data se vier datetime
+        if due_date and 'T' in str(due_date):
+            due_date = str(due_date).split('T')[0]
+
+        row = {
+            'symbol':   sym,
+            'strike':   round(float(strike), 2) if strike else None,
+            'close':    round(float(close),  2) if close  else None,
+            'volume':   round(float(volume), 2) if volume else 0,
+            'open_int': int(open_int) if open_int else 0,
+            'var_pct':  round(float(var_pct), 2) if var_pct else 0,
+            'bid':      round(float(bid), 2) if bid else None,
+            'ask':      round(float(ask), 2) if ask else None,
+            'due_date': due_date,
+        }
+
+        if 'PUT' in cat or cat == 'P':
+            puts.append(row)
+            vol_total_put += row['volume']
+        else:
+            calls.append(row)
+            vol_total_call += row['volume']
+
+    # Ordena por volume desc, retorna top 20 de cada
+    calls.sort(key=lambda x: x['volume'], reverse=True)
+    puts.sort(key=lambda x: x['volume'], reverse=True)
+
+    return jsonify({
+        'ticker':         ticker,
+        'calls':          calls[:20],
+        'puts':           puts[:20],
+        'vol_total_call': round(vol_total_call, 2),
+        'vol_total_put':  round(vol_total_put,  2),
+        'total_options':  len(opt_list),
+    })
+
+
 @app.route('/api/oplab_iv')
 @login_required
 def api_oplab_iv():

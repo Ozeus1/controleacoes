@@ -5935,9 +5935,18 @@ def ranking_vol_delete(rid):
 @login_required
 def api_ranking_vol_update():
     """Atualiza todos os itens do Ranking de Volatilidade via OpLab + brapi."""
+    try:
+        return _api_ranking_vol_update_impl()
+    except Exception as e:
+        import traceback
+        app.logger.error('api_ranking_vol_update error: %s\n%s', e, traceback.format_exc())
+        return jsonify({'error': str(e)}), 500
+
+
+def _api_ranking_vol_update_impl():
     from flask import jsonify
     import requests as _req
-    from datetime import datetime as _dt
+    from concurrent.futures import ThreadPoolExecutor
 
     uid   = current_user.id
     token = Settings.get_value('oplab_token', user_id=uid)
@@ -5981,12 +5990,10 @@ def api_ranking_vol_update():
         return ivr, ivp, vol
 
     # Busca preços em lote via brapi (com token brapi se disponível)
+    from services import _brapi_quotes, _yf_fast_info
     brapi_token = Settings.get_value('brapi_token', user_id=uid)
     tickers_list = [rv.ticker for rv in items]
     price_map = {}  # ticker → {price, change}
-
-    from services import _brapi_quotes, _yf_fast_info
-    from concurrent.futures import ThreadPoolExecutor
 
     if brapi_token:
         brapi_res = _brapi_quotes(tickers_list, brapi_token)

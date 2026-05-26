@@ -6946,14 +6946,19 @@ def _do_oplab_bulk_update(uid: int, token: str):
         # Atualiza delta se disponível (não zera se API não retornar)
         if key in deltas:
             o.delta = deltas[key]
-        # Atualiza underlying do asset (para exibição em /opcoes e /estudos)
+        # Atualiza underlying do asset apenas se não tiver sido atualizado recentemente via brapi/Yahoo
         if o.underlying_asset:
             uk = o.underlying_asset.upper()
             if uk in prices and prices[uk] > 0:
                 asset = next((a for a in assets if a.ticker.upper() == uk), None)
                 if asset:
-                    asset.current_price = prices[uk]
-                    asset.last_update   = now
+                    # Não sobrescreve se atualizado nos últimos 60 min via brapi/Yahoo
+                    from datetime import timedelta
+                    recently = (asset.last_update and
+                                (now - asset.last_update).total_seconds() < 3600)
+                    if not recently:
+                        asset.current_price = prices[uk]
+                        asset.last_update   = now
 
     # ── Atualiza StudyOptions (/estudos) ──────────────────────────
     for so in study_options:

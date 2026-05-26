@@ -384,7 +384,7 @@
       var tr = document.createElement('tr');
       tr.style.borderBottom = '1px solid rgba(255,255,255,.05)';
       tr.innerHTML =
-        '<td style="padding:.25rem .4rem;font-weight:600;color:'+colorClass+'">'+o.symbol+'</td>'+
+        '<td style="padding:.25rem .4rem"><span class="ticker-badge" style="font-weight:600;color:'+colorClass+';cursor:pointer">'+o.symbol+'</span></td>'+
         '<td style="text-align:right;padding:.25rem .4rem">'+fmtN(o.strike)+'</td>'+
         '<td style="text-align:right;padding:.25rem .4rem">'+fmtN(o.close)+'</td>'+
         '<td style="text-align:right;padding:.25rem .4rem;color:'+varColor+'">'+

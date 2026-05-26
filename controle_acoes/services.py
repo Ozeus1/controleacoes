@@ -64,13 +64,13 @@ def _yf_fast_info(yf_t, clean_key):
 
 
 def _yf_bulk(yf_tickers, map_yf_to_clean):
-    """Busca em batch via yf.download — rápido mas usa fechamento histórico."""
+    """Busca em batch via yf.download — ignora linhas com Close=0 (intraday sem dados)."""
     import yfinance as yf
     import pandas as pd
     results = {}
     failed = []
     try:
-        data = yf.download(' '.join(yf_tickers), period='2d', progress=False, group_by='ticker', timeout=15)
+        data = yf.download(' '.join(yf_tickers), period='5d', progress=False, group_by='ticker', timeout=15)
         for yf_t in yf_tickers:
             clean_key = map_yf_to_clean[yf_t]
             try:
@@ -78,25 +78,35 @@ def _yf_bulk(yf_tickers, map_yf_to_clean):
                 if hasattr(data.columns, 'levels') and yf_t in data.columns.levels[0]:
                     df_t = data[yf_t]
                 if df_t is None:
-                    df_t = data[yf_t]
+                    try:
+                        df_t = data[yf_t]
+                    except Exception:
+                        pass
                 if df_t is None or len(df_t) == 0:
                     failed.append(yf_t)
                     continue
-                price = df_t.iloc[-1]['Close']
-                if hasattr(price, 'iloc'):
-                    price = price.iloc[0]
-                if pd.isna(price):
+
+                # Filtra linhas com Close > 0 (remove dias sem dados / zeros intraday)
+                def _val(v):
+                    return float(v.iloc[0]) if hasattr(v, 'iloc') else float(v)
+
+                valid_rows = []
+                for idx in range(len(df_t)):
+                    try:
+                        c = _val(df_t.iloc[idx]['Close'])
+                        if not pd.isna(c) and c > 0:
+                            valid_rows.append(c)
+                    except Exception:
+                        pass
+
+                if not valid_rows:
                     failed.append(yf_t)
                     continue
-                prev = 0.0
-                if len(df_t) > 1:
-                    pc = df_t.iloc[-2]['Close']
-                    if hasattr(pc, 'iloc'):
-                        pc = pc.iloc[0]
-                    if not pd.isna(pc):
-                        prev = float(pc)
-                change = ((float(price) - prev) / prev * 100) if prev > 0 else 0.0
-                results[clean_key] = {'price': float(price), 'change_percent': change, 'logo': '', 'shortName': clean_key}
+
+                price = valid_rows[-1]
+                prev  = valid_rows[-2] if len(valid_rows) >= 2 else 0.0
+                change = ((price - prev) / prev * 100) if prev > 0 else 0.0
+                results[clean_key] = {'price': price, 'change_percent': change, 'logo': '', 'shortName': clean_key}
             except Exception:
                 failed.append(yf_t)
     except Exception as e:

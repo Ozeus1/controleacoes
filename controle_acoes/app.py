@@ -5000,15 +5000,23 @@ def update_quotes_async():
         with app.app_context():
             try:
                 update_market_indices()
-                # Ativos/FIIs/ETFs via Yahoo (sempre)
-                count, tried, errs = update_all_assets_logic(user_id=user_id)
-                intl_success, intl_msgs = update_intl_quotes_logic(user_id)
-
-                final_msg = f'Nacionais: {count}/{tried} atualizados. '
-                if intl_success:
-                    final_msg += f'Internacional/Cripto: Sucesso. '
+                quote_mode = Settings.get_value('quote_mode', user_id=user_id, default='yahoo')
+                if quote_mode == 'yahoo':
+                    count, tried, errs = update_all_assets_logic(user_id=user_id)
+                    intl_success, intl_msgs = update_intl_quotes_logic(user_id)
                 else:
-                    final_msg += f'Internacional: Falha. '
+                    count, tried, errs = 0, 0, []
+                    intl_success = True
+                    intl_msgs = []
+
+                if quote_mode == 'yahoo':
+                    final_msg = f'Nacionais: {count}/{tried} atualizados. '
+                    if intl_success:
+                        final_msg += 'Internacional/Cripto: Sucesso. '
+                    else:
+                        final_msg += 'Internacional: Falha. '
+                else:
+                    final_msg = 'Modo MT5: cotações de ações/FIIs/ETFs via MT5 Feeder. '
 
                 # Opções via OpLab (se token configurado) — independente do quote_mode
                 oplab_token = Settings.get_value('oplab_token', user_id=user_id)

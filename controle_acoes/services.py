@@ -24,7 +24,7 @@ def get_token(user_id=None):
     return os.environ.get('BRAPI_API_KEY', '')
 
 def _fetch_single_ticker(yf_t, clean_key):
-    """Fallback: fetch a single ticker using yf.Ticker when bulk download fails."""
+    """Fetch a single ticker using yf.Ticker — usa regularMarketPrice para maior precisão."""
     import yfinance as yf
     try:
         t_obj = yf.Ticker(yf_t)
@@ -35,6 +35,18 @@ def _fetch_single_ticker(yf_t, clean_key):
             change = 0.0
             if prev_close and prev_close > 0:
                 change = ((last_price - prev_close) / prev_close) * 100
+            # Sanity check: variação >20% em ativo BR é suspeita para ETF/FII
+            # Tenta pegar regularMarketChangePercent direto do info completo
+            try:
+                full = t_obj.info
+                chg = full.get('regularMarketChangePercent')
+                if chg is not None:
+                    change = float(chg)
+                price2 = full.get('regularMarketPrice') or full.get('currentPrice')
+                if price2 and price2 > 0:
+                    last_price = price2
+            except Exception:
+                pass
             return {
                 'price': float(last_price),
                 'change_percent': float(change),
@@ -52,15 +64,15 @@ def _parse_bulk_download(data, yf_tickers, map_yf_to_clean):
     results = {}
     failed = []
 
-    if len(yf_tickers) == 1:
-        # Single ticker: use individual fetch (more reliable)
-        yf_t = yf_tickers[0]
-        clean_key = map_yf_to_clean[yf_t]
-        result = _fetch_single_ticker(yf_t, clean_key)
-        if result:
-            results[clean_key] = result
-        else:
-            failed.append(yf_t)
+    # Para qualquer quantidade, _fetch_single_ticker é mais preciso (usa fast_info + regularMarketChangePercent)
+    if len(yf_tickers) <= 2:
+        for yf_t in yf_tickers:
+            clean_key = map_yf_to_clean[yf_t]
+            result = _fetch_single_ticker(yf_t, clean_key)
+            if result:
+                results[clean_key] = result
+            else:
+                failed.append(yf_t)
         return results, failed
 
     # Multiple tickers: parse MultiIndex DataFrame

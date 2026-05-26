@@ -5,7 +5,7 @@ import sqlite3
 import math
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, PutSale, SelicMensal
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, PutSale, SelicMensal, RankingVol
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -5637,6 +5637,8 @@ def estudos():
     ]
     free_stocks.sort(key=lambda a: a.ticker)
 
+    ranking_vol = RankingVol.query.filter_by(user_id=uid).order_by(RankingVol.ticker).all()
+
     return render_template(
         'estudos.html',
         study_calls_vc=study_calls_vc,
@@ -5644,6 +5646,7 @@ def estudos():
         study_stocks=study_stocks,
         study_intl_stocks=study_intl_stocks,
         free_stocks=free_stocks,
+        ranking_vol=ranking_vol,
         strategies=STUDY_STRATEGIES,
     )
 
@@ -5879,6 +5882,146 @@ def delete_study_intl_stock(sid):
     db.session.commit()
     flash('Ação internacional de estudo removida.', 'success')
     return redirect(url_for('estudos') + '#estudo-acoes-intl')
+
+
+# ── Ranking Volatilidade ─────────────────────────────────────────
+
+@app.route('/estudos/ranking_vol/add', methods=['POST'])
+@login_required
+def ranking_vol_add():
+    ticker = request.form.get('ticker', '').strip().upper()
+    if not ticker:
+        flash('Ticker obrigatório.', 'danger')
+        return redirect(url_for('estudos') + '#ranking-vol')
+    exists = RankingVol.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+    if exists:
+        flash(f'{ticker} já está no ranking.', 'warning')
+        return redirect(url_for('estudos') + '#ranking-vol')
+    db.session.add(RankingVol(user_id=current_user.id, ticker=ticker))
+    db.session.commit()
+    flash(f'{ticker} adicionado ao Ranking de Volatilidade.', 'success')
+    return redirect(url_for('estudos') + '#ranking-vol')
+
+
+@app.route('/estudos/ranking_vol/delete/<int:rid>', methods=['POST'])
+@login_required
+def ranking_vol_delete(rid):
+    rv = RankingVol.query.filter_by(id=rid, user_id=current_user.id).first_or_404()
+    db.session.delete(rv)
+    db.session.commit()
+    return redirect(url_for('estudos') + '#ranking-vol')
+
+
+@app.route('/api/ranking_vol/update', methods=['POST'])
+@login_required
+def api_ranking_vol_update():
+    """Atualiza todos os itens do Ranking de Volatilidade via OpLab + brapi."""
+    from flask import jsonify
+    import requests as _req
+    from datetime import datetime as _dt
+
+    uid   = current_user.id
+    token = Settings.get_value('oplab_token', user_id=uid)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado. Configure em Perfil → OpLab.'}), 400
+
+    items = RankingVol.query.filter_by(user_id=uid).all()
+    if not items:
+        return jsonify({'updated': 0, 'results': []})
+
+    BASE    = 'https://api.oplab.com.br/v3'
+    headers = {'Access-Token': token}
+    now     = now_brt()
+    today_str = now.strftime('%d/%m')
+
+    def _extract_iv(d):
+        if not isinstance(d, dict):
+            return None, None, None
+        for sub in ('data', 'spot', 'summary', 'iv', 'implied_volatility', 'greeks'):
+            if isinstance(d.get(sub), dict):
+                d.update(d[sub])
+        ivr = ivp = vol = None
+        for k in ('iv_1y_rank', 'ewma_1y_rank', 'iv_6m_rank', 'iv_rank', 'ivRank'):
+            v = d.get(k)
+            if v is not None:
+                try: ivr = round(float(v)*100,1) if float(v)<=1.0 else round(float(v),1); break
+                except: pass
+        for k in ('iv_1y_percentile', 'ewma_1y_percentile', 'iv_6m_percentile',
+                  'iv_percentile', 'ivPercentile', 'iv_percentil'):
+            v = d.get(k)
+            if v is not None:
+                try: ivp = round(float(v)*100,1) if float(v)<=1.0 else round(float(v),1); break
+                except: pass
+        # Vol. Implícita anualizada (HV ou IV atual)
+        for k in ('hv_current', 'historical_volatility', 'iv_current', 'implied_volatility_current',
+                  'current_iv', 'close_iv', 'iv', 'vol_impl'):
+            v = d.get(k)
+            if v is not None:
+                try: vol = round(float(v)*100,1) if float(v)<=1.0 else round(float(v),1); break
+                except: pass
+        return ivr, ivp, vol
+
+    # Busca preços em lote via brapi (com token brapi se disponível)
+    brapi_token = Settings.get_value('brapi_token', user_id=uid)
+    tickers_list = [rv.ticker for rv in items]
+    price_map = {}  # ticker → {price, change}
+
+    from services import _brapi_quotes, _yf_fast_info
+    from concurrent.futures import ThreadPoolExecutor
+
+    if brapi_token:
+        brapi_res = _brapi_quotes(tickers_list, brapi_token)
+        for t, d in brapi_res.items():
+            price_map[t] = {'price': d['price'], 'change': d['change_percent']}
+        missing = [t for t in tickers_list if t not in price_map]
+        if missing:
+            def _fetch(t):
+                return t, _yf_fast_info(f'{t}.SA' if '.' not in t else t, t)
+            with ThreadPoolExecutor(max_workers=8) as ex:
+                for t, d in ex.map(_fetch, missing):
+                    if d: price_map[t] = {'price': d['price'], 'change': d['change_percent']}
+    else:
+        def _fetch(t):
+            return t, _yf_fast_info(f'{t}.SA' if '.' not in t else t, t)
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            for t, d in ex.map(_fetch, tickers_list):
+                if d: price_map[t] = {'price': d['price'], 'change': d['change_percent']}
+
+    results = []
+    ok = 0
+    for rv in items:
+        row = {'ticker': rv.ticker, 'ok': False, 'error': None}
+        try:
+            r = _req.get(f'{BASE}/market/instruments/{rv.ticker}',
+                         headers=headers, timeout=15)
+            ivr = ivp = vol = None
+            if r.status_code == 200:
+                ivr, ivp, vol = _extract_iv(r.json())
+
+            pd = price_map.get(rv.ticker, {})
+            if pd.get('price', 0) > 0:
+                rv.last_price = round(pd['price'], 2)
+                rv.var_pct    = round(pd.get('change', 0), 2)
+                rv.last_date  = today_str
+            if ivr is not None: rv.iv_rank = ivr
+            if ivp is not None: rv.iv_percentil = ivp
+            if vol is not None: rv.vol_impl = vol
+            rv.updated_at = now
+            ok += 1
+            row['ok'] = True
+            row['iv_rank'] = ivr; row['iv_percentil'] = ivp; row['vol_impl'] = vol
+            row['price'] = rv.last_price; row['change'] = rv.var_pct
+        except Exception as e:
+            row['error'] = str(e)
+        results.append(row)
+
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+    return jsonify({'updated': ok, 'total': len(items), 'results': results})
 
 
 @app.route('/profile', methods=['GET', 'POST'])

@@ -334,6 +334,21 @@ class StudyStock(db.Model):
     entry_date = db.Column(db.Date, nullable=True)
 
 
+class RankingVol(db.Model):
+    """Ranking de Volatilidade — lista de ações monitoradas com IV Rank, IV Percentil e Vol. Implícita."""
+    __tablename__ = 'ranking_vol'
+    id           = db.Column(db.Integer, primary_key=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ticker       = db.Column(db.String(15), nullable=False)
+    var_pct      = db.Column(db.Float, nullable=True)   # Var % dia
+    last_price   = db.Column(db.Float, nullable=True)   # Último preço
+    last_date    = db.Column(db.String(10), nullable=True)  # "dd/mm"
+    iv_rank      = db.Column(db.Float, nullable=True)   # IV Rank (0-100)
+    iv_percentil = db.Column(db.Float, nullable=True)   # IV Percentil (0-100)
+    vol_impl     = db.Column(db.Float, nullable=True)   # Vol. Implícita % anualizada
+    updated_at   = db.Column(db.DateTime, nullable=True)
+
+
 class StructuredOp(db.Model):
     """Operação estruturada multi-perna (condors, borboletas, strangles, etc.)."""
     __tablename__ = 'structured_op'

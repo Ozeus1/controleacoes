@@ -1153,6 +1153,7 @@ function editDeltaPut(optId, current) {
     <span style="color:#94a3b8;">Var %</span>   <span id="qh-change"></span>
     <span style="color:#94a3b8;">Ask</span>     <span id="qh-ask" style="color:#f87171;"></span>
     <span style="color:#94a3b8;">Bid</span>     <span id="qh-bid" style="color:#4ade80;"></span>
+    <span id="qh-trades-label" style="color:#94a3b8;display:none;">Negócios</span> <span id="qh-trades" style="display:none;"></span>
   </div>
   <div id="qh-loading" style="color:#94a3b8; text-align:center; padding:.3rem 0;">carregando…</div>
 </div>
@@ -1197,6 +1198,9 @@ function editDeltaPut(optId, current) {
         cel.style.color  = d.change >= 0 ? '#4ade80' : '#f87171';
         document.getElementById('qh-ask').textContent    = d.ask > 0 ? fmt(d.ask) : '—';
         document.getElementById('qh-bid').textContent    = d.bid > 0 ? fmt(d.bid) : '—';
+        var tl=document.getElementById('qh-trades-label'); var tv=document.getElementById('qh-trades');
+        if(d.is_option && d.trades!=null){tl.style.display='';tv.style.display='';tv.textContent=d.trades;}
+        else{tl.style.display='none';tv.style.display='none';}
     }
 
     function posHint(x, y){

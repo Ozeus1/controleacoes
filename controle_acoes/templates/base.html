@@ -550,6 +550,7 @@
     <span style="color:#94a3b8">Var %</span>  <span id="qhg-change"></span>
     <span style="color:#94a3b8">Ask</span>    <span id="qhg-ask" style="color:#f87171"></span>
     <span style="color:#94a3b8">Bid</span>    <span id="qhg-bid" style="color:#4ade80"></span>
+    <span id="qhg-trades-label" style="color:#94a3b8;display:none">Negócios</span> <span id="qhg-trades" style="display:none"></span>
   </div>
   <div id="qhg-loading" style="color:#94a3b8;text-align:center;padding:.3rem 0">carregando…</div>
 </div>
@@ -567,7 +568,7 @@
   function showHint(ticker,x,y){
     active=ticker;
     document.getElementById('qhg-ticker').textContent=ticker;
-    ['qhg-name','qhg-price','qhg-change','qhg-ask','qhg-bid'].forEach(function(id){document.getElementById(id).textContent='';});
+    ['qhg-name','qhg-price','qhg-change','qhg-ask','qhg-bid','qhg-trades'].forEach(function(id){document.getElementById(id).textContent='';});
     document.getElementById('qhg-loading').style.display='block';
     posHint(x,y); hint.style.display='block';
     if(cache[ticker]){renderHint(cache[ticker]);return;}
@@ -585,6 +586,9 @@
     cel.textContent=fmtPct(d.change); cel.style.color=d.change>=0?'#4ade80':'#f87171';
     document.getElementById('qhg-ask').textContent=d.ask>0?fmt(d.ask):'—';
     document.getElementById('qhg-bid').textContent=d.bid>0?fmt(d.bid):'—';
+    var tl=document.getElementById('qhg-trades-label'); var tv=document.getElementById('qhg-trades');
+    if(d.is_option && d.trades!=null){tl.style.display='';tv.style.display='';tv.textContent=d.trades;}
+    else{tl.style.display='none';tv.style.display='none';}
   }
 
   function posHint(x,y){

@@ -7057,34 +7057,44 @@ def api_quote_hint(ticker):
     """Retorna cotação ao vivo de um ticker para o tooltip de hint."""
     from flask import jsonify
     import requests as _req
+    import re as _re
 
     ticker = ticker.strip().upper()
     uid    = current_user.id
     token  = None
+    oplab_token = None
     try:
         from models import Settings
-        token = Settings.get_value('brapi_token', user_id=uid)
+        token       = Settings.get_value('brapi_token',  user_id=uid)
+        oplab_token = Settings.get_value('oplab_token',  user_id=uid)
     except Exception:
         pass
 
     price = change = ask = bid = 0.0
+    trades = None   # nº negócios no dia (só para opções)
     name  = ticker
+    is_option = False
+    # preço do último negócio salvo no banco (fallback quando close==0 no dia)
+    db_last_price = 0.0
+
+    # Padrão de ticker de opção BR: 4 letras + 1 letra (série) + dígitos
+    _option_re = _re.compile(r'^[A-Z]{4}[A-Z]\d{2,}$')
 
     # ── 1. Tenta banco local: Option / StructuredLeg ─────────────
-    # Opções BR (ex: LRENF155) não existem em APIs de ativos normais.
-    # O OpLab já mantém current_option_price atualizado no DB.
     try:
         opt = (Option.query.filter_by(user_id=uid, ticker=ticker).first() or
                Option.query.filter(Option.user_id == uid,
                                    Option.ticker.ilike(ticker)).first())
-        if opt and opt.current_option_price and opt.current_option_price > 0:
-            price  = float(opt.current_option_price)
+        if opt:
+            is_option = True
+            if opt.current_option_price and opt.current_option_price > 0:
+                db_last_price = float(opt.current_option_price)
             change = float(opt.daily_change or 0)
             name   = f'{opt.option_type} K={opt.strike_price:.2f} venc {opt.expiration_date.strftime("%d/%m/%y") if opt.expiration_date else "?"}'
     except Exception:
         pass
 
-    if price == 0:
+    if not is_option:
         try:
             from models import StructuredLeg, StructuredOp
             leg = (StructuredLeg.query
@@ -7092,24 +7102,28 @@ def api_quote_hint(ticker):
                    .filter(StructuredOp.user_id == uid,
                            StructuredLeg.ticker.ilike(ticker))
                    .first())
-            if leg and leg.current_price and leg.current_price > 0:
-                price = float(leg.current_price)
+            if leg:
+                is_option = True
+                if leg.current_price and leg.current_price > 0:
+                    db_last_price = float(leg.current_price)
         except Exception:
             pass
 
-    if price == 0:
+    if not is_option:
         try:
             so = (StudyOption.query
                   .filter_by(user_id=uid, ticker=ticker).first() or
                   StudyOption.query.filter(StudyOption.user_id == uid,
                                           StudyOption.ticker.ilike(ticker)).first())
-            if so and so.option_price and so.option_price > 0:
-                price = float(so.option_price)
+            if so:
+                is_option = True
+                if so.option_price and so.option_price > 0:
+                    db_last_price = float(so.option_price)
         except Exception:
             pass
 
-    # ── OptionSpread (travas: perna comprada ou vendida) ──────────
-    if price == 0:
+    # ── OptionSpread (travas) ──────────────────────────────────────
+    if not is_option:
         try:
             sp = OptionSpread.query.filter(
                 OptionSpread.user_id == uid,
@@ -7119,25 +7133,75 @@ def api_quote_hint(ticker):
                 )
             ).first()
             if sp:
+                is_option = True
                 if sp.leg_long_ticker and sp.leg_long_ticker.upper() == ticker and sp.leg_long_current and sp.leg_long_current > 0:
-                    price = float(sp.leg_long_current)
+                    db_last_price = float(sp.leg_long_current)
                 elif sp.leg_short_ticker and sp.leg_short_ticker.upper() == ticker and sp.leg_short_current and sp.leg_short_current > 0:
-                    price = float(sp.leg_short_current)
+                    db_last_price = float(sp.leg_short_current)
         except Exception:
             pass
 
-    # Se já temos preço do banco, retorna sem chamar API externa
-    if price > 0 and ask == 0:
-        return jsonify({
-            'ticker': ticker,
-            'name':   name,
-            'price':  round(price,  2),
-            'change': round(change, 2),
-            'ask':    0.0,
-            'bid':    0.0,
-        })
+    # Detecta opção pelo padrão do ticker (modal de liquidez: não está no banco do usuário)
+    if not is_option and _option_re.match(ticker):
+        is_option = True
 
-    # ── 2. tenta brapi (ativos, FIIs, ETFs) ──────────────────────
+    # ── 2. OpLab: cotação ao vivo para opções ─────────────────────
+    # Busca bid, ask, close do dia e nº de negócios via /v3/market/quote
+    if is_option and oplab_token:
+        try:
+            r = _req.get(
+                'https://api.oplab.com.br/v3/market/quote',
+                params={'tickers': ticker},
+                headers={'Access-Token': oplab_token},
+                timeout=8,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                item = data[0] if isinstance(data, list) and data else (data if isinstance(data, dict) else {})
+                close_day = item.get('close') or item.get('last') or 0
+                var_day   = None
+                for _vk in ('variation', 'change', 'pct_change', 'percentChange', 'dailyChange'):
+                    if _vk in item and item[_vk] is not None:
+                        var_day = float(item[_vk])
+                        break
+                bid_v  = item.get('bid')   or item.get('bid_price')  or 0
+                ask_v  = item.get('ask')   or item.get('ask_price')  or 0
+                trades = item.get('trades') or item.get('num_trades') or item.get('trade_count') or item.get('quantity') or None
+
+                if close_day and float(close_day) > 0:
+                    price  = float(close_day)
+                    change = var_day if var_day is not None else change
+                else:
+                    # Sem negócio no dia — usa último preço salvo no banco como referência
+                    price  = db_last_price
+                    change = 0.0   # variação do dia é zero pois não houve negócio
+
+                ask = float(ask_v) if ask_v else 0.0
+                bid = float(bid_v) if bid_v else 0.0
+                trades = int(trades) if trades is not None else None
+        except Exception:
+            pass
+
+    # Fallback: sem OpLab ou falha — usa preço do banco se disponível
+    if price == 0 and db_last_price > 0:
+        price = db_last_price
+
+    # Se já resolvemos a opção, retorna
+    if is_option and (price > 0 or db_last_price > 0):
+        resp = {
+            'ticker':    ticker,
+            'name':      name,
+            'price':     round(price,  2),
+            'change':    round(change, 2),
+            'ask':       round(ask,    2),
+            'bid':       round(bid,    2),
+            'is_option': True,
+        }
+        if trades is not None:
+            resp['trades'] = trades
+        return jsonify(resp)
+
+    # ── 3. brapi (ativos, FIIs, ETFs) ────────────────────────────
     if token:
         try:
             r = _req.get(

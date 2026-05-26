@@ -118,8 +118,8 @@ def _yf_bulk(yf_tickers, map_yf_to_clean):
 def get_quotes(tickers, user_id=None):
     """
     Busca cotações de ações/FIIs/ETFs BR.
-    - Com token brapi: usa brapi.dev (rápido, preciso, um request).
-    - Sem token brapi: yf.download em batch + fast_info para corrigir variações absurdas.
+    - Com token brapi: um único request para todos os tickers (~0.5s).
+    - Sem token brapi: fast_info em paralelo via ThreadPoolExecutor (~3s para 15 tickers).
     """
     if not tickers:
         return {}
@@ -128,62 +128,32 @@ def get_quotes(tickers, user_id=None):
     token = get_token(user_id)
 
     if token:
-        # brapi em chunks de 50
         results = {}
         for i in range(0, len(clean_tickers), 50):
-            chunk = clean_tickers[i:i + 50]
-            results.update(_brapi_quotes(chunk, token))
-        # fallback para tickers não retornados
+            results.update(_brapi_quotes(clean_tickers[i:i+50], token))
+        # fallback paralelo para os que a brapi não retornou
         missing = [t for t in clean_tickers if t not in results]
-        for t in missing:
-            r = _yf_fast_info(f"{t}.SA" if '.' not in t else t, t)
-            if r:
-                results[t] = r
-            time.sleep(0.2)
+        if missing:
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            def _fetch(t):
+                return t, _yf_fast_info(f"{t}.SA" if '.' not in t else t, t)
+            with ThreadPoolExecutor(max_workers=8) as ex:
+                for t, r in ex.map(_fetch, missing):
+                    if r:
+                        results[t] = r
         return results
 
-    # Sem token: yf.download em batch (rápido)
-    yf_map = {}
-    for t in clean_tickers:
+    # Sem token: fast_info em paralelo (preciso, sem depender de histórico)
+    from concurrent.futures import ThreadPoolExecutor
+    def _fetch(t):
         yf_t = t if '.' in t else f"{t}.SA"
-        yf_map[yf_t] = t
+        return t, _yf_fast_info(yf_t, t)
 
-    chunk_size = 10
-    yf_list = list(yf_map.keys())
     results = {}
-    all_failed = []
-
-    for i in range(0, len(yf_list), chunk_size):
-        chunk = yf_list[i:i + chunk_size]
-        sub_map = {k: yf_map[k] for k in chunk}
-        if len(chunk) == 1:
-            r = _yf_fast_info(chunk[0], sub_map[chunk[0]])
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for t, r in ex.map(_fetch, clean_tickers):
             if r:
-                results[sub_map[chunk[0]]] = r
-        else:
-            got, failed = _yf_bulk(chunk, sub_map)
-            results.update(got)
-            all_failed.extend(failed)
-        if i + chunk_size < len(yf_list):
-            time.sleep(1)
-
-    # Para tickers com variação absurda (>20%) corrige via fast_info
-    for clean, v in list(results.items()):
-        if abs(v.get('change_percent', 0)) > 20:
-            yf_t = clean if '.' in clean else f"{clean}.SA"
-            r = _yf_fast_info(yf_t, clean)
-            if r:
-                results[clean] = r
-
-    # Fallback para os que falharam
-    for yf_t in all_failed:
-        clean = yf_map.get(yf_t, yf_t)
-        if clean not in results:
-            r = _yf_fast_info(yf_t, clean)
-            if r:
-                results[clean] = r
-            time.sleep(0.3)
-
+                results[t] = r
     return results
 
 

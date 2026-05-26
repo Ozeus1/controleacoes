@@ -140,9 +140,8 @@ def _parse_bulk_download(data, yf_tickers, map_yf_to_clean):
 
 def get_quotes(tickers, user_id=None):
     """
-    Fetches quotes for a list of tickers using Yahoo Finance (yfinance).
-    Returns a dict: {ticker: {price: float, change: float, logo: str, ...}}
-    Processes in chunks to avoid timeouts on slow connections.
+    Fetches quotes via yf.Tickers (fast_info batch) — retorna preço de mercado atual,
+    não fechamento histórico. Mais preciso para ETFs/FIIs BR.
     """
     if not tickers:
         return {}
@@ -150,51 +149,49 @@ def get_quotes(tickers, user_id=None):
     import yfinance as yf
     import time
 
-    # Prepare tickers for Yahoo (Append .SA if not present)
     yf_tickers = []
     map_yf_to_clean = {}
-
     for t in tickers:
         clean = t.strip().upper()
-        if '.' not in clean:
-             yf_t = f"{clean}.SA"
-        else:
-             yf_t = clean
+        yf_t = clean if '.' in clean else f"{clean}.SA"
         yf_tickers.append(yf_t)
         map_yf_to_clean[yf_t] = clean
 
     results = {}
-    all_failed = []
-
-    # Process in chunks of 8 to avoid timeouts
-    chunk_size = 8
+    chunk_size = 10
     chunks = [yf_tickers[i:i + chunk_size] for i in range(0, len(yf_tickers), chunk_size)]
 
     for chunk in chunks:
         try:
-            str_tickers = " ".join(chunk)
-            data = yf.download(str_tickers, period="2d", progress=False, group_by='ticker', timeout=15)
-
-            chunk_results, failed = _parse_bulk_download(data, chunk, map_yf_to_clean)
-            results.update(chunk_results)
-            all_failed.extend(failed)
+            tickers_obj = yf.Tickers(' '.join(chunk))
+            for yf_t in chunk:
+                clean_key = map_yf_to_clean[yf_t]
+                try:
+                    fi = tickers_obj.tickers[yf_t].fast_info
+                    price = fi.last_price
+                    prev  = fi.previous_close
+                    if price and price > 0:
+                        change = ((price - prev) / prev * 100) if prev and prev > 0 else 0.0
+                        results[clean_key] = {
+                            'price': float(price),
+                            'change_percent': float(change),
+                            'logo': '',
+                            'shortName': clean_key,
+                        }
+                except Exception:
+                    result = _fetch_single_ticker(yf_t, clean_key)
+                    if result:
+                        results[clean_key] = result
         except Exception as e:
-            print(f"Error downloading chunk {chunk}: {e}")
-            all_failed.extend(chunk)
-
-        if len(chunks) > 1:
-            time.sleep(1)
-
-    # Retry failed tickers individually
-    if all_failed:
-        print(f"Retrying {len(all_failed)} failed tickers individually...")
-        for yf_t in all_failed:
-            clean_key = map_yf_to_clean[yf_t]
-            if clean_key not in results:
+            print(f"Error fetching chunk {chunk}: {e}")
+            for yf_t in chunk:
+                clean_key = map_yf_to_clean[yf_t]
                 result = _fetch_single_ticker(yf_t, clean_key)
                 if result:
                     results[clean_key] = result
-                time.sleep(0.5)
+
+        if len(chunks) > 1:
+            time.sleep(0.5)
 
     return results
 

@@ -20,7 +20,7 @@ def get_token(user_id=None):
     return os.environ.get('BRAPI_API_KEY', '')
 
 
-def _brapi_one(ticker, token):
+def _brapi_one(ticker, token=None):
     """Busca um único ticker na brapi.dev."""
     params = {'range': '1d', 'interval': '1d', 'fundamental': 'false', 'dividends': 'false', 'token': token}
     try:
@@ -47,9 +47,11 @@ def _brapi_quotes(tickers, token):
     if not tickers or not token:
         return {}
     from concurrent.futures import ThreadPoolExecutor
+    from functools import partial
     results = {}
+    fetch = partial(_brapi_one, token=token)
     with ThreadPoolExecutor(max_workers=8) as ex:
-        for ticker, data in ex.map(lambda t: _brapi_one(t, token), tickers):
+        for ticker, data in ex.map(fetch, tickers):
             if data:
                 results[ticker] = data
     return results

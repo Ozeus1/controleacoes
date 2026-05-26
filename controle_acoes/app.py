@@ -4795,9 +4795,8 @@ def update_all_assets_logic(user_id=None):
     errors = []
     total_tried = 0
 
-    # Chunk logic to avoid URL too long or timeouts
-    chunk_size = 10
-    relevant_chunks = [relevant[i:i + chunk_size] for i in range(0, len(relevant), chunk_size)]
+    # Um único chunk — brapi e fast_info já são paralelos internamente
+    relevant_chunks = [relevant]
 
     for chunk in relevant_chunks:
         try:
@@ -4820,9 +4819,6 @@ def update_all_assets_logic(user_id=None):
             
             # Commit after each chunk
             db.session.commit()
-            
-            # Respect API Rate Limit (Prevent 429 Too Many Requests)
-            time.sleep(3)
             
         except Exception as e:
             print(f"Error updating chunk {tickers}: {e}")

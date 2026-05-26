@@ -20,32 +20,39 @@ def get_token(user_id=None):
     return os.environ.get('BRAPI_API_KEY', '')
 
 
-def _brapi_quotes(tickers, token):
-    """Busca cotações via brapi.dev (requer token). Retorna dict {ticker: {price, change_percent}}."""
-    if not tickers or not token:
-        return {}
-    joined = ','.join(tickers)
+def _brapi_one(ticker, token):
+    """Busca um único ticker na brapi.dev."""
     params = {'range': '1d', 'interval': '1d', 'fundamental': 'false', 'dividends': 'false', 'token': token}
     try:
-        r = requests.get(f"{BASE_URL}/{joined}", params=params, timeout=15)
+        r = requests.get(f"{BASE_URL}/{ticker}", params=params, timeout=10)
         if r.status_code != 200:
-            return {}
-        results = {}
+            return ticker, None
         for item in r.json().get('results', []):
-            sym = item.get('symbol', '').upper()
             price = item.get('regularMarketPrice') or item.get('currentPrice')
             change = item.get('regularMarketChangePercent', 0.0)
             if price and price > 0:
-                results[sym] = {
+                return ticker, {
                     'price': float(price),
                     'change_percent': float(change or 0),
                     'logo': item.get('logourl', ''),
-                    'shortName': item.get('shortName', sym),
+                    'shortName': item.get('shortName', ticker),
                 }
-        return results
     except Exception as e:
-        print(f"brapi error: {e}")
+        print(f"brapi error {ticker}: {e}")
+    return ticker, None
+
+
+def _brapi_quotes(tickers, token):
+    """Busca cotações via brapi.dev em paralelo (1 ticker/request — plano gratuito)."""
+    if not tickers or not token:
         return {}
+    from concurrent.futures import ThreadPoolExecutor
+    results = {}
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for ticker, data in ex.map(lambda t: _brapi_one(t, token), tickers):
+            if data:
+                results[ticker] = data
+    return results
 
 
 def _yf_fast_info(yf_t, clean_key):

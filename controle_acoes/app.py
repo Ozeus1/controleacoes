@@ -4832,121 +4832,77 @@ def update_intl_quotes_logic(user_id):
     Helper to update International Assets and Cryptos for a specific user.
     Returns (success: bool, messages: list)
     """
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-    msg_log = []
-    success = False
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    try:
-        # 1. Get USD Rate (USDBRL=X)
-        usd_rate = 0.0
+    headers = {'User-Agent': 'Mozilla/5.0'}
+
+    def _yahoo_price(ticker_yf):
+        """Busca preço e variação de um ticker no Yahoo Finance."""
         try:
-            url_usd = "https://query1.finance.yahoo.com/v8/finance/chart/USDBRL=X?interval=1d&range=1d"
-            r_usd = requests.get(url_usd, headers=headers, timeout=10)
-            data_usd = r_usd.json()
-            if 'chart' in data_usd and 'result' in data_usd['chart'] and data_usd['chart']['result']:
-                usd_rate = data_usd['chart']['result'][0]['meta']['regularMarketPrice']
-                msg_log.append(f"Dólar: R$ {usd_rate:.2f}")
-            else:
-                 msg_log.append("Erro ao obter Dólar (API Vazia)")
-        except Exception as e:
-            msg_log.append(f"Erro Dólar: {str(e)}")
-            print(f"Error fetching USD: {e}")
+            url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker_yf}?interval=1d&range=1d"
+            r = requests.get(url, headers=headers, timeout=10)
+            meta = r.json()['chart']['result'][0]['meta']
+            price = meta.get('regularMarketPrice', 0.0)
+            chg   = meta.get('regularMarketChangePercent')
+            if chg is None:
+                prev = meta.get('chartPreviousClose') or meta.get('previousClose', 0)
+                chg = ((price - prev) / prev * 100) if prev and prev > 0 else 0.0
+            return price, float(chg)
+        except Exception:
+            return 0.0, 0.0
 
-        if usd_rate > 0:
-            success = True # At least we got the rate
-            # Update all International assets
-            intls = International.query.filter_by(user_id=user_id).all()
-            for item in intls:
-                # Update Exchange Rate for ALL
-                item.rate_usd = usd_rate
-                
-                # Update Quote for RV and RF (if Ticker provided)
-                if item.name and item.name.upper() != 'RENDA FIXA':
-                    try:
-                        ticker_name = item.name.strip().upper()
-                        # Common Corrections
-                        if ticker_name == 'BRKB':
-                            ticker_name = 'BRK-B'
-                        
-                        # Fetch Stock Quote
-                        url_stock = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker_name}?interval=1d&range=1d"
-                        r_stock = requests.get(url_stock, headers=headers, timeout=10)
-                        data_stock = r_stock.json()
-                        
-                        price = 0.0
-                        if 'chart' in data_stock and 'result' in data_stock['chart'] and data_stock['chart']['result']:
-                             meta = data_stock['chart']['result'][0]['meta']
-                             price = meta.get('regularMarketPrice', 0.0)
-                             
-                             # Try to get change %, if not calculate from Previous Close
-                             change_pct = meta.get('regularMarketChangePercent')
-                             if change_pct is None:
-                                 prev_close = meta.get('chartPreviousClose') or meta.get('previousClose')
-                                 if prev_close and prev_close > 0 and price:
-                                     change_pct = ((price - prev_close) / prev_close) * 100
-                                 else:
-                                     change_pct = 0.0
-                             
-                             item.daily_change = change_pct
-                        
-                        if price > 0:
-                            item.quote = price
-                            # msg_log.append(f"{ticker_name}: ${price:.2f}") # Too verbose for combined update
-                            
-                            # Recalculate Value USD: Quantity * Price
-                            if item.quantity:
-                                item.value_usd = item.quantity * price
-                            else:
-                                item.value_usd = 0.0
-                        else:
-                            pass # msg_log.append(f"{ticker_name}: Não encontrado (API)")
-                            
-                    except Exception as e:
-                        msg_log.append(f"{item.name}: Erro API {str(e)}")
-                        print(f"Error updating {item.name}: {e}")
-            
-            # Update Cryptos
-            cryptos = Crypto.query.filter_by(user_id=user_id).all()
-            for c in cryptos:
-                if c.name: # e.g. BTC, ETH
-                    try:
-                        ticker_clean = c.name.strip().upper()
-                        # Default to USD pair if not specified
-                        yahoo_ticker = f"{ticker_clean}-USD"
-                        
-                        url_crypto = f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_ticker}?interval=1d&range=1d"
-                        r_crypto = requests.get(url_crypto, headers=headers, timeout=10)
-                        data_crypto = r_crypto.json()
-                        
-                        price_usd = 0.0
-                        if 'chart' in data_crypto and 'result' in data_crypto['chart'] and data_crypto['chart']['result']:
-                             price_usd = data_crypto['chart']['result'][0]['meta']['regularMarketPrice']
-                        
-                        if price_usd > 0:
-                            # Convert to BRL
-                            price_brl = price_usd * usd_rate
-                            c.quote = price_brl
-                            if c.quantity:
-                                c.current_value = c.quantity * price_brl
-                            # msg_log.append(f"{ticker_clean}: R$ {price_brl:.2f}")
-                        else:
-                            pass
-                            
-                    except Exception as e:
-                        print(f"Error crypto {c.name}: {e}")
-                        # msg_log.append(f"{c.name}: Erro {str(e)}")
+    # 1. USD em paralelo com os demais
+    intls   = International.query.filter_by(user_id=user_id).all()
+    cryptos = Crypto.query.filter_by(user_id=user_id).all()
 
-            db.session.commit()
-            if not msg_log:
-                 msg_log.append("Intl/Cripto atualizados.")
-        else:
-            if not msg_log:
-                msg_log.append('Não foi possível obter a cotação do Dólar.')
-            
-    except Exception as e:
-        msg_log.append(f"Erro fatal Intl: {str(e)}")
-        
-    return success, msg_log
+    # Monta lista de (chave, ticker_yf) para busca paralela
+    tasks = {'__USD__': 'USDBRL=X'}
+    for item in intls:
+        if item.name and item.name.upper() != 'RENDA FIXA':
+            t = item.name.strip().upper()
+            if t == 'BRKB':
+                t = 'BRK-B'
+            tasks[f'intl_{item.id}'] = t
+    for c in cryptos:
+        if c.name:
+            tasks[f'crypto_{c.id}'] = f"{c.name.strip().upper()}-USD"
+
+    # Busca tudo em paralelo
+    prices = {}
+    with ThreadPoolExecutor(max_workers=10) as ex:
+        fut_map = {ex.submit(_yahoo_price, yf_t): key for key, yf_t in tasks.items()}
+        for fut in as_completed(fut_map):
+            key = fut_map[fut]
+            prices[key] = fut.result()
+
+    usd_rate, _ = prices.get('__USD__', (0.0, 0.0))
+    if usd_rate <= 0:
+        return False, ['Não foi possível obter a cotação do Dólar.']
+
+    # Aplica resultados
+    for item in intls:
+        item.rate_usd = usd_rate
+        key = f'intl_{item.id}'
+        if key in prices:
+            price, chg = prices[key]
+            if price > 0:
+                item.quote       = price
+                item.daily_change = chg
+                if item.quantity:
+                    item.value_usd = item.quantity * price
+
+    for c in cryptos:
+        key = f'crypto_{c.id}'
+        if key in prices:
+            price_usd, _ = prices[key]
+            if price_usd > 0:
+                price_brl = price_usd * usd_rate
+                c.quote = price_brl
+                if c.quantity:
+                    c.current_value = c.quantity * price_brl
+
+    db.session.commit()
+    return True, ['Intl/Cripto atualizados.']
 
 @app.route('/update_quotes', methods=['POST'])
 @login_required

@@ -6113,14 +6113,14 @@ def oplab_debug():
     })
 
 
-@app.route('/oplab_test', methods=['POST'])
+@app.route('/oplab_test', methods=['GET', 'POST'])
 @login_required
 def oplab_test():
     """Retorna JSON bruto da API OpLab para diagnóstico."""
     token = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
         return jsonify({'error': 'Token não configurado'}), 400
-    ticker = request.form.get('ticker', 'PETR4').strip().upper()
+    ticker = (request.args.get('ticker') or request.form.get('ticker', 'PETR4')).strip().upper()
     BASE = 'https://api.oplab.com.br/v3'
     results = {}
     # Testa endpoint bulk /market/quote (usado no auto-update)
@@ -7146,13 +7146,18 @@ def api_quote_hint(ticker):
         is_option = True
 
     # ── 2. OpLab: cotação ao vivo para opções ─────────────────────
-    # Busca bid, ask, close do dia e nº de negócios via /v3/market/quote
+    # /v3/market/quote → bid, ask, close, variation
+    # /v3/market/instruments/{ticker} → trades (negócios do dia) e outros campos
     if is_option and oplab_token:
+        _oplab_base = 'https://api.oplab.com.br/v3'
+        _oplab_hdrs = {'Access-Token': oplab_token}
+
+        # Chamada 1: /market/quote para preço ao vivo
         try:
             r = _req.get(
-                'https://api.oplab.com.br/v3/market/quote',
+                f'{_oplab_base}/market/quote',
                 params={'tickers': ticker},
-                headers={'Access-Token': oplab_token},
+                headers=_oplab_hdrs,
                 timeout=8,
             )
             if r.status_code == 200:
@@ -7164,23 +7169,54 @@ def api_quote_hint(ticker):
                     if _vk in item and item[_vk] is not None:
                         var_day = float(item[_vk])
                         break
-                bid_v  = item.get('bid')   or item.get('bid_price')  or 0
-                ask_v  = item.get('ask')   or item.get('ask_price')  or 0
-                trades = item.get('trades') or item.get('num_trades') or item.get('trade_count') or item.get('quantity') or None
+                bid_v = item.get('bid') or item.get('bid_price') or 0
+                ask_v = item.get('ask') or item.get('ask_price') or 0
+                # Tenta capturar negócios já aqui (alguns endpoints retornam)
+                for _tk in ('trades', 'num_trades', 'trade_count', 'negotiations',
+                            'quantity', 'volume', 'deals', 'qtd_negocios',
+                            'number_of_trades', 'negocios', 'qtd'):
+                    _tv = item.get(_tk)
+                    if _tv is not None and _tv != 0:
+                        trades = int(_tv)
+                        break
 
                 if close_day and float(close_day) > 0:
                     price  = float(close_day)
                     change = var_day if var_day is not None else change
                 else:
-                    # Sem negócio no dia — usa último preço salvo no banco como referência
                     price  = db_last_price
-                    change = 0.0   # variação do dia é zero pois não houve negócio
+                    change = 0.0
 
                 ask = float(ask_v) if ask_v else 0.0
                 bid = float(bid_v) if bid_v else 0.0
-                trades = int(trades) if trades is not None else None
         except Exception:
             pass
+
+        # Chamada 2: /market/instruments/{ticker} para negócios do dia
+        if trades is None:
+            try:
+                r2 = _req.get(
+                    f'{_oplab_base}/market/instruments/{ticker}',
+                    headers=_oplab_hdrs,
+                    timeout=8,
+                )
+                if r2.status_code == 200:
+                    d2 = r2.json()
+                    for _tk in ('trades', 'num_trades', 'trade_count', 'negotiations',
+                                'quantity', 'volume', 'deals', 'qtd_negocios',
+                                'number_of_trades', 'negocios', 'qtd',
+                                'total_trades', 'daily_trades'):
+                        _tv = d2.get(_tk)
+                        if _tv is not None and _tv != 0:
+                            trades = int(_tv)
+                            break
+                    # Se /market/quote não retornou bid/ask, tenta aqui
+                    if bid == 0.0:
+                        bid = float(d2.get('bid') or d2.get('bid_price') or 0)
+                    if ask == 0.0:
+                        ask = float(d2.get('ask') or d2.get('ask_price') or 0)
+            except Exception:
+                pass
 
     # Fallback: sem OpLab ou falha — usa preço do banco se disponível
     if price == 0 and db_last_price > 0:

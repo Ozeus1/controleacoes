@@ -6,9 +6,12 @@
 
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
   <h2 style="margin:0">📊 Ranking Volatilidade</h2>
-  <div style="display:flex;gap:.5rem">
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap">
     <button id="btn-rv-update" class="btn btn-sm btn-primary" onclick="rvUpdate()">
       ⟳ Atualizar
+    </button>
+    <button class="btn btn-sm" style="background:#7c3aed;color:#fff" onclick="openLiquidez()">
+      💧 Ver Liquidez
     </button>
     <button class="btn btn-sm btn-success" onclick="document.getElementById('modal-add-rv').style.display='flex'">
       + Adicionar
@@ -81,7 +84,9 @@
         <td class="rv-vol">
           {% if rv.vol_impl is not none %}{{ '%.1f'|format(rv.vol_impl) }}{% else %}—{% endif %}
         </td>
-        <td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#7c3aed;color:#fff;margin-right:.2rem"
+                  onclick="openLiquidez('{{ rv.ticker }}')" title="Ver Liquidez de Opções">💧</button>
           <form method="POST" action="{{ url_for('ranking_vol_delete', rid=rv.id) }}" style="display:inline"
                 onsubmit="return confirm('Remover {{ rv.ticker }} do ranking?')">
             <button class="btn btn-sm btn-danger" style="padding:.1rem .45rem;font-size:.75rem" title="Remover">🗑</button>
@@ -108,6 +113,30 @@
 </div>
 
 </div>{# /container #}
+
+<!-- Modal Liquidez OpLab -->
+<div id="modal-liquidez" style="display:none;position:fixed;inset:0;z-index:10000;
+     background:rgba(0,0,0,.8);align-items:center;justify-content:center">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1rem;
+              width:min(96vw,1200px);max-height:92vh;display:flex;flex-direction:column;gap:.75rem;
+              border:1px solid var(--border-color)">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-shrink:0">
+      <div style="display:flex;align-items:center;gap:.75rem">
+        <span id="liq-title" style="font-weight:600;font-size:1rem">💧 Liquidez de Opções</span>
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap" id="liq-ticker-btns"></div>
+      </div>
+      <button onclick="closeLiquidez()" style="background:none;border:none;font-size:1.5rem;
+              color:var(--text-secondary);cursor:pointer;line-height:1;flex-shrink:0">&times;</button>
+    </div>
+    <iframe id="liq-iframe"
+            src=""
+            style="flex:1;min-height:560px;border:none;border-radius:6px;background:#fff"
+            allow="fullscreen"></iframe>
+    <p style="font-size:.75rem;color:var(--text-secondary);margin:0;flex-shrink:0">
+      Fonte: OpLab — mapa de liquidez de opções do ativo selecionado.
+    </p>
+  </div>
+</div>
 
 <!-- Modal Adicionar -->
 <div id="modal-add-rv" style="display:none;position:fixed;inset:0;z-index:9999;
@@ -272,6 +301,66 @@
   document.addEventListener('mouseout',function(e){
     var b=e.target.closest('.ticker-badge'); if(!b) return;
     if(!e.relatedTarget||!e.relatedTarget.closest('.ticker-badge')){hint.style.display='none';active=null;}
+  });
+
+  // ── Modal Liquidez OpLab ───────────────────────────────────────
+  var _liqModal   = document.getElementById('modal-liquidez');
+  var _liqIframe  = document.getElementById('liq-iframe');
+  var _liqBtnsCt  = document.getElementById('liq-ticker-btns');
+  var _liqCurrent = null;
+
+  // Coleta tickers visíveis (respeitando filtro) na ordem da tabela
+  function _visibleTickers(){
+    return Array.from(document.querySelectorAll('#rv-tbody tr[data-ticker]'))
+      .filter(function(r){return r.style.display!=='none';})
+      .map(function(r){return r.dataset.ticker;});
+  }
+
+  function _loadLiqTicker(ticker){
+    _liqCurrent = ticker;
+    document.getElementById('liq-title').textContent = '💧 Liquidez de Opções — ' + ticker;
+    _liqIframe.src = 'https://oplab.com.br/mercado/opcoes/' + encodeURIComponent(ticker);
+    // Destaca botão ativo
+    _liqBtnsCt.querySelectorAll('button').forEach(function(b){
+      b.style.background = b.dataset.t === ticker ? '#7c3aed' : 'var(--hover-bg,#334155)';
+      b.style.fontWeight = b.dataset.t === ticker ? '700' : '400';
+    });
+  }
+
+  window.openLiquidez = function(ticker){
+    var tickers = _visibleTickers();
+    if(!tickers.length){ alert('Nenhuma ação no ranking.'); return; }
+    var first = ticker || tickers[0];
+
+    // Monta botões de navegação rápida (máx 20 para não poluir)
+    _liqBtnsCt.innerHTML = '';
+    tickers.slice(0, 20).forEach(function(t){
+      var btn = document.createElement('button');
+      btn.textContent = t;
+      btn.dataset.t   = t;
+      btn.style.cssText = 'padding:.1rem .45rem;border:1px solid #475569;border-radius:4px;'+
+        'font-size:.72rem;cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap';
+      btn.onclick = function(){ _loadLiqTicker(t); };
+      _liqBtnsCt.appendChild(btn);
+    });
+
+    _liqModal.style.display = 'flex';
+    _loadLiqTicker(first);
+  };
+
+  window.closeLiquidez = function(){
+    _liqModal.style.display = 'none';
+    _liqIframe.src = '';
+  };
+
+  // Fecha clicando no overlay
+  _liqModal.addEventListener('click', function(e){
+    if(e.target === _liqModal) closeLiquidez();
+  });
+
+  // Esc fecha
+  document.addEventListener('keydown', function(e){
+    if(e.key==='Escape' && _liqModal.style.display==='flex') closeLiquidez();
   });
 })();
 </script>

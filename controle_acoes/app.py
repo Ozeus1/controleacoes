@@ -6924,14 +6924,8 @@ def _do_oplab_bulk_update(uid: int, token: str):
 
     now = now_brt()
 
-    # ── Atualiza Assets (ações, FIIs, ETFs — todas as páginas) ────
-    assets_ok = 0
-    for a in assets:
-        key = a.ticker.upper()
-        if key in prices and prices[key] > 0:
-            a.current_price = prices[key]
-            a.last_update   = now
-            assets_ok += 1
+    # ── Assets: OpLab NÃO atualiza current_price — brapi/Yahoo é a fonte exclusiva ──
+    assets_ok = len(assets)  # conta como ok sem alterar preços
 
     # ── Atualiza Options (todas as tabelas de /opcoes) ────────────
     options_ok = 0

@@ -6805,6 +6805,74 @@ def api_current_quotes():
     })
 
 
+@app.route('/api/quote_hint/<ticker>')
+@login_required
+def api_quote_hint(ticker):
+    """Retorna cotação ao vivo de um ticker para o tooltip de hint."""
+    from flask import jsonify
+    import requests as _req
+
+    ticker = ticker.strip().upper()
+    uid    = current_user.id
+    token  = None
+    try:
+        from models import Settings
+        token = Settings.get_value('brapi_token', user_id=uid)
+    except Exception:
+        pass
+
+    price = change = ask = bid = 0.0
+    name  = ticker
+
+    # ── tenta brapi ──────────────────────────────────────────────
+    if token:
+        try:
+            r = _req.get(
+                f'https://brapi.dev/api/quote/{ticker}',
+                params={'range': '1d', 'interval': '1d',
+                        'fundamental': 'false', 'dividends': 'false',
+                        'token': token},
+                timeout=8
+            )
+            if r.status_code == 200:
+                for item in r.json().get('results', []):
+                    p = item.get('regularMarketPrice') or item.get('currentPrice')
+                    if p and float(p) > 0:
+                        price  = float(p)
+                        change = float(item.get('regularMarketChangePercent') or 0)
+                        ask    = float(item.get('ask') or item.get('regularMarketOpen') or price)
+                        bid    = float(item.get('bid') or item.get('regularMarketPreviousClose') or price)
+                        name   = item.get('shortName') or item.get('longName') or ticker
+                        break
+        except Exception:
+            pass
+
+    # ── fallback yfinance fast_info ───────────────────────────────
+    if price == 0:
+        try:
+            import yfinance as yf
+            yf_t = ticker if '.' in ticker else f'{ticker}.SA'
+            fi   = yf.Ticker(yf_t).fast_info
+            p    = fi.last_price
+            prev = fi.previous_close or 0
+            if p and float(p) > 0:
+                price  = float(p)
+                change = ((price - prev) / prev * 100) if prev > 0 else 0.0
+                ask    = float(getattr(fi, 'ask', 0) or price)
+                bid    = float(getattr(fi, 'bid', 0) or price)
+        except Exception:
+            pass
+
+    return jsonify({
+        'ticker': ticker,
+        'name':   name,
+        'price':  round(price,  2),
+        'change': round(change, 2),
+        'ask':    round(ask,    2),
+        'bid':    round(bid,    2),
+    })
+
+
 # ─────────────────────────────────────────────────────────────────
 # OPLAB AUTO-UPDATE BACKGROUND SCHEDULER
 # ─────────────────────────────────────────────────────────────────

@@ -1138,4 +1138,96 @@ function editDeltaPut(optId, current) {
     }).catch(function(){});
 })();
 </script>
+
+<!-- ── Quote Hint Tooltip ─────────────────────────────────────── -->
+<div id="qhint" style="
+    display:none; position:fixed; z-index:99999;
+    background:#1e293b; border:1px solid #334155;
+    border-radius:8px; padding:.6rem .9rem; min-width:170px;
+    box-shadow:0 4px 18px rgba(0,0,0,.55); font-size:.82rem;
+    pointer-events:none; transition:opacity .12s;">
+  <div style="font-weight:700; font-size:.9rem; margin-bottom:.35rem;" id="qh-ticker"></div>
+  <div style="color:#94a3b8; font-size:.72rem; margin-bottom:.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;" id="qh-name"></div>
+  <div style="display:grid; grid-template-columns:1fr 1fr; gap:.2rem .7rem;">
+    <span style="color:#94a3b8;">Último</span>  <span id="qh-price" style="font-weight:600;"></span>
+    <span style="color:#94a3b8;">Var %</span>   <span id="qh-change"></span>
+    <span style="color:#94a3b8;">Ask</span>     <span id="qh-ask" style="color:#f87171;"></span>
+    <span style="color:#94a3b8;">Bid</span>     <span id="qh-bid" style="color:#4ade80;"></span>
+  </div>
+  <div id="qh-loading" style="color:#94a3b8; text-align:center; padding:.3rem 0;">carregando…</div>
+</div>
+<script>
+(function(){
+    var hint   = document.getElementById('qhint');
+    var cache  = {};
+    var active = null;
+
+    function fmt(v){ return 'R$ '+parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+    function fmtPct(v){ var f=parseFloat(v); return (f>=0?'+':'')+f.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%'; }
+
+    function showHint(ticker, x, y){
+        active = ticker;
+        document.getElementById('qh-ticker').textContent = ticker;
+        document.getElementById('qh-name').textContent   = '';
+        document.getElementById('qh-price').textContent  = '';
+        document.getElementById('qh-change').textContent = '';
+        document.getElementById('qh-ask').textContent    = '';
+        document.getElementById('qh-bid').textContent    = '';
+        document.getElementById('qh-loading').style.display = 'block';
+        posHint(x, y);
+        hint.style.display = 'block';
+
+        if(cache[ticker]){ renderHint(cache[ticker]); return; }
+
+        fetch('/api/quote_hint/'+encodeURIComponent(ticker))
+            .then(function(r){ return r.json(); })
+            .then(function(d){
+                cache[ticker] = d;
+                if(active === ticker) renderHint(d);
+            })
+            .catch(function(){ document.getElementById('qh-loading').textContent='erro'; });
+    }
+
+    function renderHint(d){
+        document.getElementById('qh-loading').style.display = 'none';
+        document.getElementById('qh-name').textContent   = d.name !== d.ticker ? d.name : '';
+        document.getElementById('qh-price').textContent  = fmt(d.price);
+        var cel = document.getElementById('qh-change');
+        cel.textContent  = fmtPct(d.change);
+        cel.style.color  = d.change >= 0 ? '#4ade80' : '#f87171';
+        document.getElementById('qh-ask').textContent    = d.ask > 0 ? fmt(d.ask) : '—';
+        document.getElementById('qh-bid').textContent    = d.bid > 0 ? fmt(d.bid) : '—';
+    }
+
+    function posHint(x, y){
+        var w = window.innerWidth, h = window.innerHeight;
+        var hw = hint.offsetWidth  || 190;
+        var hh = hint.offsetHeight || 130;
+        var left = x + 14; if(left + hw > w - 8) left = x - hw - 8;
+        var top  = y + 14; if(top  + hh > h - 8) top  = y - hh - 8;
+        hint.style.left = left + 'px';
+        hint.style.top  = top  + 'px';
+    }
+
+    document.addEventListener('mouseover', function(e){
+        var badge = e.target.closest('.ticker-badge');
+        if(!badge) return;
+        var ticker = badge.textContent.trim().split('\n')[0].trim();
+        if(!ticker) return;
+        showHint(ticker, e.clientX, e.clientY);
+    });
+    document.addEventListener('mousemove', function(e){
+        if(hint.style.display === 'none') return;
+        posHint(e.clientX, e.clientY);
+    });
+    document.addEventListener('mouseout', function(e){
+        var badge = e.target.closest('.ticker-badge');
+        if(!badge) return;
+        if(!e.relatedTarget || !e.relatedTarget.closest('.ticker-badge')){
+            hint.style.display = 'none';
+            active = null;
+        }
+    });
+})();
+</script>
 {% endblock %}

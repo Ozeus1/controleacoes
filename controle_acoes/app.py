@@ -6164,110 +6164,19 @@ def profile():
 @app.route('/oplab_debug')
 @login_required
 def oplab_debug():
-    """Diagnóstico: testa /market/quote com os tickers das StructuredLegs abertas."""
+    """Diagnóstico: estado do token OpLab no banco."""
     if not current_user.is_admin:
         return jsonify({'error': 'Forbidden'}), 403
     uid = current_user.id
     raw = Settings.query.filter_by(key='oplab_token', user_id=uid).first()
     token = Settings.get_value('oplab_token', user_id=uid)
-
-    result = {
-        'token_row_exists': raw is not None,
-        'token_ok': bool(token),
+    return jsonify({
+        'user_id': uid,
+        'row_exists': raw is not None,
+        'raw_value_len': len(raw.value) if raw else 0,
+        'get_value_result': bool(token),
         'token_prefix': token[:8] + '...' if token and len(token) > 8 else token,
-    }
-
-    if token:
-        # Coleta tickers das StructuredLegs abertas
-        legs = StructuredLeg.query.join(StructuredOp).filter(
-            StructuredOp.user_id == uid, StructuredOp.status == 'OPEN'
-        ).all()
-        leg_tickers = [l.ticker.upper() for l in legs if l.ticker]
-        result['leg_tickers'] = leg_tickers
-        result['leg_current_prices'] = {l.ticker.upper(): l.current_price for l in legs}
-
-        if leg_tickers:
-            BASE = 'https://api.oplab.com.br/v3'
-            try:
-                r = requests.get(f'{BASE}/market/quote',
-                                 params={'tickers': ','.join(leg_tickers)},
-                                 headers={'Access-Token': token}, timeout=10)
-                result['market_quote_status'] = r.status_code
-                result['market_quote_body'] = r.json() if r.content else []
-            except Exception as e:
-                result['market_quote_error'] = str(e)
-
-            # Testa também /market/instruments para o primeiro ticker
-            try:
-                r2 = requests.get(f'{BASE}/market/instruments/{leg_tickers[0]}',
-                                  headers={'Access-Token': token}, timeout=10)
-                result['instruments_status'] = r2.status_code
-                result['instruments_body'] = r2.json() if r2.content else {}
-            except Exception as e:
-                result['instruments_error'] = str(e)
-
-        # Mostra todas as StructuredOps e seus legs (sem filtro) — inclui repr do ticker para detectar espaços
-        all_ops = StructuredOp.query.filter_by(user_id=uid).all()
-        result['all_struct_ops'] = [
-            {'id': op.id, 'name': op.name, 'status': op.status, 'user_id': op.user_id,
-             'legs': [{'ticker': l.ticker, 'ticker_repr': repr(l.ticker), 'current_price': l.current_price} for l in op.legs]}
-            for op in all_ops
-        ]
-
-        # Roda o bulk update e mostra resultado
-        if request.args.get('run_update') == '1':
-            # Busca preços diretamente aqui para diagnóstico
-            BASE2 = 'https://api.oplab.com.br/v3'
-            wege_tickers = ['WEGEG48', 'WEGES474', 'WEGES48']
-            try:
-                rw = requests.get(f'{BASE2}/market/quote',
-                                  params={'tickers': ','.join(wege_tickers)},
-                                  headers={'Access-Token': token}, timeout=10)
-                wege_prices_raw = rw.json() if rw.content else []
-                result['wege_quote_direct'] = {'status': rw.status_code, 'body': wege_prices_raw}
-                wege_prices = {str(i.get('symbol','')).upper(): i.get('close') for i in wege_prices_raw}
-                result['wege_prices_parsed'] = wege_prices
-            except Exception as e:
-                result['wege_quote_error'] = str(e)
-
-            # Força update direto dos legs do op 28 sem passar pelo bulk
-            direct_result = {}
-            op28 = StructuredOp.query.filter_by(id=28, user_id=uid).first()
-            if op28 and wege_prices:
-                for leg in op28.legs:
-                    k = leg.ticker.strip().upper()
-                    p = wege_prices.get(k)
-                    direct_result[k] = {'price_from_api': p, 'before': leg.current_price}
-                    if p and float(p) > 0:
-                        leg.current_price = float(p)
-                        direct_result[k]['set_to'] = float(p)
-                    else:
-                        direct_result[k]['skipped'] = True
-                try:
-                    db.session.commit()
-                    direct_result['commit'] = 'ok'
-                except Exception as ce:
-                    db.session.rollback()
-                    direct_result['commit_error'] = str(ce)
-                # Relê do banco
-                db.session.expire_all()
-                op28r = StructuredOp.query.filter_by(id=28).first()
-                direct_result['after_commit'] = {l.ticker: l.current_price for l in op28r.legs}
-            result['direct_op28_update'] = direct_result
-
-            a_ok, o_ok = _do_oplab_bulk_update(uid, token)
-            result['update_ran'] = True
-            result['update_result'] = {'assets_ok': a_ok, 'options_ok': o_ok}
-            # Expire session e relê do banco
-            db.session.expire_all()
-            legs_after = StructuredLeg.query.join(StructuredOp).filter(
-                StructuredOp.user_id == uid, StructuredOp.status == 'OPEN'
-            ).all()
-            result['leg_prices_after_update'] = {l.ticker.upper(): l.current_price for l in legs_after}
-            # Mostra tickers que ainda estão em 0
-            result['still_zero'] = [l.ticker.upper() for l in legs_after if (l.current_price or 0) == 0]
-
-    return jsonify(result)
+    })
 
 
 @app.route('/oplab_test', methods=['GET', 'POST'])
@@ -6621,9 +6530,7 @@ def atualizar_oplab():
     ativos_ok, opcoes_ok = _do_oplab_bulk_update(current_user.id, token)
     _oplab_last_update[current_user.id] = datetime.now()
 
-    if ativos_ok == -1:
-        flash('OpLab: erro ao salvar no banco — verifique os logs do servidor.', 'danger')
-    elif (ativos_ok + opcoes_ok) > 0:
+    if (ativos_ok + opcoes_ok) > 0:
         flash(f'OpLab: {ativos_ok} ativo(s) e {opcoes_ok} opção(ões) atualizados.', 'success')
     else:
         flash('OpLab: nenhum ativo atualizado. Verifique o token ou os tickers cadastrados.', 'warning')
@@ -7882,10 +7789,8 @@ def _do_oplab_bulk_update(uid: int, token: str):
 
     try:
         db.session.commit()
-    except Exception as _e:
+    except Exception:
         db.session.rollback()
-        import traceback; traceback.print_exc()
-        return -1, -1   # sinaliza falha de commit
 
     return assets_ok, options_ok
 

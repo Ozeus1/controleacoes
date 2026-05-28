@@ -578,6 +578,13 @@
         <a href="{{ url_for('add_estruturada') }}" class="btn btn-primary btn-sm">+ Nova Operação</a>
     </div>
 
+    {% if not oplab_token_ok %}
+    <div style="margin: 0 1rem 1rem 1rem; padding: 0.6rem 1rem; background: rgba(245,158,11,0.15); border-left: 3px solid #f59e0b; border-radius: 4px; font-size: 0.85rem; color: var(--text-secondary);">
+        ⚠️ Token OpLab não configurado — cotações das opções não serão atualizadas pelo botão "Atualizar Cotações".
+        <a href="{{ url_for('profile') }}" style="color: #f59e0b; margin-left: 0.4rem;">Configurar →</a>
+    </div>
+    {% endif %}
+
     {% if structured_ops %}
     <div style="overflow-x: auto;">
     <table>

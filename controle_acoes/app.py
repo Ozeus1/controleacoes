@@ -1114,6 +1114,7 @@ def opcoes():
         metrics = _calc_structured_metrics_safe(op)
         structured_ops.append({'op': op, **metrics})
 
+    oplab_token_ok = bool(Settings.get_value('oplab_token', user_id=current_user.id))
     return render_template('opcoes.html', options=processed_options,
                            venda_puts=venda_puts,
                            compra_calls=compra_calls, compra_puts=compra_puts,
@@ -1122,6 +1123,7 @@ def opcoes():
                            spreads_baixa_put=spreads_baixa_put,
                            spreads_baixa_call=spreads_baixa_call,
                            structured_ops=structured_ops,
+                           oplab_token_ok=oplab_token_ok,
                            today=date.today())
 
 @app.route('/add_option', methods=['GET', 'POST'])

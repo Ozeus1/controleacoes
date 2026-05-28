@@ -7158,7 +7158,7 @@ def api_chart_data(ticker):
        2. SQLite            — sobrevive restart; fetch incremental se stale
        3. Yahoo Finance v8  — chamada HTTP direta, ~0.5 s
     """
-    import time as _time, gzip as _gzip, json as _json
+    import re, time as _time, gzip as _gzip, json as _json
     from models import ChartCache
     from datetime import date as _date, timedelta as _td
 

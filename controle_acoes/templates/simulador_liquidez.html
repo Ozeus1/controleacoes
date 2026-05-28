@@ -1,0 +1,897 @@
+{% extends "base.html" %}
+{% block title %}Simulador com Liquidez{% endblock %}
+{% block extra_scripts %}
+<style>
+/* ── Liquidez inline ── */
+#sl-liq-section { margin-bottom: 1.5rem; }
+.sl-ticker-btn {
+  padding: .25rem .6rem; border: 1px solid #475569; border-radius: 5px;
+  font-size: .8rem; cursor: pointer; color: #e2e8f0; background: var(--hover-bg,#334155);
+  white-space: nowrap; transition: background .12s;
+}
+.sl-ticker-btn.active { background: #7c3aed; border-color: #7c3aed; font-weight: 700; }
+.liq-venc-btn {
+  background: rgba(148,163,184,.15); border: 1px solid transparent; border-radius: 4px;
+  padding: .15rem .5rem; font-size: .78rem; color: #cbd5e1; cursor: pointer; transition: background .12s;
+}
+/* ── Tabela de pernas ── */
+#legs-table { width: 100%; border-collapse: collapse; font-size: .87rem; }
+#legs-table th { padding: .4rem .5rem; text-align: left; white-space: nowrap; background: var(--hover-bg); }
+#legs-table td { padding: .3rem .4rem; }
+#legs-table input, #legs-table select {
+  background: var(--card-bg); color: var(--text-primary);
+  border: 1px solid var(--border-color); border-radius: 4px; padding: .25rem .4rem;
+}
+/* ── Gráfico ── */
+#chart-wrap { position: relative; width: 100%; background: var(--hover-bg);
+  border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; margin-top: 1rem; }
+#payoff-canvas { display: block; width: 100%; }
+#chart-tooltip { display: none; position: absolute; background: var(--card-bg,#1e293b);
+  border: 1px solid var(--border-color); border-radius: 6px; padding: .35rem .65rem;
+  font-size: .82rem; pointer-events: none; white-space: nowrap; z-index: 10; }
+/* ── Métricas ── */
+#metrics { display: flex; gap: 1.4rem; flex-wrap: wrap; background: var(--hover-bg);
+  border: 1px solid var(--border-color); border-radius: 8px;
+  padding: .8rem 1.1rem; font-size: .88rem; margin-top: .9rem; }
+#metrics div span:first-child { color: var(--text-secondary); }
+/* ── sim-item ── */
+.sim-item {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .5rem .7rem; border-radius: 6px; cursor: pointer;
+  font-size: .87rem; transition: background .15s; border: 1px solid transparent;
+}
+.sim-item:hover { background: var(--hover-bg); }
+.sim-item.active { background: var(--hover-bg); border-color: var(--accent-color); }
+.sim-item-name { flex: 1; font-weight: 500; }
+.sim-item-meta { font-size: .75rem; color: var(--text-secondary); white-space: nowrap; }
+/* ── ticker clickable ── */
+.ticker-badge { cursor: pointer; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1.2rem">
+  <h2 style="margin:0">💧📈 Simulador com Liquidez</h2>
+</div>
+
+{# ── Seção Liquidez ── #}
+<div id="sl-liq-section" class="card" style="padding:1rem">
+  <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.75rem">
+    <span style="font-weight:600;font-size:.95rem">💧 Liquidez de Opções</span>
+    <div style="display:flex;gap:.35rem;flex-wrap:wrap" id="sl-ticker-btns">
+      {% for rv in ranking_vol %}
+      <button class="sl-ticker-btn" data-t="{{ rv.ticker }}"
+              onclick="slLoadLiq('{{ rv.ticker }}')">{{ rv.ticker }}</button>
+      {% else %}
+      <span style="color:var(--text-secondary);font-size:.85rem">Nenhum ativo no ranking. Adicione em <a href="{{ url_for('ranking_volatilidade') }}">Ranking Vol.</a></span>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div id="sl-liq-loading" style="color:var(--text-secondary);font-size:.85rem;padding:.5rem 0;display:none">
+    Buscando dados via OpLab…
+  </div>
+  <div id="sl-liq-summary" style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:.5rem"></div>
+  <div id="sl-liq-tables" style="display:none;gap:1rem;flex-wrap:wrap">
+    <!-- CALL -->
+    <div style="flex:1;min-width:280px">
+      <h6 style="color:#3b82f6;margin-bottom:.4rem;font-size:.85rem">📈 CALL — por Volume</h6>
+      <div style="overflow-x:auto">
+        <table style="width:100%;font-size:.78rem;border-collapse:collapse">
+          <thead>
+            <tr style="color:var(--text-secondary);border-bottom:1px solid var(--border-color)">
+              <th style="text-align:left;padding:.25rem .4rem">Opção</th>
+              <th style="text-align:right;padding:.25rem .4rem">Strike</th>
+              <th style="text-align:right;padding:.25rem .4rem">% Spot</th>
+              <th style="text-align:right;padding:.25rem .4rem">Último</th>
+              <th style="text-align:right;padding:.25rem .4rem">Var%</th>
+              <th style="text-align:right;padding:.25rem .4rem">Vol. Fin.</th>
+              <th style="text-align:right;padding:.25rem .4rem">Venc.</th>
+            </tr>
+          </thead>
+          <tbody id="sl-call-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <!-- PUT -->
+    <div style="flex:1;min-width:280px">
+      <h6 style="color:#f87171;margin-bottom:.4rem;font-size:.85rem">📉 PUT — por Volume</h6>
+      <div style="overflow-x:auto">
+        <table style="width:100%;font-size:.78rem;border-collapse:collapse">
+          <thead>
+            <tr style="color:var(--text-secondary);border-bottom:1px solid var(--border-color)">
+              <th style="text-align:left;padding:.25rem .4rem">Opção</th>
+              <th style="text-align:right;padding:.25rem .4rem">Strike</th>
+              <th style="text-align:right;padding:.25rem .4rem">% Spot</th>
+              <th style="text-align:right;padding:.25rem .4rem">Último</th>
+              <th style="text-align:right;padding:.25rem .4rem">Var%</th>
+              <th style="text-align:right;padding:.25rem .4rem">Vol. Fin.</th>
+              <th style="text-align:right;padding:.25rem .4rem">Venc.</th>
+            </tr>
+          </thead>
+          <tbody id="sl-put-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <p style="font-size:.72rem;color:var(--text-secondary);margin:.5rem 0 0">
+    Clique no ticker da opção para adicioná-la ao simulador abaixo.
+  </p>
+</div>
+
+{# ── Seção Simulações Salvas ── #}
+{% if sims %}
+<div class="card" style="padding:.9rem;margin-bottom:1.2rem">
+  <div style="font-size:.8rem;color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.6rem">
+    Simulações Salvas
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:.4rem">
+    {% for s in sims %}
+    <div class="sim-item"
+         style="flex:1;min-width:200px;max-width:320px;"
+         onclick="window.location='{{ url_for('simulacao_edit', id=s.id) }}'">
+      <div style="flex:1;min-width:0">
+        <div class="sim-item-name">{{ s.name }}</div>
+        <div class="sim-item-meta">{{ s.underlying or '—' }} · {{ s.created_at.strftime('%d/%m/%y') if s.created_at else '' }}</div>
+      </div>
+      <form action="{{ url_for('simulacao_delete', id=s.id) }}" method="post" style="margin:0"
+            onclick="event.stopPropagation()">
+        <button type="submit" class="btn btn-sm btn-danger"
+                style="padding:.1rem .4rem;font-size:.8rem"
+                onclick="return confirm('Excluir simulação?')">🗑️</button>
+      </form>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# ── Seção Simulador ── #}
+<div class="card" style="padding:1.2rem">
+  <h5 style="margin-bottom:1rem">📈 Simulação de Opções</h5>
+
+  <form id="sim-form" method="POST" action="{{ url_for('simulacao_new') }}">
+
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
+      <div class="form-group" style="flex:3;min-width:200px;margin-bottom:0">
+        <label>Nome / Descrição</label>
+        <input type="text" name="name" required placeholder="Ex: Trava PETR4 Jun/25"
+               style="width:100%;" oninput="scheduleRedraw()">
+      </div>
+      <div class="form-group" style="flex:1;min-width:120px;margin-bottom:0">
+        <label>Ativo Subjacente</label>
+        <input type="text" name="underlying" id="sim-underlying" placeholder="PETR4"
+               style="width:100%;text-transform:uppercase;">
+      </div>
+    </div>
+
+    <script>var SELIC_RATE = {{ selic }};  /* % a.a. */</script>
+
+    <div style="overflow-x:auto;margin-bottom:.8rem">
+      <table id="legs-table">
+        <thead>
+          <tr>
+            <th>Tipo</th><th>C/V</th><th>Ticker</th><th>Qtd</th>
+            <th style="text-align:right">Prêmio / Preço</th>
+            <th>Vencimento</th>
+            <th style="text-align:right">Strike</th>
+            <th class="col-iv-hdr" style="text-align:right;display:none">VI %</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="legs-body">
+          <tr class="leg-row">
+            <td>
+              <select name="leg_type" onchange="legTypeChanged(this);scheduleRedraw();" style="width:72px">
+                <option value="CALL">CALL</option>
+                <option value="PUT">PUT</option>
+                <option value="STOCK">AÇÃO</option>
+              </select>
+            </td>
+            <td>
+              <select name="leg_side" onchange="scheduleRedraw();" style="width:90px">
+                <option value="BUY">COMPRA</option>
+                <option value="SELL">VENDA</option>
+              </select>
+            </td>
+            <td class="col-ticker"><input type="text" name="leg_ticker" placeholder="ex: PETRQ46"
+               style="width:110px;text-transform:uppercase"></td>
+            <td><input type="text" name="leg_qty" value="1" style="width:60px;text-align:center" oninput="scheduleRedraw()"></td>
+            <td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px;text-align:right" oninput="scheduleRedraw()"></td>
+            <td class="col-exp"><input type="date" name="leg_exp" style="width:135px"></td>
+            <td class="col-strike"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px;text-align:right" oninput="scheduleRedraw()"></td>
+            <td class="col-iv" style="display:none"><input type="text" name="leg_iv" placeholder="0,0" style="width:60px;text-align:right" oninput="scheduleRedraw()"></td>
+            <td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div style="display:flex;gap:.7rem;align-items:center;flex-wrap:wrap">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('CALL')">+ Call</button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('PUT')">+ Put</button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('STOCK')">+ Ação</button>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="clearLegs()">🗑 Limpar</button>
+      <button type="submit" class="btn btn-primary btn-sm">💾 Salvar</button>
+    </div>
+
+  </form>
+
+  <div id="metrics">
+    <div><span>Saldo montagem</span><br><strong id="m-net">—</strong></div>
+    <div><span>Lucro máx.</span><br><strong id="m-gain" class="positive">—</strong></div>
+    <div><span>Perda máx.</span><br><strong id="m-loss" class="negative">—</strong></div>
+    <div><span>Breakeven(s)</span><br><strong id="m-be">—</strong></div>
+    <div title="Probability of Profit">
+      <span>POP</span><br><strong id="m-pop">—</strong>
+    </div>
+  </div>
+
+  <div id="calendar-warning" style="display:none;margin-top:.8rem;padding:.6rem 1rem;
+       background:rgba(234,179,8,0.12);border:1px solid rgba(234,179,8,0.4);
+       border-radius:6px;font-size:.85rem;color:#ca8a04"></div>
+
+  <div id="chart-wrap">
+    <canvas id="payoff-canvas"></canvas>
+    <div id="chart-tooltip"></div>
+  </div>
+</div>
+
+{# ── Mini-modal: Adicionar perna ── #}
+<div id="sl-leg-modal" style="display:none;position:fixed;inset:0;z-index:20000;
+     background:rgba(0,0,0,.7);align-items:center;justify-content:center">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.5rem;
+              width:min(95vw,360px);border:1px solid var(--border-color)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+      <strong>Adicionar Perna</strong>
+      <button onclick="slCloseLegModal()"
+              style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer">&times;</button>
+    </div>
+    <div id="sl-leg-info" style="font-size:.85rem;color:var(--text-secondary);margin-bottom:1rem"></div>
+    <div style="display:flex;gap:.75rem;margin-bottom:1rem">
+      <div style="flex:1">
+        <label style="font-size:.82rem;display:block;margin-bottom:.25rem">C / V</label>
+        <select id="sl-leg-side" style="width:100%;background:var(--card-bg);color:var(--text-primary);
+                border:1px solid var(--border-color);border-radius:4px;padding:.3rem .5rem">
+          <option value="BUY">COMPRA</option>
+          <option value="SELL">VENDA</option>
+        </select>
+      </div>
+      <div style="flex:1">
+        <label style="font-size:.82rem;display:block;margin-bottom:.25rem">Quantidade</label>
+        <input id="sl-leg-qty" type="number" min="1" value="1"
+               style="width:100%;background:var(--card-bg);color:var(--text-primary);
+                      border:1px solid var(--border-color);border-radius:4px;padding:.3rem .5rem">
+      </div>
+    </div>
+    <div style="display:flex;gap:.5rem;justify-content:flex-end">
+      <button class="btn btn-sm btn-secondary" onclick="slCloseLegModal()">Cancelar</button>
+      <button class="btn btn-sm btn-primary" onclick="slConfirmLeg()">Adicionar</button>
+    </div>
+  </div>
+</div>
+
+{# ── Quote Hint Tooltip ── #}
+<div id="qhint" style="display:none;position:fixed;z-index:99999;background:#1e293b;border:1px solid #334155;
+     border-radius:8px;padding:.6rem .9rem;min-width:170px;box-shadow:0 4px 18px rgba(0,0,0,.55);
+     font-size:.82rem;pointer-events:none">
+  <div style="font-weight:700;font-size:.9rem;margin-bottom:.35rem" id="qh-ticker"></div>
+  <div style="color:#94a3b8;font-size:.72rem;margin-bottom:.4rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px" id="qh-name"></div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:.2rem .7rem">
+    <span style="color:#94a3b8">Último</span>  <span id="qh-price" style="font-weight:600"></span>
+    <span style="color:#94a3b8">Var %</span>   <span id="qh-change"></span>
+    <span style="color:#94a3b8">Ask</span>     <span id="qh-ask" style="color:#f87171"></span>
+    <span style="color:#94a3b8">Bid</span>     <span id="qh-bid" style="color:#4ade80"></span>
+    <span id="qh-trades-label" style="color:#94a3b8;display:none">Negócios</span>
+    <span id="qh-trades" style="display:none"></span>
+  </div>
+  <div id="qh-loading" style="color:#94a3b8;text-align:center;padding:.3rem 0">carregando…</div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// LIQUIDEZ
+// ═══════════════════════════════════════════════════════════
+var _slCache = {};
+var _slActiveVenc = null;
+var _slCurrentData = null;
+
+function fmtBRL_sl(v){
+  if(v==null) return '—';
+  if(v>=1e6) return 'R$'+(v/1e6).toFixed(1)+'M';
+  if(v>=1e3) return 'R$'+(v/1e3).toFixed(0)+'k';
+  return 'R$'+parseFloat(v).toFixed(2);
+}
+function fmtN_sl(v,d){ return v!=null?parseFloat(v).toFixed(d||2):'—'; }
+function fmtDate_sl(s){
+  if(!s) return '—';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s)){ var p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0].slice(2); }
+  if(/^\d{2}\/\d{2}$/.test(s)){ var q=s.split('/'); return q[1]+'/'+q[0]; }
+  return s;
+}
+
+function _slRenderTable(tbodyId, rows, colorClass, spot, optType){
+  var tb = document.getElementById(tbodyId);
+  tb.innerHTML = '';
+  if(!rows || !rows.length){
+    tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:.75rem">Sem dados</td></tr>';
+    return;
+  }
+  rows.forEach(function(o){
+    var due = o.due_date || '';
+    if(_slActiveVenc && due !== _slActiveVenc){
+      var tr=document.createElement('tr'); tr.dataset.due=due; tr.style.display='none'; tb.appendChild(tr); return;
+    }
+    var varColor = parseFloat(o.var_pct)>=0 ? '#4ade80' : '#f87171';
+    var venc = fmtDate_sl(due);
+    var spotPctHtml = '—';
+    if(spot && o.strike){
+      var pct = (o.strike - spot) / spot * 100;
+      var pctColor = pct >= 0 ? '#93c5fd' : '#fca5a5';
+      spotPctHtml = '<span style="color:'+pctColor+'">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</span>';
+    }
+    var tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid rgba(255,255,255,.05)';
+    tr.dataset.due = due;
+    tr.innerHTML =
+      '<td style="padding:.25rem .4rem"><span class="ticker-badge" data-sym="'+o.symbol+'" data-strike="'+o.strike+'" data-close="'+o.close+'" data-due="'+due+'" data-type="'+optType+'" style="font-weight:600;color:'+colorClass+';cursor:pointer">'+o.symbol+'</span></td>'+
+      '<td style="text-align:right;padding:.25rem .4rem">'+fmtN_sl(o.strike)+'</td>'+
+      '<td style="text-align:right;padding:.25rem .4rem">'+spotPctHtml+'</td>'+
+      '<td style="text-align:right;padding:.25rem .4rem">'+fmtN_sl(o.close)+'</td>'+
+      '<td style="text-align:right;padding:.25rem .4rem;color:'+varColor+'">'+
+        (parseFloat(o.var_pct)>=0?'+':'')+fmtN_sl(o.var_pct)+'%</td>'+
+      '<td style="text-align:right;padding:.25rem .4rem;font-weight:600">'+fmtBRL_sl(o.volume)+'</td>'+
+      '<td style="text-align:right;padding:.25rem .4rem;color:var(--text-secondary)">'+venc+'</td>';
+    tb.appendChild(tr);
+  });
+}
+
+function _slApplyVencFilter(venc, data){
+  _slActiveVenc = (_slActiveVenc === venc) ? null : venc;
+  _slRenderTable('sl-call-tbody', data.calls, '#93c5fd', data.spot_price, 'CALL');
+  _slRenderTable('sl-put-tbody',  data.puts,  '#fca5a5', data.spot_price, 'PUT');
+  document.querySelectorAll('.liq-venc-btn').forEach(function(b){
+    var act = b.dataset.due === _slActiveVenc;
+    b.style.background  = act ? '#7c3aed' : 'rgba(148,163,184,.15)';
+    b.style.color       = act ? '#fff'    : '#cbd5e1';
+    b.style.borderColor = act ? '#7c3aed' : 'transparent';
+  });
+}
+
+function _slRenderLiq(d){
+  _slCurrentData = d;
+  _slActiveVenc = null;
+  document.getElementById('sl-liq-loading').style.display = 'none';
+
+  var hasLiq = (d.vol_total_call + d.vol_total_put) > 0;
+  var liqLabel = hasLiq
+    ? '<span style="color:#4ade80;font-weight:700">✓ Possui liquidez</span>'
+    : '<span style="color:#f87171;font-weight:700">✗ Sem liquidez expressiva</span>';
+
+  var spotHtml = '';
+  if(d.spot_price != null){
+    var chg = d.spot_change != null ? d.spot_change : 0;
+    var chgColor = chg >= 0 ? '#4ade80' : '#f87171';
+    var chgStr = (chg >= 0 ? '+' : '') + parseFloat(chg).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + '%';
+    spotHtml = '<div style="background:rgba(255,255,255,.07);border-radius:6px;padding:.4rem .8rem;display:flex;align-items:center;gap:.5rem">'
+      + '<span style="color:var(--text-secondary);font-size:.8rem">Spot</span>'
+      + '<strong style="font-size:.95rem">R$ '+parseFloat(d.spot_price).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'</strong>'
+      + '<span style="color:'+chgColor+';font-size:.8rem">'+chgStr+'</span>'
+      + '</div>';
+  }
+
+  var sumEl = document.getElementById('sl-liq-summary');
+  sumEl.innerHTML =
+    '<div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;width:100%">'
+    + '<div style="background:var(--hover-bg,#334155);border-radius:6px;padding:.4rem .8rem">'+liqLabel
+    + ' &nbsp;|&nbsp; Total opções: <strong>'+d.total_options+'</strong></div>'
+    + '<div style="background:rgba(59,130,246,.15);border-radius:6px;padding:.4rem .8rem;color:#93c5fd">'
+    + '📈 CALL: <strong>'+fmtBRL_sl(d.vol_total_call)+'</strong></div>'
+    + '<div style="background:rgba(248,113,113,.15);border-radius:6px;padding:.4rem .8rem;color:#fca5a5">'
+    + '📉 PUT: <strong>'+fmtBRL_sl(d.vol_total_put)+'</strong></div>'
+    + spotHtml
+    + '</div>';
+
+  if(d.due_dates && d.due_dates.length){
+    var vencRow = document.createElement('div');
+    vencRow.style.cssText = 'display:flex;gap:.35rem;flex-wrap:wrap;align-items:center;margin-top:.4rem';
+    var lbl = document.createElement('span');
+    lbl.style.cssText = 'color:var(--text-secondary);font-size:.8rem';
+    lbl.textContent = 'Venc.:';
+    vencRow.appendChild(lbl);
+    d.due_dates.forEach(function(dt){
+      var btn = document.createElement('button');
+      btn.className = 'liq-venc-btn';
+      btn.dataset.due = dt;
+      btn.textContent = fmtDate_sl(dt);
+      btn.style.cssText = 'background:rgba(148,163,184,.15);border:1px solid transparent;border-radius:4px;'
+        + 'padding:.15rem .5rem;font-size:.78rem;color:#cbd5e1;cursor:pointer;transition:background .12s';
+      btn.onclick = function(){ _slApplyVencFilter(dt, d); };
+      vencRow.appendChild(btn);
+    });
+    sumEl.appendChild(vencRow);
+  }
+
+  _slRenderTable('sl-call-tbody', d.calls, '#93c5fd', d.spot_price, 'CALL');
+  _slRenderTable('sl-put-tbody',  d.puts,  '#fca5a5', d.spot_price, 'PUT');
+  document.getElementById('sl-liq-tables').style.display = 'flex';
+}
+
+window.slLoadLiq = function(ticker){
+  document.querySelectorAll('.sl-ticker-btn').forEach(function(b){
+    b.classList.toggle('active', b.dataset.t === ticker);
+  });
+  document.getElementById('sl-liq-loading').style.display = 'block';
+  document.getElementById('sl-liq-loading').textContent = 'Buscando dados via OpLab…';
+  document.getElementById('sl-liq-tables').style.display = 'none';
+  document.getElementById('sl-liq-summary').innerHTML = '';
+  // Preenche ativo subjacente no formulário
+  document.getElementById('sim-underlying').value = ticker;
+
+  if(_slCache[ticker]){ _slRenderLiq(_slCache[ticker]); return; }
+
+  fetch('/api/liquidez/'+encodeURIComponent(ticker))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if(d.error){ document.getElementById('sl-liq-loading').textContent = '✗ '+d.error; return; }
+      _slCache[ticker] = d;
+      _slRenderLiq(d);
+    })
+    .catch(function(e){ document.getElementById('sl-liq-loading').textContent = '✗ Erro: '+e; });
+};
+
+// ═══════════════════════════════════════════════════════════
+// MINI-MODAL: adicionar perna ao simulador
+// ═══════════════════════════════════════════════════════════
+var _slPendingLeg = null;
+
+document.addEventListener('click', function(e){
+  var badge = e.target.closest('.ticker-badge[data-sym]');
+  if(!badge) return;
+  var sym    = badge.dataset.sym;
+  var strike = badge.dataset.strike;
+  var close  = badge.dataset.close;
+  var due    = badge.dataset.due;
+  var type   = badge.dataset.type;  // CALL or PUT
+  if(!sym || !type) return;
+  _slPendingLeg = { sym: sym, strike: strike, close: close, due: due, type: type };
+  document.getElementById('sl-leg-info').innerHTML =
+    '<strong>' + sym + '</strong> &nbsp;'
+    + '<span style="color:' + (type==='CALL'?'#93c5fd':'#fca5a5') + '">' + type + '</span>'
+    + ' &nbsp;Strike: <strong>' + parseFloat(strike).toLocaleString('pt-BR',{minimumFractionDigits:2}) + '</strong>'
+    + ' &nbsp;Prêmio: <strong>R$ ' + parseFloat(close||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</strong>'
+    + ' &nbsp;Venc: <strong>' + fmtDate_sl(due) + '</strong>';
+  document.getElementById('sl-leg-qty').value = 1;
+  document.getElementById('sl-leg-side').value = 'BUY';
+  document.getElementById('sl-leg-modal').style.display = 'flex';
+  e.stopPropagation();
+});
+
+window.slCloseLegModal = function(){
+  document.getElementById('sl-leg-modal').style.display = 'none';
+  _slPendingLeg = null;
+};
+
+window.slConfirmLeg = function(){
+  if(!_slPendingLeg) return;
+  var side = document.getElementById('sl-leg-side').value;
+  var qty  = parseInt(document.getElementById('sl-leg-qty').value) || 1;
+  var p    = _slPendingLeg;
+
+  // Formata prêmio como BR (vírgula)
+  var premium = parseFloat(p.close||0).toFixed(2).replace('.',',');
+  var strike  = parseFloat(p.strike||0).toFixed(2).replace('.',',');
+
+  addLegFilled(p.type, side, qty, p.sym, premium, p.due, strike);
+  slCloseLegModal();
+  // Rola para o simulador
+  document.getElementById('legs-table').scrollIntoView({behavior:'smooth', block:'center'});
+};
+
+// ═══════════════════════════════════════════════════════════
+// SIMULADOR — gestão de pernas
+// ═══════════════════════════════════════════════════════════
+function rowTemplate(type){
+  var isSt = type === 'STOCK';
+  var hide = isSt ? 'display:none;' : '';
+  var dis  = isSt ? ' disabled' : '';
+  return '<tr class="leg-row">' +
+    '<td><select name="leg_type" onchange="legTypeChanged(this);scheduleRedraw();" style="width:72px">' +
+      '<option value="CALL"'  + (type==='CALL' ?' selected':'') + '>CALL</option>' +
+      '<option value="PUT"'   + (type==='PUT'  ?' selected':'') + '>PUT</option>'  +
+      '<option value="STOCK"' + (isSt          ?' selected':'') + '>AÇÃO</option>' +
+    '</select></td>' +
+    '<td><select name="leg_side" onchange="scheduleRedraw();" style="width:90px">' +
+      '<option value="BUY">COMPRA</option><option value="SELL">VENDA</option>' +
+    '</select></td>' +
+    '<td class="col-ticker" style="' + hide + '"><input type="text" name="leg_ticker" placeholder="ex: PETRQ46" style="width:110px;text-transform:uppercase"' + dis + '></td>' +
+    '<td><input type="text" name="leg_qty" value="1" style="width:60px;text-align:center" oninput="scheduleRedraw()"></td>' +
+    '<td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px;text-align:right" oninput="scheduleRedraw()"></td>' +
+    '<td class="col-exp" style="' + hide + '"><input type="date" name="leg_exp" style="width:135px"' + dis + '></td>' +
+    '<td class="col-strike" style="' + hide + '"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px;text-align:right" oninput="scheduleRedraw()"' + dis + '></td>' +
+    '<td class="col-iv" style="display:none"><input type="text" name="leg_iv" placeholder="0,0" style="width:60px;text-align:right" oninput="scheduleRedraw()"' + dis + '></td>' +
+    '<td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>' +
+  '</tr>';
+}
+
+function addLeg(type){
+  document.getElementById('legs-body').insertAdjacentHTML('beforeend', rowTemplate(type || 'CALL'));
+  scheduleRedraw();
+}
+
+function addLegFilled(type, side, qty, ticker, premium, exp, strike){
+  document.getElementById('legs-body').insertAdjacentHTML('beforeend', rowTemplate(type || 'CALL'));
+  var rows = document.querySelectorAll('#legs-body .leg-row');
+  var row = rows[rows.length - 1];
+  row.querySelector('[name=leg_side]').value = side;
+  row.querySelector('[name=leg_qty]').value  = qty;
+  if(ticker) row.querySelector('[name=leg_ticker]').value  = ticker;
+  if(premium) row.querySelector('[name=leg_premium]').value = premium;
+  if(exp)     row.querySelector('[name=leg_exp]').value    = exp;
+  if(strike)  row.querySelector('[name=leg_strike]').value = strike;
+  scheduleRedraw();
+}
+
+function removeLeg(btn){
+  var rows = document.querySelectorAll('#legs-body .leg-row');
+  if(rows.length <= 1){ alert('A operação deve ter ao menos uma perna.'); return; }
+  btn.closest('.leg-row').remove();
+  scheduleRedraw();
+}
+
+function clearLegs(){
+  if(!confirm('Limpar todas as pernas?')) return;
+  var body = document.getElementById('legs-body');
+  body.innerHTML = '';
+  addLeg('CALL');
+}
+
+function legTypeChanged(sel){
+  var row  = sel.closest('tr');
+  var isSt = sel.value === 'STOCK';
+  var strikeEl = row.querySelector('[name=leg_strike]');
+  var expEl    = row.querySelector('[name=leg_exp]');
+  var tickerEl = row.querySelector('[name=leg_ticker]');
+  var ivEl     = row.querySelector('[name=leg_iv]');
+  row.querySelector('.col-ticker').style.display = isSt ? 'none' : '';
+  row.querySelector('.col-exp').style.display    = isSt ? 'none' : '';
+  row.querySelector('.col-strike').style.display = isSt ? 'none' : '';
+  strikeEl.disabled = isSt; expEl.disabled = isSt; tickerEl.disabled = isSt;
+  if(ivEl) ivEl.disabled = isSt;
+  if(isSt){ strikeEl.value=''; expEl.value=''; tickerEl.value=''; }
+  updateIVVisibility();
+}
+
+function updateIVVisibility(){
+  var exps = [];
+  document.querySelectorAll('#legs-body .leg-row').forEach(function(row){
+    var lt  = row.querySelector('[name=leg_type]').value;
+    var exp = row.querySelector('[name=leg_exp]');
+    if(lt!=='STOCK' && exp && exp.value && exps.indexOf(exp.value)<0) exps.push(exp.value);
+  });
+  var multi = exps.length > 1;
+  document.querySelectorAll('.col-iv-hdr').forEach(function(th){ th.style.display=multi?'':'none'; });
+  document.querySelectorAll('#legs-body .leg-row').forEach(function(row){
+    var lt  = row.querySelector('[name=leg_type]').value;
+    var td  = row.querySelector('.col-iv');
+    var inp = row.querySelector('[name=leg_iv]');
+    if(td)  td.style.display  = (multi && lt!=='STOCK')?'':'none';
+    if(inp) inp.disabled      = !(multi && lt!=='STOCK');
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// SIMULADOR — cálculo payoff
+// ═══════════════════════════════════════════════════════════
+function parseVal(s){ return parseFloat((s||'0').replace(/\./g,'').replace(',','.'))||0; }
+
+function readLegs(){
+  var legs = [];
+  document.querySelectorAll('#legs-body .leg-row').forEach(function(row){
+    var lt   = row.querySelector('[name=leg_type]').value;
+    var side = row.querySelector('[name=leg_side]').value;
+    var qty  = parseInt(row.querySelector('[name=leg_qty]').value)||1;
+    var k    = lt!=='STOCK'?parseVal(row.querySelector('[name=leg_strike]').value):0;
+    var p    = parseVal(row.querySelector('[name=leg_premium]').value);
+    var expEl= row.querySelector('[name=leg_exp]');
+    var exp  = (expEl&&expEl.value)?expEl.value:null;
+    var ivEl = row.querySelector('[name=leg_iv]');
+    var iv   = ivEl?(parseVal(ivEl.value)/100):0;
+    legs.push({type:lt,side:side,qty:qty,strike:k,premium:p,exp:exp,iv:iv});
+  });
+  return legs;
+}
+
+function normCDF(x){
+  var a=[0.319381530,-0.356563782,1.781477937,-1.821255978,1.330274429];
+  var L=Math.abs(x), k=1/(1+0.2316419*L);
+  var w=1-(1/Math.sqrt(2*Math.PI))*Math.exp(-L*L/2)*(a[0]*k+a[1]*k*k+a[2]*k*k*k+a[3]*k*k*k*k+a[4]*k*k*k*k*k);
+  return x<0?1-w:w;
+}
+
+function blackScholes(S,K,T,r,sigma,isCall){
+  if(T<=0||sigma<=0||S<=0||K<=0) return isCall?Math.max(0,S-K):Math.max(0,K-S);
+  var sqrtT=Math.sqrt(T);
+  var d1=(Math.log(S/K)+(r+0.5*sigma*sigma)*T)/(sigma*sqrtT);
+  var d2=d1-sigma*sqrtT;
+  if(isCall) return S*normCDF(d1)-K*Math.exp(-r*T)*normCDF(d2);
+  return K*Math.exp(-r*T)*normCDF(-d2)-S*normCDF(-d1);
+}
+
+function getExpDates(legs){
+  var exps=[];
+  legs.forEach(function(l){ if(l.type!=='STOCK'&&l.exp&&exps.indexOf(l.exp)<0) exps.push(l.exp); });
+  return exps.sort();
+}
+
+function netPremium(legs){
+  return legs.reduce(function(acc,l){
+    if(l.type==='STOCK') return acc;
+    return acc+(l.side==='SELL'?1:-1)*l.qty*l.premium;
+  },0);
+}
+
+function payoffAt(S,legs,multiExp,refDateStr){
+  var total=netPremium(legs);
+  var r=SELIC_RATE/100;
+  var refDate=refDateStr?new Date(refDateStr):null;
+  legs.forEach(function(l){
+    var sign=l.side==='BUY'?1:-1;
+    if(l.type==='STOCK'){ total+=sign*l.qty*(S-l.premium); return; }
+    if(multiExp&&refDate&&l.exp&&l.exp>refDateStr&&l.iv>0){
+      var legDate=new Date(l.exp);
+      var T=(legDate-refDate)/(365.25*24*3600*1000);
+      total+=sign*l.qty*blackScholes(S,l.strike,T,r,l.iv,l.type==='CALL');
+    } else {
+      if(l.type==='CALL') total+=sign*l.qty*Math.max(0,S-l.strike);
+      else                total+=sign*l.qty*Math.max(0,l.strike-S);
+    }
+  });
+  return total;
+}
+
+function fmtBRLsim(v){ return 'R$ '+Math.abs(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+// ═══════════════════════════════════════════════════════════
+// CANVAS
+// ═══════════════════════════════════════════════════════════
+var PAD={top:28,right:16,bottom:54,left:96};
+
+function drawChart(legs){
+  var canvas=document.getElementById('payoff-canvas');
+  var wrap  =document.getElementById('chart-wrap');
+  var W=wrap.clientWidth||700, H=Math.max(300,Math.round(W*0.38));
+  canvas.width=W; canvas.height=H;
+  var ctx=canvas.getContext('2d'); ctx.clearRect(0,0,W,H);
+  if(!legs.length) return;
+
+  var expDates=getExpDates(legs), multiExp=expDates.length>1;
+  var refDateStr=multiExp?expDates[0]:null;
+  var strikes=legs.filter(function(l){return l.type!=='STOCK'&&l.strike>0;}).map(function(l){return l.strike;});
+  if(!strikes.length) strikes=[50];
+  var minK=Math.min.apply(null,strikes), maxK=Math.max.apply(null,strikes);
+  var pad=Math.max((maxK-minK)*0.6,maxK*0.3);
+  var Smin=Math.max(0.01,minK-pad), Smax=maxK+pad;
+  var N=400, step=(Smax-Smin)/N, Sarr=[], Parr=[];
+  for(var i=0;i<=N;i++){var S=Smin+i*step;Sarr.push(S);Parr.push(payoffAt(S,legs,multiExp,refDateStr));}
+
+  var maxGain=Math.max.apply(null,Parr), maxLoss=Math.min.apply(null,Parr);
+  var ySpan=Math.max(Math.abs(maxGain),Math.abs(maxLoss))*1.15||100;
+  var yMin=-ySpan, yMax=ySpan;
+  var cW=W-PAD.left-PAD.right, cH=H-PAD.top-PAD.bottom;
+  function xPx(S){return PAD.left+(S-Smin)/(Smax-Smin)*cW;}
+  function yPx(P){return PAD.top+(1-(P-yMin)/(yMax-yMin))*cH;}
+  var y0=yPx(0);
+
+  ctx.strokeStyle='rgba(100,116,139,0.18)'; ctx.lineWidth=1;
+  for(var yi=0;yi<=6;yi++){var yp=PAD.top+yi*cH/6;ctx.beginPath();ctx.moveTo(PAD.left,yp);ctx.lineTo(W-PAD.right,yp);ctx.stroke();}
+  ctx.strokeStyle='rgba(100,116,139,0.5)'; ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(PAD.left,y0);ctx.lineTo(W-PAD.right,y0);ctx.stroke();
+
+  strikes.forEach(function(K){
+    var xk=xPx(K);
+    ctx.setLineDash([5,4]);ctx.strokeStyle='rgba(148,163,184,0.5)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(xk,PAD.top);ctx.lineTo(xk,H-PAD.bottom);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='rgba(148,163,184,0.8)';ctx.font='10px sans-serif';ctx.textAlign='center';
+    ctx.fillText('K='+K.toLocaleString('pt-BR',{minimumFractionDigits:2}),xk,PAD.top-8);
+  });
+
+  var bes=[], pRange=maxGain-maxLoss;
+  if(pRange>0.01){
+    for(var j=0;j<Parr.length-1;j++){
+      var p1=Parr[j],p2=Parr[j+1];
+      if(p1*p2<0){var be=Sarr[j]+(-p1)*(Sarr[j+1]-Sarr[j])/(p2-p1);bes.push(Math.round(be*100)/100);}
+    }
+  }
+  bes.forEach(function(be){
+    var xb=xPx(be);
+    ctx.setLineDash([6,3]);ctx.strokeStyle='rgba(234,179,8,0.9)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(xb,PAD.top);ctx.lineTo(xb,H-PAD.bottom);ctx.stroke();ctx.setLineDash([]);
+    ctx.fillStyle='#ca8a04';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
+    ctx.fillText('BE '+be.toLocaleString('pt-BR',{minimumFractionDigits:2}),xb,H-PAD.bottom+14);
+  });
+
+  ctx.save();ctx.beginPath();ctx.moveTo(xPx(Sarr[0]),y0);
+  for(var i=0;i<Sarr.length;i++) ctx.lineTo(xPx(Sarr[i]),yPx(Parr[i]));
+  ctx.lineTo(xPx(Sarr[Sarr.length-1]),y0);ctx.closePath();
+  ctx.rect(PAD.left,PAD.top,cW,y0-PAD.top);ctx.clip();ctx.fillStyle='rgba(16,185,129,0.18)';ctx.fill();ctx.restore();
+
+  ctx.save();ctx.beginPath();ctx.moveTo(xPx(Sarr[0]),y0);
+  for(var i=0;i<Sarr.length;i++) ctx.lineTo(xPx(Sarr[i]),yPx(Parr[i]));
+  ctx.lineTo(xPx(Sarr[Sarr.length-1]),y0);ctx.closePath();
+  ctx.rect(PAD.left,y0,cW,H-PAD.bottom-y0);ctx.clip();ctx.fillStyle='rgba(239,68,68,0.18)';ctx.fill();ctx.restore();
+
+  for(var i=0;i<Sarr.length-1;i++){
+    ctx.strokeStyle=(Parr[i]+Parr[i+1])/2>=0?'rgba(16,185,129,1)':'rgba(239,68,68,1)';
+    ctx.lineWidth=2.5;
+    ctx.beginPath();ctx.moveTo(xPx(Sarr[i]),yPx(Parr[i]));ctx.lineTo(xPx(Sarr[i+1]),yPx(Parr[i+1]));ctx.stroke();
+  }
+
+  ctx.fillStyle='rgba(148,163,184,0.85)';ctx.font='11px sans-serif';ctx.textAlign='center';
+  for(var xi=0;xi<=8;xi++){var sv=Smin+xi*(Smax-Smin)/8;ctx.fillText(sv.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),xPx(sv),H-PAD.bottom+28);}
+  ctx.fillStyle='rgba(148,163,184,0.7)';ctx.font='10px sans-serif';
+  ctx.fillText('Preço do Ativo no Vencimento (R$)',PAD.left+cW/2,H-4);
+
+  ctx.textAlign='right';ctx.fillStyle='rgba(148,163,184,0.85)';ctx.font='11px sans-serif';
+  for(var yi=0;yi<=6;yi++){var yv=yMin+yi*(yMax-yMin)/6;ctx.fillText((yv>=0?'':'-')+fmtBRLsim(yv),PAD.left-6,yPx(yv)+4);}
+  ctx.strokeStyle='rgba(100,116,139,0.22)';ctx.lineWidth=1;ctx.strokeRect(PAD.left,PAD.top,cW,cH);
+
+  // Métricas
+  var net=netPremium(legs);
+  var netEl=document.getElementById('m-net');
+  netEl.textContent=fmtBRLsim(net)+(net>=0?' (crédito)':' (débito)');
+  netEl.className=net>=0?'positive':'negative';
+  document.getElementById('m-gain').textContent=maxGain>1e7?'∞':fmtBRLsim(maxGain);
+  document.getElementById('m-loss').textContent=maxLoss<-1e7?'-∞':fmtBRLsim(maxLoss);
+  document.getElementById('m-be').textContent=bes.length?bes.map(fmtBRLsim).join(' / '):'—';
+
+  // POP
+  (function(){
+    var popEl=document.getElementById('m-pop');
+    if(!bes.length){popEl.textContent='—';popEl.className='';return;}
+    var spotLeg=legs.find(function(l){return l.type==='STOCK';});
+    var S=spotLeg?spotLeg.entry:(legs[0]?legs[0].strike:0);
+    if(!S||S<=0){popEl.textContent='—';return;}
+    var today=new Date();today.setHours(0,0,0,0);
+    var minExp=null;
+    legs.forEach(function(l){if(l.exp&&l.exp<(minExp||'9999'))minExp=l.exp;});
+    if(!minExp){popEl.textContent='—';return;}
+    var T=Math.max((new Date(minExp+'T00:00:00')-today)/(365.25*86400000),1/365);
+    var sigmas=[];
+    legs.forEach(function(l){
+      if(l.type==='STOCK') return;
+      if(l.iv>0){sigmas.push(l.iv/100);return;}
+      if(l.premium>0&&l.strike>0) sigmas.push(Math.min(l.premium/l.strike*Math.sqrt(252/Math.max(T*252,1)),2));
+    });
+    if(!sigmas.length){popEl.textContent='—';return;}
+    var sigma=sigmas.reduce(function(a,b){return a+b;},0)/sigmas.length;
+    var r2=Math.log(1+SELIC_RATE/100);
+    function d2(B){return(Math.log(S/B)+(r2-0.5*sigma*sigma)*T)/(sigma*Math.sqrt(T));}
+    var besSorted=bes.slice().sort(function(a,b){return a-b;});
+    var pop;
+    if(besSorted.length===1) pop=normCDF(d2(besSorted[0]))*100;
+    else pop=(normCDF(d2(besSorted[besSorted.length-1]))-normCDF(d2(besSorted[0])))*100;
+    pop=Math.max(0,Math.min(100,pop));
+    popEl.textContent=pop.toFixed(1).replace('.',',')+' %';
+    popEl.className=pop>=50?'positive':'negative';
+  })();
+
+  canvas._ser={Sarr:Sarr,Parr:Parr,Smin:Smin,Smax:Smax,legs:legs,multiExp:multiExp,refDateStr:refDateStr};
+
+  var warnEl=document.getElementById('calendar-warning');
+  if(multiExp){
+    var hasIV=legs.some(function(l){return l.type!=='STOCK'&&l.exp&&l.exp>refDateStr&&l.iv>0;});
+    if(hasIV){
+      warnEl.style.display='block';warnEl.style.background='rgba(16,185,129,0.10)';
+      warnEl.style.borderColor='rgba(16,185,129,0.4)';warnEl.style.color='#10b981';
+      warnEl.innerHTML='✅ <strong>Trava horizontal / diagonal:</strong> gráfico calculado com Black-Scholes (Selic '+SELIC_RATE.toFixed(2).replace('.',',')+'% a.a.) avaliado no vencimento mais curto ('+refDateStr+'). Preencha <strong>VI %</strong> para precisão máxima.';
+    } else {
+      warnEl.style.display='block';warnEl.style.background='rgba(234,179,8,0.12)';
+      warnEl.style.borderColor='rgba(234,179,8,0.4)';warnEl.style.color='#ca8a04';
+      warnEl.innerHTML='⚠️ <strong>Trava horizontal / diagonal detectada:</strong> preencha <strong>VI %</strong> das pernas mais longas para usar Black-Scholes.';
+    }
+  } else { warnEl.style.display='none'; }
+
+  updateIVVisibility();
+}
+
+// Tooltip canvas
+(function(){
+  var canvas=document.getElementById('payoff-canvas');
+  var tooltip=document.getElementById('chart-tooltip');
+  canvas.addEventListener('mousemove',function(e){
+    if(!canvas._ser){tooltip.style.display='none';return;}
+    var rect=canvas.getBoundingClientRect();
+    var mx=(e.clientX-rect.left)*(canvas.width/rect.width);
+    var cW2=canvas.width-PAD.left-PAD.right;
+    if(mx<PAD.left||mx>canvas.width-PAD.right){tooltip.style.display='none';return;}
+    var ser=canvas._ser;
+    var S2=ser.Smin+(mx-PAD.left)/cW2*(ser.Smax-ser.Smin);
+    var P=payoffAt(S2,ser.legs,ser.multiExp,ser.refDateStr);
+    var clr=P>=0?'#10b981':'#ef4444';
+    tooltip.innerHTML='<span style="color:rgba(148,163,184,.8)">Preço: </span><strong>'+
+      S2.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</strong><br>'+
+      '<span style="color:'+clr+';">'+(P>=0?'Lucro: +':'Prejuízo: ')+fmtBRLsim(P)+'</span>';
+    tooltip.style.display='block';
+    var tx=e.clientX-rect.left+14, ty=e.clientY-rect.top-10;
+    if(tx+180>rect.width) tx=e.clientX-rect.left-188;
+    tooltip.style.left=tx+'px'; tooltip.style.top=ty+'px';
+  });
+  canvas.addEventListener('mouseleave',function(){tooltip.style.display='none';});
+})();
+
+var _rdTimer=null;
+function scheduleRedraw(){
+  if(_rdTimer) clearTimeout(_rdTimer);
+  _rdTimer=setTimeout(function(){updateIVVisibility();drawChart(readLegs());},120);
+}
+window.addEventListener('resize',function(){drawChart(readLegs());});
+
+// ═══════════════════════════════════════════════════════════
+// QUOTE HINT TOOLTIP
+// ═══════════════════════════════════════════════════════════
+(function(){
+  var hint=document.getElementById('qhint'), cache={}, active=null;
+  function fmt(v){return 'R$ '+parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+  function fmtPct(v){var f=parseFloat(v);return(f>=0?'+':'')+f.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%';}
+
+  function showHint(ticker,x,y){
+    active=ticker;
+    document.getElementById('qh-ticker').textContent=ticker;
+    ['qh-name','qh-price','qh-change','qh-ask','qh-bid','qh-trades'].forEach(function(id){document.getElementById(id).textContent='';});
+    document.getElementById('qh-loading').style.display='block';
+    posHint(x,y); hint.style.display='block';
+    if(cache[ticker]){renderHint(cache[ticker]);return;}
+    fetch('/api/quote_hint/'+encodeURIComponent(ticker))
+      .then(function(r){return r.json();})
+      .then(function(d){cache[ticker]=d;if(active===ticker)renderHint(d);})
+      .catch(function(){document.getElementById('qh-loading').textContent='erro';});
+  }
+  function renderHint(d){
+    document.getElementById('qh-loading').style.display='none';
+    document.getElementById('qh-name').textContent=d.name!==d.ticker?d.name:'';
+    document.getElementById('qh-price').textContent=fmt(d.price);
+    var cel=document.getElementById('qh-change');
+    cel.textContent=fmtPct(d.change); cel.style.color=d.change>=0?'#4ade80':'#f87171';
+    document.getElementById('qh-ask').textContent=d.ask>0?fmt(d.ask):'—';
+    document.getElementById('qh-bid').textContent=d.bid>0?fmt(d.bid):'—';
+    var tl=document.getElementById('qh-trades-label'),tv=document.getElementById('qh-trades');
+    if(d.is_option&&d.trades!=null){tl.style.display='';tv.style.display='';tv.textContent=d.trades;}
+    else{tl.style.display='none';tv.style.display='none';}
+  }
+  function posHint(x,y){
+    var w=window.innerWidth,h=window.innerHeight,hw=hint.offsetWidth||190,hh=hint.offsetHeight||130;
+    var left=x+14; if(left+hw>w-8) left=x-hw-8;
+    var top=y+14;  if(top+hh>h-8)  top=y-hh-8;
+    hint.style.left=left+'px'; hint.style.top=top+'px';
+  }
+
+  document.addEventListener('mouseover',function(e){
+    var b=e.target.closest('.ticker-badge[data-sym]'); if(!b) return;
+    var t=b.dataset.sym; if(!t) return;
+    showHint(t,e.clientX,e.clientY);
+  });
+  document.addEventListener('mousemove',function(e){if(hint.style.display==='none')return;posHint(e.clientX,e.clientY);});
+  document.addEventListener('mouseout',function(e){
+    var b=e.target.closest('.ticker-badge[data-sym]'); if(!b) return;
+    if(!e.relatedTarget||!e.relatedTarget.closest('.ticker-badge')){hint.style.display='none';active=null;}
+  });
+})();
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded',function(){
+  document.getElementById('legs-body').addEventListener('change',function(){updateIVVisibility();scheduleRedraw();});
+  updateIVVisibility();
+  drawChart(readLegs());
+  // Fecha mini-modal clicando fora
+  document.getElementById('sl-leg-modal').addEventListener('click',function(e){
+    if(e.target===this) slCloseLegModal();
+  });
+  // Carrega o primeiro ativo automaticamente se houver ranking
+  var firstBtn = document.querySelector('.sl-ticker-btn');
+  if(firstBtn) slLoadLiq(firstBtn.dataset.t);
+});
+</script>
+{% endblock %}

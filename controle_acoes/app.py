@@ -1791,6 +1791,15 @@ def simulacao_delete(id):
     return redirect(url_for('simulacao_opcoes'))
 
 
+@app.route('/simulador-liquidez')
+@login_required
+def simulador_liquidez():
+    """Página: tabela de liquidez (ranking) + simulador de payoff integrado."""
+    sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id).order_by(SimulacaoOpcoes.created_at.desc()).all()
+    ranking_vol = RankingVol.query.filter_by(user_id=current_user.id).order_by(RankingVol.ticker).all()
+    return render_template('simulador_liquidez.html', sims=sims, ranking_vol=ranking_vol, selic=_selic())
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Venda de Puts — CRUD
 # ─────────────────────────────────────────────────────────────────────────────

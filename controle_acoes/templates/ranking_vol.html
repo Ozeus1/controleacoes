@@ -359,6 +359,7 @@
               <tr style="color:var(--text-secondary);border-bottom:1px solid var(--border-color)">
                 <th style="text-align:left;padding:.25rem .4rem">Opção</th>
                 <th style="text-align:right;padding:.25rem .4rem">Strike</th>
+                <th style="text-align:right;padding:.25rem .4rem">% Spot</th>
                 <th style="text-align:right;padding:.25rem .4rem">Último</th>
                 <th style="text-align:right;padding:.25rem .4rem">Var%</th>
                 <th style="text-align:right;padding:.25rem .4rem">Vol. Fin.</th>
@@ -378,6 +379,7 @@
               <tr style="color:var(--text-secondary);border-bottom:1px solid var(--border-color)">
                 <th style="text-align:left;padding:.25rem .4rem">Opção</th>
                 <th style="text-align:right;padding:.25rem .4rem">Strike</th>
+                <th style="text-align:right;padding:.25rem .4rem">% Spot</th>
                 <th style="text-align:right;padding:.25rem .4rem">Último</th>
                 <th style="text-align:right;padding:.25rem .4rem">Var%</th>
                 <th style="text-align:right;padding:.25rem .4rem">Vol. Fin.</th>
@@ -584,27 +586,58 @@
   }
   function fmtN(v,d){ return v!=null ? parseFloat(v).toFixed(d||2) : '—'; }
 
-  function _renderTable(tbodyId, rows, colorClass){
+  var _liqActiveVenc = null;  // vencimento selecionado para filtro (null = todos)
+
+  function _renderTable(tbodyId, rows, colorClass, spot){
     var tb = document.getElementById(tbodyId);
     tb.innerHTML = '';
     if(!rows || !rows.length){
-      tb.innerHTML='<tr><td colspan="6" style="text-align:center;color:var(--text-secondary);padding:.75rem">Sem dados</td></tr>';
+      tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:.75rem">Sem dados</td></tr>';
       return;
     }
     rows.forEach(function(o){
+      var due = o.due_date || '';
+      // filtro por vencimento
+      if(_liqActiveVenc && due !== _liqActiveVenc){
+        var tr=document.createElement('tr'); tr.dataset.due=due; tr.style.display='none';
+        tb.appendChild(tr); return;
+      }
       var varColor = parseFloat(o.var_pct)>=0 ? '#4ade80' : '#f87171';
-      var venc = fmtDate(o.due_date);
+      var venc = fmtDate(due);
+      // % distância strike vs spot
+      var spotPctHtml = '—';
+      if(spot && o.strike){
+        var pct = (o.strike - spot) / spot * 100;
+        var pctColor = pct >= 0 ? '#93c5fd' : '#fca5a5';
+        spotPctHtml = '<span style="color:'+pctColor+'">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</span>';
+      }
       var tr = document.createElement('tr');
       tr.style.borderBottom = '1px solid rgba(255,255,255,.05)';
+      tr.dataset.due = due;
       tr.innerHTML =
         '<td style="padding:.25rem .4rem"><span class="ticker-badge" style="font-weight:600;color:'+colorClass+';cursor:pointer">'+o.symbol+'</span></td>'+
         '<td style="text-align:right;padding:.25rem .4rem">'+fmtN(o.strike)+'</td>'+
+        '<td style="text-align:right;padding:.25rem .4rem">'+spotPctHtml+'</td>'+
         '<td style="text-align:right;padding:.25rem .4rem">'+fmtN(o.close)+'</td>'+
         '<td style="text-align:right;padding:.25rem .4rem;color:'+varColor+'">'+
           (parseFloat(o.var_pct)>=0?'+':'')+fmtN(o.var_pct)+'%</td>'+
         '<td style="text-align:right;padding:.25rem .4rem;font-weight:600">'+fmtBRL(o.volume)+'</td>'+
         '<td style="text-align:right;padding:.25rem .4rem;color:var(--text-secondary)">'+venc+'</td>';
       tb.appendChild(tr);
+    });
+  }
+
+  function _applyVencFilter(venc, allData){
+    _liqActiveVenc = (_liqActiveVenc === venc) ? null : venc;  // toggle
+    // re-renderiza as tabelas com o filtro ativo
+    _renderTable('liq-call-tbody', allData.calls, '#93c5fd', allData.spot_price);
+    _renderTable('liq-put-tbody',  allData.puts,  '#fca5a5', allData.spot_price);
+    // atualiza visual dos chips
+    document.querySelectorAll('.liq-venc-btn').forEach(function(b){
+      var active = b.dataset.due === _liqActiveVenc;
+      b.style.background   = active ? '#7c3aed' : 'rgba(148,163,184,.15)';
+      b.style.color        = active ? '#fff'    : '#cbd5e1';
+      b.style.borderColor  = active ? '#7c3aed' : 'transparent';
     });
   }
 
@@ -671,17 +704,6 @@
         + '</div>';
     }
 
-    // Vencimentos distintos
-    var vencHtml = '';
-    if(d.due_dates && d.due_dates.length){
-      vencHtml = '<div style="display:flex;gap:.35rem;flex-wrap:wrap;align-items:center">'
-        + '<span style="color:var(--text-secondary);font-size:.8rem">Venc.:</span>';
-      d.due_dates.forEach(function(dt){
-        vencHtml += '<span style="background:rgba(148,163,184,.15);border-radius:4px;padding:.1rem .45rem;font-size:.78rem;color:#cbd5e1">'+fmtDate(dt)+'</span>';
-      });
-      vencHtml += '</div>';
-    }
-
     document.getElementById('liq-summary').innerHTML =
       '<div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;width:100%">'
       + '<div style="background:var(--hover-bg,#334155);border-radius:6px;padding:.4rem .8rem">'+liqLabel
@@ -691,11 +713,32 @@
       + '<div style="background:rgba(248,113,113,.15);border-radius:6px;padding:.4rem .8rem;color:#fca5a5">'
       + '📉 PUT: <strong>'+fmtBRL(d.vol_total_put)+'</strong></div>'
       + spotHtml
-      + '</div>'
-      + (vencHtml ? '<div style="margin-top:.4rem">'+vencHtml+'</div>' : '');
+      + '</div>';
 
-    _renderTable('liq-call-tbody', d.calls, '#93c5fd');
-    _renderTable('liq-put-tbody',  d.puts,  '#fca5a5');
+    // Chips de vencimento clicáveis (filtro toggle)
+    if(d.due_dates && d.due_dates.length){
+      var vencRow = document.createElement('div');
+      vencRow.style.cssText = 'display:flex;gap:.35rem;flex-wrap:wrap;align-items:center;margin-top:.4rem';
+      var lbl = document.createElement('span');
+      lbl.style.cssText = 'color:var(--text-secondary);font-size:.8rem';
+      lbl.textContent = 'Venc.:';
+      vencRow.appendChild(lbl);
+      d.due_dates.forEach(function(dt){
+        var btn = document.createElement('button');
+        btn.className = 'liq-venc-btn';
+        btn.dataset.due = dt;
+        btn.textContent = fmtDate(dt);
+        btn.style.cssText = 'background:rgba(148,163,184,.15);border:1px solid transparent;border-radius:4px;'
+          + 'padding:.15rem .5rem;font-size:.78rem;color:#cbd5e1;cursor:pointer;transition:background .12s';
+        btn.onclick = function(){ _applyVencFilter(dt, d); };
+        vencRow.appendChild(btn);
+      });
+      document.getElementById('liq-summary').appendChild(vencRow);
+    }
+
+    _liqActiveVenc = null;  // reseta filtro ao carregar novo ticker
+    _renderTable('liq-call-tbody', d.calls, '#93c5fd', d.spot_price);
+    _renderTable('liq-put-tbody',  d.puts,  '#fca5a5', d.spot_price);
     document.getElementById('liq-tables').style.display = 'flex';
   }
 

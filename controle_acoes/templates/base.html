@@ -366,6 +366,7 @@
             });
         });
     </script>
+    <script src="{{ url_for('static', filename='js/mychart.js') }}"></script>
     {% block extra_scripts %}{% endblock %}
     <script>
         // Init Indicators Bar State
@@ -618,7 +619,6 @@
   });
 })();
 </script>
-<script src="{{ url_for('static', filename='js/mychart.js') }}"></script>
 </body>
 
 </html>

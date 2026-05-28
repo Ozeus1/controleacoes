@@ -66,10 +66,9 @@ function ensureModal() {
         + '</div>'
         + '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">'
         + '<span style="font-size:.78rem;color:#64748b">Período:</span>'
+        + '<button class="mc-per-btn" data-per="1mo"  style="' + btnStyle() + '">1M</button>'
         + '<button class="mc-per-btn" data-per="3mo"  style="' + btnStyle() + '">3M</button>'
-        + '<button class="mc-per-btn" data-per="6mo"  style="' + btnStyle() + '">6M</button>'
-        + '<button class="mc-per-btn" data-per="1y"   style="' + btnStyle(true) + '">1A</button>'
-        + '<button class="mc-per-btn" data-per="2y"   style="' + btnStyle() + '">2A</button>'
+        + '<button class="mc-per-btn" data-per="6mo"  style="' + btnStyle(true) + '">6M</button>'
         + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
         + '<span style="font-size:.78rem;color:#64748b">Ferramenta:</span>'
         + '<button id="mc-tool-cursor" title="Cursor"  style="' + toolBtn(true)  + '">↖</button>'
@@ -92,7 +91,7 @@ function ensureModal() {
         + '<label style="font-size:.75rem;cursor:pointer;color:#60a5fa">'
         + '<input type="checkbox" id="mc-ma20" checked style="margin-right:.3rem">MM20</label>'
         + '<label style="font-size:.75rem;cursor:pointer;color:#f87171">'
-        + '<input type="checkbox" id="mc-ma200" checked style="margin-right:.3rem">MM200</label>'
+        + '<input type="checkbox" id="mc-ma50" checked style="margin-right:.3rem">MM50</label>'
         + '<span id="mc-crosshair-info" style="font-size:.75rem;color:#94a3b8;margin-left:.5rem"></span>';
     card.appendChild(maRow);
 
@@ -159,7 +158,7 @@ function ensureModal() {
     document.getElementById('mc-tool-line').onclick   = function() { _setTool('line'); };
 
     // MAs checkboxes
-    ['mc-ma8','mc-ma20','mc-ma200'].forEach(function(id) {
+    ['mc-ma8','mc-ma20','mc-ma50'].forEach(function(id) {
         document.getElementById(id).onchange = function() { if (_state) _draw(); };
     });
 
@@ -371,7 +370,7 @@ MyChart.open = function(ticker, isIntl) {
     document.getElementById('mc-change').textContent = '';
     document.getElementById('mc-status').textContent = '⏳ Carregando dados…';
 
-    _state = { ticker: ticker, yfticker: yfticker, period: '1y',
+    _state = { ticker: ticker, yfticker: yfticker, period: '6mo',
                _vis: [], _layout: null, _crossX: null, _crossY: null };
     _setTool('cursor');
     _resize();
@@ -430,27 +429,24 @@ MyChart._close = function() {
 function _applyPeriod() {
     if (!_state || !_state.allCandles) return;
     var all = _state.allCandles;
-    var per = _state.period || '1y';
-    var days = { '3mo': 63, '6mo': 126, '1y': 252, '2y': 504 };
-    var n = days[per] || 252;
+    var per = _state.period || '6mo';
+    var days = { '1mo': 22, '3mo': 63, '6mo': 130 };
+    var n = days[per] || 130;
 
-    // Para MAs longas (200) precisamos dos candles anteriores ao período visível
-    // Pegamos os 200 extras "antes" para warm-up e depois fatiamos
-    var warmup = 200;
+    var warmup = 50;
     var start  = Math.max(0, all.length - n - warmup);
     var full   = all.slice(start);
     var closes = full.map(function(c) { return c.c; });
 
-    var ma8f   = sma(closes, 8);
-    var ma20f  = sma(closes, 20);
-    var ma200f = sma(closes, 200);
+    var ma8f  = sma(closes, 8);
+    var ma20f = sma(closes, 20);
+    var ma50f = sma(closes, 50);
 
-    // Fatia só os candles visíveis, mas mantém o índice correto das MAs
     var offset = full.length - Math.min(n, all.length);
-    _state._vis    = full.slice(offset);
-    _state._ma8    = ma8f.slice(offset);
-    _state._ma20   = ma20f.slice(offset);
-    _state._ma200  = ma200f.slice(offset);
+    _state._vis   = full.slice(offset);
+    _state._ma8   = ma8f.slice(offset);
+    _state._ma20  = ma20f.slice(offset);
+    _state._ma50  = ma50f.slice(offset);
 }
 
 // ── Resize canvas ──────────────────────────────────────────────────────────────
@@ -539,7 +535,7 @@ function _draw() {
     // MAs pré-calculadas em _applyPeriod — zero recomputo por frame
     var showMA8   = document.getElementById('mc-ma8')   && document.getElementById('mc-ma8').checked;
     var showMA20  = document.getElementById('mc-ma20')  && document.getElementById('mc-ma20').checked;
-    var showMA200 = document.getElementById('mc-ma200') && document.getElementById('mc-ma200').checked;
+    var showMA50 = document.getElementById('mc-ma50') && document.getElementById('mc-ma50').checked;
 
     function drawMA(arr, color, lw) {
         if (!arr || !arr.length) return;
@@ -553,7 +549,7 @@ function _draw() {
         ctx.stroke();
     }
 
-    if (showMA200) drawMA(_state._ma200, '#f87171', 1.2);
+    if (showMA50) drawMA(_state._ma50, '#f87171', 1.2);
     if (showMA20)  drawMA(_state._ma20,  '#60a5fa', 1.2);
     if (showMA8)   drawMA(_state._ma8,   '#fbbf24', 1.0);
 

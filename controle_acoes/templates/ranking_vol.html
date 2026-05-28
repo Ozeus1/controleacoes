@@ -141,25 +141,10 @@
     var symbol=isBR?'BMFBOVESPA:'+ticker:ticker;
     document.getElementById('tv-modal-title').textContent='📈 '+ticker+' — Gráfico Técnico';
     modal.style.display='flex';
-    buildTV(symbol);
+    buildTVWidget('tv-container',symbol,'dark',500);
   };
   window.closeTVChart=function(){modal.style.display='none';};
   modal.addEventListener('click',function(e){if(e.target===modal)closeTVChart();});
-  function buildTV(symbol){
-    var container=document.getElementById('tv-container');
-    var cfg={autosize:true,symbol:symbol,interval:'D',timezone:'America/Sao_Paulo',
-      theme:'dark',style:'1',locale:'br',allow_symbol_change:true,hide_side_toolbar:false,
-      studies:['STD;SMA','STD;EMA']};
-    container.innerHTML=
-      '<div class="tradingview-widget-container" style="height:500px;width:100%;position:relative">'
-      +'<div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div>'
-      +'</div>';
-    var s=document.createElement('script');
-    s.type='text/javascript';
-    s.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-    s.async=true; s.textContent=JSON.stringify(cfg);
-    container.querySelector('.tradingview-widget-container').appendChild(s);
-  }
 })();
 </script>
 
@@ -302,22 +287,10 @@
     set('r-52w',(d.week52_low&&d.week52_high)?brl(d.week52_low)+' até '+brl(d.week52_high):'—');
     set('r-pe',d.pl!=null?num(d.pl,2):'—'); set('r-eps',d.eps!=null?num(d.eps,2):'—');
     set('r-sector',dash(d.sector)); set('r-industry',dash(d.industry));
-    var tvWrap=document.getElementById('radar-tv-wrap');
     if(tvBuiltFor!==ticker){
       tvBuiltFor=ticker;
       var sym=/^[A-Z]{4}[0-9]/.test(ticker)?'BMFBOVESPA:'+ticker:ticker;
-      var rcfg={autosize:true,symbol:sym,interval:'D',timezone:'America/Sao_Paulo',
-        theme:'light',style:'1',locale:'br',allow_symbol_change:false,hide_side_toolbar:false,
-        studies:['STD;SMA','STD;EMA']};
-      tvWrap.innerHTML=
-        '<div class="tradingview-widget-container" style="height:420px;width:100%;position:relative">'
-        +'<div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div>'
-        +'</div>';
-      var rs=document.createElement('script');
-      rs.type='text/javascript';
-      rs.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-      rs.async=true; rs.textContent=JSON.stringify(rcfg);
-      tvWrap.querySelector('.tradingview-widget-container').appendChild(rs);
+      buildTVWidget('radar-tv-wrap',sym,'light',420);
     }
   }
 })();

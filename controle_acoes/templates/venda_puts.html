@@ -348,31 +348,11 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         var symbol = /^[A-Z]{4}[0-9]/.test(ticker) ? 'BMFBOVESPA:' + ticker : ticker;
         document.getElementById('tv-modal-title').textContent = '📈 ' + ticker + ' — Gráfico Técnico';
         modal.style.display = 'flex';
-        buildWidget(symbol);
+        buildTVWidget('tv-container', symbol, 'dark', 500);
     };
 
     window.closeTVChart = function() { modal.style.display = 'none'; };
     modal.addEventListener('click', function(e) { if (e.target === modal) closeTVChart(); });
-
-    function buildWidget(symbol) {
-        var container = document.getElementById('tv-container');
-        var cfg = {
-            autosize: true, symbol: symbol, interval: 'D',
-            timezone: 'America/Sao_Paulo', theme: 'dark', style: '1', locale: 'br',
-            allow_symbol_change: true, hide_side_toolbar: false,
-            studies: ['STD;SMA', 'STD;EMA']
-        };
-        container.innerHTML =
-            '<div class="tradingview-widget-container" style="height:500px;width:100%;position:relative">'
-            + '<div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div>'
-            + '</div>';
-        var s = document.createElement('script');
-        s.type = 'text/javascript';
-        s.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-        s.async = true;
-        s.textContent = JSON.stringify(cfg);
-        container.querySelector('.tradingview-widget-container').appendChild(s);
-    }
 })();
 </script>
 {% endblock %}

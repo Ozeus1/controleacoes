@@ -614,36 +614,11 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
 
     window.openChart = function() {
         modal.style.display = 'flex';
-        buildWidget();
+        buildTVWidget('tv-container', tvSymbol, 'dark', 500);
     };
 
-    window.closeChart = function() {
-        modal.style.display = 'none';
-    };
-
-    modal.addEventListener('click', function(e) {
-        if (e.target === modal) closeChart();
-    });
-
-    function buildWidget() {
-        var container = document.getElementById('tv-container');
-        var cfg = {
-            autosize: true, symbol: tvSymbol, interval: 'D',
-            timezone: 'America/Sao_Paulo', theme: 'dark', style: '1', locale: 'br',
-            allow_symbol_change: true, hide_side_toolbar: false,
-            studies: ['STD;SMA', 'STD;EMA']
-        };
-        container.innerHTML =
-            '<div class="tradingview-widget-container" style="height:500px;width:100%;position:relative">'
-            + '<div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div>'
-            + '</div>';
-        var s = document.createElement('script');
-        s.type = 'text/javascript';
-        s.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-        s.async = true;
-        s.textContent = JSON.stringify(cfg);
-        container.querySelector('.tradingview-widget-container').appendChild(s);
-    }
+    window.closeChart = function() { modal.style.display = 'none'; };
+    modal.addEventListener('click', function(e) { if (e.target === modal) closeChart(); });
 })();
 </script>
 {% endif %}

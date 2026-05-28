@@ -255,6 +255,34 @@
         {% endwith %}
 
         <script>
+            // ── TradingView widget helper ──
+            // Monta o container e adiciona um <script> com src+JSON inline,
+            // que é a única forma suportada para uso dinâmico.
+            function buildTVWidget(containerId, symbol, theme, height) {
+                var container = document.getElementById(containerId);
+                if (!container) return;
+                container.innerHTML = '';
+                var wrap = document.createElement('div');
+                wrap.className = 'tradingview-widget-container';
+                wrap.style.cssText = 'width:100%;height:'+(height||500)+'px;';
+                var inner = document.createElement('div');
+                inner.className = 'tradingview-widget-container__widget';
+                inner.style.cssText = 'width:100%;height:100%;';
+                wrap.appendChild(inner);
+                container.appendChild(wrap);
+                // O script com src E textContent (JSON) é o formato oficial do TradingView
+                var s = document.createElement('script');
+                s.type = 'text/javascript';
+                s.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+                s.async = true;
+                s.textContent = JSON.stringify({
+                    autosize: true, symbol: symbol, interval: 'D',
+                    timezone: 'America/Sao_Paulo', theme: theme || 'dark',
+                    style: '1', locale: 'br', allow_symbol_change: true,
+                    hide_side_toolbar: false
+                });
+                wrap.appendChild(s);
+            }
             // Theme-aware chart colors helper (must be before content block)
             function getThemeColors() {
                 var s = getComputedStyle(document.documentElement);

@@ -6206,11 +6206,11 @@ def oplab_debug():
             except Exception as e:
                 result['instruments_error'] = str(e)
 
-        # Mostra todas as StructuredOps e seus legs (sem filtro)
+        # Mostra todas as StructuredOps e seus legs (sem filtro) — inclui repr do ticker para detectar espaços
         all_ops = StructuredOp.query.filter_by(user_id=uid).all()
         result['all_struct_ops'] = [
             {'id': op.id, 'name': op.name, 'status': op.status, 'user_id': op.user_id,
-             'legs': [{'ticker': l.ticker, 'current_price': l.current_price} for l in op.legs]}
+             'legs': [{'ticker': l.ticker, 'ticker_repr': repr(l.ticker), 'current_price': l.current_price} for l in op.legs]}
             for op in all_ops
         ]
 

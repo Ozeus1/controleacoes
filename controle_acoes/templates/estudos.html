@@ -1144,15 +1144,7 @@ function setSelect(id, val) {
         var symbol = isBR ? 'BMFBOVESPA:' + ticker : ticker;
         document.getElementById('tv-modal-title').textContent = '📈 ' + ticker + ' — Gráfico Técnico';
         modal.style.display = 'flex';
-        if (!tvScriptLoaded) {
-            tvScriptLoaded = true;
-            var s = document.createElement('script');
-            s.src = 'https://s3.tradingview.com/tv.js';
-            s.onload = function() { buildWidget(symbol); };
-            document.head.appendChild(s);
-        } else {
-            buildWidget(symbol);
-        }
+        buildWidget(symbol);
     };
 
     window.closeTVChart = function() { modal.style.display = 'none'; };
@@ -1160,28 +1152,22 @@ function setSelect(id, val) {
 
     function buildWidget(symbol) {
         var container = document.getElementById('tv-container');
-        container.innerHTML = '';
-        new TradingView.widget({
-            container_id: 'tv-container',
-            symbol:        symbol,
-            interval:      'D',
-            timezone:      'America/Sao_Paulo',
-            theme:         'dark',
-            style:         '1',
-            locale:        'br',
-            toolbar_bg:    '#1e293b',
-            enable_publishing: false,
-            hide_side_toolbar: false,
-            allow_symbol_change: true,
-            save_image:    false,
-            height:        500,
-            width:         '100%',
-            studies: [
-                { id: 'MASimple@tv-basicstudies', inputs: { length: 21  } },
-                { id: 'MAExp@tv-basicstudies',    inputs: { length: 9   } },
-                { id: 'MASimple@tv-basicstudies', inputs: { length: 200 } },
-            ],
-        });
+        var cfg = {
+            autosize: true, symbol: symbol, interval: 'D',
+            timezone: 'America/Sao_Paulo', theme: 'dark', style: '1', locale: 'br',
+            allow_symbol_change: true, hide_side_toolbar: false,
+            studies: ['STD;SMA', 'STD;EMA']
+        };
+        container.innerHTML =
+            '<div class="tradingview-widget-container" style="height:500px;width:100%;position:relative">'
+            + '<div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div>'
+            + '</div>';
+        var s = document.createElement('script');
+        s.type = 'text/javascript';
+        s.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+        s.async = true;
+        s.textContent = JSON.stringify(cfg);
+        container.querySelector('.tradingview-widget-container').appendChild(s);
     }
 })();
 </script>
@@ -1435,29 +1421,24 @@ function setSelect(id, val) {
             tvBuiltFor = ticker;
             tvWrap.innerHTML = '';
             var sym = /^[A-Z]{4}[0-9]/.test(ticker) ? 'BMFBOVESPA:' + ticker : ticker;
-            function buildRadarTV() {
-                new TradingView.widget({
-                    container_id: 'radar-tv-wrap', symbol: sym,
-                    interval: 'D', timezone: 'America/Sao_Paulo', theme: 'light',
-                    style: '1', locale: 'br',
-                    enable_publishing: false, hide_side_toolbar: false,
-                    allow_symbol_change: false, save_image: false,
-                    height: 420, width: '100%',
-                    studies: [
-                        { id: 'MASimple@tv-basicstudies', inputs: { length: 21 } },
-                        { id: 'MAExp@tv-basicstudies',    inputs: { length: 9  } },
-                        { id: 'MASimple@tv-basicstudies', inputs: { length: 50 } },
-                    ],
-                });
-            }
-            if (typeof TradingView !== 'undefined') { buildRadarTV(); }
-            else if (!tvScriptRadar) {
-                tvScriptRadar = true;
-                var s = document.createElement('script');
-                s.src = 'https://s3.tradingview.com/tv.js';
-                s.onload = buildRadarTV;
-                document.head.appendChild(s);
-            }
+            (function buildRadarTV(){
+                var cfg = {
+                    autosize: true, symbol: sym, interval: 'D',
+                    timezone: 'America/Sao_Paulo', theme: 'light', style: '1', locale: 'br',
+                    allow_symbol_change: false, hide_side_toolbar: false,
+                    studies: ['STD;SMA', 'STD;EMA']
+                };
+                tvWrap.innerHTML =
+                    '<div class="tradingview-widget-container" style="height:420px;width:100%;position:relative">'
+                    + '<div class="tradingview-widget-container__widget" style="height:100%;width:100%"></div>'
+                    + '</div>';
+                var s2 = document.createElement('script');
+                s2.type = 'text/javascript';
+                s2.src = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+                s2.async = true;
+                s2.textContent = JSON.stringify(cfg);
+                tvWrap.querySelector('.tradingview-widget-container').appendChild(s2);
+            })();
         }
     }
 })();

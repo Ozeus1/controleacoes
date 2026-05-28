@@ -18,6 +18,18 @@ var _rafPending = false; // throttle RAF para mousemove
 // objeto público (declarado aqui para que as atribuições abaixo funcionem)
 var MyChart = {};
 
+// wrapper fetch com credentials — garante envio do cookie de sessão
+function _fetch(url, opts) {
+    opts = opts || {};
+    opts.credentials = 'same-origin';
+    return fetch(url, opts).then(function(r) {
+        if (r.status === 302 || (r.redirected && r.url.indexOf('/login') >= 0)) {
+            throw new Error('Sessão expirada — faça login novamente');
+        }
+        return r;
+    });
+}
+
 // ── Utilitários ────────────────────────────────────────────────────────────────
 function sma(arr, n) {
     var out = new Array(arr.length).fill(null);
@@ -316,7 +328,7 @@ function _onMouseUp(e) {
     _drawing = null;
 
     // Persiste
-    fetch('/api/chart_lines/' + _state.ticker, {
+    _fetch('/api/chart_lines/' + _state.ticker, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
         body: JSON.stringify(line)
@@ -347,7 +359,7 @@ function _data2px(date, price) {
 MyChart._delLines = function() {
     if (!_state) return;
     if (!confirm('Apagar todas as linhas de ' + _state.ticker + '?')) return;
-    fetch('/api/chart_lines/' + _state.ticker, {
+    _fetch('/api/chart_lines/' + _state.ticker, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
         body: JSON.stringify({})
@@ -380,9 +392,9 @@ MyChart.open = function(ticker, isIntl) {
 
     // Carrega linhas salvas
     if (!_lines[ticker]) {
-        fetch('/api/chart_lines/' + ticker)
+        _fetch('/api/chart_lines/' + ticker)
             .then(function(r) { return r.json(); })
-            .then(function(d) { _lines[ticker] = d; if (_state && _state.ticker === ticker) _draw(); });
+            .then(function(d) { _lines[ticker] = Array.isArray(d) ? d : []; if (_state && _state.ticker === ticker) _draw(); });
     }
 
     // Cache cliente 2 min (camada 0 — zero round-trip)
@@ -401,7 +413,7 @@ MyChart.open = function(ticker, isIntl) {
         url += '?since=' + existingCandles[existingCandles.length - 1].t;
     }
 
-    fetch(url)
+    _fetch(url)
         .then(function(r) { return r.json(); })
         .then(function(d) {
             if (d.error) { document.getElementById('mc-status').textContent = '✗ ' + d.error; return; }
@@ -745,7 +757,7 @@ MyChart.openInline = function(containerId, ticker, isIntl) {
 
     var now=Date.now(), cached=_cache[ticker];
     if(cached&&(now-cached.ts)<120000){doRender(cached.candles);return;}
-    fetch('/api/chart_data/'+encodeURIComponent(ticker))
+    _fetch('/api/chart_data/'+encodeURIComponent(ticker))
         .then(function(r){return r.json();})
         .then(function(d){
             if(d.error){wrap.innerHTML='<p style="color:#f87171;padding:.5rem;font-size:.8rem">'+d.error+'</p>';return;}

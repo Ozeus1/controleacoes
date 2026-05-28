@@ -102,7 +102,8 @@ function _clampView() {
     if (!_view || !_state || !_state.allCandles) return;
     var total = _state.allCandles.length;
     _view.count = Math.max(10, Math.min(total, _view.count));
-    _view.start = Math.max(0, Math.min(total - _view.count, _view.start));
+    // Permite pan além do fim: mínimo 1 candle visível à direita
+    _view.start = Math.max(0, Math.min(total - 1, _view.start));
 }
 
 function _applyView() {
@@ -111,11 +112,13 @@ function _applyView() {
     var start  = _view.start;
     var count  = _view.count;
 
-    // Para MM200 precisamos warm-up de 200 candles antes da janela
-    var warmup = 200;
-    var wStart = Math.max(0, start - warmup);
-    var full   = all.slice(wStart, start + count);
-    var closes = full.map(function(c) { return c.c; });
+    // Para MM200 precisamos warm-up de 200 candles antes da janela visível
+    var warmup  = 200;
+    var wStart  = Math.max(0, start - warmup);
+    // Fatia apenas candles reais (start pode ser próximo do fim — há espaço vazio à direita)
+    var visEnd  = Math.min(all.length, start + count);
+    var full    = all.slice(wStart, visEnd);
+    var closes  = full.map(function(c) { return c.c; });
 
     var ma8f   = sma(closes, 8);
     var ma20f  = sma(closes, 20);
@@ -126,6 +129,8 @@ function _applyView() {
     _state._ma8   = ma8f.slice(offset);
     _state._ma20  = ma20f.slice(offset);
     _state._ma200 = ma200f.slice(offset);
+    // Quantos slots reais existem na janela (pode ser < count quando pan além do fim)
+    _state._visCount = count;
 }
 
 // alias antigo usado em outros lugares
@@ -144,8 +149,9 @@ function _cssCoords(e) {
 
 function _css2data(cx, cy) {
     if (!_state || !_state._layout) return null;
-    var l = _state._layout;   // já em pixels CSS
-    var i = Math.round((cx - l.padL) / l.cW * (_state._vis.length - 1));
+    var l    = _state._layout;
+    var slots = (_state._visCount || 1) - 1 || 1;
+    var i    = Math.round((cx - l.padL) / l.cW * slots);
     i = Math.max(0, Math.min(_state._vis.length - 1, i));
     var price = l.priceMax - (cy - l.padT) / l.cH * (l.priceMax - l.priceMin);
     var date  = _state._vis[i] ? _state._vis[i].t : null;
@@ -154,14 +160,15 @@ function _css2data(cx, cy) {
 
 function _data2px(date, price) {
     if (!_state || !_state._layout) return { x: 0, y: 0 };
-    var l   = _state._layout;
-    var vis = _state._vis;
-    var idx = 0;
+    var l     = _state._layout;
+    var vis   = _state._vis;
+    var slots = (_state._visCount || 1) - 1 || 1;
+    var idx   = 0;
     for (var i = 0; i < vis.length; i++) {
         if (vis[i].t <= date) idx = i;
         else break;
     }
-    var x = l.padL + (idx / (vis.length - 1 || 1)) * l.cW;
+    var x = l.padL + (idx / slots) * l.cW;
     var y = l.padT + (l.priceMax - price) / (l.priceMax - l.priceMin) * l.cH;
     return { x: x, y: y };
 }
@@ -755,7 +762,9 @@ function _draw() {
     _state._layout = { padL: padL, padR: padR, padT: padT, padB: padB,
                        cW: cW, cH: cH, priceMin: priceMin, priceMax: priceMax };
 
-    function xPx(i) { return padL + (i / (vis.length - 1 || 1)) * cW; }
+    // slots = nº de posições na janela (inclui espaço vazio à direita quando pan além do fim)
+    var slots = (_state._visCount || vis.length) - 1 || 1;
+    function xPx(i) { return padL + (i / slots) * cW; }
     function yPx(p) { return padT + (1 - (p - priceMin) / (priceMax - priceMin)) * cH; }
 
     // Fundo
@@ -773,7 +782,7 @@ function _draw() {
     }
 
     // Grade vertical
-    var dateStep = Math.max(1, Math.floor(vis.length / 8));
+    var dateStep = Math.max(1, Math.floor(vis.length / 8));   // rótulos só sobre candles reais
     ctx.fillStyle = '#64748b'; ctx.font = '10px Inter,sans-serif'; ctx.textAlign = 'center';
     for (var i = 0; i < vis.length; i += dateStep) {
         var xg = xPx(i);
@@ -804,7 +813,7 @@ function _draw() {
     if (showMA8)   drawMA(_state._ma8,   '#fbbf24', 1.0);
 
     // Candles
-    var candleW = Math.max(1, Math.min(14, cW / vis.length * 0.7));
+    var candleW = Math.max(1, Math.min(14, cW / (slots + 1) * 0.7));
     for (var i = 0; i < vis.length; i++) {
         var c    = vis[i];
         var bull = c.c >= c.o;
@@ -900,12 +909,13 @@ function _drawVolume(vis, W, cW) {
     ctx2.clearRect(0, 0, VW, VH);
     ctx2.fillStyle = '#0f172a'; ctx2.fillRect(0, 0, VW, VH);
 
-    var vCW  = VW - PAD.L - PAD.R;
-    var maxV = 1;
+    var vCW   = VW - PAD.L - PAD.R;
+    var maxV  = 1;
     for (var i = 0; i < vis.length; i++) if (vis[i].v > maxV) maxV = vis[i].v;
-    var barW = Math.max(1, vCW / vis.length * 0.7);
+    var vSlots = (_state._visCount || vis.length) - 1 || 1;
+    var barW  = Math.max(1, vCW / (vSlots + 1) * 0.7);
 
-    function xPxV(i) { return PAD.L + (i / (vis.length - 1 || 1)) * vCW; }
+    function xPxV(i) { return PAD.L + (i / vSlots) * vCW; }
     for (var i = 0; i < vis.length; i++) {
         var c  = vis[i];
         var bH = (c.v / maxV) * (VH - 4);

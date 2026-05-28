@@ -7108,6 +7108,82 @@ def api_current_quotes():
     })
 
 
+_chart_cache = {}  # {ticker: {'ts': time, 'data': [...]}}
+
+@app.route('/api/chart_data/<ticker>')
+@login_required
+def api_chart_data(ticker):
+    """Retorna OHLCV diário (2 anos) via yfinance com cache de 2 minutos."""
+    import time as _time
+    ticker = ticker.upper().strip()
+    now = _time.time()
+    cached = _chart_cache.get(ticker)
+    if cached and (now - cached['ts']) < 120:
+        return jsonify(cached['data'])
+
+    try:
+        import yfinance as yf
+        # Tickers BR: acrescenta .SA se não tiver sufixo
+        yf_ticker = ticker
+        if re.match(r'^[A-Z]{4}[0-9]', ticker) and '.' not in ticker:
+            yf_ticker = ticker + '.SA'
+        t = yf.Ticker(yf_ticker)
+        h = t.history(period='2y', interval='1d')
+        if h.empty:
+            return jsonify({'error': 'Sem dados para ' + ticker}), 404
+        h = h.dropna(subset=['Open', 'High', 'Low', 'Close'])
+        rows = []
+        for ts, row in h.iterrows():
+            rows.append({
+                't': ts.strftime('%Y-%m-%d'),
+                'o': round(float(row['Open']), 4),
+                'h': round(float(row['High']), 4),
+                'l': round(float(row['Low']), 4),
+                'c': round(float(row['Close']), 4),
+                'v': int(row['Volume']) if row['Volume'] == row['Volume'] else 0,
+            })
+        result = {'ticker': ticker, 'candles': rows}
+        _chart_cache[ticker] = {'ts': now, 'data': result}
+        return jsonify(result)
+    except Exception as e:
+        app.logger.error('api_chart_data %s: %s', ticker, e)
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/chart_lines/<ticker>', methods=['GET', 'POST', 'DELETE'])
+@login_required
+def api_chart_lines(ticker):
+    """Salva/carrega/deleta linhas de tendência desenhadas no gráfico."""
+    from models import UserChartLine
+    ticker = ticker.upper().strip()
+    uid = current_user.id
+
+    if request.method == 'GET':
+        lines = UserChartLine.query.filter_by(user_id=uid, ticker=ticker).all()
+        return jsonify([{'id': l.id, 'x1': l.x1, 'y1': l.y1, 'x2': l.x2, 'y2': l.y2,
+                         'color': l.color, 'width': l.width} for l in lines])
+
+    if request.method == 'POST':
+        d = request.get_json(force=True)
+        line = UserChartLine(user_id=uid, ticker=ticker,
+                             x1=d['x1'], y1=d['y1'], x2=d['x2'], y2=d['y2'],
+                             color=d.get('color', '#3b82f6'),
+                             width=d.get('width', 1.5))
+        db.session.add(line)
+        db.session.commit()
+        return jsonify({'id': line.id})
+
+    if request.method == 'DELETE':
+        d = request.get_json(force=True)
+        lid = d.get('id')
+        if lid:
+            UserChartLine.query.filter_by(id=lid, user_id=uid).delete()
+        else:
+            UserChartLine.query.filter_by(user_id=uid, ticker=ticker).delete()
+        db.session.commit()
+        return jsonify({'ok': True})
+
+
 @app.route('/api/quote_hint/<ticker>')
 @login_required
 def api_quote_hint(ticker):

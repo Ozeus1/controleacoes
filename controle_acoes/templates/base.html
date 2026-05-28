@@ -255,28 +255,11 @@
         {% endwith %}
 
         <script>
-            // ── TradingView widget helper ──
-            // Usa iframe direto de www.tradingview.com/chart/ (s3.tradingview.com inacessível)
+            // buildTVWidget is overridden by mychart.js — stub here as fallback only
             function buildTVWidget(containerId, symbol, theme, height) {
-                var container = document.getElementById(containerId);
-                if (!container) return;
-                var h = height || 500;
-                var src = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(symbol)
-                    + '&interval=D'
-                    + '&timezone=America%2FSao_Paulo'
-                    + '&theme=' + (theme || 'dark')
-                    + '&style=1'
-                    + '&locale=pt'
-                    + '&allow_symbol_change=1'
-                    + '&hide_side_toolbar=0'
-                    + '&save_image=0';
-                var iframe = document.createElement('iframe');
-                iframe.src = src;
-                iframe.style.cssText = 'width:100%;height:' + h + 'px;border:none;display:block;';
-                iframe.setAttribute('allowfullscreen', '');
-                iframe.setAttribute('allowtransparency', 'true');
-                container.innerHTML = '';
-                container.appendChild(iframe);
+                if (window.MyChart) { window.MyChart.open(symbol); return; }
+                var c = document.getElementById(containerId);
+                if (c) c.innerHTML = '<p style="color:#aaa;padding:1rem">Carregando gráfico…</p>';
             }
             // Theme-aware chart colors helper (must be before content block)
             function getThemeColors() {
@@ -635,6 +618,7 @@
   });
 })();
 </script>
+<script src="{{ url_for('static', filename='js/mychart.js') }}"></script>
 </body>
 
 </html>

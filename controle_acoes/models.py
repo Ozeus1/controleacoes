@@ -460,3 +460,18 @@ class MarketIndex(db.Model):
     def __repr__(self):
         return f'<MarketIndex {self.ticker}>'
 
+
+
+class UserChartLine(db.Model):
+    """Linhas de tendência desenhadas pelo usuário no gráfico de candlestick."""
+    __tablename__ = 'user_chart_lines'
+    id      = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ticker  = db.Column(db.String(20), nullable=False, index=True)
+    x1      = db.Column(db.String(12), nullable=False)   # data ISO YYYY-MM-DD
+    y1      = db.Column(db.Float, nullable=False)
+    x2      = db.Column(db.String(12), nullable=False)
+    y2      = db.Column(db.Float, nullable=False)
+    color   = db.Column(db.String(10), default='#3b82f6')
+    width   = db.Column(db.Float, default=1.5)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)

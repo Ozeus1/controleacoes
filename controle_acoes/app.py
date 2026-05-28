@@ -6227,6 +6227,44 @@ def api_liquidez(ticker):
     calls.sort(key=lambda x: x['volume'], reverse=True)
     puts.sort(key=lambda x: x['volume'], reverse=True)
 
+    # Cotação do ativo subjacente (spot) via brapi ou yfinance
+    spot_price = None
+    spot_change = None
+    brapi_token = Settings.get_value('brapi_token', user_id=current_user.id)
+    try:
+        if brapi_token:
+            rs = _req.get(
+                f'https://brapi.dev/api/quote/{ticker}',
+                params={'range': '1d', 'interval': '1d',
+                        'fundamental': 'false', 'dividends': 'false',
+                        'token': brapi_token},
+                timeout=6,
+            )
+            if rs.status_code == 200:
+                for item in rs.json().get('results', []):
+                    p = item.get('regularMarketPrice') or item.get('currentPrice')
+                    if p and float(p) > 0:
+                        spot_price  = round(float(p), 2)
+                        spot_change = round(float(item.get('regularMarketChangePercent') or 0), 2)
+                        break
+    except Exception:
+        pass
+
+    if spot_price is None:
+        try:
+            import yfinance as yf
+            fi = yf.Ticker(f'{ticker}.SA').fast_info
+            p  = fi.last_price
+            if p and float(p) > 0:
+                spot_price  = round(float(p), 2)
+                prev = fi.previous_close or 0
+                spot_change = round(((float(p) - prev) / prev * 100) if prev > 0 else 0, 2)
+        except Exception:
+            pass
+
+    # Vencimentos distintos das opções (CALL e PUT combinados)
+    due_dates = sorted({o['due_date'] for o in calls[:20] + puts[:20] if o.get('due_date')})
+
     return jsonify({
         'ticker':         ticker,
         'calls':          calls[:20],
@@ -6234,6 +6272,9 @@ def api_liquidez(ticker):
         'vol_total_call': round(vol_total_call, 2),
         'vol_total_put':  round(vol_total_put,  2),
         'total_options':  len(opt_list),
+        'spot_price':     spot_price,
+        'spot_change':    spot_change,
+        'due_dates':      due_dates,
     })
 
 

@@ -593,7 +593,7 @@
     }
     rows.forEach(function(o){
       var varColor = parseFloat(o.var_pct)>=0 ? '#4ade80' : '#f87171';
-      var venc = o.due_date ? o.due_date.slice(5).replace('-','/') : '—'; // MM/DD → DD/MM
+      var venc = fmtDate(o.due_date);
       var tr = document.createElement('tr');
       tr.style.borderBottom = '1px solid rgba(255,255,255,.05)';
       tr.innerHTML =
@@ -638,20 +638,62 @@
       });
   }
 
+  function fmtDate(s){
+    // converte YYYY-MM-DD → DD/MM/YY ou MM/DD → DD/MM
+    if(!s) return '—';
+    if(/^\d{4}-\d{2}-\d{2}$/.test(s)){
+      var p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0].slice(2);
+    }
+    if(/^\d{2}\/\d{2}$/.test(s)){
+      var q=s.split('/'); return q[1]+'/'+q[0]; // MM/DD → DD/MM
+    }
+    return s;
+  }
+
   function _renderLiq(d){
     document.getElementById('liq-loading').style.display = 'none';
-    // Resumo
+    // Resumo linha 1: liquidez + totais
     var hasLiq = (d.vol_total_call + d.vol_total_put) > 0;
     var liqLabel = hasLiq
       ? '<span style="color:#4ade80;font-weight:700">✓ Possui liquidez</span>'
       : '<span style="color:#f87171;font-weight:700">✗ Sem liquidez expressiva</span>';
+
+    // Cotação do ativo
+    var spotHtml = '';
+    if(d.spot_price != null){
+      var chg = d.spot_change != null ? d.spot_change : 0;
+      var chgColor = chg >= 0 ? '#4ade80' : '#f87171';
+      var chgStr = (chg >= 0 ? '+' : '') + parseFloat(chg).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + '%';
+      spotHtml = '<div style="background:rgba(255,255,255,.07);border-radius:6px;padding:.4rem .8rem;display:flex;align-items:center;gap:.5rem">'
+        + '<span style="color:var(--text-secondary);font-size:.8rem">Spot</span>'
+        + '<strong style="font-size:.95rem">R$ '+parseFloat(d.spot_price).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'</strong>'
+        + '<span style="color:'+chgColor+';font-size:.8rem">'+chgStr+'</span>'
+        + '</div>';
+    }
+
+    // Vencimentos distintos
+    var vencHtml = '';
+    if(d.due_dates && d.due_dates.length){
+      vencHtml = '<div style="display:flex;gap:.35rem;flex-wrap:wrap;align-items:center">'
+        + '<span style="color:var(--text-secondary);font-size:.8rem">Venc.:</span>';
+      d.due_dates.forEach(function(dt){
+        vencHtml += '<span style="background:rgba(148,163,184,.15);border-radius:4px;padding:.1rem .45rem;font-size:.78rem;color:#cbd5e1">'+fmtDate(dt)+'</span>';
+      });
+      vencHtml += '</div>';
+    }
+
     document.getElementById('liq-summary').innerHTML =
-      '<div style="background:var(--hover-bg,#334155);border-radius:6px;padding:.4rem .8rem">'+liqLabel+
-      ' &nbsp;|&nbsp; Total opções: <strong>'+d.total_options+'</strong></div>'+
-      '<div style="background:rgba(59,130,246,.15);border-radius:6px;padding:.4rem .8rem;color:#93c5fd">'+
-      '📈 CALL: <strong>'+fmtBRL(d.vol_total_call)+'</strong></div>'+
-      '<div style="background:rgba(248,113,113,.15);border-radius:6px;padding:.4rem .8rem;color:#fca5a5">'+
-      '📉 PUT: <strong>'+fmtBRL(d.vol_total_put)+'</strong></div>';
+      '<div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center;width:100%">'
+      + '<div style="background:var(--hover-bg,#334155);border-radius:6px;padding:.4rem .8rem">'+liqLabel
+      + ' &nbsp;|&nbsp; Total opções: <strong>'+d.total_options+'</strong></div>'
+      + '<div style="background:rgba(59,130,246,.15);border-radius:6px;padding:.4rem .8rem;color:#93c5fd">'
+      + '📈 CALL: <strong>'+fmtBRL(d.vol_total_call)+'</strong></div>'
+      + '<div style="background:rgba(248,113,113,.15);border-radius:6px;padding:.4rem .8rem;color:#fca5a5">'
+      + '📉 PUT: <strong>'+fmtBRL(d.vol_total_put)+'</strong></div>'
+      + spotHtml
+      + '</div>'
+      + (vencHtml ? '<div style="margin-top:.4rem">'+vencHtml+'</div>' : '');
+
     _renderTable('liq-call-tbody', d.calls, '#93c5fd');
     _renderTable('liq-put-tbody',  d.puts,  '#fca5a5');
     document.getElementById('liq-tables').style.display = 'flex';

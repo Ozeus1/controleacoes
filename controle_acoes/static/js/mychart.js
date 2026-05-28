@@ -82,13 +82,15 @@ function _setTool(t) {
 }
 
 // ── Pan / Zoom — janela deslizante sobre allCandles ───────────────────────────
-// _view = { start: índice primeiro candle visível, count: nº de candles visíveis }
+// _view = { start, count, priceMin, priceMax }
+// priceMin/priceMax = null → range automático a partir dos candles visíveis
 var _view = null;
 
 function _initView() {
     if (!_state || !_state.allCandles) return;
     var total = _state.allCandles.length;
-    _view = { start: Math.max(0, total - _visCount()), count: _visCount() };
+    _view = { start: Math.max(0, total - _visCount()), count: _visCount(),
+              priceMin: null, priceMax: null };
 }
 
 function _visCount() {
@@ -249,9 +251,13 @@ function _onMouseDown(e) {
     }
 
     if (_tool === 'cursor') {
-        // Pan com Shift+click ou botão do meio
+        // Pan com Shift+click ou botão do meio (horizontal + vertical)
         if (e.button === 1 || e.shiftKey) {
-            _panStart = { clientX: e.clientX, startIdx: _view.start };
+            var l0 = _state._layout;
+            _panStart = { clientX: e.clientX, clientY: e.clientY,
+                          startIdx: _view.start,
+                          startPMin: _view.priceMin != null ? _view.priceMin : l0 ? l0.priceMin : null,
+                          startPMax: _view.priceMax != null ? _view.priceMax : l0 ? l0.priceMax : null };
             _canvas.style.cursor = 'grabbing';
             e.preventDefault();
             return;
@@ -344,11 +350,19 @@ function _onMouseMove(e) {
     // Pan ativo
     if (_panStart) {
         var l        = _state._layout;
+        // Pan horizontal
         var pxPerBar = l.cW / (_view.count - 1 || 1);
-        var delta    = Math.round((e.clientX - _panStart.clientX) / pxPerBar);
-        _view.start  = _panStart.startIdx - delta;
+        var deltaH   = Math.round((e.clientX - _panStart.clientX) / pxPerBar);
+        _view.start  = _panStart.startIdx - deltaH;
         _clampView();
         _applyView();
+        // Pan vertical (só quando há range base disponível)
+        if (_panStart.startPMin != null && _panStart.startPMax != null) {
+            var range    = _panStart.startPMax - _panStart.startPMin;
+            var deltaV   = (e.clientY - _panStart.clientY) / l.cH * range;
+            _view.priceMin = _panStart.startPMin + deltaV;
+            _view.priceMax = _panStart.startPMax + deltaV;
+        }
     }
 
     if (!_rafPending) {
@@ -415,20 +429,34 @@ function _onMouseUp(e) {
 function _onWheel(e) {
     if (!_state || !_view) return;
     e.preventDefault();
-    var l       = _state._layout;
-    var pt      = _cssCoords(e);
-    // Índice do candle sob o cursor (âncora do zoom)
-    var anchor  = Math.round((pt.x - l.padL) / l.cW * (_view.count - 1));
-    var factor  = e.deltaY > 0 ? 1.12 : 0.89;
-    var newCount = Math.round(_view.count * factor);
-    newCount = Math.max(10, Math.min(_state.allCandles.length, newCount));
-    // Mantém o candle sob o cursor fixo
-    var anchorAbs = _view.start + anchor;
-    var newAnchor = Math.round(anchor * newCount / _view.count);
-    _view.start = anchorAbs - newAnchor;
-    _view.count = newCount;
-    _clampView();
-    _applyView();
+    var l      = _state._layout;
+    var pt     = _cssCoords(e);
+    var factor = e.deltaY > 0 ? 1.12 : 0.89;
+
+    if (e.ctrlKey) {
+        // Zoom vertical — âncora no preço sob o cursor
+        var curPMin = _view.priceMin != null ? _view.priceMin : l.priceMin;
+        var curPMax = _view.priceMax != null ? _view.priceMax : l.priceMax;
+        var range   = curPMax - curPMin;
+        // Preço sob o cursor como âncora
+        var anchorPrice = curPMax - (pt.y - l.padT) / l.cH * range;
+        var newRange    = range * factor;
+        // Mantém a proporção da âncora na tela
+        var ratio = (anchorPrice - curPMin) / range;
+        _view.priceMin = anchorPrice - ratio * newRange;
+        _view.priceMax = anchorPrice + (1 - ratio) * newRange;
+    } else {
+        // Zoom horizontal — âncora no candle sob o cursor
+        var anchor    = Math.round((pt.x - l.padL) / l.cW * (_view.count - 1));
+        var newCount  = Math.round(_view.count * factor);
+        newCount = Math.max(10, Math.min(_state.allCandles.length, newCount));
+        var anchorAbs = _view.start + anchor;
+        var newAnchor = Math.round(anchor * newCount / _view.count);
+        _view.start = anchorAbs - newAnchor;
+        _view.count = newCount;
+        _clampView();
+        _applyView();
+    }
     _draw();
 }
 
@@ -628,6 +656,12 @@ function ensureModal() {
     _canvas.addEventListener('mousemove',  _onMouseMove);
     _canvas.addEventListener('mouseup',    _onMouseUp);
     _canvas.addEventListener('wheel',      _onWheel, { passive: false });
+    _canvas.addEventListener('dblclick',   function() {
+        if (!_view) return;
+        _view.priceMin = null;
+        _view.priceMax = null;
+        _draw();
+    });
     _canvas.addEventListener('mouseleave', function() {
         _panStart = null;
         var tip = document.getElementById('mc-tooltip');
@@ -749,14 +783,20 @@ function _draw() {
     var cW   = W - padL - padR;
     var cH   = H - padT - padB;
 
-    // Preço range
-    var priceMin = Infinity, priceMax = -Infinity;
-    for (var i = 0; i < vis.length; i++) {
-        if (vis[i].l < priceMin) priceMin = vis[i].l;
-        if (vis[i].h > priceMax) priceMax = vis[i].h;
+    // Preço range — manual (pan/zoom vertical) ou automático
+    var priceMin, priceMax;
+    if (_view && _view.priceMin != null && _view.priceMax != null) {
+        priceMin = _view.priceMin;
+        priceMax = _view.priceMax;
+    } else {
+        priceMin = Infinity; priceMax = -Infinity;
+        for (var i = 0; i < vis.length; i++) {
+            if (vis[i].l < priceMin) priceMin = vis[i].l;
+            if (vis[i].h > priceMax) priceMax = vis[i].h;
+        }
+        var pad5 = (priceMax - priceMin) * 0.05 || priceMax * 0.01;
+        priceMin -= pad5; priceMax += pad5;
     }
-    var pad5 = (priceMax - priceMin) * 0.05 || priceMax * 0.01;
-    priceMin -= pad5; priceMax += pad5;
 
     // Layout em pixels CSS (usado por _css2data e _data2px)
     _state._layout = { padL: padL, padR: padR, padT: padT, padB: padB,
@@ -893,7 +933,7 @@ function _draw() {
 
     document.getElementById('mc-status').textContent =
         vis.length + ' candles  |  ' + fmtDate(vis[0].t) + ' – ' + fmtDate(vis[vis.length-1].t)
-        + '  |  Scroll=zoom  Shift+drag=pan  L=linha  C=cursor';
+        + '  |  Scroll=zoom  Ctrl+Scroll=zoom↕  Shift+drag=pan  2×clique=reset↕  L=linha  C=cursor';
 
     _drawVolume(vis, W, cW);
 }

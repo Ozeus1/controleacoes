@@ -1896,10 +1896,13 @@ def _get_underlying_quote(ticker, user_id):
     # 1. Cotação ao vivo via Yahoo Finance (mesma infra do chart)
     try:
         import requests as _req
-        yf_t = t + '.SA' if not t.endswith('.SA') and not '.' in t else t
-        url  = 'https://query1.finance.yahoo.com/v8/finance/chart/' + yf_t
-        r    = _req.get(url, params={'interval': '1d', 'range': '2d'},
-                        headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
+        yf_t = t + '.SA' if not t.endswith('.SA') and '.' not in t else t
+        for host in ('query1.finance.yahoo.com', 'query2.finance.yahoo.com'):
+            url = f'https://{host}/v8/finance/chart/' + yf_t
+            r   = _req.get(url, params={'interval': '1d', 'range': '2d'},
+                           headers=_YF_HEADERS, cookies=_YF_COOKIES, timeout=5)
+            if r.status_code == 200:
+                break
         if r.status_code == 200:
             res = r.json()
             meta = res['chart']['result'][0]['meta']
@@ -7124,19 +7127,42 @@ def api_current_quotes():
 _chart_mem = {}  # cache em memória por processo: {ticker: {'ts': float, 'candles': [...]}}
 _CHART_MEM_TTL = 120  # segundos — evita hit no SQLite em acessos repetidos rápidos
 
+_YF_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    'Accept': 'application/json,text/plain,*/*',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8',
+    'Origin': 'https://finance.yahoo.com',
+    'Referer': 'https://finance.yahoo.com/',
+}
+_YF_COOKIES = {'tbla_id': 'finan-web', 'GUC': 'AQEBCAFn', 'GUCS': 'AQEBCAFn'}
+
 def _yahoo_fetch(yf_ticker, start_date=None):
-    """Chama Yahoo Finance v8 diretamente (sem yfinance) — ~0.5 s vs ~1.3 s."""
+    """Chama Yahoo Finance v8 diretamente (sem yfinance) — ~0.5 s vs ~1.3 s.
+    Tenta query1 primeiro, fallback para query2 em caso de 400/429."""
     import requests as _req
     from datetime import datetime as _dt, timezone as _tz
-    url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + yf_ticker
     params = {'interval': '1d', 'range': '1y'} if not start_date else {
         'interval': '1d',
         'period1': int(_dt.fromisoformat(start_date).replace(tzinfo=_tz.utc).timestamp()),
         'period2': int(_dt.now(_tz.utc).timestamp()),
     }
-    r = _req.get(url, params=params,
-                 headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-    r.raise_for_status()
+    last_exc = None
+    for host in ('query1.finance.yahoo.com', 'query2.finance.yahoo.com'):
+        try:
+            url = f'https://{host}/v8/finance/chart/' + yf_ticker
+            r = _req.get(url, params=params, headers=_YF_HEADERS,
+                         cookies=_YF_COOKIES, timeout=10)
+            if r.status_code in (400, 429, 503) and host == 'query1.finance.yahoo.com':
+                last_exc = Exception(f'{r.status_code} from {host}')
+                continue
+            r.raise_for_status()
+            break
+        except Exception as e:
+            last_exc = e
+            if host == 'query2.finance.yahoo.com':
+                raise last_exc
+    else:
+        raise last_exc
     result = r.json()['chart']['result']
     if not result:
         return []

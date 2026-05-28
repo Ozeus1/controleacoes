@@ -6206,6 +6206,17 @@ def oplab_debug():
             except Exception as e:
                 result['instruments_error'] = str(e)
 
+        # Roda o bulk update e mostra resultado
+        if request.args.get('run_update') == '1':
+            a_ok, o_ok = _do_oplab_bulk_update(uid, token)
+            result['update_ran'] = True
+            result['update_result'] = {'assets_ok': a_ok, 'options_ok': o_ok}
+            # Lê de novo do banco após commit
+            legs_after = StructuredLeg.query.join(StructuredOp).filter(
+                StructuredOp.user_id == uid, StructuredOp.status == 'OPEN'
+            ).all()
+            result['leg_prices_after_update'] = {l.ticker.upper(): l.current_price for l in legs_after}
+
     return jsonify(result)
 
 
@@ -6560,8 +6571,9 @@ def atualizar_oplab():
     ativos_ok, opcoes_ok = _do_oplab_bulk_update(current_user.id, token)
     _oplab_last_update[current_user.id] = datetime.now()
 
-    total = ativos_ok + opcoes_ok
-    if total > 0:
+    if ativos_ok == -1:
+        flash('OpLab: erro ao salvar no banco — verifique os logs do servidor.', 'danger')
+    elif (ativos_ok + opcoes_ok) > 0:
         flash(f'OpLab: {ativos_ok} ativo(s) e {opcoes_ok} opção(ões) atualizados.', 'success')
     else:
         flash('OpLab: nenhum ativo atualizado. Verifique o token ou os tickers cadastrados.', 'warning')
@@ -7823,8 +7835,10 @@ def _do_oplab_bulk_update(uid: int, token: str):
 
     try:
         db.session.commit()
-    except Exception:
+    except Exception as _e:
         db.session.rollback()
+        import traceback; traceback.print_exc()
+        return -1, -1   # sinaliza falha de commit
 
     return assets_ok, options_ok
 

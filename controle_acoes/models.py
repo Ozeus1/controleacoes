@@ -462,6 +462,15 @@ class MarketIndex(db.Model):
 
 
 
+class ChartCache(db.Model):
+    """Cache persistente de OHLCV por ticker (sobrevive restart do servidor)."""
+    __tablename__ = 'chart_cache'
+    ticker     = db.Column(db.String(20), primary_key=True)
+    last_date  = db.Column(db.String(12), nullable=False)   # último candle: YYYY-MM-DD
+    fetched_at = db.Column(db.DateTime,   nullable=False, default=datetime.utcnow)
+    candles_gz = db.Column(db.LargeBinary, nullable=False)   # JSON gzip dos candles
+
+
 class UserChartLine(db.Model):
     """Linhas de tendência desenhadas pelo usuário no gráfico de candlestick."""
     __tablename__ = 'user_chart_lines'

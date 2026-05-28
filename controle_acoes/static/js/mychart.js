@@ -6,13 +6,14 @@
 'use strict';
 
 // ── Estado global ──────────────────────────────────────────────────────────────
-var _cache    = {};   // {TICKER: {ts, data}}
+var _cache    = {};   // {TICKER: {ts, candles[]}}
 var _lines    = {};   // {TICKER: [{id,x1,y1,x2,y2,color,width},...]}
 var _state    = null; // estado atual do gráfico aberto
 var _modal    = null;
 var _canvas   = null;
 var _ctx      = null;
 var CSRF      = '';
+var _rafPending = false; // throttle RAF para mousemove
 
 // ── Utilitários ────────────────────────────────────────────────────────────────
 function sma(arr, n) {
@@ -241,45 +242,56 @@ function _onMouseMove(e) {
     var pt = _clientToCanvas(e);
     var d  = _px2data(pt.x, pt.y);
 
-    // Crosshair info
-    if (d && d.date) {
-        var c = _state._vis[d.i];
-        if (c) {
-            document.getElementById('mc-crosshair-info').textContent =
-                fmtDate(c.t) + '  A:' + fmtPrice(c.o) + '  H:' + fmtPrice(c.h)
-                + '  L:' + fmtPrice(c.l) + '  F:' + fmtPrice(c.c);
-        }
-    }
+    // Atualiza estado (barato — sem rerender)
     _state._crossX = pt.x;
     _state._crossY = pt.y;
+    _state._hoverD = d;
+    _state._hoverE = e;
 
     if (_tool === 'line' && _drawing && d) {
         _drawing.x2 = d.date;
         _drawing.y2 = d.price;
     }
-    _draw();
 
-    // Tooltip OHLCV
-    if (d && d.date && _tool === 'cursor') {
-        var c2 = _state._vis[d.i];
-        if (c2) {
-            var tip = document.getElementById('mc-tooltip');
-            tip.innerHTML = '<strong>' + fmtDate(c2.t) + '</strong>'
-                + '  A:<span style="color:#94a3b8">' + fmtPrice(c2.o) + '</span>'
-                + '  H:<span style="color:#4ade80">' + fmtPrice(c2.h) + '</span>'
-                + '  L:<span style="color:#f87171">' + fmtPrice(c2.l) + '</span>'
-                + '  F:<strong>' + fmtPrice(c2.c) + '</strong>'
-                + '  V:<span style="color:#94a3b8">' + (c2.v >= 1e6 ? (c2.v/1e6).toFixed(1)+'M' : c2.v >= 1e3 ? (c2.v/1e3).toFixed(0)+'k' : c2.v) + '</span>';
-            var rect = _canvas.getBoundingClientRect();
-            var tx = e.clientX - rect.left + 14;
-            var ty = e.clientY - rect.top - 10;
-            if (tx + 340 > rect.width) tx = e.clientX - rect.left - 350;
-            tip.style.left = tx + 'px';
-            tip.style.top  = ty + 'px';
-            tip.style.display = 'block';
-        }
-    } else {
-        document.getElementById('mc-tooltip').style.display = 'none';
+    // Throttle: máximo 1 rerender por frame de animação
+    if (!_rafPending) {
+        _rafPending = true;
+        requestAnimationFrame(function() {
+            _rafPending = false;
+            if (!_state) return;
+            _draw();
+            var hd = _state._hoverD, he = _state._hoverE;
+            if (hd && hd.date) {
+                var c = _state._vis[hd.i];
+                if (c) {
+                    document.getElementById('mc-crosshair-info').textContent =
+                        fmtDate(c.t) + '  A:' + fmtPrice(c.o) + '  H:' + fmtPrice(c.h)
+                        + '  L:' + fmtPrice(c.l) + '  F:' + fmtPrice(c.c);
+                }
+            }
+            if (hd && hd.date && _tool === 'cursor') {
+                var c2 = _state._vis[hd.i];
+                if (c2) {
+                    var tip = document.getElementById('mc-tooltip');
+                    tip.innerHTML = '<strong>' + fmtDate(c2.t) + '</strong>'
+                        + '  A:<span style="color:#94a3b8">' + fmtPrice(c2.o) + '</span>'
+                        + '  H:<span style="color:#4ade80">' + fmtPrice(c2.h) + '</span>'
+                        + '  L:<span style="color:#f87171">' + fmtPrice(c2.l) + '</span>'
+                        + '  F:<strong>' + fmtPrice(c2.c) + '</strong>'
+                        + '  V:<span style="color:#94a3b8">' + (c2.v >= 1e6 ? (c2.v/1e6).toFixed(1)+'M' : c2.v >= 1e3 ? (c2.v/1e3).toFixed(0)+'k' : c2.v) + '</span>';
+                    var rect = _canvas.getBoundingClientRect();
+                    var tx = he.clientX - rect.left + 14;
+                    var ty = he.clientY - rect.top  - 10;
+                    if (tx + 340 > rect.width) tx = he.clientX - rect.left - 350;
+                    tip.style.left = tx + 'px';
+                    tip.style.top  = ty + 'px';
+                    tip.style.display = 'block';
+                }
+            } else {
+                var tip2 = document.getElementById('mc-tooltip');
+                if (tip2) tip2.style.display = 'none';
+            }
+        });
     }
 }
 
@@ -371,22 +383,38 @@ MyChart.open = function(ticker, isIntl) {
             .then(function(d) { _lines[ticker] = d; if (_state && _state.ticker === ticker) _draw(); });
     }
 
-    // Carrega dados com cache 2 min
+    // Cache cliente 2 min (camada 0 — zero round-trip)
     var now = Date.now();
     var cached = _cache[ticker];
     if (cached && (now - cached.ts) < 120000) {
-        _state.allCandles = cached.data.candles;
+        _state.allCandles = cached.candles;
         _applyPeriod(); _draw();
         return;
     }
 
-    fetch('/api/chart_data/' + encodeURIComponent(ticker))
+    // Fetch incremental: se já temos candles, pede só os novos (?since=último_date)
+    var url = '/api/chart_data/' + encodeURIComponent(ticker);
+    var existingCandles = cached ? cached.candles : null;
+    if (existingCandles && existingCandles.length) {
+        url += '?since=' + existingCandles[existingCandles.length - 1].t;
+    }
+
+    fetch(url)
         .then(function(r) { return r.json(); })
         .then(function(d) {
             if (d.error) { document.getElementById('mc-status').textContent = '✗ ' + d.error; return; }
-            _cache[ticker] = { ts: Date.now(), data: d };
+            var candles = d.candles;
+            // Merge com candles existentes quando fetch incremental
+            if (existingCandles && existingCandles.length && candles.length) {
+                var newDates = {};
+                candles.forEach(function(c) { newDates[c.t] = true; });
+                var base = existingCandles.filter(function(c) { return !newDates[c.t]; });
+                candles = base.concat(candles);
+                candles.sort(function(a, b) { return a.t < b.t ? -1 : 1; });
+            }
+            _cache[ticker] = { ts: Date.now(), candles: candles };
             if (_state && _state.ticker === ticker) {
-                _state.allCandles = d.candles;
+                _state.allCandles = candles;
                 _applyPeriod(); _draw();
             }
         })
@@ -398,14 +426,31 @@ MyChart._close = function() {
     _state = null;
 };
 
-// ── Filtro de período ──────────────────────────────────────────────────────────
+// ── Filtro de período + pré-cálculo de MAs ────────────────────────────────────
 function _applyPeriod() {
     if (!_state || !_state.allCandles) return;
     var all = _state.allCandles;
     var per = _state.period || '1y';
     var days = { '3mo': 63, '6mo': 126, '1y': 252, '2y': 504 };
     var n = days[per] || 252;
-    _state._vis = all.slice(-n);
+
+    // Para MAs longas (200) precisamos dos candles anteriores ao período visível
+    // Pegamos os 200 extras "antes" para warm-up e depois fatiamos
+    var warmup = 200;
+    var start  = Math.max(0, all.length - n - warmup);
+    var full   = all.slice(start);
+    var closes = full.map(function(c) { return c.c; });
+
+    var ma8f   = sma(closes, 8);
+    var ma20f  = sma(closes, 20);
+    var ma200f = sma(closes, 200);
+
+    // Fatia só os candles visíveis, mas mantém o índice correto das MAs
+    var offset = full.length - Math.min(n, all.length);
+    _state._vis    = full.slice(offset);
+    _state._ma8    = ma8f.slice(offset);
+    _state._ma20   = ma20f.slice(offset);
+    _state._ma200  = ma200f.slice(offset);
 }
 
 // ── Resize canvas ──────────────────────────────────────────────────────────────
@@ -449,11 +494,11 @@ function _draw() {
     var cH = H - padT - padB;
 
     // Preço range
-    var highs  = vis.map(function(c) { return c.h; });
-    var lows   = vis.map(function(c) { return c.l; });
-    var closes = vis.map(function(c) { return c.c; });
-    var priceMin = Math.min.apply(null, lows);
-    var priceMax = Math.max.apply(null, highs);
+    var priceMin = Infinity, priceMax = -Infinity;
+    for (var i = 0; i < vis.length; i++) {
+        if (vis[i].l < priceMin) priceMin = vis[i].l;
+        if (vis[i].h > priceMax) priceMax = vis[i].h;
+    }
     var pad5 = (priceMax - priceMin) * 0.05 || priceMax * 0.01;
     priceMin -= pad5; priceMax += pad5;
 
@@ -491,12 +536,13 @@ function _draw() {
         ctx.fillText(fmtDate(vis[i].t), xg, H - padB + 14);
     }
 
-    // MAs
+    // MAs pré-calculadas em _applyPeriod — zero recomputo por frame
     var showMA8   = document.getElementById('mc-ma8')   && document.getElementById('mc-ma8').checked;
     var showMA20  = document.getElementById('mc-ma20')  && document.getElementById('mc-ma20').checked;
     var showMA200 = document.getElementById('mc-ma200') && document.getElementById('mc-ma200').checked;
 
     function drawMA(arr, color, lw) {
+        if (!arr || !arr.length) return;
         ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.setLineDash([]);
         ctx.beginPath(); var started = false;
         for (var i = 0; i < arr.length; i++) {
@@ -507,9 +553,9 @@ function _draw() {
         ctx.stroke();
     }
 
-    if (showMA200) drawMA(sma(closes, 200), '#f87171', 1.2);
-    if (showMA20)  drawMA(sma(closes, 20),  '#60a5fa', 1.2);
-    if (showMA8)   drawMA(sma(closes, 8),   '#fbbf24', 1.0);
+    if (showMA200) drawMA(_state._ma200, '#f87171', 1.2);
+    if (showMA20)  drawMA(_state._ma20,  '#60a5fa', 1.2);
+    if (showMA8)   drawMA(_state._ma8,   '#fbbf24', 1.0);
 
     // Candles
     var candleW = Math.max(1, Math.min(14, cW / vis.length * 0.7));

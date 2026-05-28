@@ -7108,45 +7108,115 @@ def api_current_quotes():
     })
 
 
-_chart_cache = {}  # {ticker: {'ts': time, 'data': [...]}}
+_chart_mem = {}  # cache em memória por processo: {ticker: {'ts': float, 'candles': [...]}}
+_CHART_MEM_TTL = 120  # segundos — evita hit no SQLite em acessos repetidos rápidos
+
+def _yf_rows(h):
+    rows = []
+    for ts, row in h.iterrows():
+        v = row['Volume']
+        rows.append({
+            't': ts.strftime('%Y-%m-%d'),
+            'o': round(float(row['Open']),  4),
+            'h': round(float(row['High']),  4),
+            'l': round(float(row['Low']),   4),
+            'c': round(float(row['Close']), 4),
+            'v': int(v) if v == v else 0,
+        })
+    return rows
+
 
 @app.route('/api/chart_data/<ticker>')
 @login_required
 def api_chart_data(ticker):
-    """Retorna OHLCV diário (2 anos) via yfinance com cache de 2 minutos."""
-    import time as _time
+    """OHLCV diário com cache em três camadas:
+       1. Memória (120 s) — zero I/O
+       2. SQLite (ChartCache) — sobrevive restart; fetch incremental se cache < 1 dia
+       3. yfinance — somente quando necessário
+    """
+    import time as _time, gzip as _gzip, json as _json
+    from models import ChartCache
+    from datetime import date as _date, timedelta as _td
+
     ticker = ticker.upper().strip()
-    now = _time.time()
-    cached = _chart_cache.get(ticker)
-    if cached and (now - cached['ts']) < 120:
-        return jsonify(cached['data'])
+    since  = request.args.get('since')  # YYYY-MM-DD opcional do cliente
+    now_ts = _time.time()
+    today  = _date.today().isoformat()
+
+    # ── Camada 1: memória ──────────────────────────────────────────────────────
+    mem = _chart_mem.get(ticker)
+    if mem and (now_ts - mem['ts']) < _CHART_MEM_TTL:
+        candles = mem['candles']
+        if since:
+            candles = [c for c in candles if c['t'] > since]
+        return jsonify({'ticker': ticker, 'candles': candles, 'cached': 'mem'})
 
     try:
         import yfinance as yf
-        # Tickers BR: acrescenta .SA se não tiver sufixo
+
         yf_ticker = ticker
         if re.match(r'^[A-Z]{4}[0-9]', ticker) and '.' not in ticker:
             yf_ticker = ticker + '.SA'
-        t = yf.Ticker(yf_ticker)
-        h = t.history(period='2y', interval='1d')
-        if h.empty:
+
+        # ── Camada 2: SQLite ───────────────────────────────────────────────────
+        db_entry = ChartCache.query.get(ticker)
+        candles  = None
+
+        if db_entry:
+            # Descomprime cache existente
+            candles = _json.loads(_gzip.decompress(db_entry.candles_gz).decode())
+
+            # Se o último candle é de hoje ou ontem (fim de semana), está fresco
+            days_old = (_date.today() - _date.fromisoformat(db_entry.last_date)).days
+            if days_old <= 1:
+                _chart_mem[ticker] = {'ts': now_ts, 'candles': candles}
+                out = [c for c in candles if c['t'] > since] if since else candles
+                return jsonify({'ticker': ticker, 'candles': out, 'cached': 'db'})
+
+            # Cache desatualizado: busca só candles novos (from last_date)
+            start_date = (_date.fromisoformat(db_entry.last_date) - _td(days=5)).isoformat()
+            h = yf.Ticker(yf_ticker).history(start=start_date, interval='1d')
+            if not h.empty:
+                h = h.dropna(subset=['Open', 'High', 'Low', 'Close'])
+                new_rows = _yf_rows(h)
+                # Merge: remove datas duplicadas e adiciona novas
+                new_dates = {r['t'] for r in new_rows}
+                candles = [c for c in candles if c['t'] not in new_dates] + new_rows
+                candles.sort(key=lambda c: c['t'])
+                candles = candles[-504:]  # mantém máx 2 anos
+        else:
+            # Sem cache — busca 2 anos completos
+            h = yf.Ticker(yf_ticker).history(period='2y', interval='1d')
+            if h.empty:
+                return jsonify({'error': 'Sem dados para ' + ticker}), 404
+            h = h.dropna(subset=['Open', 'High', 'Low', 'Close'])
+            candles = _yf_rows(h)
+
+        if not candles:
             return jsonify({'error': 'Sem dados para ' + ticker}), 404
-        h = h.dropna(subset=['Open', 'High', 'Low', 'Close'])
-        rows = []
-        for ts, row in h.iterrows():
-            rows.append({
-                't': ts.strftime('%Y-%m-%d'),
-                'o': round(float(row['Open']), 4),
-                'h': round(float(row['High']), 4),
-                'l': round(float(row['Low']), 4),
-                'c': round(float(row['Close']), 4),
-                'v': int(row['Volume']) if row['Volume'] == row['Volume'] else 0,
-            })
-        result = {'ticker': ticker, 'candles': rows}
-        _chart_cache[ticker] = {'ts': now, 'data': result}
-        return jsonify(result)
+
+        # ── Persiste no SQLite ─────────────────────────────────────────────────
+        gz = _gzip.compress(_json.dumps(candles).encode(), compresslevel=6)
+        last_date = candles[-1]['t']
+        if db_entry:
+            db_entry.candles_gz  = gz
+            db_entry.last_date   = last_date
+            db_entry.fetched_at  = datetime.utcnow()
+        else:
+            db.session.add(ChartCache(ticker=ticker, last_date=last_date,
+                                      candles_gz=gz, fetched_at=datetime.utcnow()))
+        db.session.commit()
+
+        _chart_mem[ticker] = {'ts': now_ts, 'candles': candles}
+        out = [c for c in candles if c['t'] > since] if since else candles
+        return jsonify({'ticker': ticker, 'candles': out, 'cached': 'yf'})
+
     except Exception as e:
         app.logger.error('api_chart_data %s: %s', ticker, e)
+        # Retorna cache stale se disponível
+        if candles:
+            out = [c for c in candles if c['t'] > since] if since else candles
+            return jsonify({'ticker': ticker, 'candles': out, 'cached': 'stale'})
         return jsonify({'error': str(e)}), 500
 
 

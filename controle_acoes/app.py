@@ -6208,14 +6208,31 @@ def oplab_debug():
 
         # Roda o bulk update e mostra resultado
         if request.args.get('run_update') == '1':
+            # Busca preços diretamente aqui para diagnóstico
+            BASE2 = 'https://api.oplab.com.br/v3'
+            wege_tickers = ['WEGEG48', 'WEGES474', 'WEGES48']
+            try:
+                rw = requests.get(f'{BASE2}/market/quote',
+                                  params={'tickers': ','.join(wege_tickers)},
+                                  headers={'Access-Token': token}, timeout=10)
+                wege_prices_raw = rw.json() if rw.content else []
+                result['wege_quote_direct'] = {'status': rw.status_code, 'body': wege_prices_raw}
+                wege_prices = {str(i.get('symbol','')).upper(): i.get('close') for i in wege_prices_raw}
+                result['wege_prices_parsed'] = wege_prices
+            except Exception as e:
+                result['wege_quote_error'] = str(e)
+
             a_ok, o_ok = _do_oplab_bulk_update(uid, token)
             result['update_ran'] = True
             result['update_result'] = {'assets_ok': a_ok, 'options_ok': o_ok}
-            # Lê de novo do banco após commit
+            # Expire session e relê do banco
+            db.session.expire_all()
             legs_after = StructuredLeg.query.join(StructuredOp).filter(
                 StructuredOp.user_id == uid, StructuredOp.status == 'OPEN'
             ).all()
             result['leg_prices_after_update'] = {l.ticker.upper(): l.current_price for l in legs_after}
+            # Mostra tickers que ainda estão em 0
+            result['still_zero'] = [l.ticker.upper() for l in legs_after if (l.current_price or 0) == 0]
 
     return jsonify(result)
 
@@ -7677,7 +7694,7 @@ def _do_oplab_bulk_update(uid: int, token: str):
         if sp.underlying_asset:
             asset_tickers.add(sp.underlying_asset.upper())
 
-    # Pernas de operações estruturadas abertas e seus underlyings
+    # Pernas e operações estruturadas abertas — carrega uma única vez para reuso
     struct_legs_bulk = StructuredLeg.query.join(StructuredOp).filter(
         StructuredOp.user_id == uid, StructuredOp.status == 'OPEN'
     ).all()
@@ -7808,17 +7825,14 @@ def _do_oplab_bulk_update(uid: int, token: str):
                 sp.underlying_change = variations[uk]
 
     # ── Atualiza pernas de OperaçõesEstruturadas ──────────────────
-    struct_legs = StructuredLeg.query.join(StructuredOp).filter(
-        StructuredOp.user_id == uid, StructuredOp.status == 'OPEN'
-    ).all()
-    for leg in struct_legs:
+    for leg in struct_legs_bulk:
         k = leg.ticker.upper()
         if k in prices and prices[k] > 0:
             leg.current_price = prices[k]
             leg.last_update   = now
 
     # ── Atualiza underlying de OperaçõesEstruturadas ──────────────
-    for sop in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all():
+    for sop in struct_ops_bulk:
         if sop.underlying_asset:
             uk = sop.underlying_asset.upper()
             if uk in prices and prices[uk] > 0:

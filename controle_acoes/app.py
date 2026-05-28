@@ -6230,6 +6230,31 @@ def oplab_debug():
             except Exception as e:
                 result['wege_quote_error'] = str(e)
 
+            # Força update direto dos legs do op 28 sem passar pelo bulk
+            direct_result = {}
+            op28 = StructuredOp.query.filter_by(id=28, user_id=uid).first()
+            if op28 and wege_prices:
+                for leg in op28.legs:
+                    k = leg.ticker.strip().upper()
+                    p = wege_prices.get(k)
+                    direct_result[k] = {'price_from_api': p, 'before': leg.current_price}
+                    if p and float(p) > 0:
+                        leg.current_price = float(p)
+                        direct_result[k]['set_to'] = float(p)
+                    else:
+                        direct_result[k]['skipped'] = True
+                try:
+                    db.session.commit()
+                    direct_result['commit'] = 'ok'
+                except Exception as ce:
+                    db.session.rollback()
+                    direct_result['commit_error'] = str(ce)
+                # Relê do banco
+                db.session.expire_all()
+                op28r = StructuredOp.query.filter_by(id=28).first()
+                direct_result['after_commit'] = {l.ticker: l.current_price for l in op28r.legs}
+            result['direct_op28_update'] = direct_result
+
             a_ok, o_ok = _do_oplab_bulk_update(uid, token)
             result['update_ran'] = True
             result['update_result'] = {'assets_ok': a_ok, 'options_ok': o_ok}

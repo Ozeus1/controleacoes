@@ -62,8 +62,11 @@ function toolBtn(active) {
 }
 
 // ── Ferramenta ────────────────────────────────────────────────────────────────
-var _tool    = 'cursor';
-var _drawing = null;
+var _tool      = 'cursor';
+var _drawing   = null;
+var _selLine   = null;   // linha selecionada { line, idx }
+var _editDrag  = null;   // arraste de edição { mode:'p1'|'p2'|'move', ox,oy,ox1,oy1,ox2,oy2 }
+var HIT_R      = 8;      // px CSS — raio de hit para extremidades
 
 function _setTool(t) {
     _tool    = t;
@@ -163,6 +166,66 @@ function _data2px(date, price) {
     return { x: x, y: y };
 }
 
+// ── Hit-test de linhas ────────────────────────────────────────────────────────
+function _distPointSeg(px, py, ax, ay, bx, by) {
+    var dx = bx - ax, dy = by - ay;
+    var lenSq = dx*dx + dy*dy;
+    if (lenSq === 0) return Math.sqrt((px-ax)*(px-ax)+(py-ay)*(py-ay));
+    var t = ((px-ax)*dx + (py-ay)*dy) / lenSq;
+    t = Math.max(0, Math.min(1, t));
+    var nx = ax + t*dx, ny = ay + t*dy;
+    return Math.sqrt((px-nx)*(px-nx)+(py-ny)*(py-ny));
+}
+
+// Retorna { line, idx, mode } ou null
+function _hitLine(cx, cy) {
+    var lines = (_state && _lines[_state.ticker]) || [];
+    for (var i = lines.length - 1; i >= 0; i--) {
+        var ln = lines[i];
+        var p1 = _data2px(ln.x1, ln.y1);
+        var p2 = _data2px(ln.x2, ln.y2);
+        // extremidade 1
+        if (Math.sqrt((cx-p1.x)*(cx-p1.x)+(cy-p1.y)*(cy-p1.y)) <= HIT_R)
+            return { line: ln, idx: i, mode: 'p1' };
+        // extremidade 2
+        if (Math.sqrt((cx-p2.x)*(cx-p2.x)+(cy-p2.y)*(cy-p2.y)) <= HIT_R)
+            return { line: ln, idx: i, mode: 'p2' };
+        // meio da linha
+        if (_distPointSeg(cx, cy, p1.x, p1.y, p2.x, p2.y) <= HIT_R)
+            return { line: ln, idx: i, mode: 'move' };
+    }
+    return null;
+}
+
+function _saveLine(line) {
+    _fetch('/api/chart_lines/' + _state.ticker, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify(line)
+    }).then(function(r) { return r.json(); }).then(function(res) {
+        line.id = res.id;
+        _draw();
+    });
+}
+
+function _updateLine(line) {
+    if (!line.id) return;
+    _fetch('/api/chart_lines/' + _state.ticker + '?id=' + line.id, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify(line)
+    });
+}
+
+function _deleteLine(line) {
+    if (!line.id) return;
+    _fetch('/api/chart_lines/' + _state.ticker, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ id: line.id })
+    });
+}
+
 // ── Interação: pan, zoom, linhas ───────────────────────────────────────────────
 var _panStart = null;   // { clientX, startIndex }
 
@@ -174,13 +237,42 @@ function _onMouseDown(e) {
 
     if (_tool === 'line') {
         _drawing = { x1: d.date, y1: d.price, x2: d.date, y2: d.price };
-    } else if (_tool === 'cursor') {
-        // Inicia pan com botão do meio ou Shift+click
+        _selLine = null;
+        return;
+    }
+
+    if (_tool === 'cursor') {
+        // Pan com Shift+click ou botão do meio
         if (e.button === 1 || e.shiftKey) {
             _panStart = { clientX: e.clientX, startIdx: _view.start };
             _canvas.style.cursor = 'grabbing';
             e.preventDefault();
+            return;
         }
+
+        // Hit-test nas linhas
+        var hit = _hitLine(pt.x, pt.y);
+        if (hit) {
+            _selLine  = hit;
+            var ln    = hit.line;
+            var p1    = _data2px(ln.x1, ln.y1);
+            var p2    = _data2px(ln.x2, ln.y2);
+            _editDrag = { mode: hit.mode,
+                          startX: pt.x, startY: pt.y,
+                          ox1: ln.x1, oy1: ln.y1,
+                          ox2: ln.x2, oy2: ln.y2,
+                          opx1: p1.x, opy1: p1.y,
+                          opx2: p2.x, opy2: p2.y };
+            _canvas.style.cursor = hit.mode === 'move' ? 'grabbing' : 'crosshair';
+            e.preventDefault();
+            _draw();
+            return;
+        }
+
+        // Clique fora de qualquer linha — deseleciona
+        _selLine  = null;
+        _editDrag = null;
+        _draw();
     }
 }
 
@@ -197,6 +289,49 @@ function _onMouseMove(e) {
     if (_tool === 'line' && _drawing && d) {
         _drawing.x2 = d.date;
         _drawing.y2 = d.price;
+    }
+
+    // Edição de linha selecionada
+    if (_editDrag && _selLine) {
+        var ed  = _editDrag;
+        var ln  = _selLine.line;
+        var l   = _state._layout;
+        var dxPx = pt.x - ed.startX;
+        var dyPx = pt.y - ed.startY;
+
+        if (ed.mode === 'p1') {
+            // Move só a extremidade 1
+            if (d) { ln.x1 = d.date; ln.y1 = d.price; }
+        } else if (ed.mode === 'p2') {
+            // Move só a extremidade 2
+            if (d) { ln.x2 = d.date; ln.y2 = d.price; }
+        } else {
+            // Move a linha inteira — converte deslocamento px em data/preço
+            var pxPerBar  = l.cW / (_view.count - 1 || 1);
+            var pxPerPrice = l.cH / (l.priceMax - l.priceMin);
+            var barsDelta  = Math.round(dxPx / pxPerBar);
+            var priceDelta = -dyPx / pxPerPrice;
+
+            // Encontra índices originais
+            var vis = _state._vis;
+            var i1  = 0, i2 = 0;
+            for (var i = 0; i < vis.length; i++) {
+                if (vis[i].t <= ed.ox1) i1 = i;
+                if (vis[i].t <= ed.ox2) i2 = i;
+            }
+            var ni1 = Math.max(0, Math.min(vis.length-1, i1 + barsDelta));
+            var ni2 = Math.max(0, Math.min(vis.length-1, i2 + barsDelta));
+            ln.x1 = vis[ni1].t;  ln.y1 = ed.oy1 + priceDelta;
+            ln.x2 = vis[ni2].t;  ln.y2 = ed.oy2 + priceDelta;
+        }
+    }
+
+    // Cursor sobre linha — muda cursor
+    if (_tool === 'cursor' && !_editDrag && !_panStart) {
+        var h2 = _hitLine(pt.x, pt.y);
+        _canvas.style.cursor = h2
+            ? (h2.mode === 'move' ? 'grab' : 'crosshair')
+            : 'default';
     }
 
     // Pan ativo
@@ -224,10 +359,21 @@ function _onMouseUp(e) {
     // Fim do pan
     if (_panStart) {
         _panStart = null;
-        _canvas.style.cursor = _tool === 'line' ? 'crosshair' : 'default';
+        _canvas.style.cursor = 'default';
         return;
     }
 
+    // Fim de edição de linha
+    if (_editDrag && _selLine) {
+        var ln = _selLine.line;
+        _updateLine(ln);
+        _editDrag = null;
+        _canvas.style.cursor = 'default';
+        _draw();
+        return;
+    }
+
+    // Fim de desenho de nova linha
     if (!_state || !_drawing) return;
     var pt = _cssCoords(e);
     var d  = _css2data(pt.x, pt.y);
@@ -236,11 +382,11 @@ function _onMouseUp(e) {
     _drawing.x2 = d.date;
     _drawing.y2 = d.price;
 
-    // Tamanho mínimo para salvar
     var p1 = _data2px(_drawing.x1, _drawing.y1);
     var p2 = _data2px(_drawing.x2, _drawing.y2);
-    var dx = Math.abs(p2.x - p1.x), dy = Math.abs(p2.y - p1.y);
-    if (dx < 4 && dy < 4) { _drawing = null; _draw(); return; }
+    if (Math.abs(p2.x - p1.x) < 4 && Math.abs(p2.y - p1.y) < 4) {
+        _drawing = null; _draw(); return;
+    }
 
     var line = { x1: _drawing.x1, y1: _drawing.y1,
                  x2: _drawing.x2, y2: _drawing.y2,
@@ -425,9 +571,24 @@ function ensureModal() {
     _modal.addEventListener('click', function(e) { if (e.target === _modal) MyChart._close(); });
     document.addEventListener('keydown', function(e) {
         if (_modal.style.display === 'none') return;
-        if (e.key === 'Escape') MyChart._close();
-        if (e.key === 'l' || e.key === 'L') _setTool('line');
-        if (e.key === 'c' || e.key === 'C') _setTool('cursor');
+        if (e.key === 'Escape') {
+            if (_selLine) { _selLine = null; _editDrag = null; _draw(); }
+            else MyChart._close();
+            return;
+        }
+        if (e.key === 'l' || e.key === 'L') { _setTool('line'); return; }
+        if (e.key === 'c' || e.key === 'C') { _setTool('cursor'); return; }
+        if ((e.key === 'Delete' || e.key === 'Backspace') && _selLine) {
+            e.preventDefault();
+            var ln  = _selLine.line;
+            var idx = _selLine.idx;
+            _deleteLine(ln);
+            var arr = _lines[_state.ticker];
+            if (arr) arr.splice(idx, 1);
+            _selLine  = null;
+            _editDrag = null;
+            _draw();
+        }
     });
 
     // Botões período
@@ -657,15 +818,25 @@ function _draw() {
     }
 
     // Linhas de tendência salvas
-    (_lines[_state.ticker] || []).forEach(function(ln) {
-        var p1 = _data2px(ln.x1, ln.y1), p2 = _data2px(ln.x2, ln.y2);
-        ctx.strokeStyle = ln.color || '#3b82f6';
-        ctx.lineWidth   = ln.width || 1.5;
+    (_lines[_state.ticker] || []).forEach(function(ln, idx) {
+        var p1  = _data2px(ln.x1, ln.y1), p2 = _data2px(ln.x2, ln.y2);
+        var sel = _selLine && _selLine.idx === idx;
+        ctx.strokeStyle = sel ? '#facc15' : (ln.color || '#3b82f6');
+        ctx.lineWidth   = sel ? 2.5 : (ln.width || 1.5);
         ctx.setLineDash([]);
         ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
-        ctx.fillStyle = ln.color || '#3b82f6';
-        ctx.beginPath(); ctx.arc(p1.x, p1.y, 3, 0, 2*Math.PI); ctx.fill();
-        ctx.beginPath(); ctx.arc(p2.x, p2.y, 3, 0, 2*Math.PI); ctx.fill();
+        // Extremidades
+        ctx.fillStyle = sel ? '#facc15' : (ln.color || '#3b82f6');
+        ctx.beginPath(); ctx.arc(p1.x, p1.y, sel ? 5 : 3, 0, 2*Math.PI); ctx.fill();
+        ctx.beginPath(); ctx.arc(p2.x, p2.y, sel ? 5 : 3, 0, 2*Math.PI); ctx.fill();
+        // Label de instrução quando selecionada
+        if (sel) {
+            var mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2 - 10;
+            ctx.fillStyle = 'rgba(30,41,59,.85)';
+            ctx.fillRect(mx - 82, my - 12, 164, 18);
+            ctx.fillStyle = '#facc15'; ctx.font = '10px Inter,sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText('arrastar=mover  ○=redimensionar  Del=excluir', mx, my);
+        }
     });
 
     // Linha sendo desenhada

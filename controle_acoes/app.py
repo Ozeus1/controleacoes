@@ -7246,6 +7246,17 @@ def api_chart_lines(ticker):
 
     if request.method == 'POST':
         d = request.get_json(force=True)
+        lid = d.get('id')
+        if lid:
+            line = UserChartLine.query.filter_by(id=lid, user_id=uid).first()
+            if not line:
+                return jsonify({'error': 'not found'}), 404
+            line.x1 = d['x1']; line.y1 = d['y1']
+            line.x2 = d['x2']; line.y2 = d['y2']
+            line.color = d.get('color', line.color)
+            line.width = d.get('width', line.width)
+            db.session.commit()
+            return jsonify({'id': line.id})
         line = UserChartLine(user_id=uid, ticker=ticker,
                              x1=d['x1'], y1=d['y1'], x2=d['x2'], y2=d['y2'],
                              color=d.get('color', '#3b82f6'),

@@ -1888,15 +1888,34 @@ def venda_puts_delete(id):
 
 def _get_underlying_quote(ticker, user_id):
     """Retorna (price, daily_change) do ativo subjacente.
-    Busca em: Asset → StructuredOp.underlying_price → StudyOption → Option."""
+    Tenta primeiro cotação ao vivo via Yahoo Finance; fallback em dados do banco."""
     if not ticker:
         return None, None
     t = ticker.strip().upper()
-    # 1. Asset (ações cadastradas em /acoes)
+
+    # 1. Cotação ao vivo via Yahoo Finance (mesma infra do chart)
+    try:
+        import requests as _req
+        yf_t = t + '.SA' if not t.endswith('.SA') and not '.' in t else t
+        url  = 'https://query1.finance.yahoo.com/v8/finance/chart/' + yf_t
+        r    = _req.get(url, params={'interval': '1d', 'range': '2d'},
+                        headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
+        if r.status_code == 200:
+            res = r.json()
+            meta = res['chart']['result'][0]['meta']
+            price  = meta.get('regularMarketPrice') or meta.get('previousClose')
+            prev   = meta.get('previousClose') or price
+            if price:
+                change = (price - prev) / prev * 100 if prev else None
+                return round(price, 2), round(change, 2) if change is not None else None
+    except Exception:
+        pass
+
+    # 2. Asset cadastrado em /acoes (cotação pode ser do último update)
     a = Asset.query.filter_by(ticker=t, user_id=user_id).first()
     if a and a.current_price:
         return a.current_price, getattr(a, 'daily_change', None)
-    # 2. StructuredOp — underlying_price salvo pelo import do Excel
+    # 3. StructuredOp — underlying_price salvo pelo import do Excel
     try:
         op = StructuredOp.query.filter_by(underlying_asset=t, user_id=user_id)\
                                .filter(StructuredOp.underlying_price.isnot(None)).first()
@@ -1904,20 +1923,14 @@ def _get_underlying_quote(ticker, user_id):
             return op.underlying_price, op.underlying_change
     except Exception:
         pass
-    # 3. OptionSpread — cotação salva diretamente no modelo
+    # 4. OptionSpread — cotação salva diretamente no modelo
     sp = OptionSpread.query.filter_by(underlying_asset=t, user_id=user_id).first()
     if sp and sp.underlying_price:
         return sp.underlying_price, sp.underlying_change
-    # 4. StudyOption — tem underlying_price salvo pelo import
+    # 5. StudyOption — tem underlying_price salvo pelo import
     so = StudyOption.query.filter_by(underlying_asset=t, user_id=user_id).first()
     if so and so.underlying_price:
         return so.underlying_price, None
-    # 5. Option — qualquer opção cadastrada do mesmo subjacente tem o ativo em Asset
-    opt = Option.query.filter_by(underlying_asset=t, user_id=user_id).first()
-    if opt:
-        a2 = Asset.query.filter_by(ticker=t, user_id=user_id).first()
-        if a2 and a2.current_price:
-            return a2.current_price, getattr(a2, 'daily_change', None)
     return None, None
 
 

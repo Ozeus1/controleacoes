@@ -5508,6 +5508,25 @@ def importar_excel():
         if changed:
             estudo_opcoes_atualizados += 1
 
+    # ── 6. Atualiza PutSale ──────────────────────────────────────
+    for ps in PutSale.query.filter_by(user_id=current_user.id).all():
+        und_key = (ps.underlying_asset or '').upper()
+        up = all_prices.get(und_key)
+        if up is not None and up > 0:
+            ps.underlying_price = up
+
+    # ── 7. Atualiza OptionSpread.underlying_price ────────────────
+    for sp in OptionSpread.query.filter_by(user_id=current_user.id).all():
+        und_key = (sp.underlying_asset or '').upper()
+        up = all_prices.get(und_key)
+        if up is not None and up > 0:
+            sp.underlying_price = up
+        row = all_rows.get(und_key)
+        if row and len(row) > 9:
+            v = _float(row[9])
+            if v is not None:
+                sp.underlying_change = v
+
     try:
         db.session.commit()
     except Exception as e:
@@ -7588,6 +7607,7 @@ def _do_oplab_bulk_update(uid: int, token: str):
     options       = Option.query.filter_by(user_id=uid).all()
     study_options = StudyOption.query.filter_by(user_id=uid).all()
     spreads       = OptionSpread.query.filter_by(user_id=uid).all()
+    put_sales     = PutSale.query.filter_by(user_id=uid).all()
 
     # ── Monta conjunto de tickers a buscar ────────────────────────
     asset_tickers  = {a.ticker.upper() for a in assets}
@@ -7604,19 +7624,32 @@ def _do_oplab_bulk_update(uid: int, token: str):
         if so.underlying_asset:
             asset_tickers.add(so.underlying_asset.upper())
 
-    # Legs dos spreads
+    # Legs dos spreads e seus underlyings
     for sp in spreads:
         if sp.leg_long_ticker:
             option_tickers.add(sp.leg_long_ticker.upper())
         if sp.leg_short_ticker:
             option_tickers.add(sp.leg_short_ticker.upper())
+        if sp.underlying_asset:
+            asset_tickers.add(sp.underlying_asset.upper())
 
-    # Pernas de operações estruturadas abertas
+    # Pernas de operações estruturadas abertas e seus underlyings
     struct_legs_bulk = StructuredLeg.query.join(StructuredOp).filter(
         StructuredOp.user_id == uid, StructuredOp.status == 'OPEN'
     ).all()
     for leg in struct_legs_bulk:
         option_tickers.add(leg.ticker.upper())
+    struct_ops_bulk = StructuredOp.query.filter_by(user_id=uid, status='OPEN').all()
+    for sop in struct_ops_bulk:
+        if sop.underlying_asset:
+            asset_tickers.add(sop.underlying_asset.upper())
+
+    # PutSales: tickers das opções e seus underlyings
+    for ps in put_sales:
+        if ps.ticker:
+            option_tickers.add(ps.ticker.upper())
+        if ps.underlying_asset:
+            asset_tickers.add(ps.underlying_asset.upper())
 
     all_tickers = list(asset_tickers | option_tickers)
     if not all_tickers:
@@ -7723,6 +7756,12 @@ def _do_oplab_bulk_update(uid: int, token: str):
             k = sp.leg_short_ticker.upper()
             if k in prices and prices[k] > 0:
                 sp.leg_short_current = prices[k]
+        if sp.underlying_asset:
+            uk = sp.underlying_asset.upper()
+            if uk in prices and prices[uk] > 0:
+                sp.underlying_price = prices[uk]
+            if uk in variations:
+                sp.underlying_change = variations[uk]
 
     # ── Atualiza pernas de OperaçõesEstruturadas ──────────────────
     struct_legs = StructuredLeg.query.join(StructuredOp).filter(
@@ -7733,6 +7772,22 @@ def _do_oplab_bulk_update(uid: int, token: str):
         if k in prices and prices[k] > 0:
             leg.current_price = prices[k]
             leg.last_update   = now
+
+    # ── Atualiza underlying de OperaçõesEstruturadas ──────────────
+    for sop in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all():
+        if sop.underlying_asset:
+            uk = sop.underlying_asset.upper()
+            if uk in prices and prices[uk] > 0:
+                sop.underlying_price = prices[uk]
+            if uk in variations:
+                sop.underlying_change = variations[uk]
+
+    # ── Atualiza PutSales ─────────────────────────────────────────
+    for ps in put_sales:
+        if ps.underlying_asset:
+            uk = ps.underlying_asset.upper()
+            if uk in prices and prices[uk] > 0:
+                ps.underlying_price = prices[uk]
 
     try:
         db.session.commit()

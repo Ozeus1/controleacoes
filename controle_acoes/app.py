@@ -7116,7 +7116,7 @@ def _yahoo_fetch(yf_ticker, start_date=None):
     import requests as _req
     from datetime import datetime as _dt, timezone as _tz
     url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + yf_ticker
-    params = {'interval': '1d', 'range': '6mo'} if not start_date else {
+    params = {'interval': '1d', 'range': '1y'} if not start_date else {
         'interval': '1d',
         'period1': int(_dt.fromisoformat(start_date).replace(tzinfo=_tz.utc).timestamp()),
         'period2': int(_dt.now(_tz.utc).timestamp()),
@@ -7200,7 +7200,7 @@ def api_chart_data(ticker):
                 new_dates = {r['t'] for r in new_rows}
                 candles = [c for c in candles if c['t'] not in new_dates] + new_rows
                 candles.sort(key=lambda c: c['t'])
-                candles = candles[-130:]  # ~6 meses de dias úteis
+                candles = candles[-260:]  # ~1 ano de dias úteis (warm-up MM200 + 8 meses)
         else:
             # Primeira vez — busca 6 meses completos
             candles = _yahoo_fetch(yf_ticker)

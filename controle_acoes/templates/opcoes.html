@@ -917,7 +917,6 @@ function openRollHistoryBtn(btn) {
     catch(e) { alert('Erro ao ler histórico: ' + e.message); }
 }
 function openRollHistory(history, title) {
-    console.log('[RollHistory]', JSON.stringify(history, null, 2));
     document.getElementById('roll-hist-title').textContent = title;
     var body = document.getElementById('roll-hist-body');
 

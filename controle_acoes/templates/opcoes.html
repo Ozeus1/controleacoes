@@ -938,26 +938,40 @@ function openRollHistory(history, title) {
     var html = '';
 
     history.forEach(function(r, i) {
-        var net = (r.net_roll != null && r.net_roll !== 0) ? r.net_roll : (r.net || 0);
-        // Recalcula net se for zero e houver dados de pernas (retrocompatibilidade)
-        if (net === 0 && r.legs && r.legs.length) {
+        var net = null;
+        var canCalc = false;
+
+        // Estruturada: recalcula a partir das pernas
+        if (r.legs && r.legs.length) {
+            var sum = 0;
+            var hasData = false;
             r.legs.forEach(function(l) {
-                var qty = l.quantity || 1;
-                var cp  = parseFloat(l.close_price)  || 0;
-                var np_ = parseFloat(l.new_premium)  || 0;
-                net += l.side === 'SELL' ? (np_ - cp) * qty : (cp - np_) * qty;
+                var qty = parseFloat(l.quantity) || 1;
+                var cp  = parseFloat(l.close_price);
+                var np_ = parseFloat(l.new_premium);
+                // Só calcula se ambos os preços existem e não são ambos zero
+                if (!isNaN(cp) && !isNaN(np_) && (cp !== 0 || np_ !== 0)) {
+                    hasData = true;
+                    sum += l.side === 'SELL' ? (np_ - cp) * qty : (cp - np_) * qty;
+                }
             });
+            if (hasData) { net = sum; canCalc = true; }
+        } else if (r.old_long_ticker != null) {
+            // Trava de 2 pernas
+            var clLong  = parseFloat(r.close_long_price);
+            var clShort = parseFloat(r.close_short_price);
+            var nlp     = parseFloat(r.new_long_price);
+            var nsp     = parseFloat(r.new_short_price);
+            if (!isNaN(clLong) && !isNaN(clShort) && !isNaN(nlp) && !isNaN(nsp)) {
+                net = (nsp - clShort) - (nlp - clLong);
+                canCalc = true;
+            }
         }
-        if (net === 0 && r.old_long_ticker != null) {
-            // Trava sem quantity: preço unitário
-            var clLong  = parseFloat(r.close_long_price)  || 0;
-            var clShort = parseFloat(r.close_short_price) || 0;
-            var nlp     = parseFloat(r.new_long_price)    || 0;
-            var nsp     = parseFloat(r.new_short_price)   || 0;
-            net = (nsp - nlp) - (clLong - clShort);
-        }
+        // Fallback: usar net_roll salvo (opção individual ou legado)
+        if (net === null && r.net_roll != null) { net = r.net_roll; canCalc = true; }
+        if (net === null) net = 0;
         net = Math.round(net * 100) / 100;
-        totalNet += net;
+        if (canCalc) totalNet += net;
         var netColor = net >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
         var borderCol = net >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
 
@@ -1043,9 +1057,12 @@ function openRollHistory(history, title) {
         html += '</tbody></table></div>';
 
         // Resumo da rolagem
+        var netLabel = canCalc
+            ? 'Líquido da rolagem: ' + (net>=0?'+':'') + brl(net)
+            : 'Líquido da rolagem: <span style="color:var(--text-secondary);font-weight:400;">não disponível (preços de entrada não registrados)</span>';
         html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:.5rem;padding:.4rem .2rem;">' +
             '<span style="font-size:.82rem;color:var(--text-secondary);">' + (r.notes ? '<em>📝 ' + r.notes + '</em>' : '') + '</span>' +
-            '<span style="font-size:.88rem;font-weight:700;color:' + netColor + ';">Líquido da rolagem: ' + (net>=0?'+':'') + brl(net) + '</span>' +
+            '<span style="font-size:.88rem;font-weight:700;color:' + netColor + ';">' + netLabel + '</span>' +
             '</div>';
 
         html += '</div>';

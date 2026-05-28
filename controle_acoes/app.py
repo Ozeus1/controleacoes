@@ -6164,19 +6164,49 @@ def profile():
 @app.route('/oplab_debug')
 @login_required
 def oplab_debug():
-    """Diagnóstico: mostra estado do token no banco (apenas admins)."""
+    """Diagnóstico: testa /market/quote com os tickers das StructuredLegs abertas."""
     if not current_user.is_admin:
         return jsonify({'error': 'Forbidden'}), 403
     uid = current_user.id
     raw = Settings.query.filter_by(key='oplab_token', user_id=uid).first()
     token = Settings.get_value('oplab_token', user_id=uid)
-    return jsonify({
-        'user_id': uid,
-        'row_exists': raw is not None,
-        'raw_value_len': len(raw.value) if raw else 0,
-        'get_value_result': bool(token),
+
+    result = {
+        'token_row_exists': raw is not None,
+        'token_ok': bool(token),
         'token_prefix': token[:8] + '...' if token and len(token) > 8 else token,
-    })
+    }
+
+    if token:
+        # Coleta tickers das StructuredLegs abertas
+        legs = StructuredLeg.query.join(StructuredOp).filter(
+            StructuredOp.user_id == uid, StructuredOp.status == 'OPEN'
+        ).all()
+        leg_tickers = [l.ticker.upper() for l in legs if l.ticker]
+        result['leg_tickers'] = leg_tickers
+        result['leg_current_prices'] = {l.ticker.upper(): l.current_price for l in legs}
+
+        if leg_tickers:
+            BASE = 'https://api.oplab.com.br/v3'
+            try:
+                r = requests.get(f'{BASE}/market/quote',
+                                 params={'tickers': ','.join(leg_tickers)},
+                                 headers={'Access-Token': token}, timeout=10)
+                result['market_quote_status'] = r.status_code
+                result['market_quote_body'] = r.json() if r.content else []
+            except Exception as e:
+                result['market_quote_error'] = str(e)
+
+            # Testa também /market/instruments para o primeiro ticker
+            try:
+                r2 = requests.get(f'{BASE}/market/instruments/{leg_tickers[0]}',
+                                  headers={'Access-Token': token}, timeout=10)
+                result['instruments_status'] = r2.status_code
+                result['instruments_body'] = r2.json() if r2.content else {}
+            except Exception as e:
+                result['instruments_error'] = str(e)
+
+    return jsonify(result)
 
 
 @app.route('/oplab_test', methods=['GET', 'POST'])

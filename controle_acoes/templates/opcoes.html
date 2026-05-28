@@ -938,7 +938,25 @@ function openRollHistory(history, title) {
     var html = '';
 
     history.forEach(function(r, i) {
-        var net = r.net_roll != null ? r.net_roll : (r.net || 0);
+        var net = (r.net_roll != null && r.net_roll !== 0) ? r.net_roll : (r.net || 0);
+        // Recalcula net se for zero e houver dados de pernas (retrocompatibilidade)
+        if (net === 0 && r.legs && r.legs.length) {
+            r.legs.forEach(function(l) {
+                var qty = l.quantity || 1;
+                var cp  = parseFloat(l.close_price)  || 0;
+                var np_ = parseFloat(l.new_premium)  || 0;
+                net += l.side === 'SELL' ? (np_ - cp) * qty : (cp - np_) * qty;
+            });
+        }
+        if (net === 0 && r.old_long_ticker != null) {
+            // Trava sem quantity: preço unitário
+            var clLong  = parseFloat(r.close_long_price)  || 0;
+            var clShort = parseFloat(r.close_short_price) || 0;
+            var nlp     = parseFloat(r.new_long_price)    || 0;
+            var nsp     = parseFloat(r.new_short_price)   || 0;
+            net = (nsp - nlp) - (clLong - clShort);
+        }
+        net = Math.round(net * 100) / 100;
         totalNet += net;
         var netColor = net >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
         var borderCol = net >= 0 ? 'var(--success-color)' : 'var(--danger-color)';

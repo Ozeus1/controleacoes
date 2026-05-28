@@ -2296,9 +2296,11 @@ def roll_spread(id):
         new_exp_d = datetime.strptime(new_exp, '%Y-%m-%d').date() if new_exp else sp.expiration_date
 
         # Custo de fechar a trava antiga + crédito de abrir a nova
-        cost_close = cl_short - cl_long   # custo fechar (paga short, recebe long)
-        credit_open = ns_p - nl_p          # crédito abrir nova (recebe short, paga long)
-        net_roll    = credit_open - cost_close
+        # SHORT: paga cl_short pra fechar, recebe ns_p ao abrir → crédito = ns_p - cl_short
+        # LONG:  recebe cl_long ao fechar, paga nl_p ao abrir   → custo   = nl_p - cl_long
+        cost_close  = cl_long  - cl_short   # >0 = custou fechar (trava cara de fechar)
+        credit_open = ns_p     - nl_p        # crédito líquido da nova trava
+        net_roll    = (credit_open - cost_close) * (sp.quantity or 1)
 
         _append_roll(sp, {
             'roll_type':        roll_type,
@@ -2370,6 +2372,7 @@ def roll_estruturada(id):
             'legs':      [],
         }
 
+        net_roll = 0.0
         for i, lid in enumerate(leg_ids):
             leg = StructuredLeg.query.get(int(lid))
             if not leg or leg.operation.user_id != current_user.id:
@@ -2380,6 +2383,14 @@ def roll_estruturada(id):
             nk  = float(new_strikes[i].replace(',','.'))   if i < len(new_strikes)   and new_strikes[i]   else leg.strike
             np_ = float(new_premiums[i].replace(',','.'))  if i < len(new_premiums)  and new_premiums[i]  else leg.entry_price
             ne  = new_exps[i]                               if i < len(new_exps)      and new_exps[i]      else (leg.expiration_date.isoformat() if leg.expiration_date else '')
+
+            # SELL: recebe novo prêmio, paga para fechar → crédito = np_ - cp
+            # BUY:  paga novo prêmio, recebe para fechar → custo  = cp - np_
+            qty = leg.quantity or 1
+            if leg.side == 'SELL':
+                net_roll += (np_ - cp) * qty
+            else:
+                net_roll += (cp - np_) * qty
 
             roll_entry['legs'].append({
                 'old_ticker':    leg.ticker,
@@ -2392,6 +2403,7 @@ def roll_estruturada(id):
                 'new_premium':   np_,
                 'new_exp':       ne,
                 'side':          leg.side,
+                'quantity':      qty,
             })
 
             # Atualiza a perna
@@ -2405,11 +2417,12 @@ def roll_estruturada(id):
                 except ValueError:
                     pass
 
+        roll_entry['net_roll'] = round(net_roll, 4)
         _append_roll(op, roll_entry)
         op.created_at = datetime.strptime(roll_date, '%Y-%m-%d')
 
         db.session.commit()
-        flash('Rolagem da estruturada registrada com sucesso!', 'success')
+        flash(f'Rolagem da estruturada registrada! Crédito/Débito: R$ {net_roll:.2f}', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Erro na rolagem: {e}', 'danger')

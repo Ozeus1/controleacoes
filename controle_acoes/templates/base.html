@@ -255,25 +255,29 @@
         {% endwith %}
 
         <script>
-            // ── TradingView: abre em nova aba (iframe/s3 bloqueados pelo TradingView) ──
-            // buildTVWidget e openTVChart definidos aqui; os templates podem redefini-los
-            // mas esta versão global é usada como fallback e será sempre chamada por buildTVWidget.
+            // ── TradingView widget helper ──
+            // Usa iframe direto de www.tradingview.com/chart/ (s3.tradingview.com inacessível)
             function buildTVWidget(containerId, symbol, theme, height) {
-                var url = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(symbol)
-                    + '&interval=D&timezone=America%2FSao_Paulo&locale=pt';
-                window.open(url, '_blank');
+                var container = document.getElementById(containerId);
+                if (!container) return;
+                var h = height || 500;
+                var src = 'https://www.tradingview.com/chart/?symbol=' + encodeURIComponent(symbol)
+                    + '&interval=D'
+                    + '&timezone=America%2FSao_Paulo'
+                    + '&theme=' + (theme || 'dark')
+                    + '&style=1'
+                    + '&locale=pt'
+                    + '&allow_symbol_change=1'
+                    + '&hide_side_toolbar=0'
+                    + '&save_image=0';
+                var iframe = document.createElement('iframe');
+                iframe.src = src;
+                iframe.style.cssText = 'width:100%;height:' + h + 'px;border:none;display:block;';
+                iframe.setAttribute('allowfullscreen', '');
+                iframe.setAttribute('allowtransparency', 'true');
+                container.innerHTML = '';
+                container.appendChild(iframe);
             }
-            // openTVChart global — os templates definem o próprio mas chamam buildTVWidget no fim
-            // Esta versão evita o flash do modal vazio sobrescrevendo após o DOMContentLoaded
-            document.addEventListener('DOMContentLoaded', function() {
-                var origOpen = window.openTVChart;
-                window.openTVChart = function(ticker, isIntl) {
-                    ticker = (ticker || '').toUpperCase();
-                    var isBR = !isIntl && /^[A-Z]{4}[0-9]/.test(ticker);
-                    var symbol = isBR ? 'BMFBOVESPA:' + ticker : ticker;
-                    buildTVWidget('tv-container', symbol, 'dark', 500);
-                };
-            });
             // Theme-aware chart colors helper (must be before content block)
             function getThemeColors() {
                 var s = getComputedStyle(document.documentElement);

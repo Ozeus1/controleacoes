@@ -15,6 +15,9 @@ var _ctx      = null;
 var CSRF      = '';
 var _rafPending = false; // throttle RAF para mousemove
 
+// objeto público (declarado aqui para que as atribuições abaixo funcionem)
+var MyChart = {};
+
 // ── Utilitários ────────────────────────────────────────────────────────────────
 function sma(arr, n) {
     var out = new Array(arr.length).fill(null);
@@ -751,14 +754,9 @@ MyChart.openInline = function(containerId, ticker, isIntl) {
         }).catch(function(){wrap.innerHTML='<p style="color:#f87171;padding:.5rem;font-size:.8rem">Erro ao carregar dados</p>';});
 };
 
-// ── API pública ────────────────────────────────────────────────────────────────
-global.MyChart = global.MyChart || {};
-global.MyChart.open       = MyChart.open;
-global.MyChart.openInline = MyChart.openInline;
-global.MyChart._close     = MyChart._close;
-global.MyChart._delLines  = MyChart._delLines;
+// ── Exporta para window ────────────────────────────────────────────────────────
+global.MyChart = MyChart;
 
-// buildTVWidget: abre modal (compatibilidade com chamadas legadas)
 global.buildTVWidget = function(containerId, symbol) {
     var ticker = symbol.replace(/^BMFBOVESPA:/, '').replace(/\.SA$/, '');
     var isIntl = !/^[A-Z]{4}[0-9]/.test(ticker);

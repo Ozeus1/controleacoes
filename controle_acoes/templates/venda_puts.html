@@ -343,12 +343,9 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
     var tvScriptLoaded = false;
     var modal = document.getElementById('tv-modal');
 
-    window.openTVChart = function(ticker) {
+    window.openTVChart = function(ticker, isIntl) {
         ticker = (ticker || '').toUpperCase();
-        var symbol = /^[A-Z]{4}[0-9]/.test(ticker) ? 'BMFBOVESPA:' + ticker : ticker;
-        document.getElementById('tv-modal-title').textContent = '📈 ' + ticker + ' — Gráfico Técnico';
-        modal.style.display = 'flex';
-        buildTVWidget('tv-container', symbol, 'dark', 500);
+        MyChart.open(ticker, isIntl);
     };
 
     window.closeTVChart = function() { modal.style.display = 'none'; };

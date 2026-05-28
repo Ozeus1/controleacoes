@@ -137,11 +137,7 @@
   var modal=document.getElementById('tv-modal');
   window.openTVChart=function(ticker,isIntl){
     ticker=(ticker||'').toUpperCase();
-    var isBR=!isIntl&&/^[A-Z]{4}[0-9]/.test(ticker);
-    var symbol=isBR?'BMFBOVESPA:'+ticker:ticker;
-    document.getElementById('tv-modal-title').textContent='📈 '+ticker+' — Gráfico Técnico';
-    modal.style.display='flex';
-    buildTVWidget('tv-container',symbol,'dark',500);
+    MyChart.open(ticker, isIntl);
   };
   window.closeTVChart=function(){modal.style.display='none';};
   modal.addEventListener('click',function(e){if(e.target===modal)closeTVChart();});
@@ -289,8 +285,7 @@
     set('r-sector',dash(d.sector)); set('r-industry',dash(d.industry));
     if(tvBuiltFor!==ticker){
       tvBuiltFor=ticker;
-      var sym=/^[A-Z]{4}[0-9]/.test(ticker)?'BMFBOVESPA:'+ticker:ticker;
-      buildTVWidget('radar-tv-wrap',sym,'light',420);
+      MyChart.openInline('radar-tv-wrap', ticker);
     }
   }
 })();

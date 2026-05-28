@@ -184,12 +184,9 @@
     var tvScriptLoaded = false;
     var modal = document.getElementById('tv-modal');
 
-    window.openTVChart = function(ticker) {
-        ticker = ticker.toUpperCase();
-        document.getElementById('tv-modal-title').textContent = '📈 ' + ticker + ' — Gráfico Técnico';
-        modal.style.display = 'flex';
-        var symbol = 'BMFBOVESPA:' + ticker;
-        buildTVWidget('tv-container', symbol, 'dark', 500);
+    window.openTVChart = function(ticker, isIntl) {
+        ticker = (ticker || '').toUpperCase();
+        MyChart.open(ticker, isIntl);
     };
 
     window.closeTVChart = function() { modal.style.display = 'none'; };

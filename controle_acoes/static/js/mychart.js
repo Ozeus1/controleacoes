@@ -664,15 +664,102 @@ function _drawVolume(vis) {
     }
 }
 
+// ── Gráfico inline (Radar) ─────────────────────────────────────────────────────
+MyChart.openInline = function(containerId, ticker, isIntl) {
+    ticker = (ticker || '').toUpperCase().trim();
+    var yft = ticker;
+    if (!isIntl && /^[A-Z]{4}[0-9]/.test(ticker) && ticker.indexOf('.') < 0) yft = ticker + '.SA';
+
+    var wrap = document.getElementById(containerId);
+    if (!wrap) return;
+    wrap.innerHTML = '<p style="color:#94a3b8;padding:.5rem;font-size:.8rem">⏳ Carregando ' + ticker + '…</p>';
+
+    var doRender = function(candles) {
+        if (!candles || !candles.length) {
+            wrap.innerHTML = '<p style="color:#f87171;padding:.5rem;font-size:.8rem">Sem dados para ' + ticker + '</p>';
+            return;
+        }
+        // Último 3M (~63 candles)
+        var vis = candles.slice(-63);
+        var closes = vis.map(function(c){ return c.c; });
+        var ma8 = sma(closes,8), ma20 = sma(closes,20), ma50 = sma(closes,50);
+
+        wrap.innerHTML = '';
+        var dpr = window.devicePixelRatio || 1;
+        var W = wrap.clientWidth || 420, H = 220;
+        var cvs = document.createElement('canvas');
+        cvs.width = W * dpr; cvs.height = H * dpr;
+        cvs.style.cssText = 'display:block;width:100%;height:' + H + 'px;';
+        wrap.appendChild(cvs);
+        var ctx = cvs.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        var pL=8,pR=52,pT=12,pB=20, cW=W-pL-pR, cH=H-pT-pB;
+        var mn=Infinity,mx=-Infinity;
+        for(var i=0;i<vis.length;i++){if(vis[i].l<mn)mn=vis[i].l;if(vis[i].h>mx)mx=vis[i].h;}
+        var p5=(mx-mn)*.05||mx*.01; mn-=p5; mx+=p5;
+        function xp(i){return pL+(i/(vis.length-1||1))*cW;}
+        function yp(v){return pT+(1-(v-mn)/(mx-mn))*cH;}
+
+        ctx.fillStyle='#0f172a'; ctx.fillRect(0,0,W,H);
+        // grid
+        ctx.strokeStyle='rgba(51,65,85,.4)'; ctx.lineWidth=1;
+        for(var g=0;g<=4;g++){
+            var yg=pT+g*cH/4;
+            ctx.beginPath();ctx.moveTo(pL,yg);ctx.lineTo(W-pR,yg);ctx.stroke();
+            var pl=mx-g*(mx-mn)/4;
+            ctx.fillStyle='#64748b';ctx.font='9px Inter,sans-serif';ctx.textAlign='left';
+            ctx.fillText(fmtPrice(pl),W-pR+3,yg+3);
+        }
+        // MAs
+        function dMA(arr,col,lw){
+            ctx.strokeStyle=col;ctx.lineWidth=lw;ctx.setLineDash([]);
+            ctx.beginPath();var st=false;
+            for(var i=0;i<arr.length;i++){if(arr[i]==null){st=false;continue;}
+                var x=xp(i),y=yp(arr[i]);if(!st){ctx.moveTo(x,y);st=true;}else ctx.lineTo(x,y);}
+            ctx.stroke();
+        }
+        dMA(ma50,'#f87171',1); dMA(ma20,'#60a5fa',1); dMA(ma8,'#fbbf24',.8);
+        // Candles
+        var cw=Math.max(1,Math.min(10,cW/vis.length*.7));
+        for(var i=0;i<vis.length;i++){
+            var c=vis[i],bull=c.c>=c.o,col=bull?'#26a69a':'#ef5350';
+            var xc=xp(i);
+            ctx.strokeStyle=col;ctx.lineWidth=1;ctx.setLineDash([]);
+            ctx.beginPath();ctx.moveTo(xc,yp(c.h));ctx.lineTo(xc,yp(c.l));ctx.stroke();
+            ctx.fillStyle=col;
+            ctx.fillRect(xc-cw/2,Math.min(yp(c.o),yp(c.c)),cw,Math.max(1,Math.abs(yp(c.c)-yp(c.o))));
+        }
+        // Preço último
+        var lc=vis[vis.length-1].c, yL=yp(lc);
+        ctx.strokeStyle='#94a3b8';ctx.lineWidth=.8;ctx.setLineDash([3,3]);
+        ctx.beginPath();ctx.moveTo(pL,yL);ctx.lineTo(W-pR,yL);ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle='#1e293b';ctx.fillRect(W-pR+1,yL-8,pR-2,16);
+        ctx.fillStyle='#e2e8f0';ctx.font='bold 9px Inter,sans-serif';ctx.textAlign='left';
+        ctx.fillText(fmtPrice(lc),W-pR+3,yL+4);
+    };
+
+    var now=Date.now(), cached=_cache[ticker];
+    if(cached&&(now-cached.ts)<120000){doRender(cached.candles);return;}
+    fetch('/api/chart_data/'+encodeURIComponent(ticker))
+        .then(function(r){return r.json();})
+        .then(function(d){
+            if(d.error){wrap.innerHTML='<p style="color:#f87171;padding:.5rem;font-size:.8rem">'+d.error+'</p>';return;}
+            _cache[ticker]={ts:Date.now(),candles:d.candles};
+            doRender(d.candles);
+        }).catch(function(){wrap.innerHTML='<p style="color:#f87171;padding:.5rem;font-size:.8rem">Erro ao carregar dados</p>';});
+};
+
 // ── API pública ────────────────────────────────────────────────────────────────
 global.MyChart = global.MyChart || {};
-global.MyChart.open   = MyChart.open;
-global.MyChart._close = MyChart._close;
-global.MyChart._delLines = MyChart._delLines;
+global.MyChart.open       = MyChart.open;
+global.MyChart.openInline = MyChart.openInline;
+global.MyChart._close     = MyChart._close;
+global.MyChart._delLines  = MyChart._delLines;
 
-// Compatibilidade: buildTVWidget e openTVChart agora chamam MyChart.open
-global.buildTVWidget = function(containerId, symbol, theme, height) {
-    // Remove prefixo BMFBOVESPA: se vier
+// buildTVWidget: abre modal (compatibilidade com chamadas legadas)
+global.buildTVWidget = function(containerId, symbol) {
     var ticker = symbol.replace(/^BMFBOVESPA:/, '').replace(/\.SA$/, '');
     var isIntl = !/^[A-Z]{4}[0-9]/.test(ticker);
     MyChart.open(ticker, isIntl);

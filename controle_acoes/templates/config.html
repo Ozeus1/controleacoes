@@ -194,37 +194,63 @@
     <div style="border-top: 1px solid var(--border-color); padding-top: 2rem;">
         <h3>Testar Conexão OpLab</h3>
         <p style="color: var(--text-secondary); margin-bottom: 1rem;">
-            Informe um ticker para verificar se a API está retornando dados corretamente com a chave configurada.
+            Informe um ticker de opção para verificar se a API OpLab está retornando dados com o token configurado.
         </p>
 
-        <form method="POST" action="{{ url_for('test_api') }}" style="margin-bottom: 1rem;">
-            <div class="form-group">
-                <label for="ticker">Ticker</label>
-                <div style="display: flex; gap: 1rem;">
-                    <input type="text" id="ticker" name="ticker" placeholder="Ex: PETR4" required
-                        style="flex: 1; margin-bottom: 0;">
-                    <button type="submit" class="btn btn-primary">Testar</button>
-                </div>
+        <div class="form-group">
+            <label for="oplab-test-ticker">Ticker</label>
+            <div style="display: flex; gap: 1rem;">
+                <input type="text" id="oplab-test-ticker" placeholder="Ex: WEGEG48"
+                    style="flex: 1; margin-bottom: 0;">
+                <button id="oplab-test-btn" class="btn btn-primary">Testar</button>
             </div>
-        </form>
-
-        {% if test_result %}
-        <div
-            style="background-color: var(--bg-color); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--border-color);">
-            <div style="margin-bottom: 0.5rem;">
-                Status:
-                {% if success %}
-                <span style="color: var(--success-color); font-weight: bold;">SUCESSO</span>
-                {% else %}
-                <span style="color: var(--danger-color); font-weight: bold;">ERRO</span>
-                {% endif %}
-            </div>
-            <pre
-                style="color: var(--text-secondary); font-family: monospace; white-space: pre-wrap; word-break: break-all;">{{ test_result }}</pre>
         </div>
-        {% endif %}
+
+        <div id="oplab-test-result" style="display:none; margin-top:1rem;
+            background-color: var(--bg-color); padding: 1rem; border-radius: 0.5rem;
+            border: 1px solid var(--border-color);">
+            <div style="margin-bottom: 0.5rem;">
+                Status: <span id="oplab-test-status" style="font-weight:bold;"></span>
+            </div>
+            <pre id="oplab-test-body"
+                style="color: var(--text-secondary); font-family: monospace; white-space: pre-wrap;
+                       word-break: break-all; max-height: 400px; overflow-y: auto;"></pre>
+        </div>
     </div>
 </div>
+
+<script>
+document.getElementById('oplab-test-btn').addEventListener('click', function() {
+    var ticker = document.getElementById('oplab-test-ticker').value.trim().toUpperCase();
+    if (!ticker) { alert('Informe um ticker'); return; }
+    var btn = this;
+    btn.disabled = true; btn.textContent = 'Testando…';
+    fetch('/oplab_test?ticker=' + encodeURIComponent(ticker))
+        .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+        .then(function(res) {
+            var statusEl = document.getElementById('oplab-test-status');
+            var bodyEl   = document.getElementById('oplab-test-body');
+            document.getElementById('oplab-test-result').style.display = 'block';
+            // Verifica se algum endpoint retornou status 200 com dados
+            var anyOk = false;
+            if (res.ok && res.data) {
+                Object.values(res.data).forEach(function(v) {
+                    if (v && v.status === 200) anyOk = true;
+                });
+            }
+            statusEl.textContent = anyOk ? 'SUCESSO' : 'ERRO';
+            statusEl.style.color = anyOk ? 'var(--success-color)' : 'var(--danger-color)';
+            bodyEl.textContent = JSON.stringify(res.data, null, 2);
+        })
+        .catch(function(e) {
+            document.getElementById('oplab-test-result').style.display = 'block';
+            document.getElementById('oplab-test-status').textContent = 'ERRO';
+            document.getElementById('oplab-test-status').style.color = 'var(--danger-color)';
+            document.getElementById('oplab-test-body').textContent = e.toString();
+        })
+        .finally(function() { btn.disabled = false; btn.textContent = 'Testar'; });
+});
+</script>
 
 <div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-top: 2rem;">
     <div style="display:flex; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1rem;">

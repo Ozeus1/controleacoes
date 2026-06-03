@@ -1909,9 +1909,11 @@ def _get_underlying_quote(ticker, user_id):
             res = r.json()
             meta = res['chart']['result'][0]['meta']
             price  = meta.get('regularMarketPrice') or meta.get('previousClose')
-            prev   = meta.get('previousClose') or price
             if price:
-                change = (price - prev) / prev * 100 if prev else None
+                change = meta.get('regularMarketChangePercent')
+                if change is None:
+                    prev = meta.get('previousClose') or price
+                    change = (price - prev) / prev * 100 if prev else None
                 return round(price, 2), round(change, 2) if change is not None else None
     except Exception:
         pass

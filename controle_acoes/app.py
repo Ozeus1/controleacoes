@@ -1802,6 +1802,173 @@ def simulador_liquidez():
     return render_template('simulador_liquidez.html', sims=sims, ranking_vol=ranking_vol, selic=_selic())
 
 
+@app.route('/cadeia-opcoes')
+@login_required
+def cadeia_opcoes():
+    """Cadeia de opções estilo HB — calls/puts em torno do spot por vencimento."""
+    ranking_vol = RankingVol.query.filter_by(user_id=current_user.id).order_by(RankingVol.ticker).all()
+    return render_template('cadeia_opcoes.html', ranking_vol=ranking_vol)
+
+
+@app.route('/api/cadeia/<ticker>')
+@login_required
+def api_cadeia(ticker):
+    """Retorna cadeia de opções completa do ticker via OpLab, organizada por vencimento."""
+    import requests as _req
+    ticker = ticker.strip().upper()
+    token  = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    BASE    = 'https://api.oplab.com.br/v3'
+    headers = {'Access-Token': token}
+
+    # Spot price
+    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+
+    try:
+        r = _req.get(f'{BASE}/market/options/{ticker}', headers=headers, timeout=15)
+        if r.status_code != 200:
+            return jsonify({'error': f'OpLab {r.status_code}'}), 400
+        data = r.json()
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    opt_list = data if isinstance(data, list) else (
+        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+    )
+
+    from datetime import date as _date, timedelta
+    import calendar
+
+    def _next_monthly_expirations(n=3):
+        """Retorna as datas dos próximos n vencimentos mensais (terceira sexta)."""
+        today = _date.today()
+        result = []
+        y, m = today.year, today.month
+        while len(result) < n * 2:  # gera mais para filtrar
+            # terceira sexta-feira do mês
+            day = 1
+            count = 0
+            while True:
+                d = _date(y, m, day)
+                if d.weekday() == 4:  # sexta
+                    count += 1
+                    if count == 3:
+                        break
+                day += 1
+            if d >= today:
+                result.append(d.strftime('%Y-%m-%d'))
+            m += 1
+            if m > 12:
+                m = 1; y += 1
+        return result[:n]
+
+    target_exps = _next_monthly_expirations(3)
+
+    # Normaliza opções
+    calls_by_exp = {}
+    puts_by_exp  = {}
+
+    for o in opt_list:
+        sym      = str(o.get('symbol') or o.get('ticker') or '').upper()
+        cat      = str(o.get('category') or o.get('type') or '').upper()
+        strike   = float(o.get('strike') or 0)
+        close    = float(o.get('close') or 0)
+        bid      = float(o.get('bid') or 0)
+        ask      = float(o.get('ask') or 0)
+        var_pct  = float(o.get('variation') or 0)
+        vol_fin  = float(o.get('financial_volume') or o.get('volume_financial') or 0)
+        delta    = o.get('delta') or (o.get('greeks') or {}).get('delta') if isinstance(o.get('greeks'), dict) else o.get('delta')
+        teorico  = float(o.get('theoretical_price') or o.get('theo') or 0)
+        liquidez = float(o.get('liquidity') or o.get('liquidity_score') or 0)
+        due_date = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due_date:
+            due_date = due_date.split('T')[0]
+        if not due_date:
+            continue
+
+        row = {
+            'symbol':   sym,
+            'strike':   round(strike, 2),
+            'close':    round(close, 2),
+            'bid':      round(bid, 2),
+            'ask':      round(ask, 2),
+            'var_pct':  round(var_pct, 2),
+            'vol_fin':  round(vol_fin, 2),
+            'delta':    round(float(delta), 2) if delta is not None else None,
+            'teorico':  round(teorico, 2),
+            'liquidez': round(liquidez, 2),
+            'mid':      round((bid + ask) / 2, 2) if (bid or ask) else 0,
+        }
+
+        is_put = 'PUT' in cat or cat == 'P'
+        bucket = puts_by_exp if is_put else calls_by_exp
+        bucket.setdefault(due_date, []).append(row)
+
+    # Para cada vencimento, seleciona 5 strikes abaixo e 5 acima do spot
+    result_exps = []
+    all_exp_keys = sorted(set(list(calls_by_exp.keys()) + list(puts_by_exp.keys())))
+
+    # Filtra os 3 próximos vencimentos mensais — ou os 3 mais próximos disponíveis
+    def _closest_exp(target, available):
+        target_d = _date.fromisoformat(target)
+        best = min(available, key=lambda x: abs((_date.fromisoformat(x) - target_d).days))
+        if abs((_date.fromisoformat(best) - target_d).days) <= 10:
+            return best
+        return None
+
+    selected_exps = []
+    used = set()
+    for t in target_exps:
+        found = _closest_exp(t, [e for e in all_exp_keys if e not in used])
+        if found:
+            selected_exps.append(found)
+            used.add(found)
+
+    if not selected_exps:
+        selected_exps = all_exp_keys[:3]
+
+    for exp in selected_exps:
+        calls = sorted(calls_by_exp.get(exp, []), key=lambda x: x['strike'])
+        puts  = sorted(puts_by_exp.get(exp, []),  key=lambda x: x['strike'])
+
+        if spot:
+            # 5 calls com strike mais próximo acima e abaixo do spot
+            calls_below = [c for c in calls if c['strike'] <= spot][-5:]
+            calls_above = [c for c in calls if c['strike'] >  spot][:5]
+            calls_sel   = calls_below + calls_above
+
+            puts_below  = [p for p in puts if p['strike'] <= spot][-10:]
+            puts_above  = [p for p in puts if p['strike'] >  spot][:10]
+            puts_sel    = puts_below + puts_above
+        else:
+            calls_sel = calls[:10]
+            puts_sel  = puts[:20]
+
+        # Monta linhas alinhadas por strike
+        all_strikes = sorted({r['strike'] for r in calls_sel + puts_sel})
+        call_map = {c['strike']: c for c in calls_sel}
+        put_map  = {p['strike']: p for p in puts_sel}
+
+        rows = []
+        for s in all_strikes:
+            rows.append({
+                'strike': s,
+                'call':   call_map.get(s),
+                'put':    put_map.get(s),
+            })
+
+        result_exps.append({'exp': exp, 'rows': rows})
+
+    return jsonify({
+        'ticker':      ticker,
+        'spot':        spot,
+        'spot_change': spot_change,
+        'expirations': result_exps,
+    })
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Venda de Puts — CRUD
 # ─────────────────────────────────────────────────────────────────────────────

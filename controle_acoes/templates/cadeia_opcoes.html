@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% block title %}Cadeia de Opções{% endblock %}
+{% block extra_scripts %}
+<style>
+#cadeia-tickers { display:flex; flex-wrap:wrap; gap:.35rem; }
+.ct-btn {
+  padding:.25rem .6rem; border:1px solid #475569; border-radius:5px;
+  font-size:.8rem; cursor:pointer; color:#e2e8f0; background:var(--hover-bg,#334155);
+  white-space:nowrap; transition:background .12s;
+}
+.ct-btn.active { background:#7c3aed; border-color:#7c3aed; font-weight:700; }
+
+.cadeia-wrap { overflow-x:auto; margin-bottom:2rem; }
+.cadeia-title {
+  font-size:.95rem; font-weight:600; color:var(--text-secondary);
+  padding:.5rem 0 .4rem; border-bottom:1px solid var(--border-color); margin-bottom:.4rem;
+}
+
+table.cadeia {
+  width:100%; border-collapse:collapse; font-size:.78rem; table-layout:fixed;
+}
+table.cadeia thead th {
+  padding:.35rem .3rem; text-align:right; white-space:nowrap;
+  background:var(--hover-bg); color:var(--text-secondary); font-weight:600;
+}
+table.cadeia thead th.strike-col {
+  text-align:center; background:#1e3a5f; color:#93c5fd;
+  position:sticky; left:0; z-index:2;
+}
+table.cadeia thead th.call-side { color:#34d399; }
+table.cadeia thead th.put-side  { color:#f87171; }
+
+table.cadeia tbody tr { border-bottom:1px solid rgba(255,255,255,.04); }
+table.cadeia tbody tr:hover { background:rgba(255,255,255,.04); }
+
+table.cadeia td {
+  padding:.28rem .3rem; text-align:right; white-space:nowrap;
+  color:var(--text-secondary);
+}
+table.cadeia td.strike-col {
+  text-align:center; font-weight:700; font-size:.82rem;
+  color:#93c5fd; background:#0f2744;
+  position:sticky; left:0; z-index:1;
+}
+table.cadeia td.strike-col.itm-call { background:#0d2b1e; color:#6ee7b7; }
+table.cadeia td.strike-col.itm-put  { background:#2b0d0d; color:#fca5a5; }
+table.cadeia td.strike-col.spot-row {
+  background:#1e3a5f; color:#fff; font-size:.85rem;
+}
+
+table.cadeia td.val      { color:var(--text-primary); }
+table.cadeia td.var-pos  { color:#34d399; }
+table.cadeia td.var-neg  { color:#f87171; }
+table.cadeia td.empty    { color:#475569; }
+
+/* bid/ask inline */
+.ba-cell { display:flex; gap:3px; justify-content:flex-end; align-items:center; }
+.ba-v    { border:1px solid #475569; border-radius:3px; padding:.1rem .3rem;
+           font-size:.75rem; min-width:36px; text-align:center; cursor:default; }
+.ba-v.bid { border-color:#f87171; color:#fca5a5; }
+.ba-v.ask { border-color:#34d399; color:#6ee7b7; }
+
+#cadeia-spot {
+  font-size:1.05rem; font-weight:700; color:var(--text-primary);
+  padding:.5rem 0; display:inline-flex; gap:.6rem; align-items:baseline;
+}
+#cadeia-spot .chg-pos { color:#34d399; font-size:.85rem; }
+#cadeia-spot .chg-neg { color:#f87171; font-size:.85rem; }
+
+#cadeia-loading {
+  display:none; padding:2rem; text-align:center; color:var(--text-secondary);
+}
+#cadeia-error { display:none; color:#f87171; padding:1rem; }
+#cadeia-tables { }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="padding:1.2rem 1.4rem;">
+  <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;">
+    <h2 style="margin:0;">📊 Cadeia de Opções</h2>
+    <div id="cadeia-spot"></div>
+  </div>
+
+  <!-- Seletor de ativo -->
+  <div style="margin-bottom:1rem;">
+    <div id="cadeia-tickers">
+      {% if ranking_vol %}
+        {% for rv in ranking_vol %}
+        <button class="ct-btn" data-t="{{ rv.ticker }}">{{ rv.ticker }}</button>
+        {% endfor %}
+      {% else %}
+        {% for t in ['ABEV3','ASAI3','B3SA3','BBAS3','BBDC4','BBSE3','BRAP4','BRAV3','CSNA3','EMBR3',
+                     'ITUB4','LREN3','PETR3','PETR4','PRIO3','RADL3','RAIL3','SUZB3','USIM5','VALE3',
+                     'WEGE3','RENT3','VIVT3','SANB11'] %}
+        <button class="ct-btn" data-t="{{ t }}">{{ t }}</button>
+        {% endfor %}
+      {% endif %}
+    </div>
+  </div>
+
+  <div id="cadeia-loading">⏳ Carregando cadeia…</div>
+  <div id="cadeia-error"></div>
+  <div id="cadeia-tables"></div>
+</div>
+
+<script>
+(function(){
+  var currentTicker = null;
+
+  // Clique no ticker
+  document.getElementById('cadeia-tickers').addEventListener('click', function(e){
+    var btn = e.target.closest('.ct-btn');
+    if (!btn) return;
+    document.querySelectorAll('.ct-btn').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    loadCadeia(btn.dataset.t);
+  });
+
+  function loadCadeia(ticker) {
+    currentTicker = ticker;
+    document.getElementById('cadeia-loading').style.display = 'block';
+    document.getElementById('cadeia-tables').innerHTML = '';
+    document.getElementById('cadeia-error').style.display = 'none';
+    document.getElementById('cadeia-spot').innerHTML = '';
+
+    fetch('/api/cadeia/' + encodeURIComponent(ticker))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        document.getElementById('cadeia-loading').style.display = 'none';
+        if (d.error) {
+          document.getElementById('cadeia-error').textContent = d.error;
+          document.getElementById('cadeia-error').style.display = 'block';
+          return;
+        }
+        renderSpot(ticker, d.spot, d.spot_change);
+        renderTables(d);
+      })
+      .catch(function(e){
+        document.getElementById('cadeia-loading').style.display = 'none';
+        document.getElementById('cadeia-error').textContent = 'Erro: ' + e;
+        document.getElementById('cadeia-error').style.display = 'block';
+      });
+  }
+
+  function renderSpot(ticker, spot, chg) {
+    var el = document.getElementById('cadeia-spot');
+    if (!spot) { el.innerHTML = ''; return; }
+    var chgClass = chg >= 0 ? 'chg-pos' : 'chg-neg';
+    var chgSign  = chg >= 0 ? '+' : '';
+    el.innerHTML = '<span>' + ticker + ' R$ ' + brl(spot) + '</span>'
+      + (chg !== null ? '<span class="' + chgClass + '">' + chgSign + brl(chg) + '%</span>' : '');
+  }
+
+  function brl(v) {
+    if (v === null || v === undefined) return '-';
+    return Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+  function brlK(v) {
+    if (!v) return '-';
+    if (v >= 1e6) return 'R$' + brl(v/1e6) + 'M';
+    if (v >= 1e3) return 'R$' + brl(v/1e3) + 'k';
+    return 'R$' + brl(v);
+  }
+  function fmtVar(v) {
+    if (v === null || v === undefined) return '<td class="empty">-</td>';
+    var cls = v > 0 ? 'var-pos' : (v < 0 ? 'var-neg' : '');
+    var sign = v > 0 ? '+' : '';
+    return '<td class="' + cls + '">' + sign + brl(v) + '%</td>';
+  }
+  function fmtVal(v) {
+    if (v === null || v === undefined || v === 0) return '<td class="empty">-</td>';
+    return '<td class="val">' + brl(v) + '</td>';
+  }
+  function fmtBA(bid, ask) {
+    var b = (bid !== null && bid > 0) ? bid : null;
+    var a = (ask !== null && ask > 0) ? ask : null;
+    return '<td><div class="ba-cell">'
+      + '<span class="ba-v bid">' + (b !== null ? brl(b) : '-') + '</span>'
+      + '<span class="ba-v ask">' + (a !== null ? brl(a) : '-') + '</span>'
+      + '</div></td>';
+  }
+
+  function renderTables(data) {
+    var spot = data.spot;
+    var wrap = document.getElementById('cadeia-tables');
+    wrap.innerHTML = '';
+
+    data.expirations.forEach(function(expData){
+      var exp = expData.exp;
+      var rows = expData.rows;
+
+      // Formata data
+      var parts = exp.split('-');
+      var expLabel = parts[2] + '/' + parts[1] + '/' + parts[0];
+
+      var html = '<div class="cadeia-wrap">'
+        + '<div class="cadeia-title">Vencimento: <strong>' + expLabel + '</strong></div>'
+        + '<table class="cadeia"><thead><tr>'
+        // CALL side (direita→esquerda na cabeça)
+        + '<th class="call-side" style="width:6%">Código</th>'
+        + '<th class="call-side" style="width:5%">Último</th>'
+        + '<th class="call-side" style="width:5%">Teórico</th>'
+        + '<th class="call-side" style="width:4%">Delta</th>'
+        + '<th class="call-side" style="width:5%">Liq.</th>'
+        + '<th class="call-side" style="width:7%">Vol.Fin.</th>'
+        + '<th class="call-side" style="width:5%">Var.</th>'
+        + '<th class="call-side" style="width:5%">Mid</th>'
+        + '<th class="call-side" style="width:8%">Bid/Ask</th>'
+        // Strike
+        + '<th class="strike-col" style="width:6%">⇅ Strike</th>'
+        // PUT side
+        + '<th class="put-side" style="width:8%">Bid/Ask</th>'
+        + '<th class="put-side" style="width:5%">Mid</th>'
+        + '<th class="put-side" style="width:5%">Var.</th>'
+        + '<th class="put-side" style="width:7%">Vol.Fin.</th>'
+        + '<th class="put-side" style="width:5%">Liq.</th>'
+        + '<th class="put-side" style="width:4%">Delta</th>'
+        + '<th class="put-side" style="width:5%">Teórico</th>'
+        + '<th class="put-side" style="width:5%">Último</th>'
+        + '<th class="put-side" style="width:6%">Código</th>'
+        + '</tr></thead><tbody>';
+
+      rows.forEach(function(row){
+        var s = row.strike;
+        var c = row.call;
+        var p = row.put;
+        var isSpot = spot && Math.abs(s - spot) < 0.01;
+        var itmCall = spot && s < spot;
+        var itmPut  = spot && s > spot;
+
+        var strikeCls = 'strike-col'
+          + (isSpot ? ' spot-row' : (itmCall ? ' itm-call' : (itmPut ? ' itm-put' : '')));
+        var strikeLabel = brl(s) + (isSpot ? ' ◀' : '');
+
+        html += '<tr>';
+        // CALL
+        if (c) {
+          html += '<td class="val" style="text-align:left">' + c.symbol + '</td>';
+          html += fmtVal(c.close);
+          html += fmtVal(c.teorico || null);
+          html += fmtVal(c.delta);
+          html += fmtVal(c.liquidez || null);
+          html += '<td class="val">' + brlK(c.vol_fin) + '</td>';
+          html += fmtVar(c.var_pct);
+          html += fmtVal(c.mid || null);
+          html += fmtBA(c.bid, c.ask);
+        } else {
+          html += '<td class="empty">-</td>'.repeat(9);
+        }
+
+        // Strike
+        html += '<td class="' + strikeCls + '">' + strikeLabel + '</td>';
+
+        // PUT
+        if (p) {
+          html += fmtBA(p.bid, p.ask);
+          html += fmtVal(p.mid || null);
+          html += fmtVar(p.var_pct);
+          html += '<td class="val">' + brlK(p.vol_fin) + '</td>';
+          html += fmtVal(p.liquidez || null);
+          html += fmtVal(p.delta);
+          html += fmtVal(p.teorico || null);
+          html += fmtVal(p.close);
+          html += '<td class="val" style="text-align:left">' + p.symbol + '</td>';
+        } else {
+          html += '<td class="empty">-</td>'.repeat(9);
+        }
+
+        html += '</tr>';
+      });
+
+      html += '</tbody></table></div>';
+      wrap.innerHTML += html;
+    });
+
+    if (!data.expirations || !data.expirations.length) {
+      wrap.innerHTML = '<p style="color:var(--text-secondary);padding:1rem;">Nenhum vencimento encontrado.</p>';
+    }
+  }
+
+  // Ativa primeiro ticker ao carregar
+  var first = document.querySelector('.ct-btn');
+  if (first) { first.classList.add('active'); loadCadeia(first.dataset.t); }
+})();
+</script>
+{% endblock %}

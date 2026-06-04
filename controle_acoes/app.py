@@ -2139,29 +2139,41 @@ def _get_underlying_quote(ticker, user_id):
         return None, None
     t = ticker.strip().upper()
 
-    # 1. Cotação ao vivo via Yahoo Finance (mesma infra do chart)
+    # 1. Cotação ao vivo via Yahoo Finance — busca 5 dias para ter 2 closes reais
     try:
         import requests as _req
         yf_t = t + '.SA' if not t.endswith('.SA') and '.' not in t else t
         for host in ('query1.finance.yahoo.com', 'query2.finance.yahoo.com'):
             url = f'https://{host}/v8/finance/chart/' + yf_t
-            r   = _req.get(url, params={'interval': '1d', 'range': '2d'},
+            r   = _req.get(url, params={'interval': '1d', 'range': '5d'},
                            headers=_YF_HEADERS, cookies=_YF_COOKIES, timeout=5)
             if r.status_code == 200:
                 break
         if r.status_code == 200:
-            res = r.json()
-            meta = res['chart']['result'][0]['meta']
-            price  = meta.get('regularMarketPrice') or meta.get('previousClose')
+            res  = r.json()
+            result = res['chart']['result'][0]
+            meta = result['meta']
+            price = meta.get('regularMarketPrice') or meta.get('previousClose')
             if price:
                 change = meta.get('regularMarketChangePercent')
-                # Yahoo retorna 0.0 fora do pregão mesmo quando houve variação —
-                # calcula manualmente a partir do previousClose quando isso ocorre
-                prev = meta.get('previousClose') or meta.get('chartPreviousClose')
-                if (change is None or change == 0.0) and prev and float(prev) > 0:
-                    calc = (float(price) - float(prev)) / float(prev) * 100
-                    if abs(calc) > 0.001:   # só usa se for diferente de zero
-                        change = calc
+                # Tenta calcular a partir dos closes reais dos candles (igual ao chart)
+                try:
+                    closes = [c for c in result['indicators']['quote'][0].get('close', [])
+                              if c is not None and c > 0]
+                    if len(closes) >= 2:
+                        prev_close = closes[-2]
+                        last_close = closes[-1]
+                        calc = (last_close - prev_close) / prev_close * 100
+                        # Usa o cálculo dos candles se o meta retornar zero
+                        if change is None or abs(change) < 0.001:
+                            change = calc
+                except Exception:
+                    pass
+                # Último fallback: previousClose do meta
+                if change is None or abs(change) < 0.001:
+                    prev = meta.get('previousClose') or meta.get('chartPreviousClose')
+                    if prev and float(prev) > 0 and float(price) != float(prev):
+                        change = (float(price) - float(prev)) / float(prev) * 100
                 return round(float(price), 2), round(float(change), 2) if change is not None else None
     except Exception:
         pass

@@ -1988,6 +1988,7 @@ def api_rolagem_cadeia(ticker):
     token = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
         return jsonify({'error': 'Token OpLab nao configurado'}), 400
+    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
 
     try:
         r = _req.get(
@@ -2028,7 +2029,12 @@ def api_rolagem_cadeia(ticker):
             'vol_fin': round(float(o.get('financial_volume') or o.get('volume_financial') or 0), 2),
         })
 
-    return jsonify({'ticker': ticker, 'options': sorted(options, key=lambda x: (x['exp'], x['kind'], x['strike']))})
+    return jsonify({
+        'ticker': ticker,
+        'spot': spot,
+        'spot_change': spot_change,
+        'options': sorted(options, key=lambda x: (x['exp'], x['kind'], x['strike'])),
+    })
 
 
 @app.route('/api/cadeia/<ticker>')

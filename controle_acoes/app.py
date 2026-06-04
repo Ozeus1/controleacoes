@@ -1906,7 +1906,7 @@ def api_cadeia(ticker):
         bucket = puts_by_exp if is_put else calls_by_exp
         bucket.setdefault(due_date, []).append(row)
 
-    # Para cada vencimento, seleciona 5 strikes abaixo e 5 acima do spot
+    # Para cada vencimento, seleciona 10 strikes abaixo e 10 acima do spot
     result_exps = []
     all_exp_keys = sorted(set(list(calls_by_exp.keys()) + list(puts_by_exp.keys())))
 
@@ -1934,9 +1934,8 @@ def api_cadeia(ticker):
         puts  = sorted(puts_by_exp.get(exp, []),  key=lambda x: x['strike'])
 
         if spot:
-            # 5 calls com strike mais próximo acima e abaixo do spot
-            calls_below = [c for c in calls if c['strike'] <= spot][-5:]
-            calls_above = [c for c in calls if c['strike'] >  spot][:5]
+            calls_below = [c for c in calls if c['strike'] <= spot][-10:]
+            calls_above = [c for c in calls if c['strike'] >  spot][:10]
             calls_sel   = calls_below + calls_above
 
             puts_below  = [p for p in puts if p['strike'] <= spot][-10:]

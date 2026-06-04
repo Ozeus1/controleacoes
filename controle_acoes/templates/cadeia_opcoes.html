@@ -2,6 +2,7 @@
 {% block title %}Cadeia de Opções{% endblock %}
 {% block extra_scripts %}
 <style>
+/* ── Tickers ── */
 #cadeia-tickers { display:flex; flex-wrap:wrap; gap:.35rem; }
 .ct-btn {
   padding:.25rem .6rem; border:1px solid #475569; border-radius:5px;
@@ -9,106 +10,180 @@
   white-space:nowrap; transition:background .12s;
 }
 .ct-btn.active { background:#7c3aed; border-color:#7c3aed; font-weight:700; }
+.ct-btn.custom { border-color:#f59e0b; }
 
-.cadeia-wrap { overflow-x:auto; margin-bottom:2rem; }
-.cadeia-title {
-  font-size:.95rem; font-weight:600; color:var(--text-secondary);
-  padding:.5rem 0 .4rem; border-bottom:1px solid var(--border-color); margin-bottom:.4rem;
+/* ── Vencimentos ── */
+#venc-tabs { display:flex; gap:.4rem; flex-wrap:wrap; margin:.8rem 0; }
+.venc-tab {
+  padding:.3rem .8rem; border:1px solid #475569; border-radius:5px;
+  font-size:.82rem; cursor:pointer; color:#e2e8f0; background:var(--hover-bg);
+  transition:background .12s;
 }
+.venc-tab.active { background:#0ea5e9; border-color:#0ea5e9; color:#fff; font-weight:700; }
 
+/* ── Tabela ── */
+.cadeia-wrap { overflow-x:auto; }
 table.cadeia {
-  width:100%; border-collapse:collapse; font-size:.78rem; table-layout:fixed;
+  width:100%; border-collapse:collapse; font-size:.76rem; table-layout:auto;
 }
 table.cadeia thead th {
-  padding:.35rem .3rem; text-align:right; white-space:nowrap;
+  padding:.35rem .25rem; text-align:right; white-space:nowrap;
   background:var(--hover-bg); color:var(--text-secondary); font-weight:600;
 }
 table.cadeia thead th.strike-col {
-  text-align:center; background:#1e3a5f; color:#93c5fd;
-  position:sticky; left:0; z-index:2;
+  text-align:center; background:#1e3a5f; color:#93c5fd; min-width:68px;
 }
 table.cadeia thead th.call-side { color:#34d399; }
 table.cadeia thead th.put-side  { color:#f87171; }
 
 table.cadeia tbody tr { border-bottom:1px solid rgba(255,255,255,.04); }
-table.cadeia tbody tr:hover { background:rgba(255,255,255,.04); }
+table.cadeia tbody tr:hover { background:rgba(255,255,255,.06); }
 
 table.cadeia td {
-  padding:.28rem .3rem; text-align:right; white-space:nowrap;
+  padding:.26rem .25rem; text-align:right; white-space:nowrap;
   color:var(--text-secondary);
 }
 table.cadeia td.strike-col {
-  text-align:center; font-weight:700; font-size:.82rem;
-  color:#93c5fd; background:#0f2744;
-  position:sticky; left:0; z-index:1;
+  text-align:center; font-weight:700; font-size:.8rem;
+  color:#93c5fd; background:#0f2744; min-width:68px;
 }
 table.cadeia td.strike-col.itm-call { background:#0d2b1e; color:#6ee7b7; }
 table.cadeia td.strike-col.itm-put  { background:#2b0d0d; color:#fca5a5; }
-table.cadeia td.strike-col.spot-row {
-  background:#1e3a5f; color:#fff; font-size:.85rem;
+table.cadeia td.strike-col.spot-row { background:#1e3a5f; color:#fff; font-weight:800; }
+
+table.cadeia td.val     { color:var(--text-primary); }
+table.cadeia td.var-pos { color:#34d399; }
+table.cadeia td.var-neg { color:#f87171; }
+table.cadeia td.empty   { color:#334155; }
+
+/* bid/ask clicável */
+.ba-cell { display:flex; gap:2px; justify-content:flex-end; align-items:center; }
+.ba-v {
+  border:1px solid #475569; border-radius:3px; padding:.1rem .28rem;
+  font-size:.74rem; min-width:34px; text-align:center;
+  cursor:pointer; transition:background .1s;
 }
-
-table.cadeia td.val      { color:var(--text-primary); }
-table.cadeia td.var-pos  { color:#34d399; }
-table.cadeia td.var-neg  { color:#f87171; }
-table.cadeia td.empty    { color:#475569; }
-
-/* bid/ask inline */
-.ba-cell { display:flex; gap:3px; justify-content:flex-end; align-items:center; }
-.ba-v    { border:1px solid #475569; border-radius:3px; padding:.1rem .3rem;
-           font-size:.75rem; min-width:36px; text-align:center; cursor:default; }
 .ba-v.bid { border-color:#f87171; color:#fca5a5; }
+.ba-v.bid:hover { background:rgba(248,113,113,.2); }
 .ba-v.ask { border-color:#34d399; color:#6ee7b7; }
+.ba-v.ask:hover { background:rgba(52,211,153,.2); }
+.sym-link {
+  cursor:pointer; color:inherit; text-decoration:none;
+  border-bottom:1px dotted #475569;
+}
+.sym-link:hover { color:#e2e8f0; border-color:#e2e8f0; }
 
+/* spot header */
 #cadeia-spot {
-  font-size:1.05rem; font-weight:700; color:var(--text-primary);
-  padding:.5rem 0; display:inline-flex; gap:.6rem; align-items:baseline;
+  font-size:1rem; font-weight:700; color:var(--text-primary);
+  display:inline-flex; gap:.5rem; align-items:baseline;
 }
 #cadeia-spot .chg-pos { color:#34d399; font-size:.85rem; }
 #cadeia-spot .chg-neg { color:#f87171; font-size:.85rem; }
 
-#cadeia-loading {
-  display:none; padding:2rem; text-align:center; color:var(--text-secondary);
+#cadeia-loading { display:none; padding:2rem; text-align:center; color:var(--text-secondary); }
+#cadeia-error   { display:none; color:#f87171; padding:1rem; }
+
+/* ── Simulador inline ── */
+#sim-panel {
+  margin-top:1.5rem; background:var(--hover-bg);
+  border:1px solid var(--border-color); border-radius:8px; padding:1rem 1.2rem;
 }
-#cadeia-error { display:none; color:#f87171; padding:1rem; }
-#cadeia-tables { }
+#sim-panel h4 { margin:0 0 .8rem; font-size:.95rem; }
+#sim-legs { width:100%; border-collapse:collapse; font-size:.82rem; margin-bottom:.8rem; }
+#sim-legs th { padding:.3rem .4rem; background:var(--card-bg); text-align:left; font-weight:600; color:var(--text-secondary); white-space:nowrap; }
+#sim-legs td { padding:.25rem .3rem; }
+#sim-legs td input, #sim-legs td select {
+  background:var(--card-bg); color:var(--text-primary);
+  border:1px solid var(--border-color); border-radius:4px;
+  padding:.2rem .35rem; width:100%; font-size:.8rem;
+}
+.sim-remove { background:none; border:none; color:#f87171; cursor:pointer; font-size:1rem; padding:0 .3rem; }
+#sim-metrics { display:flex; gap:1.2rem; flex-wrap:wrap; font-size:.85rem; padding:.6rem .8rem;
+  background:var(--card-bg); border-radius:6px; margin-bottom:.8rem; }
+#sim-metrics span { color:var(--text-secondary); }
+#sim-metrics strong { color:var(--text-primary); margin-left:.3rem; }
+
+/* add ticket input */
+#add-ticker-wrap { display:flex; gap:.5rem; align-items:center; }
+#add-ticker-input {
+  background:var(--card-bg); color:var(--text-primary);
+  border:1px solid var(--border-color); border-radius:5px;
+  padding:.25rem .5rem; font-size:.82rem; width:110px;
+}
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="card" style="padding:1.2rem 1.4rem;">
-  <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;">
+
+  <!-- Cabeçalho -->
+  <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:.8rem;">
     <h2 style="margin:0;">📊 Cadeia de Opções</h2>
     <div id="cadeia-spot"></div>
   </div>
 
-  <!-- Seletor de ativo -->
-  <div style="margin-bottom:1rem;">
-    <div id="cadeia-tickers">
+  <!-- Seletor de ativo + adicionar custom -->
+  <div style="margin-bottom:.6rem;">
+    <div id="cadeia-tickers" style="margin-bottom:.5rem;">
+      {% set base_tickers = ['BOVA11'] %}
       {% if ranking_vol %}
+        <button class="ct-btn" data-t="BOVA11">BOVA11</button>
         {% for rv in ranking_vol %}
         <button class="ct-btn" data-t="{{ rv.ticker }}">{{ rv.ticker }}</button>
         {% endfor %}
       {% else %}
-        {% for t in ['ABEV3','ASAI3','B3SA3','BBAS3','BBDC4','BBSE3','BRAP4','BRAV3','CSNA3','EMBR3',
-                     'ITUB4','LREN3','PETR3','PETR4','PRIO3','RADL3','RAIL3','SUZB3','USIM5','VALE3',
-                     'WEGE3','RENT3','VIVT3','SANB11'] %}
+        {% for t in ['BOVA11','ABEV3','ASAI3','B3SA3','BBAS3','BBDC4','BBSE3','BRAP4',
+                     'ITUB4','LREN3','PETR3','PETR4','PRIO3','USIM5','VALE3','WEGE3'] %}
         <button class="ct-btn" data-t="{{ t }}">{{ t }}</button>
         {% endfor %}
       {% endif %}
     </div>
+    <div id="add-ticker-wrap">
+      <input id="add-ticker-input" type="text" placeholder="Outro ticker…" maxlength="10">
+      <button class="btn btn-secondary btn-sm" id="add-ticker-btn">+ Adicionar</button>
+    </div>
   </div>
+
+  <!-- Tabs de vencimento -->
+  <div id="venc-tabs"></div>
 
   <div id="cadeia-loading">⏳ Carregando cadeia…</div>
   <div id="cadeia-error"></div>
   <div id="cadeia-tables"></div>
-</div>
+
+  <!-- Simulador inline -->
+  <div id="sim-panel" style="display:none;">
+    <h4>📈 Simulação rápida — <span id="sim-underlying"></span></h4>
+    <table id="sim-legs">
+      <thead>
+        <tr>
+          <th>Tipo</th><th>C/V</th><th>Ticker</th><th>Qtd</th>
+          <th>Prêmio</th><th>Strike</th><th>Vencimento</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="sim-tbody"></tbody>
+    </table>
+    <div id="sim-metrics">
+      <div><span>Saldo montagem:</span><strong id="m-saldo">-</strong></div>
+      <div><span>Lucro máx.:</span><strong id="m-lmax">-</strong></div>
+      <div><span>Perda máx.:</span><strong id="m-pmax">-</strong></div>
+    </div>
+    <div style="display:flex; gap:.5rem; flex-wrap:wrap;">
+      <button class="btn btn-secondary btn-sm" id="sim-clear-btn">🗑 Limpar</button>
+    </div>
+  </div>
+
+</div><!-- /card -->
 
 <script>
 (function(){
-  var currentTicker = null;
+  var allData   = null;   // resposta completa da API
+  var curTicker = null;
+  var curExp    = null;   // vencimento selecionado
+  var simLegs   = [];     // [{type,side,ticker,qty,premium,strike,exp}]
 
-  // Clique no ticker
+  /* ── Tickers ── */
   document.getElementById('cadeia-tickers').addEventListener('click', function(e){
     var btn = e.target.closest('.ct-btn');
     if (!btn) return;
@@ -117,12 +192,44 @@ table.cadeia td.empty    { color:#475569; }
     loadCadeia(btn.dataset.t);
   });
 
+  document.getElementById('add-ticker-btn').addEventListener('click', function(){
+    var v = document.getElementById('add-ticker-input').value.trim().toUpperCase();
+    if (!v) return;
+    // Verifica se já existe
+    var existing = document.querySelector('.ct-btn[data-t="' + v + '"]');
+    if (existing) { existing.click(); return; }
+    var btn = document.createElement('button');
+    btn.className = 'ct-btn custom';
+    btn.dataset.t = v;
+    btn.textContent = v;
+    document.getElementById('cadeia-tickers').appendChild(btn);
+    document.getElementById('add-ticker-input').value = '';
+    btn.click();
+  });
+  document.getElementById('add-ticker-input').addEventListener('keydown', function(e){
+    if (e.key === 'Enter') document.getElementById('add-ticker-btn').click();
+  });
+
+  /* ── Vencimentos ── */
+  document.getElementById('venc-tabs').addEventListener('click', function(e){
+    var btn = e.target.closest('.venc-tab');
+    if (!btn) return;
+    document.querySelectorAll('.venc-tab').forEach(function(b){ b.classList.remove('active'); });
+    btn.classList.add('active');
+    curExp = btn.dataset.exp;
+    renderCurrentExp();
+  });
+
+  /* ── Carrega cadeia ── */
   function loadCadeia(ticker) {
-    currentTicker = ticker;
+    curTicker = ticker;
+    allData   = null;
+    curExp    = null;
     document.getElementById('cadeia-loading').style.display = 'block';
     document.getElementById('cadeia-tables').innerHTML = '';
     document.getElementById('cadeia-error').style.display = 'none';
     document.getElementById('cadeia-spot').innerHTML = '';
+    document.getElementById('venc-tabs').innerHTML = '';
 
     fetch('/api/cadeia/' + encodeURIComponent(ticker))
       .then(function(r){ return r.json(); })
@@ -133,8 +240,17 @@ table.cadeia td.empty    { color:#475569; }
           document.getElementById('cadeia-error').style.display = 'block';
           return;
         }
+        allData = d;
         renderSpot(ticker, d.spot, d.spot_change);
-        renderTables(d);
+        renderVencTabs(d.expirations);
+        // Seleciona primeiro
+        if (d.expirations && d.expirations.length) {
+          curExp = d.expirations[0].exp;
+          document.querySelector('.venc-tab').classList.add('active');
+          renderCurrentExp();
+        }
+        // Atualiza underlying no sim
+        document.getElementById('sim-underlying').textContent = ticker;
       })
       .catch(function(e){
         document.getElementById('cadeia-loading').style.display = 'none';
@@ -146,140 +262,255 @@ table.cadeia td.empty    { color:#475569; }
   function renderSpot(ticker, spot, chg) {
     var el = document.getElementById('cadeia-spot');
     if (!spot) { el.innerHTML = ''; return; }
-    var chgClass = chg >= 0 ? 'chg-pos' : 'chg-neg';
-    var chgSign  = chg >= 0 ? '+' : '';
-    el.innerHTML = '<span>' + ticker + ' R$ ' + brl(spot) + '</span>'
+    var chgClass = chg !== null ? (chg >= 0 ? 'chg-pos' : 'chg-neg') : '';
+    var chgSign  = chg !== null ? (chg >= 0 ? '+' : '') : '';
+    el.innerHTML = '<span>' + ticker + ' R$ ' + brl(spot) + '</span>'
       + (chg !== null ? '<span class="' + chgClass + '">' + chgSign + brl(chg) + '%</span>' : '');
   }
 
+  function renderVencTabs(exps) {
+    var wrap = document.getElementById('venc-tabs');
+    wrap.innerHTML = '';
+    exps.forEach(function(e){
+      var btn = document.createElement('button');
+      btn.className = 'venc-tab';
+      btn.dataset.exp = e.exp;
+      btn.textContent = fmtDate(e.exp);
+      wrap.appendChild(btn);
+    });
+  }
+
+  function renderCurrentExp() {
+    if (!allData || !curExp) return;
+    var expData = allData.expirations.find(function(e){ return e.exp === curExp; });
+    if (!expData) return;
+    renderTable(expData, allData.spot);
+  }
+
+  /* ── Formatos ── */
   function brl(v) {
     if (v === null || v === undefined) return '-';
     return Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
   }
   function brlK(v) {
-    if (!v) return '-';
-    if (v >= 1e6) return 'R$' + brl(v/1e6) + 'M';
-    if (v >= 1e3) return 'R$' + brl(v/1e3) + 'k';
-    return 'R$' + brl(v);
+    if (!v || v === 0) return '-';
+    if (v >= 1e6) return brl(v/1e6) + 'M';
+    if (v >= 1e3) return brl(v/1e3) + 'k';
+    return brl(v);
+  }
+  function fmtDate(s) {
+    if (!s) return '-';
+    var p = s.split('-');
+    return p[2] + '/' + p[1] + '/' + p[0];
   }
   function fmtVar(v) {
     if (v === null || v === undefined) return '<td class="empty">-</td>';
     var cls = v > 0 ? 'var-pos' : (v < 0 ? 'var-neg' : '');
-    var sign = v > 0 ? '+' : '';
-    return '<td class="' + cls + '">' + sign + brl(v) + '%</td>';
+    return '<td class="' + cls + '">' + (v > 0 ? '+' : '') + brl(v) + '%</td>';
   }
   function fmtVal(v) {
     if (v === null || v === undefined || v === 0) return '<td class="empty">-</td>';
     return '<td class="val">' + brl(v) + '</td>';
   }
-  function fmtBA(bid, ask) {
-    var b = (bid !== null && bid > 0) ? bid : null;
-    var a = (ask !== null && ask > 0) ? ask : null;
-    return '<td><div class="ba-cell">'
-      + '<span class="ba-v bid">' + (b !== null ? brl(b) : '-') + '</span>'
-      + '<span class="ba-v ask">' + (a !== null ? brl(a) : '-') + '</span>'
-      + '</div></td>';
-  }
 
-  function renderTables(data) {
-    var spot = data.spot;
+  /* ── Renderiza tabela ── */
+  function renderTable(expData, spot) {
+    var rows = expData.rows;
+    var exp  = expData.exp;
     var wrap = document.getElementById('cadeia-tables');
-    wrap.innerHTML = '';
 
-    data.expirations.forEach(function(expData){
-      var exp = expData.exp;
-      var rows = expData.rows;
+    var html = '<div class="cadeia-wrap"><table class="cadeia"><thead><tr>'
+      + '<th class="call-side" style="text-align:left">Cód. Call</th>'
+      + '<th class="call-side">Último</th>'
+      + '<th class="call-side">Teór.</th>'
+      + '<th class="call-side">Delta</th>'
+      + '<th class="call-side">Liq.</th>'
+      + '<th class="call-side">Vol.Fin.</th>'
+      + '<th class="call-side">Var.</th>'
+      + '<th class="call-side">Mid</th>'
+      + '<th class="call-side">Bid&nbsp;/&nbsp;Ask</th>'
+      + '<th class="strike-col">⇅ Strike</th>'
+      + '<th class="put-side">Bid&nbsp;/&nbsp;Ask</th>'
+      + '<th class="put-side">Mid</th>'
+      + '<th class="put-side">Var.</th>'
+      + '<th class="put-side">Vol.Fin.</th>'
+      + '<th class="put-side">Liq.</th>'
+      + '<th class="put-side">Delta</th>'
+      + '<th class="put-side">Teór.</th>'
+      + '<th class="put-side">Último</th>'
+      + '<th class="put-side" style="text-align:left">Cód. Put</th>'
+      + '</tr></thead><tbody>';
 
-      // Formata data
-      var parts = exp.split('-');
-      var expLabel = parts[2] + '/' + parts[1] + '/' + parts[0];
+    rows.forEach(function(row){
+      var s = row.strike;
+      var c = row.call;
+      var p = row.put;
+      var isSpot  = spot && Math.abs(s - spot) < 0.005;
+      var itmCall = spot && s < spot;
+      var itmPut  = spot && s > spot;
 
-      var html = '<div class="cadeia-wrap">'
-        + '<div class="cadeia-title">Vencimento: <strong>' + expLabel + '</strong></div>'
-        + '<table class="cadeia"><thead><tr>'
-        // CALL side (direita→esquerda na cabeça)
-        + '<th class="call-side" style="width:6%">Código</th>'
-        + '<th class="call-side" style="width:5%">Último</th>'
-        + '<th class="call-side" style="width:5%">Teórico</th>'
-        + '<th class="call-side" style="width:4%">Delta</th>'
-        + '<th class="call-side" style="width:5%">Liq.</th>'
-        + '<th class="call-side" style="width:7%">Vol.Fin.</th>'
-        + '<th class="call-side" style="width:5%">Var.</th>'
-        + '<th class="call-side" style="width:5%">Mid</th>'
-        + '<th class="call-side" style="width:8%">Bid/Ask</th>'
-        // Strike
-        + '<th class="strike-col" style="width:6%">⇅ Strike</th>'
-        // PUT side
-        + '<th class="put-side" style="width:8%">Bid/Ask</th>'
-        + '<th class="put-side" style="width:5%">Mid</th>'
-        + '<th class="put-side" style="width:5%">Var.</th>'
-        + '<th class="put-side" style="width:7%">Vol.Fin.</th>'
-        + '<th class="put-side" style="width:5%">Liq.</th>'
-        + '<th class="put-side" style="width:4%">Delta</th>'
-        + '<th class="put-side" style="width:5%">Teórico</th>'
-        + '<th class="put-side" style="width:5%">Último</th>'
-        + '<th class="put-side" style="width:6%">Código</th>'
-        + '</tr></thead><tbody>';
+      var strikeCls = 'strike-col'
+        + (isSpot ? ' spot-row' : (itmCall ? ' itm-call' : (itmPut ? ' itm-put' : '')));
+      var strikeLabel = 'R$ ' + brl(s) + (isSpot ? ' ◀' : '');
 
-      rows.forEach(function(row){
-        var s = row.strike;
-        var c = row.call;
-        var p = row.put;
-        var isSpot = spot && Math.abs(s - spot) < 0.01;
-        var itmCall = spot && s < spot;
-        var itmPut  = spot && s > spot;
+      html += '<tr>';
 
-        var strikeCls = 'strike-col'
-          + (isSpot ? ' spot-row' : (itmCall ? ' itm-call' : (itmPut ? ' itm-put' : '')));
-        var strikeLabel = brl(s) + (isSpot ? ' ◀' : '');
+      // ── CALL ──
+      if (c) {
+        var cSym = c.symbol;
+        var cPrem = c.close || 0;
+        var cEnc = encodeOpt(cSym, 'CALL', 'SELL', cPrem, s, exp);
+        html += '<td style="text-align:left"><span class="sym-link" data-opt=\'' + cEnc + '\' title="Clique para adicionar ao simulador">' + cSym + '</span></td>';
+        html += fmtVal(c.close);
+        html += fmtVal(c.teorico || null);
+        html += fmtVal(c.delta);
+        html += fmtVal(c.liquidez || null);
+        html += '<td class="val">' + brlK(c.vol_fin) + '</td>';
+        html += fmtVar(c.var_pct);
+        html += fmtVal(c.mid || null);
+        // Bid/Ask clicáveis
+        var cBid = c.bid, cAsk = c.ask;
+        var cBidEnc = encodeOpt(cSym, 'CALL', 'SELL', cBid || cPrem, s, exp);
+        var cAskEnc = encodeOpt(cSym, 'CALL', 'BUY',  cAsk || cPrem, s, exp);
+        html += '<td><div class="ba-cell">'
+          + '<span class="ba-v bid" data-opt=\'' + cBidEnc + '\' title="Vender call a ' + brl(cBid) + '">' + (cBid ? brl(cBid) : '-') + '</span>'
+          + '<span class="ba-v ask" data-opt=\'' + cAskEnc + '\' title="Comprar call a ' + brl(cAsk) + '">' + (cAsk ? brl(cAsk) : '-') + '</span>'
+          + '</div></td>';
+      } else {
+        html += '<td class="empty">-</td>'.repeat(9);
+      }
 
-        html += '<tr>';
-        // CALL
-        if (c) {
-          html += '<td class="val" style="text-align:left">' + c.symbol + '</td>';
-          html += fmtVal(c.close);
-          html += fmtVal(c.teorico || null);
-          html += fmtVal(c.delta);
-          html += fmtVal(c.liquidez || null);
-          html += '<td class="val">' + brlK(c.vol_fin) + '</td>';
-          html += fmtVar(c.var_pct);
-          html += fmtVal(c.mid || null);
-          html += fmtBA(c.bid, c.ask);
-        } else {
-          html += '<td class="empty">-</td>'.repeat(9);
-        }
+      // ── STRIKE ──
+      html += '<td class="' + strikeCls + '">' + strikeLabel + '</td>';
 
-        // Strike
-        html += '<td class="' + strikeCls + '">' + strikeLabel + '</td>';
+      // ── PUT ──
+      if (p) {
+        var pSym = p.symbol;
+        var pPrem = p.close || 0;
+        var pBid = p.bid, pAsk = p.ask;
+        var pBidEnc = encodeOpt(pSym, 'PUT', 'BUY',  pBid || pPrem, s, exp);
+        var pAskEnc = encodeOpt(pSym, 'PUT', 'SELL', pAsk || pPrem, s, exp);
+        html += '<td><div class="ba-cell">'
+          + '<span class="ba-v bid" data-opt=\'' + pBidEnc + '\' title="Comprar put a ' + brl(pBid) + '">' + (pBid ? brl(pBid) : '-') + '</span>'
+          + '<span class="ba-v ask" data-opt=\'' + pAskEnc + '\' title="Vender put a ' + brl(pAsk) + '">' + (pAsk ? brl(pAsk) : '-') + '</span>'
+          + '</div></td>';
+        html += fmtVal(p.mid || null);
+        html += fmtVar(p.var_pct);
+        html += '<td class="val">' + brlK(p.vol_fin) + '</td>';
+        html += fmtVal(p.liquidez || null);
+        html += fmtVal(p.delta);
+        html += fmtVal(p.teorico || null);
+        html += fmtVal(p.close);
+        html += '<td style="text-align:left"><span class="sym-link" data-opt=\'' + encodeOpt(pSym,'PUT','SELL',pPrem,s,exp) + '\' title="Clique para adicionar ao simulador">' + pSym + '</span></td>';
+      } else {
+        html += '<td class="empty">-</td>'.repeat(9);
+      }
 
-        // PUT
-        if (p) {
-          html += fmtBA(p.bid, p.ask);
-          html += fmtVal(p.mid || null);
-          html += fmtVar(p.var_pct);
-          html += '<td class="val">' + brlK(p.vol_fin) + '</td>';
-          html += fmtVal(p.liquidez || null);
-          html += fmtVal(p.delta);
-          html += fmtVal(p.teorico || null);
-          html += fmtVal(p.close);
-          html += '<td class="val" style="text-align:left">' + p.symbol + '</td>';
-        } else {
-          html += '<td class="empty">-</td>'.repeat(9);
-        }
-
-        html += '</tr>';
-      });
-
-      html += '</tbody></table></div>';
-      wrap.innerHTML += html;
+      html += '</tr>';
     });
 
-    if (!data.expirations || !data.expirations.length) {
-      wrap.innerHTML = '<p style="color:var(--text-secondary);padding:1rem;">Nenhum vencimento encontrado.</p>';
-    }
+    html += '</tbody></table></div>';
+    wrap.innerHTML = html;
+
+    // Cliques em sym-link e ba-v
+    wrap.querySelectorAll('[data-opt]').forEach(function(el){
+      el.addEventListener('click', function(){
+        var opt = JSON.parse(decodeURIComponent(el.dataset.opt));
+        addToSim(opt);
+      });
+    });
   }
 
-  // Ativa primeiro ticker ao carregar
+  function encodeOpt(sym, type, side, premium, strike, exp) {
+    return encodeURIComponent(JSON.stringify({
+      ticker: sym, type: type, side: side,
+      premium: premium, strike: strike, exp: exp
+    }));
+  }
+
+  /* ── Simulador ── */
+  function addToSim(opt) {
+    simLegs.push({
+      type:    opt.type,
+      side:    opt.side,
+      ticker:  opt.ticker,
+      qty:     100,
+      premium: opt.premium || 0,
+      strike:  opt.strike  || 0,
+      exp:     opt.exp     || '',
+    });
+    renderSim();
+    document.getElementById('sim-panel').style.display = 'block';
+    document.getElementById('sim-panel').scrollIntoView({behavior:'smooth', block:'nearest'});
+  }
+
+  function renderSim() {
+    var tbody = document.getElementById('sim-tbody');
+    if (!simLegs.length) {
+      tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text-secondary);padding:.5rem">Nenhuma perna adicionada.</td></tr>';
+      updateSimMetrics();
+      return;
+    }
+    var html = '';
+    simLegs.forEach(function(leg, i){
+      html += '<tr>'
+        + '<td>' + leg.type + '</td>'
+        + '<td><select data-i="' + i + '" data-f="side" style="width:90px">'
+        + '<option' + (leg.side==='BUY'?' selected':'') + '>BUY</option>'
+        + '<option' + (leg.side==='SELL'?' selected':'') + '>SELL</option>'
+        + '</select></td>'
+        + '<td><input type="text" data-i="' + i + '" data-f="ticker" value="' + leg.ticker + '" style="width:90px"></td>'
+        + '<td><input type="number" data-i="' + i + '" data-f="qty" value="' + leg.qty + '" min="1" style="width:65px"></td>'
+        + '<td><input type="number" data-i="' + i + '" data-f="premium" value="' + leg.premium + '" step="0.01" min="0" style="width:70px"></td>'
+        + '<td><input type="number" data-i="' + i + '" data-f="strike" value="' + leg.strike + '" step="0.01" min="0" style="width:70px"></td>'
+        + '<td><input type="text" data-i="' + i + '" data-f="exp" value="' + fmtDate(leg.exp) + '" style="width:90px"></td>'
+        + '<td><button class="sim-remove" data-i="' + i + '">✕</button></td>'
+        + '</tr>';
+    });
+    tbody.innerHTML = html;
+
+    tbody.querySelectorAll('input, select').forEach(function(el){
+      el.addEventListener('change', function(){
+        var i = parseInt(el.dataset.i), f = el.dataset.f;
+        simLegs[i][f] = (f==='qty'||f==='premium'||f==='strike') ? parseFloat(el.value)||0 : el.value;
+        updateSimMetrics();
+      });
+    });
+    tbody.querySelectorAll('.sim-remove').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        simLegs.splice(parseInt(btn.dataset.i), 1);
+        renderSim();
+      });
+    });
+    updateSimMetrics();
+  }
+
+  function updateSimMetrics() {
+    var saldo = 0;
+    simLegs.forEach(function(l){
+      var mult = l.side === 'SELL' ? 1 : -1;
+      saldo += mult * l.premium * l.qty;
+    });
+    var lmax = saldo >= 0 ? saldo : null;
+    var pmax = saldo < 0 ? -saldo : null;
+    var fmt  = function(v){ return v !== null ? 'R$ ' + brl(v) : '-'; };
+    var color= function(v, pos){ return v !== null ? (pos ? '#34d399' : '#f87171') : 'var(--text-secondary)'; };
+    var sm = document.getElementById('m-saldo');
+    sm.textContent = fmt(saldo);
+    sm.style.color = saldo >= 0 ? '#34d399' : '#f87171';
+    document.getElementById('m-lmax').textContent = fmt(lmax);
+    document.getElementById('m-lmax').style.color  = color(lmax, true);
+    document.getElementById('m-pmax').textContent = fmt(pmax);
+    document.getElementById('m-pmax').style.color  = color(pmax, false);
+  }
+
+  document.getElementById('sim-clear-btn').addEventListener('click', function(){
+    simLegs = [];
+    renderSim();
+    document.getElementById('sim-panel').style.display = 'none';
+  });
+
+  /* ── Init ── */
   var first = document.querySelector('.ct-btn');
   if (first) { first.classList.add('active'); loadCadeia(first.dataset.t); }
 })();

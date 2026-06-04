@@ -112,6 +112,18 @@
             {% endif %}
         </div>
         {% endif %}
+        {% if days_nearest is not none %}
+        <div style="border-left:1px solid var(--border-color); padding-left:1.5rem;">
+            <span style="color:var(--text-secondary);">Vence em</span><br>
+            <strong style="font-size:1.05rem;
+                color:{% if days_nearest <= 7 %}var(--danger-color){% elif days_nearest <= 21 %}#f59e0b{% else %}var(--text-primary){% endif %};">
+                {{ days_nearest }}d
+            </strong>
+            <span style="font-size:.78rem; color:var(--text-secondary); margin-left:.3rem;">
+                ({{ expiration }})
+            </span>
+        </div>
+        {% endif %}
     </div>
 
     {# ── Gráfico ── #}

@@ -8008,34 +8008,51 @@ def _do_oplab_bulk_update(uid: int, token: str):
                         asset_obj.daily_change = variations[uk]
                     oplab_covered_assets.add(uk)
 
-    # ── Fallback Yahoo Finance para opções que o OpLab não retornou ──
+    # ── Fallback OpLab /market/instruments para opções não retornadas no bulk ──
+    # Útil para opções europeias de longo prazo (ex: PETRC16 venc. 2027) que o
+    # /market/quote bulk não inclui por falta de liquidez recente.
     if missing_option_tickers:
-        try:
-            for o in missing_option_tickers:
-                yf_t = o.ticker.upper() + '.SA'
-                r = requests.get(
-                    f'https://query1.finance.yahoo.com/v8/finance/chart/{yf_t}',
-                    params={'interval': '1d', 'range': '2d'},
-                    headers=_YF_HEADERS, cookies=_YF_COOKIES, timeout=5,
+        for o in missing_option_tickers:
+            try:
+                ri = requests.get(
+                    f'{BASE}/market/instruments/{o.ticker.upper()}',
+                    headers=headers, timeout=8,
                 )
-                if r.status_code != 200:
-                    r = requests.get(
-                        f'https://query2.finance.yahoo.com/v8/finance/chart/{yf_t}',
-                        params={'interval': '1d', 'range': '2d'},
-                        headers=_YF_HEADERS, cookies=_YF_COOKIES, timeout=5,
-                    )
-                if r.status_code == 200:
-                    meta = r.json()['chart']['result'][0]['meta']
-                    p = meta.get('regularMarketPrice') or meta.get('previousClose')
+                if ri.status_code == 200:
+                    d = ri.json()
+                    p = d.get('close') or d.get('last') or d.get('price')
                     if p and float(p) > 0:
                         o.current_option_price = float(p)
                         o.last_update = now
-                        chg = meta.get('regularMarketChangePercent')
-                        if chg is not None:
-                            o.daily_change = float(chg)
+                        var = d.get('variation') or d.get('change')
+                        if var is not None:
+                            o.daily_change = float(var)
                         options_ok += 1
-        except Exception:
-            pass
+                        continue
+            except Exception:
+                pass
+            # Fallback Yahoo Finance se OpLab individual também falhar
+            try:
+                for host in ('query1.finance.yahoo.com', 'query2.finance.yahoo.com'):
+                    yf_t = o.ticker.upper() + '.SA'
+                    r = requests.get(
+                        f'https://{host}/v8/finance/chart/{yf_t}',
+                        params={'interval': '1d', 'range': '2d'},
+                        headers=_YF_HEADERS, cookies=_YF_COOKIES, timeout=5,
+                    )
+                    if r.status_code == 200:
+                        meta = r.json()['chart']['result'][0]['meta']
+                        p = meta.get('regularMarketPrice') or meta.get('previousClose')
+                        if p and float(p) > 0:
+                            o.current_option_price = float(p)
+                            o.last_update = now
+                            chg = meta.get('regularMarketChangePercent')
+                            if chg is not None:
+                                o.daily_change = float(chg)
+                            options_ok += 1
+                        break
+            except Exception:
+                pass
 
     # ── Atualiza StudyOptions (/estudos) ──────────────────────────
     for so in study_options:

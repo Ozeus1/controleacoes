@@ -329,7 +329,9 @@ function renderTable(expData,spot){
 }
 
 function enc(sym,type,side,prem,strike,exp){
-  return JSON.stringify({ticker:sym,type:type,side:side,premium:prem||0,strike:strike||0,exp:exp||''});
+  // Escapa aspas duplas para uso seguro dentro de atributo HTML data-opt="..."
+  return JSON.stringify({ticker:sym,type:type,side:side,premium:prem||0,strike:strike||0,exp:exp||''})
+    .replace(/"/g,'&quot;');
 }
 function baCell(sym,type,bid,ask,strike,exp,close){
   var bE=enc(sym,type,type==='CALL'?'SELL':'BUY',bid||close,strike,exp);

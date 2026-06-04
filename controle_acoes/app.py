@@ -7982,12 +7982,15 @@ def _do_oplab_bulk_update(uid: int, token: str):
 
     # ── Atualiza Options (todas as tabelas de /opcoes) ────────────
     options_ok = 0
+    missing_option_tickers: list = []   # opções que o OpLab não retornou → fallback Yahoo
     for o in options:
         key = o.ticker.upper()
         if key in prices and prices[key] > 0:
             o.current_option_price = prices[key]
             o.last_update          = now
             options_ok += 1
+        else:
+            missing_option_tickers.append(o)
         if key in variations:
             o.daily_change = variations[key]
         # Atualiza delta se disponível (não zera se API não retornar)
@@ -8004,6 +8007,35 @@ def _do_oplab_bulk_update(uid: int, token: str):
                     if uk in variations:
                         asset_obj.daily_change = variations[uk]
                     oplab_covered_assets.add(uk)
+
+    # ── Fallback Yahoo Finance para opções que o OpLab não retornou ──
+    if missing_option_tickers:
+        try:
+            for o in missing_option_tickers:
+                yf_t = o.ticker.upper() + '.SA'
+                r = requests.get(
+                    f'https://query1.finance.yahoo.com/v8/finance/chart/{yf_t}',
+                    params={'interval': '1d', 'range': '2d'},
+                    headers=_YF_HEADERS, cookies=_YF_COOKIES, timeout=5,
+                )
+                if r.status_code != 200:
+                    r = requests.get(
+                        f'https://query2.finance.yahoo.com/v8/finance/chart/{yf_t}',
+                        params={'interval': '1d', 'range': '2d'},
+                        headers=_YF_HEADERS, cookies=_YF_COOKIES, timeout=5,
+                    )
+                if r.status_code == 200:
+                    meta = r.json()['chart']['result'][0]['meta']
+                    p = meta.get('regularMarketPrice') or meta.get('previousClose')
+                    if p and float(p) > 0:
+                        o.current_option_price = float(p)
+                        o.last_update = now
+                        chg = meta.get('regularMarketChangePercent')
+                        if chg is not None:
+                            o.daily_change = float(chg)
+                        options_ok += 1
+        except Exception:
+            pass
 
     # ── Atualiza StudyOptions (/estudos) ──────────────────────────
     for so in study_options:

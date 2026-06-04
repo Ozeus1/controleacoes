@@ -411,6 +411,19 @@ class SimulacaoLeg(db.Model):
     iv          = db.Column(db.Float, default=0.0)   # volatilidade implícita % (ex: 30.0)
 
 
+class OptionRollSimulation(db.Model):
+    """Simulacao salva de rolagem de opcoes."""
+    __tablename__ = 'option_roll_simulation'
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name       = db.Column(db.String(120), default='')
+    underlying = db.Column(db.String(15), default='')
+    roll_type  = db.Column(db.String(10), default='TIME')  # TIME | STRIKE
+    payload    = db.Column(db.Text, nullable=False, default='{}')
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+
 class PutSale(db.Model):
     """Simulação de venda de put."""
     __tablename__ = 'put_sale'

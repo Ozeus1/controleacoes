@@ -5,7 +5,7 @@ import sqlite3
 import math
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, PutSale, SelicMensal, RankingVol
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, SelicMensal, RankingVol
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -443,6 +443,20 @@ def run_migrations():
             entry_date DATE,
             notes VARCHAR(200),
             created_at DATETIME,
+            FOREIGN KEY (user_id) REFERENCES user(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS option_roll_simulation (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            name VARCHAR(120) NOT NULL DEFAULT '',
+            underlying VARCHAR(15) NOT NULL DEFAULT '',
+            roll_type VARCHAR(10) NOT NULL DEFAULT 'TIME',
+            payload TEXT NOT NULL DEFAULT '{}',
+            created_at DATETIME,
+            updated_at DATETIME,
             FOREIGN KEY (user_id) REFERENCES user(id)
         )
     """)
@@ -1886,6 +1900,135 @@ def cadeia_opcoes():
     """Cadeia de opções estilo HB — calls/puts em torno do spot por vencimento."""
     ranking_vol = RankingVol.query.filter_by(user_id=current_user.id).order_by(RankingVol.ticker).all()
     return render_template('cadeia_opcoes.html', ranking_vol=ranking_vol, selic=_selic())
+
+
+@app.route('/rolagem-opcoes')
+@login_required
+def rolagem_opcoes():
+    """Simulador de rolagem de opcoes por tempo ou strike."""
+    ranking_vol = RankingVol.query.filter_by(user_id=current_user.id).order_by(RankingVol.ticker).all()
+    return render_template('rolagem_opcoes.html', ranking_vol=ranking_vol)
+
+
+@app.route('/api/rolagem-opcoes/list')
+@login_required
+def api_rolagem_list():
+    sims = OptionRollSimulation.query.filter_by(user_id=current_user.id)\
+        .order_by(OptionRollSimulation.updated_at.desc(), OptionRollSimulation.created_at.desc()).all()
+    return jsonify([{
+        'id': s.id,
+        'name': s.name,
+        'underlying': s.underlying,
+        'roll_type': s.roll_type,
+        'created_at': s.created_at.strftime('%d/%m/%y') if s.created_at else '',
+        'updated_at': s.updated_at.strftime('%d/%m/%y %H:%M') if s.updated_at else '',
+        'payload': json.loads(s.payload or '{}'),
+    } for s in sims])
+
+
+@app.route('/api/rolagem-opcoes/save', methods=['POST'])
+@login_required
+def api_rolagem_save():
+    data = request.get_json(force=True) or {}
+    name = (data.get('name') or '').strip()
+    payload = data.get('payload') or {}
+    sim_id = data.get('id')
+    if not name:
+        return jsonify({'error': 'Informe um nome'}), 400
+    if not isinstance(payload, dict):
+        return jsonify({'error': 'Payload invalido'}), 400
+
+    underlying = (payload.get('underlying') or data.get('underlying') or '').strip().upper()
+    roll_type = (payload.get('roll_type') or data.get('roll_type') or 'TIME').strip().upper()
+    if roll_type not in ('TIME', 'STRIKE'):
+        roll_type = 'TIME'
+
+    if sim_id:
+        sim = OptionRollSimulation.query.filter_by(id=sim_id, user_id=current_user.id).first()
+        if not sim:
+            return jsonify({'error': 'Nao encontrado'}), 404
+        sim.name = name
+        sim.underlying = underlying
+        sim.roll_type = roll_type
+        sim.payload = json.dumps(payload, ensure_ascii=False)
+        sim.updated_at = datetime.now()
+    else:
+        sim = OptionRollSimulation(
+            user_id=current_user.id,
+            name=name,
+            underlying=underlying,
+            roll_type=roll_type,
+            payload=json.dumps(payload, ensure_ascii=False),
+            created_at=datetime.now(),
+            updated_at=datetime.now(),
+        )
+        db.session.add(sim)
+
+    db.session.commit()
+    return jsonify({'id': sim.id, 'name': sim.name})
+
+
+@app.route('/api/rolagem-opcoes/<int:sim_id>/delete', methods=['POST'])
+@login_required
+def api_rolagem_delete(sim_id):
+    sim = OptionRollSimulation.query.filter_by(id=sim_id, user_id=current_user.id).first()
+    if not sim:
+        return jsonify({'error': 'Nao encontrado'}), 404
+    db.session.delete(sim)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/rolagem-opcoes/cadeia/<ticker>')
+@login_required
+def api_rolagem_cadeia(ticker):
+    """Retorna a cadeia completa normalizada para simulacao de rolagem."""
+    import requests as _req
+    ticker = ticker.strip().upper()
+    token = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab nao configurado'}), 400
+
+    try:
+        r = _req.get(
+            f'https://api.oplab.com.br/v3/market/options/{ticker}',
+            headers={'Access-Token': token},
+            timeout=15,
+        )
+        if r.status_code != 200:
+            return jsonify({'error': f'OpLab {r.status_code}'}), 400
+        data = r.json()
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    opt_list = data if isinstance(data, list) else (
+        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+    )
+    options = []
+    for o in opt_list:
+        sym = str(o.get('symbol') or o.get('ticker') or '').upper()
+        due_date = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due_date:
+            due_date = due_date.split('T')[0]
+        if not sym or not due_date:
+            continue
+        cat = str(o.get('category') or o.get('type') or o.get('option_type') or '').upper()
+        bid = float(o.get('bid') or 0)
+        ask = float(o.get('ask') or 0)
+        options.append({
+            'symbol': sym,
+            'kind': 'PUT' if ('PUT' in cat or cat == 'P') else 'CALL',
+            'strike': round(float(o.get('strike') or 0), 2),
+            'exp': due_date,
+            'close': round(float(o.get('close') or 0), 2),
+            'bid': round(bid, 2),
+            'ask': round(ask, 2),
+            'mid': round((bid + ask) / 2, 2) if (bid or ask) else 0,
+            'var_pct': round(float(o.get('variation') or 0), 2),
+            'vol_fin': round(float(o.get('financial_volume') or o.get('volume_financial') or 0), 2),
+        })
+
+    return jsonify({'ticker': ticker, 'options': sorted(options, key=lambda x: (x['exp'], x['kind'], x['strike']))})
 
 
 @app.route('/api/cadeia/<ticker>')

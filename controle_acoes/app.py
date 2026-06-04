@@ -5079,16 +5079,17 @@ def delete_balance_item(type, id):
     return redirect(url_for('balanceamento'))
 
 
-def update_all_assets_logic(user_id=None):
+def update_all_assets_logic(user_id=None, skip_tickers: set = None):
     """
-    Helper function to update quotes for all Stocks/FIIs of a given user.
-    Accepts user_id directly so it can be called from background threads.
+    Atualiza cotações de Ações/FIIs/ETFs via Yahoo/Brapi.
+    skip_tickers: conjunto de tickers já atualizados pelo OpLab — são ignorados aqui.
     """
     if user_id is None:
         user_id = current_user.id
     assets = Asset.query.filter_by(user_id=user_id).all()
-    # Filter ACAO/FII
-    relevant = [a for a in assets if a.type in ['ACAO', 'FII', 'ETF']]
+    # Filter ACAO/FII/ETF — pula os já cobertos pelo OpLab
+    skip = {t.upper() for t in (skip_tickers or [])}
+    relevant = [a for a in assets if a.type in ['ACAO', 'FII', 'ETF'] and a.ticker.upper() not in skip]
     if not relevant:
         return 0, 0, []
 
@@ -5253,37 +5254,41 @@ def update_quotes_async():
         with app.app_context():
             try:
                 update_market_indices()
-                quote_mode = Settings.get_value('quote_mode', user_id=user_id, default='yahoo')
-                if quote_mode == 'yahoo':
-                    count, tried, errs = update_all_assets_logic(user_id=user_id)
-                    intl_success, intl_msgs = update_intl_quotes_logic(user_id)
-                else:
-                    count, tried, errs = 0, 0, []
-                    intl_success = True
-                    intl_msgs = []
-
-                if quote_mode == 'yahoo':
-                    final_msg = f'Nacionais: {count}/{tried} atualizados. '
-                    if intl_success:
-                        final_msg += 'Internacional/Cripto: Sucesso. '
-                    else:
-                        final_msg += 'Internacional: Falha. '
-                else:
-                    final_msg = 'Modo MT5: cotações de ações/FIIs/ETFs via MT5 Feeder. '
-
-                # Opções via OpLab (se token configurado) — independente do quote_mode
+                quote_mode  = Settings.get_value('quote_mode', user_id=user_id, default='yahoo')
                 oplab_token = Settings.get_value('oplab_token', user_id=user_id)
+                oplab_covered: set = set()
+                final_msg = ''
+
+                # ── 1. OpLab: ações B3 + todas as opções ──────────────────────
                 if oplab_token:
                     try:
-                        opts_ok, assets_ok = _do_oplab_bulk_update(user_id, oplab_token)
-                        final_msg += f'Opções via OpLab: {opts_ok} atualizadas. '
+                        a_ok, o_ok, oplab_covered = _do_oplab_bulk_update(user_id, oplab_token)
+                        final_msg += f'OpLab: {a_ok} ativo(s), {o_ok} opção(ões). '
                     except Exception as oe:
                         final_msg += f'OpLab: falha ({oe}). '
 
-                if errs:
-                    _set_task(task_id, {'status': 'done', 'msg': f'{final_msg}Erros Yahoo: {len(errs)}.', 'category': 'warning'})
+                # ── 2. Yahoo/Brapi: apenas para ativos NÃO cobertos pelo OpLab ─
+                if quote_mode == 'yahoo':
+                    # Ativos que o OpLab não retornou (internacionais, ETFs globais, etc.)
+                    count, tried, errs = update_all_assets_logic(
+                        user_id=user_id, skip_tickers=oplab_covered
+                    )
+                    intl_success, intl_msgs = update_intl_quotes_logic(user_id)
+                    if tried > 0:
+                        final_msg += f'Yahoo/Brapi: {count}/{tried} ativo(s). '
+                    if intl_success:
+                        final_msg += 'Intl/Cripto: OK. '
+                    else:
+                        final_msg += f'Intl: falha. '
+                elif quote_mode == 'mt5':
+                    final_msg += 'Ações/FIIs via MT5 Feeder. '
+                    intl_success, _ = update_intl_quotes_logic(user_id)
+                    errs = []
                 else:
-                    _set_task(task_id, {'status': 'done', 'msg': final_msg.strip(), 'category': 'success'})
+                    errs = []
+
+                category = 'warning' if (not oplab_token and not quote_mode == 'mt5') or errs else 'success'
+                _set_task(task_id, {'status': 'done', 'msg': final_msg.strip() or 'Atualizado.', 'category': category})
             except Exception as e:
                 import traceback
                 traceback.print_exc()
@@ -6773,7 +6778,7 @@ def atualizar_oplab():
         flash('Token OpLab não configurado. Configure em Perfil.', 'danger')
         return redirect(url_for('profile'))
 
-    ativos_ok, opcoes_ok = _do_oplab_bulk_update(current_user.id, token)
+    ativos_ok, opcoes_ok, _covered = _do_oplab_bulk_update(current_user.id, token)
     _oplab_last_update[current_user.id] = datetime.now()
 
     if (ativos_ok + opcoes_ok) > 0:
@@ -7962,8 +7967,18 @@ def _do_oplab_bulk_update(uid: int, token: str):
 
     now = now_brt()
 
-    # ── Assets: OpLab NÃO atualiza current_price — brapi/Yahoo é a fonte exclusiva ──
-    assets_ok = len(assets)  # conta como ok sem alterar preços
+    # ── Assets: atualiza current_price/daily_change via OpLab quando disponível ──
+    assets_ok = 0
+    oplab_covered_assets: set = set()   # tickers que o OpLab retornou → não precisam ir ao Yahoo
+    for a in assets:
+        key = a.ticker.upper()
+        if key in prices and prices[key] > 0:
+            a.current_price = prices[key]
+            a.last_update   = now
+            if key in variations:
+                a.daily_change = variations[key]
+            oplab_covered_assets.add(key)
+            assets_ok += 1
 
     # ── Atualiza Options (todas as tabelas de /opcoes) ────────────
     options_ok = 0
@@ -7978,7 +7993,17 @@ def _do_oplab_bulk_update(uid: int, token: str):
         # Atualiza delta se disponível (não zera se API não retornar)
         if key in deltas:
             o.delta = deltas[key]
-        # OpLab não atualiza asset.current_price — brapi/Yahoo é a fonte correta para ativos
+        # Atualiza cotação do ativo subjacente quando disponível
+        if o.underlying_asset:
+            uk = o.underlying_asset.upper()
+            if uk in prices and prices[uk] > 0:
+                # Propaga para o Asset correspondente se existir
+                asset_obj = next((a for a in assets if a.ticker.upper() == uk), None)
+                if asset_obj:
+                    asset_obj.current_price = prices[uk]
+                    if uk in variations:
+                        asset_obj.daily_change = variations[uk]
+                    oplab_covered_assets.add(uk)
 
     # ── Atualiza StudyOptions (/estudos) ──────────────────────────
     for so in study_options:
@@ -8038,7 +8063,7 @@ def _do_oplab_bulk_update(uid: int, token: str):
     except Exception:
         db.session.rollback()
 
-    return assets_ok, options_ok
+    return assets_ok, options_ok, oplab_covered_assets
 
 
 def _oplab_scheduler_loop():

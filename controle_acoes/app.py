@@ -1793,6 +1793,84 @@ def simulacao_delete(id):
     return redirect(url_for('simulacao_opcoes'))
 
 
+@app.route('/api/simulacao/save', methods=['POST'])
+@login_required
+def api_simulacao_save():
+    """Salva simulação via JSON (usado pela cadeia de opções)."""
+    d          = request.get_json(force=True)
+    sim_id     = d.get('id')
+    name       = (d.get('name') or '').strip()
+    underlying = (d.get('underlying') or '').strip().upper()
+    legs_data  = d.get('legs', [])
+
+    if not name:
+        return jsonify({'error': 'Informe um nome'}), 400
+
+    if sim_id:
+        sim = SimulacaoOpcoes.query.filter_by(id=sim_id, user_id=current_user.id).first()
+        if not sim:
+            return jsonify({'error': 'Não encontrado'}), 404
+        sim.name = name; sim.underlying = underlying
+        for leg in list(sim.legs):
+            db.session.delete(leg)
+        db.session.flush()
+    else:
+        sim = SimulacaoOpcoes(user_id=current_user.id, name=name,
+                              underlying=underlying, created_at=datetime.now())
+        db.session.add(sim); db.session.flush()
+
+    for l in legs_data:
+        lt  = l.get('type', 'CALL')
+        exp = None
+        try:
+            exp_s = l.get('exp') or ''
+            if exp_s:
+                exp = date.fromisoformat(exp_s)
+        except Exception:
+            pass
+        db.session.add(SimulacaoLeg(
+            sim_id=sim.id, leg_type=lt,
+            side=l.get('side', 'BUY'),
+            quantity=int(l.get('qty') or 1),
+            strike=float(l.get('strike') or 0),
+            premium=float(l.get('premium') or 0),
+            expiration=exp,
+            ticker=(underlying if lt == 'STOCK' else (l.get('ticker') or '').upper()),
+            iv=float(l.get('iv') or 0),
+        ))
+
+    db.session.commit()
+    return jsonify({'id': sim.id, 'name': sim.name})
+
+
+@app.route('/api/simulacao/list')
+@login_required
+def api_simulacao_list():
+    sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id)\
+                                .order_by(SimulacaoOpcoes.created_at.desc()).all()
+    result = []
+    for s in sims:
+        result.append({
+            'id': s.id, 'name': s.name, 'underlying': s.underlying,
+            'created_at': s.created_at.strftime('%d/%m/%y') if s.created_at else '',
+            'legs': [{'type': l.leg_type, 'side': l.side, 'qty': l.quantity,
+                      'ticker': l.ticker, 'premium': l.premium,
+                      'strike': l.strike, 'exp': l.expiration.isoformat() if l.expiration else '',
+                      'iv': l.iv or 0} for l in s.legs],
+        })
+    return jsonify(result)
+
+
+@app.route('/api/simulacao/<int:sim_id>/delete', methods=['POST'])
+@login_required
+def api_simulacao_delete(sim_id):
+    sim = SimulacaoOpcoes.query.filter_by(id=sim_id, user_id=current_user.id).first()
+    if not sim:
+        return jsonify({'error': 'Não encontrado'}), 404
+    db.session.delete(sim); db.session.commit()
+    return jsonify({'ok': True})
+
+
 @app.route('/simulador-liquidez')
 @login_required
 def simulador_liquidez():
@@ -1807,7 +1885,7 @@ def simulador_liquidez():
 def cadeia_opcoes():
     """Cadeia de opções estilo HB — calls/puts em torno do spot por vencimento."""
     ranking_vol = RankingVol.query.filter_by(user_id=current_user.id).order_by(RankingVol.ticker).all()
-    return render_template('cadeia_opcoes.html', ranking_vol=ranking_vol)
+    return render_template('cadeia_opcoes.html', ranking_vol=ranking_vol, selic=_selic())
 
 
 @app.route('/api/cadeia/<ticker>')

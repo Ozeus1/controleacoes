@@ -2155,14 +2155,18 @@ def _get_underlying_quote(ticker, user_id):
             price  = meta.get('regularMarketPrice') or meta.get('previousClose')
             if price:
                 change = meta.get('regularMarketChangePercent')
-                if change is None:
-                    prev = meta.get('previousClose') or price
-                    change = (price - prev) / prev * 100 if prev else None
-                return round(price, 2), round(change, 2) if change is not None else None
+                # Yahoo retorna 0.0 fora do pregão mesmo quando houve variação —
+                # calcula manualmente a partir do previousClose quando isso ocorre
+                prev = meta.get('previousClose') or meta.get('chartPreviousClose')
+                if (change is None or change == 0.0) and prev and float(prev) > 0:
+                    calc = (float(price) - float(prev)) / float(prev) * 100
+                    if abs(calc) > 0.001:   # só usa se for diferente de zero
+                        change = calc
+                return round(float(price), 2), round(float(change), 2) if change is not None else None
     except Exception:
         pass
 
-    # 2. Asset cadastrado em /acoes (cotação pode ser do último update)
+    # 2. Asset cadastrado em /acoes — usa daily_change salvo durante o pregão
     a = Asset.query.filter_by(ticker=t, user_id=user_id).first()
     if a and a.current_price:
         return a.current_price, getattr(a, 'daily_change', None)

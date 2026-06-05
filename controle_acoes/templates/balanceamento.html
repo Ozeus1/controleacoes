@@ -29,6 +29,7 @@
 .bal-title-row .bal-page-title { margin-bottom: 0 !important; }
 .bal-title-row .btn { padding: .3rem .6rem; font-size: .82rem; }
 .bal-anchor { scroll-margin-top: 7rem; }
+.bal-section-actions { display: flex; align-items: center; gap: .5rem; flex-shrink: 0; }
 
 /* Wrapper de scroll horizontal para tabelas (sem limite de altura) */
 .table-scroll { overflow-x: auto; width: 100%; }
@@ -240,13 +241,13 @@
     <a href="{{ url_for('update_intl_quotes') }}" class="btn btn-sm btn-secondary">🔄 Atualizar Int.</a>
 </div>
 
-<div class="bal-actions">
-    <a class="btn btn-primary" href="#sec-rf-pos">➕ Renda Fixa Pós</a>
-    <a class="btn btn-warning" href="#sec-rf-pre">➕ Renda Fixa Pré</a>
-    <a class="btn btn-danger" href="#sec-rf-ipca">➕ Renda Fixa IPCA</a>
-    <a class="btn btn-info" href="#sec-fundos">➕ Fundos</a>
+<div class="bal-actions" id="bal-nav">
+    <a class="btn btn-primary" href="#sec-rf-pos">🧾 Renda Fixa Pós</a>
+    <a class="btn btn-warning" href="#sec-rf-pre">🏦 Renda Fixa Pré</a>
+    <a class="btn btn-danger" href="#sec-rf-ipca">📊 Renda Fixa IPCA</a>
+    <a class="btn btn-info" href="#sec-fundos">💼 Fundos</a>
     <a class="btn btn-secondary" href="#sec-cripto">🪙 Cripto</a>
-    <a class="btn btn-success" href="#sec-previdencia">🐷 Previdência</a>
+    <a class="btn btn-success" href="#sec-previdencia">🛡️ Previdência</a>
     <a class="btn btn-primary" href="{{ url_for('acoes') }}">📈 Ações</a>
     <a class="btn btn-info" href="{{ url_for('fiis') }}">🏢 FII</a>
 </div>
@@ -257,9 +258,14 @@
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Renda Fixa Pós-Fixada</span>
-                <button class="btn btn-sm btn-light text-primary" data-bs-toggle="modal" data-bs-target="#modalRFC">
-                    <i class="fas fa-plus"></i> Adicionar
-                </button>
+                <div class="bal-section-actions">
+                    <a href="#bal-nav" class="btn btn-sm btn-outline-light" title="Voltar ao menu">
+                        <i class="fas fa-home"></i>
+                    </a>
+                    <button class="btn btn-sm btn-light text-primary" data-bs-toggle="modal" data-bs-target="#modalRFC">
+                        <i class="fas fa-plus"></i> Adicionar
+                    </button>
+                </div>
             </div>
             <div class="card-body p-0 table-responsive">
                 <table class="no-datatable table table-dark table-striped mb-0 table-center-forced align-middle bal-entry-table">
@@ -310,9 +316,14 @@
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Renda Fixa Pré-Fixada</span>
-                <button class="btn btn-sm btn-dark text-warning" data-bs-toggle="modal" data-bs-target="#modalRFP">
-                    <i class="fas fa-plus"></i> Adicionar
-                </button>
+                <div class="bal-section-actions">
+                    <a href="#bal-nav" class="btn btn-sm btn-outline-light" title="Voltar ao menu">
+                        <i class="fas fa-home"></i>
+                    </a>
+                    <button class="btn btn-sm btn-dark text-warning" data-bs-toggle="modal" data-bs-target="#modalRFP">
+                        <i class="fas fa-plus"></i> Adicionar
+                    </button>
+                </div>
             </div>
             <div class="card-body p-0 table-responsive">
                 <table class="no-datatable table table-dark table-striped mb-0 table-center-forced align-middle bal-entry-table">
@@ -363,9 +374,14 @@
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Renda Fixa Inflação (IPCA)</span>
-                <button class="btn btn-sm btn-light text-danger" data-bs-toggle="modal" data-bs-target="#modalRFI">
-                    <i class="fas fa-plus"></i> Adicionar
-                </button>
+                <div class="bal-section-actions">
+                    <a href="#bal-nav" class="btn btn-sm btn-outline-light" title="Voltar ao menu">
+                        <i class="fas fa-home"></i>
+                    </a>
+                    <button class="btn btn-sm btn-light text-danger" data-bs-toggle="modal" data-bs-target="#modalRFI">
+                        <i class="fas fa-plus"></i> Adicionar
+                    </button>
+                </div>
             </div>
             <div class="card-body p-0 table-responsive">
                 <table class="no-datatable table table-dark table-striped mb-0 table-center-forced align-middle bal-entry-table">
@@ -418,9 +434,14 @@
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Fundos de Investimento</span>
-                <button class="btn btn-sm btn-light text-info" data-bs-toggle="modal" data-bs-target="#modalFund">
-                    <i class="fas fa-plus"></i> Adicionar
-                </button>
+                <div class="bal-section-actions">
+                    <a href="#bal-nav" class="btn btn-sm btn-outline-light" title="Voltar ao menu">
+                        <i class="fas fa-home"></i>
+                    </a>
+                    <button class="btn btn-sm btn-light text-info" data-bs-toggle="modal" data-bs-target="#modalFund">
+                        <i class="fas fa-plus"></i> Adicionar
+                    </button>
+                </div>
             </div>
             <div class="card-body p-0 table-responsive">
                 <table id="tbl-fundos" class="no-datatable table table-dark table-striped mb-0 table-center-forced align-middle bal-entry-table">
@@ -468,9 +489,14 @@
         <div class="card card-narrow bal-anchor" id="sec-cripto">
             <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
                 <span>Criptoativos</span>
-                <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalCrypto">
-                    <i class="fas fa-plus"></i> Adicionar
-                </button>
+                <div class="bal-section-actions">
+                    <a href="#bal-nav" class="btn btn-sm btn-outline-light" title="Voltar ao menu">
+                        <i class="fas fa-home"></i>
+                    </a>
+                    <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalCrypto">
+                        <i class="fas fa-plus"></i> Adicionar
+                    </button>
+                </div>
             </div>
             <div class="card-body p-0 table-responsive">
                 <table id="tbl-cripto" class="no-datatable table table-dark table-striped mb-0 table-center-forced align-middle bal-entry-table">
@@ -541,9 +567,14 @@
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Previdência</span>
-                <button class="btn btn-sm btn-light text-success" data-bs-toggle="modal" data-bs-target="#modalPension">
-                    <i class="fas fa-plus"></i> Adicionar
-                </button>
+                <div class="bal-section-actions">
+                    <a href="#bal-nav" class="btn btn-sm btn-outline-light" title="Voltar ao menu">
+                        <i class="fas fa-home"></i>
+                    </a>
+                    <button class="btn btn-sm btn-light text-success" data-bs-toggle="modal" data-bs-target="#modalPension">
+                        <i class="fas fa-plus"></i> Adicionar
+                    </button>
+                </div>
             </div>
             <div class="card-body p-0 table-responsive">
                 <table id="tbl-prev" class="no-datatable table table-dark table-striped mb-0 table-center-forced align-middle bal-entry-table">

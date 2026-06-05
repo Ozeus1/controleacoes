@@ -529,7 +529,7 @@
                             <td data-label="Valor Atual">R$ {{ item.current_value | brl_fmt }}</td>
                             <td data-label="Acoes" class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <div class="btn-group btn-group-sm" role="group">
-                                    <button type="button" class="btn btn-chart" onclick="openCryptoChart({{ item.name|tojson }})"
+                                    <button type="button" class="btn btn-chart crypto-chart-btn" data-ticker="{{ item.name }}"
                                         title="Gráfico TradingView" style="background:#0ea5e9; color:white;">📈</button>
                                     <a href="{{ url_for('buy_crypto', id=item.id) }}" class="btn btn-success"
                                         title="Comprar">➕</a>
@@ -1375,8 +1375,15 @@
                 symbol = symbol + '-USD';
             }
         }
-        MyChart.open(symbol, true);
+        if (window.MyChart && typeof MyChart.open === 'function') {
+            MyChart.open(symbol, true);
+        }
     };
+    document.addEventListener('click', function(e) {
+        var btn = e.target.closest('.crypto-chart-btn');
+        if (!btn) return;
+        window.openCryptoChart(btn.dataset.ticker);
+    });
     </script>
 
     <!-- MODALS -->

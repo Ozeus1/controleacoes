@@ -518,7 +518,7 @@
                         {% set profit = item.current_value - invested %}
                         <tr>
                             <td data-label="Exchange">{{ item.institution }}</td>
-                            <td data-label="Cripto">{{ item.name }}</td>
+                            <td data-label="Cripto"><span class="ticker-badge">{{ item.name }}</span></td>
                             <td data-label="Pr. Medio">R$ {{ (item.avg_price or 0) | brl_fmt }}</td>
                             <td data-label="Qtd">{{ item.quantity if item.quantity else '-' }}</td>
                             <td data-label="Vl. Compra">R$ {{ invested | brl_fmt }}</td>
@@ -529,6 +529,8 @@
                             <td data-label="Valor Atual">R$ {{ item.current_value | brl_fmt }}</td>
                             <td data-label="Acoes" class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-chart" onclick="openCryptoChart({{ item.name|tojson }})"
+                                        title="Gráfico TradingView" style="background:#0ea5e9; color:white;">📈</button>
                                     <a href="{{ url_for('buy_crypto', id=item.id) }}" class="btn btn-success"
                                         title="Comprar">➕</a>
                                     <a href="{{ url_for('exit_crypto', id=item.id) }}" class="btn btn-danger"
@@ -1360,6 +1362,21 @@
             options: commonOpt2
         });
     });
+    </script>
+
+    <script>
+    window.openCryptoChart = function(ticker) {
+        var symbol = (ticker || '').toString().trim().toUpperCase();
+        if (!symbol) return;
+        if (symbol.indexOf('-') < 0) {
+            if (/^[A-Z0-9]+USD$/.test(symbol) && symbol.length > 3) {
+                symbol = symbol.replace(/USD$/, '-USD');
+            } else {
+                symbol = symbol + '-USD';
+            }
+        }
+        MyChart.open(symbol, true);
+    };
     </script>
 
     <!-- MODALS -->

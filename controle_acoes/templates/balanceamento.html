@@ -24,6 +24,7 @@
 
 /* Botões de ação no topo */
 .bal-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; }
+.bal-actions .btn { min-height: 44px; }
 
 /* Wrapper de scroll horizontal para tabelas (sem limite de altura) */
 .table-scroll { overflow-x: auto; width: 100%; }
@@ -59,9 +60,174 @@
 .bal-table tbody tr:hover { background: rgba(255,255,255,.04); }
 .bal-table .total-row td,
 .bal-table tfoot td { font-weight: 700; background: var(--total-row-bg); }
+
+.bal-entry-table td[data-label="Acoes"],
+.bal-entry-table td[data-label="Del"] {
+    min-width: 112px;
+}
+
+.bal-entry-table .actions .btn,
+.bal-entry-table .actions .btn-group .btn {
+    min-width: 38px;
+}
+
+@media (max-width: 768px) {
+    .bal-page-title {
+        font-size: 1.25rem;
+        margin-top: 1rem !important;
+        margin-bottom: 1rem !important;
+        padding-left: 0;
+    }
+
+    .bal-actions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .6rem;
+    }
+
+    .bal-actions .btn {
+        width: 100%;
+        padding: .7rem .55rem;
+        font-size: .88rem;
+        white-space: normal;
+        line-height: 1.2;
+    }
+
+    .card {
+        border-radius: .75rem;
+        padding: .75rem;
+        margin-bottom: 1rem;
+    }
+
+    .card-header {
+        gap: .75rem;
+        padding: .25rem 0 .75rem;
+    }
+
+    .card-header > span {
+        min-width: 0;
+        font-size: 1rem;
+        line-height: 1.25;
+    }
+
+    .card-header .btn {
+        flex-shrink: 0;
+        min-height: 36px;
+    }
+
+    .bal-entry-table {
+        min-width: 0 !important;
+        border-collapse: separate !important;
+    }
+
+    .bal-entry-table thead {
+        display: none;
+    }
+
+    .bal-entry-table,
+    .bal-entry-table tbody,
+    .bal-entry-table tr,
+    .bal-entry-table td {
+        display: block;
+        width: 100%;
+    }
+
+    .bal-entry-table tbody tr {
+        background: rgba(15, 23, 42, .26);
+        border: 1px solid var(--border-color);
+        border-radius: .75rem;
+        margin: .75rem 0;
+        overflow: hidden;
+    }
+
+    .bal-entry-table tbody td {
+        display: grid;
+        grid-template-columns: minmax(92px, 38%) minmax(0, 1fr);
+        gap: .75rem;
+        align-items: center;
+        padding: .65rem .75rem;
+        text-align: right !important;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    .bal-entry-table tbody td::before {
+        content: attr(data-label);
+        color: var(--text-secondary);
+        font-size: .72rem;
+        font-weight: 700;
+        text-align: left;
+        text-transform: uppercase;
+    }
+
+    .bal-entry-table tbody td.actions,
+    .bal-entry-table tbody td[data-label="Acoes"],
+    .bal-entry-table tbody td[data-label="Del"] {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center;
+        min-width: 0;
+    }
+
+    .bal-entry-table tbody td.actions::before,
+    .bal-entry-table tbody td[data-label="Acoes"]::before,
+    .bal-entry-table tbody td[data-label="Del"]::before {
+        flex: 1;
+    }
+
+    .bal-entry-table .btn-group {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: .35rem;
+    }
+
+    .bal-entry-table .btn-group > .btn {
+        border-radius: .45rem !important;
+    }
+
+    .bal-entry-table tfoot,
+    .bal-entry-table tfoot tr,
+    .bal-entry-table tfoot td {
+        display: block;
+        width: 100%;
+    }
+
+    .bal-entry-table tfoot tr {
+        border-top: 1px solid var(--border-color);
+        margin-top: .75rem;
+        padding: .75rem 0 0;
+    }
+
+    .bal-entry-table tfoot td {
+        padding: .35rem .75rem;
+        text-align: center !important;
+        white-space: normal;
+    }
+
+    .chart-single {
+        max-width: 100%;
+    }
+
+    .chart-single > div {
+        height: 260px !important;
+    }
+
+    .bal-table {
+        min-width: 0 !important;
+        width: 100%;
+        font-size: .76rem;
+    }
+
+    .bal-table th,
+    .bal-table td {
+        padding: .45rem .5rem;
+        white-space: normal;
+    }
+}
 </style>
 
-<h2 style="margin-bottom:1.5rem;">⚖️ Balanceamento de Carteira</h2>
+<h2 class="bal-page-title" style="margin-bottom:1.5rem;">⚖️ Balanceamento de Carteira</h2>
 
 <div class="bal-actions">
     <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalRFC">➕ Renda Fixa Pós</button>
@@ -84,7 +250,7 @@
                 </button>
             </div>
             <div class="card-body p-0 table-responsive">
-                <table class="table table-dark table-striped mb-0 table-center-forced align-middle">
+                <table class="no-datatable table table-dark table-striped mb-0 table-center-forced align-middle bal-entry-table">
                     <thead>
                         <tr>
                             <th>Tipo</th>
@@ -99,13 +265,13 @@
                     <tbody>
                         {% for item in rf_pos %}
                         <tr>
-                            <td>{{ item.product_type or '-' }}</td>
-                            <td>{{ item.institution }}</td>
-                            <td>{{ item.name }}</td>
-                            <td>R$ {{ item.value | brl_fmt }}</td>
-                            <td>{{ item.rate }}</td>
-                            <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
-                            <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                            <td data-label="Tipo">{{ item.product_type or '-' }}</td>
+                            <td data-label="Banco">{{ item.institution }}</td>
+                            <td data-label="Descricao">{{ item.name }}</td>
+                            <td data-label="Valor">R$ {{ item.value | brl_fmt }}</td>
+                            <td data-label="Taxa">{{ item.rate }}</td>
+                            <td data-label="Vencimento">{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
+                            <td data-label="Acoes" class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='rf', id=item.id) }}"
                                     class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
                                 <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
@@ -137,7 +303,7 @@
                 </button>
             </div>
             <div class="card-body p-0 table-responsive">
-                <table class="table table-dark table-striped mb-0 table-center-forced align-middle">
+                <table class="no-datatable table table-dark table-striped mb-0 table-center-forced align-middle bal-entry-table">
                     <thead>
                         <tr>
                             <th>Tipo</th>
@@ -152,13 +318,13 @@
                     <tbody>
                         {% for item in rf_pre %}
                         <tr>
-                            <td>{{ item.product_type }}</td>
-                            <td>{{ item.institution }}</td>
-                            <td>{{ item.name }}</td>
-                            <td>R$ {{ item.value | brl_fmt }}</td>
-                            <td>{{ item.rate }}</td>
-                            <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
-                            <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                            <td data-label="Tipo">{{ item.product_type }}</td>
+                            <td data-label="Banco">{{ item.institution }}</td>
+                            <td data-label="Descricao">{{ item.name }}</td>
+                            <td data-label="Valor">R$ {{ item.value | brl_fmt }}</td>
+                            <td data-label="Taxa">{{ item.rate }}</td>
+                            <td data-label="Vencimento">{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
+                            <td data-label="Acoes" class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='rf', id=item.id) }}"
                                     class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
                                 <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
@@ -190,7 +356,7 @@
                 </button>
             </div>
             <div class="card-body p-0 table-responsive">
-                <table class="table table-dark table-striped mb-0 table-center-forced align-middle">
+                <table class="no-datatable table table-dark table-striped mb-0 table-center-forced align-middle bal-entry-table">
                     <thead>
                         <tr>
                             <th>Tipo</th>
@@ -205,13 +371,13 @@
                     <tbody>
                         {% for item in rf_ipca %}
                         <tr>
-                            <td>{{ item.product_type or '-' }}</td>
-                            <td>{{ item.institution }}</td>
-                            <td>{{ item.name }}</td>
-                            <td>R$ {{ item.value | brl_fmt }}</td>
-                            <td>{{ item.rate }}</td>
-                            <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
-                            <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                            <td data-label="Tipo">{{ item.product_type or '-' }}</td>
+                            <td data-label="Banco">{{ item.institution }}</td>
+                            <td data-label="Descricao">{{ item.name }}</td>
+                            <td data-label="Valor">R$ {{ item.value | brl_fmt }}</td>
+                            <td data-label="Taxa">{{ item.rate }}</td>
+                            <td data-label="Vencimento">{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
+                            <td data-label="Acoes" class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='rf', id=item.id) }}"
                                     class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
                                 <a href="{{ url_for('delete_balance_item', type='rf', id=item.id) }}"
@@ -245,7 +411,7 @@
                 </button>
             </div>
             <div class="card-body p-0 table-responsive">
-                <table id="tbl-fundos" class="table table-dark table-striped mb-0 table-center-forced align-middle">
+                <table id="tbl-fundos" class="no-datatable table table-dark table-striped mb-0 table-center-forced align-middle bal-entry-table">
                     <thead>
                         <tr>
                             <th>Banco</th>
@@ -259,12 +425,12 @@
                     <tbody>
                         {% for item in funds %}
                         <tr>
-                            <td>{{ item.institution }}</td>
-                            <td>{{ item.name }}</td>
-                            <td>R$ {{ item.value | brl_fmt }}</td>
-                            <td>{{ item.indexer }}</td>
-                            <td>{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
-                            <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                            <td data-label="Banco">{{ item.institution }}</td>
+                            <td data-label="Fundo">{{ item.name }}</td>
+                            <td data-label="Valor">R$ {{ item.value | brl_fmt }}</td>
+                            <td data-label="Indexador">{{ item.indexer }}</td>
+                            <td data-label="Vencimento">{{ item.maturity_date.strftime('%d/%m/%Y') if item.maturity_date else '-' }}</td>
+                            <td data-label="Del" class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='fund', id=item.id) }}"
                                     class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
                                 <a href="{{ url_for('delete_balance_item', type='fund', id=item.id) }}"
@@ -295,7 +461,7 @@
                 </button>
             </div>
             <div class="card-body p-0 table-responsive">
-                <table id="tbl-cripto" class="table table-dark table-striped mb-0 table-center-forced align-middle">
+                <table id="tbl-cripto" class="no-datatable table table-dark table-striped mb-0 table-center-forced align-middle bal-entry-table">
                     <thead>
                         <tr>
                             <th>Exchange</th>
@@ -314,17 +480,17 @@
                         {% set invested = (item.quantity or 0) * (item.avg_price or 0) %}
                         {% set profit = item.current_value - invested %}
                         <tr>
-                            <td>{{ item.institution }}</td>
-                            <td>{{ item.name }}</td>
-                            <td>R$ {{ (item.avg_price or 0) | brl_fmt }}</td>
-                            <td>{{ item.quantity if item.quantity else '-' }}</td>
-                            <td>R$ {{ invested | brl_fmt }}</td>
-                            <td>R$ {{ (item.quote or 0) | brl_fmt }}</td>
-                            <td class="{{ 'text-success' if profit >= 0 else 'text-danger' }}">
+                            <td data-label="Exchange">{{ item.institution }}</td>
+                            <td data-label="Cripto">{{ item.name }}</td>
+                            <td data-label="Pr. Medio">R$ {{ (item.avg_price or 0) | brl_fmt }}</td>
+                            <td data-label="Qtd">{{ item.quantity if item.quantity else '-' }}</td>
+                            <td data-label="Vl. Compra">R$ {{ invested | brl_fmt }}</td>
+                            <td data-label="Cotacao">R$ {{ (item.quote or 0) | brl_fmt }}</td>
+                            <td data-label="Lucro" class="{{ 'text-success' if profit >= 0 else 'text-danger' }}">
                                 R$ {{ profit | brl_fmt }}
                             </td>
-                            <td>R$ {{ item.current_value | brl_fmt }}</td>
-                            <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                            <td data-label="Valor Atual">R$ {{ item.current_value | brl_fmt }}</td>
+                            <td data-label="Acoes" class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <div class="btn-group btn-group-sm" role="group">
                                     <a href="{{ url_for('buy_crypto', id=item.id) }}" class="btn btn-success"
                                         title="Comprar">➕</a>
@@ -368,7 +534,7 @@
                 </button>
             </div>
             <div class="card-body p-0 table-responsive">
-                <table id="tbl-prev" class="table table-dark table-striped mb-0 table-center-forced align-middle">
+                <table id="tbl-prev" class="no-datatable table table-dark table-striped mb-0 table-center-forced align-middle bal-entry-table">
                     <thead>
                         <tr>
                             <th>Inst.</th>
@@ -381,11 +547,11 @@
                     <tbody>
                         {% for item in pensions %}
                         <tr>
-                            <td>{{ item.institution }}</td>
-                            <td>{{ item.name }}</td>
-                            <td>{{ item.type }}</td>
-                            <td>R$ {{ item.value | brl_fmt }}</td>
-                            <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                            <td data-label="Inst.">{{ item.institution }}</td>
+                            <td data-label="Plano">{{ item.name }}</td>
+                            <td data-label="Tipo">{{ item.type }}</td>
+                            <td data-label="Valor">R$ {{ item.value | brl_fmt }}</td>
+                            <td data-label="Del" class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <a href="{{ url_for('edit_balance_item', type='pension', id=item.id) }}"
                                     class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
                                 <a href="{{ url_for('delete_balance_item', type='pension', id=item.id) }}"

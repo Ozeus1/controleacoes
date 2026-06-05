@@ -25,6 +25,10 @@
 /* Botões de ação no topo */
 .bal-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: 1.5rem; }
 .bal-actions .btn { min-height: 44px; }
+.bal-title-row { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+.bal-title-row .bal-page-title { margin-bottom: 0 !important; }
+.bal-title-row .btn { padding: .3rem .6rem; font-size: .82rem; }
+.bal-anchor { scroll-margin-top: 7rem; }
 
 /* Wrapper de scroll horizontal para tabelas (sem limite de altura) */
 .table-scroll { overflow-x: auto; width: 100%; }
@@ -77,6 +81,10 @@
         margin-top: 1rem !important;
         margin-bottom: 1rem !important;
         padding-left: 0;
+    }
+
+    .bal-title-row .bal-page-title {
+        margin-bottom: 0 !important;
     }
 
     .bal-actions {
@@ -227,21 +235,25 @@
 }
 </style>
 
-<h2 class="bal-page-title" style="margin-bottom:1.5rem;">⚖️ Balanceamento de Carteira</h2>
+<div class="bal-title-row">
+    <h2 class="bal-page-title">⚖️ Balanceamento de Carteira</h2>
+    <a href="{{ url_for('update_intl_quotes') }}" class="btn btn-sm btn-secondary">🔄 Atualizar Int.</a>
+</div>
 
 <div class="bal-actions">
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#modalRFC">➕ Renda Fixa Pós</button>
-    <button class="btn btn-warning" data-bs-toggle="modal" data-bs-target="#modalRFP">➕ Renda Fixa Pré</button>
-    <button class="btn btn-danger"  data-bs-toggle="modal" data-bs-target="#modalRFI">➕ Renda Fixa IPCA</button>
-    <button class="btn btn-info"    data-bs-toggle="modal" data-bs-target="#modalFund">➕ Fundos</button>
-    <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#modalCrypto">🪙 Cripto</button>
-    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#modalPension">🐷 Previdência</button>
-    <a href="{{ url_for('update_intl_quotes') }}" class="btn btn-secondary">🔄 Atualizar Int.</a>
+    <a class="btn btn-primary" href="#sec-rf-pos">➕ Renda Fixa Pós</a>
+    <a class="btn btn-warning" href="#sec-rf-pre">➕ Renda Fixa Pré</a>
+    <a class="btn btn-danger" href="#sec-rf-ipca">➕ Renda Fixa IPCA</a>
+    <a class="btn btn-info" href="#sec-fundos">➕ Fundos</a>
+    <a class="btn btn-secondary" href="#sec-cripto">🪙 Cripto</a>
+    <a class="btn btn-success" href="#sec-previdencia">🐷 Previdência</a>
+    <a class="btn btn-primary" href="{{ url_for('acoes') }}">📈 Ações</a>
+    <a class="btn btn-info" href="{{ url_for('fiis') }}">🏢 FII</a>
 </div>
 
 <!-- RENDA FIXA TABLES -->
     <!-- POS FIXADA -->
-        <div class="card">
+        <div class="card bal-anchor" id="sec-rf-pos">
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Renda Fixa Pós-Fixada</span>
@@ -294,7 +306,7 @@
         </div>
 
     <!-- PRE FIXADA -->
-        <div class="card">
+        <div class="card bal-anchor" id="sec-rf-pre">
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Renda Fixa Pré-Fixada</span>
@@ -347,7 +359,7 @@
         </div>
 
     <!-- IPCA -->
-        <div class="card">
+        <div class="card bal-anchor" id="sec-rf-ipca">
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Renda Fixa Inflação (IPCA)</span>
@@ -402,7 +414,7 @@
 
 <!-- FUNDS & OTHERS -->
     <!-- FUNDOS -->
-        <div class="card card-narrow">
+        <div class="card card-narrow bal-anchor" id="sec-fundos">
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Fundos de Investimento</span>
@@ -453,7 +465,7 @@
         </div>
 
     <!-- CRIPTO -->
-        <div class="card card-narrow">
+        <div class="card card-narrow bal-anchor" id="sec-cripto">
             <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
                 <span>Criptoativos</span>
                 <button class="btn btn-sm btn-light text-dark" data-bs-toggle="modal" data-bs-target="#modalCrypto">
@@ -525,7 +537,7 @@
 </div>
 
     <!-- PREVIDENCIA -->
-        <div class="card card-narrow">
+        <div class="card card-narrow bal-anchor" id="sec-previdencia">
             <div
                 class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                 <span>Previdência</span>

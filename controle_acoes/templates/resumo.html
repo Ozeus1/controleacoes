@@ -40,12 +40,11 @@
                 {{ ((total_etfs / total_equity * 100) if total_equity > 0 else 0) | pct }}
             </div>
         </a>
-        <a href="{{ url_for('historico') }}" class="card kpi-link" style="padding: 1.5rem; text-align: center;">
+        <a href="{{ url_for('history') }}" class="card kpi-link" style="padding: 1.5rem; text-align: center;">
             <div style="color: var(--text-secondary); font-size: 0.9rem;">Lucro Realizado (Histórico)</div>
             <div
-                style="font-size: 1.5rem; font-weight: bold; margin-top: 0.5rem; color: {{ 'var(--success-color)' if current_month_realized_profit >= 0 else 'var(--danger-color)' }};">
-                {{ current_month_realized_profit | brl }}
-                <span style="font-size:.85rem;">({{ current_month_realized_pct | pct }})</span>
+                style="font-size: 1.5rem; font-weight: bold; margin-top: 0.5rem; color: {{ 'var(--success-color)' if total_realized_profit >= 0 else 'var(--danger-color)' }};">
+                {{ total_realized_profit | brl }}
             </div>
             <div style="font-size: 0.82rem; color: var(--text-secondary); margin-top: .45rem;">
                 Média 4 meses:<br>

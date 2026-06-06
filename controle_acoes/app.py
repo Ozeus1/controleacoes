@@ -3792,20 +3792,11 @@ def resumo():
 
     total_realized_profit = sum(h.profit_value for h in history if h.profit_value)
     current_month_key = date.today().strftime('%Y-%m')
-    current_month_realized_profit = round(monthly_profit.get(current_month_key, 0), 2)
-    current_month_realized_pct = round(current_month_realized_profit / total_acoes_atual * 100, 2) if total_acoes_atual > 0 else 0
-
-    def _prev_month_key(year, month, offset):
-        month -= offset
-        while month <= 0:
-            month += 12
-            year -= 1
-        return f'{year:04d}-{month:02d}'
-
-    today_ref = date.today()
-    prev_4_months = [_prev_month_key(today_ref.year, today_ref.month, i) for i in range(1, 5)]
-    avg_4m_realized_profit = round(sum(monthly_profit.get(k, 0) for k in prev_4_months) / 4, 2)
-    avg_4m_realized_pct = round(avg_4m_realized_profit / total_acoes_atual * 100, 2) if total_acoes_atual > 0 else 0
+    avg_months = sorted([m for m in sorted_months if m < current_month_key])[-4:]
+    avg_count = len(avg_months) or 1
+    avg_4m_realized_profit = round(sum(monthly_profit.get(k, 0) for k in avg_months) / avg_count, 2)
+    profit_pct_by_month = dict(zip(sorted_months, profit_pct_data))
+    avg_4m_realized_pct = round(sum(profit_pct_by_month.get(k, 0) for k in avg_months) / avg_count, 2)
     # Selic mensal para os meses do gráfico
     selic_rows = {s.mes_ano: s.taxa for s in SelicMensal.query.all()}
     selic_data = [selic_rows.get(k, None) for k in sorted_months]
@@ -3828,8 +3819,6 @@ def resumo():
                          total_equity=total_equity, total_acoes=total_acoes,
                          total_fiis=total_fiis, total_etfs=total_etfs,
                          total_realized_profit=total_realized_profit,
-                         current_month_realized_profit=current_month_realized_profit,
-                         current_month_realized_pct=current_month_realized_pct,
                          avg_4m_realized_profit=avg_4m_realized_profit,
                          avg_4m_realized_pct=avg_4m_realized_pct,
                          fii_types=fii_types,

@@ -518,8 +518,8 @@
                     R$ {{ "%.2f"|format(item.net|abs)|replace('.', ',') }}
                 </td>
                 <td class="{{ 'positive' if item.net_total >= 0 else 'negative' }}">R$ {{ "%.2f"|format(item.net_total|abs)|replace('.', ',') }}</td>
-                <td>R$ {{ "%.2f"|format(item.spread.leg_long_current)|replace('.', ',') }}</td>
-                <td>R$ {{ "%.2f"|format(item.spread.leg_short_current)|replace('.', ',') }}</td>
+                <td data-optticker="{{ item.spread.leg_long_ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.spread.leg_long_current)|replace('.', ',') }}</td>
+                <td data-optticker="{{ item.spread.leg_short_ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.spread.leg_short_current)|replace('.', ',') }}</td>
                 <td class="{{ 'positive' if item.result >= 0 else 'negative' }}">R$ {{ "%.2f"|format(item.result)|replace('.', ',') }}</td>
                 <td class="{{ 'positive' if item.result_pct >= 0 else 'negative' }}">{{ "%.1f"|format(item.result_pct)|replace('.', ',') }}%</td>
                 <td class="positive">R$ {{ "%.2f"|format(item.max_gain)|replace('.', ',') }}</td>
@@ -623,6 +623,9 @@
                         {{ leg.opt_type }}
                         K={{ "%.2f"|format(leg.strike)|replace('.', ',') }}
                         @ {{ "%.2f"|format(leg.entry_price)|replace('.', ',') }}
+                        <small style="color:var(--text-secondary);">
+                            atual <span data-optticker="{{ leg.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(leg.current_price or 0)|replace('.', ',') }}</span>
+                        </small>
                     </div>
                     {% endfor %}
                 </td>
@@ -1140,16 +1143,17 @@ function editDeltaPut(optId, current) {
     const POLL_URL = "{{ url_for('api_current_quotes') }}";
     const MT5_INTERVAL = 15000;
     function fmtBRL(v) { return 'R$ ' + v.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}); }
+    function optQuote(options, ticker) { return options[(ticker || '').toUpperCase()] || options[ticker]; }
     function applyQuotes(assets, options) {
         document.querySelectorAll('[data-field="opt_price"]').forEach(function(el) {
-            const d = options[el.dataset.optticker]; if (d) el.textContent = fmtBRL(d.price);
+            const d = optQuote(options, el.dataset.optticker); if (d) el.textContent = fmtBRL(d.price);
         });
         document.querySelectorAll('[data-field="opt_value"]').forEach(function(el) {
-            const d = options[el.dataset.optticker];
+            const d = optQuote(options, el.dataset.optticker);
             if (d) el.textContent = fmtBRL(parseFloat(el.dataset.qty) * d.price);
         });
         document.querySelectorAll('[data-field="opt_change"]').forEach(function(el) {
-            const d = options[el.dataset.optticker];
+            const d = optQuote(options, el.dataset.optticker);
             if (d && d.change !== undefined) {
                 el.textContent = d.change.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2}) + '%';
                 el.className = d.change >= 0 ? 'positive' : 'negative';

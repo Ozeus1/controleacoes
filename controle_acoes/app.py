@@ -2515,11 +2515,16 @@ def delete_option(id):
 @app.route('/update_options_quotes', methods=['POST'])
 @login_required
 def update_options_quotes():
-    # Only updates basic info not stored in DB currently (since we fetch on load),
-    # but could be used if we stored underlying price.
-    # For now, just reload the page as the page logic fetches fresh data.
-    # We could force a refresh or flash message.
-    flash("Cotações dos ativos subjacentes atualizadas na visualização.")
+    token = Settings.get_value('oplab_token', user_id=current_user.id)
+    if token:
+        a_ok, o_ok, _ = _do_oplab_bulk_update(current_user.id, token)
+        flash(f'OpLab: {a_ok} ativo(s) e {o_ok} opção(ões)/perna(s) atualizados.', 'success')
+    else:
+        count, tried, errs = update_all_assets_logic()
+        if errs:
+            flash(f'Ativos: {count}/{tried}. Erros: {errs[0]}', 'warning')
+        else:
+            flash(f'Ativos: {count}/{tried} atualizados. Configure a OpLab para atualizar opções.', 'warning')
     return redirect(url_for('opcoes'))
 
 @app.route('/close_option/<int:id>', methods=['GET', 'POST'])
@@ -5379,28 +5384,33 @@ def update_intl_quotes_logic(user_id):
 @login_required
 def update_quotes():
     try:
-        # 0. Update Market Indices (Indicators)
         update_market_indices()
-        
-        # 1. Update National Stocks/FIIs/ETFs
-        count, tried, errs = update_all_assets_logic()
-        
-        # 2. Update International & Crypto
+        quote_mode  = Settings.get_value('quote_mode', user_id=current_user.id, default='yahoo')
+        oplab_token = Settings.get_value('oplab_token', user_id=current_user.id)
+        oplab_covered = set()
+        final_msg = ''
+
+        if oplab_token:
+            a_ok, o_ok, oplab_covered = _do_oplab_bulk_update(current_user.id, oplab_token)
+            final_msg += f'OpLab: {a_ok} ativo(s), {o_ok} opção(ões)/perna(s). '
+
+        if quote_mode == 'yahoo':
+            count, tried, errs = update_all_assets_logic(skip_tickers=oplab_covered)
+            final_msg += f'Yahoo/Brapi: {count}/{tried} ativo(s). '
+        else:
+            errs = []
+            final_msg += 'Ações/FIIs via MT5 Feeder. '
+
         intl_success, intl_msgs = update_intl_quotes_logic(current_user.id)
-        
-        source_status = "Fonte: Yahoo Finance"
-        
-        final_msg = f'Nacionais: {count}/{tried} atualizados. '
         if intl_success:
             final_msg += f'Internacional/Cripto: Sucesso ({", ".join(intl_msgs)}). '
         else:
             final_msg += f'Internacional: Falha ({", ".join(intl_msgs)}). '
-            
+
         if errs:
-             # Show first error to help debug
              flash(f'{final_msg} Erros: {len(errs)}. {errs[0]}', 'warning')
         else:
-             flash(f'{final_msg} {source_status}', 'success')
+             flash(final_msg.strip() or 'Atualizado.', 'success')
              
     except Exception as e:
         flash(f'Erro ao atualizar cotações: {str(e)}', 'danger')
@@ -7408,7 +7418,12 @@ def api_update_quotes():
         if ps_opt:
             found = True
 
-        # 4. OptionSpread (travas) — perna comprada (long) ou vendida (short)
+        # 4. StudyOption
+        for so in StudyOption.query.filter_by(ticker=ticker, user_id=user_id).all():
+            so.option_price = price_f
+            found = True
+
+        # 5. OptionSpread (travas) — perna comprada (long) ou vendida (short)
         for sp in OptionSpread.query.filter_by(user_id=user_id).all():
             if sp.leg_long_ticker and sp.leg_long_ticker.upper() == ticker:
                 sp.leg_long_current = price_f
@@ -7562,11 +7577,39 @@ def api_current_quotes():
 
     options_data = {}
     for o in Option.query.filter_by(user_id=uid).all():
-        options_data[o.ticker] = {
+        options_data[o.ticker.upper()] = {
             'price':   round(o.current_option_price or 0, 2),
             'change':  round(o.daily_change or 0, 2),
             'updated': o.last_update.strftime('%H:%M') if o.last_update else '-'
         }
+
+    def _merge_option_quote(ticker, price, change=0, updated='-'):
+        key = (ticker or '').upper()
+        if not key:
+            return
+        price = round(price or 0, 2)
+        if key not in options_data or price > 0:
+            options_data[key] = {
+                'price':   price,
+                'change':  round(change or 0, 2),
+                'updated': updated,
+            }
+
+    for so in StudyOption.query.filter_by(user_id=uid).all():
+        _merge_option_quote(so.ticker, so.option_price)
+    for sp in OptionSpread.query.filter_by(user_id=uid).all():
+        _merge_option_quote(sp.leg_long_ticker, sp.leg_long_current)
+        _merge_option_quote(sp.leg_short_ticker, sp.leg_short_current)
+    for leg in (StructuredLeg.query
+                .join(StructuredOp)
+                .filter(StructuredOp.user_id == uid,
+                        StructuredOp.status == 'OPEN')
+                .all()):
+        _merge_option_quote(
+            leg.ticker,
+            leg.current_price,
+            updated=leg.last_update.strftime('%H:%M') if leg.last_update else '-'
+        )
 
     return jsonify({
         'mode':              mode,
@@ -8059,7 +8102,8 @@ def _do_oplab_bulk_update(uid: int, token: str):
         StructuredOp.user_id == uid, StructuredOp.status == 'OPEN'
     ).all()
     for leg in struct_legs_bulk:
-        option_tickers.add(leg.ticker.upper())
+        if leg.ticker:
+            option_tickers.add(leg.ticker.upper())
     struct_ops_bulk = StructuredOp.query.filter_by(user_id=uid, status='OPEN').all()
     for sop in struct_ops_bulk:
         if sop.underlying_asset:
@@ -8074,7 +8118,7 @@ def _do_oplab_bulk_update(uid: int, token: str):
 
     all_tickers = list(asset_tickers | option_tickers)
     if not all_tickers:
-        return 0, 0
+        return 0, 0, set()
 
     # ── Busca preços em lotes de 150 ──────────────────────────────
     prices:     dict = {}   # ticker → close price
@@ -8108,8 +8152,52 @@ def _do_oplab_bulk_update(uid: int, token: str):
         except Exception:
             pass
 
+    def _fetch_missing_option_quote(ticker: str):
+        """Fallback por ticker para opções que não vieram no bulk da OpLab."""
+        tk = (ticker or '').upper().strip()
+        if not tk:
+            return None, None
+        try:
+            ri = requests.get(
+                f'{BASE}/market/instruments/{tk}',
+                headers=headers, timeout=8,
+            )
+            if ri.status_code == 200:
+                d = ri.json()
+                p = d.get('close') or d.get('last') or d.get('price')
+                if p and float(p) > 0:
+                    var = d.get('variation') or d.get('change')
+                    return float(p), (float(var) if var is not None else None)
+        except Exception:
+            pass
+        try:
+            yf_t = tk + '.SA'
+            for host in ('query1.finance.yahoo.com', 'query2.finance.yahoo.com'):
+                r = requests.get(
+                    f'https://{host}/v8/finance/chart/{yf_t}',
+                    params={'interval': '1d', 'range': '2d'},
+                    headers=_YF_HEADERS, cookies=_YF_COOKIES, timeout=5,
+                )
+                if r.status_code == 200:
+                    meta = r.json()['chart']['result'][0]['meta']
+                    p = meta.get('regularMarketPrice') or meta.get('previousClose')
+                    if p and float(p) > 0:
+                        chg = meta.get('regularMarketChangePercent')
+                        return float(p), (float(chg) if chg is not None else None)
+        except Exception:
+            pass
+        return None, None
+
+    for tk in list(option_tickers):
+        if tk not in prices or prices.get(tk, 0) <= 0:
+            p, var = _fetch_missing_option_quote(tk)
+            if p and p > 0:
+                prices[tk] = p
+                if var is not None:
+                    variations[tk] = var
+
     if not prices:
-        return 0, 0
+        return 0, 0, set()
 
     # ── Busca delta das opções via /v3/market/options/{underlying} ──
     # Agrupa opções por underlying para minimizar chamadas à API
@@ -8226,10 +8314,11 @@ def _do_oplab_bulk_update(uid: int, token: str):
     # ── Atualiza StudyOptions (/estudos) ──────────────────────────
     for so in study_options:
         changed = False
-        opt_key = so.ticker.upper()
+        opt_key = (so.ticker or '').upper()
         if opt_key in prices and prices[opt_key] > 0:
             so.option_price = prices[opt_key]
             changed = True
+            options_ok += 1
         if so.underlying_asset:
             uk = so.underlying_asset.upper()
             if uk in prices and prices[uk] > 0:
@@ -8242,10 +8331,12 @@ def _do_oplab_bulk_update(uid: int, token: str):
             k = sp.leg_long_ticker.upper()
             if k in prices and prices[k] > 0:
                 sp.leg_long_current = prices[k]
+                options_ok += 1
         if sp.leg_short_ticker:
             k = sp.leg_short_ticker.upper()
             if k in prices and prices[k] > 0:
                 sp.leg_short_current = prices[k]
+                options_ok += 1
         if sp.underlying_asset:
             uk = sp.underlying_asset.upper()
             if uk in prices and prices[uk] > 0:
@@ -8255,10 +8346,11 @@ def _do_oplab_bulk_update(uid: int, token: str):
 
     # ── Atualiza pernas de OperaçõesEstruturadas ──────────────────
     for leg in struct_legs_bulk:
-        k = leg.ticker.upper()
+        k = (leg.ticker or '').upper()
         if k in prices and prices[k] > 0:
             leg.current_price = prices[k]
             leg.last_update   = now
+            options_ok += 1
 
     # ── Atualiza underlying de OperaçõesEstruturadas ──────────────
     for sop in struct_ops_bulk:

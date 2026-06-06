@@ -866,7 +866,7 @@ function fetchRadar(ticker) {
     var key    = ticker.toUpperCase();
     var cached = _radarCacheGet(ticker);
     if (cached) return Promise.resolve({ data: cached, fromCache: true });
-    return fetch('/api/radar_analise?ticker=' + encodeURIComponent(ticker))
+    return fetch('/api/radar_analise?ticker=' + encodeURIComponent(ticker) + '&_=' + Date.now(), {cache: 'no-store'})
         .then(function(r) { return r.json(); })
         .then(function(d) {
             if (d.error) {
@@ -1287,10 +1287,11 @@ function setSelect(id, val) {
 
         // Usa cache de 10 min se disponível
         var cached = (typeof _radarCacheGet === 'function') ? _radarCacheGet(ticker) : null;
-        if (cached) {
+        if (cached && (cached.rsi14 != null || cached.support != null || cached.resistance != null)) {
             renderRadar(cached, ticker);
         } else {
-            fetch('/api/radar_analise?ticker=' + ticker)
+            if (cached && typeof _radarCache !== 'undefined') delete _radarCache[ticker.toUpperCase()];
+            fetch('/api/radar_analise?ticker=' + encodeURIComponent(ticker) + '&_=' + Date.now(), {cache: 'no-store'})
                 .then(function(r) { return r.json(); })
                 .then(function(d) {
                     if (!d.error && typeof _radarCacheSet === 'function') _radarCacheSet(ticker, d);

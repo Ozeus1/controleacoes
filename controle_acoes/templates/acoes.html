@@ -574,7 +574,29 @@
           <span>SMA 9: <strong id="r-sma9"></strong></span>
           <span>SMA 21: <strong id="r-sma21"></strong></span>
           <span>SMA 50: <strong id="r-sma50"></strong></span>
+          <span>RSI 14: <strong id="r-rsi2"></strong></span>
+          <span>MACD linha: <strong id="r-macd-l"></strong></span>
+          <span>MACD sinal: <strong id="r-macd-s"></strong></span>
           <span>MACD hist.: <strong id="r-macd-h"></strong></span>
+        </div>
+      </div>
+      <div style="background:#fff; border-radius:8px; padding:.9rem 1rem; margin-bottom:1rem; border:1px solid #e2e8f0;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.5rem;">Contexto de Mercado</div>
+        <div style="font-size:.85rem; color:#334155; line-height:1.7;">
+          <div>Variacao do dia: <strong id="r-change"></strong></div>
+          <div>Volume: <strong id="r-vol"></strong></div>
+          <div>Abertura: <strong id="r-open"></strong></div>
+          <div>Max./min. dia: <strong id="r-hilo"></strong></div>
+          <div>52 semanas: <strong id="r-52w"></strong></div>
+        </div>
+      </div>
+      <div style="background:#fff; border-radius:8px; padding:.9rem 1rem; margin-bottom:1rem; border:1px solid #e2e8f0;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.5rem;">Fundamentos Resumidos</div>
+        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:.2rem; font-size:.85rem; color:#334155; line-height:1.7;">
+          <span>P/L: <strong id="r-pe"></strong></span>
+          <span>LPA/EPS: <strong id="r-eps"></strong></span>
+          <span>Setor: <strong id="r-sector"></strong></span>
+          <span>Industria: <strong id="r-industry"></strong></span>
         </div>
       </div>
       <div id="radar-tv-wrap" style="border-radius:8px; overflow:hidden;"></div>
@@ -595,7 +617,7 @@
         document.getElementById('radar-body').style.display = 'none';
         radarModal.style.display = 'flex';
         radarModal.scrollTop = 0;
-        fetch('/api/radar_analise?ticker=' + encodeURIComponent(ticker))
+        fetch('/api/radar_analise?ticker=' + encodeURIComponent(ticker) + '&_=' + Date.now(), {cache: 'no-store'})
             .then(function(r) { return r.json(); })
             .then(function(d) { renderRadar(d, ticker); })
             .catch(function(e) {
@@ -655,14 +677,28 @@
         set('radar-rationale', dash(d.rationale));
         set('r-support', brl(d.support));
         set('r-resist', brl(d.resistance));
-        set('r-rsi', d.rsi14 != null ? num(d.rsi14, 2) : '-');
+        var rsiVal = d.rsi14 != null ? num(d.rsi14, 2) : '-';
+        set('r-rsi', rsiVal);
+        set('r-rsi2', rsiVal);
         set('r-atr', brl(d.atr14));
         set('r-trend-d', 'Tendencia diaria: ' + dash(d.daily_trend));
         set('r-trend-w', 'Tendencia semanal: ' + dash(d.weekly_trend));
         set('r-sma9', brl(d.sma9));
         set('r-sma21', brl(d.sma21));
         set('r-sma50', brl(d.sma50));
+        set('r-macd-l', d.macd_line != null ? num(d.macd_line, 3) : '-');
+        set('r-macd-s', d.macd_signal != null ? num(d.macd_signal, 3) : '-');
         set('r-macd-h', d.macd_hist != null ? num(d.macd_hist, 3) : '-');
+        var ch = parseFloat(d.day_change);
+        set('r-change', isNaN(ch) ? '-' : (ch >= 0 ? '+' : '') + num(ch, 2) + '%');
+        set('r-vol', d.volume ? parseInt(d.volume).toLocaleString('pt-BR') : '-');
+        set('r-open', brl(d.open));
+        set('r-hilo', (d.day_high && d.day_low) ? brl(d.day_high) + ' / ' + brl(d.day_low) : '-');
+        set('r-52w', (d.week52_low && d.week52_high) ? brl(d.week52_low) + ' ate ' + brl(d.week52_high) : '-');
+        set('r-pe', d.pl != null ? num(d.pl, 2) : '-');
+        set('r-eps', d.eps != null ? num(d.eps, 2) : '-');
+        set('r-sector', dash(d.sector));
+        set('r-industry', dash(d.industry));
         if (tvBuiltFor !== ticker) {
             tvBuiltFor = ticker;
             MyChart.openInline('radar-tv-wrap', ticker);

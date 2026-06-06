@@ -3791,7 +3791,21 @@ def resumo():
     div_fiis_pct      = [round(monthly_div_fiis.get(k,0)   / _port_start(k) * 100, 2) for k in sorted_months]
 
     total_realized_profit = sum(h.profit_value for h in history if h.profit_value)
+    current_month_key = date.today().strftime('%Y-%m')
+    current_month_realized_profit = round(monthly_profit.get(current_month_key, 0), 2)
+    current_month_realized_pct = round(current_month_realized_profit / total_acoes_atual * 100, 2) if total_acoes_atual > 0 else 0
 
+    def _prev_month_key(year, month, offset):
+        month -= offset
+        while month <= 0:
+            month += 12
+            year -= 1
+        return f'{year:04d}-{month:02d}'
+
+    today_ref = date.today()
+    prev_4_months = [_prev_month_key(today_ref.year, today_ref.month, i) for i in range(1, 5)]
+    avg_4m_realized_profit = round(sum(monthly_profit.get(k, 0) for k in prev_4_months) / 4, 2)
+    avg_4m_realized_pct = round(avg_4m_realized_profit / total_acoes_atual * 100, 2) if total_acoes_atual > 0 else 0
     # Selic mensal para os meses do gráfico
     selic_rows = {s.mes_ano: s.taxa for s in SelicMensal.query.all()}
     selic_data = [selic_rows.get(k, None) for k in sorted_months]
@@ -3814,6 +3828,10 @@ def resumo():
                          total_equity=total_equity, total_acoes=total_acoes,
                          total_fiis=total_fiis, total_etfs=total_etfs,
                          total_realized_profit=total_realized_profit,
+                         current_month_realized_profit=current_month_realized_profit,
+                         current_month_realized_pct=current_month_realized_pct,
+                         avg_4m_realized_profit=avg_4m_realized_profit,
+                         avg_4m_realized_pct=avg_4m_realized_pct,
                          fii_types=fii_types,
                          fii_table=fii_table_data,
                          broad_allocation=broad_allocation,
@@ -7523,6 +7541,24 @@ def api_radar_analise():
         mc   = d.get('market_context', {})
         tr   = d.get('technical_reading', {})
         fund = d.get('fundamentals_summary', {})
+        if not isinstance(fund, dict):
+            fund = {}
+        if not any(fund.get(k) not in (None, '', '-') for k in ('pl', 'pvp', 'dividend_yield', 'eps', 'sector', 'industry')):
+            try:
+                yf_ticker = ticker + '.SA' if _is_b3_yahoo_ticker(ticker) else ticker
+                info = yf.Ticker(yf_ticker).info or {}
+                fund = dict(fund)
+                fund['pl'] = fund.get('pl') or info.get('trailingPE') or info.get('forwardPE')
+                fund['pvp'] = fund.get('pvp') or info.get('priceToBook')
+                dy = fund.get('dividend_yield')
+                if dy in (None, '', '-'):
+                    dy = info.get('dividendYield')
+                    fund['dividend_yield'] = (dy * 100) if isinstance(dy, (int, float)) and dy <= 1 else dy
+                fund['eps'] = fund.get('eps') or info.get('trailingEps') or info.get('forwardEps')
+                fund['sector'] = fund.get('sector') or info.get('sector')
+                fund['industry'] = fund.get('industry') or info.get('industry')
+            except Exception as yf_err:
+                app.logger.info('radar fundamentals fallback %s: %s', ticker, yf_err)
         macd = tr.get('macd', {})
         entry = d.get('entry', {})
         out = {

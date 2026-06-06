@@ -48,6 +48,11 @@ function fmtPrice(v) {
     return parseFloat(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function isB3Ticker(ticker) {
+    ticker = (ticker || '').toUpperCase().trim();
+    return ticker.indexOf('.') < 0 && ticker.indexOf('-') < 0 && /^[A-Z0-9]{4,8}\d{1,2}$/.test(ticker);
+}
+
 // ── Estilos de botão ──────────────────────────────────────────────────────────
 function btnStyle(active) {
     return 'padding:.2rem .55rem;border-radius:4px;font-size:.78rem;cursor:pointer;border:none;'
@@ -677,7 +682,7 @@ function ensureModal() {
 MyChart.open = function(ticker, isIntl) {
     ticker = (ticker || '').toUpperCase().trim();
     var yfticker = ticker;
-    if (!isIntl && /^[A-Z]{4}[0-9]/.test(ticker) && ticker.indexOf('.') < 0)
+    if (!isIntl && isB3Ticker(ticker))
         yfticker = ticker + '.SA';
 
     ensureModal();
@@ -1049,7 +1054,7 @@ global.MyChart = MyChart;
 
 global.buildTVWidget = function(containerId, symbol) {
     var ticker = symbol.replace(/^BMFBOVESPA:/, '').replace(/\.SA$/, '');
-    MyChart.open(ticker, !/^[A-Z]{4}[0-9]/.test(ticker));
+    MyChart.open(ticker, !isB3Ticker(ticker));
 };
 
 })(window);

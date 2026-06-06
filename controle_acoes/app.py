@@ -7451,7 +7451,7 @@ def api_update_quotes():
 @app.route('/api/radar_update_study', methods=['POST'])
 @login_required
 def api_radar_update_study():
-    """Atualiza RSI e ATR% do estudo a partir dos dados da API Radar."""
+    """Atualiza RSI, ATR% e tendência do estudo a partir dos dados da API Radar."""
     import requests as _req
     from flask import jsonify
     data = request.get_json()
@@ -7468,6 +7468,23 @@ def api_radar_update_study():
         atr14 = d.get('atr14')
         price = d.get('price')
         atr_pct = round(atr14 / price * 100, 2) if (atr14 and price and price > 0) else None
+        sig = d.get('signal', {})
+        sig_code = ''
+        sig_label = ''
+        if isinstance(sig, dict):
+            sig_code = str(sig.get('code') or '').strip().lower()
+            sig_label = str(sig.get('label') or '').strip().lower()
+        elif sig:
+            sig_label = str(sig).strip().lower()
+
+        sig_text = f'{sig_code} {sig_label}'
+        trend = None
+        if any(x in sig_text for x in ('comprar', 'compra', 'buy')):
+            trend = 'Alta'
+        elif any(x in sig_text for x in ('vender', 'venda', 'sell')):
+            trend = 'Baixa'
+        elif any(x in sig_text for x in ('aguardar', 'wait', 'lateral')):
+            trend = 'Lateral'
 
         Model = StudyStock if table == 'stock' else StudyIntlStock
         ss = Model.query.filter_by(id=sid, user_id=current_user.id).first()
@@ -7478,8 +7495,10 @@ def api_radar_update_study():
             ss.rsi = round(rsi14, 2)
         if atr_pct is not None:
             ss.atr_pct = atr_pct
+        if trend is not None:
+            ss.trend = trend
         db.session.commit()
-        return jsonify({'rsi': ss.rsi, 'atr_pct': ss.atr_pct, 'price': price, 'atr14': atr14})
+        return jsonify({'rsi': ss.rsi, 'atr_pct': ss.atr_pct, 'trend': ss.trend, 'price': price, 'atr14': atr14})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -7632,6 +7651,12 @@ _YF_HEADERS = {
 }
 _YF_COOKIES = {'tbla_id': 'finan-web', 'GUC': 'AQEBCAFn', 'GUCS': 'AQEBCAFn'}
 
+def _is_b3_yahoo_ticker(ticker):
+    """Identifica tickers B3 que precisam do sufixo .SA no Yahoo, incluindo B3SA3."""
+    import re
+    tk = (ticker or '').upper().strip()
+    return bool(tk and '.' not in tk and '-' not in tk and re.match(r'^[A-Z0-9]{4,8}\d{1,2}$', tk))
+
 def _yahoo_fetch(yf_ticker, start_date=None):
     """Chama Yahoo Finance v8 diretamente (sem yfinance) — ~0.5 s vs ~1.3 s.
     Tenta query1 primeiro, fallback para query2 em caso de 400/429."""
@@ -7709,9 +7734,7 @@ def api_chart_data(ticker):
             candles = [c for c in candles if c['t'] > since]
         return jsonify({'ticker': ticker, 'candles': candles, 'cached': 'mem'})
 
-    yf_ticker = ticker
-    if re.match(r'^[A-Z]{4}[0-9]', ticker) and '.' not in ticker:
-        yf_ticker = ticker + '.SA'
+    yf_ticker = ticker + '.SA' if _is_b3_yahoo_ticker(ticker) else ticker
 
     candles = None
     try:

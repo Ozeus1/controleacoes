@@ -53,6 +53,7 @@
                 </td>
                 <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                     <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9; color:white;">📈</button>
+                    <button class="btn btn-sm" onclick="openRadar('{{ item.asset.ticker }}')" title="Analise Radar" style="background:#8b5cf6; color:white;">&#128202;</button>
                     <a href="{{ url_for('buy_asset', id=item.asset.id) }}" class="btn btn-sm"
                         style="background:var(--success-color); color: white;" title="Registrar Nova Compra">➕</a>
                     <a href="{{ url_for('exit_trade', id=item.asset.id) }}" class="btn btn-sm"
@@ -520,6 +521,156 @@
 </script>
 
 <!-- ── Quote Hint Tooltip ─────────────────────────────────────── -->
+<!-- Modal Radar de Analise -->
+<div id="radar-modal" style="display:none; position:fixed; inset:0; z-index:10000;
+     background:rgba(0,0,0,.82); align-items:flex-start; justify-content:center; overflow-y:auto; padding:2rem 1rem;">
+  <div style="background:#fff; border-radius:12px; width:min(96vw,900px);
+              margin:auto; padding:0; position:relative; color:#1e293b; overflow:hidden;">
+    <div style="padding:1.2rem 1.5rem; background:#fff; border-bottom:1px solid #e2e8f0;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div id="radar-company" style="font-size:.82rem; color:#64748b; margin-bottom:.1rem;"></div>
+          <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;">
+            <span id="radar-ticker" style="font-size:1.5rem; font-weight:700; color:#0f172a;"></span>
+            <span id="radar-signal-badge" style="padding:.25rem .8rem; border-radius:6px; font-weight:600; font-size:.85rem;"></span>
+          </div>
+          <div style="font-size:2rem; font-weight:700; color:#0f172a; margin:.3rem 0;" id="radar-price"></div>
+          <div id="radar-pills" style="display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.4rem; font-size:.78rem;"></div>
+        </div>
+        <button onclick="closeRadar()" style="background:none;border:none;font-size:1.6rem;
+                color:#94a3b8;cursor:pointer;line-height:1; margin-top:-.2rem;">&times;</button>
+      </div>
+    </div>
+    <div id="radar-loading" style="text-align:center;padding:2rem;color:#64748b;background:#fff;">Carregando analise...</div>
+    <div id="radar-error" style="display:none;text-align:center;padding:2rem;color:#ef4444;background:#fff;"></div>
+    <div id="radar-body" style="display:none; padding:1.2rem 1.5rem; background:#f8fafc;">
+      <p id="radar-rationale" style="font-size:.9rem; color:#334155; margin:0 0 1rem; padding:.75rem 1rem;
+         background:#fff; border-radius:8px; border-left:3px solid #3b82f6;"></p>
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:.75rem; margin-bottom:1rem;">
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Suporte</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#10b981;" id="r-support"></div>
+        </div>
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Resistencia</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#3b82f6;" id="r-resist"></div>
+        </div>
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">RSI 14</div>
+          <div style="font-size:1.2rem; font-weight:700;" id="r-rsi"></div>
+        </div>
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">ATR 14</div>
+          <div style="font-size:1.2rem; font-weight:700;" id="r-atr"></div>
+        </div>
+      </div>
+      <div style="display:flex; gap:.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+        <span id="r-trend-d" style="padding:.3rem .8rem; border-radius:20px; font-size:.82rem; background:#e2e8f0; color:#334155;"></span>
+        <span id="r-trend-w" style="padding:.3rem .8rem; border-radius:20px; font-size:.82rem; background:#e2e8f0; color:#334155;"></span>
+      </div>
+      <div style="background:#fff; border-radius:8px; padding:.9rem 1rem; margin-bottom:1rem; border:1px solid #e2e8f0;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.5rem;">Leitura Tecnica</div>
+        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:.2rem; font-size:.85rem; color:#334155;">
+          <span>SMA 9: <strong id="r-sma9"></strong></span>
+          <span>SMA 21: <strong id="r-sma21"></strong></span>
+          <span>SMA 50: <strong id="r-sma50"></strong></span>
+          <span>MACD hist.: <strong id="r-macd-h"></strong></span>
+        </div>
+      </div>
+      <div id="radar-tv-wrap" style="border-radius:8px; overflow:hidden;"></div>
+    </div>
+  </div>
+</div>
+<script>
+(function() {
+    var radarModal = document.getElementById('radar-modal');
+    var tvBuiltFor = '';
+    window.openRadar = function(ticker) {
+        ticker = (ticker || '').toUpperCase().trim();
+        if (!ticker) return;
+        document.getElementById('radar-ticker').textContent = ticker;
+        document.getElementById('radar-company').textContent = '';
+        document.getElementById('radar-loading').style.display = '';
+        document.getElementById('radar-error').style.display = 'none';
+        document.getElementById('radar-body').style.display = 'none';
+        radarModal.style.display = 'flex';
+        radarModal.scrollTop = 0;
+        fetch('/api/radar_analise?ticker=' + encodeURIComponent(ticker))
+            .then(function(r) { return r.json(); })
+            .then(function(d) { renderRadar(d, ticker); })
+            .catch(function(e) {
+                document.getElementById('radar-loading').style.display = 'none';
+                document.getElementById('radar-error').style.display = '';
+                document.getElementById('radar-error').textContent = 'Erro ao buscar analise: ' + e.message;
+            });
+    };
+    window.closeRadar = function() { radarModal.style.display = 'none'; };
+    radarModal.addEventListener('click', function(e) { if (e.target === radarModal) closeRadar(); });
+    function brl(v) {
+        if (v == null) return '-';
+        return 'R$ ' + parseFloat(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+    function num(v, dec) {
+        if (v == null) return '-';
+        return parseFloat(v).toLocaleString('pt-BR', {minimumFractionDigits: dec || 2, maximumFractionDigits: dec || 2});
+    }
+    function dash(v) { return (v != null && v !== '' && v !== 'None' && v !== 'undefined') ? v : '-'; }
+    function set(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
+    function renderRadar(d, ticker) {
+        document.getElementById('radar-loading').style.display = 'none';
+        if (d.error) {
+            document.getElementById('radar-error').style.display = '';
+            document.getElementById('radar-error').textContent = d.error;
+            return;
+        }
+        document.getElementById('radar-body').style.display = '';
+        set('radar-company', dash(d.company));
+        set('radar-ticker', ticker);
+        set('radar-price', brl(d.price));
+        var sb = document.getElementById('radar-signal-badge');
+        var sig = (d.signal_code || d.signal || '').toLowerCase();
+        var sigMap = {comprar:'#16a34a', vender:'#dc2626', aguardar:'#d97706', wait:'#d97706', buy:'#16a34a', sell:'#dc2626'};
+        var col = sigMap[sig] || '#64748b';
+        sb.textContent = d.signal || '-';
+        sb.style.background = col + '18';
+        sb.style.color = col;
+        sb.style.border = '1px solid ' + col + '44';
+        var pills = document.getElementById('radar-pills');
+        pills.innerHTML = '';
+        function pill(label, val, c) {
+            if (!val) return;
+            var s = document.createElement('span');
+            s.style.cssText = 'padding:.2rem .6rem;border-radius:4px;background:' + c + '15;color:' + c + ';border:1px solid ' + c + '33;';
+            s.textContent = label + ': ' + brl(val);
+            pills.appendChild(s);
+        }
+        if (d.entry_min && d.entry_max) {
+            var e = document.createElement('span');
+            e.style.cssText = 'padding:.2rem .6rem;border-radius:4px;background:#64748b15;color:#475569;border:1px solid #64748b33;';
+            e.textContent = 'Entrada: ' + brl(d.entry_min) + ' a ' + brl(d.entry_max);
+            pills.appendChild(e);
+        }
+        pill('Stop', d.stop_loss, '#dc2626');
+        pill('Alvo', d.target, '#16a34a');
+        set('radar-rationale', dash(d.rationale));
+        set('r-support', brl(d.support));
+        set('r-resist', brl(d.resistance));
+        set('r-rsi', d.rsi14 != null ? num(d.rsi14, 2) : '-');
+        set('r-atr', brl(d.atr14));
+        set('r-trend-d', 'Tendencia diaria: ' + dash(d.daily_trend));
+        set('r-trend-w', 'Tendencia semanal: ' + dash(d.weekly_trend));
+        set('r-sma9', brl(d.sma9));
+        set('r-sma21', brl(d.sma21));
+        set('r-sma50', brl(d.sma50));
+        set('r-macd-h', d.macd_hist != null ? num(d.macd_hist, 3) : '-');
+        if (tvBuiltFor !== ticker) {
+            tvBuiltFor = ticker;
+            MyChart.openInline('radar-tv-wrap', ticker);
+        }
+    }
+})();
+</script>
+
 <div id="qhint" style="
     display:none; position:fixed; z-index:99999;
     background:#1e293b; border:1px solid #334155;

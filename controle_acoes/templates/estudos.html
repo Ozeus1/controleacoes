@@ -149,20 +149,20 @@
       {% for ss in study_stocks %}
       <tr id="study-row-{{ ss.id }}">
         <td><span class="ticker-badge">{{ ss.ticker }}</span></td>
-        <td>
+        <td id="study-trend-stock-{{ ss.id }}">
           {% if ss.trend == 'Alta' %}<span class="positive">▲ Alta</span>
           {% elif ss.trend and 'aixa' in ss.trend %}<span class="negative">▼ Baixa</span>
           {% elif ss.trend %}<span style="color:#f59e0b">↔ Lateral</span>
           {% else %}-{% endif %}
         </td>
-        <td id="study-rsi-{{ ss.id }}">
+        <td id="study-rsi-stock-{{ ss.id }}">
           {% if ss.rsi is not none %}
             {% if ss.rsi < 30 %}<span class="positive">{{ '%.1f'|format(ss.rsi) }}</span>
             {% elif ss.rsi > 70 %}<span class="negative">{{ '%.1f'|format(ss.rsi) }}</span>
             {% else %}{{ '%.1f'|format(ss.rsi) }}{% endif %}
           {% else %}-{% endif %}
         </td>
-        <td id="study-atr-{{ ss.id }}" style="font-size:.82rem;">
+        <td id="study-atr-stock-{{ ss.id }}" style="font-size:.82rem;">
           {{ ('%.1f'|format(ss.atr_pct) + '%') if ss.atr_pct is not none else '-' }}
         </td>
         <td style="font-size:.82rem;">{{ ('%.1f'|format(ss.iv_rank) + '%') if ss.iv_rank is not none else '-' }}</td>
@@ -228,20 +228,20 @@
       {% for ss in study_intl_stocks %}
       <tr id="study-row-{{ ss.id }}">
         <td><span class="ticker-badge">{{ ss.ticker }}</span></td>
-        <td>
+        <td id="study-trend-intl-{{ ss.id }}">
           {% if ss.trend == 'Alta' %}<span class="positive">▲ Alta</span>
           {% elif ss.trend and 'aixa' in ss.trend %}<span class="negative">▼ Baixa</span>
           {% elif ss.trend %}<span style="color:#f59e0b">↔ Lateral</span>
           {% else %}-{% endif %}
         </td>
-        <td id="study-rsi-{{ ss.id }}">
+        <td id="study-rsi-intl-{{ ss.id }}">
           {% if ss.rsi is not none %}
             {% if ss.rsi < 30 %}<span class="positive">{{ '%.1f'|format(ss.rsi) }}</span>
             {% elif ss.rsi > 70 %}<span class="negative">{{ '%.1f'|format(ss.rsi) }}</span>
             {% else %}{{ '%.1f'|format(ss.rsi) }}{% endif %}
           {% else %}-{% endif %}
         </td>
-        <td id="study-atr-{{ ss.id }}" style="font-size:.82rem;">
+        <td id="study-atr-intl-{{ ss.id }}" style="font-size:.82rem;">
           {{ ('%.1f'|format(ss.atr_pct) + '%') if ss.atr_pct is not none else '-' }}
         </td>
         <td style="font-size:.82rem;">{{ ('%.1f'|format(ss.iv_rank) + '%') if ss.iv_rank is not none else '-' }}</td>
@@ -999,14 +999,16 @@ function openRadarFromModal(prefix) {
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ id: parseInt(sid), ticker: ticker, table: table })
             }).then(function(r) { return r.json(); }).then(function(upd) {
-                var rsiCell = document.getElementById('study-rsi-' + sid);
-                var atrCell = document.getElementById('study-atr-' + sid);
+                var rsiCell = document.getElementById(studyCellId(table, 'rsi', sid));
+                var atrCell = document.getElementById(studyCellId(table, 'atr', sid));
+                var trendCell = document.getElementById(studyCellId(table, 'trend', sid));
                 if (rsiCell && upd.rsi != null) {
                     var rsi = parseFloat(upd.rsi);
                     var c   = rsi < 30 ? 'var(--success-color)' : (rsi > 70 ? 'var(--danger-color)' : '');
                     rsiCell.innerHTML = c ? '<span style="color:' + c + '">' + rsi.toFixed(1) + '</span>' : rsi.toFixed(1);
                 }
                 if (atrCell && upd.atr_pct != null) atrCell.textContent = parseFloat(upd.atr_pct).toFixed(1) + '%';
+                if (trendCell && upd.trend) trendCell.innerHTML = renderStudyTrend(upd.trend);
             }).catch(function(){});
         }
 
@@ -1019,6 +1021,17 @@ function openRadarFromModal(prefix) {
         btn.disabled  = false;
         alert('Erro ao buscar análise Radar.');
     });
+}
+
+function renderStudyTrend(trend) {
+    if (!trend) return '-';
+    if (trend === 'Alta') return '<span class="positive">▲ Alta</span>';
+    if (trend.indexOf('aixa') >= 0) return '<span class="negative">▼ Baixa</span>';
+    return '<span style="color:#f59e0b">↔ Lateral</span>';
+}
+
+function studyCellId(table, field, sid) {
+    return 'study-' + field + '-' + table + '-' + sid;
 }
 
 // Abre TradingView de dentro do modal de edição
@@ -1036,14 +1049,16 @@ function openRadarAndUpdate(sid, ticker, table) {
     var cached = _radarCacheGet(ticker);
     function applyUpdate(d) {
         if (d.error) return;
-        var rsiCell = document.getElementById('study-rsi-' + sid);
-        var atrCell = document.getElementById('study-atr-' + sid);
+        var rsiCell = document.getElementById(studyCellId(table, 'rsi', sid));
+        var atrCell = document.getElementById(studyCellId(table, 'atr', sid));
+        var trendCell = document.getElementById(studyCellId(table, 'trend', sid));
         if (rsiCell && d.rsi != null) {
             var rsi = parseFloat(d.rsi);
             var c   = rsi < 30 ? 'var(--success-color)' : (rsi > 70 ? 'var(--danger-color)' : '');
             rsiCell.innerHTML = c ? '<span style="color:' + c + '">' + rsi.toFixed(1) + '</span>' : rsi.toFixed(1);
         }
         if (atrCell && d.atr_pct != null) atrCell.textContent = parseFloat(d.atr_pct).toFixed(1) + '%';
+        if (trendCell && d.trend) trendCell.innerHTML = renderStudyTrend(d.trend);
     }
 
     if (cached) {

@@ -1940,7 +1940,7 @@ def api_rolagem_save():
 
     underlying = (payload.get('underlying') or data.get('underlying') or '').strip().upper()
     roll_type = (payload.get('roll_type') or data.get('roll_type') or 'TIME').strip().upper()
-    if roll_type not in ('TIME', 'STRIKE'):
+    if roll_type not in ('TIME', 'STRIKE', 'TIME_STRIKE'):
         roll_type = 'TIME'
 
     if sim_id:

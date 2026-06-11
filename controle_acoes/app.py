@@ -2005,6 +2005,17 @@ def api_rolagem_cadeia(ticker):
     opt_list = data if isinstance(data, list) else (
         data.get('options') or data.get('calls', []) + data.get('puts', []) or []
     )
+    def _b3_option_kind(sym, raw_kind=''):
+        raw = str(raw_kind or '').upper()
+        if 'PUT' in raw or raw == 'P':
+            return 'PUT'
+        if 'CALL' in raw or raw == 'C':
+            return 'CALL'
+        # Padrao B3: A-L = calls, M-X = puts. Ex.: CMIGR132 => PUT.
+        if len(sym) >= 5 and sym[4].isalpha():
+            return 'PUT' if sym[4] in 'MNOPQRSTUVWX' else 'CALL'
+        return 'CALL'
+
     options = []
     for o in opt_list:
         sym = str(o.get('symbol') or o.get('ticker') or '').upper()
@@ -2018,7 +2029,7 @@ def api_rolagem_cadeia(ticker):
         ask = float(o.get('ask') or 0)
         options.append({
             'symbol': sym,
-            'kind': 'PUT' if ('PUT' in cat or cat == 'P') else 'CALL',
+            'kind': _b3_option_kind(sym, cat),
             'strike': round(float(o.get('strike') or 0), 2),
             'exp': due_date,
             'close': round(float(o.get('close') or 0), 2),

@@ -228,13 +228,17 @@ function loadCadeia(ticker){
   document.getElementById('cadeia-spot').innerHTML='';
   document.getElementById('venc-tabs').innerHTML='';
   fetch('/api/cadeia/'+encodeURIComponent(ticker))
-    .then(function(r){return r.json();})
+    .then(function(r){return r.text().then(function(text){
+      var data=null;
+      try{data=text?JSON.parse(text):{};}catch(_){
+        var msg=text.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+        throw new Error(msg||('Resposta invalida do servidor (HTTP '+r.status+')'));
+      }
+      if(!r.ok||data.error) throw new Error(data.error||('Erro HTTP '+r.status));
+      return data;
+    });})
     .then(function(d){
       document.getElementById('cadeia-loading').style.display='none';
-      if(d.error){
-        document.getElementById('cadeia-error').textContent=d.error;
-        document.getElementById('cadeia-error').style.display='block'; return;
-      }
       allData=d; curSpot=d.spot;
       renderSpot(ticker,d.spot,d.spot_change);
       renderVencTabs(d.expirations);
@@ -249,7 +253,7 @@ function loadCadeia(ticker){
     })
     .catch(function(e){
       document.getElementById('cadeia-loading').style.display='none';
-      document.getElementById('cadeia-error').textContent='Erro: '+e;
+      document.getElementById('cadeia-error').textContent=e.message||String(e);
       document.getElementById('cadeia-error').style.display='block';
     });
 }

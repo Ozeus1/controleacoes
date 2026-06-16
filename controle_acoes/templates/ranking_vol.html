@@ -444,10 +444,19 @@
     btn.disabled=true; btn.textContent='⟳ Atualizando…'; stat.textContent='';
     fetch('/api/ranking_vol/update',{method:'POST',
       headers:{'X-CSRFToken':document.querySelector('meta[name=csrf-token]')?.content||''}})
-    .then(function(r){return r.json();})
+    .then(function(r){return r.text().then(function(text){
+      var data=null;
+      try{data=text?JSON.parse(text):{};}catch(_){
+        var msg=text.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+        if(r.redirected||r.status===401||r.status===403) msg='Sessao expirada ou acesso negado. Recarregue a pagina e entre novamente.';
+        throw new Error(msg||('Resposta invalida do servidor (HTTP '+r.status+')'));
+      }
+      if(!r.ok||data.error) throw new Error(data.error||('Erro HTTP '+r.status));
+      return data;
+    });})
     .then(function(d){
-      if(d.error){stat.textContent='✗ '+d.error;btn.disabled=false;btn.textContent='⟳ Atualizar';return;}
-      stat.textContent='✓ '+d.updated+'/'+d.total+' atualizados';
+      var failed=parseInt(d.failed||0,10);
+      stat.textContent='✓ '+d.updated+'/'+d.total+' atualizados'+(failed?' | '+failed+' com falha':'');
       (d.results||[]).forEach(function(row){
         if(!row.ok) return;
         var tr=document.querySelector('#rv-tbody tr[data-ticker="'+row.ticker+'"]');
@@ -482,7 +491,7 @@
       });
       btn.disabled=false; btn.textContent='⟳ Atualizar';
     })
-    .catch(function(e){stat.textContent='✗ Erro: '+e;btn.disabled=false;btn.textContent='⟳ Atualizar';});
+    .catch(function(e){stat.textContent='✗ '+(e.message||String(e));btn.disabled=false;btn.textContent='⟳ Atualizar';});
   };
 
   // Fecha modal clicando fora

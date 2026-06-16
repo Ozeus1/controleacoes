@@ -70,6 +70,67 @@ def brl_fmt(value):
 
 app.jinja_env.filters['brl_fmt'] = brl_fmt
 
+
+class OplabApiError(Exception):
+    def __init__(self, message, status_code=None, body_preview=None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.body_preview = body_preview
+
+
+def _oplab_headers(token):
+    return {
+        'Access-Token': (token or '').strip(),
+        'Accept': 'application/json',
+        'User-Agent': 'MyInvest/1.0',
+    }
+
+
+def _oplab_get_json(path_or_url, token, params=None, timeout=15):
+    """GET OpLab com validacao de HTTP/conteudo antes de decodificar JSON."""
+    url = path_or_url if str(path_or_url).startswith('http') else f'https://api.oplab.com.br/v3{path_or_url}'
+    token = (token or '').strip()
+    params = dict(params or {})
+
+    def _request(use_query_token=False):
+        req_params = dict(params)
+        if use_query_token:
+            req_params['access_token'] = token
+        return requests.get(url, params=req_params, headers=_oplab_headers(token), timeout=timeout)
+
+    try:
+        resp = _request(False)
+        body = (resp.text or '').strip()
+        retry_with_query = resp.status_code in (401, 403) or not body
+        if not retry_with_query:
+            if 200 <= resp.status_code < 300:
+                try:
+                    return resp.json()
+                except ValueError:
+                    retry_with_query = True
+        if retry_with_query:
+            resp = _request(True)
+            body = (resp.text or '').strip()
+    except requests.exceptions.Timeout as exc:
+        raise OplabApiError('A OpLab demorou para responder. Tente novamente em instantes.') from exc
+    except requests.exceptions.RequestException as exc:
+        raise OplabApiError(f'Nao foi possivel conectar na OpLab: {exc.__class__.__name__}') from exc
+
+    preview = body[:300]
+    if resp.status_code in (401, 403):
+        raise OplabApiError('Token OpLab recusado ou sem permissao para este endpoint.', resp.status_code, preview)
+    if resp.status_code == 404:
+        raise OplabApiError('Endpoint ou ticker nao encontrado na OpLab.', resp.status_code, preview)
+    if resp.status_code < 200 or resp.status_code >= 300:
+        raise OplabApiError(f'OpLab retornou HTTP {resp.status_code}.', resp.status_code, preview)
+    if not body:
+        raise OplabApiError('OpLab retornou resposta vazia.', resp.status_code)
+    try:
+        return resp.json()
+    except ValueError as exc:
+        raise OplabApiError('OpLab retornou resposta invalida em vez de JSON.', resp.status_code, preview) from exc
+
+
 @app.template_filter('date_fmt')
 def format_date(value):
     if value is None:
@@ -1983,7 +2044,6 @@ def api_rolagem_delete(sim_id):
 @login_required
 def api_rolagem_cadeia(ticker):
     """Retorna a cadeia completa normalizada para simulacao de rolagem."""
-    import requests as _req
     ticker = ticker.strip().upper()
     token = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
@@ -1991,16 +2051,9 @@ def api_rolagem_cadeia(ticker):
     spot, spot_change = _get_underlying_quote(ticker, current_user.id)
 
     try:
-        r = _req.get(
-            f'https://api.oplab.com.br/v3/market/options/{ticker}',
-            headers={'Access-Token': token},
-            timeout=15,
-        )
-        if r.status_code != 200:
-            return jsonify({'error': f'OpLab {r.status_code}'}), 400
-        data = r.json()
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=15)
+    except OplabApiError as e:
+        return jsonify({'error': str(e), 'status': e.status_code, 'preview': e.body_preview}), 503
 
     opt_list = data if isinstance(data, list) else (
         data.get('options') or data.get('calls', []) + data.get('puts', []) or []
@@ -2052,25 +2105,21 @@ def api_rolagem_cadeia(ticker):
 @login_required
 def api_cadeia(ticker):
     """Retorna cadeia de opções completa do ticker via OpLab, organizada por vencimento."""
-    import requests as _req
     ticker = ticker.strip().upper()
     token  = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
         return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    BASE    = 'https://api.oplab.com.br/v3'
-    headers = {'Access-Token': token}
-
     # Spot price
     spot, spot_change = _get_underlying_quote(ticker, current_user.id)
 
     try:
-        r = _req.get(f'{BASE}/market/options/{ticker}', headers=headers, timeout=15)
-        if r.status_code != 200:
-            return jsonify({'error': f'OpLab {r.status_code}'}), 400
-        data = r.json()
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=15)
+    except OplabApiError as e:
+        return jsonify({'error': str(e), 'status': e.status_code, 'preview': e.body_preview}), 503
+    except Exception:
+        app.logger.exception('api_cadeia error for %s', ticker)
+        return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opcoes.'}), 500
 
     opt_list = data if isinstance(data, list) else (
         data.get('options') or data.get('calls', []) + data.get('puts', []) or []
@@ -6464,8 +6513,6 @@ def _api_ranking_vol_update_impl():
     if not items:
         return jsonify({'updated': 0, 'results': []})
 
-    BASE    = 'https://api.oplab.com.br/v3'
-    headers = {'Access-Token': token}
     now     = now_brt()
     today_str = now.strftime('%d/%m')
 
@@ -6525,11 +6572,11 @@ def _api_ranking_vol_update_impl():
     for rv in items:
         row = {'ticker': rv.ticker, 'ok': False, 'error': None}
         try:
-            r = _req.get(f'{BASE}/market/instruments/{rv.ticker}',
-                         headers=headers, timeout=15)
             ivr = ivp = vol = None
-            if r.status_code == 200:
-                ivr, ivp, vol = _extract_iv(r.json())
+            try:
+                ivr, ivp, vol = _extract_iv(_oplab_get_json(f'/market/instruments/{rv.ticker}', token, timeout=15))
+            except OplabApiError as e:
+                row['error'] = str(e)
 
             pd = price_map.get(rv.ticker, {})
             if pd.get('price', 0) > 0:
@@ -6554,7 +6601,8 @@ def _api_ranking_vol_update_impl():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-    return jsonify({'updated': ok, 'total': len(items), 'results': results})
+    failed = sum(1 for row in results if row.get('error'))
+    return jsonify({'updated': ok, 'failed': failed, 'total': len(items), 'results': results})
 
 
 @app.route('/profile', methods=['GET', 'POST'])
@@ -6635,16 +6683,20 @@ def oplab_test():
     if not token:
         return jsonify({'error': 'Token não configurado'}), 400
     ticker = (request.args.get('ticker') or request.form.get('ticker', 'PETR4')).strip().upper()
-    BASE = 'https://api.oplab.com.br/v3'
     results = {}
     # Testa endpoint bulk /market/quote (usado no auto-update)
     try:
-        r = requests.get(f'{BASE}/market/quote',
-                         params={'tickers': ticker},
-                         headers={'Access-Token': token}, timeout=10)
-        results['/market/quote'] = {'status': r.status_code, 'body': r.json() if r.content else {}}
-    except Exception as e:
-        results['/market/quote'] = {'error': str(e)}
+        results['/market/quote'] = {
+            'ok': True,
+            'body': _oplab_get_json('/market/quote', token, params={'tickers': ticker}, timeout=10)
+        }
+    except OplabApiError as e:
+        results['/market/quote'] = {
+            'ok': False,
+            'status': e.status_code,
+            'error': str(e),
+            'preview': e.body_preview,
+        }
     # Testa endpoints individuais para diagnóstico
     endpoints = [
         f'/instruments/{ticker}',
@@ -6653,10 +6705,14 @@ def oplab_test():
     ]
     for ep in endpoints:
         try:
-            r = requests.get(BASE + ep, headers={'Access-Token': token}, timeout=10)
-            results[ep] = {'status': r.status_code, 'body': r.json() if r.content else {}}
-        except Exception as e:
-            results[ep] = {'error': str(e)}
+            results[ep] = {'ok': True, 'body': _oplab_get_json(ep, token, timeout=10)}
+        except OplabApiError as e:
+            results[ep] = {
+                'ok': False,
+                'status': e.status_code,
+                'error': str(e),
+                'preview': e.body_preview,
+            }
     return jsonify(results)
 
 
@@ -6665,23 +6721,15 @@ def oplab_test():
 def api_liquidez(ticker):
     """Retorna liquidez de opções de um ativo via OpLab /market/options/{ticker}."""
     from flask import jsonify
-    import requests as _req
-
     ticker = ticker.strip().upper()
     token  = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
         return jsonify({'error': 'Token OpLab não configurado. Configure em Perfil → OpLab.'}), 400
 
-    BASE    = 'https://api.oplab.com.br/v3'
-    headers = {'Access-Token': token}
-
     try:
-        r = _req.get(f'{BASE}/market/options/{ticker}', headers=headers, timeout=15)
-        if r.status_code != 200:
-            return jsonify({'error': f'OpLab retornou status {r.status_code}'}), 400
-        data = r.json()
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=15)
+    except OplabApiError as e:
+        return jsonify({'error': str(e), 'status': e.status_code, 'preview': e.body_preview}), 503
 
     # Normaliza — resposta pode ser lista ou dict com chave 'options'/'calls'/'puts'
     if isinstance(data, list):
@@ -6790,7 +6838,6 @@ def api_liquidez(ticker):
 def api_oplab_iv():
     """Busca IV Rank e IV Percentil de uma ação via OpLab e salva no registro de estudo."""
     from flask import jsonify
-    import requests as _req
     ticker = request.args.get('ticker', '').strip().upper()
     sid    = request.args.get('sid', type=int)
     table  = request.args.get('table', 'stock')   # 'stock' | 'intl'
@@ -6800,9 +6847,6 @@ def api_oplab_iv():
     token = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
         return jsonify({'error': 'Token OpLab não configurado. Configure em Perfil → OpLab.'}), 400
-
-    BASE    = 'https://api.oplab.com.br/v3'
-    headers = {'Access-Token': token}
 
     iv_rank      = None
     iv_percentil = None
@@ -6841,19 +6885,17 @@ def api_oplab_iv():
 
     for ep in endpoints_to_try:
         try:
-            r = _req.get(BASE + ep, headers=headers, timeout=15)
-            debug_info[ep] = {'status': r.status_code}
-            if r.status_code == 200:
-                d = r.json()
-                debug_info[ep]['keys'] = list(d.keys()) if isinstance(d, dict) else (
-                    list(d[0].keys()) if isinstance(d, list) and d else str(type(d)))
-                # Tenta no nível raiz
-                ivr, ivp = _extract_iv(d if isinstance(d, dict) else (d[0] if d else {}))
-                if ivr is not None or ivp is not None:
-                    iv_rank, iv_percentil = ivr, ivp
-                    break
-        except Exception as e:
-            debug_info[ep] = {'error': str(e)}
+            d = _oplab_get_json(ep, token, timeout=15)
+            debug_info[ep] = {'status': 200}
+            debug_info[ep]['keys'] = list(d.keys()) if isinstance(d, dict) else (
+                list(d[0].keys()) if isinstance(d, list) and d else str(type(d)))
+            # Tenta no nível raiz
+            ivr, ivp = _extract_iv(d if isinstance(d, dict) else (d[0] if d else {}))
+            if ivr is not None or ivp is not None:
+                iv_rank, iv_percentil = ivr, ivp
+                break
+        except OplabApiError as e:
+            debug_info[ep] = {'status': e.status_code, 'error': str(e), 'preview': e.body_preview}
 
     if iv_rank is None and iv_percentil is None:
         return jsonify({
@@ -6887,7 +6929,6 @@ def api_oplab_greeks():
     Parâmetros: ticker (da opção), model='option'|'study_option', id (pk do registro)
     """
     from flask import jsonify
-    import requests as _req
     ticker   = request.args.get('ticker', '').strip().upper()
     model    = request.args.get('model', 'option')   # 'option' | 'study_option'
     rec_id   = request.args.get('id', type=int)
@@ -6898,19 +6939,13 @@ def api_oplab_greeks():
     if not token:
         return jsonify({'error': 'Token OpLab não configurado.'}), 400
 
-    BASE    = 'https://api.oplab.com.br/v3'
-    headers = {'Access-Token': token}
-
     ve = delta = gama = None
 
     # OpLab v3 não retorna greeks via API — calculamos via Black-Scholes
     # usando spot_price, strike, days_to_maturity e close (prêmio) retornados por
     # /market/instruments/{ticker}
     try:
-        r = _req.get(f'{BASE}/market/instruments/{ticker}', headers=headers, timeout=15)
-        if r.status_code != 200:
-            return jsonify({'error': f'OpLab retornou status {r.status_code} para {ticker}.'}), 404
-        d = r.json()
+        d = _oplab_get_json(f'/market/instruments/{ticker}', token, timeout=15)
         if not isinstance(d, dict):
             return jsonify({'error': 'Resposta inesperada do OpLab.'}), 500
 
@@ -6946,6 +6981,8 @@ def api_oplab_greeks():
         delta = round(delta, 4)
         gama  = round(gama, 4)
 
+    except OplabApiError as e:
+        return jsonify({'error': str(e), 'status': e.status_code, 'preview': e.body_preview}), 503
     except Exception as e:
         return jsonify({'error': f'Erro ao calcular greeks: {e}'}), 500
 
@@ -7969,7 +8006,7 @@ def api_quote_hint(ticker):
     # /v3/market/instruments/{ticker} → trades (negócios do dia) e outros campos
     if is_option and oplab_token:
         _oplab_base = 'https://api.oplab.com.br/v3'
-        _oplab_hdrs = {'Access-Token': oplab_token}
+        _oplab_hdrs = _oplab_headers(oplab_token)
 
         # Chamada 1: /market/quote para preço ao vivo
         try:
@@ -8123,7 +8160,7 @@ def _do_oplab_bulk_update(uid: int, token: str):
     Retorna (assets_ok, options_ok).
     """
     BASE    = 'https://api.oplab.com.br/v3'
-    headers = {'Access-Token': token}
+    headers = _oplab_headers(token)
 
     # ── Coleta todos os registros ─────────────────────────────────
     assets        = Asset.query.filter_by(user_id=uid).all()

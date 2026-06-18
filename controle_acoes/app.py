@@ -7817,6 +7817,7 @@ def _yahoo_fetch(yf_ticker, start_date=None):
     res   = result[0]
     ts    = res['timestamp']
     q     = res['indicators']['quote'][0]
+    adj   = (((res.get('indicators') or {}).get('adjclose') or [{}])[0].get('adjclose') or [])
     opens  = q.get('open',   [])
     highs  = q.get('high',   [])
     lows   = q.get('low',    [])
@@ -7828,6 +7829,16 @@ def _yahoo_fetch(yf_ticker, start_date=None):
         o = opens[i];  h = highs[i];  l = lows[i];  c = closes[i]
         if o is None or h is None or l is None or c is None:
             continue
+        if i < len(adj) and adj[i] is not None and c:
+            try:
+                factor = float(adj[i]) / float(c)
+                if 0 < factor < 20:
+                    o = float(o) * factor
+                    h = float(h) * factor
+                    l = float(l) * factor
+                    c = float(c) * factor
+            except Exception:
+                pass
         rows.append({
             't': _dt2.fromtimestamp(epoch, tz=_tz2.utc).strftime('%Y-%m-%d'),
             'o': round(float(o), 4), 'h': round(float(h), 4),
@@ -7835,6 +7846,63 @@ def _yahoo_fetch(yf_ticker, start_date=None):
             'v': int(vols[i]) if vols[i] is not None else 0,
         })
     return rows
+
+
+def _sanitize_chart_candles(candles):
+    """Remove candles inválidos/outliers que distorcem o gráfico."""
+    if not candles:
+        return []
+
+    cleaned = []
+    seen = set()
+    for row in sorted(candles, key=lambda c: c.get('t') or ''):
+        try:
+            t = row.get('t')
+            o = float(row.get('o'))
+            h = float(row.get('h'))
+            l = float(row.get('l'))
+            c = float(row.get('c'))
+            v = int(row.get('v') or 0)
+        except (TypeError, ValueError):
+            continue
+        if not t or t in seen:
+            continue
+        vals = [o, h, l, c]
+        if any((not math.isfinite(x)) or x <= 0 for x in vals):
+            continue
+        if h < max(o, c) or l > min(o, c):
+            continue
+        if h / l > 2.8:
+            continue
+        seen.add(t)
+        cleaned.append({
+            't': t,
+            'o': round(o, 4),
+            'h': round(h, 4),
+            'l': round(l, 4),
+            'c': round(c, 4),
+            'v': max(v, 0),
+        })
+
+    if len(cleaned) < 5:
+        return cleaned
+
+    closes = sorted(c['c'] for c in cleaned)
+    median = closes[len(closes) // 2]
+    if median <= 0:
+        return cleaned
+
+    robust = []
+    prev_close = None
+    for row in cleaned:
+        vals = [row['o'], row['h'], row['l'], row['c']]
+        if max(vals) > median * 5 or min(vals) < median * 0.2:
+            continue
+        if prev_close and (row['h'] > prev_close * 2.5 or row['l'] < prev_close * 0.25):
+            continue
+        robust.append(row)
+        prev_close = row['c']
+    return robust
 
 
 @app.route('/api/chart_data/<ticker>')
@@ -7870,9 +7938,19 @@ def api_chart_data(ticker):
 
         if db_entry:
             candles  = _json.loads(_gzip.decompress(db_entry.candles_gz).decode())
+            original_len = len(candles)
+            candles = _sanitize_chart_candles(candles)
+            if not candles:
+                candles = _sanitize_chart_candles(_yahoo_fetch(yf_ticker))
             days_old = (_date.today() - _date.fromisoformat(db_entry.last_date)).days
 
             if days_old <= 1:
+                if len(candles) != original_len:
+                    gz = _gzip.compress(_json.dumps(candles).encode(), compresslevel=6)
+                    db_entry.candles_gz = gz
+                    db_entry.last_date = candles[-1]['t'] if candles else db_entry.last_date
+                    db_entry.fetched_at = datetime.utcnow()
+                    db.session.commit()
                 # Cache fresco — serve direto
                 _chart_mem[ticker] = {'ts': now_ts, 'candles': candles}
                 out = [c for c in candles if c['t'] > since] if since else candles
@@ -7882,6 +7960,7 @@ def api_chart_data(ticker):
             start_date = (_date.fromisoformat(db_entry.last_date) - _td(days=3)).isoformat()
             new_rows = _yahoo_fetch(yf_ticker, start_date=start_date)
             if new_rows:
+                new_rows = _sanitize_chart_candles(new_rows)
                 new_dates = {r['t'] for r in new_rows}
                 candles = [c for c in candles if c['t'] not in new_dates] + new_rows
                 candles.sort(key=lambda c: c['t'])
@@ -7889,6 +7968,8 @@ def api_chart_data(ticker):
         else:
             # Primeira vez — busca 6 meses completos
             candles = _yahoo_fetch(yf_ticker)
+
+        candles = _sanitize_chart_candles(candles)
 
         if not candles:
             return jsonify({'error': 'Sem dados para ' + ticker}), 404

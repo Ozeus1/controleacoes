@@ -53,6 +53,48 @@ function isB3Ticker(ticker) {
     return ticker.indexOf('.') < 0 && ticker.indexOf('-') < 0 && /^[A-Z0-9]{4,8}\d{1,2}$/.test(ticker);
 }
 
+function median(values) {
+    if (!values || !values.length) return 0;
+    var arr = values.slice().sort(function(a, b) { return a - b; });
+    return arr[Math.floor(arr.length / 2)] || 0;
+}
+
+function sanitizeCandles(candles) {
+    if (!Array.isArray(candles)) return [];
+    var rows = [];
+    var seen = {};
+    candles.slice().sort(function(a, b) {
+        return (a.t || '') < (b.t || '') ? -1 : 1;
+    }).forEach(function(c) {
+        var t = c && c.t;
+        var o = parseFloat(c && c.o);
+        var h = parseFloat(c && c.h);
+        var l = parseFloat(c && c.l);
+        var cl = parseFloat(c && c.c);
+        var v = parseInt(c && c.v, 10) || 0;
+        if (!t || seen[t]) return;
+        if (![o, h, l, cl].every(function(x) { return isFinite(x) && x > 0; })) return;
+        if (h < Math.max(o, cl) || l > Math.min(o, cl)) return;
+        if (h / l > 2.8) return;
+        seen[t] = true;
+        rows.push({ t: t, o: o, h: h, l: l, c: cl, v: Math.max(v, 0) });
+    });
+    if (rows.length < 5) return rows;
+
+    var med = median(rows.map(function(c) { return c.c; }));
+    if (!med) return rows;
+    var out = [];
+    var prevClose = null;
+    rows.forEach(function(c) {
+        var vals = [c.o, c.h, c.l, c.c];
+        if (Math.max.apply(null, vals) > med * 5 || Math.min.apply(null, vals) < med * 0.2) return;
+        if (prevClose && (c.h > prevClose * 2.5 || c.l < prevClose * 0.25)) return;
+        out.push(c);
+        prevClose = c.c;
+    });
+    return out;
+}
+
 // ── Estilos de botão ──────────────────────────────────────────────────────────
 function btnStyle(active) {
     return 'padding:.2rem .55rem;border-radius:4px;font-size:.78rem;cursor:pointer;border:none;'
@@ -711,13 +753,14 @@ MyChart.open = function(ticker, isIntl) {
     // Cache cliente 2 min
     var now = Date.now(), cached = _cache[ticker];
     if (cached && (now - cached.ts) < 120000) {
+        cached.candles = sanitizeCandles(cached.candles);
         _state.allCandles = cached.candles;
         _applyPeriod(); _draw();
         return;
     }
 
     var url = '/api/chart_data/' + encodeURIComponent(ticker);
-    var existing = cached ? cached.candles : null;
+    var existing = cached ? sanitizeCandles(cached.candles) : null;
     if (existing && existing.length)
         url += '?since=' + existing[existing.length - 1].t;
 
@@ -725,11 +768,11 @@ MyChart.open = function(ticker, isIntl) {
         .then(function(r) { return r.json(); })
         .then(function(d) {
             if (d.error) { document.getElementById('mc-status').textContent = '✗ ' + d.error; return; }
-            var candles = d.candles;
+            var candles = sanitizeCandles(d.candles);
             if (existing && existing.length && candles.length) {
                 var nd = {};
                 candles.forEach(function(c) { nd[c.t] = true; });
-                candles = existing.filter(function(c) { return !nd[c.t]; }).concat(candles);
+                candles = sanitizeCandles(existing.filter(function(c) { return !nd[c.t]; }).concat(candles));
                 candles.sort(function(a, b) { return a.t < b.t ? -1 : 1; });
             }
             _cache[ticker] = { ts: Date.now(), candles: candles };
@@ -977,6 +1020,7 @@ MyChart.openInline = function(containerId, ticker, isIntl) {
     wrap.innerHTML = '<p style="color:#94a3b8;padding:.5rem;font-size:.8rem">⏳ Carregando ' + ticker + '…</p>';
 
     var doRender = function(candles) {
+        candles = sanitizeCandles(candles);
         if (!candles || !candles.length) {
             wrap.innerHTML = '<p style="color:#f87171;padding:.5rem;font-size:.8rem">Sem dados para ' + ticker + '</p>';
             return;
@@ -1037,13 +1081,14 @@ MyChart.openInline = function(containerId, ticker, isIntl) {
     };
 
     var now=Date.now(), cached=_cache[ticker];
-    if(cached&&(now-cached.ts)<120000){doRender(cached.candles);return;}
+    if(cached&&(now-cached.ts)<120000){cached.candles=sanitizeCandles(cached.candles);doRender(cached.candles);return;}
     _fetch('/api/chart_data/'+encodeURIComponent(ticker))
         .then(function(r){return r.json();})
         .then(function(d){
             if(d.error){wrap.innerHTML='<p style="color:#f87171;padding:.5rem;font-size:.8rem">'+d.error+'</p>';return;}
-            _cache[ticker]={ts:Date.now(),candles:d.candles};
-            doRender(d.candles);
+            var candles=sanitizeCandles(d.candles);
+            _cache[ticker]={ts:Date.now(),candles:candles};
+            doRender(candles);
         }).catch(function(){
             wrap.innerHTML='<p style="color:#f87171;padding:.5rem;font-size:.8rem">Erro ao carregar dados</p>';
         });

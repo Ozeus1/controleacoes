@@ -87,6 +87,16 @@
                     <td colspan="6" style="padding:.5rem .6rem; text-align:right;">Saldo da montagem:</td>
                     <td id="tfoot-net" style="padding:.5rem .6rem; text-align:right;"></td>
                 </tr>
+                {% if roll_adjustment is defined and roll_adjustment %}
+                <tr style="font-weight:bold; background:rgba(15,23,42,.35);">
+                    <td colspan="6" style="padding:.5rem .6rem; text-align:right;">Resultado carregado das rolagens:</td>
+                    <td id="tfoot-roll-adjustment" style="padding:.5rem .6rem; text-align:right;"></td>
+                </tr>
+                <tr style="font-weight:bold; background:var(--total-row-bg);">
+                    <td colspan="6" style="padding:.5rem .6rem; text-align:right;">Saldo total considerado no payoff:</td>
+                    <td id="tfoot-total-net" style="padding:.5rem .6rem; text-align:right;"></td>
+                </tr>
+                {% endif %}
             </tfoot>
         </table>
     </div>
@@ -143,6 +153,7 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
 <script>
 (function () {
     var r = Math.log(1 + SELIC_RATE / 100); // taxa contínua a.a.
+    var ROLL_ADJUSTMENT = {{ roll_adjustment|default(0)|tojson }};
 
     // ── Black-Scholes (Abramowitz & Stegun) ──────────────────────────────────
     function normCDF(x) {
@@ -222,7 +233,7 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
     // payoffAt para trava calendário: no vencimento da perna curta,
     // a perna longa ainda tem valor de BS (tempo restante entre curta e longa)
     function payoffAt(S) {
-        var total = netPremium();
+        var total = netPremium() + ROLL_ADJUSTMENT;
         if (!isCalendar) {
             // Trava vertical simples — payoff intrínseco no vencimento
             legs.forEach(function(l) {
@@ -256,7 +267,7 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
     }
 
     function currentPnl() {
-        return legs.reduce(function(acc, l) {
+        return ROLL_ADJUSTMENT + legs.reduce(function(acc, l) {
             return acc + (l.side === 'SELL'
                 ? l.qty * (l.entry - l.current)
                 : l.qty * (l.current - l.entry));
@@ -374,6 +385,15 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
     var tfEl = document.getElementById('tfoot-net');
     tfEl.textContent = fmtBRL(net) + (net >= 0 ? ' (crédito)' : ' (débito)');
     tfEl.className = net >= 0 ? 'positive' : 'negative';
+    var adjEl = document.getElementById('tfoot-roll-adjustment');
+    var totalNetEl = document.getElementById('tfoot-total-net');
+    if (adjEl && totalNetEl) {
+        var totalNet = net + ROLL_ADJUSTMENT;
+        adjEl.textContent = fmtBRL(ROLL_ADJUSTMENT) + (ROLL_ADJUSTMENT >= 0 ? ' (crédito)' : ' (débito)');
+        adjEl.className = ROLL_ADJUSTMENT >= 0 ? 'positive' : 'negative';
+        totalNetEl.textContent = fmtBRL(totalNet) + (totalNet >= 0 ? ' (crédito)' : ' (débito)');
+        totalNetEl.className = totalNet >= 0 ? 'positive' : 'negative';
+    }
 
     function setSize() {
         var w = canvas.parentElement.clientWidth;

@@ -1,6 +1,22 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+    .profit-col-head {
+        background: rgba(16, 185, 129, .18) !important;
+        color: #d1fae5 !important;
+        box-shadow: inset 0 -2px 0 rgba(16, 185, 129, .55);
+    }
+    .profit-highlight {
+        background: rgba(16, 185, 129, .08);
+        font-weight: 700;
+        box-shadow: inset 2px 0 0 rgba(16, 185, 129, .45);
+    }
+    .profit-highlight.negative {
+        background: rgba(239, 68, 68, .08);
+        box-shadow: inset 2px 0 0 rgba(239, 68, 68, .45);
+    }
+</style>
 
 {# ========== TABELA 1: VENDA COBERTA DE CALLS ========== #}
 {% if options %}
@@ -32,8 +48,8 @@
                 <th>Cotação Opção</th>
                 <th>Atualiz.</th>
                 <th>Var dia %</th>
-                <th>Lucro R$</th>
-                <th>Lucro %</th>
+                <th class="profit-col-head">Lucro R$</th>
+                <th class="profit-col-head">Lucro %</th>
                 <th>Lucro Ação Ex.R$</th>
                 <th>Lucro Ação Ex.%</th>
                 <th>Lucro Ação At.R$</th>
@@ -64,10 +80,10 @@
                     class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%
                 </td>
-                <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
+                <td class="profit-highlight {{ 'positive' if item.profit >= 0 else 'negative' }}">
                     R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
                 </td>
-                <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
+                <td class="profit-highlight {{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
                 </td>
                 <td class="{{ 'positive' if item.lucro_ex_rs >= 0 else 'negative' }}">
@@ -88,7 +104,7 @@
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
-                            data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}"
+                            data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}" data-roll-qty="{{ item.option.quantity }}"
                             onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
@@ -234,7 +250,7 @@
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
-                            data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}"
+                            data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}" data-roll-qty="{{ item.option.quantity }}"
                             onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
@@ -335,7 +351,7 @@
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
-                            data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}"
+                            data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}" data-roll-qty="{{ item.option.quantity }}"
                             onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
@@ -434,7 +450,7 @@
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
-                            data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}"
+                            data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}" data-roll-qty="{{ item.option.quantity }}"
                             onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
@@ -536,7 +552,7 @@
                             onclick="openRollSpread({{ item.spread.id }}, '{{ item.spread.underlying_asset }}', '{{ item.spread.spread_type }}', '{{ item.spread.leg_long_ticker }}', {{ item.spread.leg_long_strike }}, {{ item.spread.leg_long_price }}, '{{ item.spread.leg_short_ticker }}', {{ item.spread.leg_short_strike }}, {{ item.spread.leg_short_price }}, '{{ item.spread.expiration_date.strftime('%Y-%m-%d') }}')">🔄</button>
                     {% if item.spread.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
-                            data-roll="{{ item.spread.roll_history|e }}" data-roll-title="{{ item.spread.underlying_asset }}"
+                            data-roll="{{ item.spread.roll_history|e }}" data-roll-title="{{ item.spread.underlying_asset }}" data-roll-qty="{{ item.spread.quantity }}"
                             onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('close_spread', id=item.spread.id) }}" class="btn btn-sm" style="background:var(--accent-color); color: white;" title="Encerrar">🛑</a>
@@ -853,7 +869,7 @@
 
 <!-- ═══ MODAL: Histórico de Rolagens ═══ -->
 <div id="modal-roll-history" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);align-items:center;justify-content:center;">
-  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.5rem;width:min(96vw,720px);color:var(--text-primary);max-height:85vh;overflow-y:auto;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.5rem;width:min(98vw,1100px);color:var(--text-primary);max-height:85vh;overflow-y:auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
       <h5 style="margin:0;">📋 Histórico de Rolagens — <span id="roll-hist-title"></span></h5>
       <button onclick="document.getElementById('modal-roll-history').style.display='none'" style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;">&times;</button>
@@ -923,10 +939,11 @@ function openRollEstruturada(id, name, legs) {
 function openRollHistoryBtn(btn) {
     var raw   = btn.getAttribute('data-roll') || '[]';
     var title = btn.getAttribute('data-roll-title') || '';
-    try { openRollHistory(JSON.parse(raw), title); }
+    var defaultQty = parseFloat(btn.getAttribute('data-roll-qty')) || 1;
+    try { openRollHistory(JSON.parse(raw), title, defaultQty); }
     catch(e) { alert('Erro ao ler histórico: ' + e.message); }
 }
-function openRollHistory(history, title) {
+function openRollHistory(history, title, defaultQty) {
     document.getElementById('roll-hist-title').textContent = title;
     var body = document.getElementById('roll-hist-body');
 
@@ -949,6 +966,10 @@ function openRollHistory(history, title) {
 
     history.forEach(function(r, i) {
         var net = null;
+        var initialCash = null;
+        var closeCash = null;
+        var openCash = null;
+        var qtyRoll = parseFloat(r.quantity) || defaultQty || 1;
         var canCalc = false;
 
         // Estruturada: recalcula a partir das pernas
@@ -972,8 +993,15 @@ function openRollHistory(history, title) {
             var clShort = parseFloat(r.close_short_price);
             var nlp     = parseFloat(r.new_long_price);
             var nsp     = parseFloat(r.new_short_price);
+            var oldLong = parseFloat(r.old_long_price);
+            var oldShort = parseFloat(r.old_short_price);
             if (!isNaN(clLong) && !isNaN(clShort) && !isNaN(nlp) && !isNaN(nsp)) {
-                net = (nsp - clShort) - (nlp - clLong);
+                closeCash = (clLong - clShort) * qtyRoll;
+                openCash = (nsp - nlp) * qtyRoll;
+                net = closeCash + openCash;
+                if (!isNaN(oldLong) && !isNaN(oldShort)) {
+                    initialCash = (oldShort - oldLong) * qtyRoll;
+                }
                 canCalc = true;
             }
         }
@@ -987,9 +1015,9 @@ function openRollHistory(history, title) {
 
         html += '<div style="margin-bottom:1.2rem;border-left:3px solid ' + borderCol + ';padding-left:.75rem;">';
         // Cabeçalho da rolagem
-        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;">' +
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;gap:.75rem;">' +
             '<strong style="font-size:.9rem;">Rolagem #' + (i+1) + ' — ' + (r.roll_type||'TEMPO') + '</strong>' +
-            '<span style="font-size:.78rem;color:var(--text-secondary);">' + (r.rolled_at||'') + '</span></div>';
+            '<span style="font-size:.78rem;color:var(--text-secondary);">' + (r.rolled_at||'') + (qtyRoll ? ' · Qtd ' + qtyRoll : '') + '</span></div>';
 
         // Tabela de tickers negociados
         html += '<div style="overflow-x:auto;">' +
@@ -1067,6 +1095,17 @@ function openRollHistory(history, title) {
         html += '</tbody></table></div>';
 
         // Resumo da rolagem
+        if (r.old_long_ticker) {
+            var cardStyle = 'padding:.55rem .7rem;background:var(--hover-bg);border:1px solid var(--border-color);border-radius:7px;';
+            var carried = initialCash == null ? null : initialCash + net;
+            html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.5rem;margin-top:.6rem;">';
+            html += '<div style="' + cardStyle + '"><div style="font-size:.72rem;color:var(--text-secondary);">Entrada inicial</div><strong style="color:' + ((initialCash||0)>=0?'var(--success-color)':'var(--danger-color)') + ';">' + (initialCash==null?'—':brl(initialCash)) + '</strong></div>';
+            html += '<div style="' + cardStyle + '"><div style="font-size:.72rem;color:var(--text-secondary);">Fechamento da trava antiga</div><strong style="color:' + ((closeCash||0)>=0?'var(--success-color)':'var(--danger-color)') + ';">' + (closeCash==null?'—':brl(closeCash)) + '</strong></div>';
+            html += '<div style="' + cardStyle + '"><div style="font-size:.72rem;color:var(--text-secondary);">Abertura da nova trava</div><strong style="color:' + ((openCash||0)>=0?'var(--success-color)':'var(--danger-color)') + ';">' + (openCash==null?'—':brl(openCash)) + '</strong></div>';
+            html += '<div style="' + cardStyle + '"><div style="font-size:.72rem;color:var(--text-secondary);">Total carregado até a nova trava</div><strong style="color:' + ((carried||0)>=0?'var(--success-color)':'var(--danger-color)') + ';">' + (carried==null?'—':brl(carried)) + '</strong></div>';
+            html += '</div>';
+        }
+
         var netLabel = canCalc
             ? 'Líquido da rolagem: ' + (net>=0?'+':'') + brl(net)
             : 'Líquido da rolagem: <span style="color:var(--text-secondary);font-weight:400;">não disponível (preços de entrada não registrados)</span>';

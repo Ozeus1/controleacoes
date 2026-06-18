@@ -205,13 +205,13 @@
                         <a href="{{ url_for('simulacao_opcoes') }}"
                            class="{{ 'active' if request.endpoint == 'simulacao_opcoes' else '' }}">📈 Simulação</a>
                         <a href="{{ url_for('simulador_liquidez') }}"
-                           class="{{ 'active' if request.endpoint == 'simulador_liquidez' else '' }}">💧📈 Sim. c/ Liquidez</a>
+                           class="{{ 'active' if request.endpoint == 'simulador_liquidez' else '' }}">📈 Simulação Gráfica</a>
                         <a href="{{ url_for('rolagem_opcoes') }}"
-                           class="{{ 'active' if request.endpoint == 'rolagem_opcoes' else '' }}">Rolagem de Opcoes</a>
+                           class="{{ 'active' if request.endpoint == 'rolagem_opcoes' else '' }}">🔁 Rolagem de Opções</a>
                         <a href="{{ url_for('venda_puts') }}"
                            class="{{ 'active' if request.endpoint == 'venda_puts' else '' }}">🔽 Venda de Puts</a>
                         <a href="{{ url_for('ranking_volatilidade') }}"
-                           class="{{ 'active' if request.endpoint == 'ranking_volatilidade' else '' }}">📊 Ranking Vol.</a>
+                           class="{{ 'active' if request.endpoint == 'ranking_volatilidade' else '' }}">📊 Ranking de Volatilidade</a>
                         <a href="{{ url_for('cadeia_opcoes') }}"
                            class="{{ 'active' if request.endpoint == 'cadeia_opcoes' else '' }}">🔗 Cadeia de Opções</a>
                     </div>

@@ -2410,6 +2410,33 @@ def _get_underlying_quote(ticker, user_id):
     return None, None
 
 
+def _spread_roll_adjustment(sp):
+    """Resultado realizado antes da trava atual, usado para corrigir o payoff rolado."""
+    import json as _json
+    try:
+        history = _json.loads(sp.roll_history) if sp.roll_history else []
+    except Exception:
+        return 0.0, []
+
+    adjustment = 0.0
+    for item in history:
+        try:
+            qty = float(item.get('quantity') or sp.quantity or 1)
+            if item.get('old_long_ticker') is not None:
+                old_long = float(item.get('old_long_price') or 0)
+                old_short = float(item.get('old_short_price') or 0)
+                close_long = float(item.get('close_long_price') or 0)
+                close_short = float(item.get('close_short_price') or 0)
+
+                initial_cash = (old_short - old_long) * qty
+                close_cash = (close_long - close_short) * qty
+                adjustment += initial_cash + close_cash
+        except (TypeError, ValueError):
+            continue
+
+    return round(adjustment, 2), history
+
+
 @app.route('/payoff/spread/<int:id>')
 @login_required
 def payoff_spread(id):
@@ -2454,6 +2481,7 @@ def payoff_spread(id):
     t_days = max((sp.expiration_date - date.today()).days, 1) if sp.expiration_date else 30
     days_nearest = max((sp.expiration_date - date.today()).days, 0) if sp.expiration_date else None
     import json as _json
+    roll_adjustment, roll_history = _spread_roll_adjustment(sp)
     return render_template('payoff.html',
                            title=type_labels.get(sp.spread_type, sp.spread_type),
                            underlying=sp.underlying_asset,
@@ -2464,6 +2492,8 @@ def payoff_spread(id):
                            selic=_selic(),
                            T_days=t_days,
                            days_nearest=days_nearest,
+                           roll_adjustment=roll_adjustment,
+                           roll_history_json=_json.dumps(roll_history, ensure_ascii=False),
                            legs_json=_json.dumps(legs))
 
 
@@ -2777,12 +2807,11 @@ def roll_spread(id):
         ns_k     = float(new_short_strike)  if new_short_strike   else sp.leg_short_strike
         new_exp_d = datetime.strptime(new_exp, '%Y-%m-%d').date() if new_exp else sp.expiration_date
 
-        # Custo de fechar a trava antiga + crédito de abrir a nova
-        # SHORT: paga cl_short pra fechar, recebe ns_p ao abrir → crédito = ns_p - cl_short
-        # LONG:  recebe cl_long ao fechar, paga nl_p ao abrir   → custo   = nl_p - cl_long
-        cost_close  = cl_long  - cl_short   # >0 = custou fechar (trava cara de fechar)
-        credit_open = ns_p     - nl_p        # crédito líquido da nova trava
-        net_roll    = (credit_open - cost_close) * (sp.quantity or 1)
+        # Caixa da rolagem: vende a perna comprada antiga, recompra a vendida antiga,
+        # compra a nova perna comprada e vende a nova perna vendida.
+        close_cash = cl_long - cl_short
+        open_cash = ns_p - nl_p
+        net_roll = (close_cash + open_cash) * (sp.quantity or 1)
 
         _append_roll(sp, {
             'roll_type':        roll_type,
@@ -2801,6 +2830,7 @@ def roll_spread(id):
             'new_short_strike': ns_k,
             'new_short_price':  ns_p,
             'new_exp':          new_exp_d.isoformat(),
+            'quantity':         sp.quantity or 1,
             'net_roll':         round(net_roll, 4),
             'notes':            notes,
         })

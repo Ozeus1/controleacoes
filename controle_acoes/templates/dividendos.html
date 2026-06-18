@@ -1,6 +1,244 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+    .dividends-page .card {
+        overflow: hidden;
+    }
+
+    .dividends-card-header {
+        gap: .75rem;
+        flex-wrap: wrap;
+    }
+
+    .dividends-table-wrap {
+        max-height: min(62vh, 620px);
+        overflow: auto;
+        scrollbar-gutter: stable;
+    }
+
+    .dividends-table {
+        min-width: 620px !important;
+        width: 100% !important;
+        table-layout: fixed;
+        font-size: .9rem;
+    }
+
+    .dividends-table th,
+    .dividends-table td {
+        padding: .7rem .8rem;
+        vertical-align: middle;
+    }
+
+    .dividends-table th {
+        position: sticky;
+        top: 0;
+        z-index: 3;
+        background: var(--table-header-bg) !important;
+        color: var(--text-secondary);
+    }
+
+    .dividends-table th:first-child,
+    .dividends-table td:first-child {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        background: var(--card-bg) !important;
+        text-align: left;
+        border-right: 1px solid var(--border-color);
+    }
+
+    .dividends-table th:first-child {
+        z-index: 4;
+        background: var(--table-header-bg) !important;
+    }
+
+    .dividends-table .ticker-cell {
+        font-weight: 800;
+        color: #bfdbfe;
+        letter-spacing: .02em;
+    }
+
+    .dividends-table .type-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 108px;
+        padding: .18rem .55rem;
+        border-radius: 999px;
+        background: rgba(59, 130, 246, .16);
+        color: #bfdbfe;
+        font-size: .78rem;
+        font-weight: 700;
+    }
+
+    .dividends-table .amount-cell {
+        color: var(--success-color);
+        font-weight: 800;
+        text-align: right;
+    }
+
+    .dividends-table .date-cell {
+        color: var(--text-primary);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .dividends-count {
+        background: rgba(16, 185, 129, .16);
+        border: 1px solid rgba(16, 185, 129, .28);
+        color: #bbf7d0;
+        border-radius: 999px;
+        padding: .22rem .65rem;
+        font-size: .82rem;
+        font-weight: 800;
+        white-space: nowrap;
+    }
+
+    .dividends-empty {
+        color: var(--text-secondary);
+        text-align: center;
+        padding: 1.2rem;
+    }
+
+    .future-dividends-table {
+        min-width: 520px !important;
+        table-layout: fixed;
+    }
+
+    @media (max-width: 900px) {
+        .dividends-page .card {
+            border-radius: 10px;
+        }
+
+        .dividends-table {
+            min-width: 560px !important;
+            font-size: .86rem;
+        }
+
+        .dividends-table th,
+        .dividends-table td {
+            padding: .6rem .65rem;
+        }
+    }
+
+    @media (max-width: 640px) {
+        .dividends-page .row {
+            margin-left: 0;
+            margin-right: 0;
+        }
+
+        .dividends-page .col-12 {
+            padding-left: 0;
+            padding-right: 0;
+        }
+
+        .dividends-page h2 {
+            font-size: 1.15rem;
+            margin-bottom: .75rem;
+        }
+
+        .dividends-page .btn {
+            width: 100%;
+        }
+
+        .dividends-card-header {
+            align-items: flex-start !important;
+        }
+
+        .dividends-card-header > span:first-child {
+            font-size: .98rem;
+            line-height: 1.25;
+        }
+
+        .dividends-count {
+            font-size: .76rem;
+            padding: .18rem .55rem;
+        }
+
+        .dividends-table-wrap {
+            max-height: none;
+            overflow: visible;
+            padding: .75rem;
+        }
+
+        .dividends-table {
+            min-width: 0 !important;
+            display: block;
+            width: 100% !important;
+            border-collapse: separate !important;
+            border-spacing: 0;
+        }
+
+        .dividends-table thead {
+            display: none;
+        }
+
+        .dividends-table tbody,
+        .dividends-table tr,
+        .dividends-table td {
+            display: block;
+            width: 100%;
+        }
+
+        .dividends-table tbody tr {
+            background: var(--hover-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-bottom: .75rem;
+            padding: .65rem .75rem;
+        }
+
+        .dividends-table tbody tr:hover {
+            background: var(--hover-bg);
+        }
+
+        .dividends-table td,
+        .dividends-table td:first-child {
+            position: static;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            border: 0;
+            border-bottom: 1px solid rgba(148, 163, 184, .16);
+            padding: .48rem 0;
+            background: transparent !important;
+            text-align: right;
+            white-space: normal;
+        }
+
+        .dividends-table td:last-child {
+            border-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .dividends-table td::before {
+            content: attr(data-label);
+            color: var(--text-secondary);
+            font-size: .74rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: .04em;
+            text-align: left;
+        }
+
+        .dividends-table .ticker-cell {
+            font-size: 1rem;
+        }
+
+        .dividends-table .type-pill {
+            min-width: 0;
+            max-width: 60%;
+            text-align: right;
+        }
+
+        .dividends-table .amount-cell {
+            font-size: 1.02rem;
+        }
+    }
+</style>
+
+<div class="dividends-page">
 <div class="row mb-4">
     <div class="col-12 d-flex justify-content-between align-items-center">
         <h2>💰 Dividendos & Proventos</h2>
@@ -116,7 +354,7 @@
                 <i class="fas fa-calendar-alt mr-2"></i>Proventos a Receber (Futuros)
             </div>
             <div class="card-body p-0 table-responsive">
-                <table class="table table-dark table-hover mb-0 text-center">
+                <table class="table table-dark table-hover mb-0 text-center no-datatable future-dividends-table">
                     <thead>
                         <tr class="text-secondary">
                             <th>Ticker</th>
@@ -128,10 +366,10 @@
                     <tbody>
                         {% for div in dividends_provisioned %}
                         <tr>
-                            <td class="font-weight-bold">{{ div.ticker }}</td>
-                            <td><span class="badge badge-secondary">{{ div.type }}</span></td>
-                            <td data-order="{{ div.ex_date.strftime('%Y-%m-%d') if div.ex_date else '' }}" class="text-warning font-weight-bold">{{ div.ex_date.strftime('%d/%m/%Y') if div.ex_date else '-' }}</td>
-                            <td class="text-success font-weight-bold">{{ div.amount | brl }}</td>
+                            <td data-label="Ticker" class="font-weight-bold">{{ div.ticker }}</td>
+                            <td data-label="Tipo"><span class="badge badge-secondary">{{ div.type }}</span></td>
+                            <td data-label="Data" data-order="{{ div.ex_date.strftime('%Y-%m-%d') if div.ex_date else '' }}" class="text-warning font-weight-bold">{{ div.ex_date.strftime('%d/%m/%Y') if div.ex_date else '-' }}</td>
+                            <td data-label="Valor" class="text-success font-weight-bold">{{ div.amount | brl }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -146,13 +384,19 @@
 <div class="row">
     <div class="col-12">
         <div class="card bg-dark text-white">
-            <div class="card-header font-weight-bold d-flex justify-content-between align-items-center">
+            <div class="card-header font-weight-bold d-flex justify-content-between align-items-center dividends-card-header">
                 <span><i class="fas fa-history mr-2"></i>Histórico de Proventos (Recebidos)</span>
-                <span class="badge badge-success">{{ dividends_received|length }} Pagamentos</span>
+                <span class="dividends-count">{{ dividends_received|length }} Pagamentos</span>
             </div>
-            <div class="card-body p-0 table-responsive" style="max-height: 500px; overflow-y: auto;">
-                <table class="table table-dark table-striped mb-0 text-center no-datatable" id="dividendsTable">
-                    <thead style="position: sticky; top: 0; background-color: var(--table-header-bg); z-index: 1;">
+            <div class="card-body p-0 dividends-table-wrap">
+                <table class="table table-dark table-striped mb-0 no-datatable dividends-table" id="dividendsTable">
+                    <colgroup>
+                        <col style="width: 22%;">
+                        <col style="width: 24%;">
+                        <col style="width: 27%;">
+                        <col style="width: 27%;">
+                    </colgroup>
+                    <thead>
                         <tr>
                             <th>Data</th>
                             <th>Ticker</th>
@@ -161,19 +405,26 @@
                         </tr>
                     </thead>
                     <tbody>
+                        {% if dividends_received %}
                         {% for div in dividends_received %}
                         <tr>
-                            <td data-order="{{ div.ex_date.strftime('%Y-%m-%d') if div.ex_date else '' }}">{{ div.ex_date.strftime('%d/%m/%Y') if div.ex_date else '-' }}</td>
-                            <td class="font-weight-bold text-info">{{ div.ticker }}</td>
-                            <td>{{ div.type }}</td>
-                            <td class="text-success font-weight-bold">{{ div.amount | brl }}</td>
+                            <td data-label="Data" data-order="{{ div.ex_date.strftime('%Y-%m-%d') if div.ex_date else '' }}" class="date-cell">{{ div.ex_date.strftime('%d/%m/%Y') if div.ex_date else '-' }}</td>
+                            <td data-label="Ticker" class="ticker-cell">{{ div.ticker }}</td>
+                            <td data-label="Tipo"><span class="type-pill">{{ div.type }}</span></td>
+                            <td data-label="Valor total" class="amount-cell">{{ div.amount | brl }}</td>
                         </tr>
                         {% endfor %}
+                        {% else %}
+                        <tr>
+                            <td colspan="4" class="dividends-empty">Nenhum provento recebido cadastrado.</td>
+                        </tr>
+                        {% endif %}
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
+</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

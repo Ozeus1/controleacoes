@@ -124,7 +124,7 @@ def _yf_bulk(yf_tickers, map_yf_to_clean):
     return results, failed
 
 
-def get_quotes(tickers, user_id=None):
+def get_quotes(tickers, user_id=None, prefer_yahoo=None):
     """
     Busca cotações de ações/FIIs/ETFs BR.
     - Com token brapi: um único request para todos os tickers (~0.5s).
@@ -134,12 +134,23 @@ def get_quotes(tickers, user_id=None):
         return {}
 
     clean_tickers = [t.strip().upper() for t in tickers]
+    prefer_yahoo = {t.strip().upper() for t in (prefer_yahoo or [])}
     token = get_token(user_id)
 
     if token:
         results = {}
         for i in range(0, len(clean_tickers), 50):
             results.update(_brapi_quotes(clean_tickers[i:i+50], token))
+        # Alguns ETFs brasileiros aparecem defasados/inconsistentes na brapi.
+        # Para esses tickers, usa Yahoo Finance como fonte preferencial.
+        if prefer_yahoo:
+            from concurrent.futures import ThreadPoolExecutor
+            def _fetch_yahoo(t):
+                return t, _yf_fast_info(f"{t}.SA" if '.' not in t else t, t)
+            with ThreadPoolExecutor(max_workers=8) as ex:
+                for t, r in ex.map(_fetch_yahoo, [t for t in clean_tickers if t in prefer_yahoo]):
+                    if r:
+                        results[t] = r
         # fallback paralelo para os que a brapi não retornou
         missing = [t for t in clean_tickers if t not in results]
         if missing:

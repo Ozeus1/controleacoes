@@ -5374,13 +5374,14 @@ def update_all_assets_logic(user_id=None, skip_tickers: set = None):
     for chunk in relevant_chunks:
         try:
             tickers = [a.ticker for a in chunk]
+            yahoo_preferred = {a.ticker.upper().strip() for a in chunk if a.type == 'ETF'}
             total_tried += len(tickers)
-            quotes = get_quotes(tickers, user_id=user_id)
+            quotes = get_quotes(tickers, user_id=user_id, prefer_yahoo=yahoo_preferred)
             
             if quotes:
                 for asset in chunk:
                     # Generic lookup
-                    quote_data = quotes.get(asset.ticker)
+                    quote_data = quotes.get(asset.ticker) or quotes.get(asset.ticker.upper().strip())
                     
                     if quote_data:
                         price = quote_data.get('price')

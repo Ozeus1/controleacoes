@@ -2,6 +2,87 @@
 {% block title %}Ranking Volatilidade{% endblock %}
 
 {% block content %}
+<style>
+  #modal-liquidez .liq-panel {
+    background: var(--card-bg,#1e293b);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+    margin: auto;
+    padding: .9rem;
+    width: min(96vw, 980px);
+  }
+  #modal-liquidez .liq-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .75rem;
+  }
+  #modal-liquidez .liq-table-card {
+    min-width: 0;
+  }
+  #modal-liquidez .liq-table-wrap {
+    overflow-x: hidden;
+  }
+  #modal-liquidez .liq-table {
+    border-collapse: collapse;
+    font-size: .72rem;
+    line-height: 1.15;
+    min-width: 0 !important;
+    table-layout: fixed;
+    width: 100%;
+  }
+  #modal-liquidez .liq-table th,
+  #modal-liquidez .liq-table td {
+    padding: .24rem .28rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #modal-liquidez .liq-table th {
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: .66rem;
+  }
+  #modal-liquidez .liq-table td {
+    border-bottom: 1px solid rgba(255,255,255,.05);
+  }
+  #modal-liquidez .liq-table th:first-child,
+  #modal-liquidez .liq-table td:first-child {
+    text-align: left;
+  }
+  #modal-liquidez .liq-table th:not(:first-child),
+  #modal-liquidez .liq-table td:not(:first-child) {
+    text-align: right;
+  }
+  #modal-liquidez .liq-opt-badge {
+    background: #3b82f6;
+    border-radius: 5px;
+    color: #fff;
+    cursor: pointer;
+    display: inline-block;
+    font-size: .66rem;
+    font-weight: 700;
+    max-width: 100%;
+    padding: .08rem .32rem;
+  }
+  #modal-liquidez .liq-iv {
+    color: #c4b5fd;
+    font-weight: 700;
+  }
+  @media (max-width: 860px) {
+    #modal-liquidez .liq-grid {
+      grid-template-columns: 1fr;
+    }
+    #modal-liquidez .liq-table-wrap {
+      overflow-x: auto;
+    }
+    #modal-liquidez .liq-table {
+      min-width: 560px !important;
+    }
+  }
+</style>
 <div class="container">
 
 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
@@ -294,9 +375,7 @@
 <!-- Modal Liquidez OpLab -->
 <div id="modal-liquidez" style="display:none;position:fixed;inset:0;z-index:10000;
      background:rgba(0,0,0,.82);align-items:flex-start;justify-content:center;overflow-y:auto;padding:1.5vh 0">
-  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1rem;
-              width:min(96vw,1100px);display:flex;flex-direction:column;gap:.75rem;
-              border:1px solid var(--border-color);margin:auto">
+  <div class="liq-panel">
 
     <!-- Header -->
     <div style="display:flex;justify-content:space-between;align-items:center;flex-shrink:0;flex-wrap:wrap;gap:.5rem">
@@ -317,21 +396,32 @@
     </div>
 
     <!-- Tabelas CALL + PUT lado a lado -->
-    <div id="liq-tables" style="display:none;gap:1rem;flex-wrap:wrap">
+    <div id="liq-tables" class="liq-grid" style="display:none">
       <!-- CALL -->
-      <div style="flex:1;min-width:280px">
+      <div class="liq-table-card">
         <h6 style="color:#3b82f6;margin-bottom:.4rem;font-size:.85rem">📈 CALL — por Volume</h6>
-        <div style="overflow-x:auto">
-          <table style="width:100%;font-size:.78rem;border-collapse:collapse">
+        <div class="liq-table-wrap">
+          <table class="liq-table">
+            <colgroup>
+              <col style="width:22%">
+              <col style="width:11%">
+              <col style="width:12%">
+              <col style="width:12%">
+              <col style="width:10%">
+              <col style="width:12%">
+              <col style="width:13%">
+              <col style="width:8%">
+            </colgroup>
             <thead>
-              <tr style="color:var(--text-secondary);border-bottom:1px solid var(--border-color)">
-                <th style="text-align:left;padding:.25rem .4rem">Opção</th>
-                <th style="text-align:right;padding:.25rem .4rem">Strike</th>
-                <th style="text-align:right;padding:.25rem .4rem">% Spot</th>
-                <th style="text-align:right;padding:.25rem .4rem">Último</th>
-                <th style="text-align:right;padding:.25rem .4rem">Var%</th>
-                <th style="text-align:right;padding:.25rem .4rem">Vol. Fin.</th>
-                <th style="text-align:right;padding:.25rem .4rem">Venc.</th>
+              <tr>
+                <th>Opção</th>
+                <th>Strike</th>
+                <th>% Spot</th>
+                <th>Últ.</th>
+                <th>IV</th>
+                <th>Var%</th>
+                <th>Vol.</th>
+                <th>Venc.</th>
               </tr>
             </thead>
             <tbody id="liq-call-tbody"></tbody>
@@ -339,19 +429,30 @@
         </div>
       </div>
       <!-- PUT -->
-      <div style="flex:1;min-width:280px">
+      <div class="liq-table-card">
         <h6 style="color:#f87171;margin-bottom:.4rem;font-size:.85rem">📉 PUT — por Volume</h6>
-        <div style="overflow-x:auto">
-          <table style="width:100%;font-size:.78rem;border-collapse:collapse">
+        <div class="liq-table-wrap">
+          <table class="liq-table">
+            <colgroup>
+              <col style="width:22%">
+              <col style="width:11%">
+              <col style="width:12%">
+              <col style="width:12%">
+              <col style="width:10%">
+              <col style="width:12%">
+              <col style="width:13%">
+              <col style="width:8%">
+            </colgroup>
             <thead>
-              <tr style="color:var(--text-secondary);border-bottom:1px solid var(--border-color)">
-                <th style="text-align:left;padding:.25rem .4rem">Opção</th>
-                <th style="text-align:right;padding:.25rem .4rem">Strike</th>
-                <th style="text-align:right;padding:.25rem .4rem">% Spot</th>
-                <th style="text-align:right;padding:.25rem .4rem">Último</th>
-                <th style="text-align:right;padding:.25rem .4rem">Var%</th>
-                <th style="text-align:right;padding:.25rem .4rem">Vol. Fin.</th>
-                <th style="text-align:right;padding:.25rem .4rem">Venc.</th>
+              <tr>
+                <th>Opção</th>
+                <th>Strike</th>
+                <th>% Spot</th>
+                <th>Últ.</th>
+                <th>IV</th>
+                <th>Var%</th>
+                <th>Vol.</th>
+                <th>Venc.</th>
               </tr>
             </thead>
             <tbody id="liq-put-tbody"></tbody>
@@ -569,7 +670,7 @@
     var tb = document.getElementById(tbodyId);
     tb.innerHTML = '';
     if(!rows || !rows.length){
-      tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:.75rem">Sem dados</td></tr>';
+      tb.innerHTML='<tr><td colspan="8" style="text-align:center;color:var(--text-secondary);padding:.75rem">Sem dados</td></tr>';
       return;
     }
     rows.forEach(function(o){
@@ -589,17 +690,17 @@
         spotPctHtml = '<span style="color:'+pctColor+'">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</span>';
       }
       var tr = document.createElement('tr');
-      tr.style.borderBottom = '1px solid rgba(255,255,255,.05)';
       tr.dataset.due = due;
       tr.innerHTML =
-        '<td style="padding:.25rem .4rem"><span class="ticker-badge" style="font-weight:600;color:'+colorClass+';cursor:pointer">'+o.symbol+'</span></td>'+
-        '<td style="text-align:right;padding:.25rem .4rem">'+fmtN(o.strike)+'</td>'+
-        '<td style="text-align:right;padding:.25rem .4rem">'+spotPctHtml+'</td>'+
-        '<td style="text-align:right;padding:.25rem .4rem">'+fmtN(o.close)+'</td>'+
-        '<td style="text-align:right;padding:.25rem .4rem;color:'+varColor+'">'+
+        '<td><span class="liq-opt-badge" style="color:'+colorClass+'">'+o.symbol+'</span></td>'+
+        '<td>'+fmtN(o.strike)+'</td>'+
+        '<td>'+spotPctHtml+'</td>'+
+        '<td>'+fmtN(o.close)+'</td>'+
+        '<td class="liq-iv">'+(o.iv!=null ? fmtN(o.iv,1)+'%' : '—')+'</td>'+
+        '<td style="color:'+varColor+'">'+
           (parseFloat(o.var_pct)>=0?'+':'')+fmtN(o.var_pct)+'%</td>'+
-        '<td style="text-align:right;padding:.25rem .4rem;font-weight:600">'+fmtBRL(o.volume)+'</td>'+
-        '<td style="text-align:right;padding:.25rem .4rem;color:var(--text-secondary)">'+venc+'</td>';
+        '<td style="font-weight:600">'+fmtBRL(o.volume)+'</td>'+
+        '<td style="color:var(--text-secondary)">'+venc+'</td>';
       tb.appendChild(tr);
     });
   }

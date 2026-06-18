@@ -6798,6 +6798,31 @@ def api_liquidez(ticker):
     calls, puts = [], []
     vol_total_call = vol_total_put = 0.0
 
+    def _extract_option_iv(opt):
+        nested = [opt]
+        for key in ('greeks', 'iv', 'implied_volatility', 'volatility', 'metrics'):
+            val = opt.get(key)
+            if isinstance(val, dict):
+                nested.append(val)
+        for src in nested:
+            for key in (
+                'iv', 'implied_volatility', 'vol_impl', 'volatility',
+                'sigma', 'theoretical_volatility', 'impvol', 'impliedVolatility',
+                'iv_current', 'current_iv', 'close_iv', 'ewma_current',
+                'ewma_1y', 'implied_volatility_current'
+            ):
+                val = src.get(key)
+                if val in (None, '', '-'):
+                    continue
+                try:
+                    num = float(val)
+                    if num <= 0:
+                        continue
+                    return round(num * 100, 1) if num <= 1 else round(num, 1)
+                except (TypeError, ValueError):
+                    continue
+        return None
+
     for o in opt_list:
         sym      = str(o.get('symbol') or o.get('ticker') or '').upper()
         cat      = str(o.get('category') or o.get('type') or o.get('option_type') or '').upper()
@@ -6817,6 +6842,7 @@ def api_liquidez(ticker):
             'symbol':   sym,
             'strike':   round(float(strike), 2) if strike else None,
             'close':    round(float(close),  2) if close  else None,
+            'iv':       _extract_option_iv(o),
             'volume':   round(float(volume), 2) if volume else 0,
             'open_int': int(open_int) if open_int else 0,
             'var_pct':  round(float(var_pct), 2) if var_pct else 0,

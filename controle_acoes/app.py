@@ -5350,7 +5350,7 @@ def delete_balance_item(type, id):
     return redirect(url_for('balanceamento'))
 
 
-def update_all_assets_logic(user_id=None, skip_tickers: set = None):
+def update_all_assets_logic(user_id=None, skip_tickers: set = None, only_types: set = None):
     """
     Atualiza cotações de Ações/FIIs/ETFs via Yahoo/Brapi.
     skip_tickers: conjunto de tickers já atualizados pelo OpLab — são ignorados aqui.
@@ -5360,7 +5360,11 @@ def update_all_assets_logic(user_id=None, skip_tickers: set = None):
     assets = Asset.query.filter_by(user_id=user_id).all()
     # Filter ACAO/FII/ETF — pula os já cobertos pelo OpLab
     skip = {t.upper() for t in (skip_tickers or [])}
-    relevant = [a for a in assets if a.type in ['ACAO', 'FII', 'ETF'] and a.ticker.upper() not in skip]
+    allowed_types = set(only_types or ['ACAO', 'FII', 'ETF'])
+    relevant = [
+        a for a in assets
+        if a.type in allowed_types and a.type in ['ACAO', 'FII', 'ETF'] and a.ticker.upper() not in skip
+    ]
     if not relevant:
         return 0, 0, []
 
@@ -5496,7 +5500,8 @@ def update_quotes():
             count, tried, errs = update_all_assets_logic(skip_tickers=oplab_covered)
             final_msg += f'Yahoo/Brapi: {count}/{tried} ativo(s). '
         else:
-            errs = []
+            etf_count, etf_tried, errs = update_all_assets_logic(only_types={'ETF'})
+            final_msg += f'ETFs via Yahoo: {etf_count}/{etf_tried}. '
             final_msg += 'Ações/FIIs via MT5 Feeder. '
 
         intl_success, intl_msgs = update_intl_quotes_logic(current_user.id)
@@ -5558,9 +5563,10 @@ def update_quotes_async():
                     else:
                         final_msg += f'Intl: falha. '
                 elif quote_mode == 'mt5':
+                    etf_count, etf_tried, errs = update_all_assets_logic(user_id=user_id, only_types={'ETF'})
+                    final_msg += f'ETFs via Yahoo: {etf_count}/{etf_tried}. '
                     final_msg += 'Ações/FIIs via MT5 Feeder. '
                     intl_success, _ = update_intl_quotes_logic(user_id)
-                    errs = []
                 else:
                     errs = []
 
@@ -8332,7 +8338,7 @@ def _do_oplab_bulk_update(uid: int, token: str):
     put_sales     = PutSale.query.filter_by(user_id=uid).all()
 
     # ── Monta conjunto de tickers a buscar ────────────────────────
-    asset_tickers  = {a.ticker.upper() for a in assets}
+    asset_tickers  = {a.ticker.upper() for a in assets if a.type != 'ETF'}
     option_tickers = {o.ticker.upper() for o in options}
 
     # Underlying das options registradas (para atualizar current_price do ativo)
@@ -8486,6 +8492,8 @@ def _do_oplab_bulk_update(uid: int, token: str):
     assets_ok = 0
     oplab_covered_assets: set = set()   # tickers que o OpLab retornou → não precisam ir ao Yahoo
     for a in assets:
+        if a.type == 'ETF':
+            continue
         key = a.ticker.upper()
         if key in prices and prices[key] > 0:
             a.current_price = prices[key]
@@ -8517,7 +8525,7 @@ def _do_oplab_bulk_update(uid: int, token: str):
             if uk in prices and prices[uk] > 0:
                 # Propaga para o Asset correspondente se existir
                 asset_obj = next((a for a in assets if a.ticker.upper() == uk), None)
-                if asset_obj:
+                if asset_obj and asset_obj.type != 'ETF':
                     asset_obj.current_price = prices[uk]
                     if uk in variations:
                         asset_obj.daily_change = variations[uk]

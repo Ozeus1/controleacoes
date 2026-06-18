@@ -231,13 +231,7 @@ document.getElementById('oplab-test-btn').addEventListener('click', function() {
             var statusEl = document.getElementById('oplab-test-status');
             var bodyEl   = document.getElementById('oplab-test-body');
             document.getElementById('oplab-test-result').style.display = 'block';
-            // Verifica se algum endpoint retornou status 200 com dados
-            var anyOk = false;
-            if (res.ok && res.data) {
-                Object.values(res.data).forEach(function(v) {
-                    if (v && v.status === 200) anyOk = true;
-                });
-            }
+            var anyOk = !!(res.ok && res.data && res.data.ok);
             statusEl.textContent = anyOk ? 'SUCESSO' : 'ERRO';
             statusEl.style.color = anyOk ? 'var(--success-color)' : 'var(--danger-color)';
             bodyEl.textContent = JSON.stringify(res.data, null, 2);

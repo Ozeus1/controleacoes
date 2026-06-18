@@ -6683,12 +6683,23 @@ def oplab_test():
     if not token:
         return jsonify({'error': 'Token não configurado'}), 400
     ticker = (request.args.get('ticker') or request.form.get('ticker', 'PETR4')).strip().upper()
+    underlying = request.args.get('underlying', '').strip().upper()
+    if not underlying:
+        asset_match = Asset.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+        option_match = Option.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+        study_match = StudyOption.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+        underlying = (
+            (asset_match.ticker if asset_match else '') or
+            (option_match.underlying_asset if option_match else '') or
+            (study_match.underlying_asset if study_match else '') or
+            ticker
+        ).upper()
     results = {}
     # Testa endpoint bulk /market/quote (usado no auto-update)
     try:
         results['/market/quote'] = {
             'ok': True,
-            'body': _oplab_get_json('/market/quote', token, params={'tickers': ticker}, timeout=10)
+            'body': _oplab_get_json('/market/quote', token, params={'tickers': ticker}, timeout=20)
         }
     except OplabApiError as e:
         results['/market/quote'] = {
@@ -6698,14 +6709,26 @@ def oplab_test():
             'preview': e.body_preview,
         }
     # Testa endpoints individuais para diagnóstico
+    try:
+        results[f'/market/options/{underlying}'] = {
+            'ok': True,
+            'body': _oplab_get_json(f'/market/options/{underlying}', token, timeout=20)
+        }
+    except OplabApiError as e:
+        results[f'/market/options/{underlying}'] = {
+            'ok': False,
+            'status': e.status_code,
+            'error': str(e),
+            'preview': e.body_preview,
+        }
     endpoints = [
         f'/instruments/{ticker}',
         f'/market/instruments/{ticker}',
-        f'/market/spot/{ticker}',
+        f'/market/spot/{underlying}',
     ]
     for ep in endpoints:
         try:
-            results[ep] = {'ok': True, 'body': _oplab_get_json(ep, token, timeout=10)}
+            results[ep] = {'ok': True, 'body': _oplab_get_json(ep, token, timeout=20)}
         except OplabApiError as e:
             results[ep] = {
                 'ok': False,
@@ -6713,7 +6736,8 @@ def oplab_test():
                 'error': str(e),
                 'preview': e.body_preview,
             }
-    return jsonify(results)
+    any_ok = any(v.get('ok') for v in results.values() if isinstance(v, dict))
+    return jsonify({'ok': any_ok, 'ticker': ticker, 'underlying': underlying, 'results': results})
 
 
 @app.route('/api/liquidez/<ticker>')

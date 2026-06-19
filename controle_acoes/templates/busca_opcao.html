@@ -20,7 +20,8 @@
 
 /* ── Ficha ── */
 #bo-ficha{display:none;}
-.bo-header{display:flex;align-items:flex-start;gap:1.5rem;flex-wrap:wrap;
+.bo-header{display:flex;align-items:flex-start;justify-content:space-between;
+  gap:1rem;flex-wrap:wrap;
   border-bottom:1px solid var(--border-color);padding-bottom:1rem;margin-bottom:1.2rem;}
 .bo-ticker-big{font-size:2rem;font-weight:800;color:var(--text-primary);letter-spacing:.04em;}
 .bo-badges{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;margin-top:.3rem;}
@@ -36,16 +37,21 @@
 .bo-underlying{font-size:.88rem;color:var(--text-secondary);margin-top:.35rem;}
 
 /* ── Grid de cards ── */
-.bo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:.8rem;margin-bottom:1.2rem;}
+.bo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem;margin-bottom:1.2rem;}
+@media(max-width:700px){.bo-grid{grid-template-columns:1fr 1fr;}}
+@media(max-width:460px){.bo-grid{grid-template-columns:1fr;}}
 .bo-card{background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);
-  border-radius:8px;padding:.7rem .9rem;}
-.bo-card h4{margin:0 0 .5rem 0;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;
+  border-radius:8px;padding:.7rem .9rem;min-width:0;}
+.bo-card h4{margin:0 0 .5rem 0;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;
   color:var(--text-secondary);font-weight:700;border-bottom:1px solid rgba(255,255,255,.06);
   padding-bottom:.35rem;}
-.bo-card table{width:100%;border-collapse:collapse;}
-.bo-card table td{padding:.2rem 0;font-size:.82rem;vertical-align:top;}
-.bo-card table td:first-child{color:var(--text-secondary);padding-right:.6rem;white-space:nowrap;width:55%;}
-.bo-card table td:last-child{color:var(--text-primary);font-weight:500;text-align:right;}
+.bo-card table{width:100%;border-collapse:collapse;table-layout:fixed;}
+.bo-card table td{padding:.22rem 0;font-size:.81rem;vertical-align:top;overflow:hidden;
+  text-overflow:ellipsis;}
+.bo-card table td:first-child{color:var(--text-secondary);padding-right:.4rem;
+  white-space:nowrap;width:52%;}
+.bo-card table td:last-child{color:var(--text-primary);font-weight:500;text-align:right;
+  white-space:nowrap;}
 .bo-card table td.hi{color:#a78bfa;font-weight:700;}
 .bo-card table td.pos{color:#34d399;font-weight:600;}
 .bo-card table td.neg{color:#f87171;font-weight:600;}
@@ -60,10 +66,10 @@
   padding:.15rem .45rem;font-size:.75rem;color:#bae6fd;}
 .rtd-searched-chip button{background:none;border:none;color:#f87171;cursor:pointer;
   font-size:.8rem;line-height:1;padding:0 .1rem;}
-.rtd-map-block{position:relative;}
+.rtd-map-block{position:relative;overflow:hidden;}
 .rtd-map-block pre{background:#0f172a;border:1px solid var(--border-color);border-radius:6px;
-  padding:.7rem;font-size:.7rem;color:#94a3b8;overflow-x:auto;white-space:pre;
-  max-height:220px;overflow-y:auto;}
+  padding:.7rem;font-size:.68rem;color:#94a3b8;overflow:auto;white-space:pre;
+  max-height:260px;}
 .rtd-copy-btn{position:absolute;top:.4rem;right:.4rem;background:#334155;border:1px solid #475569;
   border-radius:5px;color:#e2e8f0;font-size:.72rem;padding:.2rem .55rem;cursor:pointer;}
 .rtd-copy-btn:hover{background:#475569;}
@@ -124,9 +130,7 @@
 
     <!-- Área de texto somente leitura (igual ao MT5 Feeder) -->
     <div class="rtd-map-block">
-      <pre id="rtd-map-text" style="max-height:320px;font-size:.68rem;background:#0f172a;
-           border:1px solid var(--border-color);border-radius:6px;padding:.7rem;
-           color:#94a3b8;overflow:auto;white-space:pre;">Clique em 🔄 Gerar para visualizar…</pre>
+      <pre id="rtd-map-text">Clique em 🔄 Gerar para visualizar…</pre>
     </div>
 
     <!-- Opções buscadas -->

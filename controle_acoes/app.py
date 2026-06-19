@@ -6851,6 +6851,7 @@ def api_liquidez(ticker):
 
         row = {
             'symbol':   sym,
+            'category': cat,
             'strike':   round(float(strike), 2) if strike else None,
             'close':    round(float(close),  2) if close  else None,
             'last_vol': _extract_option_last_vol(o),
@@ -6909,6 +6910,32 @@ def api_liquidez(ticker):
             pass
 
     # Vencimentos distintos das opções (CALL e PUT combinados)
+    def _calc_option_iv(row):
+        if row.get('last_vol') is not None:
+            return row['last_vol']
+        try:
+            if not spot_price or not row.get('strike') or not row.get('close') or not row.get('due_date'):
+                return None
+            exp = datetime.strptime(str(row['due_date'])[:10], '%Y-%m-%d').date()
+            days = max((exp - date.today()).days, 0)
+            if days <= 0:
+                return None
+            is_call = 'PUT' not in str(row.get('category') or '').upper()
+            sigma = _implied_vol(
+                float(spot_price),
+                float(row['strike']),
+                days / 252.0,
+                math.log(1 + _selic() / 100),
+                float(row['close']),
+                is_call,
+            )
+            return round(sigma * 100, 2) if sigma and sigma > 0 else None
+        except Exception:
+            return None
+
+    for row in calls + puts:
+        row['last_vol'] = _calc_option_iv(row)
+
     due_dates = sorted({o['due_date'] for o in calls[:20] + puts[:20] if o.get('due_date')})
 
     return jsonify({

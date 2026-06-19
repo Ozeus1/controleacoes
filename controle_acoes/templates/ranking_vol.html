@@ -421,7 +421,7 @@
                 <th>Strike</th>
                 <th>% Spot</th>
                 <th>Últ.</th>
-                <th>Vol. Ult.</th>
+                <th class="liq-vol-head">VI</th>
                 <th>Var%</th>
                 <th>Vol.</th>
                 <th>Venc.</th>
@@ -452,7 +452,7 @@
                 <th>Strike</th>
                 <th>% Spot</th>
                 <th>Últ.</th>
-                <th>Vol. Ult.</th>
+                <th class="liq-vol-head">VI</th>
                 <th>Var%</th>
                 <th>Vol.</th>
                 <th>Venc.</th>
@@ -655,9 +655,11 @@
   var _liqModal  = document.getElementById('modal-liquidez');
   var _liqBtnsCt = document.getElementById('liq-ticker-btns');
   var _liqCache  = {};
-  document.querySelectorAll('#modal-liquidez .liq-table thead th:nth-child(5)').forEach(function(th){
-    th.textContent = 'Vol. Ult.';
-  });
+  function _setLiqIvVisible(show){
+    document.querySelectorAll('#modal-liquidez .liq-table th:nth-child(5), #modal-liquidez .liq-table td:nth-child(5)').forEach(function(el){
+      el.style.display = show ? '' : 'none';
+    });
+  }
 
   function _visibleTickers(){
     return Array.from(document.querySelectorAll('#rv-tbody tr[data-ticker]'))
@@ -707,7 +709,7 @@
         '<td>'+fmtN(o.strike)+'</td>'+
         '<td>'+spotPctHtml+'</td>'+
         '<td>'+fmtN(o.close)+'</td>'+
-        '<td class="liq-last-vol">'+(o.last_vol!=null ? fmtN(o.last_vol,2) : '—')+'</td>'+
+        '<td class="liq-last-vol">'+(o.last_vol!=null ? fmtN(o.last_vol,2)+'%' : '—')+'</td>'+
         '<td class="liq-col-var" title="'+varText+'" style="color:'+varColor+'">'+varText+'</td>'+
         '<td class="liq-col-vol" title="'+volText+'" style="font-weight:600">'+volText+'</td>'+
         '<td class="liq-col-venc" title="'+venc+'" style="color:var(--text-secondary)">'+venc+'</td>';
@@ -827,6 +829,7 @@
     _liqActiveVenc = null;  // reseta filtro ao carregar novo ticker
     _renderTable('liq-call-tbody', d.calls, '#93c5fd', d.spot_price);
     _renderTable('liq-put-tbody',  d.puts,  '#fca5a5', d.spot_price);
+    _setLiqIvVisible([].concat(d.calls || [], d.puts || []).some(function(o){ return o.last_vol != null; }));
     document.getElementById('liq-tables').style.display = 'flex';
   }
 

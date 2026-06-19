@@ -2097,7 +2097,7 @@ def api_busca_opcao(ticker):
         'iv_ask':           _fz(iv_data.get('ask')),
         'iv_bid':           _fz(iv_data.get('bid')),
         'iv_over_hv':       _fz(iv_data.get('iv_over_hv') or iv_data.get('ratio')),
-        'intrinsic_value':  _fz(iv_data.get('intrinsic_value') or greeks.get('intrinsic_value')),
+        'intrinsic_value':  _f(iv_data.get('intrinsic_value') if iv_data.get('intrinsic_value') is not None else greeks.get('intrinsic_value')),
         'extrinsic_value':  _fz(iv_data.get('extrinsic_value') or greeks.get('extrinsic_value') or greeks.get('time_value')),
         '_raw':             {k: v for k, v in d.items() if not isinstance(v, (dict, list))},
     }

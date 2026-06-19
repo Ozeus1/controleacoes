@@ -995,7 +995,11 @@
       if(d.error){ alert(d.error); return; }
       input.value = '';
       _ensureRvTickerRow(ticker);
-      _renderLiqTickerButtons(_visibleTickers());
+      // _visibleTickers() pode não incluir a nova row antes do repaint;
+      // garante que o ticker novo conste na lista de botões diretamente
+      var tickers = _visibleTickers();
+      if(tickers.indexOf(ticker) === -1) tickers = tickers.concat([ticker]);
+      _renderLiqTickerButtons(tickers);
       _liqSelectedExpiry = null;
       _loadLiqTicker(ticker);
     }).catch(function(e){ alert('Erro ao adicionar ticker: '+e); });

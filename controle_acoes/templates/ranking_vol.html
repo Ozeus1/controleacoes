@@ -97,6 +97,9 @@
     <button class="btn btn-sm" style="background:#7c3aed;color:#fff" onclick="openLiquidez()">
       💧 Ver Liquidez
     </button>
+    <button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="openBuscaLiquidez()">
+      Busca Liquidez
+    </button>
     <button class="btn btn-sm btn-success" onclick="document.getElementById('modal-add-rv').style.display='flex'">
       + Adicionar
     </button>
@@ -667,6 +670,8 @@
   var _liqLimitEl = document.getElementById('liq-limit');
   var _liqCache  = {};
   var _liqCurrentTicker = null;
+  var _liqMode = 'normal';
+  var _liqSelectedExpiry = null;
   function _setLiqIvVisible(show){
     document.querySelectorAll('#modal-liquidez .liq-table th:nth-child(5), #modal-liquidez .liq-table td:nth-child(5)').forEach(function(el){
       el.style.display = show ? '' : 'none';
@@ -743,11 +748,59 @@
     });
   }
 
+  function _renderLiqSearchSummary(d){
+    document.getElementById('liq-loading').style.display = 'none';
+    document.getElementById('liq-tables').style.display = 'none';
+    _setLiqIvVisible(true);
+    var rows = d.expiry_summary || [];
+    var spotHtml = '';
+    if(d.spot_price != null){
+      var chg = d.spot_change != null ? d.spot_change : 0;
+      var chgColor = chg >= 0 ? '#4ade80' : '#f87171';
+      var chgStr = (chg >= 0 ? '+' : '') + parseFloat(chg).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + '%';
+      spotHtml = '<div style="background:rgba(255,255,255,.07);border-radius:6px;padding:.4rem .8rem;display:flex;align-items:center;gap:.5rem">'
+        + '<span style="color:var(--text-secondary);font-size:.8rem">Spot</span>'
+        + '<strong style="font-size:.95rem">R$ '+parseFloat(d.spot_price).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'</strong>'
+        + '<span style="color:'+chgColor+';font-size:.8rem">'+chgStr+'</span>'
+        + '</div>';
+    }
+    var html = '<div style="display:flex;flex-direction:column;gap:.55rem;width:100%">';
+    html += '<div style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:center">'
+      + '<div style="background:var(--hover-bg,#334155);border-radius:6px;padding:.4rem .8rem">'
+      + 'Opções negociadas não vencidas: <strong>'+d.total_options+'</strong></div>'
+      + spotHtml + '</div>';
+    if(!rows.length){
+      html += '<div style="color:var(--text-secondary);padding:.75rem 0">Nenhum vencimento com opções negociadas.</div>';
+    }else{
+      html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:.45rem">';
+      rows.forEach(function(r){
+        html += '<button type="button" class="liq-expiry-link" data-due="'+r.due_date+'" style="text-align:left;background:rgba(148,163,184,.12);border:1px solid var(--border-color);border-radius:6px;color:var(--text-primary);padding:.5rem .65rem;cursor:pointer">'
+          + '<strong>'+fmtDate(r.due_date)+'</strong>'
+          + '<div style="font-size:.78rem;color:#93c5fd;margin-top:.2rem">CALL: '+r.calls+'</div>'
+          + '<div style="font-size:.78rem;color:#fca5a5">PUT: '+r.puts+'</div>'
+          + '</button>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+    document.getElementById('liq-summary').innerHTML = html;
+    document.querySelectorAll('.liq-expiry-link').forEach(function(btn){
+      btn.onclick = function(){
+        _liqSelectedExpiry = btn.dataset.due;
+        _loadLiqTicker(_liqCurrentTicker);
+      };
+    });
+  }
+
   function _loadLiqTicker(ticker){
     _liqCurrentTicker = ticker;
     var limit = parseInt(_liqLimitEl ? _liqLimitEl.value : '30', 10) || 30;
+    var isSearchSummary = _liqMode === 'search' && !_liqSelectedExpiry;
     document.getElementById('liq-title').textContent = '💧 Liquidez — ' + ticker;
     document.getElementById('liq-loading').style.display = 'block';
+    if(_liqMode === 'search'){
+      document.getElementById('liq-title').textContent = 'Busca Liquidez — ' + ticker;
+    }
     document.getElementById('liq-loading').textContent   = 'Buscando dados via OpLab…';
     document.getElementById('liq-tables').style.display  = 'none';
     document.getElementById('liq-summary').innerHTML     = '';
@@ -758,10 +811,18 @@
       b.style.borderColor = active ? '#7c3aed' : '#475569';
     });
 
-    var cacheKey = ticker + ':' + limit;
-    if(_liqCache[cacheKey]){ _renderLiq(_liqCache[cacheKey]); return; }
+    var cacheKey = ticker + ':' + limit + ':' + _liqMode + ':' + (_liqSelectedExpiry || 'summary');
+    if(_liqCache[cacheKey]){
+      if(isSearchSummary) _renderLiqSearchSummary(_liqCache[cacheKey]);
+      else _renderLiq(_liqCache[cacheKey]);
+      return;
+    }
 
-    fetch('/api/liquidez/'+encodeURIComponent(ticker)+'?limit='+encodeURIComponent(limit))
+    var params = 'limit=' + encodeURIComponent(limit);
+    if(isSearchSummary) params += '&summary=1';
+    if(_liqMode === 'search' && _liqSelectedExpiry) params += '&expiry=' + encodeURIComponent(_liqSelectedExpiry);
+
+    fetch('/api/liquidez/'+encodeURIComponent(ticker)+'?'+params)
       .then(function(r){return r.json();})
       .then(function(d){
         if(d.error){
@@ -769,7 +830,8 @@
           return;
         }
         _liqCache[cacheKey] = d;
-        _renderLiq(d);
+        if(isSearchSummary) _renderLiqSearchSummary(d);
+        else _renderLiq(d);
       })
       .catch(function(e){
         document.getElementById('liq-loading').textContent = '✗ Erro: '+e;
@@ -821,7 +883,7 @@
       + '</div>';
 
     // Chips de vencimento clicáveis (filtro toggle)
-    if(d.due_dates && d.due_dates.length){
+    if(_liqMode !== 'search' && d.due_dates && d.due_dates.length){
       var vencRow = document.createElement('div');
       vencRow.style.cssText = 'display:flex;gap:.35rem;flex-wrap:wrap;align-items:center;margin-top:.4rem';
       var lbl = document.createElement('span');
@@ -849,6 +911,8 @@
   }
 
   window.openLiquidez = function(ticker){
+    _liqMode = 'normal';
+    _liqSelectedExpiry = null;
     var tickers = _visibleTickers();
     if(!tickers.length){ alert('Nenhuma ação no ranking.'); return; }
     var first = ticker || tickers[0];
@@ -860,6 +924,26 @@
       btn.style.cssText = 'padding:.1rem .45rem;border:1px solid #475569;border-radius:4px;'+
         'font-size:.72rem;cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap';
       btn.onclick = function(){ _loadLiqTicker(t); };
+      _liqBtnsCt.appendChild(btn);
+    });
+    _liqModal.style.display = 'flex';
+    _loadLiqTicker(first);
+  };
+
+  window.openBuscaLiquidez = function(ticker){
+    _liqMode = 'search';
+    _liqSelectedExpiry = null;
+    var tickers = _visibleTickers();
+    if(!tickers.length){ alert('Nenhuma aÃ§Ã£o no ranking.'); return; }
+    var first = ticker || tickers[0];
+    _liqBtnsCt.innerHTML = '';
+    tickers.slice(0, 30).forEach(function(t){
+      var btn = document.createElement('button');
+      btn.textContent   = t;
+      btn.dataset.t     = t;
+      btn.style.cssText = 'padding:.1rem .45rem;border:1px solid #475569;border-radius:4px;'+
+        'font-size:.72rem;cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap';
+      btn.onclick = function(){ _liqSelectedExpiry = null; _loadLiqTicker(t); };
       _liqBtnsCt.appendChild(btn);
     });
     _liqModal.style.display = 'flex';

@@ -6786,6 +6786,8 @@ def api_liquidez(ticker):
     limit = request.args.get('limit', default=30, type=int)
     if limit not in (30, 40, 60):
         limit = 30
+    expiry_filter = request.args.get('expiry', '').strip()
+    summary_only = request.args.get('summary') == '1'
     token  = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
         return jsonify({'error': 'Token OpLab não configurado. Configure em Perfil → OpLab.'}), 400
@@ -6857,6 +6859,12 @@ def api_liquidez(ticker):
         # extrai só a data se vier datetime
         if due_date and 'T' in str(due_date):
             due_date = str(due_date).split('T')[0]
+        try:
+            due_dt = datetime.strptime(str(due_date)[:10], '%Y-%m-%d').date()
+        except Exception:
+            due_dt = None
+        if not due_dt or due_dt < date.today():
+            continue
 
         row = {
             'symbol':   sym,
@@ -6878,6 +6886,26 @@ def api_liquidez(ticker):
         else:
             calls.append(row)
             vol_total_call += row['volume']
+
+    expiry_summary_map = {}
+    for row in calls:
+        due = row.get('due_date')
+        if due:
+            expiry_summary_map.setdefault(due, {'due_date': due, 'calls': 0, 'puts': 0})
+            expiry_summary_map[due]['calls'] += 1
+    for row in puts:
+        due = row.get('due_date')
+        if due:
+            expiry_summary_map.setdefault(due, {'due_date': due, 'calls': 0, 'puts': 0})
+            expiry_summary_map[due]['puts'] += 1
+    expiry_summary = [expiry_summary_map[k] for k in sorted(expiry_summary_map.keys())]
+
+    if expiry_filter:
+        calls = [row for row in calls if row.get('due_date') == expiry_filter]
+        puts = [row for row in puts if row.get('due_date') == expiry_filter]
+
+    vol_total_call = sum(row['volume'] for row in calls)
+    vol_total_put = sum(row['volume'] for row in puts)
 
     # Ordena por volume desc, retorna o limite selecionado de cada lado
     calls.sort(key=lambda x: x['volume'], reverse=True)
@@ -6945,8 +6973,12 @@ def api_liquidez(ticker):
     for row in calls + puts:
         row['last_vol'] = _calc_option_iv(row)
 
-    selected_calls = calls[:limit]
-    selected_puts = puts[:limit]
+    if summary_only:
+        selected_calls = []
+        selected_puts = []
+    else:
+        selected_calls = calls[:limit]
+        selected_puts = puts[:limit]
     if spot_price:
         def _spot_pct(row):
             strike = row.get('strike')
@@ -6960,9 +6992,11 @@ def api_liquidez(ticker):
         'calls':          selected_calls,
         'puts':           selected_puts,
         'limit':          limit,
+        'expiry':         expiry_filter,
+        'expiry_summary': expiry_summary,
         'vol_total_call': round(vol_total_call, 2),
         'vol_total_put':  round(vol_total_put,  2),
-        'total_options':  len(opt_list),
+        'total_options':  len(calls) + len(puts),
         'spot_price':     spot_price,
         'spot_change':    spot_change,
         'due_dates':      due_dates,

@@ -5,7 +5,7 @@ import sqlite3
 import math
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, SelicMensal, RankingVol
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, SelicMensal, RankingVol, SearchedOption, RtdOptionData
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -1728,6 +1728,17 @@ def _build_ticker_maps(uid):
                 f'{sp.underlying_asset} | {sp.spread_type} short K={sp.leg_short_strike:.2f} | venc {exp_str}'
             )
 
+    # SearchedOption — opções buscadas manualmente (expiram em 10 dias)
+    cutoff = datetime.utcnow() - timedelta(days=10)
+    for so in SearchedOption.query.filter(
+            SearchedOption.user_id == uid,
+            SearchedOption.searched_at >= cutoff).all():
+        if so.ticker:
+            info = f'buscada em {so.searched_at.strftime("%d/%m/%Y")}'
+            if so.underlying:
+                info = f'{so.underlying} | {info}'
+            option_tickers.setdefault(so.ticker.upper(), info)
+
     # ── Formata textos para exibição ────────────────────────────────────────────
     ticker_map_lines = sorted(
         [f'    "{t}": "{t}",  # {tp}' for t, tp in asset_tickers],
@@ -2076,7 +2087,94 @@ def api_busca_opcao(ticker):
         'extrinsic_value':  _f(iv_data.get('extrinsic_value') or greeks.get('extrinsic_value') or greeks.get('time_value')),
         '_raw':             {k: v for k, v in d.items() if not isinstance(v, (dict, list))},
     }
+
+    # ── Mescla com dados do RtdOptionData (importados via Excel) ────────────
+    rtd = RtdOptionData.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+    if rtd:
+        def _merge(key, rtd_val):
+            if result.get(key) is None and rtd_val is not None:
+                result[key] = rtd_val
+        _merge('last',            rtd.last_price)
+        _merge('open',            rtd.open_price)
+        _merge('high',            rtd.high_price)
+        _merge('low',             rtd.low_price)
+        _merge('prev_close',      rtd.prev_close)
+        _merge('change_pct',      rtd.change_pct)
+        _merge('strike',          rtd.strike)
+        _merge('expiration',      rtd.expiration)
+        _merge('volume',          rtd.volume)
+        _merge('open_interest',   rtd.open_interest)
+        _merge('bid',             rtd.bid)
+        _merge('ask',             rtd.ask)
+        _merge('iv',              rtd.iv)
+        _merge('delta',           rtd.delta)
+        _merge('gamma',           rtd.gamma)
+        _merge('theta',           rtd.theta)
+        _merge('rho',             rtd.rho)
+        _merge('vega',            rtd.vega)
+        _merge('bs_price',        rtd.bs_price)
+        _merge('intrinsic_value', rtd.intrinsic_value)
+        _merge('extrinsic_value', rtd.extrinsic_value)
+        _merge('spot_price',      rtd.spot_price)
+        if not result.get('type') and rtd.option_type:
+            result['type'] = rtd.option_type
+        result['_rtd_imported_at'] = rtd.imported_at.strftime('%d/%m/%Y %H:%M') if rtd.imported_at else None
+
+    # ── Salva/atualiza na tabela SearchedOption (lista RTD) ──────────────────
+    # Limpa entradas > 10 dias antes de inserir
+    cutoff = datetime.utcnow() - timedelta(days=10)
+    SearchedOption.query.filter(
+        SearchedOption.user_id == current_user.id,
+        SearchedOption.searched_at < cutoff
+    ).delete()
+    so = SearchedOption.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+    if so:
+        so.searched_at = datetime.utcnow()
+        so.underlying  = underlying or so.underlying
+    else:
+        so = SearchedOption(user_id=current_user.id, ticker=ticker, underlying=underlying or None)
+        db.session.add(so)
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
     return jsonify(result)
+
+
+@app.route('/api/rtd-map')
+@login_required
+def api_rtd_map():
+    """Retorna TICKER_MAP e OPTION_MAP (incluindo SearchedOption) como texto copiável."""
+    _, _, ticker_map_text, option_map_text = _build_ticker_maps(current_user.id)
+    # Lista de opções buscadas ainda ativas (< 10 dias)
+    cutoff = datetime.utcnow() - timedelta(days=10)
+    searched = SearchedOption.query.filter(
+        SearchedOption.user_id == current_user.id,
+        SearchedOption.searched_at >= cutoff
+    ).order_by(SearchedOption.searched_at.desc()).all()
+    searched_list = [
+        {'ticker': s.ticker, 'underlying': s.underlying,
+         'searched_at': s.searched_at.strftime('%d/%m/%Y %H:%M'),
+         'expires_in': max(0, 10 - (datetime.utcnow() - s.searched_at).days)}
+        for s in searched
+    ]
+    return jsonify({
+        'ticker_map': ticker_map_text,
+        'option_map': option_map_text,
+        'searched_options': searched_list,
+    })
+
+
+@app.route('/api/rtd-map/searched/delete/<ticker>', methods=['POST'])
+@login_required
+def api_rtd_map_searched_delete(ticker):
+    """Remove manualmente uma opção da lista RTD buscada."""
+    so = SearchedOption.query.filter_by(user_id=current_user.id, ticker=ticker.upper()).first()
+    if so:
+        db.session.delete(so)
+        db.session.commit()
+    return jsonify({'ok': True})
 
 
 @app.route('/rolagem-opcoes')
@@ -6179,6 +6277,69 @@ def importar_excel():
             if v is not None:
                 sp.underlying_change = v
 
+    # ── 8. Persiste dados de opções em RtdOptionData (cache para Busca de Opção) ──
+    # Sheets de opções: rtd e opcao (colunas padrão), C_put, V_put, C_Call_ITM
+    # Colunas padrão (rtd/opcao): 0=ticker,1=open,2=high,3=last,4=low,5=prev_close,
+    #   6=bid,7=ask,8=strike,9=change_pct,11=name,18=expiration,22=iv,23=delta,24=gamma
+    # Colunas extra (C_put/V_put): 0=ticker,3=last,8=strike,14=expiration,
+    #   17=delta,18=gamma,19=theta,22=intrinsic,23=extrinsic
+    rtd_count = 0
+    rtd_now   = datetime.utcnow()
+    uid_rtd   = current_user.id
+
+    def _save_rtd_row(key, row, sheet_name):
+        nonlocal rtd_count
+        if not key or len(key) < 5:   # tickers de ações têm < 5 chars — pula
+            return
+        # Heurística: opções têm 8+ chars (PETRH230) ou nome começa com "Opc"
+        name = row[11] if len(row) > 11 else ''
+        is_opt = (len(key) >= 6 and not key.endswith('11') and not key.endswith('3') and not key.endswith('4')) \
+                 or _is_option(name)
+        if not is_opt:
+            return
+        try:
+            rec = RtdOptionData.query.filter_by(user_id=uid_rtd, ticker=key).first()
+            if not rec:
+                rec = RtdOptionData(user_id=uid_rtd, ticker=key)
+                db.session.add(rec)
+            if sheet_name in ('rtd', 'opcao'):
+                rec.open_price  = _float(row[1]) if len(row) > 1 else rec.open_price
+                rec.high_price  = _float(row[2]) if len(row) > 2 else rec.high_price
+                rec.last_price  = _float(row[3]) if len(row) > 3 else rec.last_price
+                rec.low_price   = _float(row[4]) if len(row) > 4 else rec.low_price
+                rec.prev_close  = _float(row[5]) if len(row) > 5 else rec.prev_close
+                rec.bid         = _float(row[6]) if len(row) > 6 else rec.bid
+                rec.ask         = _float(row[7]) if len(row) > 7 else rec.ask
+                rec.strike      = _float(row[8]) if len(row) > 8 else rec.strike
+                rec.change_pct  = _float(row[9]) if len(row) > 9 else rec.change_pct
+                if len(row) > 18 and row[18]:
+                    v = row[18]
+                    rec.expiration = v.strftime('%d/%m/%Y') if hasattr(v, 'strftime') else str(v)
+                rec.iv          = _float(row[22]) if len(row) > 22 else rec.iv
+                rec.delta       = _float(row[23]) if len(row) > 23 else rec.delta
+                rec.gamma       = _float(row[24]) if len(row) > 24 else rec.gamma
+            elif sheet_name in ('C_put', 'V_put', 'C_Call_ITM'):
+                rec.last_price      = _float(row[3]) if len(row) > 3 else rec.last_price
+                rec.strike          = _float(row[8]) if len(row) > 8 else rec.strike
+                if len(row) > 14 and row[14]:
+                    v = row[14]
+                    rec.expiration = v.strftime('%d/%m/%Y') if hasattr(v, 'strftime') else str(v)
+                rec.delta           = _float(row[17]) if len(row) > 17 else rec.delta
+                rec.gamma           = _float(row[18]) if len(row) > 18 else rec.gamma
+                rec.theta           = _float(row[19]) if len(row) > 19 else rec.theta
+                rec.intrinsic_value = _float(row[22]) if len(row) > 22 else rec.intrinsic_value
+                rec.extrinsic_value = _float(row[23]) if len(row) > 23 else rec.extrinsic_value
+            rec.imported_at = rtd_now
+            rtd_count += 1
+        except Exception:
+            pass
+
+    for sheet_name in ('rtd', 'opcao', 'C_put', 'V_put', 'C_Call_ITM'):
+        if sheet_name in wb.sheetnames:
+            for row in wb[sheet_name].iter_rows(min_row=2, values_only=True):
+                if row[0]:
+                    _save_rtd_row(str(row[0]).upper().strip(), row, sheet_name)
+
     try:
         db.session.commit()
     except Exception as e:
@@ -6188,7 +6349,7 @@ def importar_excel():
 
     msg = (f'Atualizado: {ativos_atualizados} ativo(s), {opcoes_atualizadas} opção(ões), '
            f'{spreads_atualizados} spread(s), {estruturadas_atualizadas} op. estruturada(s) '
-           f'e {estudo_opcoes_atualizados} estudo(s).')
+           f'e {estudo_opcoes_atualizados} estudo(s). RTD: {rtd_count} opção(ões) salvas.')
     if nao_encontrados_ativos:
         msg += f' Não encontrados: {", ".join(nao_encontrados_ativos[:10])}'
         if len(nao_encontrados_ativos) > 10:

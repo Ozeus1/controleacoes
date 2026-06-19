@@ -497,3 +497,50 @@ class UserChartLine(db.Model):
     color   = db.Column(db.String(10), default='#3b82f6')
     width   = db.Column(db.Float, default=1.5)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class SearchedOption(db.Model):
+    """Opções pesquisadas pelo usuário na tela Busca de Opção.
+    Ficam na lista RTD por 10 dias e são limpas automaticamente na próxima busca."""
+    __tablename__ = 'searched_option'
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ticker     = db.Column(db.String(20), nullable=False)
+    underlying = db.Column(db.String(20), nullable=True)
+    searched_at = db.Column(db.DateTime, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('user_id', 'ticker', name='uq_searched_option'),)
+
+
+class RtdOptionData(db.Model):
+    """Dados de opções importados da planilha Excel (sheets rtd/opcao/C_put/V_put).
+    Serve como cache local para preencher campos que a OpLab não retorna."""
+    __tablename__ = 'rtd_option_data'
+    id              = db.Column(db.Integer, primary_key=True)
+    user_id         = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ticker          = db.Column(db.String(20), nullable=False)
+    underlying      = db.Column(db.String(20), nullable=True)
+    last_price      = db.Column(db.Float, nullable=True)
+    open_price      = db.Column(db.Float, nullable=True)
+    high_price      = db.Column(db.Float, nullable=True)
+    low_price       = db.Column(db.Float, nullable=True)
+    prev_close      = db.Column(db.Float, nullable=True)
+    change_pct      = db.Column(db.Float, nullable=True)
+    strike          = db.Column(db.Float, nullable=True)
+    expiration      = db.Column(db.String(20), nullable=True)   # DD/MM/YYYY
+    volume          = db.Column(db.Float, nullable=True)
+    open_interest   = db.Column(db.Float, nullable=True)
+    bid             = db.Column(db.Float, nullable=True)
+    ask             = db.Column(db.Float, nullable=True)
+    iv              = db.Column(db.Float, nullable=True)        # Volatilidade Implícita %
+    delta           = db.Column(db.Float, nullable=True)
+    gamma           = db.Column(db.Float, nullable=True)
+    theta           = db.Column(db.Float, nullable=True)
+    rho             = db.Column(db.Float, nullable=True)
+    vega            = db.Column(db.Float, nullable=True)
+    bs_price        = db.Column(db.Float, nullable=True)
+    intrinsic_value = db.Column(db.Float, nullable=True)
+    extrinsic_value = db.Column(db.Float, nullable=True)
+    spot_price      = db.Column(db.Float, nullable=True)
+    option_type     = db.Column(db.String(10), nullable=True)   # CALL / PUT
+    imported_at     = db.Column(db.DateTime, default=datetime.utcnow)
+    __table_args__ = (db.UniqueConstraint('user_id', 'ticker', name='uq_rtd_option_data'),)

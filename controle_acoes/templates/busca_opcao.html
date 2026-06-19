@@ -3,7 +3,7 @@
 {% block extra_scripts %}
 <style>
 #bo-wrap{max-width:960px;margin:0 auto;}
-#bo-search{display:flex;gap:.6rem;align-items:center;margin-bottom:1.5rem;}
+#bo-search{display:flex;gap:.6rem;align-items:center;margin-bottom:1.2rem;flex-wrap:wrap;}
 #bo-ticker{text-transform:uppercase;background:var(--input-bg,#0f172a);border:1px solid var(--border-color);
   color:var(--text-primary);border-radius:8px;padding:.45rem .9rem;font-size:1rem;width:160px;
   letter-spacing:.05em;}
@@ -11,6 +11,9 @@
 #bo-btn{background:#7c3aed;border:0;border-radius:8px;color:#fff;padding:.46rem 1.2rem;
   font-size:.95rem;cursor:pointer;font-weight:600;transition:background .15s;}
 #bo-btn:hover{background:#6d28d9;}
+#bo-rtd-btn{background:#0369a1;border:0;border-radius:8px;color:#fff;padding:.46rem 1.1rem;
+  font-size:.88rem;cursor:pointer;font-weight:600;transition:background .15s;}
+#bo-rtd-btn:hover{background:#075985;}
 #bo-loading{display:none;color:var(--text-secondary);font-size:.88rem;}
 #bo-error{display:none;color:#f87171;font-size:.9rem;background:rgba(248,113,113,.08);
   border-left:3px solid #f87171;padding:.5rem .9rem;border-radius:4px;margin-bottom:.8rem;}
@@ -26,6 +29,7 @@
 .bo-badge.put{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.3);}
 .bo-badge.mat{background:rgba(148,163,184,.1);color:#94a3b8;border:1px solid rgba(148,163,184,.25);}
 .bo-badge.days{background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.25);}
+.bo-badge.rtd{background:rgba(14,165,233,.1);color:#38bdf8;border:1px solid rgba(14,165,233,.25);}
 .bo-price{font-size:1.7rem;font-weight:700;color:var(--text-primary);}
 .bo-var{font-size:1rem;font-weight:600;margin-left:.5rem;}
 .bo-var.pos{color:#34d399;} .bo-var.neg{color:#f87171;}
@@ -46,6 +50,28 @@
 .bo-card table td.pos{color:#34d399;font-weight:600;}
 .bo-card table td.neg{color:#f87171;font-weight:600;}
 
+/* ── Painel RTD ── */
+#rtd-panel{background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);
+  border-radius:10px;padding:1rem 1.1rem;margin-bottom:1.2rem;display:none;}
+#rtd-panel h3{margin:0 0 .6rem 0;font-size:.9rem;font-weight:700;color:var(--text-primary);}
+.rtd-searched-list{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.7rem;}
+.rtd-searched-chip{display:inline-flex;align-items:center;gap:.25rem;
+  background:#0c4a6e;border:1px solid #0369a1;border-radius:5px;
+  padding:.15rem .45rem;font-size:.75rem;color:#bae6fd;}
+.rtd-searched-chip button{background:none;border:none;color:#f87171;cursor:pointer;
+  font-size:.8rem;line-height:1;padding:0 .1rem;}
+.rtd-map-block{position:relative;}
+.rtd-map-block pre{background:#0f172a;border:1px solid var(--border-color);border-radius:6px;
+  padding:.7rem;font-size:.7rem;color:#94a3b8;overflow-x:auto;white-space:pre;
+  max-height:220px;overflow-y:auto;}
+.rtd-copy-btn{position:absolute;top:.4rem;right:.4rem;background:#334155;border:1px solid #475569;
+  border-radius:5px;color:#e2e8f0;font-size:.72rem;padding:.2rem .55rem;cursor:pointer;}
+.rtd-copy-btn:hover{background:#475569;}
+.rtd-tabs{display:flex;gap:.4rem;margin-bottom:.5rem;}
+.rtd-tab{padding:.22rem .75rem;border:1px solid #475569;border-radius:5px;font-size:.78rem;
+  cursor:pointer;color:#94a3b8;background:transparent;}
+.rtd-tab.active{background:#1d4ed8;border-color:#1d4ed8;color:#fff;font-weight:600;}
+
 /* ── Raw ── */
 #bo-raw-toggle{font-size:.78rem;color:var(--text-secondary);cursor:pointer;
   text-decoration:underline;opacity:.6;margin-top:.8rem;display:inline-block;}
@@ -56,12 +82,12 @@
 
 {% block content %}
 <div id="bo-wrap">
-  <div style="margin-bottom:1.2rem;">
-    <h2 style="font-size:1.3rem;font-weight:700;color:var(--text-primary);margin:0 0 .25rem 0;">
+  <div style="margin-bottom:1rem;">
+    <h2 style="font-size:1.3rem;font-weight:700;color:var(--text-primary);margin:0 0 .2rem 0;">
       🔍 Busca de Opção
     </h2>
-    <p style="color:var(--text-secondary);font-size:.88rem;margin:0;">
-      Digite o código da opção (ex: LRENG150, PETRH230) para ver a ficha completa via OpLab.
+    <p style="color:var(--text-secondary);font-size:.85rem;margin:0;">
+      Busca via OpLab. A opção buscada é adicionada à lista RTD por 10 dias.
     </p>
   </div>
 
@@ -69,13 +95,37 @@
     <input id="bo-ticker" type="text" placeholder="Ex: PETRH230" maxlength="12" autocomplete="off"
            oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')buscar()">
     <button id="bo-btn" onclick="buscar()">Buscar</button>
+    <button id="bo-rtd-btn" onclick="toggleRtdPanel()">📋 Lista RTD / config.py</button>
     <span id="bo-loading">⏳ Buscando…</span>
   </div>
   <div id="bo-error"></div>
 
+  <!-- Painel RTD -->
+  <div id="rtd-panel">
+    <h3>📋 Lista RTD — tickers para config.py</h3>
+    <div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:.6rem;">
+      Opções buscadas nos últimos 10 dias (removidas automaticamente após expiração):
+    </div>
+    <div class="rtd-searched-list" id="rtd-searched-list">
+      <span style="color:var(--text-secondary);font-size:.8rem;">Carregando…</span>
+    </div>
+    <div class="rtd-tabs">
+      <button class="rtd-tab active" onclick="showRtdTab('ticker')">TICKER_MAP</button>
+      <button class="rtd-tab" onclick="showRtdTab('option')">OPTION_MAP</button>
+    </div>
+    <div class="rtd-map-block">
+      <pre id="rtd-map-text">Carregando…</pre>
+      <button class="rtd-copy-btn" onclick="copyRtd()">Copiar</button>
+    </div>
+    <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.5rem;">
+      Cole o bloco correspondente no arquivo <code>config.py</code> do MT5 Feeder.
+      Ativos: ações + FIIs da carteira + subjacentes de opções ativas.
+      Opções: todas as operações abertas + opções buscadas aqui (10 dias).
+    </div>
+  </div>
+
   <!-- Ficha -->
   <div id="bo-ficha">
-
     <!-- Cabeçalho -->
     <div class="bo-header">
       <div>
@@ -172,6 +222,10 @@
 </div>
 
 <script>
+var _rtdData = {ticker_map:'', option_map:'', searched_options:[]};
+var _rtdTab  = 'ticker';
+var _rtdLoaded = false;
+
 function buscar(){
   var t = document.getElementById('bo-ticker').value.trim().toUpperCase();
   if(!t){ return; }
@@ -185,12 +239,94 @@ function buscar(){
       _setLoading(false);
       if(!res.ok){ _setError(res.j.error || 'Erro desconhecido.'); return; }
       _render(res.j);
+      // Recarrega painel RTD se estiver aberto (ticker foi adicionado)
+      if(document.getElementById('rtd-panel').style.display !== 'none'){
+        _loadRtd();
+      }
     })
     .catch(function(e){ _setLoading(false); _setError('Erro: ' + e.message); });
 }
 
+/* ── Painel RTD ── */
+function toggleRtdPanel(){
+  var panel = document.getElementById('rtd-panel');
+  if(panel.style.display === 'none' || panel.style.display === ''){
+    panel.style.display = 'block';
+    if(!_rtdLoaded) _loadRtd();
+  } else {
+    panel.style.display = 'none';
+  }
+}
+
+function _loadRtd(){
+  document.getElementById('rtd-map-text').textContent = 'Carregando…';
+  document.getElementById('rtd-searched-list').innerHTML = '<span style="color:var(--text-secondary);font-size:.8rem">Carregando…</span>';
+  fetch('/api/rtd-map')
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      _rtdData = d;
+      _rtdLoaded = true;
+      _renderRtdSearched(d.searched_options || []);
+      _renderRtdMap();
+    })
+    .catch(function(e){
+      document.getElementById('rtd-map-text').textContent = 'Erro: ' + e.message;
+    });
+}
+
+function _renderRtdSearched(list){
+  var ct = document.getElementById('rtd-searched-list');
+  if(!list.length){
+    ct.innerHTML = '<span style="color:var(--text-secondary);font-size:.8rem">Nenhuma opção buscada nos últimos 10 dias.</span>';
+    return;
+  }
+  ct.innerHTML = '';
+  list.forEach(function(s){
+    var chip = document.createElement('span');
+    chip.className = 'rtd-searched-chip';
+    chip.innerHTML = '<span>' + s.ticker + '</span>'
+      + '<span style="opacity:.6;font-size:.7rem;margin-left:.2rem">(' + s.expires_in + 'd)</span>'
+      + '<button title="Remover" onclick="removeSearched(\'' + s.ticker + '\')">×</button>';
+    ct.appendChild(chip);
+  });
+}
+
+function removeSearched(ticker){
+  fetch('/api/rtd-map/searched/delete/' + ticker, {method:'POST',
+    headers:{'X-CSRFToken':document.querySelector('meta[name=csrf-token]')?.content||''}})
+  .then(function(){ _rtdLoaded = false; _loadRtd(); })
+  .catch(function(){});
+}
+
+function showRtdTab(tab){
+  _rtdTab = tab;
+  document.querySelectorAll('.rtd-tab').forEach(function(b){
+    b.classList.toggle('active', b.textContent.toLowerCase().includes(tab));
+  });
+  _renderRtdMap();
+}
+
+function _renderRtdMap(){
+  var txt = _rtdTab === 'ticker' ? _rtdData.ticker_map : _rtdData.option_map;
+  document.getElementById('rtd-map-text').textContent = txt || '(vazio)';
+}
+
+function copyRtd(){
+  var txt = document.getElementById('rtd-map-text').textContent;
+  navigator.clipboard.writeText(txt).then(function(){
+    var btn = document.querySelector('.rtd-copy-btn');
+    var orig = btn.textContent;
+    btn.textContent = '✓ Copiado!';
+    setTimeout(function(){ btn.textContent = orig; }, 1800);
+  }).catch(function(){
+    var ta = document.createElement('textarea');
+    ta.value = txt; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+  });
+}
+
+/* ── Ficha ── */
 function _render(d){
-  // ── Header ──
   _set('f-ticker', d.ticker);
 
   var isPut  = /put/i.test(d.type) || d.type === 'P';
@@ -198,23 +334,21 @@ function _render(d){
   badge.textContent = isPut ? 'PUT' : 'CALL';
   badge.className   = 'bo-badge ' + (isPut ? 'put' : 'call');
 
-  // badges extras: exercício e dias
   var bc = document.getElementById('f-badges');
   bc.innerHTML = '';
   if(d.maturity_type){
     var mb = document.createElement('span');
-    mb.className = 'bo-badge mat';
-    mb.textContent = d.maturity_type;
-    bc.appendChild(mb);
+    mb.className = 'bo-badge mat'; mb.textContent = d.maturity_type; bc.appendChild(mb);
   }
   if(d.days_to_maturity != null){
-    var db = document.createElement('span');
-    db.className = 'bo-badge days';
-    db.textContent = d.days_to_maturity + 'd p/ vencer';
-    bc.appendChild(db);
+    var db2 = document.createElement('span');
+    db2.className = 'bo-badge days'; db2.textContent = d.days_to_maturity + 'd p/ vencer'; bc.appendChild(db2);
+  }
+  if(d._rtd_imported_at){
+    var rb = document.createElement('span');
+    rb.className = 'bo-badge rtd'; rb.textContent = '📊 RTD ' + d._rtd_imported_at; bc.appendChild(rb);
   }
 
-  // preço
   _set('f-last', _fBRL(d.last));
   var varEl = document.getElementById('f-var');
   if(d.change_pct != null){
@@ -223,11 +357,10 @@ function _render(d){
     varEl.className   = 'bo-var ' + (d.change_pct >= 0 ? 'pos' : 'neg');
   } else { varEl.textContent = ''; varEl.className = 'bo-var'; }
 
-  _set('f-bid-ask',     'Bid: ' + _fBRL(d.bid) + '  |  Ask: ' + _fBRL(d.ask));
+  _set('f-bid-ask', 'Bid: ' + _fBRL(d.bid) + '  |  Ask: ' + _fBRL(d.ask));
   if(d.bid_volume != null || d.ask_volume != null)
     _set('f-bid-ask-vol', 'Vol Bid: ' + _fNum(d.bid_volume) + '  |  Vol Ask: ' + _fNum(d.ask_volume));
 
-  // underlying line
   var ul = document.getElementById('f-underlying-line');
   if(d.underlying){
     var txt = 'Subjacente: ' + d.underlying;
@@ -239,7 +372,6 @@ function _render(d){
     ul.textContent = txt;
   } else { ul.textContent = ''; }
 
-  // ── Cards ──
   _set('f-open',      _fBRL(d.open));
   _set('f-high',      _fBRL(d.high));
   _set('f-low',       _fBRL(d.low));
@@ -275,11 +407,9 @@ function _render(d){
   _set('f-intrinsic', _fBRL(d.intrinsic_value));
   _set('f-extrinsic', _fBRL(d.extrinsic_value));
 
-  // raw
   document.getElementById('bo-raw').textContent = JSON.stringify(d._raw || d, null, 2);
   document.getElementById('bo-raw-toggle').textContent = '▶ Ver dados brutos da API';
   document.getElementById('bo-raw').style.display = 'none';
-
   document.getElementById('bo-ficha').style.display = 'block';
 }
 
@@ -291,10 +421,11 @@ function _set(id, val){
 function _setVar(id, v){
   var el = document.getElementById(id);
   if(!el) return;
-  if(v == null){ el.textContent = '—'; el.className = ''; return; }
+  if(v == null){ el.textContent = '—'; el.style.color=''; return; }
   var sign = v >= 0 ? '+' : '';
   el.textContent = sign + v.toFixed(2) + '%';
-  el.className = v >= 0 ? 'pos' : 'neg';
+  el.style.color = v >= 0 ? '#34d399' : '#f87171';
+  el.style.fontWeight = '600';
 }
 function _fBRL(v){
   if(v == null) return '—';
@@ -306,7 +437,7 @@ function _fNum(v){
 }
 function _fPct(v){
   if(v == null) return '—';
-  var pct = v <= 1 ? v * 100 : v;   // normaliza 0.35 → 35%
+  var pct = v <= 1 ? v * 100 : v;
   return pct.toFixed(2) + '%';
 }
 function _fDate(s){
@@ -320,8 +451,7 @@ function _setLoading(on){
 }
 function _setError(msg){
   var el = document.getElementById('bo-error');
-  el.textContent = msg;
-  el.style.display = msg ? 'block' : 'none';
+  el.textContent = msg; el.style.display = msg ? 'block' : 'none';
 }
 function toggleRaw(){
   var el  = document.getElementById('bo-raw');

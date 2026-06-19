@@ -6805,18 +6805,22 @@ def api_liquidez(ticker):
     calls, puts = [], []
     vol_total_call = vol_total_put = 0.0
 
-    def _extract_option_iv(opt):
+    def _extract_option_last_vol(opt):
         nested = [opt]
-        for key in ('greeks', 'iv', 'implied_volatility', 'volatility', 'metrics'):
+        for key in ('greeks', 'iv', 'implied_volatility', 'volatility', 'metrics', 'volumes'):
             val = opt.get(key)
             if isinstance(val, dict):
                 nested.append(val)
         for src in nested:
             for key in (
-                'iv', 'implied_volatility', 'vol_impl', 'volatility',
-                'sigma', 'theoretical_volatility', 'impvol', 'impliedVolatility',
-                'iv_current', 'current_iv', 'close_iv', 'ewma_current',
-                'ewma_1y', 'implied_volatility_current'
+                'last_volatility', 'volatility_last', 'lastVolatility',
+                'vol_last', 'last_vol', 'vol_ultima', 'vol_ultimo',
+                'volUltima', 'volUltimo', 'volatility_close',
+                'close_volatility', 'closeVolatility', 'vol_close',
+                'last_trade_volatility', 'lastTradeVolatility',
+                'volatility_last_trade', 'last_trade_iv',
+                'last_iv', 'iv_last', 'volatility', 'vol',
+                'option_volatility', 'implied_volatility'
             ):
                 val = src.get(key)
                 if val in (None, '', '-'):
@@ -6825,7 +6829,7 @@ def api_liquidez(ticker):
                     num = float(val)
                     if num <= 0:
                         continue
-                    return round(num * 100, 1) if num <= 1 else round(num, 1)
+                    return round(num * 100, 2) if num <= 1 else round(num, 2)
                 except (TypeError, ValueError):
                     continue
         return None
@@ -6849,7 +6853,7 @@ def api_liquidez(ticker):
             'symbol':   sym,
             'strike':   round(float(strike), 2) if strike else None,
             'close':    round(float(close),  2) if close  else None,
-            'iv':       _extract_option_iv(o),
+            'last_vol': _extract_option_last_vol(o),
             'volume':   round(float(volume), 2) if volume else 0,
             'open_int': int(open_int) if open_int else 0,
             'var_pct':  round(float(var_pct), 2) if var_pct else 0,

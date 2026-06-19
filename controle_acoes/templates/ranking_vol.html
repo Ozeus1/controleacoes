@@ -73,7 +73,7 @@
     overflow: visible !important;
     text-overflow: clip !important;
   }
-  #modal-liquidez .liq-iv {
+  #modal-liquidez .liq-last-vol {
     color: #c4b5fd;
     font-weight: 700;
   }
@@ -410,7 +410,7 @@
               <col style="width:10%">
               <col style="width:12%">
               <col style="width:10%">
-              <col style="width:8%">
+              <col style="width:10%">
               <col style="width:15%">
               <col style="width:13%">
               <col style="width:13%">
@@ -421,7 +421,7 @@
                 <th>Strike</th>
                 <th>% Spot</th>
                 <th>Últ.</th>
-                <th>IV</th>
+                <th>Vol. Ult.</th>
                 <th>Var%</th>
                 <th>Vol.</th>
                 <th>Venc.</th>
@@ -441,7 +441,7 @@
               <col style="width:10%">
               <col style="width:12%">
               <col style="width:10%">
-              <col style="width:8%">
+              <col style="width:10%">
               <col style="width:15%">
               <col style="width:13%">
               <col style="width:13%">
@@ -452,7 +452,7 @@
                 <th>Strike</th>
                 <th>% Spot</th>
                 <th>Últ.</th>
-                <th>IV</th>
+                <th>Vol. Ult.</th>
                 <th>Var%</th>
                 <th>Vol.</th>
                 <th>Venc.</th>
@@ -655,6 +655,9 @@
   var _liqModal  = document.getElementById('modal-liquidez');
   var _liqBtnsCt = document.getElementById('liq-ticker-btns');
   var _liqCache  = {};
+  document.querySelectorAll('#modal-liquidez .liq-table thead th:nth-child(5)').forEach(function(th){
+    th.textContent = 'Vol. Ult.';
+  });
 
   function _visibleTickers(){
     return Array.from(document.querySelectorAll('#rv-tbody tr[data-ticker]'))
@@ -704,7 +707,7 @@
         '<td>'+fmtN(o.strike)+'</td>'+
         '<td>'+spotPctHtml+'</td>'+
         '<td>'+fmtN(o.close)+'</td>'+
-        '<td class="liq-iv">'+(o.iv!=null ? fmtN(o.iv,1)+'%' : '—')+'</td>'+
+        '<td class="liq-last-vol">'+(o.last_vol!=null ? fmtN(o.last_vol,2) : '—')+'</td>'+
         '<td class="liq-col-var" title="'+varText+'" style="color:'+varColor+'">'+varText+'</td>'+
         '<td class="liq-col-vol" title="'+volText+'" style="font-weight:600">'+volText+'</td>'+
         '<td class="liq-col-venc" title="'+venc+'" style="color:var(--text-secondary)">'+venc+'</td>';

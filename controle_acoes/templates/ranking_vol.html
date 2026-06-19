@@ -391,7 +391,17 @@
     </div>
 
     <!-- Resumo volumes -->
-    <div id="liq-summary" style="display:flex;gap:1rem;flex-wrap:wrap;font-size:.85rem"></div>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:.75rem;flex-wrap:wrap">
+      <div id="liq-summary" style="display:flex;gap:1rem;flex-wrap:wrap;font-size:.85rem;flex:1;min-width:260px"></div>
+      <label style="display:flex;align-items:center;gap:.35rem;font-size:.8rem;color:var(--text-secondary)">
+        Linhas
+        <select id="liq-limit" style="background:var(--input-bg,#0f172a);border:1px solid var(--border-color);color:var(--text-primary);border-radius:5px;padding:.2rem .35rem">
+          <option value="30" selected>30</option>
+          <option value="40">40</option>
+          <option value="60">60</option>
+        </select>
+      </label>
+    </div>
 
     <!-- Loading / erro -->
     <div id="liq-loading" style="text-align:center;padding:2rem;color:var(--text-secondary)">
@@ -465,7 +475,7 @@
     </div>
 
     <p style="font-size:.72rem;color:var(--text-secondary);margin:0">
-      Fonte: OpLab — top 20 opções por volume financeiro. Sem liquidez expressiva = opção difícil de negociar.
+      Fonte: OpLab — opções por volume financeiro conforme limite selecionado. Sem liquidez expressiva = opção difícil de negociar.
     </p>
   </div>
 </div>
@@ -654,7 +664,9 @@
   // ── Modal Liquidez OpLab ───────────────────────────────────────
   var _liqModal  = document.getElementById('modal-liquidez');
   var _liqBtnsCt = document.getElementById('liq-ticker-btns');
+  var _liqLimitEl = document.getElementById('liq-limit');
   var _liqCache  = {};
+  var _liqCurrentTicker = null;
   function _setLiqIvVisible(show){
     document.querySelectorAll('#modal-liquidez .liq-table th:nth-child(5), #modal-liquidez .liq-table td:nth-child(5)').forEach(function(el){
       el.style.display = show ? '' : 'none';
@@ -732,6 +744,8 @@
   }
 
   function _loadLiqTicker(ticker){
+    _liqCurrentTicker = ticker;
+    var limit = parseInt(_liqLimitEl ? _liqLimitEl.value : '30', 10) || 30;
     document.getElementById('liq-title').textContent = '💧 Liquidez — ' + ticker;
     document.getElementById('liq-loading').style.display = 'block';
     document.getElementById('liq-loading').textContent   = 'Buscando dados via OpLab…';
@@ -744,16 +758,17 @@
       b.style.borderColor = active ? '#7c3aed' : '#475569';
     });
 
-    if(_liqCache[ticker]){ _renderLiq(_liqCache[ticker]); return; }
+    var cacheKey = ticker + ':' + limit;
+    if(_liqCache[cacheKey]){ _renderLiq(_liqCache[cacheKey]); return; }
 
-    fetch('/api/liquidez/'+encodeURIComponent(ticker))
+    fetch('/api/liquidez/'+encodeURIComponent(ticker)+'?limit='+encodeURIComponent(limit))
       .then(function(r){return r.json();})
       .then(function(d){
         if(d.error){
           document.getElementById('liq-loading').textContent = '✗ '+d.error;
           return;
         }
-        _liqCache[ticker] = d;
+        _liqCache[cacheKey] = d;
         _renderLiq(d);
       })
       .catch(function(e){
@@ -850,6 +865,14 @@
     _liqModal.style.display = 'flex';
     _loadLiqTicker(first);
   };
+
+  if(_liqLimitEl){
+    _liqLimitEl.addEventListener('change', function(){
+      if(_liqCurrentTicker){
+        _loadLiqTicker(_liqCurrentTicker);
+      }
+    });
+  }
 
   window.closeLiquidez = function(){
     _liqModal.style.display = 'none';

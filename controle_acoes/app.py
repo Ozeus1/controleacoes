@@ -6783,6 +6783,9 @@ def api_liquidez(ticker):
     """Retorna liquidez de opções de um ativo via OpLab /market/options/{ticker}."""
     from flask import jsonify
     ticker = ticker.strip().upper()
+    limit = request.args.get('limit', default=30, type=int)
+    if limit not in (30, 40, 60):
+        limit = 30
     token  = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
         return jsonify({'error': 'Token OpLab não configurado. Configure em Perfil → OpLab.'}), 400
@@ -6870,7 +6873,7 @@ def api_liquidez(ticker):
             calls.append(row)
             vol_total_call += row['volume']
 
-    # Ordena por volume desc, retorna top 20 de cada
+    # Ordena por volume desc, retorna o limite selecionado de cada lado
     calls.sort(key=lambda x: x['volume'], reverse=True)
     puts.sort(key=lambda x: x['volume'], reverse=True)
 
@@ -6936,12 +6939,15 @@ def api_liquidez(ticker):
     for row in calls + puts:
         row['last_vol'] = _calc_option_iv(row)
 
-    due_dates = sorted({o['due_date'] for o in calls[:20] + puts[:20] if o.get('due_date')})
+    selected_calls = calls[:limit]
+    selected_puts = puts[:limit]
+    due_dates = sorted({o['due_date'] for o in selected_calls + selected_puts if o.get('due_date')})
 
     return jsonify({
         'ticker':         ticker,
-        'calls':          calls[:20],
-        'puts':           puts[:20],
+        'calls':          selected_calls,
+        'puts':           selected_puts,
+        'limit':          limit,
         'vol_total_call': round(vol_total_call, 2),
         'vol_total_put':  round(vol_total_put,  2),
         'total_options':  len(opt_list),

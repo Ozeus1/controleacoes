@@ -2,87 +2,120 @@
 {% block title %}Busca de Opção{% endblock %}
 {% block extra_scripts %}
 <style>
-#bo-wrap{max-width:960px;margin:0 auto;}
-#bo-search{display:flex;gap:.6rem;align-items:center;margin-bottom:1.2rem;flex-wrap:wrap;}
-#bo-ticker{text-transform:uppercase;background:var(--input-bg,#0f172a);border:1px solid var(--border-color);
-  color:var(--text-primary);border-radius:8px;padding:.45rem .9rem;font-size:1rem;width:160px;
-  letter-spacing:.05em;}
-#bo-ticker::placeholder{text-transform:none;color:var(--text-secondary);}
-#bo-btn{background:#7c3aed;border:0;border-radius:8px;color:#fff;padding:.46rem 1.2rem;
-  font-size:.95rem;cursor:pointer;font-weight:600;transition:background .15s;}
-#bo-btn:hover{background:#6d28d9;}
-#bo-rtd-btn{background:#0369a1;border:0;border-radius:8px;color:#fff;padding:.46rem 1.1rem;
-  font-size:.88rem;cursor:pointer;font-weight:600;transition:background .15s;}
-#bo-rtd-btn:hover{background:#075985;}
-#bo-loading{display:none;color:var(--text-secondary);font-size:.88rem;}
-#bo-error{display:none;color:#f87171;font-size:.9rem;background:rgba(248,113,113,.08);
-  border-left:3px solid #f87171;padding:.5rem .9rem;border-radius:4px;margin-bottom:.8rem;}
+/* ── Wrapper ── */
+#bo-wrap{max-width:980px;margin:0 auto;padding:0 .5rem;box-sizing:border-box;}
 
-/* ── Ficha ── */
+/* ── Barra de busca ── */
+#bo-search{display:flex;gap:.5rem;align-items:center;margin-bottom:1rem;flex-wrap:wrap;}
+#bo-ticker{text-transform:uppercase;background:var(--input-bg,#0f172a);
+  border:1px solid var(--border-color);color:var(--text-primary);
+  border-radius:8px;padding:.45rem .9rem;font-size:1rem;width:150px;letter-spacing:.05em;}
+#bo-ticker::placeholder{text-transform:none;color:var(--text-secondary);}
+#bo-btn{background:#7c3aed;border:0;border-radius:8px;color:#fff;
+  padding:.46rem 1.1rem;font-size:.92rem;cursor:pointer;font-weight:600;}
+#bo-btn:hover{background:#6d28d9;}
+#bo-rtd-btn{background:#0369a1;border:0;border-radius:8px;color:#fff;
+  padding:.46rem 1rem;font-size:.85rem;cursor:pointer;font-weight:600;}
+#bo-rtd-btn:hover{background:#075985;}
+#bo-loading{display:none;color:var(--text-secondary);font-size:.85rem;}
+#bo-error{display:none;color:#f87171;font-size:.88rem;
+  background:rgba(248,113,113,.08);border-left:3px solid #f87171;
+  padding:.5rem .9rem;border-radius:4px;margin-bottom:.8rem;}
+
+/* ── Painel RTD ── */
+#rtd-panel{background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);
+  border-radius:10px;padding:.9rem 1rem;margin-bottom:1rem;display:none;}
+#rtd-panel h3{margin:0 0 .5rem 0;font-size:.88rem;font-weight:700;color:var(--text-primary);}
+.rtd-btn-row{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;margin-bottom:.6rem;}
+.rtd-action-btn{background:#334155;border:1px solid #475569;border-radius:5px;
+  color:#e2e8f0;font-size:.8rem;padding:.28rem .75rem;cursor:pointer;white-space:nowrap;}
+.rtd-action-btn:hover{background:#475569;}
+.rtd-action-link{background:#334155;border:1px solid #475569;border-radius:5px;
+  color:#e2e8f0;font-size:.8rem;padding:.28rem .75rem;text-decoration:none;display:inline-block;white-space:nowrap;}
+.rtd-action-link:hover{background:#475569;}
+#rtd-count{font-size:.76rem;color:var(--text-secondary);}
+#rtd-map-text{background:#0f172a;border:1px solid var(--border-color);border-radius:6px;
+  padding:.6rem;font-size:.66rem;color:#94a3b8;overflow:auto;
+  white-space:pre;max-height:240px;display:block;width:100%;box-sizing:border-box;}
+.rtd-searched-list{display:flex;flex-wrap:wrap;gap:.3rem;}
+.rtd-searched-chip{display:inline-flex;align-items:center;gap:.2rem;
+  background:#0c4a6e;border:1px solid #0369a1;border-radius:5px;
+  padding:.12rem .4rem;font-size:.73rem;color:#bae6fd;}
+.rtd-searched-chip button{background:none;border:none;color:#f87171;
+  cursor:pointer;font-size:.78rem;line-height:1;padding:0;}
+
+/* ── Cabeçalho da ficha ── */
 #bo-ficha{display:none;}
-.bo-header{display:flex;align-items:flex-start;justify-content:space-between;
-  gap:1rem;flex-wrap:wrap;
-  border-bottom:1px solid var(--border-color);padding-bottom:1rem;margin-bottom:1.2rem;}
-.bo-ticker-big{font-size:2rem;font-weight:800;color:var(--text-primary);letter-spacing:.04em;}
-.bo-badges{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;margin-top:.3rem;}
-.bo-badge{padding:.15rem .5rem;border-radius:5px;font-size:.75rem;font-weight:700;}
+.bo-header{display:flex;justify-content:space-between;align-items:flex-start;
+  gap:.8rem;flex-wrap:wrap;border-bottom:1px solid var(--border-color);
+  padding-bottom:.9rem;margin-bottom:1rem;}
+.bo-left{min-width:0;flex:1 1 200px;}
+.bo-right{flex:0 0 auto;text-align:right;}
+.bo-ticker-big{font-size:1.8rem;font-weight:800;color:var(--text-primary);letter-spacing:.03em;}
+.bo-badges{display:flex;gap:.35rem;align-items:center;flex-wrap:wrap;margin-top:.3rem;}
+.bo-badge{padding:.13rem .45rem;border-radius:5px;font-size:.72rem;font-weight:700;white-space:nowrap;}
 .bo-badge.call{background:rgba(52,211,153,.12);color:#34d399;border:1px solid rgba(52,211,153,.3);}
 .bo-badge.put{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.3);}
 .bo-badge.mat{background:rgba(148,163,184,.1);color:#94a3b8;border:1px solid rgba(148,163,184,.25);}
 .bo-badge.days{background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.25);}
 .bo-badge.rtd{background:rgba(14,165,233,.1);color:#38bdf8;border:1px solid rgba(14,165,233,.25);}
-.bo-price{font-size:1.7rem;font-weight:700;color:var(--text-primary);}
-.bo-var{font-size:1rem;font-weight:600;margin-left:.5rem;}
+.bo-underlying{font-size:.83rem;color:var(--text-secondary);margin-top:.3rem;}
+.bo-price{font-size:1.6rem;font-weight:700;color:var(--text-primary);}
+.bo-var{font-size:.95rem;font-weight:600;margin-left:.4rem;}
 .bo-var.pos{color:#34d399;} .bo-var.neg{color:#f87171;}
-.bo-underlying{font-size:.88rem;color:var(--text-secondary);margin-top:.35rem;}
 
-/* ── Grid de cards ── */
-.bo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.8rem;margin-bottom:1.2rem;}
-@media(max-width:700px){.bo-grid{grid-template-columns:1fr 1fr;}}
-@media(max-width:460px){.bo-grid{grid-template-columns:1fr;}}
-.bo-card{background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);
-  border-radius:8px;padding:.7rem .9rem;min-width:0;}
-.bo-card h4{margin:0 0 .5rem 0;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;
-  color:var(--text-secondary);font-weight:700;border-bottom:1px solid rgba(255,255,255,.06);
-  padding-bottom:.35rem;}
-.bo-card table{width:100%;border-collapse:collapse;table-layout:fixed;}
-.bo-card table td{padding:.22rem 0;font-size:.81rem;vertical-align:top;overflow:hidden;
-  text-overflow:ellipsis;}
-.bo-card table td:first-child{color:var(--text-secondary);padding-right:.4rem;
-  white-space:nowrap;width:52%;}
-.bo-card table td:last-child{color:var(--text-primary);font-weight:500;text-align:right;
-  white-space:nowrap;}
+/* ── Grid de cards — 3 colunas desktop, 2 tablet, 1 mobile ── */
+.bo-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:.7rem;
+  margin-bottom:1rem;
+}
+@media(max-width:768px){
+  .bo-grid{grid-template-columns:repeat(2,1fr);}
+}
+@media(max-width:480px){
+  .bo-grid{grid-template-columns:1fr;}
+  .bo-header{flex-direction:column;}
+  .bo-right{text-align:left;}
+}
+
+/* ── Cards ── */
+.bo-card{
+  background:var(--hover-bg,#1e293b);
+  border:1px solid var(--border-color);
+  border-radius:8px;
+  padding:.65rem .8rem;
+  min-width:0;
+  overflow:hidden;
+}
+.bo-card h4{
+  margin:0 0 .45rem 0;font-size:.67rem;text-transform:uppercase;
+  letter-spacing:.07em;color:var(--text-secondary);font-weight:700;
+  border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:.3rem;
+}
+.bo-card table{width:100%;border-collapse:collapse;}
+.bo-card table td{
+  padding:.2rem 0;font-size:.8rem;vertical-align:middle;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  max-width:0;
+}
+.bo-card table td:first-child{
+  color:var(--text-secondary);padding-right:.4rem;width:55%;
+}
+.bo-card table td:last-child{
+  color:var(--text-primary);font-weight:500;text-align:right;width:45%;
+}
 .bo-card table td.hi{color:#a78bfa;font-weight:700;}
 .bo-card table td.pos{color:#34d399;font-weight:600;}
 .bo-card table td.neg{color:#f87171;font-weight:600;}
 
-/* ── Painel RTD ── */
-#rtd-panel{background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);
-  border-radius:10px;padding:1rem 1.1rem;margin-bottom:1.2rem;display:none;}
-#rtd-panel h3{margin:0 0 .6rem 0;font-size:.9rem;font-weight:700;color:var(--text-primary);}
-.rtd-searched-list{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.7rem;}
-.rtd-searched-chip{display:inline-flex;align-items:center;gap:.25rem;
-  background:#0c4a6e;border:1px solid #0369a1;border-radius:5px;
-  padding:.15rem .45rem;font-size:.75rem;color:#bae6fd;}
-.rtd-searched-chip button{background:none;border:none;color:#f87171;cursor:pointer;
-  font-size:.8rem;line-height:1;padding:0 .1rem;}
-.rtd-map-block{position:relative;overflow:hidden;}
-.rtd-map-block pre{background:#0f172a;border:1px solid var(--border-color);border-radius:6px;
-  padding:.7rem;font-size:.68rem;color:#94a3b8;overflow:auto;white-space:pre;
-  max-height:260px;}
-.rtd-copy-btn{position:absolute;top:.4rem;right:.4rem;background:#334155;border:1px solid #475569;
-  border-radius:5px;color:#e2e8f0;font-size:.72rem;padding:.2rem .55rem;cursor:pointer;}
-.rtd-copy-btn:hover{background:#475569;}
-.rtd-tabs{display:flex;gap:.4rem;margin-bottom:.5rem;}
-.rtd-tab{padding:.22rem .75rem;border:1px solid #475569;border-radius:5px;font-size:.78rem;
-  cursor:pointer;color:#94a3b8;background:transparent;}
-.rtd-tab.active{background:#1d4ed8;border-color:#1d4ed8;color:#fff;font-weight:600;}
-
 /* ── Raw ── */
-#bo-raw-toggle{font-size:.78rem;color:var(--text-secondary);cursor:pointer;
-  text-decoration:underline;opacity:.6;margin-top:.8rem;display:inline-block;}
-#bo-raw{display:none;margin-top:.5rem;background:#0f172a;border:1px solid var(--border-color);
-  border-radius:6px;padding:.7rem;font-size:.72rem;color:#94a3b8;overflow-x:auto;white-space:pre;}
+#bo-raw-toggle{font-size:.76rem;color:var(--text-secondary);cursor:pointer;
+  text-decoration:underline;opacity:.6;margin-top:.7rem;display:inline-block;}
+#bo-raw{display:none;margin-top:.4rem;background:#0f172a;
+  border:1px solid var(--border-color);border-radius:6px;padding:.6rem;
+  font-size:.7rem;color:#94a3b8;overflow:auto;white-space:pre;max-height:400px;}
 </style>
 {% endblock %}
 
@@ -114,41 +147,24 @@
       Inclui todas as ações, FIIs, subjacentes e opções ativas + opções buscadas (10 dias).
     </div>
 
-    <!-- Ações: Gerar / Copiar tudo / Salvar — igual ao MT5 Feeder -->
-    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.7rem;">
-      <button class="rtd-copy-btn" style="position:static;font-size:.82rem;padding:.32rem .85rem;"
-              onclick="rtdGerar()">🔄 Gerar</button>
-      <button class="rtd-copy-btn" style="position:static;font-size:.82rem;padding:.32rem .85rem;"
-              onclick="rtdCopiarTudo()">📋 Copiar tudo</button>
-      <a href="/download-rtd-tsv" id="rtd-dl-btn"
-         style="background:#334155;border:1px solid #475569;border-radius:5px;color:#e2e8f0;
-                font-size:.82rem;padding:.32rem .85rem;text-decoration:none;display:inline-block;">
-        💾 Salvar .txt/.tsv…
-      </a>
-      <span id="rtd-count" style="font-size:.78rem;color:var(--text-secondary);margin-left:.3rem;"></span>
+    <div class="rtd-btn-row">
+      <button class="rtd-action-btn" onclick="rtdGerar()">🔄 Gerar</button>
+      <button class="rtd-action-btn" onclick="rtdCopiarTudo()">📋 Copiar tudo</button>
+      <a class="rtd-action-link" href="/download-rtd-tsv">💾 Salvar .txt/.tsv…</a>
+      <span id="rtd-count"></span>
     </div>
-
-    <!-- Área de texto somente leitura (igual ao MT5 Feeder) -->
-    <div class="rtd-map-block">
-      <pre id="rtd-map-text">Clique em 🔄 Gerar para visualizar…</pre>
-    </div>
-
-    <!-- Opções buscadas -->
-    <div style="margin-top:.8rem;border-top:1px solid rgba(255,255,255,.06);padding-top:.7rem;">
-      <div style="font-size:.78rem;color:var(--text-secondary);margin-bottom:.4rem;">
-        Opções buscadas incluídas (últimos 10 dias):
+    <pre id="rtd-map-text">Clique em 🔄 Gerar para visualizar…</pre>
+    <div style="margin-top:.7rem;border-top:1px solid rgba(255,255,255,.06);padding-top:.6rem;">
+      <div style="font-size:.75rem;color:var(--text-secondary);margin-bottom:.35rem;">
+        Opções buscadas (últimos 10 dias):
       </div>
       <div class="rtd-searched-list" id="rtd-searched-list">
-        <span style="color:var(--text-secondary);font-size:.8rem;">
-          Clique em Gerar para carregar…
-        </span>
+        <span style="color:var(--text-secondary);font-size:.78rem;">Clique em Gerar para carregar…</span>
       </div>
     </div>
-
-    <div style="font-size:.73rem;color:var(--text-secondary);margin-top:.6rem;">
-      Cole na célula A1 do Excel ou LibreOffice Calc. As fórmulas
-      <code>=RTD("RTDTrading.RTDServer";…)</code> preenchem automaticamente
-      quando o RTDTrading estiver ativo.
+    <div style="font-size:.7rem;color:var(--text-secondary);margin-top:.5rem;">
+      Cole na célula A1. As fórmulas <code>=RTD("RTDTrading.RTDServer";…)</code>
+      preenchem automaticamente quando o RTDTrading estiver ativo.
     </div>
   </div>
 
@@ -156,21 +172,21 @@
   <div id="bo-ficha">
     <!-- Cabeçalho -->
     <div class="bo-header">
-      <div>
-        <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
+      <div class="bo-left">
+        <div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">
           <span class="bo-ticker-big" id="f-ticker"></span>
           <span class="bo-badge call" id="f-type-badge">CALL</span>
         </div>
         <div class="bo-badges" id="f-badges"></div>
         <div class="bo-underlying" id="f-underlying-line"></div>
       </div>
-      <div style="margin-left:auto;text-align:right;">
+      <div class="bo-right">
         <div>
           <span class="bo-price" id="f-last">—</span>
           <span class="bo-var" id="f-var"></span>
         </div>
-        <div style="font-size:.78rem;color:var(--text-secondary);margin-top:.25rem;" id="f-bid-ask"></div>
-        <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.1rem;" id="f-bid-ask-vol"></div>
+        <div style="font-size:.76rem;color:var(--text-secondary);margin-top:.2rem;" id="f-bid-ask"></div>
+        <div style="font-size:.73rem;color:var(--text-secondary);margin-top:.1rem;" id="f-bid-ask-vol"></div>
       </div>
     </div>
 

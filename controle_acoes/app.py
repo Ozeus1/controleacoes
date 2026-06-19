@@ -6842,6 +6842,12 @@ def api_liquidez(ticker):
         cat      = str(o.get('category') or o.get('type') or o.get('option_type') or '').upper()
         strike   = o.get('strike') or o.get('strike_price') or 0
         close    = o.get('close') or o.get('last') or o.get('price') or 0
+        try:
+            close = float(close or 0)
+        except (TypeError, ValueError):
+            close = 0
+        if close <= 0:
+            continue
         volume   = o.get('volume_financial') or o.get('financial_volume') or o.get('volume') or 0
         open_int = o.get('open_interest') or o.get('openInterest') or 0
         var_pct  = o.get('variation') or o.get('change') or o.get('pct_change') or 0
@@ -6856,7 +6862,7 @@ def api_liquidez(ticker):
             'symbol':   sym,
             'category': cat,
             'strike':   round(float(strike), 2) if strike else None,
-            'close':    round(float(close),  2) if close  else None,
+            'close':    round(close, 2),
             'last_vol': _extract_option_last_vol(o),
             'volume':   round(float(volume), 2) if volume else 0,
             'open_int': int(open_int) if open_int else 0,

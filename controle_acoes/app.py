@@ -1963,6 +1963,98 @@ def cadeia_opcoes():
     return render_template('cadeia_opcoes.html', ranking_vol=ranking_vol, selic=_selic())
 
 
+@app.route('/busca-opcao')
+@login_required
+def busca_opcao():
+    """Busca detalhada de uma opção via OpLab."""
+    return render_template('busca_opcao.html')
+
+
+@app.route('/api/busca-opcao/<ticker>')
+@login_required
+def api_busca_opcao(ticker):
+    """Retorna ficha completa de uma opção via OpLab /market/instruments/{ticker}."""
+    token = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado.'}), 403
+
+    ticker = ticker.strip().upper()
+    try:
+        d = _oplab_get_json(f'/market/instruments/{ticker}', token, timeout=15)
+    except OplabApiError as e:
+        return jsonify({'error': f'OpLab: {e}'}), e.status_code or 502
+    except Exception as e:
+        return jsonify({'error': str(e)}), 502
+
+    if not isinstance(d, dict):
+        if isinstance(d, list) and d:
+            d = d[0]
+        else:
+            return jsonify({'error': 'Resposta inesperada da OpLab.'}), 502
+
+    # Resolve cotação do ativo subjacente (underlying)
+    underlying = d.get('underlying_symbol') or d.get('underlying') or d.get('asset', {}).get('symbol') or ''
+    spot_price = None
+    spot_change = None
+    if underlying:
+        try:
+            sp = _oplab_get_json(f'/market/instruments/{underlying}', token, timeout=10)
+            if isinstance(sp, dict):
+                spot_price  = sp.get('close') or sp.get('last') or sp.get('price') or sp.get('regularMarketPrice')
+                spot_change = sp.get('change_pct') or sp.get('variation') or sp.get('regularMarketChangePercent')
+        except Exception:
+            pass
+
+    def _f(v, decimals=2):
+        try:
+            return round(float(v), decimals) if v is not None else None
+        except (TypeError, ValueError):
+            return None
+
+    greeks = d.get('greeks') or {}
+    iv_data = d.get('implied_volatility') or d.get('iv') or {}
+    if isinstance(iv_data, (int, float)):
+        iv_data = {'iv': iv_data}
+
+    result = {
+        'ticker':           ticker,
+        'type':             d.get('category') or d.get('option_type') or d.get('type') or '',
+        'underlying':       underlying,
+        'spot_price':       _f(spot_price),
+        'spot_change':      _f(spot_change),
+        # Preço e variação
+        'last':             _f(d.get('close') or d.get('last') or d.get('price')),
+        'open':             _f(d.get('open')),
+        'high':             _f(d.get('high')),
+        'low':              _f(d.get('low')),
+        'prev_close':       _f(d.get('previous_close') or d.get('prev_close') or d.get('previousClose')),
+        'change_pct':       _f(d.get('change_pct') or d.get('variation') or d.get('change_percent')),
+        # Opção
+        'strike':           _f(d.get('strike')),
+        'expiration':       d.get('due_date') or d.get('expiration') or d.get('expiration_date') or '',
+        'volume':           _f(d.get('volume'), 0),
+        'open_interest':    _f(d.get('open_interest') or d.get('openInterest') or d.get('contracts'), 0),
+        'bid':              _f(d.get('bid')),
+        'ask':              _f(d.get('ask')),
+        # Gregas
+        'bs_price':         _f(greeks.get('black_scholes') or greeks.get('bs') or greeks.get('theorical') or d.get('theorical') or d.get('black_scholes')),
+        'delta':            _f(greeks.get('delta') or d.get('delta')),
+        'gamma':            _f(greeks.get('gamma') or d.get('gamma')),
+        'theta':            _f(greeks.get('theta') or d.get('theta')),
+        'rho':              _f(greeks.get('rho') or d.get('rho')),
+        'vega':             _f(greeks.get('vega') or d.get('vega')),
+        # Volatilidade
+        'iv':               _f(iv_data.get('iv') or iv_data.get('current') or d.get('iv') or d.get('implied_volatility')),
+        'iv_ask':           _f(iv_data.get('ask') or d.get('iv_ask')),
+        'iv_bid':           _f(iv_data.get('bid') or d.get('iv_bid')),
+        'iv_over_hv':       _f(iv_data.get('iv_over_hv') or d.get('iv_over_hv') or d.get('iv_hv_ratio')),
+        'intrinsic_value':  _f(d.get('intrinsic_value') or d.get('intrinseco')),
+        'extrinsic_value':  _f(d.get('extrinsic_value') or d.get('extrinseco') or d.get('time_value')),
+        '_raw':             {k: v for k, v in d.items() if not isinstance(v, (dict, list))},
+    }
+    return jsonify(result)
+
+
 @app.route('/rolagem-opcoes')
 @login_required
 def rolagem_opcoes():

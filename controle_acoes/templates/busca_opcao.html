@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+{% block title %}Busca de Opção{% endblock %}
+{% block extra_scripts %}
+<style>
+#bo-wrap{max-width:900px;margin:0 auto;}
+#bo-search{display:flex;gap:.6rem;align-items:center;margin-bottom:1.5rem;}
+#bo-ticker{text-transform:uppercase;background:var(--input-bg,#0f172a);border:1px solid var(--border-color);
+  color:var(--text-primary);border-radius:8px;padding:.45rem .9rem;font-size:1rem;width:160px;
+  letter-spacing:.05em;}
+#bo-ticker::placeholder{text-transform:none;color:var(--text-secondary);}
+#bo-btn{background:#7c3aed;border:0;border-radius:8px;color:#fff;padding:.46rem 1.2rem;
+  font-size:.95rem;cursor:pointer;font-weight:600;transition:background .15s;}
+#bo-btn:hover{background:#6d28d9;}
+#bo-loading{display:none;color:var(--text-secondary);font-size:.88rem;}
+#bo-error{display:none;color:#f87171;font-size:.9rem;background:rgba(248,113,113,.08);
+  border-left:3px solid #f87171;padding:.5rem .9rem;border-radius:4px;}
+
+/* ── Ficha ── */
+#bo-ficha{display:none;}
+.bo-header{display:flex;align-items:flex-start;gap:1.5rem;flex-wrap:wrap;
+  border-bottom:1px solid var(--border-color);padding-bottom:1rem;margin-bottom:1.2rem;}
+.bo-ticker-big{font-size:2rem;font-weight:800;color:var(--text-primary);letter-spacing:.04em;}
+.bo-type-badge{padding:.18rem .55rem;border-radius:5px;font-size:.8rem;font-weight:700;
+  background:rgba(52,211,153,.12);color:#34d399;border:1px solid rgba(52,211,153,.3);}
+.bo-type-badge.put{background:rgba(248,113,113,.12);color:#f87171;border-color:rgba(248,113,113,.3);}
+.bo-price{font-size:1.6rem;font-weight:700;color:var(--text-primary);}
+.bo-var{font-size:1rem;font-weight:600;margin-left:.5rem;}
+.bo-var.pos{color:#34d399;} .bo-var.neg{color:#f87171;}
+.bo-underlying{font-size:.9rem;color:var(--text-secondary);margin-top:.2rem;}
+.bo-spot{font-size:1rem;color:var(--text-primary);font-weight:600;}
+.bo-spot-var{font-size:.82rem;margin-left:.4rem;}
+
+/* ── Grid de cards ── */
+.bo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.8rem;margin-bottom:1.2rem;}
+.bo-card{background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);
+  border-radius:8px;padding:.7rem .9rem;}
+.bo-card h4{margin:0 0 .5rem 0;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--text-secondary);font-weight:600;}
+.bo-card table{width:100%;border-collapse:collapse;}
+.bo-card table td{padding:.18rem 0;font-size:.83rem;vertical-align:top;}
+.bo-card table td:first-child{color:var(--text-secondary);padding-right:.6rem;white-space:nowrap;}
+.bo-card table td:last-child{color:var(--text-primary);font-weight:500;text-align:right;}
+.bo-card table td.highlight{color:#a78bfa;font-weight:700;}
+
+/* ── Raw data toggle ── */
+#bo-raw-toggle{font-size:.78rem;color:var(--text-secondary);cursor:pointer;
+  text-decoration:underline;opacity:.6;margin-top:.8rem;display:inline-block;}
+#bo-raw{display:none;margin-top:.5rem;background:#0f172a;border:1px solid var(--border-color);
+  border-radius:6px;padding:.7rem;font-size:.72rem;color:#94a3b8;overflow-x:auto;white-space:pre;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="bo-wrap">
+  <div style="margin-bottom:1.2rem;">
+    <h2 style="font-size:1.3rem;font-weight:700;color:var(--text-primary);margin:0 0 .25rem 0;">
+      🔍 Busca de Opção
+    </h2>
+    <p style="color:var(--text-secondary);font-size:.88rem;margin:0;">
+      Digite o código da opção (ex: PETRH230, VALEG480) para ver a ficha completa via OpLab.
+    </p>
+  </div>
+
+  <div id="bo-search">
+    <input id="bo-ticker" type="text" placeholder="Ex: PETRH230" maxlength="12" autocomplete="off"
+           oninput="this.value=this.value.toUpperCase()" onkeydown="if(event.key==='Enter')buscar()">
+    <button id="bo-btn" onclick="buscar()">Buscar</button>
+    <span id="bo-loading">⏳ Buscando…</span>
+  </div>
+  <div id="bo-error"></div>
+
+  <!-- Ficha da opção -->
+  <div id="bo-ficha">
+    <!-- Cabeçalho -->
+    <div class="bo-header">
+      <div>
+        <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
+          <span class="bo-ticker-big" id="f-ticker"></span>
+          <span class="bo-type-badge" id="f-type-badge">CALL</span>
+        </div>
+        <div class="bo-underlying" id="f-underlying-line"></div>
+      </div>
+      <div style="margin-left:auto;text-align:right;">
+        <div>
+          <span class="bo-price" id="f-last">—</span>
+          <span class="bo-var" id="f-var"></span>
+        </div>
+        <div style="font-size:.78rem;color:var(--text-secondary);margin-top:.2rem;" id="f-bid-ask"></div>
+      </div>
+    </div>
+
+    <!-- Grid de cards -->
+    <div class="bo-grid">
+
+      <!-- Card: Mercado -->
+      <div class="bo-card">
+        <h4>Mercado</h4>
+        <table>
+          <tr><td>Abertura</td><td id="f-open">—</td></tr>
+          <tr><td>Máximo</td><td id="f-high">—</td></tr>
+          <tr><td>Mínimo</td><td id="f-low">—</td></tr>
+          <tr><td>Fech. Anterior</td><td id="f-prev-close">—</td></tr>
+          <tr><td>Volume</td><td id="f-volume">—</td></tr>
+          <tr><td>Cont. Abertos</td><td id="f-oi">—</td></tr>
+        </table>
+      </div>
+
+      <!-- Card: Parâmetros -->
+      <div class="bo-card">
+        <h4>Parâmetros</h4>
+        <table>
+          <tr><td>Tipo</td><td id="f-type">—</td></tr>
+          <tr><td>Strike</td><td id="f-strike" class="highlight">—</td></tr>
+          <tr><td>Vencimento</td><td id="f-expiration">—</td></tr>
+          <tr><td>Of. Compra (Bid)</td><td id="f-bid">—</td></tr>
+          <tr><td>Of. Venda (Ask)</td><td id="f-ask">—</td></tr>
+        </table>
+      </div>
+
+      <!-- Card: Ativo Subjacente -->
+      <div class="bo-card">
+        <h4>Ativo Subjacente</h4>
+        <table>
+          <tr><td>Ativo</td><td id="f-underlying">—</td></tr>
+          <tr><td>Cotação</td><td id="f-spot" class="highlight">—</td></tr>
+          <tr><td>Variação</td><td id="f-spot-var">—</td></tr>
+        </table>
+      </div>
+
+      <!-- Card: Black-Scholes / Gregas -->
+      <div class="bo-card">
+        <h4>Black-Scholes &amp; Gregas</h4>
+        <table>
+          <tr><td>BS (Teórico)</td><td id="f-bs" class="highlight">—</td></tr>
+          <tr><td>Delta</td><td id="f-delta">—</td></tr>
+          <tr><td>Gama</td><td id="f-gamma">—</td></tr>
+          <tr><td>Theta</td><td id="f-theta">—</td></tr>
+          <tr><td>Rho</td><td id="f-rho">—</td></tr>
+          <tr><td>Vega</td><td id="f-vega">—</td></tr>
+        </table>
+      </div>
+
+      <!-- Card: Volatilidade -->
+      <div class="bo-card">
+        <h4>Volatilidade Implícita</h4>
+        <table>
+          <tr><td>VI (atual)</td><td id="f-iv" class="highlight">—</td></tr>
+          <tr><td>VI Ask</td><td id="f-iv-ask">—</td></tr>
+          <tr><td>VI Bid</td><td id="f-iv-bid">—</td></tr>
+          <tr><td>VI / VH</td><td id="f-iv-hv">—</td></tr>
+        </table>
+      </div>
+
+      <!-- Card: Valor -->
+      <div class="bo-card">
+        <h4>Decomposição de Valor</h4>
+        <table>
+          <tr><td>Valor Intrínseco</td><td id="f-intrinsic" class="highlight">—</td></tr>
+          <tr><td>Valor Extrínseco</td><td id="f-extrinsic">—</td></tr>
+        </table>
+      </div>
+
+    </div><!-- /grid -->
+
+    <a id="bo-raw-toggle" onclick="toggleRaw()">▶ Ver dados brutos da API</a>
+    <pre id="bo-raw"></pre>
+  </div><!-- /ficha -->
+</div>
+
+<script>
+var _lastRaw = {};
+
+function buscar(){
+  var t = document.getElementById('bo-ticker').value.trim().toUpperCase();
+  if(!t){ return; }
+  _setLoading(true);
+  _setError('');
+  document.getElementById('bo-ficha').style.display = 'none';
+
+  fetch('/api/busca-opcao/' + encodeURIComponent(t))
+    .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
+    .then(function(res){
+      _setLoading(false);
+      if(!res.ok){
+        _setError(res.j.error || 'Erro desconhecido.');
+        return;
+      }
+      _render(res.j);
+    })
+    .catch(function(e){
+      _setLoading(false);
+      _setError('Erro de comunicação: ' + e.message);
+    });
+}
+
+function _render(d){
+  _lastRaw = d;
+
+  // Header
+  document.getElementById('f-ticker').textContent = d.ticker || '—';
+  var isCall = (d.type || '').toLowerCase().indexOf('call') >= 0 ||
+               (d.type || '').toLowerCase() === 'c';
+  var isPut  = (d.type || '').toLowerCase().indexOf('put') >= 0 ||
+               (d.type || '').toLowerCase() === 'p';
+  var badge  = document.getElementById('f-type-badge');
+  badge.textContent = isPut ? 'PUT' : 'CALL';
+  badge.className   = 'bo-type-badge' + (isPut ? ' put' : '');
+
+  // Preço e variação
+  document.getElementById('f-last').textContent = _fBRL(d.last);
+  var varEl = document.getElementById('f-var');
+  if(d.change_pct != null){
+    var sign = d.change_pct >= 0 ? '+' : '';
+    varEl.textContent = sign + d.change_pct.toFixed(2) + '%';
+    varEl.className   = 'bo-var ' + (d.change_pct >= 0 ? 'pos' : 'neg');
+  } else {
+    varEl.textContent = '';
+  }
+
+  // Bid/Ask inline
+  document.getElementById('f-bid-ask').textContent =
+    'Bid: ' + _fBRL(d.bid) + '  |  Ask: ' + _fBRL(d.ask);
+
+  // Underlying line
+  var undLine = document.getElementById('f-underlying-line');
+  if(d.underlying){
+    var spotTxt = d.spot_price != null ? ' — Cotação: R$ ' + _fBRL(d.spot_price) : '';
+    var spotVarTxt = '';
+    if(d.spot_change != null){
+      var ss = d.spot_change >= 0 ? '+' : '';
+      spotVarTxt = '  (' + ss + d.spot_change.toFixed(2) + '%)';
+    }
+    undLine.textContent = 'Subjacente: ' + d.underlying + spotTxt + spotVarTxt;
+  } else {
+    undLine.textContent = '';
+  }
+
+  // Cards
+  _set('f-open',      _fBRL(d.open));
+  _set('f-high',      _fBRL(d.high));
+  _set('f-low',       _fBRL(d.low));
+  _set('f-prev-close',_fBRL(d.prev_close));
+  _set('f-volume',    d.volume != null ? _fNum(d.volume) : '—');
+  _set('f-oi',        d.open_interest != null ? _fNum(d.open_interest) : '—');
+
+  _set('f-type',       isPut ? 'Put' : 'Call');
+  _set('f-strike',     _fBRL(d.strike));
+  _set('f-expiration', _fDate(d.expiration));
+  _set('f-bid',        _fBRL(d.bid));
+  _set('f-ask',        _fBRL(d.ask));
+
+  _set('f-underlying', d.underlying || '—');
+  _setColored('f-spot',     d.spot_price,  _fBRL(d.spot_price));
+  _setVarEl('f-spot-var', d.spot_change);
+
+  _set('f-bs',    _fBRL(d.bs_price));
+  _set('f-delta', d.delta != null ? d.delta.toFixed(4) : '—');
+  _set('f-gamma', d.gamma != null ? d.gamma.toFixed(6) : '—');
+  _set('f-theta', d.theta != null ? d.theta.toFixed(4) : '—');
+  _set('f-rho',   d.rho   != null ? d.rho.toFixed(4)   : '—');
+  _set('f-vega',  d.vega  != null ? d.vega.toFixed(4)  : '—');
+
+  _set('f-iv',     d.iv     != null ? (d.iv * (d.iv <= 1 ? 100 : 1)).toFixed(2) + '%' : '—');
+  _set('f-iv-ask', d.iv_ask != null ? (d.iv_ask * (d.iv_ask <= 1 ? 100 : 1)).toFixed(2) + '%' : '—');
+  _set('f-iv-bid', d.iv_bid != null ? (d.iv_bid * (d.iv_bid <= 1 ? 100 : 1)).toFixed(2) + '%' : '—');
+  _set('f-iv-hv',  d.iv_over_hv != null ? d.iv_over_hv.toFixed(2) : '—');
+
+  _set('f-intrinsic',  _fBRL(d.intrinsic_value));
+  _set('f-extrinsic',  _fBRL(d.extrinsic_value));
+
+  // Raw
+  document.getElementById('bo-raw').textContent = JSON.stringify(d._raw || d, null, 2);
+  document.getElementById('bo-raw-toggle').textContent = '▶ Ver dados brutos da API';
+  document.getElementById('bo-raw').style.display = 'none';
+
+  document.getElementById('bo-ficha').style.display = 'block';
+}
+
+function _set(id, val){
+  var el = document.getElementById(id);
+  if(el) el.textContent = (val != null && val !== '') ? val : '—';
+}
+function _setColored(id, numVal, txt){
+  var el = document.getElementById(id);
+  if(!el) return;
+  el.textContent = (txt != null && txt !== '') ? txt : '—';
+}
+function _setVarEl(id, v){
+  var el = document.getElementById(id);
+  if(!el) return;
+  if(v == null){ el.textContent = '—'; el.className = ''; return; }
+  var sign = v >= 0 ? '+' : '';
+  el.textContent = sign + v.toFixed(2) + '%';
+  el.style.color = v >= 0 ? '#34d399' : '#f87171';
+  el.style.fontWeight = '600';
+}
+function _fBRL(v){
+  if(v == null) return '—';
+  return 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function _fNum(v){
+  if(v == null) return '—';
+  return Number(v).toLocaleString('pt-BR');
+}
+function _fDate(s){
+  if(!s) return '—';
+  // ISO 8601: 2025-12-19
+  var m = String(s).match(/(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return m[3]+'/'+m[2]+'/'+m[1];
+  return s;
+}
+function _setLoading(on){
+  document.getElementById('bo-loading').style.display = on ? 'inline' : 'none';
+  document.getElementById('bo-btn').disabled = on;
+}
+function _setError(msg){
+  var el = document.getElementById('bo-error');
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+function toggleRaw(){
+  var el = document.getElementById('bo-raw');
+  var tog = document.getElementById('bo-raw-toggle');
+  var show = el.style.display === 'none';
+  el.style.display = show ? 'block' : 'none';
+  tog.textContent = (show ? '▼' : '▶') + ' Ver dados brutos da API';
+}
+
+// Enter no input já está no oninput, mas também adiciona no DOMContentLoaded
+document.addEventListener('DOMContentLoaded', function(){
+  document.getElementById('bo-ticker').focus();
+});
+</script>
+{% endblock %}

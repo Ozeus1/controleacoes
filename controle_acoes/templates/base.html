@@ -216,6 +216,8 @@
                            class="{{ 'active' if request.endpoint == 'ranking_volatilidade' and request.args.get('busca_liquidez') else '' }}">💧 Busca Liquidez</a>
                         <a href="{{ url_for('cadeia_opcoes') }}"
                            class="{{ 'active' if request.endpoint == 'cadeia_opcoes' else '' }}">🔗 Cadeia de Opções</a>
+                        <a href="{{ url_for('busca_opcao') }}"
+                           class="{{ 'active' if request.endpoint == 'busca_opcao' else '' }}">🔍 Busca de Opção</a>
                     </div>
                 </div>
 

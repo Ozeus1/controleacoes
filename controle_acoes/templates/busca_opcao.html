@@ -82,32 +82,32 @@
 
 /* ── Cards ── */
 .bo-card{
-  background:var(--hover-bg,#1e293b);
-  border:1px solid var(--border-color);
+  background:#1e293b;
+  border:1px solid rgba(255,255,255,.1);
   border-radius:8px;
   padding:.65rem .8rem;
   min-width:0;
-  overflow:hidden;
 }
 .bo-card h4{
   margin:0 0 .45rem 0;font-size:.67rem;text-transform:uppercase;
-  letter-spacing:.07em;color:var(--text-secondary);font-weight:700;
-  border-bottom:1px solid rgba(255,255,255,.06);padding-bottom:.3rem;
+  letter-spacing:.07em;color:#94a3b8;font-weight:700;
+  border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:.3rem;
 }
 .bo-card table{width:100%;border-collapse:collapse;}
+.bo-card table tr{border-bottom:1px solid rgba(255,255,255,.04);}
+.bo-card table tr:last-child{border-bottom:none;}
 .bo-card table td{
-  padding:.22rem 0;font-size:.8rem;vertical-align:top;
-  word-break:break-word;
+  padding:.25rem 0;font-size:.81rem;vertical-align:middle;
 }
 .bo-card table td:first-child{
-  color:var(--text-secondary);padding-right:.5rem;width:58%;
+  color:#94a3b8;padding-right:.5rem;width:55%;
 }
 .bo-card table td:last-child{
-  color:var(--text-primary);font-weight:500;text-align:right;
+  color:#f1f5f9;font-weight:500;text-align:right;
 }
-.bo-card table td.hi{color:#a78bfa;font-weight:700;}
-.bo-card table td.pos{color:#34d399;font-weight:600;}
-.bo-card table td.neg{color:#f87171;font-weight:600;}
+.bo-card table td.hi{color:#c4b5fd !important;font-weight:700;}
+.bo-card table td.pos{color:#34d399 !important;font-weight:600;}
+.bo-card table td.neg{color:#f87171 !important;font-weight:600;}
 
 /* ── Raw ── */
 #bo-raw-toggle{font-size:.76rem;color:var(--text-secondary);cursor:pointer;
@@ -460,7 +460,12 @@ function _renderInner(d){
 /* ── Helpers ── */
 function _set(id, val){
   var el = document.getElementById(id);
-  if(el) el.textContent = (val != null && val !== '' && val !== '—') ? val : '—';
+  if(!el){ console.warn('_set: element not found:', id); return; }
+  var v = (val != null && val !== '' && val !== '—') ? val : '—';
+  el.textContent = v;
+  el.style.removeProperty('display');
+  el.style.removeProperty('visibility');
+  el.style.removeProperty('opacity');
 }
 function _setVar(id, v){
   var el = document.getElementById(id);

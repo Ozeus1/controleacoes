@@ -1992,64 +1992,88 @@ def api_busca_opcao(ticker):
         else:
             return jsonify({'error': 'Resposta inesperada da OpLab.'}), 502
 
-    # Resolve cotação do ativo subjacente (underlying)
-    underlying = d.get('underlying_symbol') or d.get('underlying') or d.get('asset', {}).get('symbol') or ''
-    spot_price = None
-    spot_change = None
-    if underlying:
-        try:
-            sp = _oplab_get_json(f'/market/instruments/{underlying}', token, timeout=10)
-            if isinstance(sp, dict):
-                spot_price  = sp.get('close') or sp.get('last') or sp.get('price') or sp.get('regularMarketPrice')
-                spot_change = sp.get('change_pct') or sp.get('variation') or sp.get('regularMarketChangePercent')
-        except Exception:
-            pass
-
     def _f(v, decimals=2):
         try:
             return round(float(v), decimals) if v is not None else None
         except (TypeError, ValueError):
             return None
 
-    greeks = d.get('greeks') or {}
-    iv_data = d.get('implied_volatility') or d.get('iv') or {}
-    if isinstance(iv_data, (int, float)):
-        iv_data = {'iv': iv_data}
+    # Campos diretos do JSON real: parent_symbol, spot_price, variation, due_date, etc.
+    underlying = d.get('parent_symbol') or d.get('underlying_symbol') or d.get('underlying') or ''
+    spot_price  = _f(d.get('spot_price'))       # já vem no instruments
+    # variation vem como número absoluto de %, ex: 20 = +20%
+    raw_var = d.get('variation')
+    change_pct = _f(raw_var)
+
+    # Busca gregas via /market/options/{underlying} — filtra pelo ticker
+    greeks = {}
+    iv_data = {}
+    if underlying:
+        try:
+            opts = _oplab_get_json(f'/market/options/{underlying}', token, timeout=15)
+            if isinstance(opts, list):
+                for opt in opts:
+                    if isinstance(opt, dict) and opt.get('symbol', '').upper() == ticker:
+                        greeks  = opt.get('greeks') or {}
+                        iv_raw  = opt.get('implied_volatility') or opt.get('iv') or {}
+                        iv_data = iv_raw if isinstance(iv_raw, dict) else {'iv': iv_raw}
+                        # spot_price e variation mais precisos se vierem aqui
+                        if opt.get('spot_price') and not spot_price:
+                            spot_price = _f(opt['spot_price'])
+                        break
+        except Exception:
+            pass
+
+    # Cotação do subjacente (variação diária do ativo-mãe)
+    spot_change = None
+    if underlying:
+        try:
+            sp = _oplab_get_json(f'/market/instruments/{underlying}', token, timeout=10)
+            if isinstance(sp, dict):
+                spot_price  = spot_price or _f(sp.get('close') or sp.get('spot_price'))
+                spot_change = _f(sp.get('variation'))
+        except Exception:
+            pass
 
     result = {
         'ticker':           ticker,
         'type':             d.get('category') or d.get('option_type') or d.get('type') or '',
+        'maturity_type':    d.get('maturity_type') or '',   # EUROPEAN / AMERICAN
         'underlying':       underlying,
-        'spot_price':       _f(spot_price),
-        'spot_change':      _f(spot_change),
+        'spot_price':       spot_price,
+        'spot_change':      spot_change,
+        'days_to_maturity': d.get('days_to_maturity'),
         # Preço e variação
-        'last':             _f(d.get('close') or d.get('last') or d.get('price')),
+        'last':             _f(d.get('close')),
         'open':             _f(d.get('open')),
         'high':             _f(d.get('high')),
         'low':              _f(d.get('low')),
-        'prev_close':       _f(d.get('previous_close') or d.get('prev_close') or d.get('previousClose')),
-        'change_pct':       _f(d.get('change_pct') or d.get('variation') or d.get('change_percent')),
+        'prev_close':       _f(d.get('previous_close')),
+        'change_pct':       change_pct,
+        'financial_volume': _f(d.get('financial_volume'), 0),
         # Opção
         'strike':           _f(d.get('strike')),
-        'expiration':       d.get('due_date') or d.get('expiration') or d.get('expiration_date') or '',
+        'expiration':       d.get('due_date') or '',
         'volume':           _f(d.get('volume'), 0),
-        'open_interest':    _f(d.get('open_interest') or d.get('openInterest') or d.get('contracts'), 0),
+        'open_interest':    _f(d.get('open_interest') or d.get('contracts'), 0),
         'bid':              _f(d.get('bid')),
         'ask':              _f(d.get('ask')),
-        # Gregas
-        'bs_price':         _f(greeks.get('black_scholes') or greeks.get('bs') or greeks.get('theorical') or d.get('theorical') or d.get('black_scholes')),
-        'delta':            _f(greeks.get('delta') or d.get('delta')),
-        'gamma':            _f(greeks.get('gamma') or d.get('gamma')),
-        'theta':            _f(greeks.get('theta') or d.get('theta')),
-        'rho':              _f(greeks.get('rho') or d.get('rho')),
-        'vega':             _f(greeks.get('vega') or d.get('vega')),
-        # Volatilidade
-        'iv':               _f(iv_data.get('iv') or iv_data.get('current') or d.get('iv') or d.get('implied_volatility')),
-        'iv_ask':           _f(iv_data.get('ask') or d.get('iv_ask')),
-        'iv_bid':           _f(iv_data.get('bid') or d.get('iv_bid')),
-        'iv_over_hv':       _f(iv_data.get('iv_over_hv') or d.get('iv_over_hv') or d.get('iv_hv_ratio')),
-        'intrinsic_value':  _f(d.get('intrinsic_value') or d.get('intrinseco')),
-        'extrinsic_value':  _f(d.get('extrinsic_value') or d.get('extrinseco') or d.get('time_value')),
+        'bid_volume':       _f(d.get('bid_volume'), 0),
+        'ask_volume':       _f(d.get('ask_volume'), 0),
+        # Gregas (de /market/options)
+        'bs_price':         _f(greeks.get('black_scholes') or greeks.get('bs') or greeks.get('theorical')),
+        'delta':            _f(greeks.get('delta')),
+        'gamma':            _f(greeks.get('gamma')),
+        'theta':            _f(greeks.get('theta')),
+        'rho':              _f(greeks.get('rho')),
+        'vega':             _f(greeks.get('vega')),
+        # Volatilidade (de /market/options)
+        'iv':               _f(iv_data.get('iv') or iv_data.get('current')),
+        'iv_ask':           _f(iv_data.get('ask')),
+        'iv_bid':           _f(iv_data.get('bid')),
+        'iv_over_hv':       _f(iv_data.get('iv_over_hv') or iv_data.get('ratio')),
+        'intrinsic_value':  _f(iv_data.get('intrinsic_value') or greeks.get('intrinsic_value')),
+        'extrinsic_value':  _f(iv_data.get('extrinsic_value') or greeks.get('extrinsic_value') or greeks.get('time_value')),
         '_raw':             {k: v for k, v in d.items() if not isinstance(v, (dict, list))},
     }
     return jsonify(result)

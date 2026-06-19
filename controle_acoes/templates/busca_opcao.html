@@ -2,7 +2,7 @@
 {% block title %}Busca de Opção{% endblock %}
 {% block extra_scripts %}
 <style>
-#bo-wrap{max-width:900px;margin:0 auto;}
+#bo-wrap{max-width:960px;margin:0 auto;}
 #bo-search{display:flex;gap:.6rem;align-items:center;margin-bottom:1.5rem;}
 #bo-ticker{text-transform:uppercase;background:var(--input-bg,#0f172a);border:1px solid var(--border-color);
   color:var(--text-primary);border-radius:8px;padding:.45rem .9rem;font-size:1rem;width:160px;
@@ -13,36 +13,40 @@
 #bo-btn:hover{background:#6d28d9;}
 #bo-loading{display:none;color:var(--text-secondary);font-size:.88rem;}
 #bo-error{display:none;color:#f87171;font-size:.9rem;background:rgba(248,113,113,.08);
-  border-left:3px solid #f87171;padding:.5rem .9rem;border-radius:4px;}
+  border-left:3px solid #f87171;padding:.5rem .9rem;border-radius:4px;margin-bottom:.8rem;}
 
 /* ── Ficha ── */
 #bo-ficha{display:none;}
 .bo-header{display:flex;align-items:flex-start;gap:1.5rem;flex-wrap:wrap;
   border-bottom:1px solid var(--border-color);padding-bottom:1rem;margin-bottom:1.2rem;}
 .bo-ticker-big{font-size:2rem;font-weight:800;color:var(--text-primary);letter-spacing:.04em;}
-.bo-type-badge{padding:.18rem .55rem;border-radius:5px;font-size:.8rem;font-weight:700;
-  background:rgba(52,211,153,.12);color:#34d399;border:1px solid rgba(52,211,153,.3);}
-.bo-type-badge.put{background:rgba(248,113,113,.12);color:#f87171;border-color:rgba(248,113,113,.3);}
-.bo-price{font-size:1.6rem;font-weight:700;color:var(--text-primary);}
+.bo-badges{display:flex;gap:.4rem;align-items:center;flex-wrap:wrap;margin-top:.3rem;}
+.bo-badge{padding:.15rem .5rem;border-radius:5px;font-size:.75rem;font-weight:700;}
+.bo-badge.call{background:rgba(52,211,153,.12);color:#34d399;border:1px solid rgba(52,211,153,.3);}
+.bo-badge.put{background:rgba(248,113,113,.12);color:#f87171;border:1px solid rgba(248,113,113,.3);}
+.bo-badge.mat{background:rgba(148,163,184,.1);color:#94a3b8;border:1px solid rgba(148,163,184,.25);}
+.bo-badge.days{background:rgba(251,191,36,.1);color:#fbbf24;border:1px solid rgba(251,191,36,.25);}
+.bo-price{font-size:1.7rem;font-weight:700;color:var(--text-primary);}
 .bo-var{font-size:1rem;font-weight:600;margin-left:.5rem;}
 .bo-var.pos{color:#34d399;} .bo-var.neg{color:#f87171;}
-.bo-underlying{font-size:.9rem;color:var(--text-secondary);margin-top:.2rem;}
-.bo-spot{font-size:1rem;color:var(--text-primary);font-weight:600;}
-.bo-spot-var{font-size:.82rem;margin-left:.4rem;}
+.bo-underlying{font-size:.88rem;color:var(--text-secondary);margin-top:.35rem;}
 
 /* ── Grid de cards ── */
-.bo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.8rem;margin-bottom:1.2rem;}
+.bo-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:.8rem;margin-bottom:1.2rem;}
 .bo-card{background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);
   border-radius:8px;padding:.7rem .9rem;}
-.bo-card h4{margin:0 0 .5rem 0;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;
-  color:var(--text-secondary);font-weight:600;}
+.bo-card h4{margin:0 0 .5rem 0;font-size:.7rem;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--text-secondary);font-weight:700;border-bottom:1px solid rgba(255,255,255,.06);
+  padding-bottom:.35rem;}
 .bo-card table{width:100%;border-collapse:collapse;}
-.bo-card table td{padding:.18rem 0;font-size:.83rem;vertical-align:top;}
-.bo-card table td:first-child{color:var(--text-secondary);padding-right:.6rem;white-space:nowrap;}
+.bo-card table td{padding:.2rem 0;font-size:.82rem;vertical-align:top;}
+.bo-card table td:first-child{color:var(--text-secondary);padding-right:.6rem;white-space:nowrap;width:55%;}
 .bo-card table td:last-child{color:var(--text-primary);font-weight:500;text-align:right;}
-.bo-card table td.highlight{color:#a78bfa;font-weight:700;}
+.bo-card table td.hi{color:#a78bfa;font-weight:700;}
+.bo-card table td.pos{color:#34d399;font-weight:600;}
+.bo-card table td.neg{color:#f87171;font-weight:600;}
 
-/* ── Raw data toggle ── */
+/* ── Raw ── */
 #bo-raw-toggle{font-size:.78rem;color:var(--text-secondary);cursor:pointer;
   text-decoration:underline;opacity:.6;margin-top:.8rem;display:inline-block;}
 #bo-raw{display:none;margin-top:.5rem;background:#0f172a;border:1px solid var(--border-color);
@@ -57,7 +61,7 @@
       🔍 Busca de Opção
     </h2>
     <p style="color:var(--text-secondary);font-size:.88rem;margin:0;">
-      Digite o código da opção (ex: PETRH230, VALEG480) para ver a ficha completa via OpLab.
+      Digite o código da opção (ex: LRENG150, PETRH230) para ver a ficha completa via OpLab.
     </p>
   </div>
 
@@ -69,15 +73,17 @@
   </div>
   <div id="bo-error"></div>
 
-  <!-- Ficha da opção -->
+  <!-- Ficha -->
   <div id="bo-ficha">
+
     <!-- Cabeçalho -->
     <div class="bo-header">
       <div>
         <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
           <span class="bo-ticker-big" id="f-ticker"></span>
-          <span class="bo-type-badge" id="f-type-badge">CALL</span>
+          <span class="bo-badge call" id="f-type-badge">CALL</span>
         </div>
+        <div class="bo-badges" id="f-badges"></div>
         <div class="bo-underlying" id="f-underlying-line"></div>
       </div>
       <div style="margin-left:auto;text-align:right;">
@@ -85,78 +91,76 @@
           <span class="bo-price" id="f-last">—</span>
           <span class="bo-var" id="f-var"></span>
         </div>
-        <div style="font-size:.78rem;color:var(--text-secondary);margin-top:.2rem;" id="f-bid-ask"></div>
+        <div style="font-size:.78rem;color:var(--text-secondary);margin-top:.25rem;" id="f-bid-ask"></div>
+        <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.1rem;" id="f-bid-ask-vol"></div>
       </div>
     </div>
 
-    <!-- Grid de cards -->
+    <!-- Grid -->
     <div class="bo-grid">
 
-      <!-- Card: Mercado -->
       <div class="bo-card">
         <h4>Mercado</h4>
         <table class="no-datatable">
-          <tr><td>Abertura</td><td id="f-open">—</td></tr>
-          <tr><td>Máximo</td><td id="f-high">—</td></tr>
-          <tr><td>Mínimo</td><td id="f-low">—</td></tr>
-          <tr><td>Fech. Anterior</td><td id="f-prev-close">—</td></tr>
-          <tr><td>Volume</td><td id="f-volume">—</td></tr>
-          <tr><td>Cont. Abertos</td><td id="f-oi">—</td></tr>
+          <tr><td>Abertura</td>        <td id="f-open">—</td></tr>
+          <tr><td>Máximo</td>          <td id="f-high">—</td></tr>
+          <tr><td>Mínimo</td>          <td id="f-low">—</td></tr>
+          <tr><td>Fech. Anterior</td>  <td id="f-prev-close">—</td></tr>
+          <tr><td>Volume (qtd)</td>    <td id="f-volume">—</td></tr>
+          <tr><td>Vol. Financeiro</td> <td id="f-fin-vol">—</td></tr>
+          <tr><td>Cont. Abertos</td>   <td id="f-oi">—</td></tr>
         </table>
       </div>
 
-      <!-- Card: Parâmetros -->
       <div class="bo-card">
         <h4>Parâmetros</h4>
         <table class="no-datatable">
-          <tr><td>Tipo</td><td id="f-type">—</td></tr>
-          <tr><td>Strike</td><td id="f-strike" class="highlight">—</td></tr>
-          <tr><td>Vencimento</td><td id="f-expiration">—</td></tr>
+          <tr><td>Tipo</td>            <td id="f-type" class="hi">—</td></tr>
+          <tr><td>Exercício</td>       <td id="f-mat-type">—</td></tr>
+          <tr><td>Strike</td>          <td id="f-strike" class="hi">—</td></tr>
+          <tr><td>Vencimento</td>      <td id="f-expiration">—</td></tr>
+          <tr><td>Dias p/ vencer</td>  <td id="f-days">—</td></tr>
           <tr><td>Of. Compra (Bid)</td><td id="f-bid">—</td></tr>
-          <tr><td>Of. Venda (Ask)</td><td id="f-ask">—</td></tr>
+          <tr><td>Of. Venda (Ask)</td> <td id="f-ask">—</td></tr>
         </table>
       </div>
 
-      <!-- Card: Ativo Subjacente -->
       <div class="bo-card">
         <h4>Ativo Subjacente</h4>
         <table class="no-datatable">
-          <tr><td>Ativo</td><td id="f-underlying">—</td></tr>
-          <tr><td>Cotação</td><td id="f-spot" class="highlight">—</td></tr>
-          <tr><td>Variação</td><td id="f-spot-var">—</td></tr>
+          <tr><td>Ativo</td>    <td id="f-underlying" class="hi">—</td></tr>
+          <tr><td>Cotação</td>  <td id="f-spot">—</td></tr>
+          <tr><td>Variação</td> <td id="f-spot-var">—</td></tr>
         </table>
       </div>
 
-      <!-- Card: Black-Scholes / Gregas -->
       <div class="bo-card">
         <h4>Black-Scholes &amp; Gregas</h4>
         <table class="no-datatable">
-          <tr><td>BS (Teórico)</td><td id="f-bs" class="highlight">—</td></tr>
-          <tr><td>Delta</td><td id="f-delta">—</td></tr>
-          <tr><td>Gama</td><td id="f-gamma">—</td></tr>
-          <tr><td>Theta</td><td id="f-theta">—</td></tr>
-          <tr><td>Rho</td><td id="f-rho">—</td></tr>
-          <tr><td>Vega</td><td id="f-vega">—</td></tr>
+          <tr><td>BS (Teórico)</td><td id="f-bs" class="hi">—</td></tr>
+          <tr><td>Delta</td>      <td id="f-delta">—</td></tr>
+          <tr><td>Gama</td>       <td id="f-gamma">—</td></tr>
+          <tr><td>Theta</td>      <td id="f-theta">—</td></tr>
+          <tr><td>Rho</td>        <td id="f-rho">—</td></tr>
+          <tr><td>Vega</td>       <td id="f-vega">—</td></tr>
         </table>
       </div>
 
-      <!-- Card: Volatilidade -->
       <div class="bo-card">
         <h4>Volatilidade Implícita</h4>
         <table class="no-datatable">
-          <tr><td>VI (atual)</td><td id="f-iv" class="highlight">—</td></tr>
-          <tr><td>VI Ask</td><td id="f-iv-ask">—</td></tr>
-          <tr><td>VI Bid</td><td id="f-iv-bid">—</td></tr>
-          <tr><td>VI / VH</td><td id="f-iv-hv">—</td></tr>
+          <tr><td>VI (atual)</td><td id="f-iv" class="hi">—</td></tr>
+          <tr><td>VI Ask</td>    <td id="f-iv-ask">—</td></tr>
+          <tr><td>VI Bid</td>    <td id="f-iv-bid">—</td></tr>
+          <tr><td>VI / VH</td>   <td id="f-iv-hv">—</td></tr>
         </table>
       </div>
 
-      <!-- Card: Valor -->
       <div class="bo-card">
         <h4>Decomposição de Valor</h4>
         <table class="no-datatable">
-          <tr><td>Valor Intrínseco</td><td id="f-intrinsic" class="highlight">—</td></tr>
-          <tr><td>Valor Extrínseco</td><td id="f-extrinsic">—</td></tr>
+          <tr><td>Valor Intrínseco</td> <td id="f-intrinsic" class="hi">—</td></tr>
+          <tr><td>Valor Extrínseco</td> <td id="f-extrinsic">—</td></tr>
         </table>
       </div>
 
@@ -168,8 +172,6 @@
 </div>
 
 <script>
-var _lastRaw = {};
-
 function buscar(){
   var t = document.getElementById('bo-ticker').value.trim().toUpperCase();
   if(!t){ return; }
@@ -181,77 +183,82 @@ function buscar(){
     .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
     .then(function(res){
       _setLoading(false);
-      if(!res.ok){
-        _setError(res.j.error || 'Erro desconhecido.');
-        return;
-      }
+      if(!res.ok){ _setError(res.j.error || 'Erro desconhecido.'); return; }
       _render(res.j);
     })
-    .catch(function(e){
-      _setLoading(false);
-      _setError('Erro de comunicação: ' + e.message);
-    });
+    .catch(function(e){ _setLoading(false); _setError('Erro: ' + e.message); });
 }
 
 function _render(d){
-  _lastRaw = d;
+  // ── Header ──
+  _set('f-ticker', d.ticker);
 
-  // Header
-  document.getElementById('f-ticker').textContent = d.ticker || '—';
-  var isCall = (d.type || '').toLowerCase().indexOf('call') >= 0 ||
-               (d.type || '').toLowerCase() === 'c';
-  var isPut  = (d.type || '').toLowerCase().indexOf('put') >= 0 ||
-               (d.type || '').toLowerCase() === 'p';
+  var isPut  = /put/i.test(d.type) || d.type === 'P';
   var badge  = document.getElementById('f-type-badge');
   badge.textContent = isPut ? 'PUT' : 'CALL';
-  badge.className   = 'bo-type-badge' + (isPut ? ' put' : '');
+  badge.className   = 'bo-badge ' + (isPut ? 'put' : 'call');
 
-  // Preço e variação
-  document.getElementById('f-last').textContent = _fBRL(d.last);
+  // badges extras: exercício e dias
+  var bc = document.getElementById('f-badges');
+  bc.innerHTML = '';
+  if(d.maturity_type){
+    var mb = document.createElement('span');
+    mb.className = 'bo-badge mat';
+    mb.textContent = d.maturity_type;
+    bc.appendChild(mb);
+  }
+  if(d.days_to_maturity != null){
+    var db = document.createElement('span');
+    db.className = 'bo-badge days';
+    db.textContent = d.days_to_maturity + 'd p/ vencer';
+    bc.appendChild(db);
+  }
+
+  // preço
+  _set('f-last', _fBRL(d.last));
   var varEl = document.getElementById('f-var');
   if(d.change_pct != null){
     var sign = d.change_pct >= 0 ? '+' : '';
     varEl.textContent = sign + d.change_pct.toFixed(2) + '%';
     varEl.className   = 'bo-var ' + (d.change_pct >= 0 ? 'pos' : 'neg');
-  } else {
-    varEl.textContent = '';
-  }
+  } else { varEl.textContent = ''; varEl.className = 'bo-var'; }
 
-  // Bid/Ask inline
-  document.getElementById('f-bid-ask').textContent =
-    'Bid: ' + _fBRL(d.bid) + '  |  Ask: ' + _fBRL(d.ask);
+  _set('f-bid-ask',     'Bid: ' + _fBRL(d.bid) + '  |  Ask: ' + _fBRL(d.ask));
+  if(d.bid_volume != null || d.ask_volume != null)
+    _set('f-bid-ask-vol', 'Vol Bid: ' + _fNum(d.bid_volume) + '  |  Vol Ask: ' + _fNum(d.ask_volume));
 
-  // Underlying line
-  var undLine = document.getElementById('f-underlying-line');
+  // underlying line
+  var ul = document.getElementById('f-underlying-line');
   if(d.underlying){
-    var spotTxt = d.spot_price != null ? ' — Cotação: R$ ' + _fBRL(d.spot_price) : '';
-    var spotVarTxt = '';
+    var txt = 'Subjacente: ' + d.underlying;
+    if(d.spot_price != null) txt += '  —  Cotação: ' + _fBRL(d.spot_price);
     if(d.spot_change != null){
       var ss = d.spot_change >= 0 ? '+' : '';
-      spotVarTxt = '  (' + ss + d.spot_change.toFixed(2) + '%)';
+      txt += '  (' + ss + d.spot_change.toFixed(2) + '%)';
     }
-    undLine.textContent = 'Subjacente: ' + d.underlying + spotTxt + spotVarTxt;
-  } else {
-    undLine.textContent = '';
-  }
+    ul.textContent = txt;
+  } else { ul.textContent = ''; }
 
-  // Cards
+  // ── Cards ──
   _set('f-open',      _fBRL(d.open));
   _set('f-high',      _fBRL(d.high));
   _set('f-low',       _fBRL(d.low));
   _set('f-prev-close',_fBRL(d.prev_close));
-  _set('f-volume',    d.volume != null ? _fNum(d.volume) : '—');
+  _set('f-volume',    d.volume       != null ? _fNum(d.volume) : '—');
+  _set('f-fin-vol',   d.financial_volume != null ? 'R$ ' + _fNum(Math.round(d.financial_volume)) : '—');
   _set('f-oi',        d.open_interest != null ? _fNum(d.open_interest) : '—');
 
-  _set('f-type',       isPut ? 'Put' : 'Call');
-  _set('f-strike',     _fBRL(d.strike));
-  _set('f-expiration', _fDate(d.expiration));
-  _set('f-bid',        _fBRL(d.bid));
-  _set('f-ask',        _fBRL(d.ask));
+  _set('f-type',      isPut ? 'Put' : 'Call');
+  _set('f-mat-type',  d.maturity_type || '—');
+  _set('f-strike',    _fBRL(d.strike));
+  _set('f-expiration',_fDate(d.expiration));
+  _set('f-days',      d.days_to_maturity != null ? d.days_to_maturity + ' dias' : '—');
+  _set('f-bid',       _fBRL(d.bid));
+  _set('f-ask',       _fBRL(d.ask));
 
   _set('f-underlying', d.underlying || '—');
-  _setColored('f-spot',     d.spot_price,  _fBRL(d.spot_price));
-  _setVarEl('f-spot-var', d.spot_change);
+  _set('f-spot',       _fBRL(d.spot_price));
+  _setVar('f-spot-var', d.spot_change);
 
   _set('f-bs',    _fBRL(d.bs_price));
   _set('f-delta', d.delta != null ? d.delta.toFixed(4) : '—');
@@ -260,15 +267,15 @@ function _render(d){
   _set('f-rho',   d.rho   != null ? d.rho.toFixed(4)   : '—');
   _set('f-vega',  d.vega  != null ? d.vega.toFixed(4)  : '—');
 
-  _set('f-iv',     d.iv     != null ? (d.iv * (d.iv <= 1 ? 100 : 1)).toFixed(2) + '%' : '—');
-  _set('f-iv-ask', d.iv_ask != null ? (d.iv_ask * (d.iv_ask <= 1 ? 100 : 1)).toFixed(2) + '%' : '—');
-  _set('f-iv-bid', d.iv_bid != null ? (d.iv_bid * (d.iv_bid <= 1 ? 100 : 1)).toFixed(2) + '%' : '—');
+  _set('f-iv',     _fPct(d.iv));
+  _set('f-iv-ask', _fPct(d.iv_ask));
+  _set('f-iv-bid', _fPct(d.iv_bid));
   _set('f-iv-hv',  d.iv_over_hv != null ? d.iv_over_hv.toFixed(2) : '—');
 
-  _set('f-intrinsic',  _fBRL(d.intrinsic_value));
-  _set('f-extrinsic',  _fBRL(d.extrinsic_value));
+  _set('f-intrinsic', _fBRL(d.intrinsic_value));
+  _set('f-extrinsic', _fBRL(d.extrinsic_value));
 
-  // Raw
+  // raw
   document.getElementById('bo-raw').textContent = JSON.stringify(d._raw || d, null, 2);
   document.getElementById('bo-raw-toggle').textContent = '▶ Ver dados brutos da API';
   document.getElementById('bo-raw').style.display = 'none';
@@ -276,23 +283,18 @@ function _render(d){
   document.getElementById('bo-ficha').style.display = 'block';
 }
 
+/* ── Helpers ── */
 function _set(id, val){
   var el = document.getElementById(id);
-  if(el) el.textContent = (val != null && val !== '') ? val : '—';
+  if(el) el.textContent = (val != null && val !== '' && val !== 'R$ —') ? val : '—';
 }
-function _setColored(id, numVal, txt){
-  var el = document.getElementById(id);
-  if(!el) return;
-  el.textContent = (txt != null && txt !== '') ? txt : '—';
-}
-function _setVarEl(id, v){
+function _setVar(id, v){
   var el = document.getElementById(id);
   if(!el) return;
   if(v == null){ el.textContent = '—'; el.className = ''; return; }
   var sign = v >= 0 ? '+' : '';
   el.textContent = sign + v.toFixed(2) + '%';
-  el.style.color = v >= 0 ? '#34d399' : '#f87171';
-  el.style.fontWeight = '600';
+  el.className = v >= 0 ? 'pos' : 'neg';
 }
 function _fBRL(v){
   if(v == null) return '—';
@@ -302,12 +304,15 @@ function _fNum(v){
   if(v == null) return '—';
   return Number(v).toLocaleString('pt-BR');
 }
+function _fPct(v){
+  if(v == null) return '—';
+  var pct = v <= 1 ? v * 100 : v;   // normaliza 0.35 → 35%
+  return pct.toFixed(2) + '%';
+}
 function _fDate(s){
   if(!s) return '—';
-  // ISO 8601: 2025-12-19
   var m = String(s).match(/(\d{4})-(\d{2})-(\d{2})/);
-  if(m) return m[3]+'/'+m[2]+'/'+m[1];
-  return s;
+  return m ? m[3]+'/'+m[2]+'/'+m[1] : s;
 }
 function _setLoading(on){
   document.getElementById('bo-loading').style.display = on ? 'inline' : 'none';
@@ -319,14 +324,13 @@ function _setError(msg){
   el.style.display = msg ? 'block' : 'none';
 }
 function toggleRaw(){
-  var el = document.getElementById('bo-raw');
+  var el  = document.getElementById('bo-raw');
   var tog = document.getElementById('bo-raw-toggle');
   var show = el.style.display === 'none';
-  el.style.display = show ? 'block' : 'none';
-  tog.textContent = (show ? '▼' : '▶') + ' Ver dados brutos da API';
+  el.style.display  = show ? 'block' : 'none';
+  tog.textContent   = (show ? '▼' : '▶') + ' Ver dados brutos da API';
 }
 
-// Enter no input já está no oninput, mas também adiciona no DOMContentLoaded
 document.addEventListener('DOMContentLoaded', function(){
   document.getElementById('bo-ticker').focus();
 });

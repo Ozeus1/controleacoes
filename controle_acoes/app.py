@@ -6524,6 +6524,26 @@ def ranking_vol_delete(rid):
     return redirect(url_for('ranking_volatilidade'))
 
 
+@app.route('/api/ranking_vol/ticker', methods=['POST', 'DELETE'])
+@login_required
+def api_ranking_vol_ticker():
+    data = request.get_json(silent=True) or request.form
+    ticker = (data.get('ticker') or '').strip().upper()
+    if not ticker:
+        return jsonify({'error': 'Ticker obrigatório.'}), 400
+    if request.method == 'DELETE':
+        rv = RankingVol.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+        if rv:
+            db.session.delete(rv)
+            db.session.commit()
+        return jsonify({'ok': True, 'ticker': ticker})
+    exists = RankingVol.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+    if not exists:
+        db.session.add(RankingVol(user_id=current_user.id, ticker=ticker))
+        db.session.commit()
+    return jsonify({'ok': True, 'ticker': ticker})
+
+
 @app.route('/api/ranking_vol/update', methods=['POST'])
 @login_required
 def api_ranking_vol_update():

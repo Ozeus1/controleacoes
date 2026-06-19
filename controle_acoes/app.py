@@ -2177,123 +2177,70 @@ def api_rtd_map_searched_delete(ticker):
     return jsonify({'ok': True})
 
 
-@app.route('/download-rtd-tsv')
-@login_required
-def download_rtd_tsv():
-    """Gera arquivo TSV no formato da planilha RTD com todos os tickers ativos."""
-    from flask import Response as _Resp
-    uid = current_user.id
+_RTD_FIELDS = [
+    ("DAT", "Data"), ("HOR", "Hora"), ("ULT", "Último"), ("ABE", "Abertura"),
+    ("MAX", "Máximo"), ("MIN", "Mínimo"), ("FEC", "Fechamento Anterior"),
+    ("PEX", "Strike"), ("VAR", "Variação"), ("MED", "Média"), ("NOME", None),
+    ("NEG", "Negócios"), ("QTT", "Quantidade"), ("VOL", "Volume"),
+    ("OCP", "Of. Compra"), ("OVD", "Of. Venda"), ("VPJ", "Volume Projetado"),
+    ("VEN", "Vencimento"), ("VAL", "Validade"), ("CAB", "Cont. Abertos"),
+    ("BLACK", "Black Scholes"), ("IMPVT", "Volt. Implícita"),
+    ("DELTA", "Delta"), ("GAMA", "Gama"), ("THETA", "Theta"),
+    ("RHO", "Rho"), ("VEGA", "Vega"), ("VIA", "VI Ask"), ("VIB", "VI Bid"),
+    ("VIVH", "VI / VH"), ("VINT", "Valor Intrínseco"), ("VEXT", "Valor Extrínseco"),
+    ("204", "Dividend Yield"), ("1", "IFR (RSI)"),
+    ("387", "Volatilidade Implícita"), ("81", "Volatilidade Implícita - Opções"),
+]
+
+_RTD_HEADER = [
+    "Asset", "Data", "Hora", "Último", "Abertura", "Máximo", "Mínimo",
+    "Fechamento Anterior", "Strike", "Variação", "Média", "Nome do Ativo",
+    "Negócios", "Quantidade", "Volume", "Of. Compra", "Of. Venda",
+    "Volume Projetado", "Vencimento", "Validade", "Cont. Abertos",
+    "Black Scholes", "Volt. Implícita", "Delta", "Gama", "Theta", "Rho",
+    "Vega", "VI Ask", "VI Bid", "VI / VH", "Valor Intrínseco",
+    "Valor Extrínseco", "Dividend Yield", "IFR (RSI)",
+    "Volatilidade Implícita", "Volatilidade Implícita - Opções",
+]
+
+
+def _build_rtd_text(uid):
+    """
+    Gera TSV no formato RTDTrading idêntico ao mt5_feeder/mt5_feeder.py:generate_rtd_text.
+    Cada coluna = =RTD("RTDTrading.RTDServer";;"TICKER_B_0";"FIELD")
+    Colunas NOME ficam em branco.
+    """
     today = date.today()
 
-    # Cabeçalho exato da planilha
-    HEADER = [
-        'Asset', 'Data', 'Hora', 'Último', 'Abertura', 'Máximo', 'Mínimo',
-        'Fechamento Anterior', 'Strike', 'Variação', 'Média', 'Nome do Ativo',
-        'Negócios', 'Quantidade', 'Volume', 'Of. Compra', 'Of. Venda',
-        'Volume Projetado', 'Vencimento', 'Validade', 'Cont. Abertos',
-        'Black Scholes', 'Volt. Implícita', 'Delta', 'Gama', 'Theta', 'Rho', 'Vega',
-        'VI Ask', 'VI Bid', 'VI / VH', 'Valor Intrínseco', 'Valor Extrínseco',
-        'Dividend Yield', 'IFR (RSI)', 'Volatilidade Implícita',
-        'Volatilidade Implícita - Opções'
-    ]
+    # Coleta todos os tickers: TICKER_MAP (ativos) + OPTION_MAP (opções)
+    ticker_map = {}   # site_ticker → mt5_symbol (igual ao ticker no padrão B3)
+    option_map = {}
 
-    def _n(v, decimals=2):
-        """Formata número com vírgula decimal, ou retorna '-' se None."""
-        if v is None:
-            return '-'
-        try:
-            f = round(float(v), decimals)
-            if decimals == 0:
-                return str(int(f))
-            # Usa vírgula como separador decimal (padrão PT-BR da planilha)
-            return str(f).replace('.', ',')
-        except (TypeError, ValueError):
-            return '-'
+    # Ativos da carteira
+    for a in Asset.query.filter(Asset.user_id == uid, Asset.quantity > 0).all():
+        ticker_map[a.ticker.upper()] = a.ticker.upper()
 
-    def _row(ticker, asset_data=None, option_data=None):
-        """Monta linha TSV. asset_data = Asset obj, option_data = RtdOptionData obj."""
-        now = now_brt()
-        date_str = now.strftime('%d/%m/%Y')
-        time_str = now.strftime('%H:%M:%S')
-
-        if asset_data:
-            a = asset_data
-            return [
-                ticker, date_str, time_str,
-                _n(a.current_price), '-', '-', '-', '-',
-                '0',                          # Strike
-                _n(a.daily_change),           # Variação %
-                '-', '-', '-', '-', '-',      # Média, Nome, Negócios, Qtd, Volume
-                '-', '-', '-',                # Of.Compra, Of.Venda, Vol.Proj.
-                '-', '31/12/9999', '0',       # Vencimento, Validade, Cont.Abertos
-                '-', '-', '-', '-', '-', '-', '-',  # BS, VI, Delta, Gama, Theta, Rho, Vega
-                '-', '-', '-', '-', '-',      # VI Ask, VI Bid, VI/VH, V.Int, V.Ext
-                '-', '-', '-', '-',           # DY, IFR, VI, VI-Opc
-            ]
-        elif option_data:
-            o = option_data
-            exp = o.expiration or '-'
-            return [
-                ticker, date_str, time_str,
-                _n(o.last_price), _n(o.open_price), _n(o.high_price), _n(o.low_price),
-                _n(o.prev_close),
-                _n(o.strike),
-                _n(o.change_pct),
-                '-', '-', '-', '-', '-',      # Média, Nome, Negócios, Qtd, Volume
-                _n(o.bid), _n(o.ask), '-',    # Of.Compra, Of.Venda, Vol.Proj.
-                exp, exp,                     # Vencimento, Validade
-                _n(o.open_interest, 0),
-                _n(o.bs_price),
-                _n(o.iv),
-                _n(o.delta, 6), _n(o.gamma, 6), _n(o.theta, 6), _n(o.rho, 6), _n(o.vega, 6),
-                '-', '-', '-',                # VI Ask, VI Bid, VI/VH
-                _n(o.intrinsic_value), _n(o.extrinsic_value),
-                '-', '-',                     # DY, IFR
-                _n(o.iv), '-',                # VI, VI-Opc
-            ]
-        else:
-            # Ticker sem dados — linha placeholder com '-'
-            return [ticker] + ['-'] * 36
-
-    rows = [HEADER]
-
-    # ── Ativos (ações, FIIs, ETFs) ──────────────────────────────────────────
-    assets = {a.ticker.upper(): a for a in
-              Asset.query.filter(Asset.user_id == uid, Asset.quantity > 0).all()}
     # Subjacentes de opções ativas
+    def _add_asset(t):
+        if t and t.upper() not in ticker_map:
+            ticker_map[t.upper()] = t.upper()
+
     for o in Option.query.filter_by(user_id=uid).all():
-        if o.underlying_asset and (not o.expiration_date or o.expiration_date >= today):
-            t = o.underlying_asset.upper()
-            if t not in assets:
-                assets[t] = None
+        if not o.expiration_date or o.expiration_date >= today:
+            _add_asset(o.underlying_asset)
     for op in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all():
-        if op.underlying_asset:
-            t = op.underlying_asset.upper()
-            if t not in assets:
-                assets[t] = None
+        _add_asset(op.underlying_asset)
     for ps in PutSale.query.filter_by(user_id=uid).all():
-        if ps.underlying_asset and ps.expiration_date >= today:
-            t = ps.underlying_asset.upper()
-            if t not in assets:
-                assets[t] = None
+        if ps.expiration_date >= today:
+            _add_asset(ps.underlying_asset)
     for sp in OptionSpread.query.filter_by(user_id=uid).all():
-        if sp.expiration_date >= today and sp.underlying_asset:
-            t = sp.underlying_asset.upper()
-            if t not in assets:
-                assets[t] = None
+        if sp.expiration_date >= today:
+            _add_asset(sp.underlying_asset)
 
-    for ticker in sorted(assets):
-        rows.append(_row(ticker, asset_data=assets[ticker]))
-
-    # ── Opções ativas ────────────────────────────────────────────────────────
-    option_tickers = {}   # ticker → RtdOptionData or None
-
-    def _add_opt(tk):
-        if tk:
-            t = tk.upper()
-            if t not in option_tickers:
-                option_tickers[t] = RtdOptionData.query.filter_by(
-                    user_id=uid, ticker=t).first()
+    # Opções ativas
+    def _add_opt(t):
+        if t and t.upper() not in option_map:
+            option_map[t.upper()] = t.upper()
 
     for o in Option.query.filter_by(user_id=uid).all():
         if not o.expiration_date or o.expiration_date >= today:
@@ -2317,17 +2264,46 @@ def download_rtd_tsv():
             SearchedOption.searched_at >= cutoff).all():
         _add_opt(so.ticker)
 
-    for ticker in sorted(option_tickers):
-        rows.append(_row(ticker, option_data=option_tickers[ticker]))
+    # Gera linhas no formato idêntico ao mt5_feeder
+    lines = ["\t".join(_RTD_HEADER)]
 
-    # ── Monta TSV ───────────────────────────────────────────────────────────
-    lines = ['\t'.join(str(c) for c in r) for r in rows]
-    content = '\r\n'.join(lines) + '\r\n'
+    all_tickers = {}
+    for site, sym in sorted(ticker_map.items()):
+        all_tickers[site] = sym
+    for site, sym in sorted(option_map.items()):
+        all_tickers[site] = sym
 
+    for ticker, mt5sym in sorted(all_tickers.items()):
+        base = f'"{mt5sym}_B_0"'
+        cols = [ticker]
+        for field, _ in _RTD_FIELDS:
+            if field == "NOME":
+                cols.append("")   # sem RTD para nome
+            else:
+                cols.append(f'=RTD("RTDTrading.RTDServer";;{base};"{field}")')
+        lines.append("\t".join(cols))
+
+    return "\n".join(lines), len(all_tickers)
+
+
+@app.route('/api/rtd-text')
+@login_required
+def api_rtd_text():
+    """Retorna o conteúdo RTD como JSON para exibição/cópia no browser."""
+    content, count = _build_rtd_text(current_user.id)
+    return jsonify({'content': content, 'count': count})
+
+
+@app.route('/download-rtd-tsv')
+@login_required
+def download_rtd_tsv():
+    """Baixa o arquivo TSV RTD no formato RTDTrading (idêntico ao MT5 Feeder)."""
+    from flask import Response as _Resp
+    content, _ = _build_rtd_text(current_user.id)
     return _Resp(
         content.encode('utf-8-sig'),   # BOM para Excel reconhecer UTF-8
         mimetype='text/tab-separated-values',
-        headers={'Content-Disposition': 'attachment; filename=rtd_tickers.tsv'}
+        headers={'Content-Disposition': 'attachment; filename=rtd_export.txt'}
     )
 
 

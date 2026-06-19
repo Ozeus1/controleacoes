@@ -102,35 +102,49 @@
 
   <!-- Painel RTD -->
   <div id="rtd-panel">
-    <h3>📋 Lista RTD — tickers para config.py</h3>
-    <div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:.6rem;">
-      Opções buscadas nos últimos 10 dias (removidas automaticamente após expiração):
+    <h3>📄 RTD Export — Planilha RTDTrading</h3>
+    <div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:.7rem;">
+      Gera planilha TSV no formato RTDTrading para colar no Excel/LibreOffice.
+      Inclui todas as ações, FIIs, subjacentes e opções ativas + opções buscadas (10 dias).
     </div>
-    <div class="rtd-searched-list" id="rtd-searched-list">
-      <span style="color:var(--text-secondary);font-size:.8rem;">Carregando…</span>
-    </div>
-    <div class="rtd-tabs">
-      <button class="rtd-tab active" onclick="showRtdTab('ticker')">TICKER_MAP</button>
-      <button class="rtd-tab" onclick="showRtdTab('option')">OPTION_MAP</button>
-    </div>
-    <div class="rtd-map-block">
-      <pre id="rtd-map-text">Carregando…</pre>
-      <button class="rtd-copy-btn" onclick="copyRtd()">Copiar</button>
-    </div>
-    <div style="display:flex;gap:.6rem;align-items:center;margin-top:.7rem;flex-wrap:wrap;">
-      <a href="/download-rtd-tsv"
-         style="background:#16a34a;border:0;border-radius:7px;color:#fff;padding:.38rem 1rem;
-                font-size:.83rem;cursor:pointer;font-weight:600;text-decoration:none;display:inline-block;">
-        ⬇ Baixar RTD.tsv (planilha)
+
+    <!-- Ações: Gerar / Copiar tudo / Salvar — igual ao MT5 Feeder -->
+    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:.7rem;">
+      <button class="rtd-copy-btn" style="position:static;font-size:.82rem;padding:.32rem .85rem;"
+              onclick="rtdGerar()">🔄 Gerar</button>
+      <button class="rtd-copy-btn" style="position:static;font-size:.82rem;padding:.32rem .85rem;"
+              onclick="rtdCopiarTudo()">📋 Copiar tudo</button>
+      <a href="/download-rtd-tsv" id="rtd-dl-btn"
+         style="background:#334155;border:1px solid #475569;border-radius:5px;color:#e2e8f0;
+                font-size:.82rem;padding:.32rem .85rem;text-decoration:none;display:inline-block;">
+        💾 Salvar .txt/.tsv…
       </a>
-      <span style="font-size:.75rem;color:var(--text-secondary);">
-        Arquivo TSV com todos os tickers no formato da planilha — cole ou abra direto no Excel.
-      </span>
+      <span id="rtd-count" style="font-size:.78rem;color:var(--text-secondary);margin-left:.3rem;"></span>
     </div>
-    <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.5rem;">
-      Ativos: ações + FIIs da carteira + subjacentes de opções ativas.
-      Opções: todas as operações abertas + opções buscadas aqui (10 dias).
-      Campos preenchidos quando disponíveis via importação do Excel.
+
+    <!-- Área de texto somente leitura (igual ao MT5 Feeder) -->
+    <div class="rtd-map-block">
+      <pre id="rtd-map-text" style="max-height:320px;font-size:.68rem;background:#0f172a;
+           border:1px solid var(--border-color);border-radius:6px;padding:.7rem;
+           color:#94a3b8;overflow:auto;white-space:pre;">Clique em 🔄 Gerar para visualizar…</pre>
+    </div>
+
+    <!-- Opções buscadas -->
+    <div style="margin-top:.8rem;border-top:1px solid rgba(255,255,255,.06);padding-top:.7rem;">
+      <div style="font-size:.78rem;color:var(--text-secondary);margin-bottom:.4rem;">
+        Opções buscadas incluídas (últimos 10 dias):
+      </div>
+      <div class="rtd-searched-list" id="rtd-searched-list">
+        <span style="color:var(--text-secondary);font-size:.8rem;">
+          Clique em Gerar para carregar…
+        </span>
+      </div>
+    </div>
+
+    <div style="font-size:.73rem;color:var(--text-secondary);margin-top:.6rem;">
+      Cole na célula A1 do Excel ou LibreOffice Calc. As fórmulas
+      <code>=RTD("RTDTrading.RTDServer";…)</code> preenchem automaticamente
+      quando o RTDTrading estiver ativo.
     </div>
   </div>
 
@@ -232,10 +246,6 @@
 </div>
 
 <script>
-var _rtdData = {ticker_map:'', option_map:'', searched_options:[]};
-var _rtdTab  = 'ticker';
-var _rtdLoaded = false;
-
 function buscar(){
   var t = document.getElementById('bo-ticker').value.trim().toUpperCase();
   if(!t){ return; }
@@ -249,44 +259,64 @@ function buscar(){
       _setLoading(false);
       if(!res.ok){ _setError(res.j.error || 'Erro desconhecido.'); return; }
       _render(res.j);
-      // Recarrega painel RTD se estiver aberto (ticker foi adicionado)
+      // Regera RTD se painel estiver aberto (novo ticker adicionado)
       if(document.getElementById('rtd-panel').style.display !== 'none'){
-        _loadRtd();
+        rtdGerar();
       }
     })
     .catch(function(e){ _setLoading(false); _setError('Erro: ' + e.message); });
 }
 
 /* ── Painel RTD ── */
+var _rtdContent = '';
+var _rtdLoaded  = false;
+
 function toggleRtdPanel(){
   var panel = document.getElementById('rtd-panel');
-  if(panel.style.display === 'none' || panel.style.display === ''){
-    panel.style.display = 'block';
-    if(!_rtdLoaded) _loadRtd();
-  } else {
-    panel.style.display = 'none';
-  }
+  var show = panel.style.display === 'none' || panel.style.display === '';
+  panel.style.display = show ? 'block' : 'none';
 }
 
-function _loadRtd(){
-  document.getElementById('rtd-map-text').textContent = 'Carregando…';
-  document.getElementById('rtd-searched-list').innerHTML = '<span style="color:var(--text-secondary);font-size:.8rem">Carregando…</span>';
-  fetch('/api/rtd-map')
+function rtdGerar(){
+  var pre   = document.getElementById('rtd-map-text');
+  var count = document.getElementById('rtd-count');
+  pre.textContent = '⏳ Gerando…';
+  count.textContent = '';
+  fetch('/api/rtd-text')
     .then(function(r){ return r.json(); })
     .then(function(d){
-      _rtdData = d;
+      _rtdContent = d.content || '';
+      pre.textContent = _rtdContent;
+      count.textContent = '✓ ' + (d.count || 0) + ' ticker(s) gerado(s)';
       _rtdLoaded = true;
-      _renderRtdSearched(d.searched_options || []);
-      _renderRtdMap();
+      // Carrega lista de buscadas via /api/rtd-map
+      fetch('/api/rtd-map')
+        .then(function(r2){ return r2.json(); })
+        .then(function(d2){ _renderRtdSearched(d2.searched_options || []); })
+        .catch(function(){});
     })
-    .catch(function(e){
-      document.getElementById('rtd-map-text').textContent = 'Erro: ' + e.message;
-    });
+    .catch(function(e){ pre.textContent = 'Erro: ' + e.message; });
+}
+
+function rtdCopiarTudo(){
+  if(!_rtdContent.trim()){
+    alert('Clique em 🔄 Gerar primeiro.');
+    return;
+  }
+  navigator.clipboard.writeText(_rtdContent).then(function(){
+    var btn = document.querySelectorAll('button')[2];  // "Copiar tudo"
+    alert('Conteúdo copiado para a área de transferência.\nCole na célula A1 do Excel ou LibreOffice Calc.');
+  }).catch(function(){
+    var ta = document.createElement('textarea');
+    ta.value = _rtdContent; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    alert('Conteúdo copiado!\nCole na célula A1 do Excel ou LibreOffice Calc.');
+  });
 }
 
 function _renderRtdSearched(list){
   var ct = document.getElementById('rtd-searched-list');
-  if(!list.length){
+  if(!list || !list.length){
     ct.innerHTML = '<span style="color:var(--text-secondary);font-size:.8rem">Nenhuma opção buscada nos últimos 10 dias.</span>';
     return;
   }
@@ -304,35 +334,8 @@ function _renderRtdSearched(list){
 function removeSearched(ticker){
   fetch('/api/rtd-map/searched/delete/' + ticker, {method:'POST',
     headers:{'X-CSRFToken':document.querySelector('meta[name=csrf-token]')?.content||''}})
-  .then(function(){ _rtdLoaded = false; _loadRtd(); })
+  .then(function(){ rtdGerar(); })
   .catch(function(){});
-}
-
-function showRtdTab(tab){
-  _rtdTab = tab;
-  document.querySelectorAll('.rtd-tab').forEach(function(b){
-    b.classList.toggle('active', b.textContent.toLowerCase().includes(tab));
-  });
-  _renderRtdMap();
-}
-
-function _renderRtdMap(){
-  var txt = _rtdTab === 'ticker' ? _rtdData.ticker_map : _rtdData.option_map;
-  document.getElementById('rtd-map-text').textContent = txt || '(vazio)';
-}
-
-function copyRtd(){
-  var txt = document.getElementById('rtd-map-text').textContent;
-  navigator.clipboard.writeText(txt).then(function(){
-    var btn = document.querySelector('.rtd-copy-btn');
-    var orig = btn.textContent;
-    btn.textContent = '✓ Copiado!';
-    setTimeout(function(){ btn.textContent = orig; }, 1800);
-  }).catch(function(){
-    var ta = document.createElement('textarea');
-    ta.value = txt; document.body.appendChild(ta);
-    ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
-  });
 }
 
 /* ── Ficha ── */

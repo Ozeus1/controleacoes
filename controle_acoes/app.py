@@ -6941,6 +6941,12 @@ def api_liquidez(ticker):
 
     selected_calls = calls[:limit]
     selected_puts = puts[:limit]
+    if spot_price:
+        def _spot_pct(row):
+            strike = row.get('strike')
+            return ((float(strike) - float(spot_price)) / float(spot_price) * 100) if strike else 0
+        selected_calls.sort(key=_spot_pct)
+        selected_puts.sort(key=_spot_pct)
     due_dates = sorted({o['due_date'] for o in selected_calls + selected_puts if o.get('due_date')})
 
     return jsonify({

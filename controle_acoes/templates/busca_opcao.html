@@ -117,10 +117,20 @@
       <pre id="rtd-map-text">Carregando…</pre>
       <button class="rtd-copy-btn" onclick="copyRtd()">Copiar</button>
     </div>
+    <div style="display:flex;gap:.6rem;align-items:center;margin-top:.7rem;flex-wrap:wrap;">
+      <a href="/download-rtd-tsv"
+         style="background:#16a34a;border:0;border-radius:7px;color:#fff;padding:.38rem 1rem;
+                font-size:.83rem;cursor:pointer;font-weight:600;text-decoration:none;display:inline-block;">
+        ⬇ Baixar RTD.tsv (planilha)
+      </a>
+      <span style="font-size:.75rem;color:var(--text-secondary);">
+        Arquivo TSV com todos os tickers no formato da planilha — cole ou abra direto no Excel.
+      </span>
+    </div>
     <div style="font-size:.75rem;color:var(--text-secondary);margin-top:.5rem;">
-      Cole o bloco correspondente no arquivo <code>config.py</code> do MT5 Feeder.
       Ativos: ações + FIIs da carteira + subjacentes de opções ativas.
       Opções: todas as operações abertas + opções buscadas aqui (10 dias).
+      Campos preenchidos quando disponíveis via importação do Excel.
     </div>
   </div>
 

@@ -360,6 +360,13 @@ function removeSearched(ticker){
 
 /* ── Ficha ── */
 function _render(d){
+  try { _renderInner(d); } catch(e){
+    console.error('_render error:', e, d);
+    document.getElementById('bo-error').textContent = 'Erro ao renderizar: ' + e.message;
+    document.getElementById('bo-error').style.display = 'block';
+  }
+}
+function _renderInner(d){
   _set('f-ticker', d.ticker);
 
   var isPut  = /put/i.test(d.type) || d.type === 'P';
@@ -440,7 +447,12 @@ function _render(d){
   _set('f-intrinsic', _fBRL(d.intrinsic_value));
   _set('f-extrinsic', _fBRL(d.extrinsic_value));
 
-  document.getElementById('bo-raw').textContent = JSON.stringify(d._raw || d, null, 2);
+  console.log('busca-opcao result:', d);
+  // Mostra o result completo (sem _raw aninhado) nos dados brutos
+  var rawDisplay = Object.assign({}, d);
+  delete rawDisplay._raw;
+  if(d._raw) rawDisplay._raw_oplab = d._raw;
+  document.getElementById('bo-raw').textContent = JSON.stringify(rawDisplay, null, 2);
   document.getElementById('bo-raw-toggle').textContent = '▶ Ver dados brutos da API';
   document.getElementById('bo-raw').style.display = 'none';
   document.getElementById('bo-ficha').style.display = 'block';

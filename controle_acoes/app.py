@@ -2055,47 +2055,58 @@ def api_busca_opcao(ticker):
         except Exception:
             pass
 
+    def _fz(v, decimals=2):
+        """Como _f, mas retorna None se o valor for 0 (OpLab retorna 0 para campos sem dado)."""
+        r = _f(v, decimals)
+        return None if r == 0.0 else r
+
     result = {
         'ticker':           ticker,
         'type':             d.get('category') or d.get('option_type') or d.get('type') or '',
-        'maturity_type':    d.get('maturity_type') or '',   # EUROPEAN / AMERICAN
+        'maturity_type':    d.get('maturity_type') or '',
         'underlying':       underlying,
         'spot_price':       spot_price,
         'spot_change':      spot_change,
         'days_to_maturity': d.get('days_to_maturity'),
-        # Preço e variação
-        'last':             _f(d.get('close')),
-        'open':             _f(d.get('open')),
-        'high':             _f(d.get('high')),
-        'low':              _f(d.get('low')),
-        'prev_close':       _f(d.get('previous_close')),
-        'change_pct':       change_pct,
-        'financial_volume': _f(d.get('financial_volume'), 0),
+        # Preço — close é o último preço; open/high/low/prev_close chegam como 0 quando sem dado
+        'last':             _fz(d.get('close')),
+        'open':             _fz(d.get('open')),
+        'high':             _fz(d.get('high')),
+        'low':              _fz(d.get('low')),
+        'prev_close':       _fz(d.get('previous_close')),
+        'change_pct':       _fz(d.get('variation')),
+        'financial_volume': _fz(d.get('financial_volume'), 0),
         # Opção
-        'strike':           _f(d.get('strike')),
+        'strike':           _f(d.get('strike')),        # strike pode ser 0 em alguns casos
         'expiration':       d.get('due_date') or '',
-        'volume':           _f(d.get('volume'), 0),
-        'open_interest':    _f(d.get('open_interest') or d.get('contracts'), 0),
-        'bid':              _f(d.get('bid')),
-        'ask':              _f(d.get('ask')),
-        'bid_volume':       _f(d.get('bid_volume'), 0),
-        'ask_volume':       _f(d.get('ask_volume'), 0),
-        # Gregas (de /market/options)
-        'bs_price':         _f(greeks.get('black_scholes') or greeks.get('bs') or greeks.get('theorical')),
-        'delta':            _f(greeks.get('delta')),
-        'gamma':            _f(greeks.get('gamma')),
-        'theta':            _f(greeks.get('theta')),
-        'rho':              _f(greeks.get('rho')),
-        'vega':             _f(greeks.get('vega')),
-        # Volatilidade (de /market/options)
-        'iv':               _f(iv_data.get('iv') or iv_data.get('current')),
-        'iv_ask':           _f(iv_data.get('ask')),
-        'iv_bid':           _f(iv_data.get('bid')),
-        'iv_over_hv':       _f(iv_data.get('iv_over_hv') or iv_data.get('ratio')),
-        'intrinsic_value':  _f(iv_data.get('intrinsic_value') or greeks.get('intrinsic_value')),
-        'extrinsic_value':  _f(iv_data.get('extrinsic_value') or greeks.get('extrinsic_value') or greeks.get('time_value')),
+        'volume':           _fz(d.get('volume'), 0),
+        'open_interest':    _fz(d.get('open_interest') or d.get('contracts'), 0),
+        'bid':              _fz(d.get('bid')),
+        'ask':              _fz(d.get('ask')),
+        'bid_volume':       _fz(d.get('bid_volume'), 0),
+        'ask_volume':       _fz(d.get('ask_volume'), 0),
+        # Gregas (de /market/options/{underlying})
+        'bs_price':         _fz(greeks.get('black_scholes') or greeks.get('bs') or greeks.get('theorical')),
+        'delta':            _fz(greeks.get('delta')),
+        'gamma':            _fz(greeks.get('gamma')),
+        'theta':            _fz(greeks.get('theta')),
+        'rho':              _fz(greeks.get('rho')),
+        'vega':             _fz(greeks.get('vega')),
+        # Volatilidade (de /market/options/{underlying})
+        'iv':               _fz(iv_data.get('iv') or iv_data.get('current')),
+        'iv_ask':           _fz(iv_data.get('ask')),
+        'iv_bid':           _fz(iv_data.get('bid')),
+        'iv_over_hv':       _fz(iv_data.get('iv_over_hv') or iv_data.get('ratio')),
+        'intrinsic_value':  _fz(iv_data.get('intrinsic_value') or greeks.get('intrinsic_value')),
+        'extrinsic_value':  _fz(iv_data.get('extrinsic_value') or greeks.get('extrinsic_value') or greeks.get('time_value')),
         '_raw':             {k: v for k, v in d.items() if not isinstance(v, (dict, list))},
     }
+
+    # bid/ask não-zero do instruments são válidos mesmo se volume=0 (market maker)
+    if result['bid'] is None:
+        result['bid'] = _f(d.get('bid'))
+    if result['ask'] is None:
+        result['ask'] = _f(d.get('ask'))
 
     # ── Mescla com dados do RtdOptionData (importados via Excel) ────────────
     # Para campos de gregas/VI: RTD prevalece se OpLab retornou None ou 0.0
@@ -2108,18 +2119,18 @@ def api_busca_opcao(ticker):
             cur = result.get(key)
             if cur is None or (force_nonzero and cur == 0.0):
                 result[key] = rtd_val
-        _merge('last',            rtd.last_price)
-        _merge('open',            rtd.open_price)
-        _merge('high',            rtd.high_price)
-        _merge('low',             rtd.low_price)
-        _merge('prev_close',      rtd.prev_close)
+        _merge('last',            rtd.last_price,   force_nonzero=True)
+        _merge('open',            rtd.open_price,   force_nonzero=True)
+        _merge('high',            rtd.high_price,   force_nonzero=True)
+        _merge('low',             rtd.low_price,    force_nonzero=True)
+        _merge('prev_close',      rtd.prev_close,   force_nonzero=True)
         _merge('change_pct',      rtd.change_pct)
-        _merge('strike',          rtd.strike)
+        _merge('strike',          rtd.strike,        force_nonzero=True)
         _merge('expiration',      rtd.expiration)
-        _merge('volume',          rtd.volume)
-        _merge('open_interest',   rtd.open_interest)
-        _merge('bid',             rtd.bid)
-        _merge('ask',             rtd.ask)
+        _merge('volume',          rtd.volume,        force_nonzero=True)
+        _merge('open_interest',   rtd.open_interest, force_nonzero=True)
+        _merge('bid',             rtd.bid,           force_nonzero=True)
+        _merge('ask',             rtd.ask,           force_nonzero=True)
         _merge('iv',              rtd.iv,             force_nonzero=True)
         _merge('iv_ask',          rtd.iv_ask,         force_nonzero=True)
         _merge('iv_bid',          rtd.iv_bid,         force_nonzero=True)

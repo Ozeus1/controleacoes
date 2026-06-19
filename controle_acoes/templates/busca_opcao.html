@@ -409,13 +409,13 @@ function _render(d){
   _set('f-high',      _fBRL(d.high));
   _set('f-low',       _fBRL(d.low));
   _set('f-prev-close',_fBRL(d.prev_close));
-  _set('f-volume',    d.volume       != null ? _fNum(d.volume) : '—');
+  _set('f-volume',    _fNum(d.volume));
   _set('f-fin-vol',   d.financial_volume != null ? 'R$ ' + _fNum(Math.round(d.financial_volume)) : '—');
-  _set('f-oi',        d.open_interest != null ? _fNum(d.open_interest) : '—');
+  _set('f-oi',        _fNum(d.open_interest));
 
   _set('f-type',      isPut ? 'Put' : 'Call');
   _set('f-mat-type',  d.maturity_type || '—');
-  _set('f-strike',    _fBRL(d.strike));
+  _set('f-strike',    d.strike != null ? _fBRL(d.strike) : '—');
   _set('f-expiration',_fDate(d.expiration));
   _set('f-days',      d.days_to_maturity != null ? d.days_to_maturity + ' dias' : '—');
   _set('f-bid',       _fBRL(d.bid));
@@ -426,16 +426,16 @@ function _render(d){
   _setVar('f-spot-var', d.spot_change);
 
   _set('f-bs',    _fBRL(d.bs_price));
-  _set('f-delta', d.delta != null ? d.delta.toFixed(4) : '—');
-  _set('f-gamma', d.gamma != null ? d.gamma.toFixed(6) : '—');
-  _set('f-theta', d.theta != null ? d.theta.toFixed(4) : '—');
-  _set('f-rho',   d.rho   != null ? d.rho.toFixed(4)   : '—');
-  _set('f-vega',  d.vega  != null ? d.vega.toFixed(4)  : '—');
+  _set('f-delta', _fGreek(d.delta, 4));
+  _set('f-gamma', _fGreek(d.gamma, 6));
+  _set('f-theta', _fGreek(d.theta, 4));
+  _set('f-rho',   _fGreek(d.rho,   4));
+  _set('f-vega',  _fGreek(d.vega,  4));
 
   _set('f-iv',     _fPct(d.iv));
   _set('f-iv-ask', _fPct(d.iv_ask));
   _set('f-iv-bid', _fPct(d.iv_bid));
-  _set('f-iv-hv',  d.iv_over_hv != null ? d.iv_over_hv.toFixed(2) : '—');
+  _set('f-iv-hv',  d.iv_over_hv != null ? Number(d.iv_over_hv).toFixed(2) : '—');
 
   _set('f-intrinsic', _fBRL(d.intrinsic_value));
   _set('f-extrinsic', _fBRL(d.extrinsic_value));
@@ -449,18 +449,19 @@ function _render(d){
 /* ── Helpers ── */
 function _set(id, val){
   var el = document.getElementById(id);
-  if(el) el.textContent = (val != null && val !== '' && val !== 'R$ —') ? val : '—';
+  if(el) el.textContent = (val != null && val !== '' && val !== '—') ? val : '—';
 }
 function _setVar(id, v){
   var el = document.getElementById(id);
   if(!el) return;
   if(v == null){ el.textContent = '—'; el.style.color=''; return; }
   var sign = v >= 0 ? '+' : '';
-  el.textContent = sign + v.toFixed(2) + '%';
+  el.textContent = sign + Number(v).toFixed(2) + '%';
   el.style.color = v >= 0 ? '#34d399' : '#f87171';
   el.style.fontWeight = '600';
 }
 function _fBRL(v){
+  // null ou 0 sem dado → '—'   (strike pode ser não-nulo e válido)
   if(v == null) return '—';
   return 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
@@ -470,13 +471,20 @@ function _fNum(v){
 }
 function _fPct(v){
   if(v == null) return '—';
-  var pct = v <= 1 ? v * 100 : v;
+  // OpLab retorna VI como decimal (0.39) ou percentual (39.21) — normaliza para %
+  var pct = (v > 0 && v <= 1.5) ? v * 100 : v;
   return pct.toFixed(2) + '%';
 }
 function _fDate(s){
   if(!s) return '—';
+  // Aceita YYYY-MM-DD ou DD/MM/YYYY
   var m = String(s).match(/(\d{4})-(\d{2})-(\d{2})/);
   return m ? m[3]+'/'+m[2]+'/'+m[1] : s;
+}
+function _fGreek(v, dec){
+  // Gregas: null → '—'; 0 deixa passar (pode ser delta=0 real)
+  if(v == null) return '—';
+  return Number(v).toFixed(dec || 4);
 }
 function _setLoading(on){
   document.getElementById('bo-loading').style.display = on ? 'inline' : 'none';

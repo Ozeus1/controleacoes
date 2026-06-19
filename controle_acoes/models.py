@@ -532,6 +532,9 @@ class RtdOptionData(db.Model):
     bid             = db.Column(db.Float, nullable=True)
     ask             = db.Column(db.Float, nullable=True)
     iv              = db.Column(db.Float, nullable=True)        # Volatilidade Implícita %
+    iv_ask          = db.Column(db.Float, nullable=True)
+    iv_bid          = db.Column(db.Float, nullable=True)
+    iv_over_hv      = db.Column(db.Float, nullable=True)
     delta           = db.Column(db.Float, nullable=True)
     gamma           = db.Column(db.Float, nullable=True)
     theta           = db.Column(db.Float, nullable=True)

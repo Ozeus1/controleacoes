@@ -545,6 +545,15 @@ def run_migrations():
         )
     """)
 
+    # Adiciona colunas novas em rtd_option_data (iv_ask, iv_bid, iv_over_hv)
+    cursor.execute("PRAGMA table_info(rtd_option_data)")
+    rtd_cols = {row[1] for row in cursor.fetchall()}
+    if rtd_cols:
+        for _col in ('iv_ask', 'iv_bid', 'iv_over_hv'):
+            if _col not in rtd_cols:
+                cursor.execute(f"ALTER TABLE rtd_option_data ADD COLUMN {_col} FLOAT")
+                print(f"[MIGRATION] Added rtd_option_data.{_col}")
+
     conn.commit()
     conn.close()
 
@@ -2089,10 +2098,15 @@ def api_busca_opcao(ticker):
     }
 
     # ── Mescla com dados do RtdOptionData (importados via Excel) ────────────
+    # Para campos de gregas/VI: RTD prevalece se OpLab retornou None ou 0.0
     rtd = RtdOptionData.query.filter_by(user_id=current_user.id, ticker=ticker).first()
     if rtd:
-        def _merge(key, rtd_val):
-            if result.get(key) is None and rtd_val is not None:
+        def _merge(key, rtd_val, force_nonzero=False):
+            """Preenche com RTD se OpLab retornou None; com force_nonzero também substitui 0.0."""
+            if rtd_val is None:
+                return
+            cur = result.get(key)
+            if cur is None or (force_nonzero and cur == 0.0):
                 result[key] = rtd_val
         _merge('last',            rtd.last_price)
         _merge('open',            rtd.open_price)
@@ -2106,15 +2120,18 @@ def api_busca_opcao(ticker):
         _merge('open_interest',   rtd.open_interest)
         _merge('bid',             rtd.bid)
         _merge('ask',             rtd.ask)
-        _merge('iv',              rtd.iv)
-        _merge('delta',           rtd.delta)
-        _merge('gamma',           rtd.gamma)
-        _merge('theta',           rtd.theta)
-        _merge('rho',             rtd.rho)
-        _merge('vega',            rtd.vega)
-        _merge('bs_price',        rtd.bs_price)
-        _merge('intrinsic_value', rtd.intrinsic_value)
-        _merge('extrinsic_value', rtd.extrinsic_value)
+        _merge('iv',              rtd.iv,             force_nonzero=True)
+        _merge('iv_ask',          rtd.iv_ask,         force_nonzero=True)
+        _merge('iv_bid',          rtd.iv_bid,         force_nonzero=True)
+        _merge('iv_over_hv',      rtd.iv_over_hv,     force_nonzero=True)
+        _merge('delta',           rtd.delta,           force_nonzero=True)
+        _merge('gamma',           rtd.gamma,           force_nonzero=True)
+        _merge('theta',           rtd.theta,           force_nonzero=True)
+        _merge('rho',             rtd.rho,             force_nonzero=True)
+        _merge('vega',            rtd.vega,            force_nonzero=True)
+        _merge('bs_price',        rtd.bs_price,        force_nonzero=True)
+        _merge('intrinsic_value', rtd.intrinsic_value, force_nonzero=True)
+        _merge('extrinsic_value', rtd.extrinsic_value, force_nonzero=True)
         _merge('spot_price',      rtd.spot_price)
         if not result.get('type') and rtd.option_type:
             result['type'] = rtd.option_type
@@ -6408,20 +6425,25 @@ def importar_excel():
                 sp.underlying_change = v
 
     # ── 8. Persiste dados de opções em RtdOptionData (cache para Busca de Opção) ──
-    # Sheets de opções: rtd e opcao (colunas padrão), C_put, V_put, C_Call_ITM
-    # Colunas padrão (rtd/opcao): 0=ticker,1=open,2=high,3=last,4=low,5=prev_close,
-    #   6=bid,7=ask,8=strike,9=change_pct,11=name,18=expiration,22=iv,23=delta,24=gamma
-    # Colunas extra (C_put/V_put): 0=ticker,3=last,8=strike,14=expiration,
-    #   17=delta,18=gamma,19=theta,22=intrinsic,23=extrinsic
+    # Formato TSV RTDTrading (colunas 0-based):
+    # 0=Asset, 1=Data, 2=Hora, 3=Último, 4=Abertura, 5=Máximo, 6=Mínimo,
+    # 7=Fech.Ant., 8=Strike, 9=Variação, 10=Média, 11=Nome, 12=Negócios,
+    # 13=Quantidade, 14=Volume, 15=Of.Compra, 16=Of.Venda, 17=Vol.Proj.,
+    # 18=Vencimento, 19=Validade, 20=Cont.Abertos, 21=Black Scholes,
+    # 22=Volt.Implícita, 23=Delta, 24=Gama, 25=Theta, 26=Rho, 27=Vega,
+    # 28=VI Ask, 29=VI Bid, 30=VI/VH, 31=Valor Intrínseco, 32=Valor Extrínseco
     rtd_count = 0
     rtd_now   = datetime.utcnow()
     uid_rtd   = current_user.id
 
+    def _col(row, i):
+        """Retorna row[i] convertido via _float, ou None se fora do range."""
+        return _float(row[i]) if len(row) > i else None
+
     def _save_rtd_row(key, row, sheet_name):
         nonlocal rtd_count
-        if not key or len(key) < 5:   # tickers de ações têm < 5 chars — pula
+        if not key or len(key) < 5:
             return
-        # Heurística: opções têm 8+ chars (PETRH230) ou nome começa com "Opc"
         name = row[11] if len(row) > 11 else ''
         is_opt = (len(key) >= 6 and not key.endswith('11') and not key.endswith('3') and not key.endswith('4')) \
                  or _is_option(name)
@@ -6433,32 +6455,51 @@ def importar_excel():
                 rec = RtdOptionData(user_id=uid_rtd, ticker=key)
                 db.session.add(rec)
             if sheet_name in ('rtd', 'opcao'):
-                rec.open_price  = _float(row[1]) if len(row) > 1 else rec.open_price
-                rec.high_price  = _float(row[2]) if len(row) > 2 else rec.high_price
-                rec.last_price  = _float(row[3]) if len(row) > 3 else rec.last_price
-                rec.low_price   = _float(row[4]) if len(row) > 4 else rec.low_price
-                rec.prev_close  = _float(row[5]) if len(row) > 5 else rec.prev_close
-                rec.bid         = _float(row[6]) if len(row) > 6 else rec.bid
-                rec.ask         = _float(row[7]) if len(row) > 7 else rec.ask
-                rec.strike      = _float(row[8]) if len(row) > 8 else rec.strike
-                rec.change_pct  = _float(row[9]) if len(row) > 9 else rec.change_pct
+                def _upd(attr, i):
+                    v = _col(row, i)
+                    if v is not None:
+                        setattr(rec, attr, v)
+                _upd('last_price',      3)
+                _upd('open_price',      4)
+                _upd('high_price',      5)
+                _upd('low_price',       6)
+                _upd('prev_close',      7)
+                _upd('strike',          8)
+                _upd('change_pct',      9)
+                _upd('volume',         14)
+                _upd('bid',            15)
+                _upd('ask',            16)
+                _upd('open_interest',  20)
+                _upd('bs_price',       21)
+                _upd('iv',             22)
+                _upd('delta',          23)
+                _upd('gamma',          24)
+                _upd('theta',          25)
+                _upd('rho',            26)
+                _upd('vega',           27)
+                _upd('iv_ask',         28)
+                _upd('iv_bid',         29)
+                _upd('iv_over_hv',     30)
+                _upd('intrinsic_value',31)
+                _upd('extrinsic_value',32)
                 if len(row) > 18 and row[18]:
                     v = row[18]
                     rec.expiration = v.strftime('%d/%m/%Y') if hasattr(v, 'strftime') else str(v)
-                rec.iv          = _float(row[22]) if len(row) > 22 else rec.iv
-                rec.delta       = _float(row[23]) if len(row) > 23 else rec.delta
-                rec.gamma       = _float(row[24]) if len(row) > 24 else rec.gamma
             elif sheet_name in ('C_put', 'V_put', 'C_Call_ITM'):
-                rec.last_price      = _float(row[3]) if len(row) > 3 else rec.last_price
-                rec.strike          = _float(row[8]) if len(row) > 8 else rec.strike
+                def _upd(attr, i):
+                    v = _col(row, i)
+                    if v is not None:
+                        setattr(rec, attr, v)
+                _upd('last_price',       3)
+                _upd('strike',           8)
+                _upd('delta',           17)
+                _upd('gamma',           18)
+                _upd('theta',           19)
+                _upd('intrinsic_value', 22)
+                _upd('extrinsic_value', 23)
                 if len(row) > 14 and row[14]:
                     v = row[14]
                     rec.expiration = v.strftime('%d/%m/%Y') if hasattr(v, 'strftime') else str(v)
-                rec.delta           = _float(row[17]) if len(row) > 17 else rec.delta
-                rec.gamma           = _float(row[18]) if len(row) > 18 else rec.gamma
-                rec.theta           = _float(row[19]) if len(row) > 19 else rec.theta
-                rec.intrinsic_value = _float(row[22]) if len(row) > 22 else rec.intrinsic_value
-                rec.extrinsic_value = _float(row[23]) if len(row) > 23 else rec.extrinsic_value
             rec.imported_at = rtd_now
             rtd_count += 1
         except Exception:

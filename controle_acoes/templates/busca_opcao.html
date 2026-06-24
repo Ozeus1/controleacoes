@@ -190,7 +190,7 @@
 
       <!-- Black-Scholes & Gregas -->
       <div class="bo-card">
-        <div class="bo-card-title">Black-Scholes &amp; Gregas</div>
+        <div class="bo-card-title">Black-Scholes &amp; Gregas <span id="f-bs-src" style="font-size:.6rem;color:#64748b;text-transform:none;font-weight:400;"></span></div>
         <div class="bo-row"><span class="bo-lbl">BS (Teórico)</span><span class="bo-val hi" id="f-bs">—</span></div>
         <div class="bo-row"><span class="bo-lbl">Delta</span>        <span class="bo-val" id="f-delta">—</span></div>
         <div class="bo-row"><span class="bo-lbl">Gama</span>         <span class="bo-val" id="f-gamma">—</span></div>
@@ -363,6 +363,16 @@ function _render(d){
   _t('f-theta', _g(d.theta,4));
   _t('f-rho',   _g(d.rho,4));
   _t('f-vega',  _g(d.vega,4));
+  /* indica se BS foi calculado localmente */
+  var bsSrc = document.getElementById('f-bs-src');
+  if(bsSrc){
+    if(d.bs_calc){
+      bsSrc.textContent = '(calc. σ='+d.bs_sigma_used+'%)';
+      bsSrc.title = 'Calculado localmente via Black-Scholes com volatilidade histórica/implícita de '+d.bs_sigma_used+'%';
+    } else {
+      bsSrc.textContent = d.bs_price!=null ? '(OpLab)' : '';
+    }
+  }
 
   /* VI */
   _t('f-iv',     _pct(d.iv));

@@ -1983,6 +1983,101 @@ def cadeia_opcoes():
     return render_template('cadeia_opcoes.html', ranking_vol=ranking_vol, selic=_selic())
 
 
+def _bs_price(S, K, T, r, sigma, option_type='CALL'):
+    """
+    Black-Scholes price (European).
+    S=spot, K=strike, T=years to expiry, r=risk-free rate, sigma=annual vol.
+    Returns None if inputs are invalid.
+    """
+    import math
+    try:
+        if T <= 0:
+            # no tempo de expiração: apenas valor intrínseco
+            if option_type.upper() in ('CALL', 'C'):
+                return max(0.0, round(S - K, 4))
+            else:
+                return max(0.0, round(K - S, 4))
+        if sigma <= 0 or S <= 0 or K <= 0:
+            return None
+        d1 = (math.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
+        d2 = d1 - sigma * math.sqrt(T)
+        def _N(x):
+            return 0.5 * (1.0 + math.erf(x / math.sqrt(2)))
+        if option_type.upper() in ('CALL', 'C'):
+            price = S * _N(d1) - K * math.exp(-r * T) * _N(d2)
+        else:
+            price = K * math.exp(-r * T) * _N(-d2) - S * _N(-d1)
+        return round(max(0.0, price), 4)
+    except Exception:
+        return None
+
+
+def _bs_greeks(S, K, T, r, sigma, option_type='CALL'):
+    """
+    Retorna dict com delta, gamma, theta, vega, rho calculados via BS.
+    Retorna {} se inputs inválidos.
+    """
+    import math
+    try:
+        if T <= 0 or sigma <= 0 or S <= 0 or K <= 0:
+            return {}
+        def _N(x):
+            return 0.5 * (1.0 + math.erf(x / math.sqrt(2)))
+        def _n(x):
+            return math.exp(-0.5 * x ** 2) / math.sqrt(2 * math.pi)
+        d1 = (math.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
+        d2 = d1 - sigma * math.sqrt(T)
+        gamma  = _n(d1) / (S * sigma * math.sqrt(T))
+        vega   = S * _n(d1) * math.sqrt(T) / 100   # por 1% de variação na vol
+        if option_type.upper() in ('CALL', 'C'):
+            delta = _N(d1)
+            theta = (-S * _n(d1) * sigma / (2 * math.sqrt(T)) - r * K * math.exp(-r * T) * _N(d2)) / 365
+            rho   = K * T * math.exp(-r * T) * _N(d2) / 100
+        else:
+            delta = _N(d1) - 1
+            theta = (-S * _n(d1) * sigma / (2 * math.sqrt(T)) + r * K * math.exp(-r * T) * _N(-d2)) / 365
+            rho   = -K * T * math.exp(-r * T) * _N(-d2) / 100
+        return {
+            'delta': round(delta, 6),
+            'gamma': round(gamma, 6),
+            'theta': round(theta, 6),
+            'vega':  round(vega,  6),
+            'rho':   round(rho,   6),
+        }
+    except Exception:
+        return {}
+
+
+def _hv_from_oplab(underlying, token, days=21):
+    """
+    Calcula Volatilidade Histórica anualizada a partir dos últimos `days` fechamentos do subjacente.
+    Usa /market/history/{underlying}?from=YYYY-MM-DD&to=YYYY-MM-DD via OpLab.
+    Retorna float (ex: 0.32) ou None se não disponível.
+    """
+    import math
+    try:
+        end   = datetime.utcnow().date()
+        start = end - timedelta(days=days * 2)   # pega margem para fins de semana
+        url   = f'/market/history/{underlying}?from={start}&to={end}'
+        data  = _oplab_get_json(url, token, timeout=10)
+        closes = []
+        if isinstance(data, list):
+            for item in sorted(data, key=lambda x: x.get('time', 0)):
+                c = item.get('close') or item.get('adjusted_close')
+                if c and float(c) > 0:
+                    closes.append(float(c))
+        if len(closes) < 5:
+            return None
+        closes = closes[-days:]
+        returns = [math.log(closes[i] / closes[i-1]) for i in range(1, len(closes))]
+        mean    = sum(returns) / len(returns)
+        var     = sum((r - mean) ** 2 for r in returns) / (len(returns) - 1)
+        hv      = math.sqrt(var) * math.sqrt(252)
+        return round(hv, 4) if hv > 0 else None
+    except Exception:
+        return None
+
+
 @app.route('/busca-opcao')
 @login_required
 def busca_opcao():
@@ -2147,6 +2242,52 @@ def api_busca_opcao(ticker):
         if not result.get('type') and rtd.option_type:
             result['type'] = rtd.option_type
         result['_rtd_imported_at'] = rtd.imported_at.strftime('%d/%m/%Y %H:%M') if rtd.imported_at else None
+
+    # ── Cálculo BS local quando OpLab não retornou gregas ───────────────────
+    # Usa: spot_price, strike, days_to_maturity, Selic mensal, vol histórica do subjacente
+    needs_bs = result.get('bs_price') is None
+    needs_greeks = result.get('delta') is None
+    if (needs_bs or needs_greeks) and result.get('spot_price') and result.get('strike'):
+        S   = result['spot_price']
+        K   = result['strike']
+        T   = max(0, (result.get('days_to_maturity') or 0)) / 365.0
+        # Taxa Selic anualizada: usa última Selic mensal * 12 (aproximação)
+        try:
+            last_selic = SelicMensal.query.order_by(SelicMensal.mes_ano.desc()).first()
+            r = ((1 + (last_selic.taxa / 100)) ** 12 - 1) if last_selic else 0.13
+        except Exception:
+            r = 0.13   # fallback 13% a.a.
+        # Volatilidade: usa IV do OpLab se disponível, senão calcula HV histórica
+        sigma = result.get('iv')
+        if sigma and sigma > 1:
+            sigma = sigma / 100.0  # converte % → decimal
+        if not sigma and underlying:
+            sigma = _hv_from_oplab(underlying, token)
+        if sigma and sigma > 0:
+            opt_type = result.get('type', 'CALL')
+            if needs_bs:
+                bs = _bs_price(S, K, T, r, sigma, opt_type)
+                if bs is not None:
+                    result['bs_price']  = bs
+                    result['bs_calc']   = True   # flag: calculado localmente
+                    # valor intrínseco e extrínseco
+                    if opt_type.upper() in ('CALL', 'C'):
+                        intrin = max(0.0, round(S - K, 4))
+                    else:
+                        intrin = max(0.0, round(K - S, 4))
+                    if result.get('intrinsic_value') is None:
+                        result['intrinsic_value'] = intrin
+                    if result.get('extrinsic_value') is None:
+                        last = result.get('last') or 0
+                        result['extrinsic_value'] = round(max(0, last - intrin), 4)
+            if needs_greeks:
+                gk = _bs_greeks(S, K, T, r, sigma, opt_type)
+                if gk:
+                    result['bs_calc'] = True
+                    for k2, v2 in gk.items():
+                        if result.get(k2) is None:
+                            result[k2] = v2
+            result['bs_sigma_used'] = round(sigma * 100, 2)  # % usado no cálculo
 
     # ── Salva/atualiza na tabela SearchedOption (lista RTD) ──────────────────
     # Limpa entradas > 10 dias antes de inserir

@@ -90,6 +90,21 @@
 #bo-raw{display:none;margin-top:.4rem;background:#0f172a;border:1px solid #334155;
   border-radius:6px;padding:.6rem;font-size:.7rem;color:#94a3b8;
   overflow:auto;white-space:pre;max-height:400px;}
+
+/* card que ocupa toda a largura do grid */
+.bo-card-full{grid-column:1/-1;}
+/* linha do card operação */
+.bo-op-row{display:flex;justify-content:space-between;align-items:baseline;
+  padding:.22rem 0;border-bottom:1px solid rgba(255,255,255,.03);}
+.bo-op-row:last-child{border-bottom:none;}
+.bo-op-lbl{font-size:.79rem;color:#94a3b8;flex:1 1 0;min-width:0;padding-right:.4rem;}
+.bo-op-val{font-size:.82rem;color:#f1f5f9;font-weight:500;text-align:right;white-space:nowrap;}
+.bo-op-val.hi{color:#c4b5fd;font-weight:700;}
+.bo-op-val.pos{color:#34d399;font-weight:700;}
+.bo-op-val.neg{color:#f87171;font-weight:700;}
+.bo-op-val.warn{color:#fbbf24;font-weight:600;}
+.bo-op-sep{font-size:.65rem;text-transform:uppercase;letter-spacing:.07em;
+  color:#475569;font-weight:700;padding:.35rem 0 .1rem 0;grid-column:1/-1;}
 </style>
 {% endblock %}
 
@@ -213,6 +228,14 @@
         <div class="bo-card-title">Decomposição de Valor</div>
         <div class="bo-row"><span class="bo-lbl">Intrínseco</span> <span class="bo-val hi" id="f-intrinsic">—</span></div>
         <div class="bo-row"><span class="bo-lbl">Extrínseco</span> <span class="bo-val" id="f-extrinsic">—</span></div>
+      </div>
+
+      <!-- Operação Estruturada — ocupa largura total -->
+      <div class="bo-card bo-card-full" id="f-op-card" style="display:none;">
+        <div class="bo-card-title" id="f-op-title">Operação Estruturada</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:.1rem 1.5rem;" id="f-op-grid">
+          <!-- colunas dinâmicas via JS -->
+        </div>
       </div>
 
     </div><!-- /grid -->
@@ -394,6 +417,9 @@ function _render(d){
   _t('f-intrinsic', d.intrinsic_value!=null?_brl(d.intrinsic_value):'—');
   _t('f-extrinsic', _brl(d.extrinsic_value));
 
+  /* operação estruturada */
+  _renderOp(d, isPut);
+
   /* raw */
   var raw=Object.assign({},d); delete raw._raw;
   if(d._raw) raw._raw_oplab=d._raw;
@@ -434,6 +460,118 @@ function _setError(msg){
   var el=document.getElementById('bo-error');
   el.textContent=msg; el.style.display=msg?'block':'none';
 }
+/* ── Operação Estruturada ── */
+function _renderOp(d, isPut){
+  var card  = document.getElementById('f-op-card');
+  var grid  = document.getElementById('f-op-grid');
+  var title = document.getElementById('f-op-title');
+  var S  = d.spot_price;   // cotação do subjacente
+  var K  = d.strike;       // strike da opção
+  var P  = d.last;         // prêmio recebido/pago (último negócio)
+  var T  = d.days_to_maturity;
+  if(!S||!K||!P||!T){ card.style.display='none'; return; }
+
+  // Taxa Selic anual (retorna % bruta no bs_sigma_used? não — usamos referência 13.65%)
+  // Vamos apenas mostrar o cálculo; taxa é informativa
+  var SELIC_AA = 13.65; // referência (não há campo no JSON)
+
+  var rows = [];
+  var pct_aa, pct_periodo, custo_liq, retorno_se_exec;
+
+  if(!isPut){
+    /* ── COVERED CALL ──────────────────────────────────────────────────
+       Operação: compra ação (S) + vende CALL (K, prêmio P)
+       Custo líquido: S - P
+       Se exercido: recebe K pela ação
+       Retorno bruto: K - (S - P) = K - S + P
+       Retorno %: sobre custo líquido, anualizado por dias */
+    custo_liq      = S - P;
+    retorno_se_exec= K - custo_liq;   // = K - S + P
+    pct_periodo    = retorno_se_exec / custo_liq * 100;
+    pct_aa         = (Math.pow(1 + pct_periodo/100, 365/T) - 1) * 100;
+
+    title.textContent = 'Venda Coberta (Covered Call)';
+    rows = [
+      {sep: 'Montagem'},
+      {l:'Compra ação (spot)',     v:_brl(S),            cls:''},
+      {l:'Recebe prêmio CALL',     v:_brl(P),            cls:'pos'},
+      {l:'Custo líquido (S − P)',  v:_brl(custo_liq),    cls:'hi'},
+      {sep: 'Cenário: exercido no vencimento ('+T+'d)'},
+      {l:'Recebe pelo ação (strike)',v:_brl(K),           cls:''},
+      {l:'Ganho/perda vs spot',     v:_brlSgn(K-S),      cls: K>=S?'pos':'neg'},
+      {l:'Retorno total se exercido',v:_brl(retorno_se_exec), cls:'pos'},
+      {sep: 'Rentabilidade (se exercido)'},
+      {l:'Retorno no período',     v:_pp(pct_periodo),   cls: pct_periodo>=0?'pos':'neg'},
+      {l:'Retorno anualizado (aa)',  v:_pp(pct_aa),       cls: pct_aa>=0?'pos':'neg'},
+      {l:'vs Selic ('+SELIC_AA+'% aa)',v:_pp(pct_aa-SELIC_AA), cls: pct_aa>=SELIC_AA?'pos':'warn'},
+      {sep: 'Proteção (downside)'},
+      {l:'Proteção (P / S)',        v:_pp(P/S*100),       cls:'warn'},
+      {l:'Preço de equilíbrio',    v:_brl(custo_liq),    cls:''},
+    ];
+
+  } else {
+    /* ── CASH-SECURED PUT ──────────────────────────────────────────────
+       Operação: vende PUT (K, prêmio P)
+       Se exercido: compra ação por K, mas já recebeu P
+       Custo efetivo: K - P
+       Retorno do prêmio: P / K (sobre o capital reservado = K) */
+    custo_liq      = K - P;     // preço efetivo se exercido
+    pct_periodo    = P / K * 100;
+    pct_aa         = (Math.pow(1 + pct_periodo/100, 365/T) - 1) * 100;
+    var upside     = custo_liq - S;  // quanto está acima do spot (margem de segurança)
+    var upside_pct = upside / S * 100;
+
+    title.textContent = 'Venda de Put (Cash-Secured Put)';
+    rows = [
+      {sep: 'Montagem'},
+      {l:'Strike da PUT',           v:_brl(K),            cls:'hi'},
+      {l:'Prêmio recebido',         v:_brl(P),            cls:'pos'},
+      {l:'Capital reservado (K)',   v:_brl(K),            cls:''},
+      {sep: 'Cenário: exercido no vencimento ('+T+'d)'},
+      {l:'Compra ação pelo strike', v:_brl(K),            cls:''},
+      {l:'Custo efetivo (K − P)',   v:_brl(custo_liq),    cls:'hi'},
+      {l:'Spot atual',              v:_brl(S),            cls:''},
+      {l:'Custo ef. vs spot',       v:_brlSgn(custo_liq-S), cls: custo_liq<=S?'pos':'neg'},
+      {sep: 'Rentabilidade do prêmio (capital = strike)'},
+      {l:'Retorno no período',      v:_pp(pct_periodo),   cls:'pos'},
+      {l:'Retorno anualizado (aa)', v:_pp(pct_aa),        cls:'pos'},
+      {l:'vs Selic ('+SELIC_AA+'% aa)',v:_pp(pct_aa-SELIC_AA), cls: pct_aa>=SELIC_AA?'pos':'warn'},
+      {sep: 'Margem de segurança'},
+      {l:'Strike vs Spot (+' + _pp(upside_pct)+')',v:_brl(upside>=0?upside:-upside)+' '+(upside>=0?'acima':'abaixo'),cls:upside>=0?'pos':'neg'},
+      {l:'Preço de equilíbrio',     v:_brl(custo_liq),   cls:''},
+    ];
+  }
+
+  // renderiza as linhas em 2 colunas
+  grid.innerHTML = '';
+  var mid = Math.ceil(rows.length / 2);
+  var col1 = rows.slice(0, mid);
+  var col2 = rows.slice(mid);
+  function _col(items){
+    var div = document.createElement('div');
+    items.forEach(function(r){
+      if(r.sep){
+        var s=document.createElement('div');
+        s.className='bo-op-sep'; s.textContent=r.sep; div.appendChild(s);
+      } else {
+        var row=document.createElement('div'); row.className='bo-op-row';
+        row.innerHTML='<span class="bo-op-lbl">'+r.l+'</span>'
+                     +'<span class="bo-op-val '+(r.cls||'')+'">' +r.v+'</span>';
+        div.appendChild(row);
+      }
+    });
+    return div;
+  }
+  grid.appendChild(_col(col1));
+  grid.appendChild(_col(col2));
+  card.style.display='block';
+}
+function _pp(v){ return v==null?'—':(v>=0?'+':'')+Number(v).toFixed(2)+'%'; }
+function _brlSgn(v){
+  if(v==null) return '—';
+  return (v>=0?'+':'')+_brl(v).replace('R$ ','R$ ');
+}
+
 function toggleRaw(){
   var el=document.getElementById('bo-raw');
   var show=el.style.display==='none';

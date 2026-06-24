@@ -2050,32 +2050,73 @@ def _bs_greeks(S, K, T, r, sigma, option_type='CALL'):
 
 def _hv_from_oplab(underlying, token, days=21):
     """
-    Calcula Volatilidade Histórica anualizada a partir dos últimos `days` fechamentos do subjacente.
-    Usa /market/history/{underlying}?from=YYYY-MM-DD&to=YYYY-MM-DD via OpLab.
-    Retorna float (ex: 0.32) ou None se não disponível.
+    Calcula HV anualizada buscando histórico do subjacente na OpLab.
+    Tenta /market/instruments/{u}/history e /market/history/{u}.
+    Retorna float decimal (ex: 0.32 = 32%) ou None.
     """
     import math
-    try:
-        end   = datetime.utcnow().date()
-        start = end - timedelta(days=days * 2)   # pega margem para fins de semana
-        url   = f'/market/history/{underlying}?from={start}&to={end}'
-        data  = _oplab_get_json(url, token, timeout=10)
+    end   = datetime.utcnow().date()
+    start = end - timedelta(days=days * 3)  # margem para fins de semana/feriados
+
+    def _extract_closes(data):
         closes = []
         if isinstance(data, list):
-            for item in sorted(data, key=lambda x: x.get('time', 0)):
-                c = item.get('close') or item.get('adjusted_close')
-                if c and float(c) > 0:
-                    closes.append(float(c))
-        if len(closes) < 5:
-            return None
+            for item in sorted(data, key=lambda x: x.get('time', x.get('date', 0))):
+                for key in ('close', 'adjusted_close', 'last', 'price'):
+                    c = item.get(key)
+                    if c and float(c) > 0:
+                        closes.append(float(c))
+                        break
+        elif isinstance(data, dict):
+            # pode vir como {"history": [...]} ou {"data": [...]}
+            for k in ('history', 'data', 'quotes', 'prices'):
+                if isinstance(data.get(k), list):
+                    return _extract_closes(data[k])
+        return closes
+
+    closes = []
+    for url in [
+        f'/market/instruments/{underlying}/history?from={start}&to={end}',
+        f'/market/history/{underlying}?from={start}&to={end}',
+        f'/market/instruments/{underlying}/history',
+    ]:
+        try:
+            data = _oplab_get_json(url, token, timeout=10)
+            closes = _extract_closes(data)
+            if len(closes) >= 5:
+                break
+        except Exception:
+            continue
+
+    if len(closes) < 5:
+        return None
+
+    try:
         closes = closes[-days:]
         returns = [math.log(closes[i] / closes[i-1]) for i in range(1, len(closes))]
         mean    = sum(returns) / len(returns)
-        var     = sum((r - mean) ** 2 for r in returns) / (len(returns) - 1)
+        var     = sum((r - mean) ** 2 for r in returns) / max(len(returns) - 1, 1)
         hv      = math.sqrt(var) * math.sqrt(252)
         return round(hv, 4) if hv > 0 else None
     except Exception:
         return None
+
+
+# HV de fallback por tipo de ativo quando OpLab não retorna histórico
+_HV_FALLBACK = {
+    'default': 0.35,   # 35% — conservador para ações BR
+    'fii':     0.20,
+    'index':   0.18,
+}
+
+def _hv_fallback(underlying):
+    """Retorna HV de fallback baseado no tipo de ativo."""
+    u = (underlying or '').upper()
+    if u.startswith('BOVA') or u in ('IBOV', 'IBOVESPA'):
+        return _HV_FALLBACK['index']
+    if u.endswith('11') and len(u) == 6:
+        return _HV_FALLBACK['fii']
+    return _HV_FALLBACK['default']
 
 
 @app.route('/busca-opcao')
@@ -2244,50 +2285,63 @@ def api_busca_opcao(ticker):
         result['_rtd_imported_at'] = rtd.imported_at.strftime('%d/%m/%Y %H:%M') if rtd.imported_at else None
 
     # ── Cálculo BS local quando OpLab não retornou gregas ───────────────────
-    # Usa: spot_price, strike, days_to_maturity, Selic mensal, vol histórica do subjacente
-    needs_bs = result.get('bs_price') is None
+    needs_bs     = result.get('bs_price') is None
     needs_greeks = result.get('delta') is None
     if (needs_bs or needs_greeks) and result.get('spot_price') and result.get('strike'):
-        S   = result['spot_price']
-        K   = result['strike']
-        T   = max(0, (result.get('days_to_maturity') or 0)) / 365.0
-        # Taxa Selic anualizada: usa última Selic mensal * 12 (aproximação)
+        S = result['spot_price']
+        K = result['strike']
+        T = max(0, (result.get('days_to_maturity') or 0)) / 365.0
+
+        # Taxa Selic anualizada
         try:
             last_selic = SelicMensal.query.order_by(SelicMensal.mes_ano.desc()).first()
-            r = ((1 + (last_selic.taxa / 100)) ** 12 - 1) if last_selic else 0.13
+            r = ((1 + (last_selic.taxa / 100)) ** 12 - 1) if last_selic else 0.135
         except Exception:
-            r = 0.13   # fallback 13% a.a.
-        # Volatilidade: usa IV do OpLab se disponível, senão calcula HV histórica
+            r = 0.135
+
+        # Volatilidade: IV → HV histórica → fallback padrão por ativo
+        sigma_src = None
         sigma = result.get('iv')
-        if sigma and sigma > 1:
-            sigma = sigma / 100.0  # converte % → decimal
+        if sigma:
+            sigma = sigma / 100.0 if sigma > 1.5 else sigma
+            sigma_src = 'IV'
         if not sigma and underlying:
             sigma = _hv_from_oplab(underlying, token)
-        if sigma and sigma > 0:
-            opt_type = result.get('type', 'CALL')
-            if needs_bs:
-                bs = _bs_price(S, K, T, r, sigma, opt_type)
-                if bs is not None:
-                    result['bs_price']  = bs
-                    result['bs_calc']   = True   # flag: calculado localmente
-                    # valor intrínseco e extrínseco
-                    if opt_type.upper() in ('CALL', 'C'):
-                        intrin = max(0.0, round(S - K, 4))
-                    else:
-                        intrin = max(0.0, round(K - S, 4))
-                    if result.get('intrinsic_value') is None:
-                        result['intrinsic_value'] = intrin
-                    if result.get('extrinsic_value') is None:
-                        last = result.get('last') or 0
-                        result['extrinsic_value'] = round(max(0, last - intrin), 4)
-            if needs_greeks:
-                gk = _bs_greeks(S, K, T, r, sigma, opt_type)
-                if gk:
-                    result['bs_calc'] = True
-                    for k2, v2 in gk.items():
-                        if result.get(k2) is None:
-                            result[k2] = v2
-            result['bs_sigma_used'] = round(sigma * 100, 2)  # % usado no cálculo
+            if sigma:
+                sigma_src = 'HV'
+        if not sigma:
+            sigma = _hv_fallback(underlying)
+            sigma_src = 'HV-ref'
+
+        opt_type = result.get('type', 'CALL')
+
+        # BS price + intrínseco/extrínseco
+        if needs_bs:
+            bs = _bs_price(S, K, T, r, sigma, opt_type)
+            if bs is not None:
+                result['bs_price'] = bs
+                result['bs_calc']  = sigma_src
+                if opt_type.upper() in ('CALL', 'C'):
+                    intrin = max(0.0, round(S - K, 4))
+                else:
+                    intrin = max(0.0, round(K - S, 4))
+                if result.get('intrinsic_value') is None:
+                    result['intrinsic_value'] = intrin
+                if result.get('extrinsic_value') is None:
+                    last = result.get('last') or 0
+                    result['extrinsic_value'] = round(max(0.0, last - intrin), 4)
+
+        # Gregas
+        if needs_greeks and T > 0:
+            gk = _bs_greeks(S, K, T, r, sigma, opt_type)
+            if gk:
+                result.setdefault('bs_calc', sigma_src)
+                for k2, v2 in gk.items():
+                    if result.get(k2) is None:
+                        result[k2] = v2
+
+        result['bs_sigma_used'] = round(sigma * 100, 2)
+        result['bs_sigma_src']  = sigma_src  # 'IV', 'HV' ou 'HV-ref'
 
     # ── Salva/atualiza na tabela SearchedOption (lista RTD) ──────────────────
     # Limpa entradas > 10 dias antes de inserir

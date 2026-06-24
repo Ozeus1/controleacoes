@@ -363,14 +363,24 @@ function _render(d){
   _t('f-theta', _g(d.theta,4));
   _t('f-rho',   _g(d.rho,4));
   _t('f-vega',  _g(d.vega,4));
-  /* indica se BS foi calculado localmente */
+  /* fonte do cálculo BS */
   var bsSrc = document.getElementById('f-bs-src');
   if(bsSrc){
     if(d.bs_calc){
-      bsSrc.textContent = '(calc. σ='+d.bs_sigma_used+'%)';
-      bsSrc.title = 'Calculado localmente via Black-Scholes com volatilidade histórica/implícita de '+d.bs_sigma_used+'%';
+      var srcLabel = {'IV':'σ=IV','HV':'σ=HV','HV-ref':'σ=ref'}[d.bs_sigma_src] || 'calc';
+      bsSrc.textContent = '(' + srcLabel + ' ' + d.bs_sigma_used + '%)';
+      var srcDesc = {
+        'IV':     'Calculado com Volatilidade Implícita do OpLab',
+        'HV':     'Calculado com Volatilidade Histórica (21d) do subjacente',
+        'HV-ref': 'Calculado com volatilidade de referência (OpLab sem histórico disponível)'
+      }[d.bs_sigma_src] || '';
+      bsSrc.title = srcDesc + ' — σ=' + d.bs_sigma_used + '%';
+      bsSrc.style.color = d.bs_sigma_src==='HV-ref' ? '#f59e0b' : '#34d399';
+    } else if(d.bs_price != null){
+      bsSrc.textContent = '(OpLab)';
+      bsSrc.style.color = '#38bdf8';
     } else {
-      bsSrc.textContent = d.bs_price!=null ? '(OpLab)' : '';
+      bsSrc.textContent = '';
     }
   }
 

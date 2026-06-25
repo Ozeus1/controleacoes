@@ -130,7 +130,7 @@
                         <input type="text" name="leg_ticker" value="{{ leg.ticker if not isSt else '' }}"
                                placeholder="ex: PETRQ46"
                                style="width:110px; text-transform:uppercase;"
-                               {% if isSt %}disabled{% endif %}>
+                               {% if isSt %}readonly{% endif %}>
                     </td>
                     <td><input type="text" name="leg_qty" value="{{ leg.quantity }}"
                                style="width:60px; text-align:center;" oninput="scheduleRedraw()"></td>
@@ -140,19 +140,19 @@
                     <td class="col-exp" {% if isSt %}style="display:none;"{% endif %}>
                         <input type="date" name="leg_exp"
                                value="{{ leg.expiration.isoformat() if leg.expiration else '' }}"
-                               style="width:135px;" {% if isSt %}disabled{% endif %}>
+                               style="width:135px;" {% if isSt %}readonly{% endif %}>
                     </td>
                     <td class="col-strike" {% if isSt %}style="display:none;"{% endif %}>
                         <input type="text" name="leg_strike"
                                value="{{ '%.2f'|format(leg.strike)|replace('.', ',') }}"
                                placeholder="0,00" style="width:80px; text-align:right;" oninput="scheduleRedraw()"
-                               {% if isSt %}disabled{% endif %}>
+                               {% if isSt %}readonly{% endif %}>
                     </td>
                     <td class="col-iv" style="display:none;">
                         <input type="text" name="leg_iv"
                                value="{{ ('%.1f'|format(leg.iv) if leg.iv else '0,0')|replace('.', ',') }}"
                                placeholder="0,0" style="width:60px; text-align:right;" oninput="scheduleRedraw()"
-                               {% if isSt %}disabled{% endif %}>
+                               {% if isSt %}readonly{% endif %}>
                     </td>
                     <td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
                 </tr>
@@ -230,7 +230,8 @@
 function rowTemplate(type) {
     var isSt = type === 'STOCK';
     var hide = isSt ? 'display:none;' : '';
-    var dis  = isSt ? ' disabled' : '';
+    // Usa readonly (não disabled) para que os valores ocultos sejam submetidos no form
+    var ro   = isSt ? ' readonly' : '';
     return '<tr class="leg-row">' +
         '<td><select name="leg_type" onchange="legTypeChanged(this);scheduleRedraw();" style="width:72px;">' +
             '<option value="CALL"'  + (type==='CALL' ?' selected':'') + '>CALL</option>' +
@@ -240,12 +241,12 @@ function rowTemplate(type) {
         '<td><select name="leg_side" onchange="scheduleRedraw();" style="width:90px;">' +
             '<option value="BUY">COMPRA</option><option value="SELL">VENDA</option>' +
         '</select></td>' +
-        '<td class="col-ticker" style="' + hide + '"><input type="text" name="leg_ticker" placeholder="ex: PETRQ46" style="width:110px;text-transform:uppercase;"' + dis + '></td>' +
+        '<td class="col-ticker" style="' + hide + '"><input type="text" name="leg_ticker" placeholder="ex: PETRQ46" style="width:110px;text-transform:uppercase;"' + ro + '></td>' +
         '<td><input type="text" name="leg_qty" value="1" style="width:60px;text-align:center;" oninput="scheduleRedraw()"></td>' +
         '<td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px;text-align:right;" oninput="scheduleRedraw()"></td>' +
-        '<td class="col-exp" style="' + hide + '"><input type="date" name="leg_exp" style="width:135px;"' + dis + '></td>' +
-        '<td class="col-strike" style="' + hide + '"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px;text-align:right;" oninput="scheduleRedraw()"' + dis + '></td>' +
-        '<td class="col-iv" style="display:none;"><input type="text" name="leg_iv" placeholder="0,0" style="width:60px;text-align:right;" oninput="scheduleRedraw()"' + dis + '></td>' +
+        '<td class="col-exp" style="' + hide + '"><input type="date" name="leg_exp" style="width:135px;"' + ro + '></td>' +
+        '<td class="col-strike" style="' + hide + '"><input type="text" name="leg_strike" value="0,00" style="width:80px;text-align:right;" oninput="scheduleRedraw()"' + ro + '></td>' +
+        '<td class="col-iv" style="display:none;"><input type="text" name="leg_iv" value="0,0" style="width:60px;text-align:right;" oninput="scheduleRedraw()"' + ro + '></td>' +
         '<td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>' +
     '</tr>';
 }
@@ -277,12 +278,13 @@ function legTypeChanged(sel) {
     tdExp.style.display    = isSt ? 'none' : '';
     tdStrike.style.display = isSt ? 'none' : '';
 
-    strikeEl.disabled = isSt;
-    expEl.disabled    = isSt;
-    tickerEl.disabled = isSt;
-    if (ivEl) ivEl.disabled = isSt;
+    // readonly em vez de disabled: campos ocultos ainda precisam ser enviados no form
+    strikeEl.readOnly = isSt;
+    expEl.readOnly    = isSt;
+    tickerEl.readOnly = isSt;
+    if (ivEl) ivEl.readOnly = isSt;
 
-    if (isSt) { strikeEl.value = ''; expEl.value = ''; tickerEl.value = ''; }
+    if (isSt) { strikeEl.value = '0,00'; expEl.value = ''; tickerEl.value = ''; }
 
     updateIVVisibility();
 }
@@ -305,7 +307,7 @@ function updateIVVisibility() {
         var td  = row.querySelector('.col-iv');
         var inp = row.querySelector('[name=leg_iv]');
         if (td) td.style.display = (multi && lt !== 'STOCK') ? '' : 'none';
-        if (inp) inp.disabled = !(multi && lt !== 'STOCK');
+        if (inp) inp.readOnly = !(multi && lt !== 'STOCK');
     });
 }
 

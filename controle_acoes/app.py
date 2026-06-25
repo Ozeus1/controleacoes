@@ -153,23 +153,24 @@ def _oplab_is_available(token: str, timeout: int = 4) -> bool:
 def _do_oplab_bulk_update_safe(uid: int, token: str, deadline_secs: int = 25):
     """
     Wrapper que executa _do_oplab_bulk_update em thread separada com deadline total.
+    A thread herda o app_context atual para que o SQLAlchemy funcione corretamente.
     Se não completar em deadline_secs, retorna (0, 0, set(), 'timeout').
     Retorna (assets_ok, options_ok, covered, error_msg).
     """
     result = {'val': None, 'err': None}
 
     def _run():
-        try:
-            result['val'] = _do_oplab_bulk_update(uid, token, oplab_online=True)
-        except Exception as e:
-            result['err'] = str(e)
+        with app.app_context():
+            try:
+                result['val'] = _do_oplab_bulk_update(uid, token, oplab_online=True)
+            except Exception as e:
+                result['err'] = str(e)
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
     t.join(timeout=deadline_secs)
 
     if t.is_alive():
-        # Thread ainda rodando — OpLab travou
         return 0, 0, set(), f'timeout após {deadline_secs}s'
     if result['err']:
         return 0, 0, set(), result['err']

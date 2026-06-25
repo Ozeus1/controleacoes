@@ -131,6 +131,25 @@ def _oplab_get_json(path_or_url, token, params=None, timeout=15):
         raise OplabApiError('OpLab retornou resposta invalida em vez de JSON.', resp.status_code, preview) from exc
 
 
+def _oplab_is_available(token: str, timeout: int = 4) -> bool:
+    """
+    Probe rápido: tenta GET /v3/user/me com timeout curto.
+    Retorna True se o OpLab responder com 2xx ou 4xx (token inválido mas servidor OK).
+    Retorna False se houver timeout, ConnectionError ou 5xx (servidor fora do ar).
+    """
+    try:
+        r = requests.get(
+            'https://api.oplab.com.br/v3/user/me',
+            headers=_oplab_headers(token),
+            timeout=timeout,
+        )
+        return r.status_code < 500
+    except (requests.exceptions.Timeout,
+            requests.exceptions.ConnectionError,
+            requests.exceptions.RequestException):
+        return False
+
+
 @app.template_filter('date_fmt')
 def format_date(value):
     if value is None:
@@ -6058,11 +6077,22 @@ def update_quotes():
         oplab_token = Settings.get_value('oplab_token', user_id=current_user.id)
         oplab_covered = set()
         final_msg = ''
+        errs = []
 
         if oplab_token:
-            a_ok, o_ok, oplab_covered = _do_oplab_bulk_update(current_user.id, oplab_token)
-            final_msg += f'OpLab: {a_ok} ativo(s), {o_ok} opção(ões)/perna(s). '
+            oplab_online = _oplab_is_available(oplab_token, timeout=4)
+            if not oplab_online:
+                final_msg += 'OpLab: indisponível (ignorado). '
+            else:
+                try:
+                    a_ok, o_ok, oplab_covered = _do_oplab_bulk_update(
+                        current_user.id, oplab_token, oplab_online=True
+                    )
+                    final_msg += f'OpLab: {a_ok} ativo(s), {o_ok} opção(ões)/perna(s). '
+                except Exception as oe:
+                    final_msg += f'OpLab: falha ({oe}). '
 
+        # Yahoo/Internacional sempre executados
         if quote_mode == 'yahoo':
             count, tried, errs = update_all_assets_logic(skip_tickers=oplab_covered)
             final_msg += f'Yahoo/Brapi: {count}/{tried} ativo(s). '
@@ -6078,16 +6108,16 @@ def update_quotes():
             final_msg += f'Internacional: Falha ({", ".join(intl_msgs)}). '
 
         if errs:
-             flash(f'{final_msg} Erros: {len(errs)}. {errs[0]}', 'warning')
+            flash(f'{final_msg} Erros: {len(errs)}. {errs[0]}', 'warning')
         else:
-             flash(final_msg.strip() or 'Atualizado.', 'success')
-             
+            flash(final_msg.strip() or 'Atualizado.', 'success')
+
     except Exception as e:
         flash(f'Erro ao atualizar cotações: {str(e)}', 'danger')
         print(f"Error in update_quotes: {e}")
         import traceback
         traceback.print_exc()
-        
+
     return redirect(request.referrer or url_for('index'))
 
 
@@ -6107,18 +6137,25 @@ def update_quotes_async():
                 oplab_token = Settings.get_value('oplab_token', user_id=user_id)
                 oplab_covered: set = set()
                 final_msg = ''
+                errs = []
 
-                # ── 1. OpLab: ações B3 + todas as opções ──────────────────────
+                # ── 1. OpLab: ações B3 + opções ───────────────────────────────
                 if oplab_token:
-                    try:
-                        a_ok, o_ok, oplab_covered = _do_oplab_bulk_update(user_id, oplab_token)
-                        final_msg += f'OpLab: {a_ok} ativo(s), {o_ok} opção(ões). '
-                    except Exception as oe:
-                        final_msg += f'OpLab: falha ({oe}). '
+                    # Probe rápido (4s) antes de entrar nos loops de timeout
+                    oplab_online = _oplab_is_available(oplab_token, timeout=4)
+                    if not oplab_online:
+                        final_msg += 'OpLab: indisponível (cotações de ações/opções via OpLab ignoradas). '
+                    else:
+                        try:
+                            a_ok, o_ok, oplab_covered = _do_oplab_bulk_update(
+                                user_id, oplab_token, oplab_online=True
+                            )
+                            final_msg += f'OpLab: {a_ok} ativo(s), {o_ok} opção(ões). '
+                        except Exception as oe:
+                            final_msg += f'OpLab: falha ({oe}). '
 
-                # ── 2. Yahoo/Brapi: apenas para ativos NÃO cobertos pelo OpLab ─
+                # ── 2. Yahoo/Brapi e Internacional — sempre executados ─────────
                 if quote_mode == 'yahoo':
-                    # Ativos que o OpLab não retornou (internacionais, ETFs globais, etc.)
                     count, tried, errs = update_all_assets_logic(
                         user_id=user_id, skip_tickers=oplab_covered
                     )
@@ -6128,16 +6165,16 @@ def update_quotes_async():
                     if intl_success:
                         final_msg += 'Intl/Cripto: OK. '
                     else:
-                        final_msg += f'Intl: falha. '
+                        final_msg += 'Intl: falha. '
                 elif quote_mode == 'mt5':
-                    etf_count, etf_tried, errs = update_all_assets_logic(user_id=user_id, only_types={'ETF'})
+                    etf_count, etf_tried, errs = update_all_assets_logic(
+                        user_id=user_id, only_types={'ETF'}
+                    )
                     final_msg += f'ETFs via Yahoo: {etf_count}/{etf_tried}. '
                     final_msg += 'Ações/FIIs via MT5 Feeder. '
                     intl_success, _ = update_intl_quotes_logic(user_id)
-                else:
-                    errs = []
 
-                category = 'warning' if (not oplab_token and not quote_mode == 'mt5') or errs else 'success'
+                category = 'warning' if errs else 'success'
                 _set_task(task_id, {'status': 'done', 'msg': final_msg.strip() or 'Atualizado.', 'category': category})
             except Exception as e:
                 import traceback
@@ -9074,7 +9111,7 @@ def api_quote_hint(ticker):
 _oplab_last_update: dict = {}   # user_id → datetime of last successful update
 
 
-def _do_oplab_bulk_update(uid: int, token: str):
+def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
     """
     Busca cotações via GET /v3/market/quote?tickers=... e atualiza o DB para:
       - Todos os Assets do usuário (qty ≥ 0 — inclui swingtrade sem posição)
@@ -9082,7 +9119,9 @@ def _do_oplab_bulk_update(uid: int, token: str):
       - Underlying assets das Options (para exibição correta em /opcoes e /estudos)
       - StudyOption: option_price + underlying_price
       - OptionSpread: leg_long_current + leg_short_current
-    Retorna (assets_ok, options_ok).
+    Quando oplab_online=False pula todos os fallbacks individuais por opção
+    (que causam loop/timeout quando o servidor está fora do ar).
+    Retorna (assets_ok, options_ok, oplab_covered_assets).
     """
     BASE    = 'https://api.oplab.com.br/v3'
     headers = _oplab_headers(token)
@@ -9209,22 +9248,26 @@ def _do_oplab_bulk_update(uid: int, token: str):
             pass
         return None, None
 
-    for tk in list(option_tickers):
-        if tk not in prices or prices.get(tk, 0) <= 0:
-            p, var = _fetch_missing_option_quote(tk)
-            if p and p > 0:
-                prices[tk] = p
-                if var is not None:
-                    variations[tk] = var
+    # Fallback individual por opção — pulado quando OpLab está offline
+    # (evita loop de timeouts que trava o servidor)
+    if oplab_online:
+        for tk in list(option_tickers):
+            if tk not in prices or prices.get(tk, 0) <= 0:
+                p, var = _fetch_missing_option_quote(tk)
+                if p and p > 0:
+                    prices[tk] = p
+                    if var is not None:
+                        variations[tk] = var
 
     if not prices:
         return 0, 0, set()
 
     # ── Busca delta das opções via /v3/market/options/{underlying} ──
     # Agrupa opções por underlying para minimizar chamadas à API
+    # Pulado quando OpLab está offline
     deltas: dict = {}   # ticker_opcao → delta
     underlyings_com_opcoes = list({o.underlying_asset.upper() for o in options if o.underlying_asset})
-    for underlying in underlyings_com_opcoes:
+    for underlying in underlyings_com_opcoes if oplab_online else []:
         try:
             r = requests.get(
                 f'{BASE}/market/options/{underlying}',
@@ -9289,9 +9332,8 @@ def _do_oplab_bulk_update(uid: int, token: str):
                     oplab_covered_assets.add(uk)
 
     # ── Fallback OpLab /market/instruments para opções não retornadas no bulk ──
-    # Útil para opções europeias de longo prazo (ex: PETRC16 venc. 2027) que o
-    # /market/quote bulk não inclui por falta de liquidez recente.
-    if missing_option_tickers:
+    # Pulado quando OpLab offline — cada request trava timeout=8s causando loop.
+    if missing_option_tickers and oplab_online:
         for o in missing_option_tickers:
             try:
                 ri = requests.get(
@@ -9416,7 +9458,9 @@ def _oplab_scheduler_loop():
                     last = _oplab_last_update.get(uid)
                     if last and (now - last).total_seconds() < interval_min * 60:
                         continue
-                    _do_oplab_bulk_update(uid, token)
+                    if not _oplab_is_available(token, timeout=4):
+                        continue   # OpLab fora do ar — tenta no próximo ciclo
+                    _do_oplab_bulk_update(uid, token, oplab_online=True)
                     _oplab_last_update[uid] = now
             except Exception:
                 pass

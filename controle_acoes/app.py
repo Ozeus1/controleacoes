@@ -150,6 +150,35 @@ def _oplab_is_available(token: str, timeout: int = 4) -> bool:
         return False
 
 
+def _do_oplab_bulk_update_safe(uid: int, token: str, deadline_secs: int = 25):
+    """
+    Wrapper que executa _do_oplab_bulk_update em thread separada com deadline total.
+    Se não completar em deadline_secs, retorna (0, 0, set(), 'timeout').
+    Retorna (assets_ok, options_ok, covered, error_msg).
+    """
+    result = {'val': None, 'err': None}
+
+    def _run():
+        try:
+            result['val'] = _do_oplab_bulk_update(uid, token, oplab_online=True)
+        except Exception as e:
+            result['err'] = str(e)
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    t.join(timeout=deadline_secs)
+
+    if t.is_alive():
+        # Thread ainda rodando — OpLab travou
+        return 0, 0, set(), f'timeout após {deadline_secs}s'
+    if result['err']:
+        return 0, 0, set(), result['err']
+    if result['val']:
+        a, o, cov = result['val']
+        return a, o, cov, None
+    return 0, 0, set(), 'sem resultado'
+
+
 @app.template_filter('date_fmt')
 def format_date(value):
     if value is None:
@@ -6084,13 +6113,13 @@ def update_quotes():
             if not oplab_online:
                 final_msg += 'OpLab: indisponível (ignorado). '
             else:
-                try:
-                    a_ok, o_ok, oplab_covered = _do_oplab_bulk_update(
-                        current_user.id, oplab_token, oplab_online=True
-                    )
+                a_ok, o_ok, oplab_covered, op_err = _do_oplab_bulk_update_safe(
+                    current_user.id, oplab_token, deadline_secs=25
+                )
+                if op_err:
+                    final_msg += f'OpLab: {op_err}. '
+                else:
                     final_msg += f'OpLab: {a_ok} ativo(s), {o_ok} opção(ões)/perna(s). '
-                except Exception as oe:
-                    final_msg += f'OpLab: falha ({oe}). '
 
         # Yahoo/Internacional sempre executados
         if quote_mode == 'yahoo':
@@ -6144,15 +6173,16 @@ def update_quotes_async():
                     # Probe rápido (4s) antes de entrar nos loops de timeout
                     oplab_online = _oplab_is_available(oplab_token, timeout=4)
                     if not oplab_online:
-                        final_msg += 'OpLab: indisponível (cotações de ações/opções via OpLab ignoradas). '
+                        final_msg += 'OpLab: indisponível (ignorado). '
                     else:
-                        try:
-                            a_ok, o_ok, oplab_covered = _do_oplab_bulk_update(
-                                user_id, oplab_token, oplab_online=True
-                            )
+                        # deadline total de 25s para toda a operação OpLab
+                        a_ok, o_ok, oplab_covered, op_err = _do_oplab_bulk_update_safe(
+                            user_id, oplab_token, deadline_secs=25
+                        )
+                        if op_err:
+                            final_msg += f'OpLab: {op_err}. '
+                        else:
                             final_msg += f'OpLab: {a_ok} ativo(s), {o_ok} opção(ões). '
-                        except Exception as oe:
-                            final_msg += f'OpLab: falha ({oe}). '
 
                 # ── 2. Yahoo/Brapi e Internacional — sempre executados ─────────
                 if quote_mode == 'yahoo':
@@ -9192,7 +9222,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
                 f'{BASE}/market/quote',
                 params={'tickers': ','.join(chunk)},
                 headers=headers,
-                timeout=15,
+                timeout=8,
             )
             if r.status_code == 200:
                 for item in r.json():
@@ -9220,7 +9250,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
         try:
             ri = requests.get(
                 f'{BASE}/market/instruments/{tk}',
-                headers=headers, timeout=8,
+                headers=headers, timeout=4,
             )
             if ri.status_code == 200:
                 d = ri.json()
@@ -9460,7 +9490,7 @@ def _oplab_scheduler_loop():
                         continue
                     if not _oplab_is_available(token, timeout=4):
                         continue   # OpLab fora do ar — tenta no próximo ciclo
-                    _do_oplab_bulk_update(uid, token, oplab_online=True)
+                    _do_oplab_bulk_update_safe(uid, token, deadline_secs=30)
                     _oplab_last_update[uid] = now
             except Exception:
                 pass

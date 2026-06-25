@@ -395,7 +395,8 @@ function payoffAt(S, legs, multiExp, refDateStr) {
             var bsPrice = blackScholes(S, l.strike, T, r, l.iv, l.type === 'CALL');
             total += sign * l.qty * bsPrice;
         } else {
-            // Payoff intrínseco no vencimento
+            // Payoff intrínseco no vencimento — ignora se strike=0 (dado inválido)
+            if (l.strike <= 0) return;
             if (l.type === 'CALL') total += sign * l.qty * Math.max(0, S - l.strike);
             else                   total += sign * l.qty * Math.max(0, l.strike - S);
         }
@@ -422,18 +423,45 @@ function drawChart(legs) {
     ctx.clearRect(0, 0, W, H);
     if (!legs.length) return;
 
+    // Aviso: opção com strike=0 (dado corrompido do bug anterior — disabled vs readonly)
+    var badLegs = legs.filter(function(l){ return l.type !== 'STOCK' && l.strike <= 0; });
+    if (badLegs.length) {
+        var warn = document.getElementById('strike-zero-warn');
+        if (!warn) {
+            warn = document.createElement('div');
+            warn.id = 'strike-zero-warn';
+            warn.style.cssText = 'background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);' +
+                'border-radius:6px;padding:.6rem 1rem;font-size:.85rem;color:#f87171;margin-bottom:.5rem;';
+            wrap.parentNode.insertBefore(warn, wrap);
+        }
+        warn.innerHTML = '⚠️ <strong>' + badLegs.length + ' perna(s) com strike zerado</strong> — ' +
+            'edite a simulação e preencha o strike das opções para corrigir o gráfico.';
+        return;
+    } else {
+        var warn = document.getElementById('strike-zero-warn');
+        if (warn) warn.remove();
+    }
+
     // Detecção multi-vencimento
     var expDates = getExpDates(legs);
     var multiExp = expDates.length > 1;
     var refDateStr = multiExp ? expDates[0] : null;  // vencimento mais curto
 
-    // Série
+    // Série — inclui preço da ação como ponto de referência para o eixo X
     var strikes = legs.filter(function(l){ return l.type!=='STOCK' && l.strike>0; })
                       .map(function(l){ return l.strike; });
-    if (!strikes.length) strikes = [50];
-    var minK = Math.min.apply(null, strikes);
-    var maxK = Math.max.apply(null, strikes);
-    var pad  = Math.max((maxK - minK) * 0.6, maxK * 0.3);
+    var stockLegs = legs.filter(function(l){ return l.type==='STOCK' && l.premium>0; });
+    var stockRef  = stockLegs.length ? stockLegs[0].premium : 0;
+    if (!strikes.length && !stockRef) strikes = [50];
+
+    // Âncoras: strikes das opções + preço da ação
+    var anchors = strikes.slice();
+    if (stockRef > 0) anchors.push(stockRef);
+    var minK = anchors.length ? Math.min.apply(null, anchors) : 50;
+    var maxK = anchors.length ? Math.max.apply(null, anchors) : 50;
+
+    // Padding: ao menos 30% do maior valor de referência, para mostrar o piso/teto claramente
+    var pad  = Math.max((maxK - minK) * 0.6, maxK * 0.30);
     var Smin = Math.max(0.01, minK - pad);
     var Smax = maxK + pad;
     var N = 400, step = (Smax - Smin) / N;
@@ -646,6 +674,19 @@ window.addEventListener('resize',function(){drawChart(readLegs());});
 document.addEventListener('DOMContentLoaded',function(){
     document.getElementById('legs-body').addEventListener('change', function(){ updateIVVisibility(); scheduleRedraw(); });
     updateIVVisibility();
+
+    // Destaca strikes zerados em opções (dados corrompidos pelo bug disabled→readonly)
+    document.querySelectorAll('#legs-body .leg-row').forEach(function(row) {
+        var lt = row.querySelector('[name=leg_type]').value;
+        if (lt === 'STOCK') return;
+        var sk = row.querySelector('[name=leg_strike]');
+        if (sk && (!sk.value || parseVal(sk.value) <= 0)) {
+            sk.style.border = '2px solid #ef4444';
+            sk.title = 'Strike zerado — preencha para corrigir o gráfico';
+            sk.placeholder = 'Preencher!';
+        }
+    });
+
     drawChart(readLegs());
 });
 </script>

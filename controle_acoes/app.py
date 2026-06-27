@@ -2032,27 +2032,23 @@ def cadeia_opcoes():
     return render_template('cadeia_opcoes.html', ranking_vol=ranking_vol, selic=_selic())
 
 
-def _bs_price(S, K, T, r, sigma, option_type='CALL'):
+def _bs_price_opt(S, K, T, r, sigma, option_type='CALL'):
     """
-    Black-Scholes price (European).
-    S=spot, K=strike, T=years to expiry, r=risk-free rate, sigma=annual vol.
-    Returns None if inputs are invalid.
+    Black-Scholes price (European) com option_type como string ('CALL'/'PUT').
+    Usada pelo bloco de busca de opção e cálculo local de BS.
     """
     import math
     try:
+        is_call = str(option_type).upper() in ('CALL', 'C')
         if T <= 0:
-            # no tempo de expiração: apenas valor intrínseco
-            if option_type.upper() in ('CALL', 'C'):
-                return max(0.0, round(S - K, 4))
-            else:
-                return max(0.0, round(K - S, 4))
+            return max(0.0, round((S - K) if is_call else (K - S), 4))
         if sigma <= 0 or S <= 0 or K <= 0:
             return None
         d1 = (math.log(S / K) + (r + 0.5 * sigma ** 2) * T) / (sigma * math.sqrt(T))
         d2 = d1 - sigma * math.sqrt(T)
         def _N(x):
             return 0.5 * (1.0 + math.erf(x / math.sqrt(2)))
-        if option_type.upper() in ('CALL', 'C'):
+        if is_call:
             price = S * _N(d1) - K * math.exp(-r * T) * _N(d2)
         else:
             price = K * math.exp(-r * T) * _N(-d2) - S * _N(-d1)
@@ -2366,7 +2362,7 @@ def api_busca_opcao(ticker):
 
         # BS price + intrínseco/extrínseco
         if needs_bs:
-            bs = _bs_price(S, K, T, r, sigma, opt_type)
+            bs = _bs_price_opt(S, K, T, r, sigma, opt_type)
             if bs is not None:
                 result['bs_price'] = bs
                 result['bs_calc']  = sigma_src

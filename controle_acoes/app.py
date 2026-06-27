@@ -7870,42 +7870,35 @@ def api_oplab_greeks():
             return jsonify({'error': f'Dados insuficientes para calcular greeks de {ticker} '
                                      f'(S={S}, K={K}, T_dias={T_days}).'}), 404
 
-        # ── 1. Tenta usar delta/gama/IV diretos do OpLab (mais preciso) ──────
+        # ── Prêmio de mercado: close → last → bid → ask ──────────────────────
+        premium = 0.0
+        for _fld in ('close', 'last', 'bid', 'ask'):
+            _v = d.get(_fld)
+            if _v and float(_v) > 0:
+                premium = float(_v)
+                break
+
+        # ── IV: implícita pelo prêmio → campo IV do OpLab → fallback ─────────
         _greeks_dict = d.get('greeks') if isinstance(d.get('greeks'), dict) else {}
-        _delta_oplab = d.get('delta') or _greeks_dict.get('delta')
-        _gama_oplab  = d.get('gamma') or d.get('gama') or _greeks_dict.get('gamma') or _greeks_dict.get('gama')
-        _iv_oplab    = d.get('implied_volatility') or d.get('iv') or _greeks_dict.get('iv')
+        _iv_raw      = d.get('implied_volatility') or d.get('iv') or _greeks_dict.get('iv')
 
-        if _delta_oplab is not None and float(_delta_oplab) != 0:
-            # OpLab forneceu delta diretamente — usa sem recalcular
-            delta = round(float(_delta_oplab), 4)
-            gama  = round(float(_gama_oplab), 4) if _gama_oplab else None
-            sigma_raw = float(_iv_oplab) if _iv_oplab else 0.0
-            if sigma_raw > 1.5: sigma_raw /= 100.0
-            ve = round(sigma_raw * 100, 2) if sigma_raw > 0 else None
+        if premium > 0:
+            sigma = _implied_vol(S, K, T, r_cont, premium, is_call)
+        elif _iv_raw and float(_iv_raw) > 0:
+            sigma = float(_iv_raw)
+            if sigma > 1.5: sigma /= 100.0
         else:
-            # ── 2. Calcula via BS com IV implícita pelo prêmio ───────────────
-            # Prêmio: tenta close > 0, senão last, bid, ask
-            premium = 0.0
-            for _fld in ('close', 'last', 'bid', 'ask'):
-                _v = d.get(_fld)
-                if _v and float(_v) > 0:
-                    premium = float(_v)
-                    break
+            sigma = 0.35  # fallback conservador
 
-            if premium > 0:
-                sigma = _implied_vol(S, K, T, r_cont, premium, is_call)
-            elif _iv_oplab and float(_iv_oplab) > 0:
-                sigma = float(_iv_oplab)
-                if sigma > 1.5: sigma /= 100.0
-            else:
-                sigma = 0.35  # fallback conservador
-
-            d1    = (math.log(S / K) + (r_cont + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
-            delta = round(_norm_cdf(d1) if is_call else _norm_cdf(d1) - 1.0, 4)
-            pdf_d1 = math.exp(-0.5 * d1 * d1) / math.sqrt(2 * math.pi)
-            gama  = round(pdf_d1 / (S * sigma * math.sqrt(T)), 4)
-            ve    = round(sigma * 100, 2)
+        # ── Delta e Gama via BS analítico (sempre recalcula para consistência) ─
+        # Não usamos o delta bruto do OpLab: para opções sem liquidez ele retorna
+        # -1 ou 0, que são valores degenerados — o cálculo BS com IV implícita
+        # do prêmio disponível (bid/ask) é mais preciso.
+        d1     = (math.log(S / K) + (r_cont + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
+        delta  = round(_norm_cdf(d1) if is_call else _norm_cdf(d1) - 1.0, 4)
+        pdf_d1 = math.exp(-0.5 * d1 * d1) / math.sqrt(2 * math.pi)
+        gama   = round(pdf_d1 / (S * sigma * math.sqrt(T)), 4)
+        ve     = round(sigma * 100, 2)
 
     except OplabApiError as e:
         return jsonify({'error': str(e), 'status': e.status_code, 'preview': e.body_preview}), 503
@@ -7927,7 +7920,9 @@ def api_oplab_greeks():
         except Exception:
             db.session.rollback()
 
-    return jsonify({'ve': ve, 'delta': delta, 'gama': gama})
+    return jsonify({'ve': ve, 'delta': delta, 'gama': gama,
+                    '_debug': {'S': S, 'K': K, 'T_days': T_days, 'premium': premium,
+                               'sigma_pct': ve, 'cat': cat}})
 
 
 @app.route('/atualizar_oplab', methods=['POST'])

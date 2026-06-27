@@ -7878,22 +7878,38 @@ def api_oplab_greeks():
                 premium = float(_v)
                 break
 
-        # ── IV: implícita pelo prêmio → campo IV do OpLab → fallback ─────────
+        # ── IV: implícita pelo prêmio → campo IV do OpLab → HV → fallback ──────
         _greeks_dict = d.get('greeks') if isinstance(d.get('greeks'), dict) else {}
         _iv_raw      = d.get('implied_volatility') or d.get('iv') or _greeks_dict.get('iv')
 
-        if premium > 0:
+        sigma = None
+
+        # Valor intrínseco teórico (floor do prêmio BS)
+        intrinsic = max(0.0, (S - K) if not is_call else (K - S))
+
+        if premium > 0 and premium > intrinsic * 1.01:
+            # Prêmio acima do intrínseco → IV implícita é calculável por BS
             sigma = _implied_vol(S, K, T, r_cont, premium, is_call)
-        elif _iv_raw and float(_iv_raw) > 0:
+            if sigma <= 0.002:  # bissecção não convergiu (sigma_min)
+                sigma = None
+
+        if sigma is None and _iv_raw and float(_iv_raw) > 0:
             sigma = float(_iv_raw)
             if sigma > 1.5: sigma /= 100.0
-        else:
-            sigma = 0.35  # fallback conservador
 
-        # ── Delta e Gama via BS analítico (sempre recalcula para consistência) ─
-        # Não usamos o delta bruto do OpLab: para opções sem liquidez ele retorna
-        # -1 ou 0, que são valores degenerados — o cálculo BS com IV implícita
-        # do prêmio disponível (bid/ask) é mais preciso.
+        if sigma is None:
+            # HV histórica via OpLab — usa campo 'underlying' do response se disponível
+            _und = d.get('underlying') or d.get('stock_ticker') or ''
+            if not _und:
+                # Heurística: remove sufixo numérico do ticker da opção
+                import re as _re
+                _und = _re.sub(r'[A-Z]\d+$', '', ticker)
+            sigma = _hv_from_oplab(_und, token) or _hv_fallback(_und)
+
+        if not sigma:
+            sigma = 0.35  # fallback final
+
+        # ── Delta e Gama via BS analítico ────────────────────────────────────
         d1     = (math.log(S / K) + (r_cont + 0.5 * sigma * sigma) * T) / (sigma * math.sqrt(T))
         delta  = round(_norm_cdf(d1) if is_call else _norm_cdf(d1) - 1.0, 4)
         pdf_d1 = math.exp(-0.5 * d1 * d1) / math.sqrt(2 * math.pi)

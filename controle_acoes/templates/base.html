@@ -45,6 +45,50 @@
         .dataTables_wrapper {
             width: 100%;
         }
+
+        /* ── Coluna Ações: oculta por padrão, visível quando .acoes-visible ── */
+        td.actions, th.col-acoes-th {
+            display: none !important;
+        }
+        table.acoes-visible td.actions,
+        table.acoes-visible th.col-acoes-th {
+            display: table-cell !important;
+        }
+        /* DataTables: td.actions dentro de dataTables_wrapper precisa de flex quando visível */
+        table.acoes-visible td.actions {
+            display: flex !important;
+        }
+        th.col-acoes-th {
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+        th.col-acoes-th::after {
+            content: ' ▸';
+            font-size: .7em;
+            opacity: .6;
+        }
+        table.acoes-visible th.col-acoes-th::after {
+            content: ' ▾';
+        }
+
+        /* ── Mobile: fonte menor nas tabelas ───────────────────────────────── */
+        @media (max-width: 768px) {
+            table, table.dataTable {
+                font-size: 0.72rem !important;
+            }
+            table th, table td {
+                padding: 4px 5px !important;
+            }
+            .ticker-badge {
+                font-size: 0.65rem !important;
+                padding: 2px 5px !important;
+            }
+            .btn-sm {
+                font-size: 0.65rem !important;
+                padding: 2px 4px !important;
+            }
+        }
     </style>
 </head>
 
@@ -372,6 +416,9 @@
                 "info": false,
                 "searching": false
             });
+
+            // Inicializa toggle da coluna Ações após DataTables
+            initAcoesCols();
         });
     </script>
     <script src="{{ url_for('static', filename='js/mychart.js') }}"></script>
@@ -414,6 +461,29 @@
                     localStorage.setItem('hideIndicators', 'true');
                 }
             }
+        }
+
+        // ── Toggle coluna Ações em todas as tabelas ──────────────────────────
+        // Inicializado após DT para garantir que os <th> já estão no DOM final.
+        function initAcoesCols() {
+            var STORE_KEY = 'acoes-col-visible:' + location.pathname;
+            var visible = localStorage.getItem(STORE_KEY) === 'true';
+
+            document.querySelectorAll('thead th').forEach(function (th) {
+                if (th.textContent.trim() === 'Ações' && !th.classList.contains('col-acoes-th')) {
+                    th.classList.add('col-acoes-th');
+                    th.title = 'Clique para mostrar/ocultar ações';
+                    th.addEventListener('click', function () {
+                        var tbl = th.closest('table');
+                        tbl.classList.toggle('acoes-visible');
+                        var nowVisible = tbl.classList.contains('acoes-visible');
+                        localStorage.setItem(STORE_KEY, nowVisible ? 'true' : 'false');
+                    });
+                    if (visible) {
+                        th.closest('table').classList.add('acoes-visible');
+                    }
+                }
+            });
         }
 
         function toggleTheme() {

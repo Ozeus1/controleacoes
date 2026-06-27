@@ -213,30 +213,32 @@
                     class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
                     {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%
                 </td>
-                {# Delta em módulo: verde ≤0,30 | laranja 0,30-0,50 | vermelho ≥0,70 #}
+                {# Delta em módulo — badge clicável: ⚡ atualiza, ✏️ edita manualmente #}
                 {% set delta_abs = (item.option.delta|abs) if item.option.delta is not none else none %}
-                <td style="font-size:.85rem; font-weight:600;
-                    {% if delta_abs is not none %}
-                        {% if delta_abs <= 0.30 %}color:#10b981;
-                        {% elif delta_abs <= 0.50 %}color:#f97316;
-                        {% elif delta_abs <= 0.70 %}color:#f59e0b;
-                        {% else %}color:#ef4444;{% endif %}
-                    {% endif %}">
-                    <button class="btn btn-sm" id="put-delta-btn-{{ item.option.id }}"
-                            style="padding:0 .35rem;font-size:.72rem;background:#10b981;color:white;"
-                            title="Atualizar delta via OpLab"
-                            onclick="fetchPutDeltaOplab({{ item.option.id }}, '{{ item.option.ticker }}', this)">⚡</button>
-                    {% if delta_abs is not none %}
-                        <span id="put-delta-val-{{ item.option.id }}">{{ "%.2f"|format(delta_abs)|replace('.', ',') }}</span>
-                        <button class="btn btn-sm" style="padding:0 .3rem;font-size:.7rem;margin-left:.1rem;opacity:.5;"
-                                title="Editar delta manualmente"
-                                onclick="editDeltaPut({{ item.option.id }}, {{ delta_abs }})">✏️</button>
-                    {% else %}
-                        <span id="put-delta-val-{{ item.option.id }}" style="color:var(--text-secondary);">—</span>
-                        <button class="btn btn-sm" style="padding:0 .3rem;font-size:.7rem;margin-left:.1rem;opacity:.5;"
-                                title="Inserir delta"
-                                onclick="editDeltaPut({{ item.option.id }}, '')">✏️</button>
-                    {% endif %}
+                {% if delta_abs is not none %}
+                    {% if delta_abs <= 0.30 %}{% set d_color = '#10b981' %}
+                    {% elif delta_abs <= 0.50 %}{% set d_color = '#f97316' %}
+                    {% elif delta_abs <= 0.70 %}{% set d_color = '#f59e0b' %}
+                    {% else %}{% set d_color = '#ef4444' %}{% endif %}
+                {% else %}{% set d_color = '#64748b' %}{% endif %}
+                <td style="white-space:nowrap;">
+                    {# Badge inteiro é clicável para atualizar delta #}
+                    <button id="put-delta-btn-{{ item.option.id }}"
+                            onclick="fetchPutDeltaOplab({{ item.option.id }}, '{{ item.option.ticker }}', this)"
+                            title="Clique para atualizar delta via OpLab"
+                            style="display:inline-flex;align-items:center;gap:.25rem;
+                                   background:{{ d_color }};color:white;border:none;border-radius:5px;
+                                   padding:.18rem .45rem;font-size:.78rem;font-weight:700;cursor:pointer;">
+                        ⚡ <span id="put-delta-val-{{ item.option.id }}">
+                            {%- if delta_abs is not none -%}
+                                {{ "%.2f"|format(delta_abs)|replace('.', ',') }}
+                            {%- else -%}—{%- endif -%}
+                        </span>
+                    </button>
+                    <button style="background:none;border:none;padding:0 .15rem;font-size:.72rem;
+                                   opacity:.45;cursor:pointer;vertical-align:middle;"
+                            title="Editar delta manualmente"
+                            onclick="editDeltaPut({{ item.option.id }}, {{ delta_abs if delta_abs is not none else "''" }})">✏️</button>
                 </td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_value" data-qty="{{ item.option.quantity }}">R$ {{ "%.2f"|format(item.current_val)|replace('.', ',') }}</td>
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
@@ -1151,13 +1153,17 @@ function fetchPutDeltaOplab(optId, ticker, btn) {
                 alert(msg); return;
             }
             if (d.delta == null) { alert('Delta não retornado pelo OpLab para ' + ticker); return; }
-            var abs = Math.abs(d.delta);
-            var el  = document.getElementById('put-delta-val-' + optId);
-            if (el) {
-                el.textContent = abs.toFixed(2).replace('.', ',');
-                el.style.color = abs <= 0.30 ? '#10b981' : abs <= 0.50 ? '#f97316' : abs <= 0.70 ? '#f59e0b' : '#ef4444';
-            }
-            btn.title = 'Δ=' + d.delta.toFixed(4) + (d.gama ? ' Γ=' + d.gama.toFixed(4) : '');
+            var abs   = Math.abs(d.delta);
+            var color = abs <= 0.30 ? '#10b981' : abs <= 0.50 ? '#f97316' : abs <= 0.70 ? '#f59e0b' : '#ef4444';
+            var el = document.getElementById('put-delta-val-' + optId);
+            if (el) el.textContent = abs.toFixed(2).replace('.', ',');
+            // Atualiza cor do badge inteiro
+            var dbtn = document.getElementById('put-delta-btn-' + optId);
+            if (dbtn) dbtn.style.background = color;
+            var dbg = d._debug || {};
+            btn.title = 'Δ=' + d.delta.toFixed(4) + (d.gama ? ' Γ=' + d.gama.toFixed(4) : '')
+                      + (dbg.sigma_pct ? ' σ=' + dbg.sigma_pct + '%' : '')
+                      + (dbg.premium   ? ' P=' + dbg.premium    : '');
         })
         .catch(function(e) { btn.innerHTML = origHTML; btn.disabled = false; alert('Erro: ' + e); });
 }

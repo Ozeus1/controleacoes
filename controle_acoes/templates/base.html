@@ -46,27 +46,27 @@
             width: 100%;
         }
 
-        /* ── Coluna Ações: oculta por padrão, visível quando .acoes-visible ── */
-        td.actions, th.col-acoes-th {
+        /* ── Coluna Ações: td oculto por padrão; th sempre visível como toggle ── */
+        td.actions {
             display: none !important;
         }
-        table.acoes-visible td.actions,
-        table.acoes-visible th.col-acoes-th {
-            display: table-cell !important;
-        }
-        /* DataTables: td.actions dentro de dataTables_wrapper precisa de flex quando visível */
         table.acoes-visible td.actions {
             display: flex !important;
+            gap: 5px;
+            justify-content: center;
         }
         th.col-acoes-th {
             cursor: pointer;
             user-select: none;
             white-space: nowrap;
+            opacity: .75;
         }
         th.col-acoes-th::after {
             content: ' ▸';
             font-size: .7em;
-            opacity: .6;
+        }
+        table.acoes-visible th.col-acoes-th {
+            opacity: 1;
         }
         table.acoes-visible th.col-acoes-th::after {
             content: ' ▾';

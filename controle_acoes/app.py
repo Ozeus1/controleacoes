@@ -864,14 +864,18 @@ def _calc_structured_metrics(op):
             q     = leg.quantity
             K     = leg.strike or 0
             sign  = 1 if leg.side == 'BUY' else -1
-            is_call = leg.opt_type == 'CALL'
-            if is_calendar and leg.id in leg_ivs:
+            if leg.opt_type == 'STOCK':
+                # Perna de ação: payoff linear — variação do preço × quantidade
+                total += sign * q * (S - leg.entry_price)
+            elif is_calendar and leg.id in leg_ivs:
                 # Perna longa de calendário: valor BS com tempo restante após vencimento curta
                 T_rem = max((leg.expiration_date - ref_date).days / 365.25, 0)
                 iv    = leg_ivs[leg.id]
+                is_call = leg.opt_type == 'CALL'
                 total += sign * q * _bs_price(S, K, T_rem, r_cont, iv, is_call)
             else:
                 # Payoff intrínseco no vencimento
+                is_call = leg.opt_type == 'CALL'
                 total += sign * q * max(0.0, (S - K) if is_call else (K - S))
         return total
 
@@ -888,8 +892,13 @@ def _calc_structured_metrics(op):
             leg.quantity * (1 if leg.side == 'BUY' else -1)
             for leg in legs if leg.opt_type == 'CALL'
         )
-        unlimited_profit = net_call_delta > 0
-        unlimited_loss   = net_call_delta < 0
+        # Ação comprada tem delta +1 (payoff ilimitado para cima)
+        net_stock_delta = sum(
+            leg.quantity * (1 if leg.side == 'BUY' else -1)
+            for leg in legs if leg.opt_type == 'STOCK'
+        )
+        unlimited_profit = (net_call_delta + net_stock_delta) > 0
+        unlimited_loss   = (net_call_delta + net_stock_delta) < 0
 
     # Varredura densa de pontos para capturar pico (inclui strikes e grade fina)
     max_K = max(strikes) if strikes else 100

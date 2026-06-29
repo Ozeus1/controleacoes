@@ -4,7 +4,7 @@
 
     <h2>{% if edit %}Editar{% else %}Nova{% endif %} Operação Estruturada</h2>
     <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: .9rem;">
-        Monte uma operação com quantas pernas precisar — compra e venda de calls e puts. O sistema calculará
+        Monte uma operação com quantas pernas precisar — compra e venda de calls, puts e ações. O sistema calculará
         automaticamente o crédito/débito de montagem, lucro máximo, prejuízo máximo e breakeven(s).
     </p>
 
@@ -47,8 +47,8 @@
                         <th style="padding:.5rem .4rem; text-align:left;">Tipo</th>
                         <th style="padding:.5rem .4rem; text-align:left;">Lado</th>
                         <th style="padding:.5rem .4rem; text-align:center;">Qtd</th>
-                        <th style="padding:.5rem .4rem; text-align:right;">Strike</th>
-                        <th style="padding:.5rem .4rem; text-align:left;">Vencimento</th>
+                        <th style="padding:.5rem .4rem; text-align:right;" class="col-strike">Strike</th>
+                        <th style="padding:.5rem .4rem; text-align:left;" class="col-exp">Vencimento</th>
                         <th style="padding:.5rem .4rem; text-align:right;">Preço Entrada</th>
                         <th style="padding:.5rem .4rem; text-align:right;">Cotação Atual</th>
                         <th style="padding:.5rem .4rem;"></th>
@@ -63,9 +63,10 @@
                                        placeholder="PETRA40" style="width:120px; text-transform:uppercase;">
                             </td>
                             <td style="padding:.35rem .4rem;">
-                                <select name="leg_opt_type" style="width:70px;">
-                                    <option value="CALL" {% if leg.opt_type=='CALL' %}selected{% endif %}>CALL</option>
-                                    <option value="PUT"  {% if leg.opt_type=='PUT'  %}selected{% endif %}>PUT</option>
+                                <select name="leg_opt_type" style="width:75px;" onchange="legTypeChanged(this)">
+                                    <option value="CALL"  {% if leg.opt_type=='CALL'  %}selected{% endif %}>CALL</option>
+                                    <option value="PUT"   {% if leg.opt_type=='PUT'   %}selected{% endif %}>PUT</option>
+                                    <option value="STOCK" {% if leg.opt_type=='STOCK' %}selected{% endif %}>AÇÃO</option>
                                 </select>
                             </td>
                             <td style="padding:.35rem .4rem;">
@@ -79,15 +80,17 @@
                                        value="{{ leg.quantity }}"
                                        style="width:60px; text-align:center;">
                             </td>
-                            <td style="padding:.35rem .4rem;">
+                            <td style="padding:.35rem .4rem;" class="col-strike">
                                 <input type="text" name="leg_strike"
                                        value="{{ '%.2f'|format(leg.strike)|replace('.', ',') }}"
-                                       placeholder="0,00" style="width:80px; text-align:right;">
+                                       placeholder="0,00" style="width:80px; text-align:right;"
+                                       {% if leg.opt_type=='STOCK' %}disabled{% endif %}>
                             </td>
-                            <td style="padding:.35rem .4rem;">
+                            <td style="padding:.35rem .4rem;" class="col-exp">
                                 <input type="date" name="leg_expiration"
                                        value="{{ leg.expiration_date.isoformat() if leg.expiration_date else '' }}"
-                                       style="width:130px;">
+                                       style="width:130px;"
+                                       {% if leg.opt_type=='STOCK' %}disabled{% endif %}>
                             </td>
                             <td style="padding:.35rem .4rem;">
                                 <input type="text" name="leg_entry_price"
@@ -114,9 +117,10 @@
                                        style="width:120px; text-transform:uppercase;">
                             </td>
                             <td style="padding:.35rem .4rem;">
-                                <select name="leg_opt_type" style="width:70px;">
+                                <select name="leg_opt_type" style="width:75px;" onchange="legTypeChanged(this)">
                                     <option value="CALL">CALL</option>
                                     <option value="PUT">PUT</option>
+                                    <option value="STOCK">AÇÃO</option>
                                 </select>
                             </td>
                             <td style="padding:.35rem .4rem;">
@@ -129,11 +133,11 @@
                                 <input type="text" inputmode="numeric" name="leg_quantity"
                                        value="1" style="width:60px; text-align:center;">
                             </td>
-                            <td style="padding:.35rem .4rem;">
+                            <td style="padding:.35rem .4rem;" class="col-strike">
                                 <input type="text" name="leg_strike" placeholder="0,00"
                                        style="width:80px; text-align:right;">
                             </td>
-                            <td style="padding:.35rem .4rem;">
+                            <td style="padding:.35rem .4rem;" class="col-exp">
                                 <input type="date" name="leg_expiration" style="width:130px;">
                             </td>
                             <td style="padding:.35rem .4rem;">
@@ -192,16 +196,39 @@ function addLeg() {
     var tbody = document.getElementById('legs-body');
     var tmpl = `<tr class="leg-row">
         <td style="padding:.35rem .4rem;"><input type="text" name="leg_ticker" placeholder="PETRA40" style="width:120px; text-transform:uppercase;"></td>
-        <td style="padding:.35rem .4rem;"><select name="leg_opt_type" style="width:70px;"><option value="CALL">CALL</option><option value="PUT">PUT</option></select></td>
+        <td style="padding:.35rem .4rem;"><select name="leg_opt_type" style="width:75px;" onchange="legTypeChanged(this)"><option value="CALL">CALL</option><option value="PUT">PUT</option><option value="STOCK">AÇÃO</option></select></td>
         <td style="padding:.35rem .4rem;"><select name="leg_side" style="width:90px;"><option value="SELL">VENDA</option><option value="BUY">COMPRA</option></select></td>
         <td style="padding:.35rem .4rem;"><input type="text" inputmode="numeric" name="leg_quantity" value="1" style="width:60px; text-align:center;"></td>
-        <td style="padding:.35rem .4rem;"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px; text-align:right;"></td>
-        <td style="padding:.35rem .4rem;"><input type="date" name="leg_expiration" style="width:130px;"></td>
+        <td style="padding:.35rem .4rem;" class="col-strike"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px; text-align:right;"></td>
+        <td style="padding:.35rem .4rem;" class="col-exp"><input type="date" name="leg_expiration" style="width:130px;"></td>
         <td style="padding:.35rem .4rem;"><input type="text" name="leg_entry_price" placeholder="0,00" style="width:80px; text-align:right;" oninput="recalc()"></td>
         <td style="padding:.35rem .4rem;"><input type="text" name="leg_current_price" placeholder="0,00" style="width:80px; text-align:right;" oninput="recalc()"></td>
         <td style="padding:.35rem .4rem;"><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
     </tr>`;
     tbody.insertAdjacentHTML('beforeend', tmpl);
+}
+
+function legTypeChanged(sel) {
+    var row = sel.closest('.leg-row');
+    var isStock = sel.value === 'STOCK';
+    var strikeCell = row.querySelector('.col-strike');
+    var expCell    = row.querySelector('.col-exp');
+    if (strikeCell) {
+        strikeCell.style.opacity = isStock ? '.3' : '';
+        var inp = strikeCell.querySelector('input');
+        if (inp) { inp.disabled = isStock; if (isStock) inp.value = ''; }
+    }
+    if (expCell) {
+        expCell.style.opacity = isStock ? '.3' : '';
+        var inp2 = expCell.querySelector('input');
+        if (inp2) { inp2.disabled = isStock; if (isStock) inp2.value = ''; }
+    }
+    // Força lado COMPRA para STOCK por padrão
+    if (isStock) {
+        var sideEl = row.querySelector('[name=leg_side]');
+        if (sideEl) sideEl.value = 'BUY';
+    }
+    recalc();
 }
 
 function removeLeg(btn) {
@@ -216,12 +243,19 @@ function recalc() {
     var net = 0, pnl = 0;
     rows.forEach(function(row) {
         var side  = row.querySelector('[name=leg_side]').value;
+        var type  = row.querySelector('[name=leg_opt_type]').value;
         var qty   = parseInt(row.querySelector('[name=leg_quantity]').value) || 1;
         var entry = parseVal(row.querySelector('[name=leg_entry_price]').value);
         var curr  = parseVal(row.querySelector('[name=leg_current_price]').value);
         var sign  = side === 'SELL' ? 1 : -1;
-        net += sign * qty * entry;
-        pnl += sign === 1 ? qty * (entry - curr) : qty * (curr - entry);
+        if (type === 'STOCK') {
+            // Ação: crédito/débito é o custo total (compra = débito, venda = crédito)
+            net += sign * qty * entry;
+            pnl += sign * qty * (curr - entry);
+        } else {
+            net += sign * qty * entry;
+            pnl += sign === 1 ? qty * (entry - curr) : qty * (curr - entry);
+        }
     });
 
     var netEl = document.getElementById('prev-net');
@@ -234,8 +268,13 @@ function recalc() {
     pnlEl.style.color = pnl >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
 }
 
-// Inicializa preview ao carregar
-document.addEventListener('DOMContentLoaded', recalc);
+// Inicializa preview e estado visual ao carregar
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('[name=leg_opt_type]').forEach(function(sel) {
+        legTypeChanged(sel);
+    });
+    recalc();
+});
 
 // Atualiza preview ao mudar lado ou qtd
 document.getElementById('legs-body').addEventListener('change', recalc);

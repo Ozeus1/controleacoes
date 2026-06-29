@@ -1186,7 +1186,7 @@ def opcoes():
         is_credit = net >= 0
         max_gain = net * sp.quantity if is_credit else (width + net) * sp.quantity
         max_loss = (width - net) * sp.quantity if is_credit else abs(net) * sp.quantity
-        result_pct = (result / max_loss * 100) if max_loss != 0 else 0
+        result_pct = (result / max_gain * 100) if max_gain != 0 else 0
         days_left = du_count(today, sp.expiration_date)
 
         # ── POP da trava via BS ───────────────────────────────────────

@@ -865,8 +865,8 @@ def _calc_structured_metrics(op):
             K     = leg.strike or 0
             sign  = 1 if leg.side == 'BUY' else -1
             if leg.opt_type == 'STOCK':
-                # Perna de ação: payoff linear — variação do preço × quantidade
-                total += sign * q * (S - leg.entry_price)
+                # Custo de entrada já está em `net`; aqui só adiciona o valor de mercado no vencimento
+                total += sign * q * S
             elif is_calendar and leg.id in leg_ivs:
                 # Perna longa de calendário: valor BS com tempo restante após vencimento curta
                 T_rem = max((leg.expiration_date - ref_date).days / 365.25, 0)

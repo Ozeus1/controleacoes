@@ -51,6 +51,11 @@
             display: none !important;
         }
         table.acoes-visible td.actions {
+            display: table-cell !important;
+            white-space: nowrap;
+        }
+        /* DataTables injeta display:flex nos td.actions das tabelas paginadas */
+        table.dataTable.acoes-visible td.actions {
             display: flex !important;
             gap: 5px;
             justify-content: center;

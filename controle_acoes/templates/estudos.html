@@ -15,6 +15,7 @@
 </div>
 
 <div class="card">
+  <div class="table-scroll">
   <table class="table table-dark table-striped table-hover no-datatable align-middle" style="min-width:1100px;font-size:.85rem">
     <thead>
       <tr>
@@ -66,7 +67,7 @@
         {{ vdx_cell(row.vdx) }}
         <td>{{ '%.4f'|format(row.nv) if row.nv is not none else '-' }}</td>
         <td><span style="font-size:.75rem;color:var(--text-secondary)">V. Coberta</span></td>
-        <td style="white-space:nowrap;">
+        <td class="actions" style="white-space:nowrap;">
           <button class="btn btn-sm" id="vc-greeks-btn-{{ row.id }}"
                   style="background:#10b981;color:white;" title="Atualizar VE/Delta/Gama via OpLab"
                   onclick="fetchGreeksOplab('{{ row.ticker }}', 'option', {{ row.id }}, 'vc', this)">⚡</button>
@@ -95,7 +96,7 @@
         {{ vdx_cell(row.vdx) }}
         <td>{{ '%.4f'|format(row.nv) if row.nv is not none else '-' }}</td>
         <td><span style="font-size:.75rem;color:var(--success-color)">Estudo</span></td>
-        <td style="white-space:nowrap;">
+        <td class="actions" style="white-space:nowrap;">
           <button class="btn btn-sm" id="so-greeks-btn-{{ row.id }}"
                   style="background:#10b981;color:white;" title="Atualizar VE/Delta/Gama via OpLab"
                   onclick="fetchGreeksOplab('{{ row.ticker }}', 'study_option', {{ row.id }}, 'so', this)">⚡</button>
@@ -117,6 +118,7 @@
       {% endif %}
     </tbody>
   </table>
+  </div>
 </div>
 
 {# ─────────────────────────────────────────────────────────────────
@@ -129,6 +131,7 @@
 </div>
 
 <div class="card">
+  <div class="table-scroll">
   <table class="table table-dark table-striped table-hover no-datatable align-middle" style="min-width:1000px;font-size:.85rem">
     <thead>
       <tr>
@@ -171,7 +174,7 @@
         <td>{{ ss.study_date.strftime('%d/%m/%Y') if ss.study_date else '-' }}</td>
         <td>{{ ss.strategy_active or '-' }}</td>
         <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
-        <td style="white-space:nowrap;">
+        <td class="actions" style="white-space:nowrap;">
           <button class="btn btn-sm" onclick="openRadarAndUpdate({{ ss.id }}, '{{ ss.ticker }}', 'stock')" title="Análise Radar + atualizar RSI/ATR" style="background:#8b5cf6;color:white;">📊</button>
           <button class="btn btn-sm" onclick="openTVChart('{{ ss.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
           <button class="btn btn-primary btn-sm"
@@ -196,6 +199,7 @@
       {% endif %}
     </tbody>
   </table>
+  </div>
 </div>
 
 {# ─────────────────────────────────────────────────────────────────
@@ -208,6 +212,7 @@
 </div>
 
 <div class="card">
+  <div class="table-scroll">
   <table class="table table-dark table-striped table-hover no-datatable align-middle" style="min-width:1000px;font-size:.85rem">
     <thead>
       <tr>
@@ -250,7 +255,7 @@
         <td>{{ ss.study_date.strftime('%d/%m/%Y') if ss.study_date else '-' }}</td>
         <td>{{ ss.strategy_active or '-' }}</td>
         <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
-        <td style="white-space:nowrap;">
+        <td class="actions" style="white-space:nowrap;">
           <button class="btn btn-sm" onclick="openRadarAndUpdate({{ ss.id }}, '{{ ss.ticker }}', 'intl')" title="Análise Radar + atualizar RSI/ATR" style="background:#8b5cf6;color:white;">📊</button>
           <button class="btn btn-sm" onclick="openTVChart('{{ ss.ticker }}', true)" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
           <button class="btn btn-primary btn-sm"
@@ -275,6 +280,7 @@
       {% endif %}
     </tbody>
   </table>
+  </div>
 </div>
 
 {# ─────────────────────────────────────────────────────────────────

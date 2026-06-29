@@ -238,8 +238,14 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
             // Trava vertical simples — payoff intrínseco no vencimento
             legs.forEach(function(l) {
                 var sign = l.side === 'BUY' ? 1 : -1;
-                if (l.type === 'CALL') total += sign * l.qty * Math.max(0, S - l.strike);
-                else                    total += sign * l.qty * Math.max(0, l.strike - S);
+                if (l.type === 'STOCK') {
+                    // Custo de entrada já está em netPremium(); adiciona só o valor de mercado
+                    total += sign * l.qty * S;
+                } else if (l.type === 'CALL') {
+                    total += sign * l.qty * Math.max(0, S - l.strike);
+                } else {
+                    total += sign * l.qty * Math.max(0, l.strike - S);
+                }
             });
             return total;
         }
@@ -248,17 +254,16 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
         var refD = new Date(refDate + 'T00:00:00');
         legs.forEach(function(l) {
             var sign  = l.side === 'BUY' ? 1 : -1;
+            if (l.type === 'STOCK') {
+                total += sign * l.qty * S;
+                return;
+            }
             var legD  = l.exp ? new Date(l.exp + 'T00:00:00') : refD;
             var isCall = l.type === 'CALL';
-
-            // Tempo restante desta perna APÓS o vencimento da perna curta (em anos)
             var Trem = Math.max((legD - refD) / (365.25 * 86400000), 0);
-
             if (Trem < 1/365) {
-                // Perna curta: payoff intrínseco no vencimento
                 total += sign * l.qty * Math.max(0, isCall ? S - l.strike : l.strike - S);
             } else {
-                // Perna longa: ainda tem valor temporal — usa Black-Scholes
                 var iv = estimateIV(l);
                 total += sign * l.qty * blackScholes(S, l.strike, Trem, iv, isCall);
             }

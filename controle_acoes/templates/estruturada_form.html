@@ -82,15 +82,15 @@
                             </td>
                             <td style="padding:.35rem .4rem;" class="col-strike">
                                 <input type="text" name="leg_strike"
-                                       value="{{ '%.2f'|format(leg.strike)|replace('.', ',') }}"
+                                       value="{{ '' if leg.opt_type=='STOCK' else '%.2f'|format(leg.strike)|replace('.', ',') }}"
                                        placeholder="0,00" style="width:80px; text-align:right;"
-                                       {% if leg.opt_type=='STOCK' %}disabled{% endif %}>
+                                       {% if leg.opt_type=='STOCK' %}readonly style="width:80px;text-align:right;opacity:.3"{% endif %}>
                             </td>
                             <td style="padding:.35rem .4rem;" class="col-exp">
                                 <input type="date" name="leg_expiration"
-                                       value="{{ leg.expiration_date.isoformat() if leg.expiration_date else '' }}"
+                                       value="{{ '' if leg.opt_type=='STOCK' else (leg.expiration_date.isoformat() if leg.expiration_date else '') }}"
                                        style="width:130px;"
-                                       {% if leg.opt_type=='STOCK' %}disabled{% endif %}>
+                                       {% if leg.opt_type=='STOCK' %}readonly style="width:130px;opacity:.3"{% endif %}>
                             </td>
                             <td style="padding:.35rem .4rem;">
                                 <input type="text" name="leg_entry_price"
@@ -214,16 +214,21 @@ function legTypeChanged(sel) {
     var strikeCell = row.querySelector('.col-strike');
     var expCell    = row.querySelector('.col-exp');
     if (strikeCell) {
-        strikeCell.style.opacity = isStock ? '.3' : '';
         var inp = strikeCell.querySelector('input');
-        if (inp) { inp.disabled = isStock; if (isStock) inp.value = ''; }
+        if (inp) {
+            inp.readOnly = isStock;
+            inp.style.opacity = isStock ? '.3' : '';
+            if (isStock) inp.value = '';
+        }
     }
     if (expCell) {
-        expCell.style.opacity = isStock ? '.3' : '';
         var inp2 = expCell.querySelector('input');
-        if (inp2) { inp2.disabled = isStock; if (isStock) inp2.value = ''; }
+        if (inp2) {
+            inp2.readOnly = isStock;
+            inp2.style.opacity = isStock ? '.3' : '';
+            if (isStock) inp2.value = '';
+        }
     }
-    // Força lado COMPRA para STOCK por padrão
     if (isStock) {
         var sideEl = row.querySelector('[name=leg_side]');
         if (sideEl) sideEl.value = 'BUY';

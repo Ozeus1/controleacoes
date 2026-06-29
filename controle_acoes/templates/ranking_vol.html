@@ -131,7 +131,7 @@
         <th onclick="rvSort('iv_rank')"     style="cursor:pointer;user-select:none;white-space:nowrap">IV Rank <span class="rv-arrow" data-col="iv_rank"></span></th>
         <th onclick="rvSort('iv_percentil')" style="cursor:pointer;user-select:none;white-space:nowrap">Perc. <span class="rv-arrow" data-col="iv_percentil"></span></th>
         <th onclick="rvSort('vol_impl')"    style="cursor:pointer;user-select:none;white-space:nowrap">Vol. Impl. <span class="rv-arrow" data-col="vol_impl"></span></th>
-        <th></th>
+        <th>Ações</th>
       </tr>
     </thead>
     <tbody id="rv-tbody">
@@ -171,7 +171,7 @@
         <td class="rv-vol">
           {% if rv.vol_impl is not none %}{{ '%.1f'|format(rv.vol_impl) }}{% else %}—{% endif %}
         </td>
-        <td style="white-space:nowrap">
+        <td class="actions" style="white-space:nowrap">
           <button class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#0ea5e9;color:#fff;margin-right:.2rem"
                   onclick="openTVChart('{{ rv.ticker }}')" title="Gráfico TradingView">📈</button>
           <button class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#8b5cf6;color:#fff;margin-right:.2rem"

@@ -87,7 +87,7 @@
                     {{ "%.2f"|format(trade.profit_pct)|replace('.', ',') }}%
                 </td>
                 <td>{{ trade.days_held }}</td>
-                <td style="display: flex; gap: 5px; justify-content: center;">
+                <td class="actions" style="white-space:nowrap;">
                     <a href="{{ url_for('edit_history', id=trade.id) }}" class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
                     <a href="{{ url_for('delete_history', id=trade.id) }}" class="btn btn-sm btn-danger"
                         onclick="return confirm('Tem certeza que deseja excluir?')" title="Excluir">🗑️</a>
@@ -670,9 +670,9 @@ $(document).ready(function () {
         "order":        [[3, "desc"]],
         "columnDefs": [{ "orderable": false, "targets": 10 }],
         "initComplete": function() {
-            // Garante ocultação do campo nativo após init
             $('#historyTable_filter').hide();
             $('#historyTable_filter').closest('.dataTables_filter').hide();
+            if (typeof initAcoesCols === 'function') initAcoesCols();
         }
     });
 

@@ -5,7 +5,7 @@ import sqlite3
 import math
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, SelicMensal, RankingVol, SearchedOption, RtdOptionData
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, SearchedOption, RtdOptionData
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -2883,10 +2883,11 @@ def api_cadeia(ticker):
 @app.route('/venda_puts')
 @login_required
 def venda_puts():
-    items = PutSale.query.filter_by(user_id=current_user.id).order_by(PutSale.created_at.desc()).all()
-    selic = _selic()
-    today = date.today()
-    return render_template('venda_puts.html', items=items, edit=None, selic=selic, today=today)
+    items   = PutSale.query.filter_by(user_id=current_user.id).order_by(PutSale.created_at.desc()).all()
+    collars = CollarSimulation.query.filter_by(user_id=current_user.id).order_by(CollarSimulation.created_at.desc()).all()
+    selic   = _selic()
+    today   = date.today()
+    return render_template('venda_puts.html', items=items, collars=collars, edit=None, edit_collar=None, selic=selic, today=today)
 
 
 @app.route('/venda_puts/new', methods=['POST'])
@@ -2945,8 +2946,91 @@ def venda_puts_edit(id):
         db.session.commit()
         flash('Venda de put atualizada.', 'success')
         return redirect(url_for('venda_puts'))
-    items = PutSale.query.filter_by(user_id=current_user.id).order_by(PutSale.created_at.desc()).all()
-    return render_template('venda_puts.html', items=items, edit=p, selic=_selic(), today=date.today())
+    items   = PutSale.query.filter_by(user_id=current_user.id).order_by(PutSale.created_at.desc()).all()
+    collars = CollarSimulation.query.filter_by(user_id=current_user.id).order_by(CollarSimulation.created_at.desc()).all()
+    return render_template('venda_puts.html', items=items, collars=collars, edit=p, edit_collar=None, selic=_selic(), today=date.today())
+
+
+# ── Collar simulation CRUD ──────────────────────────────────────────────────
+
+@app.route('/collar/new', methods=['POST'])
+@login_required
+def collar_new():
+    def _f(k): return request.form.get(k, '').replace(',', '.').strip()
+    try:
+        exp = datetime.strptime(_f('expiration_date'), '%Y-%m-%d').date()
+    except ValueError:
+        flash('Data de vencimento inválida.', 'danger')
+        return redirect(url_for('venda_puts') + '#collar')
+    entry_date_str = _f('entry_date')
+    entry_date = datetime.strptime(entry_date_str, '%Y-%m-%d').date() if entry_date_str else date.today()
+    c = CollarSimulation(
+        user_id          = current_user.id,
+        underlying_asset = _f('underlying_asset').upper(),
+        stock_price      = float(_f('stock_price')),
+        quantity         = int(_f('quantity') or 100),
+        put_ticker       = _f('put_ticker').upper(),
+        put_strike       = float(_f('put_strike')),
+        put_premium      = float(_f('put_premium')),
+        call_ticker      = _f('call_ticker').upper(),
+        call_strike      = float(_f('call_strike')),
+        call_premium     = float(_f('call_premium')),
+        expiration_date  = exp,
+        entry_date       = entry_date,
+        notes            = request.form.get('notes', ''),
+        created_at       = datetime.now(),
+    )
+    db.session.add(c)
+    db.session.commit()
+    flash('Colar salvo.', 'success')
+    return redirect(url_for('venda_puts') + '#collar')
+
+
+@app.route('/collar/<int:id>/edit', methods=['GET', 'POST'])
+@login_required
+def collar_edit(id):
+    c = CollarSimulation.query.get_or_404(id)
+    if c.user_id != current_user.id:
+        flash('Sem permissão.', 'danger')
+        return redirect(url_for('venda_puts'))
+    if request.method == 'POST':
+        def _f(k): return request.form.get(k, '').replace(',', '.').strip()
+        try:
+            c.expiration_date = datetime.strptime(_f('expiration_date'), '%Y-%m-%d').date()
+        except ValueError:
+            flash('Data de vencimento inválida.', 'danger')
+            return redirect(url_for('collar_edit', id=id))
+        entry_date_str = _f('entry_date')
+        c.entry_date       = datetime.strptime(entry_date_str, '%Y-%m-%d').date() if entry_date_str else c.entry_date
+        c.underlying_asset = _f('underlying_asset').upper()
+        c.stock_price      = float(_f('stock_price'))
+        c.quantity         = int(_f('quantity') or 100)
+        c.put_ticker       = _f('put_ticker').upper()
+        c.put_strike       = float(_f('put_strike'))
+        c.put_premium      = float(_f('put_premium'))
+        c.call_ticker      = _f('call_ticker').upper()
+        c.call_strike      = float(_f('call_strike'))
+        c.call_premium     = float(_f('call_premium'))
+        c.notes            = request.form.get('notes', '')
+        db.session.commit()
+        flash('Colar atualizado.', 'success')
+        return redirect(url_for('venda_puts') + '#collar')
+    items   = PutSale.query.filter_by(user_id=current_user.id).order_by(PutSale.created_at.desc()).all()
+    collars = CollarSimulation.query.filter_by(user_id=current_user.id).order_by(CollarSimulation.created_at.desc()).all()
+    return render_template('venda_puts.html', items=items, collars=collars, edit=None, edit_collar=c, selic=_selic(), today=date.today())
+
+
+@app.route('/collar/<int:id>/delete', methods=['POST'])
+@login_required
+def collar_delete(id):
+    c = CollarSimulation.query.get_or_404(id)
+    if c.user_id != current_user.id:
+        flash('Sem permissão.', 'danger')
+        return redirect(url_for('venda_puts'))
+    db.session.delete(c)
+    db.session.commit()
+    flash('Colar excluído.', 'success')
+    return redirect(url_for('venda_puts') + '#collar')
 
 
 @app.route('/venda_puts/<int:id>/delete', methods=['POST'])

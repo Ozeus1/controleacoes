@@ -442,6 +442,26 @@ class PutSale(db.Model):
     roll_history      = db.Column(db.Text, nullable=True)  # JSON array de rolagens
 
 
+class CollarSimulation(db.Model):
+    """Simulação de estratégia colar: compra ação + compra PUT + venda CALL."""
+    __tablename__ = 'collar_simulation'
+    id               = db.Column(db.Integer, primary_key=True)
+    user_id          = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    underlying_asset = db.Column(db.String(15), nullable=False)   # ex: BRAP4
+    stock_price      = db.Column(db.Float, nullable=False)         # cotação da ação na entrada
+    quantity         = db.Column(db.Integer, nullable=False, default=100)
+    put_ticker       = db.Column(db.String(20), nullable=False)
+    put_strike       = db.Column(db.Float, nullable=False)
+    put_premium      = db.Column(db.Float, nullable=False)         # prêmio pago
+    call_ticker      = db.Column(db.String(20), nullable=False)
+    call_strike      = db.Column(db.Float, nullable=False)
+    call_premium     = db.Column(db.Float, nullable=False)         # prêmio recebido
+    expiration_date  = db.Column(db.Date, nullable=False)
+    entry_date       = db.Column(db.Date, nullable=True)
+    notes            = db.Column(db.String(200), nullable=True)
+    created_at       = db.Column(db.DateTime, default=datetime.now)
+
+
 class SelicMensal(db.Model):
     """Taxa Selic mensal (% ao mês) — compartilhada entre todos os usuários."""
     __tablename__ = 'selic_mensal'

@@ -352,7 +352,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 <td>{{ 'R$ %.2f'|format(net_cost)|replace('.',',') }}</td>
                 <td>{{ 'R$ %.2f'|format(be)|replace('.',',') }}</td>
                 <td class="positive">{{ 'R$ %.2f'|format(max_gain)|replace('.',',') }}</td>
-                <td class="negative">{{ 'R$ %.2f'|format(max_loss)|replace('.',',') }}</td>
+                <td class="negative">{{ 'R$ %.2f'|format(max_loss|abs)|replace('.',',') }}</td>
                 <td class="positive">{{ '%.2f'|format(gain_pct)|replace('.',',') }}%</td>
                 <td class="{{ 'positive' if rem_am > 0 else '' }}">{{ '%.2f'|format(rem_am)|replace('.',',') }}%</td>
                 <td class="{{ 'positive' if rem_aa > 0 else '' }}">{{ '%.2f'|format(rem_aa)|replace('.',',') }}%</td>
@@ -511,13 +511,14 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         var remAM   = (Math.pow(1 + gainPct / 100, 30 / dcEnt) - 1) * 100;
         var remAA   = (Math.pow(1 + gainPct / 100, 365 / dcEnt) - 1) * 100;
         var pctCDI  = SELIC > 0 ? remAA / SELIC * 100 : 0;
-        var ratio   = maxLoss > 0 ? maxGain / maxLoss : 0;
+        var absLoss = Math.abs(maxLoss);
+        var ratio   = absLoss > 0.001 ? maxGain / absLoss : 0;
 
         document.getElementById('cm-stock-cost').textContent = fmtBRL(stockCost);
         document.getElementById('cm-net-cost').textContent   = fmtBRL(netCost);
         document.getElementById('cm-be').textContent         = fmtBRL(be);
         document.getElementById('cm-max-gain').textContent   = fmtBRL(maxGain);
-        document.getElementById('cm-max-loss').textContent   = fmtBRL(maxLoss);
+        document.getElementById('cm-max-loss').textContent   = fmtBRL(absLoss);
         document.getElementById('cm-gain-pct').textContent   = fmtPct(gainPct);
         document.getElementById('cm-days').textContent       = dc + ' d.c.';
         document.getElementById('cm-rem-am').textContent     = fmtPct(remAM);

@@ -219,7 +219,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     <div class="metric-box"><span class="metric-label">Lucro máximo</span><span class="metric-value positive" id="cm-max-gain">—</span></div>
                     <div class="metric-box"><span class="metric-label">Perda máxima</span><span class="metric-value negative" id="cm-max-loss">—</span></div>
                     <div class="metric-box"><span class="metric-label">Lucro máx. %</span><span class="metric-value positive" id="cm-gain-pct">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Prazo (dias úteis)</span><span class="metric-value" id="cm-days">—</span></div>
+                    <div class="metric-box"><span class="metric-label">Prazo (dias corridos)</span><span class="metric-value" id="cm-days">—</span></div>
                     <div class="metric-box"><span class="metric-label">Lucro máx. % a.m.</span><span class="metric-value" id="cm-rem-am">—</span></div>
                     <div class="metric-box"><span class="metric-label">Lucro máx. % a.a.</span><span class="metric-value" id="cm-rem-aa">—</span></div>
                     <div class="metric-box"><span class="metric-label">% CDI (a.a.)</span><span class="metric-value" id="cm-cdi">—</span></div>
@@ -321,23 +321,23 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     <th>Custo Líquido</th><th>Break-even</th>
                     <th>Lucro máx.</th><th>Perda máx.</th>
                     <th>Lucro máx.%</th><th>Rem. a.m.</th><th>Rem. a.a.</th><th>% CDI</th>
-                    <th>Prazo (du)</th><th>Vencimento</th><th>Ações</th>
+                    <th>Prazo (d.c.)</th><th>Vencimento</th><th>Ações</th>
                 </tr>
             </thead>
             <tbody>
             {% for c in collars %}
-            {% set entry_d = c.entry_date or today %}
-            {% set du      = [(c.expiration_date - today).days, 1] | max %}
-            {% set du_entry= [(c.expiration_date - entry_d).days, 1] | max %}
-            {% set net_opt = (c.put_premium - c.call_premium) * c.quantity %}
+            {% set entry_d  = c.entry_date or today %}
+            {% set dc       = [(c.expiration_date - today).days, 1] | max %}
+            {% set dc_entry = [(c.expiration_date - entry_d).days, 1] | max %}
+            {% set net_opt  = (c.put_premium - c.call_premium) * c.quantity %}
             {% set stock_cost = c.stock_price * c.quantity %}
             {% set net_cost = stock_cost + net_opt %}
-            {% set be = c.stock_price + c.put_premium - c.call_premium %}
+            {% set be       = c.stock_price + c.put_premium - c.call_premium %}
             {% set max_gain = (c.call_strike - c.stock_price - c.put_premium + c.call_premium) * c.quantity %}
             {% set max_loss = (c.stock_price + c.put_premium - c.call_premium - c.put_strike) * c.quantity %}
             {% set gain_pct = (max_gain / net_cost * 100) if net_cost > 0 else 0 %}
-            {% set rem_aa  = (((1 + gain_pct/100) ** (252.0 / du_entry)) - 1) * 100 %}
-            {% set rem_am  = (((1 + gain_pct/100) ** (21.0 / du_entry)) - 1) * 100 %}
+            {% set rem_am  = (((1 + gain_pct/100) ** (30.0 / dc_entry)) - 1) * 100 %}
+            {% set rem_aa  = (((1 + gain_pct/100) ** (365.0 / dc_entry)) - 1) * 100 %}
             {% set pct_cdi = (rem_aa / selic * 100) if selic > 0 else 0 %}
             <tr>
                 <td><strong>{{ c.underlying_asset }}</strong></td>
@@ -357,7 +357,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 <td class="{{ 'positive' if rem_am > 0 else '' }}">{{ '%.2f'|format(rem_am)|replace('.',',') }}%</td>
                 <td class="{{ 'positive' if rem_aa > 0 else '' }}">{{ '%.2f'|format(rem_aa)|replace('.',',') }}%</td>
                 <td class="{{ 'positive' if pct_cdi > 100 else '' }}">{{ '%.0f'|format(pct_cdi) }}%</td>
-                <td>{{ du }}</td>
+                <td>{{ dc }}</td>
                 <td>{{ c.expiration_date | date_fmt }}</td>
                 <td class="actions" style="white-space:nowrap;">
                     <a href="{{ url_for('collar_edit', id=c.id) }}" class="btn btn-sm btn-secondary">✏️</a>
@@ -493,28 +493,23 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         var today  = new Date(); today.setHours(0,0,0,0);
         var exp    = new Date(expStr + 'T00:00:00');
         var entry  = entStr ? new Date(entStr + 'T00:00:00') : today;
-        var du     = calcDU(today, exp);
-        var duEnt  = calcDU(entry, exp);
 
-        var stockCost = stock * qty;
-        var netOptCost = (putP - callP) * qty;   // prêmio líquido (debito = positivo)
-        var netCost   = stockCost + netOptCost;
+        // Prazo em dias corridos (compatível com Selic mensal)
+        var dc     = Math.max(Math.round((exp - today) / 86400000), 1);
+        var dcEnt  = Math.max(Math.round((exp - entry) / 86400000), 1);
 
-        // Break-even: preço que cobre custo líquido por ação
-        var be = stock + putP - callP;
+        var stockCost  = stock * qty;
+        var netOptCost = (putP - callP) * qty;   // débito líquido das opções
+        var netCost    = stockCost + netOptCost;
 
-        // Lucro máximo: se ação termina acima do K CALL
-        // payoff = CALL_K*qty (ação vale CALL_K) + 0 (PUT OTM) - (putP-callP)*qty (custo opts) - stock*qty
+        var be      = stock + putP - callP;
         var maxGain = (callK - stock - putP + callP) * qty;
+        var maxLoss = (stock + putP - callP - putK) * qty;  // valor positivo = perda
 
-        // Perda máxima: se ação cai abaixo do K PUT
-        // payoff = PUT_K*qty (exercício PUT) - (putP-callP)*qty - stock*qty
-        var maxLoss = (stock + putP - callP - putK) * qty;
-
-        // Rendimento sobre custo líquido
+        // Rendimento do lucro máx. sobre custo líquido — base mensal (30 d.c.)
         var gainPct = netCost > 0 ? maxGain / netCost * 100 : 0;
-        var remAA   = (Math.pow(1 + gainPct / 100, WDY / duEnt) - 1) * 100;
-        var remAM   = (Math.pow(1 + gainPct / 100, WDM / duEnt) - 1) * 100;
+        var remAM   = (Math.pow(1 + gainPct / 100, 30 / dcEnt) - 1) * 100;
+        var remAA   = (Math.pow(1 + gainPct / 100, 365 / dcEnt) - 1) * 100;
         var pctCDI  = SELIC > 0 ? remAA / SELIC * 100 : 0;
         var ratio   = maxLoss > 0 ? maxGain / maxLoss : 0;
 
@@ -524,7 +519,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         document.getElementById('cm-max-gain').textContent   = fmtBRL(maxGain);
         document.getElementById('cm-max-loss').textContent   = fmtBRL(maxLoss);
         document.getElementById('cm-gain-pct').textContent   = fmtPct(gainPct);
-        document.getElementById('cm-days').textContent       = du + ' du';
+        document.getElementById('cm-days').textContent       = dc + ' d.c.';
         document.getElementById('cm-rem-am').textContent     = fmtPct(remAM);
         document.getElementById('cm-rem-aa').textContent     = fmtPct(remAA);
         document.getElementById('cm-cdi').textContent        = fmtPct(pctCDI, 0);

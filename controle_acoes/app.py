@@ -3012,6 +3012,20 @@ def api_busca_operacoes(ticker):
     except (TypeError, ValueError):
         min_ratio = 4.0
 
+    def _diversify(rows_list, key_fn, per_key=2, limit=10):
+        """Evita linhas quase idênticas: no máx. per_key linhas por perna-âncora."""
+        out, count = [], {}
+        for r in rows_list:
+            k = key_fn(r)
+            c = count.get(k, 0)
+            if c >= per_key:
+                continue
+            count[k] = c + 1
+            out.append(r)
+            if len(out) >= limit:
+                break
+        return out
+
     expirations = []
     for exp in selected_exps:
         dc = max((_date.fromisoformat(exp) - today).days, 1)
@@ -3065,7 +3079,7 @@ def api_busca_operacoes(ticker):
                         'ratio':      round(ratio, 2) if ratio is not None else None,
                     })
             rows.sort(key=lambda x: (not x['risk_free'], -x['gain_pct']))
-            rows = rows[:10]
+            rows = _diversify(rows, lambda x: x['call_symbol'], per_key=2)
 
         elif op == 'fence':
             # Cerca: compra ação + compra PUT K2 + venda PUT K1 (<K2) + venda CALL (>K2).
@@ -3112,22 +3126,32 @@ def api_busca_operacoes(ticker):
                             'ratio':         round(ratio, 2) if ratio is not None else None,
                         })
             rows.sort(key=lambda x: (not x['risk_free'], -x['gain_pct']))
-            rows = rows[:10]
+            rows = _diversify(rows, lambda x: (x['put_buy_symbol'], x['call_symbol']), per_key=1)
 
         elif op == 'seagull':
             # Gaivota (alta): compra trava de alta com CALLs financiada por venda de PUT OTM.
-            c_lo   = [c for c in calls_ok if 0.97 * spot <= c['strike'] <= 1.10 * spot][:12]
-            p_sell = [p for p in puts_ok  if 0.80 * spot <= p['strike'] <= 0.97 * spot][:12]
+            # CALL comprada perto do dinheiro; prêmios-poeira descartados; a PUT deve
+            # financiar pelo menos metade do custo da trava.
+            c_lo   = [c for c in calls_ok
+                      if 0.97 * spot <= c['strike'] <= 1.06 * spot and c['ask'] >= 0.10][:10]
+            p_sell = [p for p in puts_ok
+                      if 0.85 * spot <= p['strike'] <= 0.97 * spot and p['bid'] >= 0.05][:12]
             for c1 in c_lo:
-                c_his = [c for c in calls_ok if c1['strike'] < c['strike'] <= 1.25 * spot][:8]
+                c_his = [c for c in calls_ok
+                         if c1['strike'] < c['strike'] <= 1.15 * spot and c['bid'] >= 0.03][:8]
                 for c2 in c_his:
+                    spread_cost = c1['ask'] - c2['bid']
+                    if spread_cost <= 0:
+                        continue
                     for p0 in p_sell:
-                        net   = c1['ask'] - c2['bid'] - p0['bid']   # >0 débito, <=0 crédito
+                        if p0['bid'] < 0.5 * spread_cost:   # PUT precisa financiar >= 50%
+                            continue
+                        net   = spread_cost - p0['bid']     # >0 débito, <=0 crédito
                         width = c2['strike'] - c1['strike']
                         max_gain = width - net
                         if max_gain <= 0:
                             continue
-                        if net > 0.35 * width:      # PUT não financia o suficiente
+                        if net > 0.35 * width:
                             continue
                         margin_pct = (spot - p0['strike']) / spot * 100
                         be_low = p0['strike'] + min(net, 0)   # crédito amortece a queda
@@ -3141,8 +3165,9 @@ def api_busca_operacoes(ticker):
                             'margin_pct': round(margin_pct, 1),
                             'be_low':     round(be_low, 2),
                         })
-            rows.sort(key=lambda x: (not x['is_credit'], -x['max_gain']))
-            rows = rows[:10]
+            # Crédito primeiro; depois CALL comprada mais perto do dinheiro; menor custo
+            rows.sort(key=lambda x: (not x['is_credit'], x['call_buy_strike'], x['net_cost']))
+            rows = _diversify(rows, lambda x: (x['call_buy_symbol'], x['call_sell_symbol']), per_key=1)
 
         elif op in ('trava_alta', 'trava_baixa'):
             # Travas no débito com relação ganho/custo > 1
@@ -3189,7 +3214,7 @@ def api_busca_operacoes(ticker):
                             'be_dist':   round((be - spot) / spot * 100, 2),
                         })
             rows.sort(key=lambda x: -x['ratio'])
-            rows = rows[:10]
+            rows = _diversify(rows, lambda x: x['buy_symbol'], per_key=2)
 
         elif op == 'trava_credito':
             # Travas no crédito com relação 2x1: perda máxima até 2x o crédito recebido
@@ -3238,7 +3263,7 @@ def api_busca_operacoes(ticker):
                         'be_dist':   round((be - spot) / spot * 100, 2),
                     })
             rows.sort(key=lambda x: -(x['ratio'] if x['ratio'] is not None else 999))
-            rows = rows[:12]
+            rows = _diversify(rows, lambda x: x['sell_symbol'], per_key=2, limit=12)
 
         expirations.append({
             'exp':          exp,

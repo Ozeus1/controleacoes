@@ -2303,8 +2303,9 @@ def api_busca_opcao(ticker):
     rtd = RtdOptionData.query.filter_by(user_id=current_user.id, ticker=ticker).first()
     if rtd:
         def _merge(key, rtd_val, force_nonzero=False):
-            """Preenche com RTD se OpLab retornou None; com force_nonzero também substitui 0.0."""
-            if rtd_val is None:
+            """Preenche com RTD se OpLab retornou None; com force_nonzero também substitui 0.0.
+            RTD com valor 0 é tratado como 'sem dado' (Profit retorna 0 fora do pregão)."""
+            if rtd_val is None or rtd_val == 0:
                 return
             cur = result.get(key)
             if cur is None or (force_nonzero and cur == 0.0):
@@ -2339,12 +2340,22 @@ def api_busca_opcao(ticker):
         result['_rtd_imported_at'] = rtd.imported_at.strftime('%d/%m/%Y %H:%M') if rtd.imported_at else None
 
     # ── Cálculo BS local quando OpLab não retornou gregas ───────────────────
-    needs_bs     = result.get('bs_price') is None
-    needs_greeks = result.get('delta') is None
+    # 0.0 também é tratado como "sem dado" (OpLab/RTD retornam 0 fora do pregão)
+    needs_bs     = not result.get('bs_price')
+    needs_greeks = not result.get('delta')
     if (needs_bs or needs_greeks) and result.get('spot_price') and result.get('strike'):
         S = result['spot_price']
         K = result['strike']
-        T = max(0, (result.get('days_to_maturity') or 0)) / 365.0
+
+        # Prazo: days_to_maturity da OpLab; se ausente, deriva da data de vencimento
+        dtm = result.get('days_to_maturity')
+        if not dtm and result.get('expiration'):
+            try:
+                exp_d = datetime.strptime(str(result['expiration'])[:10], '%Y-%m-%d').date()
+                dtm = (exp_d - date.today()).days
+            except (ValueError, TypeError):
+                dtm = None
+        T = max(0, dtm or 0) / 365.0
 
         # Taxa Selic anualizada
         try:
@@ -2353,12 +2364,33 @@ def api_busca_opcao(ticker):
         except Exception:
             r = 0.135
 
-        # Volatilidade: IV → HV histórica → fallback padrão por ativo
+        opt_type = result.get('type') or 'CALL'
+        is_call  = str(opt_type).upper() in ('CALL', 'C')
+        intrinsic = max(0.0, (S - K) if is_call else (K - S))
+
+        # Prêmio de mercado para extrair VI implícita: último negócio; senão mid do book
+        premium = result.get('last')
+        bid, ask = result.get('bid'), result.get('ask')
+        if not premium and bid and ask:
+            premium = (bid + ask) / 2.0
+
+        # Volatilidade — ordem de prioridade:
+        # 1. VI implícita do prêmio de mercado (só se prêmio acima da paridade)
+        # 2. VI informada pela OpLab/RTD
+        # 3. HV histórica do subjacente
+        # 4. Referência padrão por ativo
+        sigma = None
         sigma_src = None
-        sigma = result.get('iv')
-        if sigma:
-            sigma = sigma / 100.0 if sigma > 1.5 else sigma
-            sigma_src = 'IV'
+        if premium and T > 0 and premium > intrinsic * 1.01:
+            iv_est = _implied_vol(S, K, T, r, premium, is_call)
+            if 0.005 < iv_est < 4.9:   # descarta bissecção presa nos limites
+                sigma = iv_est
+                sigma_src = 'IV-prem'
+        if not sigma:
+            iv_field = result.get('iv')
+            if iv_field:
+                sigma = iv_field / 100.0 if iv_field > 1.5 else iv_field
+                sigma_src = 'IV'
         if not sigma and underlying:
             sigma = _hv_from_oplab(underlying, token)
             if sigma:
@@ -2367,23 +2399,16 @@ def api_busca_opcao(ticker):
             sigma = _hv_fallback(underlying)
             sigma_src = 'HV-ref'
 
-        opt_type = result.get('type', 'CALL')
-
         # BS price + intrínseco/extrínseco
         if needs_bs:
             bs = _bs_price_opt(S, K, T, r, sigma, opt_type)
             if bs is not None:
                 result['bs_price'] = bs
                 result['bs_calc']  = sigma_src
-                if opt_type.upper() in ('CALL', 'C'):
-                    intrin = max(0.0, round(S - K, 4))
-                else:
-                    intrin = max(0.0, round(K - S, 4))
-                if result.get('intrinsic_value') is None:
-                    result['intrinsic_value'] = intrin
-                if result.get('extrinsic_value') is None:
-                    last = result.get('last') or 0
-                    result['extrinsic_value'] = round(max(0.0, last - intrin), 4)
+        if not result.get('intrinsic_value'):
+            result['intrinsic_value'] = round(intrinsic, 4)
+        if not result.get('extrinsic_value') and premium:
+            result['extrinsic_value'] = round(max(0.0, premium - intrinsic), 4)
 
         # Gregas
         if needs_greeks and T > 0:
@@ -2391,11 +2416,15 @@ def api_busca_opcao(ticker):
             if gk:
                 result.setdefault('bs_calc', sigma_src)
                 for k2, v2 in gk.items():
-                    if result.get(k2) is None:
+                    if not result.get(k2):
                         result[k2] = v2
 
+        # Preenche VI exibida quando a fonte foi o prêmio de mercado
+        if not result.get('iv') and sigma_src == 'IV-prem':
+            result['iv'] = round(sigma * 100, 2)
+
         result['bs_sigma_used'] = round(sigma * 100, 2)
-        result['bs_sigma_src']  = sigma_src  # 'IV', 'HV' ou 'HV-ref'
+        result['bs_sigma_src']  = sigma_src  # 'IV-prem', 'IV', 'HV' ou 'HV-ref'
 
     # ── Salva/atualiza na tabela SearchedOption (lista RTD) ──────────────────
     # Limpa entradas > 10 dias antes de inserir

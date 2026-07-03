@@ -3216,6 +3216,57 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: -x['ratio'])
             rows = _diversify(rows, lambda x: x['buy_symbol'], per_key=2)
 
+        elif op in ('trava_alta_credito', 'trava_baixa_credito'):
+            # Travas no crédito clássicas, relação 2x1 (perda máx. até 2x o crédito)
+            if op == 'trava_alta_credito':
+                # Bull put spread: vende PUT de strike maior, compra PUT de strike menor
+                ps = [p for p in puts_ok if near(p['strike'])][:20]
+                for i, buy in enumerate(ps):
+                    for sell in ps[i + 1:]:
+                        credit = sell['bid'] - buy['ask']
+                        if credit <= 0.01:
+                            continue
+                        width = sell['strike'] - buy['strike']
+                        max_loss = width - credit
+                        if max_loss > 2 * credit:
+                            continue
+                        ratio = None if max_loss <= 0.001 else credit / max_loss
+                        be = sell['strike'] - credit
+                        rows.append({
+                            'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
+                            'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
+                            'credit':    round(credit, 2),
+                            'max_loss':  round(max_loss, 2),
+                            'ratio':     round(ratio, 2) if ratio is not None else None,
+                            'breakeven': round(be, 2),
+                            'be_dist':   round((be - spot) / spot * 100, 2),  # margem de queda até o BE
+                        })
+            else:
+                # Bear call spread: vende CALL de strike menor, compra CALL de strike maior
+                cs = [c for c in calls_ok if near(c['strike'])][:20]
+                for i, sell in enumerate(cs):
+                    for buy in cs[i + 1:]:
+                        credit = sell['bid'] - buy['ask']
+                        if credit <= 0.01:
+                            continue
+                        width = buy['strike'] - sell['strike']
+                        max_loss = width - credit
+                        if max_loss > 2 * credit:
+                            continue
+                        ratio = None if max_loss <= 0.001 else credit / max_loss
+                        be = sell['strike'] + credit
+                        rows.append({
+                            'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
+                            'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
+                            'credit':    round(credit, 2),
+                            'max_loss':  round(max_loss, 2),
+                            'ratio':     round(ratio, 2) if ratio is not None else None,
+                            'breakeven': round(be, 2),
+                            'be_dist':   round((be - spot) / spot * 100, 2),  # margem de alta até o BE
+                        })
+            rows.sort(key=lambda x: -(x['ratio'] if x['ratio'] is not None else 999))
+            rows = _diversify(rows, lambda x: x['sell_symbol'], per_key=2)
+
         elif op == 'trava_credito':
             # Call ratio backspread: venda de CALL perto do dinheiro financia compra de CALLs OTM.
             # CALL vendida: no máximo 5% ITM e até 5% OTM (0.95x a 1.05x do spot).

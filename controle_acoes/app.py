@@ -3260,6 +3260,50 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: (not x['is_credit'], x['max_loss'], x['be_up_dist']))
             rows = _diversify(rows, lambda x: (x['tipo'], x['sell_symbol']), per_key=2, limit=12)
 
+        elif op == 'vaca_travada':
+            # Vaca travada (borboleta de CALLs, asas podem ser assimétricas):
+            # +1 CALL baixa, -2 CALLs médias, +1 CALL alta. Custo próximo a zero ou baixo.
+            # Lucro máximo se o papel terminar no strike médio (K2).
+            low_c = [c for c in calls_ok
+                     if 0.92 * spot <= c['strike'] <= 1.05 * spot and c['ask'] >= 0.05][:10]
+            for c1 in low_c:
+                mids = [c for c in calls_ok
+                        if c1['strike'] < c['strike'] <= 1.12 * spot and c['bid'] >= 0.05][:8]
+                for c2 in mids:
+                    highs = [c for c in calls_ok
+                             if c2['strike'] < c['strike'] <= 1.20 * spot and c['ask'] >= 0.01][:8]
+                    for c3 in highs:
+                        cost = c1['ask'] - 2 * c2['bid'] + c3['ask']   # >0 débito, <=0 crédito
+                        w_lo = c2['strike'] - c1['strike']
+                        if cost > 0.20 * w_lo:          # exige custo baixo
+                            continue
+                        max_gain = w_lo - cost          # em S = K2
+                        if max_gain <= 0:
+                            continue
+                        # Resultado acima da asa superior (S > K3): asas assimétricas podem perder
+                        tail = w_lo - (c3['strike'] - c2['strike']) - cost
+                        be_low = round(c1['strike'] + cost, 2) if cost > 0 else None
+                        be_up  = round(c2['strike'] + max_gain, 2) if tail < 0 else None
+                        max_loss = max(cost if cost > 0 else 0.0, -tail if tail < 0 else 0.0)
+                        ratio = None if max_loss <= 0.001 else max_gain / max_loss
+                        rows.append({
+                            'low_symbol':  c1['symbol'], 'low_strike':  c1['strike'], 'low_ask':  c1['ask'],
+                            'mid_symbol':  c2['symbol'], 'mid_strike':  c2['strike'], 'mid_bid':  c2['bid'],
+                            'high_symbol': c3['symbol'], 'high_strike': c3['strike'], 'high_ask': c3['ask'],
+                            'cost':      round(cost, 2),
+                            'is_credit': cost <= 0,
+                            'max_gain':  round(max_gain, 2),
+                            'tail':      round(tail, 2),
+                            'be_low':    be_low,
+                            'be_up':     be_up,
+                            'mid_dist':  round((c2['strike'] - spot) / spot * 100, 1),  # % até o pico de lucro
+                            'max_loss':  round(max_loss, 2),
+                            'ratio':     round(ratio, 1) if ratio is not None else None,
+                        })
+            # Menor risco primeiro; depois maior lucro máximo
+            rows.sort(key=lambda x: (x['max_loss'], -x['max_gain']))
+            rows = _diversify(rows, lambda x: x['mid_symbol'], per_key=2)
+
         expirations.append({
             'exp':          exp,
             'dc':           dc,

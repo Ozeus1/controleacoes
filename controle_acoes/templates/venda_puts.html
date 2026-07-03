@@ -258,6 +258,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     <option value="trava_credito_baixa">💰 Trava de Crédito Baixa (CALLs)</option>
                     <option value="call_ratio_1x2">🚀 Ratio CALL 1x2 (venda 1 ITM, compra 2 OTM)</option>
                     <option value="call_ratio_2x3">🚀 Ratio CALL 2x3 (venda 2 ITM, compra 3 OTM)</option>
+                    <option value="vaca_travada">🐄 Vaca Travada (+1 CALL baixa, −2 médias, +1 alta)</option>
                 </select>
             </div>
             <div>
@@ -784,7 +785,8 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         trava_credito_alta:  { legs: ['PUT — VENDA (K maior)',   'PUT — COMPRA (K menor)', null], needSpot: false },
         trava_credito_baixa: { legs: ['CALL — VENDA (K menor)',  'CALL — COMPRA (K maior)', null], needSpot: false },
         call_ratio_1x2:      { legs: ['CALL — VENDA 1× (K menor, ±5% do spot)', 'CALL — COMPRA 2× (OTM, K maior)', null], needSpot: false },
-        call_ratio_2x3:      { legs: ['CALL — VENDA 2× (K menor, ±5% do spot)', 'CALL — COMPRA 3× (OTM, K maior)', null], needSpot: false }
+        call_ratio_2x3:      { legs: ['CALL — VENDA 2× (K menor, ±5% do spot)', 'CALL — COMPRA 3× (OTM, K maior)', null], needSpot: false },
+        vaca_travada:        { legs: ['CALL — COMPRA 1× (K baixa)', 'CALL — VENDA 2× (K média)', 'CALL — COMPRA 1× (K alta)'], needSpot: false }
     };
 
     window.estruturaOpChanged = function() {
@@ -918,6 +920,27 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 ['Break-even',       fmtBRL(be4), ''],
                 ['Retorno s/ margem %', fmtPct(gPct4), 'positive']
             ].concat(pctBoxes(gPct4));
+        } else if (op === 'vaca_travada') {
+            // Borboleta de CALLs: A = compra 1× (K baixa), B = venda 2× (K média), C = compra 1× (K alta)
+            var costV = aP - 2 * bP + cP;                    // >0 débito, <=0 crédito
+            var wLoV  = bK - aK;
+            var maxGV = (wLoV - costV) * qty;                // em S = K média
+            var tailV = (wLoV - (cK - bK) - costV) * qty;    // acima da asa superior
+            var beLoV = costV > 0 ? aK + costV : null;
+            var beUpV = tailV < 0 ? bK + (wLoV - costV) : null;
+            var maxLV = Math.max(costV > 0 ? costV * qty : 0, tailV < 0 ? -tailV : 0);
+            boxes = [
+                [costV >= 0 ? 'Custo (débito)' : 'Crédito recebido',
+                    fmtBRL(Math.abs(costV) * qty), costV >= 0 ? 'negative' : 'positive'],
+                ['Lucro máximo (em ' + fmtBRL(bK) + ')', fmtBRL(maxGV), 'positive'],
+                ['BE inferior', beLoV != null ? fmtBRL(beLoV) : '— (sem perda na queda)', ''],
+                ['BE superior', beUpV != null ? fmtBRL(beUpV) : '— (sem perda na alta)', ''],
+                ['Resultado abaixo de ' + fmtBRL(aK), fmtBRL(-Math.max(costV, 0) * qty), costV > 0 ? 'negative' : 'positive'],
+                ['Resultado acima de ' + fmtBRL(cK), fmtBRL(tailV), tailV >= 0 ? 'positive' : 'negative'],
+                ['Perda máxima', fmtBRL(maxLV), 'negative'],
+                ['Relação lucro/perda', maxLV > 0.001 ? (maxGV / maxLV).toLocaleString('pt-BR', {maximumFractionDigits:1}) : '∞', 'positive'],
+                ['Prazo (dias corridos)', dc + ' d.c.', '']
+            ];
         } else {
             // Ratio CALL backspread: A = CALL venda ITM (n×, bid), B = CALL compra OTM (m×, ask)
             var nR = op === 'call_ratio_1x2' ? 1 : 2;
@@ -995,6 +1018,12 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 return qty * (netP - nP * Math.max(0, S - aK) + mP * Math.max(0, S - bK));
             };
             mk(aK, nP + '× CALL v'); mk(bK, mP + '× CALL c');
+        } else if (op === 'vaca_travada') {
+            var costVc = aP - 2 * bP + cP;
+            payoffFn = function(S) {
+                return qty * (Math.max(0, S - aK) - 2 * Math.max(0, S - bK) + Math.max(0, S - cK) - costVc);
+            };
+            mk(aK, 'CALL c'); mk(bK, '2× CALL v'); mk(cK, 'CALL c');
         }
 
         if (payoffFn) {

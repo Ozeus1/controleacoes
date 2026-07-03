@@ -3005,6 +3005,13 @@ def api_busca_operacoes(ticker):
 
     selic = _selic()  # % a.a.
 
+    # Operação solicitada — calcula somente ela
+    op = (request.args.get('op') or 'collar').lower()
+    try:
+        min_ratio = float(request.args.get('min_ratio', 4))
+    except (TypeError, ValueError):
+        min_ratio = 4.0
+
     expirations = []
     for exp in selected_exps:
         dc = max((_date.fromisoformat(exp) - today).days, 1)
@@ -3015,117 +3022,230 @@ def api_busca_operacoes(ticker):
                           key=lambda x: x['strike'])
         puts_ok  = sorted([p for p in puts_by_exp.get(exp, []) if p['bid'] > 0 and p['ask'] > 0],
                           key=lambda x: x['strike'])
-
-        # ── 1) Collars que superam a Selic no período — só risco zero/reduzido ─
-        # Compra do papel no spot na montagem + PUT comprada (ask) + CALL vendida (bid).
-        # Risco zero: PUT garante resultado mínimo >= 0 (strike da PUT >= custo líquido).
-        # Risco reduzido: perda máxima pequena perante o ganho (relação >= min_ratio).
-        try:
-            min_ratio = float(request.args.get('min_ratio', 4))
-        except (TypeError, ValueError):
-            min_ratio = 4.0
-        put_cands  = [p for p in puts_ok  if 0.90 * spot <= p['strike'] <= 1.10 * spot][:20]
-        call_cands = [c for c in calls_ok if spot * 0.97 <= c['strike'] <= 1.20 * spot][:20]
-
-        collars = []
-        for p in put_cands:
-            for c in call_cands:
-                if c['strike'] <= p['strike']:
-                    continue
-                net = spot + p['ask'] - c['bid']          # custo líquido por ação
-                if net <= 0:
-                    continue
-                max_gain = c['strike'] - net               # se exercida na CALL
-                min_res  = p['strike'] - net               # se cair abaixo da PUT (>=0 = garantido)
-                if max_gain <= 0:
-                    continue
-                gain_pct = max_gain / net * 100
-                if gain_pct <= selic_period:
-                    continue
-                loss = -min_res                            # perda por ação (positivo = perde)
-                risk_free = min_res >= 0
-                ratio = None if loss <= 0.001 else max_gain / loss
-                # Filtro: risco zero, ou perda bem reduzida perante o ganho
-                if not risk_free and (ratio is None or ratio < min_ratio):
-                    continue
-                loss_pct = min_res / net * 100             # negativo = perda máx
-                gain_aa  = ((1 + gain_pct / 100) ** (365.0 / dc) - 1) * 100
-                collars.append({
-                    'put_symbol':  p['symbol'],  'put_strike':  p['strike'],  'put_ask':  p['ask'],
-                    'call_symbol': c['symbol'],  'call_strike': c['strike'],  'call_bid': c['bid'],
-                    'net_cost':    round(net, 2),
-                    'breakeven':   round(net, 2),
-                    'max_gain':    round(max_gain, 2),
-                    'gain_pct':    round(gain_pct, 2),
-                    'min_result':  round(min_res, 2),
-                    'loss_pct':    round(loss_pct, 2),
-                    'gain_aa':     round(gain_aa, 1),
-                    'vs_selic':    round(gain_pct - selic_period, 2),
-                    'risk_free':   risk_free,
-                    'ratio':       round(ratio, 2) if ratio is not None else None,  # None = sem risco
-                })
-        # Risco zero primeiro; dentro do grupo, maior ganho %
-        collars.sort(key=lambda x: (not x['risk_free'], -x['gain_pct']))
-        collars = collars[:10]
-
-        # ── 2) Travas no débito com relação ganho/custo > 1 ─────────────────
         near = lambda k: 0.85 * spot <= k <= 1.15 * spot
-        bull_calls, bear_puts = [], []
 
-        cs = [c for c in calls_ok if near(c['strike'])][:20]
-        for i, buy in enumerate(cs):
-            for sell in cs[i + 1:]:
-                cost = buy['ask'] - sell['bid']
-                if cost <= 0.01:
-                    continue
-                width = sell['strike'] - buy['strike']
-                max_gain = width - cost
-                if max_gain <= 0 or max_gain / cost <= 1:
-                    continue
-                be = buy['strike'] + cost
-                bull_calls.append({
-                    'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
-                    'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
-                    'cost':      round(cost, 2),
-                    'max_gain':  round(max_gain, 2),
-                    'ratio':     round(max_gain / cost, 2),
-                    'breakeven': round(be, 2),
-                    'be_dist':   round((be - spot) / spot * 100, 2),  # % que o ativo precisa subir
-                })
-        bull_calls.sort(key=lambda x: -x['ratio'])
-        bull_calls = bull_calls[:10]
+        rows = []
 
-        ps = [p for p in puts_ok if near(p['strike'])][:20]
-        for i, sell in enumerate(ps):
-            for buy in ps[i + 1:]:
-                cost = buy['ask'] - sell['bid']
-                if cost <= 0.01:
-                    continue
-                width = buy['strike'] - sell['strike']
-                max_gain = width - cost
-                if max_gain <= 0 or max_gain / cost <= 1:
-                    continue
-                be = buy['strike'] - cost
-                bear_puts.append({
-                    'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
-                    'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
-                    'cost':      round(cost, 2),
-                    'max_gain':  round(max_gain, 2),
-                    'ratio':     round(max_gain / cost, 2),
-                    'breakeven': round(be, 2),
-                    'be_dist':   round((be - spot) / spot * 100, 2),  # % até o breakeven (negativo = cair)
-                })
-        bear_puts.sort(key=lambda x: -x['ratio'])
-        bear_puts = bear_puts[:10]
+        if op == 'collar':
+            # Compra ação (spot) + compra PUT (ask) + venda CALL (bid).
+            # Risco zero: strike da PUT >= custo líquido; senão relação ganho/perda >= min_ratio.
+            put_cands  = [p for p in puts_ok  if 0.90 * spot <= p['strike'] <= 1.10 * spot][:20]
+            call_cands = [c for c in calls_ok if spot * 0.97 <= c['strike'] <= 1.20 * spot][:20]
+            for p in put_cands:
+                for c in call_cands:
+                    if c['strike'] <= p['strike']:
+                        continue
+                    net = spot + p['ask'] - c['bid']
+                    if net <= 0:
+                        continue
+                    max_gain = c['strike'] - net
+                    min_res  = p['strike'] - net
+                    if max_gain <= 0:
+                        continue
+                    gain_pct = max_gain / net * 100
+                    if gain_pct <= selic_period:
+                        continue
+                    loss = -min_res
+                    risk_free = min_res >= 0
+                    ratio = None if loss <= 0.001 else max_gain / loss
+                    if not risk_free and (ratio is None or ratio < min_ratio):
+                        continue
+                    gain_aa = ((1 + gain_pct / 100) ** (365.0 / dc) - 1) * 100
+                    rows.append({
+                        'put_symbol':  p['symbol'],  'put_strike':  p['strike'],  'put_ask':  p['ask'],
+                        'call_symbol': c['symbol'],  'call_strike': c['strike'],  'call_bid': c['bid'],
+                        'net_cost':   round(net, 2),
+                        'breakeven':  round(net, 2),
+                        'max_gain':   round(max_gain, 2),
+                        'gain_pct':   round(gain_pct, 2),
+                        'min_result': round(min_res, 2),
+                        'gain_aa':    round(gain_aa, 1),
+                        'vs_selic':   round(gain_pct - selic_period, 2),
+                        'risk_free':  risk_free,
+                        'ratio':      round(ratio, 2) if ratio is not None else None,
+                    })
+            rows.sort(key=lambda x: (not x['risk_free'], -x['gain_pct']))
+            rows = rows[:10]
+
+        elif op == 'fence':
+            # Cerca: compra ação + compra PUT K2 + venda PUT K1 (<K2) + venda CALL (>K2).
+            # Proteção total entre K1 e K2; abaixo de K1 o risco volta (como ter o papel de nível mais baixo).
+            put_hi  = [p for p in puts_ok  if 0.90 * spot <= p['strike'] <= 1.08 * spot][:12]
+            put_lo  = [p for p in puts_ok  if 0.70 * spot <= p['strike'] <  0.98 * spot][:12]
+            call_c  = [c for c in calls_ok if 0.99 * spot <= c['strike'] <= 1.20 * spot][:12]
+            for p2 in put_hi:
+                for p1 in put_lo:
+                    if p1['strike'] >= p2['strike']:
+                        continue
+                    for c in call_c:
+                        if c['strike'] <= p2['strike']:
+                            continue
+                        net = spot + p2['ask'] - p1['bid'] - c['bid']
+                        if net <= 0:
+                            continue
+                        max_gain = c['strike'] - net
+                        if max_gain <= 0:
+                            continue
+                        gain_pct = max_gain / net * 100
+                        if gain_pct <= selic_period:
+                            continue
+                        floor_res = p2['strike'] - net     # resultado garantido na zona [K1, K2]
+                        risk_free = floor_res >= 0
+                        ratio = None if floor_res >= -0.001 else max_gain / (-floor_res)
+                        if not risk_free and (ratio is None or ratio < min_ratio):
+                            continue
+                        gain_aa = ((1 + gain_pct / 100) ** (365.0 / dc) - 1) * 100
+                        rows.append({
+                            'put_buy_symbol':  p2['symbol'], 'put_buy_strike':  p2['strike'], 'put_buy_ask':  p2['ask'],
+                            'put_sell_symbol': p1['symbol'], 'put_sell_strike': p1['strike'], 'put_sell_bid': p1['bid'],
+                            'call_symbol': c['symbol'], 'call_strike': c['strike'], 'call_bid': c['bid'],
+                            'net_cost':      round(net, 2),
+                            'breakeven':     round(net, 2),
+                            'max_gain':      round(max_gain, 2),
+                            'gain_pct':      round(gain_pct, 2),
+                            'gain_aa':       round(gain_aa, 1),
+                            'vs_selic':      round(gain_pct - selic_period, 2),
+                            'floor_result':  round(floor_res, 2),
+                            'prot_until':    p1['strike'],
+                            'prot_drop_pct': round((spot - p1['strike']) / spot * 100, 1),
+                            'risk_free':     risk_free,
+                            'ratio':         round(ratio, 2) if ratio is not None else None,
+                        })
+            rows.sort(key=lambda x: (not x['risk_free'], -x['gain_pct']))
+            rows = rows[:10]
+
+        elif op == 'seagull':
+            # Gaivota (alta): compra trava de alta com CALLs financiada por venda de PUT OTM.
+            c_lo   = [c for c in calls_ok if 0.97 * spot <= c['strike'] <= 1.10 * spot][:12]
+            p_sell = [p for p in puts_ok  if 0.80 * spot <= p['strike'] <= 0.97 * spot][:12]
+            for c1 in c_lo:
+                c_his = [c for c in calls_ok if c1['strike'] < c['strike'] <= 1.25 * spot][:8]
+                for c2 in c_his:
+                    for p0 in p_sell:
+                        net   = c1['ask'] - c2['bid'] - p0['bid']   # >0 débito, <=0 crédito
+                        width = c2['strike'] - c1['strike']
+                        max_gain = width - net
+                        if max_gain <= 0:
+                            continue
+                        if net > 0.35 * width:      # PUT não financia o suficiente
+                            continue
+                        margin_pct = (spot - p0['strike']) / spot * 100
+                        be_low = p0['strike'] + min(net, 0)   # crédito amortece a queda
+                        rows.append({
+                            'call_buy_symbol':  c1['symbol'], 'call_buy_strike':  c1['strike'], 'call_buy_ask':  c1['ask'],
+                            'call_sell_symbol': c2['symbol'], 'call_sell_strike': c2['strike'], 'call_sell_bid': c2['bid'],
+                            'put_sell_symbol':  p0['symbol'], 'put_sell_strike':  p0['strike'], 'put_sell_bid':  p0['bid'],
+                            'net_cost':   round(net, 2),
+                            'is_credit':  net <= 0,
+                            'max_gain':   round(max_gain, 2),
+                            'margin_pct': round(margin_pct, 1),
+                            'be_low':     round(be_low, 2),
+                        })
+            rows.sort(key=lambda x: (not x['is_credit'], -x['max_gain']))
+            rows = rows[:10]
+
+        elif op in ('trava_alta', 'trava_baixa'):
+            # Travas no débito com relação ganho/custo > 1
+            if op == 'trava_alta':
+                cs = [c for c in calls_ok if near(c['strike'])][:20]
+                for i, buy in enumerate(cs):
+                    for sell in cs[i + 1:]:
+                        cost = buy['ask'] - sell['bid']
+                        if cost <= 0.01:
+                            continue
+                        width = sell['strike'] - buy['strike']
+                        max_gain = width - cost
+                        if max_gain <= 0 or max_gain / cost <= 1:
+                            continue
+                        be = buy['strike'] + cost
+                        rows.append({
+                            'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
+                            'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
+                            'cost':      round(cost, 2),
+                            'max_gain':  round(max_gain, 2),
+                            'ratio':     round(max_gain / cost, 2),
+                            'breakeven': round(be, 2),
+                            'be_dist':   round((be - spot) / spot * 100, 2),
+                        })
+            else:
+                ps = [p for p in puts_ok if near(p['strike'])][:20]
+                for i, sell in enumerate(ps):
+                    for buy in ps[i + 1:]:
+                        cost = buy['ask'] - sell['bid']
+                        if cost <= 0.01:
+                            continue
+                        width = buy['strike'] - sell['strike']
+                        max_gain = width - cost
+                        if max_gain <= 0 or max_gain / cost <= 1:
+                            continue
+                        be = buy['strike'] - cost
+                        rows.append({
+                            'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
+                            'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
+                            'cost':      round(cost, 2),
+                            'max_gain':  round(max_gain, 2),
+                            'ratio':     round(max_gain / cost, 2),
+                            'breakeven': round(be, 2),
+                            'be_dist':   round((be - spot) / spot * 100, 2),
+                        })
+            rows.sort(key=lambda x: -x['ratio'])
+            rows = rows[:10]
+
+        elif op == 'trava_credito':
+            # Travas no crédito com relação 2x1: perda máxima até 2x o crédito recebido
+            ps = [p for p in puts_ok if near(p['strike'])][:20]
+            for i, buy in enumerate(ps):
+                for sell in ps[i + 1:]:            # PUT vendida de strike maior → aposta na alta
+                    credit = sell['bid'] - buy['ask']
+                    if credit <= 0.01:
+                        continue
+                    width = sell['strike'] - buy['strike']
+                    max_loss = width - credit
+                    if max_loss > 2 * credit:      # exige relação 2x1
+                        continue
+                    ratio = None if max_loss <= 0.001 else credit / max_loss
+                    be = sell['strike'] - credit
+                    rows.append({
+                        'tipo': 'ALTA (PUT)',
+                        'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
+                        'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
+                        'credit':    round(credit, 2),
+                        'max_loss':  round(max_loss, 2),
+                        'ratio':     round(ratio, 2) if ratio is not None else None,
+                        'breakeven': round(be, 2),
+                        'be_dist':   round((be - spot) / spot * 100, 2),
+                    })
+            cs = [c for c in calls_ok if near(c['strike'])][:20]
+            for i, sell in enumerate(cs):
+                for buy in cs[i + 1:]:             # CALL vendida de strike menor → aposta na baixa
+                    credit = sell['bid'] - buy['ask']
+                    if credit <= 0.01:
+                        continue
+                    width = buy['strike'] - sell['strike']
+                    max_loss = width - credit
+                    if max_loss > 2 * credit:
+                        continue
+                    ratio = None if max_loss <= 0.001 else credit / max_loss
+                    be = sell['strike'] + credit
+                    rows.append({
+                        'tipo': 'BAIXA (CALL)',
+                        'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
+                        'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
+                        'credit':    round(credit, 2),
+                        'max_loss':  round(max_loss, 2),
+                        'ratio':     round(ratio, 2) if ratio is not None else None,
+                        'breakeven': round(be, 2),
+                        'be_dist':   round((be - spot) / spot * 100, 2),
+                    })
+            rows.sort(key=lambda x: -(x['ratio'] if x['ratio'] is not None else 999))
+            rows = rows[:12]
 
         expirations.append({
             'exp':          exp,
             'dc':           dc,
             'selic_period': round(selic_period, 2),
             'is_monthly':   _is_monthly(exp),
-            'collars':      collars,
-            'bull_calls':   bull_calls,
-            'bear_puts':    bear_puts,
+            'rows':         rows,
         })
 
     return jsonify({
@@ -3133,6 +3253,7 @@ def api_busca_operacoes(ticker):
         'spot':        spot,
         'spot_change': spot_change,
         'mode':        mode,
+        'op':          op,
         'selic':       round(selic, 2),
         'expirations': expirations,
     })

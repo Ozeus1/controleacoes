@@ -39,6 +39,13 @@ table.bo-tab tr:hover{background:rgba(255,255,255,.05);}
 .bo-badge.put{background:rgba(248,113,113,.15);color:#fca5a5;}
 .bo-badge.call{background:rgba(59,130,246,.15);color:#93c5fd;}
 .bo-empty{color:var(--text-secondary);font-size:.8rem;padding:.3rem 0 .6rem;}
+tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
+.metric-box{background:var(--hover-bg);border:1px solid var(--border-color);border-radius:6px;
+  padding:.6rem .9rem;display:flex;flex-direction:column;gap:.15rem;}
+.metric-label{font-size:.75rem;color:var(--text-secondary);}
+.metric-value{font-size:1.05rem;font-weight:600;color:var(--text-primary);}
+.metric-value.pos{color:#34d399;}
+.metric-value.neg{color:#f87171;}
 #add-bo-input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
   border-radius:5px;padding:.25rem .5rem;font-size:.82rem;width:110px;text-transform:uppercase;}
 </style>
@@ -85,6 +92,45 @@ table.bo-tab tr:hover{background:rgba(255,255,255,.05);}
   <div id="bo-results"></div>
 </div>
 
+<!-- Modal: detalhes do collar -->
+<div id="bo-collar-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+     background:rgba(0,0,0,.75); align-items:center; justify-content:center; padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b); border-radius:10px; padding:1.2rem 1.4rem;
+              width:min(96vw,900px); max-height:92vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <h3 id="bcm-title" style="margin:0; font-size:1rem;">Collar</h3>
+      <button onclick="closeCollarModal()" style="background:none; border:none; font-size:1.4rem;
+              color:var(--text-secondary); cursor:pointer; line-height:1;">&times;</button>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:.6rem; margin-bottom:1rem;">
+      <label style="font-size:.85rem; color:var(--text-secondary);">Quantidade:</label>
+      <input id="bcm-qty" type="number" min="1" step="100" value="100"
+             style="width:110px; background:var(--hover-bg); color:var(--text-primary);
+                    border:1px solid var(--border-color); border-radius:5px; padding:.3rem .5rem;">
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(175px,1fr)); gap:.75rem;">
+      <div class="metric-box"><span class="metric-label">Custo total da ação</span><span class="metric-value" id="bcm-stock-cost">—</span></div>
+      <div class="metric-box"><span class="metric-label">Custo líquido (ação + PUT − CALL)</span><span class="metric-value" id="bcm-net-cost">—</span></div>
+      <div class="metric-box"><span class="metric-label">Break-even (preço da ação)</span><span class="metric-value" id="bcm-be">—</span></div>
+      <div class="metric-box"><span class="metric-label">Lucro máximo</span><span class="metric-value pos" id="bcm-max-gain">—</span></div>
+      <div class="metric-box"><span class="metric-label">Perda máxima</span><span class="metric-value neg" id="bcm-max-loss">—</span></div>
+      <div class="metric-box"><span class="metric-label">Lucro máx. %</span><span class="metric-value pos" id="bcm-gain-pct">—</span></div>
+      <div class="metric-box"><span class="metric-label">Prazo (dias corridos)</span><span class="metric-value" id="bcm-days">—</span></div>
+      <div class="metric-box"><span class="metric-label">Lucro máx. % a.m.</span><span class="metric-value" id="bcm-rem-am">—</span></div>
+      <div class="metric-box"><span class="metric-label">Lucro máx. % a.a.</span><span class="metric-value" id="bcm-rem-aa">—</span></div>
+      <div class="metric-box"><span class="metric-label">% CDI (a.a.)</span><span class="metric-value" id="bcm-cdi">—</span></div>
+      <div class="metric-box"><span class="metric-label">Relação lucro/prejuízo</span><span class="metric-value" id="bcm-ratio">—</span></div>
+    </div>
+
+    <div style="margin-top:1.2rem; display:flex; gap:.6rem; flex-wrap:wrap;">
+      <a id="bcm-open-calc" href="#" class="btn btn-primary btn-sm">🧮 Abrir em Cálculos de Opções</a>
+      <button class="btn btn-secondary btn-sm" onclick="closeCollarModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
 <script>
 (function() {
   var SELIC = {{ selic }};
@@ -105,7 +151,7 @@ table.bo-tab tr:hover{background:rgba(255,255,255,.05);}
     return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
   }
 
-  function collarTable(rows) {
+  function collarTable(rows, expIdx) {
     if (!rows.length) return '<div class="bo-empty">Nenhum collar supera a Selic neste vencimento.</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
       '<th>PUT (compra)</th><th>K PUT</th><th>Ask</th>' +
@@ -113,8 +159,9 @@ table.bo-tab tr:hover{background:rgba(255,255,255,.05);}
       '<th>Custo líq./ação</th><th>Break-even</th>' +
       '<th>Ganho máx.</th><th>Ganho %</th><th>vs Selic</th><th>Ganho % a.a.</th>' +
       '<th>Result. mín.</th><th>Mín. %</th></tr></thead><tbody>';
-    rows.forEach(function(r) {
-      h += '<tr>' +
+    rows.forEach(function(r, j) {
+      h += '<tr class="bo-collar-row" data-exp="' + expIdx + '" data-row="' + j + '" ' +
+        'title="Clique para ver os cálculos completos" style="cursor:pointer;">' +
         '<td><span class="bo-badge put">' + r.put_symbol + '</span></td>' +
         '<td>' + brl(r.put_strike) + '</td><td>' + brl(r.put_ask) + '</td>' +
         '<td><span class="bo-badge call">' + r.call_symbol + '</span></td>' +
@@ -166,16 +213,17 @@ table.bo-tab tr:hover{background:rgba(255,255,255,.05);}
       ? '📅 Semanais líquidas — até 8 vencimentos'
       : '📅 Apenas mensais — 3 vencimentos';
 
+    window.__boData = d;   // guarda para o modal de detalhes do collar
     var h = '';
-    d.expirations.forEach(function(e) {
+    d.expirations.forEach(function(e, i) {
       h += '<div class="bo-exp-card">' +
         '<div class="bo-exp-head">' +
           '<h3>📆 ' + dateBR(e.exp) + (e.is_monthly ? ' (mensal)' : ' (semanal)') + '</h3>' +
           '<span class="sub">' + e.dc + ' dias corridos · Selic no período: ' + fmt(e.selic_period) + '%</span>' +
         '</div>' +
         '<div class="bo-sec">' +
-          '<h4>🧮 Collars acima da Selic <span class="sub">(compra ' + d.ticker + ' + compra PUT + venda CALL)</span></h4>' +
-          collarTable(e.collars) +
+          '<h4>🧮 Collars acima da Selic <span class="sub">(compra ' + d.ticker + ' + compra PUT + venda CALL — clique na linha para detalhes)</span></h4>' +
+          collarTable(e.collars, i) +
           '<h4>📈 Trava de Alta no débito (CALLs) <span class="sub">relação ganho/custo &gt; 1</span></h4>' +
           spreadTable(e.bull_calls, true) +
           '<h4>📉 Trava de Baixa no débito (PUTs) <span class="sub">relação ganho/custo &gt; 1</span></h4>' +
@@ -187,6 +235,87 @@ table.bo-tab tr:hover{background:rgba(255,255,255,.05);}
     }
     results.innerHTML = h;
   }
+
+  // ── Modal de detalhes do collar (mesmos cálculos da aba Colar) ────────────
+  function openCollarModal(expIdx, rowIdx) {
+    var d = window.__boData;
+    if (!d) return;
+    var e = d.expirations[expIdx];
+    var r = e.collars[rowIdx];
+    if (!r) return;
+
+    var modal = document.getElementById('bo-collar-modal');
+    modal.dataset.exp = expIdx;
+    modal.dataset.row = rowIdx;
+
+    document.getElementById('bcm-title').textContent =
+      'Collar ' + d.ticker + ' — ' + r.put_symbol + ' / ' + r.call_symbol + ' · ' + dateBR(e.exp);
+    calcCollarModal();
+    modal.style.display = 'flex';
+  }
+
+  function calcCollarModal() {
+    var d = window.__boData;
+    var modal = document.getElementById('bo-collar-modal');
+    var e = d.expirations[parseInt(modal.dataset.exp)];
+    var r = e.collars[parseInt(modal.dataset.row)];
+    var qty = parseInt(document.getElementById('bcm-qty').value) || 100;
+
+    var stock = d.spot, putP = r.put_ask, callP = r.call_bid;
+    var dc = e.dc;
+
+    var stockCost = stock * qty;
+    var netCost   = (stock + putP - callP) * qty;
+    var be        = stock + putP - callP;
+    var maxGain   = (r.call_strike - stock - putP + callP) * qty;
+    var maxLoss   = (stock + putP - callP - r.put_strike) * qty;
+    var absLoss   = Math.abs(maxLoss);
+    var gainPct   = netCost > 0 ? maxGain / netCost * 100 : 0;
+    var remAM     = (Math.pow(1 + gainPct / 100, 30 / dc) - 1) * 100;
+    var remAA     = (Math.pow(1 + gainPct / 100, 365 / dc) - 1) * 100;
+    var pctCDI    = SELIC > 0 ? remAA / SELIC * 100 : 0;
+    var ratio     = absLoss > 0.001 ? maxGain / absLoss : 0;
+
+    function setv(id, txt, cls) {
+      var el = document.getElementById(id);
+      el.textContent = txt;
+      if (cls !== undefined) el.className = 'metric-value ' + cls;
+    }
+    setv('bcm-stock-cost', brl(stockCost));
+    setv('bcm-net-cost',   brl(netCost));
+    setv('bcm-be',         brl(be));
+    setv('bcm-max-gain',   brl(maxGain), 'pos');
+    setv('bcm-max-loss',   brl(absLoss), maxLoss > 0 ? 'neg' : 'pos');
+    setv('bcm-gain-pct',   fmt(gainPct) + '%', 'pos');
+    setv('bcm-days',       dc + ' d.c.');
+    setv('bcm-rem-am',     fmt(remAM) + '%');
+    setv('bcm-rem-aa',     fmt(remAA) + '%');
+    setv('bcm-cdi',        fmt(pctCDI, 0) + '%');
+    setv('bcm-ratio',      fmt(ratio));
+
+    // Link para abrir pré-preenchido na aba Colar de Cálculos de Opções
+    var params = new URLSearchParams({
+      cp: '1', ativo: d.ticker, spot: d.spot, qty: qty,
+      pt: r.put_symbol, pk: r.put_strike, pp: r.put_ask,
+      ct: r.call_symbol, ck: r.call_strike, cprem: r.call_bid,
+      exp: e.exp
+    });
+    document.getElementById('bcm-open-calc').href = '/venda_puts?' + params.toString() + '#collar';
+  }
+
+  window.closeCollarModal = function() {
+    document.getElementById('bo-collar-modal').style.display = 'none';
+  };
+
+  // Delegação: clique nas linhas de collar
+  results.addEventListener('click', function(ev) {
+    var tr = ev.target.closest('tr.bo-collar-row');
+    if (tr) openCollarModal(parseInt(tr.dataset.exp), parseInt(tr.dataset.row));
+  });
+  document.getElementById('bcm-qty').addEventListener('input', calcCollarModal);
+  document.getElementById('bo-collar-modal').addEventListener('click', function(ev) {
+    if (ev.target === this) closeCollarModal();
+  });
 
   function load(ticker) {
     ticker = (ticker || '').trim().toUpperCase();

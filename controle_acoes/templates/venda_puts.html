@@ -529,6 +529,27 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
     };
     collarCalc();
 
+    // ── Pré-preenchimento do colar via URL (vindo de Busca de Operações) ─────
+    (function() {
+        var q = new URLSearchParams(location.search);
+        if (q.get('cp') !== '1') return;
+        function setIf(sel, val) {
+            var el = document.querySelector(sel);
+            if (el && val != null && val !== '') el.value = val;
+        }
+        setIf('#pane-collar [name=underlying_asset]', (q.get('ativo') || '').toUpperCase());
+        setIf('#c-stock',  q.get('spot'));
+        setIf('#c-qty',    q.get('qty'));
+        setIf('#pane-collar [name=put_ticker]',  (q.get('pt') || '').toUpperCase());
+        setIf('#c-put-k',  q.get('pk'));
+        setIf('#c-put-p',  q.get('pp'));
+        setIf('#pane-collar [name=call_ticker]', (q.get('ct') || '').toUpperCase());
+        setIf('#c-call-k', q.get('ck'));
+        setIf('#c-call-p', q.get('cprem'));
+        setIf('#c-exp',    q.get('exp'));
+        collarCalc();
+    })();
+
     // ── Activa aba correta ao carregar ────────────────────────────────────────
     if (location.hash === '#collar') {
         var tabBtn = document.getElementById('tab-collar');

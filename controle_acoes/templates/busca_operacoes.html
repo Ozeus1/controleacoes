@@ -87,6 +87,8 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
     <button class="bo-obtn" data-op="trava_baixa">📉 Trava de Baixa déb.</button>
     <button class="bo-obtn" data-op="trava_credito">💰 Ratio CALL 1x2 / 2x3</button>
     <button class="bo-obtn" data-op="vaca_travada">🐄 Vaca Travada</button>
+    <button class="bo-obtn" data-op="boi_put">🐂 Boi com PUT 1x2</button>
+    <button class="bo-obtn" data-op="vaca_put">🐄 Vaca de Baixa (PUTs)</button>
   </div>
 
   <!-- Tickers (gerenciável: + adiciona, × exclui) -->
@@ -153,7 +155,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     trava_alta:    '📈 Trava de Alta no débito (CALLs) — relação ganho/custo > 1',
     trava_baixa:   '📉 Trava de Baixa no débito (PUTs) — relação ganho/custo > 1',
     trava_credito: '💰 Ratio CALL — venda CALL perto do dinheiro (máx. 5% ITM a 5% OTM) financia compra de CALLs OTM (1x2 e 2x3, lucro ilimitado na alta)',
-    vaca_travada:  '🐄 Vaca Travada — +1 CALL baixa, −2 CALLs médias, +1 CALL alta (custo próximo a zero; lucro máximo no strike médio)'
+    vaca_travada:  '🐄 Vaca Travada — +1 CALL baixa, −2 CALLs médias, +1 CALL alta (centro no dinheiro ou acima; aceita investimento; lucro máximo no strike médio)',
+    boi_put:       '🐂 Boi com PUT — venda 1 PUT alta (±5% do spot) + compra 2 PUTs baixas (lucro cresce na queda forte)',
+    vaca_put:      '🐄 Vaca de Baixa (PUTs) — +1 PUT alta, −2 PUTs médias, +1 PUT baixa (lucro máximo se cair até o strike médio)'
   };
 
   // ── Utilitários ────────────────────────────────────────────────────────────
@@ -383,9 +387,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       '<th>Perda máx.</th><th>Relação</th></tr></thead><tbody>';
     rows.forEach(function(r, j) {
       h += rowAttr(expIdx, j) +
-        '<td>' + (r.is_credit
-            ? '<span class="bo-badge credit">CRÉDITO</span>'
-            : '<span class="bo-badge debit">custo</span>') + '</td>' +
+        '<td>' + montagemBadge(r) + '</td>' +
         '<td><span class="bo-badge call">' + r.low_symbol + '</span></td>' +
         '<td>' + brl(r.low_strike) + '</td><td>' + brl(r.low_ask) + '</td>' +
         '<td><span class="bo-badge call">2× ' + r.mid_symbol + '</span></td>' +
@@ -406,6 +408,75 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     return h + '</tbody></table></div>';
   }
 
+  function montagemBadge(r) {
+    if (r.montagem === 'CRÉDITO') return '<span class="bo-badge credit">CRÉDITO</span>';
+    if (r.montagem === 'ZERO')    return '<span class="bo-badge riskfree">~ZERO</span>';
+    if (r.montagem === 'INVEST')  return '<span class="bo-badge debit">INVEST</span>';
+    return r.is_credit ? '<span class="bo-badge credit">CRÉDITO</span>'
+                       : '<span class="bo-badge debit">custo</span>';
+  }
+
+  function boiTable(rows, expIdx) {
+    if (!rows.length) return '<div class="bo-empty">Nenhum boi com PUT viável neste vencimento.</div>';
+    var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
+      '<th>Montagem</th>' +
+      '<th>−1 PUT alta (bid)</th><th>K</th><th>Bid</th>' +
+      '<th>+2 PUTs baixas (ask)</th><th>K</th><th>Ask</th>' +
+      '<th>Crédito/Custo</th><th>Perda máx. (em K compr.)</th>' +
+      '<th>BE inferior</th><th>Dist. BE inf.</th>' +
+      '<th>Ganho se −10%</th><th>Acima de K alta</th></tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += rowAttr(expIdx, j) +
+        '<td>' + montagemBadge(r) + '</td>' +
+        '<td><span class="bo-badge put">1× ' + r.sell_symbol + '</span></td>' +
+        '<td>' + brl(r.sell_strike) + '</td><td>' + brl(r.sell_bid) + '</td>' +
+        '<td><span class="bo-badge put">2× ' + r.buy_symbol + '</span></td>' +
+        '<td>' + brl(r.buy_strike) + '</td><td>' + brl(r.buy_ask) + '</td>' +
+        '<td class="' + (r.is_credit ? 'pos' : 'neg') + '">' + brl(Math.abs(r.credit)) +
+            (r.is_credit ? ' (créd.)' : ' (custo)') + '</td>' +
+        '<td class="neg">' + brl(r.max_loss) + '</td>' +
+        '<td>' + brl(r.be_low) + '</td>' +
+        '<td>' + fmt(r.be_low_dist) + '%</td>' +
+        '<td class="' + (r.gain_dn10 >= 0 ? 'pos' : 'neg') + '">' + brl(r.gain_dn10) + '</td>' +
+        '<td class="' + (r.credit >= 0 ? 'pos' : 'neg') + '">' + brl(r.credit) + '</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  function vacaPutTable(rows, expIdx) {
+    if (!rows.length) return '<div class="bo-empty">Nenhuma vaca de baixa com PUTs viável neste vencimento.</div>';
+    var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
+      '<th>Montagem</th>' +
+      '<th>+1 PUT alta</th><th>K</th><th>Ask</th>' +
+      '<th>−2 PUTs médias</th><th>K</th><th>Bid</th>' +
+      '<th>+1 PUT baixa</th><th>K</th><th>Ask</th>' +
+      '<th>Custo/Crédito</th><th>Lucro máx. (K médio)</th><th>Queda até pico</th>' +
+      '<th>BE superior</th><th>BE inferior</th><th>Abaixo da asa</th>' +
+      '<th>Perda máx.</th><th>Relação</th></tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += rowAttr(expIdx, j) +
+        '<td>' + montagemBadge(r) + '</td>' +
+        '<td><span class="bo-badge put">' + r.high_symbol + '</span></td>' +
+        '<td>' + brl(r.high_strike) + '</td><td>' + brl(r.high_ask) + '</td>' +
+        '<td><span class="bo-badge put">2× ' + r.mid_symbol + '</span></td>' +
+        '<td>' + brl(r.mid_strike) + '</td><td>' + brl(r.mid_bid) + '</td>' +
+        '<td><span class="bo-badge put">' + r.low_symbol + '</span></td>' +
+        '<td>' + brl(r.low_strike) + '</td><td>' + brl(r.low_ask) + '</td>' +
+        '<td class="' + (r.is_credit ? 'pos' : 'neg') + '">' + brl(Math.abs(r.cost)) +
+            (r.is_credit ? ' (créd.)' : ' (custo)') + '</td>' +
+        '<td class="pos">' + brl(r.max_gain) + '</td>' +
+        '<td>' + fmt(r.mid_dist, 1) + '%</td>' +
+        '<td>' + (r.be_up != null ? brl(r.be_up) : '—') + '</td>' +
+        '<td>' + (r.be_dn != null ? brl(r.be_dn) : '—') + '</td>' +
+        '<td class="' + (r.tail >= 0 ? 'pos' : 'neg') + '">' + brl(r.tail) + '</td>' +
+        '<td class="neg">' + brl(r.max_loss) + '</td>' +
+        '<td class="pos"><strong>' + (r.ratio == null ? '∞' : fmt(r.ratio, 1)) + '</strong></td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
   function buildTable(op, rows, expIdx) {
     switch (op) {
       case 'collar':        return collarTable(rows, expIdx);
@@ -415,6 +486,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       case 'trava_baixa':   return spreadTable(rows, false, expIdx);
       case 'trava_credito': return creditTable(rows, expIdx);
       case 'vaca_travada':  return vacaTable(rows, expIdx);
+      case 'boi_put':       return boiTable(rows, expIdx);
+      case 'vaca_put':      return vacaPutTable(rows, expIdx);
       default:              return '';
     }
   }
@@ -565,7 +638,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       Object.assign(stParams, {op: r.tipo === '1x2' ? 'call_ratio_1x2' : 'call_ratio_2x3',
         at: r.sell_symbol, ak: r.sell_strike, ap: r.sell_bid,
         bt: r.buy_symbol,  bk: r.buy_strike,  bp: r.buy_ask});
-    } else { // vaca_travada — borboleta de CALLs
+    } else if (op === 'vaca_travada') { // borboleta de CALLs
       title = 'Vaca Travada ' + d.ticker + ' — ' + r.low_symbol + ' / 2× ' + r.mid_symbol + ' / ' + r.high_symbol;
       boxes = [
         [r.is_credit ? 'Crédito recebido' : 'Custo (débito)',
@@ -584,6 +657,40 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         at: r.low_symbol,  ak: r.low_strike,  ap: r.low_ask,
         bt: r.mid_symbol,  bk: r.mid_strike,  bp: r.mid_bid,
         ct2: r.high_symbol, ck2: r.high_strike, cp2: r.high_ask});
+    } else if (op === 'boi_put') { // put ratio backspread 1x2
+      title = 'Boi com PUT ' + d.ticker + ' — venda 1× ' + r.sell_symbol + ' / compra 2× ' + r.buy_symbol;
+      boxes = [
+        [r.is_credit ? 'Crédito recebido' : 'Custo (débito)',
+            brl(Math.abs(r.credit) * qty), r.is_credit ? 'pos' : 'neg'],
+        ['Perda máxima (em ' + brl(r.buy_strike) + ')', brl(r.max_loss * qty), 'neg'],
+        ['Resultado acima de ' + brl(r.sell_strike), brl(r.credit * qty), r.credit >= 0 ? 'pos' : 'neg'],
+        ['BE inferior', brl(r.be_low) + ' (' + fmt(r.be_low_dist) + '%)', ''],
+        ['Ganho se cair 10% (' + brl(spot * 0.90) + ')', brl(r.gain_dn10 * qty), r.gain_dn10 >= 0 ? 'pos' : 'neg'],
+        ['Abaixo do BE inferior', 'Lucro cresce até S→0 🔻', 'pos'],
+        ['Prazo (dias corridos)', dc + ' d.c.', '']
+      ];
+      Object.assign(stParams, {op: 'boi_put',
+        at: r.sell_symbol, ak: r.sell_strike, ap: r.sell_bid,
+        bt: r.buy_symbol,  bk: r.buy_strike,  bp: r.buy_ask});
+    } else { // vaca_put — borboleta de PUTs (baixa)
+      title = 'Vaca de Baixa (PUTs) ' + d.ticker + ' — ' + r.high_symbol + ' / 2× ' + r.mid_symbol + ' / ' + r.low_symbol;
+      boxes = [
+        [r.is_credit ? 'Crédito recebido' : 'Custo (débito)',
+            brl(Math.abs(r.cost) * qty), r.is_credit ? 'pos' : 'neg'],
+        ['Lucro máximo (em ' + brl(r.mid_strike) + ')', brl(r.max_gain * qty), 'pos'],
+        ['Queda até o pico', fmt(r.mid_dist, 1) + '%', ''],
+        ['BE superior', r.be_up != null ? brl(r.be_up) : '— (sem perda na alta)', ''],
+        ['BE inferior', r.be_dn != null ? brl(r.be_dn) : '— (sem perda na queda)', ''],
+        ['Resultado acima de ' + brl(r.high_strike), brl(-Math.max(r.cost, 0) * qty), r.cost > 0 ? 'neg' : 'pos'],
+        ['Resultado abaixo de ' + brl(r.low_strike), brl(r.tail * qty), r.tail >= 0 ? 'pos' : 'neg'],
+        ['Perda máxima', brl(r.max_loss * qty), 'neg'],
+        ['Relação lucro/perda', r.ratio == null ? '∞' : fmt(r.ratio, 1), 'pos'],
+        ['Prazo (dias corridos)', dc + ' d.c.', '']
+      ];
+      Object.assign(stParams, {op: 'vaca_put',
+        at: r.high_symbol, ak: r.high_strike, ap: r.high_ask,
+        bt: r.mid_symbol,  bk: r.mid_strike,  bp: r.mid_bid,
+        ct2: r.low_symbol, ck2: r.low_strike, cp2: r.low_ask});
     }
 
     var sp = new URLSearchParams(stParams);

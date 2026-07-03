@@ -259,6 +259,8 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     <option value="call_ratio_1x2">🚀 Ratio CALL 1x2 (venda 1 ITM, compra 2 OTM)</option>
                     <option value="call_ratio_2x3">🚀 Ratio CALL 2x3 (venda 2 ITM, compra 3 OTM)</option>
                     <option value="vaca_travada">🐄 Vaca Travada (+1 CALL baixa, −2 médias, +1 alta)</option>
+                    <option value="boi_put">🐂 Boi com PUT (venda 1 PUT alta, compra 2 PUTs baixas)</option>
+                    <option value="vaca_put">🐄 Vaca de Baixa com PUTs (+1 alta, −2 médias, +1 baixa)</option>
                 </select>
             </div>
             <div>
@@ -786,7 +788,9 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         trava_credito_baixa: { legs: ['CALL — VENDA (K menor)',  'CALL — COMPRA (K maior)', null], needSpot: false },
         call_ratio_1x2:      { legs: ['CALL — VENDA 1× (K menor, ±5% do spot)', 'CALL — COMPRA 2× (OTM, K maior)', null], needSpot: false },
         call_ratio_2x3:      { legs: ['CALL — VENDA 2× (K menor, ±5% do spot)', 'CALL — COMPRA 3× (OTM, K maior)', null], needSpot: false },
-        vaca_travada:        { legs: ['CALL — COMPRA 1× (K baixa)', 'CALL — VENDA 2× (K média)', 'CALL — COMPRA 1× (K alta)'], needSpot: false }
+        vaca_travada:        { legs: ['CALL — COMPRA 1× (K baixa)', 'CALL — VENDA 2× (K média)', 'CALL — COMPRA 1× (K alta)'], needSpot: false },
+        boi_put:             { legs: ['PUT — VENDA 1× (K alta, ±5% do spot)', 'PUT — COMPRA 2× (K baixa)', null], needSpot: false },
+        vaca_put:            { legs: ['PUT — COMPRA 1× (K alta)', 'PUT — VENDA 2× (K média)', 'PUT — COMPRA 1× (K baixa)'], needSpot: false }
     };
 
     window.estruturaOpChanged = function() {
@@ -941,6 +945,45 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 ['Relação lucro/perda', maxLV > 0.001 ? (maxGV / maxLV).toLocaleString('pt-BR', {maximumFractionDigits:1}) : '∞', 'positive'],
                 ['Prazo (dias corridos)', dc + ' d.c.', '']
             ];
+        } else if (op === 'boi_put') {
+            // Put ratio backspread 1x2: A = PUT venda 1× (K alta, bid), B = PUT compra 2× (K baixa, ask)
+            var netBoi = aP - 2 * bP;                        // >0 crédito, <0 custo
+            var wBoi   = aK - bK;
+            var maxLBoi = (wBoi - netBoi) * qty;             // em S = K comprada
+            var beLoBoi = 2 * bK - aK + netBoi;              // abaixo disso, lucro cresce
+            var g10Boi  = spot ? (netBoi - Math.max(0, aK - spot * 0.90) + 2 * Math.max(0, bK - spot * 0.90)) * qty : null;
+            boxes = [
+                [netBoi >= 0 ? 'Crédito recebido' : 'Custo (débito)',
+                    fmtBRL(Math.abs(netBoi) * qty), netBoi >= 0 ? 'positive' : 'negative'],
+                ['Perda máxima (em ' + fmtBRL(bK) + ')', fmtBRL(Math.abs(maxLBoi)), 'negative'],
+                ['Resultado acima de ' + fmtBRL(aK), fmtBRL(netBoi * qty), netBoi >= 0 ? 'positive' : 'negative'],
+                ['BE inferior', fmtBRL(beLoBoi), ''],
+                ['Ganho se cair 10%', g10Boi != null ? fmtBRL(g10Boi) : '— (informe a cotação)',
+                    g10Boi != null && g10Boi >= 0 ? 'positive' : 'negative'],
+                ['Abaixo do BE inferior', 'Lucro cresce até S→0 🔻', 'positive'],
+                ['Prazo (dias corridos)', dc + ' d.c.', '']
+            ];
+        } else if (op === 'vaca_put') {
+            // Borboleta de PUTs: A = compra 1× (K alta), B = venda 2× (K média), C = compra 1× (K baixa)
+            var costVP = aP - 2 * bP + cP;
+            var wHiVP  = aK - bK;
+            var maxGVP = (wHiVP - costVP) * qty;             // em S = K média
+            var tailVP = (wHiVP - (bK - cK) - costVP) * qty; // abaixo da asa inferior
+            var beUpVP = costVP > 0 ? aK - costVP : null;
+            var beDnVP = tailVP < 0 ? bK - (wHiVP - costVP) : null;
+            var maxLVP = Math.max(costVP > 0 ? costVP * qty : 0, tailVP < 0 ? -tailVP : 0);
+            boxes = [
+                [costVP >= 0 ? 'Custo (débito)' : 'Crédito recebido',
+                    fmtBRL(Math.abs(costVP) * qty), costVP >= 0 ? 'negative' : 'positive'],
+                ['Lucro máximo (em ' + fmtBRL(bK) + ')', fmtBRL(maxGVP), 'positive'],
+                ['BE superior', beUpVP != null ? fmtBRL(beUpVP) : '— (sem perda na alta)', ''],
+                ['BE inferior', beDnVP != null ? fmtBRL(beDnVP) : '— (sem perda na queda)', ''],
+                ['Resultado acima de ' + fmtBRL(aK), fmtBRL(-Math.max(costVP, 0) * qty), costVP > 0 ? 'negative' : 'positive'],
+                ['Resultado abaixo de ' + fmtBRL(cK), fmtBRL(tailVP), tailVP >= 0 ? 'positive' : 'negative'],
+                ['Perda máxima', fmtBRL(maxLVP), 'negative'],
+                ['Relação lucro/perda', maxLVP > 0.001 ? (maxGVP / maxLVP).toLocaleString('pt-BR', {maximumFractionDigits:1}) : '∞', 'positive'],
+                ['Prazo (dias corridos)', dc + ' d.c.', '']
+            ];
         } else {
             // Ratio CALL backspread: A = CALL venda ITM (n×, bid), B = CALL compra OTM (m×, ask)
             var nR = op === 'call_ratio_1x2' ? 1 : 2;
@@ -1024,6 +1067,18 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 return qty * (Math.max(0, S - aK) - 2 * Math.max(0, S - bK) + Math.max(0, S - cK) - costVc);
             };
             mk(aK, 'CALL c'); mk(bK, '2× CALL v'); mk(cK, 'CALL c');
+        } else if (op === 'boi_put') {
+            var netBoi2 = aP - 2 * bP;
+            payoffFn = function(S) {
+                return qty * (netBoi2 - Math.max(0, aK - S) + 2 * Math.max(0, bK - S));
+            };
+            mk(bK, '2× PUT c'); mk(aK, 'PUT v');
+        } else if (op === 'vaca_put') {
+            var costVP2 = aP - 2 * bP + cP;
+            payoffFn = function(S) {
+                return qty * (Math.max(0, aK - S) - 2 * Math.max(0, bK - S) + Math.max(0, cK - S) - costVP2);
+            };
+            mk(cK, 'PUT c'); mk(bK, '2× PUT v'); mk(aK, 'PUT c');
         }
 
         if (payoffFn) {

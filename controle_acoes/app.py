@@ -3308,23 +3308,26 @@ def api_busca_operacoes(ticker):
             rows = _diversify(rows, lambda x: x['mid_symbol'], per_key=2)
 
         elif op == 'boi_put':
-            # Boi com PUT (put ratio backspread 1x2): venda 1 PUT alta financia compra de 2 PUTs baixas.
-            # PUT vendida perto do dinheiro (±5%); lucro cresce na queda forte; pequeno custo aceito.
+            # Boi com PUT (put ratio backspread 1x2): compra 2 PUTs próximas do OTM
+            # (até ~7% abaixo do spot); a venda de 1 PUT ATM/ITM financia parcialmente.
+            # Relação usual: débito de até ~40% da largura (não precisa zerar o custo).
             sell_cands = [p for p in puts_ok
-                          if 0.95 * spot <= p['strike'] <= 1.05 * spot and p['bid'] >= 0.10][:12]
-            low_puts   = [p for p in puts_ok
-                          if 0.80 * spot <= p['strike'] < spot and p['ask'] >= 0.03][:12]
+                          if 0.99 * spot <= p['strike'] <= 1.06 * spot and p['bid'] >= 0.10][:10]
+            near_otm   = [p for p in puts_ok
+                          if 0.93 * spot <= p['strike'] < 0.995 * spot and p['ask'] >= 0.05][:10]
             for sell in sell_cands:
-                for buy in low_puts:
+                for buy in near_otm:
                     if buy['strike'] >= sell['strike']:
                         continue
                     width = sell['strike'] - buy['strike']
                     net = sell['bid'] - 2 * buy['ask']      # >0 crédito, <0 custo
-                    if net < -0.15 * width:
+                    if net < -0.40 * width:                 # venda deve financiar >= 60% não... custo máx 40% da largura
                         continue
                     max_loss = width - net                  # em S = K comprada
                     if max_loss <= 0:
                         continue
+                    montagem = ('CRÉDITO' if net >= 0
+                                else ('ZERO' if net >= -0.10 * width else 'INVEST'))
                     be_low = 2 * buy['strike'] - sell['strike'] + net   # abaixo disso, lucro cresce
                     s90 = spot * 0.90                       # ganho se cair 10%
                     gain_dn10 = net - max(0.0, sell['strike'] - s90) + 2 * max(0.0, buy['strike'] - s90)
@@ -3333,13 +3336,16 @@ def api_busca_operacoes(ticker):
                         'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
                         'credit':      round(net, 2),
                         'is_credit':   net >= 0,
+                        'montagem':    montagem,
                         'max_loss':    round(max_loss, 2),
                         'be_low':      round(be_low, 2),
                         'be_low_dist': round((be_low - spot) / spot * 100, 2),
                         'gain_dn10':   round(gain_dn10, 2),
                     })
-            rows.sort(key=lambda x: (not x['is_credit'], x['max_loss']))
-            rows = _diversify(rows, lambda x: x['sell_symbol'], per_key=2)
+            # Mais eficaz primeiro: BE inferior mais próximo do spot (lucra com queda menor),
+            # depois menor perda máxima
+            rows.sort(key=lambda x: (abs(x['be_low_dist']), x['max_loss']))
+            rows = _diversify(rows, lambda x: x['buy_symbol'], per_key=2)
 
         elif op == 'vaca_put':
             # Vaca de baixa travada com PUTs (borboleta de PUTs):

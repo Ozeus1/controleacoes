@@ -789,7 +789,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         call_ratio_1x2:      { legs: ['CALL — VENDA 1× (K menor, ±5% do spot)', 'CALL — COMPRA 2× (OTM, K maior)', null], needSpot: false },
         call_ratio_2x3:      { legs: ['CALL — VENDA 2× (K menor, ±5% do spot)', 'CALL — COMPRA 3× (OTM, K maior)', null], needSpot: false },
         vaca_travada:        { legs: ['CALL — COMPRA 1× (K baixa)', 'CALL — VENDA 2× (K média)', 'CALL — COMPRA 1× (K alta)'], needSpot: false },
-        boi_put:             { legs: ['PUT — VENDA 1× (K alta, ±5% do spot)', 'PUT — COMPRA 2× (K baixa)', null], needSpot: false },
+        boi_put:             { legs: ['PUT — VENDA 1× (ATM/ITM, financia)', 'PUT — COMPRA 2× (próx. OTM)', null], needSpot: false },
         vaca_put:            { legs: ['PUT — COMPRA 1× (K alta)', 'PUT — VENDA 2× (K média)', 'PUT — COMPRA 1× (K baixa)'], needSpot: false }
     };
 

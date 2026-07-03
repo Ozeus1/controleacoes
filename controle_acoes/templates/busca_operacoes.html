@@ -156,7 +156,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     trava_baixa:   '📉 Trava de Baixa no débito (PUTs) — relação ganho/custo > 1',
     trava_credito: '💰 Ratio CALL — venda CALL perto do dinheiro (máx. 5% ITM a 5% OTM) financia compra de CALLs OTM (1x2 e 2x3, lucro ilimitado na alta)',
     vaca_travada:  '🐄 Vaca Travada — +1 CALL baixa, −2 CALLs médias, +1 CALL alta (centro no dinheiro ou acima; aceita investimento; lucro máximo no strike médio)',
-    boi_put:       '🐂 Boi com PUT — venda 1 PUT alta (±5% do spot) + compra 2 PUTs baixas (lucro cresce na queda forte)',
+    boi_put:       '🐂 Boi com PUT — compra 2 PUTs próximas do OTM financiadas (parcialmente) pela venda de 1 PUT ATM/ITM; custo até 40% da largura (lucro cresce na queda forte)',
     vaca_put:      '🐄 Vaca de Baixa (PUTs) — +1 PUT alta, −2 PUTs médias, +1 PUT baixa (lucro máximo se cair até o strike médio)'
   };
 
@@ -420,8 +420,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     if (!rows.length) return '<div class="bo-empty">Nenhum boi com PUT viável neste vencimento.</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
       '<th>Montagem</th>' +
-      '<th>−1 PUT alta (bid)</th><th>K</th><th>Bid</th>' +
-      '<th>+2 PUTs baixas (ask)</th><th>K</th><th>Ask</th>' +
+      '<th>−1 PUT ATM/ITM (bid)</th><th>K</th><th>Bid</th>' +
+      '<th>+2 PUTs próx. OTM (ask)</th><th>K</th><th>Ask</th>' +
       '<th>Crédito/Custo</th><th>Perda máx. (em K compr.)</th>' +
       '<th>BE inferior</th><th>Dist. BE inf.</th>' +
       '<th>Ganho se −10%</th><th>Acima de K alta</th></tr></thead><tbody>';

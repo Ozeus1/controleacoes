@@ -3016,10 +3016,16 @@ def api_busca_operacoes(ticker):
         puts_ok  = sorted([p for p in puts_by_exp.get(exp, []) if p['bid'] > 0 and p['ask'] > 0],
                           key=lambda x: x['strike'])
 
-        # ── 1) Collars que superam a Selic no período ────────────────────────
-        # PUT comprada (ask) perto/abaixo do spot; CALL vendida (bid) acima da PUT
-        put_cands  = [p for p in puts_ok  if 0.85 * spot <= p['strike'] <= 1.05 * spot][:15]
-        call_cands = [c for c in calls_ok if spot * 0.97 <= c['strike'] <= 1.20 * spot][:15]
+        # ── 1) Collars que superam a Selic no período — só risco zero/reduzido ─
+        # Compra do papel no spot na montagem + PUT comprada (ask) + CALL vendida (bid).
+        # Risco zero: PUT garante resultado mínimo >= 0 (strike da PUT >= custo líquido).
+        # Risco reduzido: perda máxima pequena perante o ganho (relação >= min_ratio).
+        try:
+            min_ratio = float(request.args.get('min_ratio', 4))
+        except (TypeError, ValueError):
+            min_ratio = 4.0
+        put_cands  = [p for p in puts_ok  if 0.90 * spot <= p['strike'] <= 1.10 * spot][:20]
+        call_cands = [c for c in calls_ok if spot * 0.97 <= c['strike'] <= 1.20 * spot][:20]
 
         collars = []
         for p in put_cands:
@@ -3030,11 +3036,17 @@ def api_busca_operacoes(ticker):
                 if net <= 0:
                     continue
                 max_gain = c['strike'] - net               # se exercida na CALL
-                min_res  = p['strike'] - net               # se cair abaixo da PUT
+                min_res  = p['strike'] - net               # se cair abaixo da PUT (>=0 = garantido)
                 if max_gain <= 0:
                     continue
                 gain_pct = max_gain / net * 100
                 if gain_pct <= selic_period:
+                    continue
+                loss = -min_res                            # perda por ação (positivo = perde)
+                risk_free = min_res >= 0
+                ratio = None if loss <= 0.001 else max_gain / loss
+                # Filtro: risco zero, ou perda bem reduzida perante o ganho
+                if not risk_free and (ratio is None or ratio < min_ratio):
                     continue
                 loss_pct = min_res / net * 100             # negativo = perda máx
                 gain_aa  = ((1 + gain_pct / 100) ** (365.0 / dc) - 1) * 100
@@ -3049,9 +3061,11 @@ def api_busca_operacoes(ticker):
                     'loss_pct':    round(loss_pct, 2),
                     'gain_aa':     round(gain_aa, 1),
                     'vs_selic':    round(gain_pct - selic_period, 2),
+                    'risk_free':   risk_free,
+                    'ratio':       round(ratio, 2) if ratio is not None else None,  # None = sem risco
                 })
-        # Melhores primeiro: maior ganho máximo %
-        collars.sort(key=lambda x: -x['gain_pct'])
+        # Risco zero primeiro; dentro do grupo, maior ganho %
+        collars.sort(key=lambda x: (not x['risk_free'], -x['gain_pct']))
         collars = collars[:10]
 
         # ── 2) Travas no débito com relação ganho/custo > 1 ─────────────────

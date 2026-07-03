@@ -38,6 +38,8 @@ table.bo-tab tr:hover{background:rgba(255,255,255,.05);}
 .bo-badge{display:inline-block;padding:.08rem .4rem;border-radius:4px;font-size:.72rem;font-weight:700;}
 .bo-badge.put{background:rgba(248,113,113,.15);color:#fca5a5;}
 .bo-badge.call{background:rgba(59,130,246,.15);color:#93c5fd;}
+.bo-badge.riskfree{background:rgba(52,211,153,.18);color:#34d399;}
+.bo-badge.risklow{background:rgba(245,158,11,.15);color:#fbbf24;}
 .bo-empty{color:var(--text-secondary);font-size:.8rem;padding:.3rem 0 .6rem;}
 tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
 .metric-box{background:var(--hover-bg);border:1px solid var(--border-color);border-radius:6px;
@@ -61,7 +63,8 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
   </div>
   <p style="color:var(--text-secondary);font-size:.85rem;margin:.2rem 0 .8rem;">
     Selecione um ativo. O sistema varre a cadeia de opções (até 8 vencimentos com semanais líquidas; senão 3 mensais)
-    e sugere: <strong>collars que superam a Selic no período</strong> e
+    e sugere: <strong>collars de risco zero (ou bem reduzido) que superam a Selic no período</strong> —
+    a PUT comprada garante o resultado mínimo — e
     <strong>travas no débito com relação ganho/custo &gt; 1</strong>.
     Preços executáveis: compra pelo <em>ask</em>, venda pelo <em>bid</em>.
   </p>
@@ -152,16 +155,20 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
   }
 
   function collarTable(rows, expIdx) {
-    if (!rows.length) return '<div class="bo-empty">Nenhum collar supera a Selic neste vencimento.</div>';
+    if (!rows.length) return '<div class="bo-empty">Nenhum collar de risco zero/reduzido supera a Selic neste vencimento.</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
+      '<th>Risco</th>' +
       '<th>PUT (compra)</th><th>K PUT</th><th>Ask</th>' +
       '<th>CALL (venda)</th><th>K CALL</th><th>Bid</th>' +
       '<th>Custo líq./ação</th><th>Break-even</th>' +
       '<th>Ganho máx.</th><th>Ganho %</th><th>vs Selic</th><th>Ganho % a.a.</th>' +
-      '<th>Result. mín.</th><th>Mín. %</th></tr></thead><tbody>';
+      '<th>Result. mín.</th><th>Relação L/P</th></tr></thead><tbody>';
     rows.forEach(function(r, j) {
       h += '<tr class="bo-collar-row" data-exp="' + expIdx + '" data-row="' + j + '" ' +
         'title="Clique para ver os cálculos completos" style="cursor:pointer;">' +
+        '<td>' + (r.risk_free
+            ? '<span class="bo-badge riskfree">🛡 ZERO</span>'
+            : '<span class="bo-badge risklow">baixo</span>') + '</td>' +
         '<td><span class="bo-badge put">' + r.put_symbol + '</span></td>' +
         '<td>' + brl(r.put_strike) + '</td><td>' + brl(r.put_ask) + '</td>' +
         '<td><span class="bo-badge call">' + r.call_symbol + '</span></td>' +
@@ -172,7 +179,7 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
         '<td class="pos">+' + fmt(r.vs_selic) + ' p.p.</td>' +
         '<td>' + fmt(r.gain_aa, 1) + '%</td>' +
         '<td class="' + (r.min_result >= 0 ? 'pos' : 'neg') + '">' + brl(r.min_result) + '</td>' +
-        '<td class="' + (r.loss_pct >= 0 ? 'pos' : 'neg') + '">' + fmt(r.loss_pct) + '%</td>' +
+        '<td class="pos"><strong>' + (r.ratio == null ? '∞' : fmt(r.ratio)) + '</strong></td>' +
         '</tr>';
     });
     return h + '</tbody></table></div>';
@@ -222,7 +229,7 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
           '<span class="sub">' + e.dc + ' dias corridos · Selic no período: ' + fmt(e.selic_period) + '%</span>' +
         '</div>' +
         '<div class="bo-sec">' +
-          '<h4>🧮 Collars acima da Selic <span class="sub">(compra ' + d.ticker + ' + compra PUT + venda CALL — clique na linha para detalhes)</span></h4>' +
+          '<h4>🧮 Collars risco zero/reduzido acima da Selic <span class="sub">(compra ' + d.ticker + ' no spot + compra PUT + venda CALL — clique na linha para detalhes)</span></h4>' +
           collarTable(e.collars, i) +
           '<h4>📈 Trava de Alta no débito (CALLs) <span class="sub">relação ganho/custo &gt; 1</span></h4>' +
           spreadTable(e.bull_calls, true) +

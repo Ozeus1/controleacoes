@@ -2905,6 +2905,225 @@ def api_cadeia(ticker):
     })
 
 
+@app.route('/busca-operacoes')
+@login_required
+def busca_operacoes():
+    """Página: sugestões de collar e travas no débito por vencimento."""
+    ranking_vol = RankingVol.query.filter_by(user_id=current_user.id).order_by(RankingVol.ticker).all()
+    return render_template('busca_operacoes.html', ranking_vol=ranking_vol, selic=_selic())
+
+
+@app.route('/api/busca-operacoes/<ticker>')
+@login_required
+def api_busca_operacoes(ticker):
+    """Analisa a cadeia de opções e sugere:
+    1) Collars (compra ação + compra PUT + venda CALL) que superem a Selic no período
+    2) Travas de alta/baixa no débito com relação ganho/custo > 1
+    Até 8 vencimentos se o ativo tiver semanais com liquidez; senão 3 mensais."""
+    ticker = ticker.strip().upper()
+    token  = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    if not spot:
+        return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
+
+    try:
+        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+    except OplabApiError as e:
+        return jsonify({'error': str(e), 'status': e.status_code}), 503
+    except Exception:
+        app.logger.exception('api_busca_operacoes error for %s', ticker)
+        return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+
+    opt_list = data if isinstance(data, list) else (
+        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+    )
+
+    from datetime import date as _date
+
+    today = _date.today()
+    calls_by_exp, puts_by_exp = {}, {}
+    for o in opt_list:
+        sym    = str(o.get('symbol') or o.get('ticker') or '').upper()
+        cat    = str(o.get('category') or o.get('type') or '').upper()
+        strike = float(o.get('strike') or 0)
+        bid    = float(o.get('bid') or 0)
+        ask    = float(o.get('ask') or 0)
+        close  = float(o.get('close') or 0)
+        vol    = float(o.get('financial_volume') or o.get('volume_financial') or 0)
+        due    = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due:
+            due = due.split('T')[0]
+        if not due or strike <= 0:
+            continue
+        try:
+            if _date.fromisoformat(due) <= today:
+                continue
+        except ValueError:
+            continue
+        row = {'symbol': sym, 'strike': round(strike, 2), 'bid': round(bid, 2),
+               'ask': round(ask, 2), 'close': round(close, 2), 'vol_fin': round(vol, 2)}
+        bucket = puts_by_exp if ('PUT' in cat or cat == 'P') else calls_by_exp
+        bucket.setdefault(due, []).append(row)
+
+    all_exps = sorted(set(list(calls_by_exp.keys()) + list(puts_by_exp.keys())))
+    if not all_exps:
+        return jsonify({'error': f'Nenhuma opção encontrada para {ticker}.'}), 404
+
+    def _third_friday(y, m):
+        count, day = 0, 1
+        while True:
+            d = _date(y, m, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    return d
+            day += 1
+
+    def _is_monthly(exp_str):
+        d = _date.fromisoformat(exp_str)
+        tf = _third_friday(d.year, d.month)
+        return abs((d - tf).days) <= 2  # tolera feriado na 3ª sexta
+
+    def _has_liquidity(rows):
+        return any(r['bid'] > 0 and r['ask'] > 0 for r in rows)
+
+    # Semanais = vencimentos fora da 3ª sexta. Com liquidez → 8 vencimentos; senão 3 mensais
+    weekly_exps = [e for e in all_exps if not _is_monthly(e)]
+    weekly_liq  = any(
+        _has_liquidity(calls_by_exp.get(e, [])) or _has_liquidity(puts_by_exp.get(e, []))
+        for e in weekly_exps
+    )
+    if weekly_liq:
+        selected_exps = all_exps[:8]
+        mode = 'semanal'
+    else:
+        selected_exps = [e for e in all_exps if _is_monthly(e)][:3]
+        mode = 'mensal'
+
+    selic = _selic()  # % a.a.
+
+    expirations = []
+    for exp in selected_exps:
+        dc = max((_date.fromisoformat(exp) - today).days, 1)
+        selic_period = ((1 + selic / 100) ** (dc / 365.0) - 1) * 100
+
+        # Só pernas executáveis: precisa de bid e ask no book
+        calls_ok = sorted([c for c in calls_by_exp.get(exp, []) if c['bid'] > 0 and c['ask'] > 0],
+                          key=lambda x: x['strike'])
+        puts_ok  = sorted([p for p in puts_by_exp.get(exp, []) if p['bid'] > 0 and p['ask'] > 0],
+                          key=lambda x: x['strike'])
+
+        # ── 1) Collars que superam a Selic no período ────────────────────────
+        # PUT comprada (ask) perto/abaixo do spot; CALL vendida (bid) acima da PUT
+        put_cands  = [p for p in puts_ok  if 0.85 * spot <= p['strike'] <= 1.05 * spot][:15]
+        call_cands = [c for c in calls_ok if spot * 0.97 <= c['strike'] <= 1.20 * spot][:15]
+
+        collars = []
+        for p in put_cands:
+            for c in call_cands:
+                if c['strike'] <= p['strike']:
+                    continue
+                net = spot + p['ask'] - c['bid']          # custo líquido por ação
+                if net <= 0:
+                    continue
+                max_gain = c['strike'] - net               # se exercida na CALL
+                min_res  = p['strike'] - net               # se cair abaixo da PUT
+                if max_gain <= 0:
+                    continue
+                gain_pct = max_gain / net * 100
+                if gain_pct <= selic_period:
+                    continue
+                loss_pct = min_res / net * 100             # negativo = perda máx
+                gain_aa  = ((1 + gain_pct / 100) ** (365.0 / dc) - 1) * 100
+                collars.append({
+                    'put_symbol':  p['symbol'],  'put_strike':  p['strike'],  'put_ask':  p['ask'],
+                    'call_symbol': c['symbol'],  'call_strike': c['strike'],  'call_bid': c['bid'],
+                    'net_cost':    round(net, 2),
+                    'breakeven':   round(net, 2),
+                    'max_gain':    round(max_gain, 2),
+                    'gain_pct':    round(gain_pct, 2),
+                    'min_result':  round(min_res, 2),
+                    'loss_pct':    round(loss_pct, 2),
+                    'gain_aa':     round(gain_aa, 1),
+                    'vs_selic':    round(gain_pct - selic_period, 2),
+                })
+        # Melhores primeiro: maior ganho máximo %
+        collars.sort(key=lambda x: -x['gain_pct'])
+        collars = collars[:10]
+
+        # ── 2) Travas no débito com relação ganho/custo > 1 ─────────────────
+        near = lambda k: 0.85 * spot <= k <= 1.15 * spot
+        bull_calls, bear_puts = [], []
+
+        cs = [c for c in calls_ok if near(c['strike'])][:20]
+        for i, buy in enumerate(cs):
+            for sell in cs[i + 1:]:
+                cost = buy['ask'] - sell['bid']
+                if cost <= 0.01:
+                    continue
+                width = sell['strike'] - buy['strike']
+                max_gain = width - cost
+                if max_gain <= 0 or max_gain / cost <= 1:
+                    continue
+                be = buy['strike'] + cost
+                bull_calls.append({
+                    'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
+                    'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
+                    'cost':      round(cost, 2),
+                    'max_gain':  round(max_gain, 2),
+                    'ratio':     round(max_gain / cost, 2),
+                    'breakeven': round(be, 2),
+                    'be_dist':   round((be - spot) / spot * 100, 2),  # % que o ativo precisa subir
+                })
+        bull_calls.sort(key=lambda x: -x['ratio'])
+        bull_calls = bull_calls[:10]
+
+        ps = [p for p in puts_ok if near(p['strike'])][:20]
+        for i, sell in enumerate(ps):
+            for buy in ps[i + 1:]:
+                cost = buy['ask'] - sell['bid']
+                if cost <= 0.01:
+                    continue
+                width = buy['strike'] - sell['strike']
+                max_gain = width - cost
+                if max_gain <= 0 or max_gain / cost <= 1:
+                    continue
+                be = buy['strike'] - cost
+                bear_puts.append({
+                    'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
+                    'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
+                    'cost':      round(cost, 2),
+                    'max_gain':  round(max_gain, 2),
+                    'ratio':     round(max_gain / cost, 2),
+                    'breakeven': round(be, 2),
+                    'be_dist':   round((be - spot) / spot * 100, 2),  # % até o breakeven (negativo = cair)
+                })
+        bear_puts.sort(key=lambda x: -x['ratio'])
+        bear_puts = bear_puts[:10]
+
+        expirations.append({
+            'exp':          exp,
+            'dc':           dc,
+            'selic_period': round(selic_period, 2),
+            'is_monthly':   _is_monthly(exp),
+            'collars':      collars,
+            'bull_calls':   bull_calls,
+            'bear_puts':    bear_puts,
+        })
+
+    return jsonify({
+        'ticker':      ticker,
+        'spot':        spot,
+        'spot_change': spot_change,
+        'mode':        mode,
+        'selic':       round(selic, 2),
+        'expirations': expirations,
+    })
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Venda de Puts — CRUD
 # ─────────────────────────────────────────────────────────────────────────────

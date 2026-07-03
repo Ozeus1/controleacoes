@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}Busca de Operações{% endblock %}
+{% block extra_scripts %}
+<style>
+#bo-tickers{display:flex;flex-wrap:wrap;gap:.35rem;}
+.bo-tbtn{padding:.25rem .6rem;border:1px solid #475569;border-radius:5px;font-size:.8rem;
+  cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap;transition:background .12s;}
+.bo-tbtn.active{background:#7c3aed;border-color:#7c3aed;font-weight:700;}
+#bo-spot{font-size:1rem;font-weight:700;color:var(--text-primary);display:inline-flex;gap:.5rem;align-items:baseline;}
+#bo-spot .chg-pos{color:#34d399;font-size:.85rem;}
+#bo-spot .chg-neg{color:#f87171;font-size:.85rem;}
+#bo-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
+#bo-error{display:none;color:#f87171;padding:1rem;}
+#bo-mode{display:none;font-size:.8rem;padding:.25rem .7rem;border-radius:12px;font-weight:600;}
+#bo-mode.semanal{background:rgba(14,165,233,.15);color:#38bdf8;}
+#bo-mode.mensal{background:rgba(245,158,11,.15);color:#fbbf24;}
+
+.bo-exp-card{border:1px solid var(--border-color);border-radius:8px;margin-top:1.2rem;overflow:hidden;}
+.bo-exp-head{display:flex;gap:1.2rem;align-items:baseline;flex-wrap:wrap;
+  padding:.6rem 1rem;background:var(--hover-bg);}
+.bo-exp-head h3{margin:0;font-size:1rem;}
+.bo-exp-head .sub{color:var(--text-secondary);font-size:.8rem;}
+.bo-sec{padding: .6rem 1rem 1rem;}
+.bo-sec h4{margin:.4rem 0 .5rem;font-size:.88rem;color:var(--text-secondary);
+  display:flex;align-items:center;gap:.5rem;}
+.bo-wrap{overflow-x:auto;}
+table.bo-tab{width:100%;border-collapse:collapse;font-size:.78rem;}
+table.bo-tab th{padding:.3rem .45rem;text-align:right;white-space:nowrap;
+  background:var(--card-bg);color:var(--text-secondary);font-weight:600;
+  border-bottom:1px solid var(--border-color);}
+table.bo-tab th:first-child{text-align:left;}
+table.bo-tab td{padding:.3rem .45rem;text-align:right;white-space:nowrap;color:var(--text-primary);
+  border-bottom:1px solid rgba(255,255,255,.04);}
+table.bo-tab td:first-child{text-align:left;}
+table.bo-tab tr:hover{background:rgba(255,255,255,.05);}
+.pos{color:#34d399;}
+.neg{color:#f87171;}
+.bo-badge{display:inline-block;padding:.08rem .4rem;border-radius:4px;font-size:.72rem;font-weight:700;}
+.bo-badge.put{background:rgba(248,113,113,.15);color:#fca5a5;}
+.bo-badge.call{background:rgba(59,130,246,.15);color:#93c5fd;}
+.bo-empty{color:var(--text-secondary);font-size:.8rem;padding:.3rem 0 .6rem;}
+#add-bo-input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
+  border-radius:5px;padding:.25rem .5rem;font-size:.82rem;width:110px;text-transform:uppercase;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="padding:1.2rem 1.4rem;">
+
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.4rem;">
+    <h2 style="margin:0;">🔍 Busca de Operações</h2>
+    <div id="bo-spot"></div>
+    <span id="bo-mode"></span>
+  </div>
+  <p style="color:var(--text-secondary);font-size:.85rem;margin:.2rem 0 .8rem;">
+    Selecione um ativo. O sistema varre a cadeia de opções (até 8 vencimentos com semanais líquidas; senão 3 mensais)
+    e sugere: <strong>collars que superam a Selic no período</strong> e
+    <strong>travas no débito com relação ganho/custo &gt; 1</strong>.
+    Preços executáveis: compra pelo <em>ask</em>, venda pelo <em>bid</em>.
+  </p>
+
+  <!-- Tickers -->
+  <div style="margin-bottom:.6rem;">
+    <div id="bo-tickers" style="margin-bottom:.5rem;">
+      {% if ranking_vol %}
+        <button class="bo-tbtn" data-t="BOVA11">BOVA11</button>
+        {% for rv in ranking_vol %}
+        <button class="bo-tbtn" data-t="{{ rv.ticker }}">{{ rv.ticker }}</button>
+        {% endfor %}
+      {% else %}
+        {% for t in ['BOVA11','ABEV3','ASAI3','B3SA3','BBAS3','BBDC4','BBSE3','BRAP4',
+                     'ITUB4','LREN3','PETR3','PETR4','PRIO3','USIM5','VALE3','WEGE3'] %}
+        <button class="bo-tbtn" data-t="{{ t }}">{{ t }}</button>
+        {% endfor %}
+      {% endif %}
+    </div>
+    <div style="display:flex;gap:.5rem;align-items:center;">
+      <input id="add-bo-input" type="text" placeholder="Outro ticker…" maxlength="10">
+      <button class="btn btn-secondary btn-sm" id="add-bo-btn">🔍 Buscar</button>
+    </div>
+  </div>
+
+  <div id="bo-loading">⏳ Varrendo a cadeia de opções…</div>
+  <div id="bo-error"></div>
+  <div id="bo-results"></div>
+</div>
+
+<script>
+(function() {
+  var SELIC = {{ selic }};
+
+  var loading = document.getElementById('bo-loading');
+  var errBox  = document.getElementById('bo-error');
+  var results = document.getElementById('bo-results');
+  var spotEl  = document.getElementById('bo-spot');
+  var modeEl  = document.getElementById('bo-mode');
+
+  function fmt(v, dec) {
+    dec = dec == null ? 2 : dec;
+    return v == null ? '—' : v.toLocaleString('pt-BR', {minimumFractionDigits:dec, maximumFractionDigits:dec});
+  }
+  function brl(v) { return v == null ? '—' : 'R$ ' + fmt(v); }
+  function dateBR(iso) {
+    var p = (iso || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+  }
+
+  function collarTable(rows) {
+    if (!rows.length) return '<div class="bo-empty">Nenhum collar supera a Selic neste vencimento.</div>';
+    var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
+      '<th>PUT (compra)</th><th>K PUT</th><th>Ask</th>' +
+      '<th>CALL (venda)</th><th>K CALL</th><th>Bid</th>' +
+      '<th>Custo líq./ação</th><th>Break-even</th>' +
+      '<th>Ganho máx.</th><th>Ganho %</th><th>vs Selic</th><th>Ganho % a.a.</th>' +
+      '<th>Result. mín.</th><th>Mín. %</th></tr></thead><tbody>';
+    rows.forEach(function(r) {
+      h += '<tr>' +
+        '<td><span class="bo-badge put">' + r.put_symbol + '</span></td>' +
+        '<td>' + brl(r.put_strike) + '</td><td>' + brl(r.put_ask) + '</td>' +
+        '<td><span class="bo-badge call">' + r.call_symbol + '</span></td>' +
+        '<td>' + brl(r.call_strike) + '</td><td>' + brl(r.call_bid) + '</td>' +
+        '<td>' + brl(r.net_cost) + '</td><td>' + brl(r.breakeven) + '</td>' +
+        '<td class="pos">' + brl(r.max_gain) + '</td>' +
+        '<td class="pos">' + fmt(r.gain_pct) + '%</td>' +
+        '<td class="pos">+' + fmt(r.vs_selic) + ' p.p.</td>' +
+        '<td>' + fmt(r.gain_aa, 1) + '%</td>' +
+        '<td class="' + (r.min_result >= 0 ? 'pos' : 'neg') + '">' + brl(r.min_result) + '</td>' +
+        '<td class="' + (r.loss_pct >= 0 ? 'pos' : 'neg') + '">' + fmt(r.loss_pct) + '%</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  function spreadTable(rows, isBull) {
+    if (!rows.length) return '<div class="bo-empty">Nenhuma trava com relação &gt; 1 neste vencimento.</div>';
+    var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
+      '<th>Compra (ask)</th><th>K</th><th>Ask</th>' +
+      '<th>Venda (bid)</th><th>K</th><th>Bid</th>' +
+      '<th>Custo</th><th>Ganho máx.</th><th>Relação</th>' +
+      '<th>Break-even</th><th>Dist. BE</th></tr></thead><tbody>';
+    rows.forEach(function(r) {
+      h += '<tr>' +
+        '<td><span class="bo-badge ' + (isBull ? 'call' : 'put') + '">' + r.buy_symbol + '</span></td>' +
+        '<td>' + brl(r.buy_strike) + '</td><td>' + brl(r.buy_ask) + '</td>' +
+        '<td><span class="bo-badge ' + (isBull ? 'call' : 'put') + '">' + r.sell_symbol + '</span></td>' +
+        '<td>' + brl(r.sell_strike) + '</td><td>' + brl(r.sell_bid) + '</td>' +
+        '<td>' + brl(r.cost) + '</td>' +
+        '<td class="pos">' + brl(r.max_gain) + '</td>' +
+        '<td class="pos"><strong>' + fmt(r.ratio) + '</strong></td>' +
+        '<td>' + brl(r.breakeven) + '</td>' +
+        '<td class="' + (Math.abs(r.be_dist) < 2 ? 'pos' : '') + '">' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  function render(d) {
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
+          (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
+        : '');
+    modeEl.style.display = '';
+    modeEl.className = d.mode;
+    modeEl.textContent = d.mode === 'semanal'
+      ? '📅 Semanais líquidas — até 8 vencimentos'
+      : '📅 Apenas mensais — 3 vencimentos';
+
+    var h = '';
+    d.expirations.forEach(function(e) {
+      h += '<div class="bo-exp-card">' +
+        '<div class="bo-exp-head">' +
+          '<h3>📆 ' + dateBR(e.exp) + (e.is_monthly ? ' (mensal)' : ' (semanal)') + '</h3>' +
+          '<span class="sub">' + e.dc + ' dias corridos · Selic no período: ' + fmt(e.selic_period) + '%</span>' +
+        '</div>' +
+        '<div class="bo-sec">' +
+          '<h4>🧮 Collars acima da Selic <span class="sub">(compra ' + d.ticker + ' + compra PUT + venda CALL)</span></h4>' +
+          collarTable(e.collars) +
+          '<h4>📈 Trava de Alta no débito (CALLs) <span class="sub">relação ganho/custo &gt; 1</span></h4>' +
+          spreadTable(e.bull_calls, true) +
+          '<h4>📉 Trava de Baixa no débito (PUTs) <span class="sub">relação ganho/custo &gt; 1</span></h4>' +
+          spreadTable(e.bear_puts, false) +
+        '</div></div>';
+    });
+    if (!d.expirations.length) {
+      h = '<div class="bo-empty" style="padding:1.5rem;">Nenhum vencimento com opções líquidas encontrado.</div>';
+    }
+    results.innerHTML = h;
+  }
+
+  function load(ticker) {
+    ticker = (ticker || '').trim().toUpperCase();
+    if (!ticker) return;
+    document.querySelectorAll('.bo-tbtn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.t === ticker);
+    });
+    loading.style.display = '';
+    errBox.style.display = 'none';
+    results.innerHTML = '';
+    spotEl.innerHTML = '';
+    modeEl.style.display = 'none';
+
+    fetch('/api/busca-operacoes/' + encodeURIComponent(ticker))
+      .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+      .then(function(res) {
+        loading.style.display = 'none';
+        if (!res.ok || res.j.error) {
+          errBox.textContent = res.j.error || 'Erro ao buscar operações.';
+          errBox.style.display = '';
+          return;
+        }
+        render(res.j);
+      })
+      .catch(function(e) {
+        loading.style.display = 'none';
+        errBox.textContent = 'Falha na requisição: ' + e;
+        errBox.style.display = '';
+      });
+  }
+
+  document.querySelectorAll('.bo-tbtn').forEach(function(b) {
+    b.addEventListener('click', function() { load(b.dataset.t); });
+  });
+  document.getElementById('add-bo-btn').addEventListener('click', function() {
+    load(document.getElementById('add-bo-input').value);
+  });
+  document.getElementById('add-bo-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') load(this.value);
+  });
+})();
+</script>
+{% endblock %}

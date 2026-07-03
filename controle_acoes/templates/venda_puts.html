@@ -22,6 +22,11 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
 .negative { color: var(--danger-color, #f44336); }
 .pf-tip{display:none;position:absolute;background:var(--card-bg,#1e293b);border:1px solid var(--border-color);
   border-radius:6px;padding:.3rem .6rem;font-size:.8rem;pointer-events:none;white-space:nowrap;z-index:10;}
+.pf-mbar{display:flex;flex-wrap:wrap;gap:1.4rem;padding:.55rem 1rem;border-bottom:1px solid var(--border-color);
+  font-size:.8rem;background:var(--card-bg);}
+.pf-mcell{display:flex;flex-direction:column;gap:.1rem;min-width:70px;}
+.pf-mcell span{color:var(--text-secondary);font-size:.7rem;white-space:nowrap;}
+.pf-mcell strong{font-size:.9rem;white-space:nowrap;}
 
 /* Abas */
 .calc-tabs { display:flex; gap:.5rem; margin-bottom:1.5rem; border-bottom:2px solid var(--border-color); }
@@ -580,6 +585,113 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
     });
     recalcPut();
 
+    // ── Black-Scholes p/ barra de métricas do gráfico ─────────────────────────
+    function normCdfJ(x) {
+        var t = 1 / (1 + 0.2316419 * Math.abs(x));
+        var poly = t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+        var pdf = Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI);
+        var c = 1 - pdf * poly;
+        return x >= 0 ? c : 1 - c;
+    }
+    function normPdfJ(x) { return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI); }
+    function bsPriceJ(S, K, T, r, sig, isCall) {
+        if (T <= 0 || sig <= 0) return Math.max(0, isCall ? S - K : K - S);
+        var d1 = (Math.log(S / K) + (r + 0.5 * sig * sig) * T) / (sig * Math.sqrt(T));
+        var d2 = d1 - sig * Math.sqrt(T);
+        return isCall ? S * normCdfJ(d1) - K * Math.exp(-r * T) * normCdfJ(d2)
+                      : K * Math.exp(-r * T) * normCdfJ(-d2) - S * normCdfJ(-d1);
+    }
+    function ivFromPremJ(S, K, T, r, prem, isCall) {
+        if (!prem || prem <= 0 || T <= 0) return null;
+        var intr = Math.max(0, isCall ? S - K : K - S);
+        if (prem <= intr * 1.005) return null;    // abaixo da paridade: bissecção não converge
+        var lo = 0.005, hi = 5;
+        for (var i = 0; i < 60; i++) {
+            var mid = (lo + hi) / 2;
+            if (bsPriceJ(S, K, T, r, mid, isCall) < prem) lo = mid; else hi = mid;
+        }
+        var iv = (lo + hi) / 2;
+        return (iv <= 0.006 || iv >= 4.9) ? null : iv;
+    }
+
+    // Barra de métricas: ganho/perda máx, gregas, VI, POP e breakevens
+    function buildMetricsBar(payoff, cfg) {
+        var hi = cfg.hi, spot = cfg.spot, T = cfg.T || 0;
+        var r = Math.log(1 + SELIC / 100);
+
+        // Varredura numérica de 0 até além do range: extremos e breakevens
+        var N2 = 400, maxG = -1e15, maxL = 1e15, bes = [], prev = null, prevS = 0;
+        for (var i = 0; i <= N2; i++) {
+            var s = hi * 1.2 * i / N2;
+            var p = payoff(s);
+            if (p > maxG) maxG = p;
+            if (p < maxL) maxL = p;
+            if (prev !== null && ((prev < 0 && p >= 0) || (prev >= 0 && p < 0))) {
+                var frac = Math.abs(prev) / (Math.abs(prev) + Math.abs(p) || 1);
+                bes.push(prevS + (s - prevS) * frac);
+            }
+            prev = p; prevS = s;
+        }
+        var unlimited = (payoff(hi * 1.5) - payoff(hi * 1.4)) > 0.005;
+
+        // Gregas agregadas por unidade da estrutura (VI extraída do prêmio de cada perna)
+        var delta = 0, gamma = 0, theta = 0, ivSum = 0, ivN = 0;
+        var haveGreeks = !!(spot && T > 0 && cfg.legs && cfg.legs.length);
+        if (haveGreeks) {
+            cfg.legs.forEach(function(l) {
+                if (l.t === 'STOCK') { delta += l.s * l.q; return; }
+                var isCall = l.t === 'CALL';
+                var iv = ivFromPremJ(spot, l.K, T, r, l.prem, isCall) || 0.35;
+                ivSum += iv; ivN++;
+                var sq = Math.sqrt(T);
+                var d1 = (Math.log(spot / l.K) + (r + 0.5 * iv * iv) * T) / (iv * sq);
+                var d2 = d1 - iv * sq;
+                var dl = isCall ? normCdfJ(d1) : normCdfJ(d1) - 1;
+                var gm = normPdfJ(d1) / (spot * iv * sq);
+                var th = (-spot * normPdfJ(d1) * iv / (2 * sq)
+                          - (isCall ? 1 : -1) * r * l.K * Math.exp(-r * T) * normCdfJ(isCall ? d2 : -d2)) / 365;
+                delta += l.s * l.q * dl;
+                gamma += l.s * l.q * gm;
+                theta += l.s * l.q * th;
+            });
+        }
+        var ivAvg = ivN ? ivSum / ivN : null;
+
+        // POP: probabilidade risk-neutral (lognormal) de terminar em região de lucro
+        var pop = null;
+        if (spot && T > 0 && ivAvg) {
+            var mu = Math.log(spot) + (r - 0.5 * ivAvg * ivAvg) * T;
+            var sd = ivAvg * Math.sqrt(T);
+            var tot = 0, win = 0, M = 300;
+            for (var k = 0; k <= M; k++) {
+                var sk = hi * 1.5 * (k + 0.5) / (M + 1);
+                var z = (Math.log(sk) - mu) / sd;
+                var w = Math.exp(-0.5 * z * z) / sk;
+                tot += w;
+                if (payoff(sk) > 0) win += w;
+            }
+            if (tot > 0) pop = win / tot * 100;
+        }
+
+        function cell(lbl, val, cls) {
+            return '<div class="pf-mcell"><span>' + lbl + '</span><strong class="' + (cls || '') + '">' + val + '</strong></div>';
+        }
+        function num(v, dec) {
+            return v.toLocaleString('pt-BR', {minimumFractionDigits: dec, maximumFractionDigits: dec});
+        }
+        var beTxt = bes.length
+            ? bes.slice(0, 2).map(function(b) { return num(b, 2); }).join(' / ')
+            : (maxL >= 0 ? 'Sempre +' : '—');
+        return cell('Ganho Máximo', unlimited ? 'Ilimitado 🚀' : fmtBRL(maxG), 'positive') +
+               cell('Perda Máxima', fmtBRL(Math.abs(Math.min(maxL, 0))), 'negative') +
+               cell('Delta',  haveGreeks ? num(delta, 2)  : '—') +
+               cell('Gamma',  haveGreeks ? num(gamma, 4)  : '—') +
+               cell('Theta',  haveGreeks ? num(theta, 4)  : '—') +
+               cell('Vol. Implícita', ivAvg != null ? num(ivAvg * 100, 2) + '%' : '—') +
+               cell('POP', pop != null ? num(pop, 2) + '%' : '—') +
+               cell('BreakEven', beTxt);
+    }
+
     // ── Gráfico de payoff genérico (canvas) ──────────────────────────────────
     function drawPayoff(canvasId, tipId, wrapId, payoff, cfg) {
         // cfg: {lo, hi, spot, strikes: [{k, label}]}
@@ -588,6 +700,16 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         var tip    = document.getElementById(tipId);
         if (!canvas) return;
         wrap.style.display = '';
+
+        // Barra de métricas acima do gráfico
+        var mbar = document.getElementById(canvasId + '-mbar');
+        if (!mbar) {
+            mbar = document.createElement('div');
+            mbar.id = canvasId + '-mbar';
+            mbar.className = 'pf-mbar';
+            wrap.insertBefore(mbar, canvas);
+        }
+        mbar.innerHTML = buildMetricsBar(payoff, cfg);
 
         var W = wrap.clientWidth || 800, H = 300;
         var dpr = window.devicePixelRatio || 1;
@@ -691,7 +813,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             var p = payoff(s);
             tip.style.display = 'block';
             tip.style.left = Math.min(mx + 12, W - 150) + 'px';
-            tip.style.top  = (ev.clientY - rect.top - 34) + 'px';
+            tip.style.top  = (canvas.offsetTop + ev.clientY - rect.top - 34) + 'px';
             tip.innerHTML = 'S: <strong>' + fmtBRL(s) + '</strong><br>' +
                 'Resultado: <strong style="color:' + (p >= 0 ? '#34d399' : '#f87171') + '">' + fmtBRL(p) + '</strong>';
         };
@@ -765,7 +887,10 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         drawPayoff('c-chart', 'c-chart-tip', 'c-chart-wrap', function(S) {
             return qty * (S + Math.max(0, putK - S) - Math.max(0, S - callK) - bePS);
         }, {
-            lo: rng.lo, hi: rng.hi, spot: stock,
+            lo: rng.lo, hi: rng.hi, spot: stock, T: dc / 365,
+            legs: [{t: 'STOCK', s: 1, q: 1},
+                   {t: 'PUT',  s: 1,  q: 1, K: putK,  prem: putP},
+                   {t: 'CALL', s: -1, q: 1, K: callK, prem: callP}],
             strikes: [{k: putK, label: 'PUT ' + putK.toLocaleString('pt-BR')},
                       {k: callK, label: 'CALL ' + callK.toLocaleString('pt-BR')}]
         });
@@ -1013,7 +1138,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         panel.style.display = '';
 
         // ── Gráfico de payoff da estrutura ────────────────────────────────────
-        var payoffFn = null, strikeMarks = [];
+        var payoffFn = null, strikeMarks = [], legsArr = [];
         function mk(k, lbl) { strikeMarks.push({k: k, label: lbl + ' ' + k.toLocaleString('pt-BR')}); }
 
         if (op === 'fence') {
@@ -1023,36 +1148,51 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 return qty * (S + Math.max(0, aK - S) - Math.max(0, bK - S) - Math.max(0, S - cK) - netFence);
             };
             mk(bK, 'PUT v'); mk(aK, 'PUT c'); mk(cK, 'CALL v');
+            legsArr = [{t: 'STOCK', s: 1, q: 1},
+                       {t: 'PUT',  s: 1,  q: 1, K: aK, prem: aP},
+                       {t: 'PUT',  s: -1, q: 1, K: bK, prem: bP},
+                       {t: 'CALL', s: -1, q: 1, K: cK, prem: cP}];
         } else if (op === 'seagull') {
             var netSg = aP - bP - cP;
             payoffFn = function(S) {
                 return qty * (Math.max(0, S - aK) - Math.max(0, S - bK) - Math.max(0, cK - S) - netSg);
             };
             mk(cK, 'PUT v'); mk(aK, 'CALL c'); mk(bK, 'CALL v');
+            legsArr = [{t: 'CALL', s: 1,  q: 1, K: aK, prem: aP},
+                       {t: 'CALL', s: -1, q: 1, K: bK, prem: bP},
+                       {t: 'PUT',  s: -1, q: 1, K: cK, prem: cP}];
         } else if (op === 'trava_alta') {
             var costTA = aP - bP;
             payoffFn = function(S) {
                 return qty * (Math.max(0, S - aK) - Math.max(0, S - bK) - costTA);
             };
             mk(aK, 'CALL c'); mk(bK, 'CALL v');
+            legsArr = [{t: 'CALL', s: 1,  q: 1, K: aK, prem: aP},
+                       {t: 'CALL', s: -1, q: 1, K: bK, prem: bP}];
         } else if (op === 'trava_baixa') {
             var costTB = aP - bP;
             payoffFn = function(S) {
                 return qty * (Math.max(0, aK - S) - Math.max(0, bK - S) - costTB);
             };
             mk(bK, 'PUT v'); mk(aK, 'PUT c');
+            legsArr = [{t: 'PUT', s: 1,  q: 1, K: aK, prem: aP},
+                       {t: 'PUT', s: -1, q: 1, K: bK, prem: bP}];
         } else if (op === 'trava_credito_alta') {
             var credA = aP - bP;
             payoffFn = function(S) {
                 return qty * (credA - Math.max(0, aK - S) + Math.max(0, bK - S));
             };
             mk(bK, 'PUT c'); mk(aK, 'PUT v');
+            legsArr = [{t: 'PUT', s: -1, q: 1, K: aK, prem: aP},
+                       {t: 'PUT', s: 1,  q: 1, K: bK, prem: bP}];
         } else if (op === 'trava_credito_baixa') {
             var credB = aP - bP;
             payoffFn = function(S) {
                 return qty * (credB - Math.max(0, S - aK) + Math.max(0, S - bK));
             };
             mk(aK, 'CALL v'); mk(bK, 'CALL c');
+            legsArr = [{t: 'CALL', s: -1, q: 1, K: aK, prem: aP},
+                       {t: 'CALL', s: 1,  q: 1, K: bK, prem: bP}];
         } else if (op === 'call_ratio_1x2' || op === 'call_ratio_2x3') {
             var nP = op === 'call_ratio_1x2' ? 1 : 2;
             var mP = op === 'call_ratio_1x2' ? 2 : 3;
@@ -1061,31 +1201,42 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 return qty * (netP - nP * Math.max(0, S - aK) + mP * Math.max(0, S - bK));
             };
             mk(aK, nP + '× CALL v'); mk(bK, mP + '× CALL c');
+            legsArr = [{t: 'CALL', s: -1, q: nP, K: aK, prem: aP},
+                       {t: 'CALL', s: 1,  q: mP, K: bK, prem: bP}];
         } else if (op === 'vaca_travada') {
             var costVc = aP - 2 * bP + cP;
             payoffFn = function(S) {
                 return qty * (Math.max(0, S - aK) - 2 * Math.max(0, S - bK) + Math.max(0, S - cK) - costVc);
             };
             mk(aK, 'CALL c'); mk(bK, '2× CALL v'); mk(cK, 'CALL c');
+            legsArr = [{t: 'CALL', s: 1,  q: 1, K: aK, prem: aP},
+                       {t: 'CALL', s: -1, q: 2, K: bK, prem: bP},
+                       {t: 'CALL', s: 1,  q: 1, K: cK, prem: cP}];
         } else if (op === 'boi_put') {
             var netBoi2 = aP - 2 * bP;
             payoffFn = function(S) {
                 return qty * (netBoi2 - Math.max(0, aK - S) + 2 * Math.max(0, bK - S));
             };
             mk(bK, '2× PUT c'); mk(aK, 'PUT v');
+            legsArr = [{t: 'PUT', s: -1, q: 1, K: aK, prem: aP},
+                       {t: 'PUT', s: 1,  q: 2, K: bK, prem: bP}];
         } else if (op === 'vaca_put') {
             var costVP2 = aP - 2 * bP + cP;
             payoffFn = function(S) {
                 return qty * (Math.max(0, aK - S) - 2 * Math.max(0, bK - S) + Math.max(0, cK - S) - costVP2);
             };
             mk(cK, 'PUT c'); mk(bK, '2× PUT v'); mk(aK, 'PUT c');
+            legsArr = [{t: 'PUT', s: 1,  q: 1, K: aK, prem: aP},
+                       {t: 'PUT', s: -1, q: 2, K: bK, prem: bP},
+                       {t: 'PUT', s: 1,  q: 1, K: cK, prem: cP}];
         }
 
         if (payoffFn) {
             var ks = strikeMarks.map(function(m) { return m.k; });
             var rngE = payoffRange(ks, spot);
             drawPayoff('e-chart', 'e-chart-tip', 'e-chart-wrap', payoffFn,
-                       {lo: rngE.lo, hi: rngE.hi, spot: spot, strikes: strikeMarks});
+                       {lo: rngE.lo, hi: rngE.hi, spot: spot, T: dc / 365,
+                        legs: legsArr, strikes: strikeMarks});
         }
     };
 

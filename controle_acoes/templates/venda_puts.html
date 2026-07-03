@@ -585,6 +585,24 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
     });
     recalcPut();
 
+    // ── Pré-preenchimento da venda de put via URL (vindo de Busca de Operações) ─
+    (function() {
+        var q = new URLSearchParams(location.search);
+        if (q.get('vp') !== '1') return;
+        function setP(sel, val) {
+            var el = document.querySelector(sel);
+            if (el && val != null && val !== '') el.value = val;
+        }
+        setP('#put-form [name=ticker]',           (q.get('ticker') || '').toUpperCase());
+        setP('#put-form [name=underlying_asset]', (q.get('ativo')  || '').toUpperCase());
+        setP('#inp-spot',    q.get('spot'));
+        setP('#inp-strike',  q.get('k'));
+        setP('#inp-premium', q.get('prem'));
+        setP('#inp-qty',     q.get('qty'));
+        setP('#inp-exp',     q.get('exp'));
+        recalcPut();
+    })();
+
     // ── Black-Scholes p/ barra de métricas do gráfico ─────────────────────────
     function normCdfJ(x) {
         var t = 1 / (1 + 0.2316419 * Math.abs(x));

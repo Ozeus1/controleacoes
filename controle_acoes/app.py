@@ -2991,19 +2991,6 @@ def api_busca_operacoes(ticker):
     def _has_liquidity(rows):
         return any(r['bid'] > 0 and r['ask'] > 0 for r in rows)
 
-    # Semanais = vencimentos fora da 3ª sexta. Com liquidez → 8 vencimentos; senão 3 mensais
-    weekly_exps = [e for e in all_exps if not _is_monthly(e)]
-    weekly_liq  = any(
-        _has_liquidity(calls_by_exp.get(e, [])) or _has_liquidity(puts_by_exp.get(e, []))
-        for e in weekly_exps
-    )
-    if weekly_liq:
-        selected_exps = all_exps[:8]
-        mode = 'semanal'
-    else:
-        selected_exps = [e for e in all_exps if _is_monthly(e)][:3]
-        mode = 'mensal'
-
     selic = _selic()  # % a.a.
 
     # Operação solicitada — calcula somente ela
@@ -3012,6 +2999,30 @@ def api_busca_operacoes(ticker):
         min_ratio = float(request.args.get('min_ratio', 4))
     except (TypeError, ValueError):
         min_ratio = 4.0
+    include_weekly = request.args.get('weekly', '1') != '0'
+
+    # ── Seleção de vencimentos ────────────────────────────────────────────────
+    # Semanais = fora da 3ª sexta. Com toggle ligado e liquidez → até 8 vencimentos.
+    # Senão (ou para venda_put_itm): apenas mensais com até 90 dias corridos.
+    weekly_exps = [e for e in all_exps if not _is_monthly(e)]
+    weekly_liq  = any(
+        _has_liquidity(calls_by_exp.get(e, [])) or _has_liquidity(puts_by_exp.get(e, []))
+        for e in weekly_exps
+    )
+    monthly_90 = [e for e in all_exps
+                  if _is_monthly(e) and (_date.fromisoformat(e) - today).days <= 90]
+    if not monthly_90:
+        monthly_90 = [e for e in all_exps if _is_monthly(e)][:3]
+
+    if op == 'venda_put_itm':
+        selected_exps = monthly_90
+        mode = 'mensal'
+    elif include_weekly and weekly_liq:
+        selected_exps = all_exps[:8]
+        mode = 'semanal'
+    else:
+        selected_exps = monthly_90
+        mode = 'mensal'
 
     def _diversify(rows_list, key_fn, per_key=2, limit=10):
         """Evita linhas quase idênticas: no máx. per_key linhas por perna-âncora."""
@@ -3442,6 +3453,39 @@ def api_busca_operacoes(ticker):
                         })
             rows.sort(key=lambda x: (x['max_loss'], -x['max_gain']))
             rows = _diversify(rows, lambda x: x['mid_symbol'], per_key=2)
+
+        elif op == 'venda_put_itm':
+            # Venda a seco de PUT ITM: strike até 15% acima do spot, com liquidez no bid.
+            # Remuneração = prêmio/strike anualizada em dias úteis (~5/7 dos corridos),
+            # como na calculadora "Venda de Puts".
+            du = max(round(dc * 5.0 / 7.0), 1)
+            cands = [p for p in puts_ok
+                     if 0.98 * spot <= p['strike'] <= 1.15 * spot and p['bid'] >= 0.10]
+            for p in cands:
+                prem = p['bid']
+                rem_per = prem / p['strike']
+                rem_am  = ((1 + rem_per) ** (21.0  / du) - 1) * 100
+                rem_aa  = ((1 + rem_per) ** (252.0 / du) - 1) * 100
+                pct_cdi = (rem_aa / selic * 100) if selic > 0 else 0
+                be      = p['strike'] - prem
+                itm_amt = max(0.0, p['strike'] - spot)
+                rows.append({
+                    'symbol':    p['symbol'],
+                    'strike':    p['strike'],
+                    'bid':       round(prem, 2),
+                    'vol_fin':   p.get('vol_fin', 0),
+                    'itm_amt':   round(itm_amt, 2),
+                    'itm_pct':   round(itm_amt / spot * 100, 1),   # % acima do spot
+                    'rem_per':   round(rem_per * 100, 2),
+                    'rem_am':    round(rem_am, 2),
+                    'rem_aa':    round(rem_aa, 2),
+                    'pct_cdi':   round(pct_cdi, 0),
+                    'breakeven': round(be, 2),
+                    'be_margin': round((spot - be) / spot * 100, 2),  # queda suportada até o BE
+                    'du':        du,
+                })
+            rows.sort(key=lambda x: -x['pct_cdi'])
+            rows = rows[:12]
 
         expirations.append({
             'exp':          exp,

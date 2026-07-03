@@ -1163,10 +1163,11 @@ def opcoes():
         lu = opt.last_update
         if not lu:
             return '-'
-        try:
-            return lu.astimezone(_BRT).strftime('%H:%M')
-        except Exception:
+        # Gravado com now_brt(): o SQLite descarta o tzinfo mas mantém a hora de Brasília.
+        # astimezone() num datetime naive assumiria o fuso do servidor (UTC) e subtrairia 3h.
+        if lu.tzinfo is None:
             return lu.strftime('%H:%M')
+        return lu.astimezone(_BRT).strftime('%H:%M')
 
     for item in processed_options + venda_puts + compra_calls + compra_puts:
         exp = item['option'].expiration_date

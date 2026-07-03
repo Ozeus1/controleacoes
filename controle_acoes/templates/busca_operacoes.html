@@ -91,7 +91,7 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
     <button class="bo-obtn" data-op="vaca_travada">🐄 Vaca Travada</button>
     <button class="bo-obtn" data-op="boi_put">🐂 Boi com PUT 1x2</button>
     <button class="bo-obtn" data-op="vaca_put">🐄 Vaca de Baixa (PUTs)</button>
-    <button class="bo-obtn" data-op="venda_put_itm">🔽 Venda de PUT ITM</button>
+    <button class="bo-obtn" data-op="venda_put_itm">🔽 Venda de PUT</button>
   </div>
 
   <!-- Vencimentos: incluir semanais + janela de prazo -->
@@ -184,7 +184,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     vaca_travada:  '🐄 Vaca Travada — +1 CALL baixa, −2 CALLs médias, +1 CALL alta (centro no dinheiro ou acima; aceita investimento; lucro máximo no strike médio)',
     boi_put:       '🐂 Boi com PUT — compra 2 PUTs próximas do OTM financiadas (parcialmente) pela venda de 1 PUT ATM/ITM; custo até 40% da largura (lucro cresce na queda forte)',
     vaca_put:      '🐄 Vaca de Baixa (PUTs) — +1 PUT alta, −2 PUTs médias, +1 PUT baixa (lucro máximo se cair até o strike médio)',
-    venda_put_itm: '🔽 Venda de PUT ITM — strike até 15% acima do spot, com liquidez (mensais até 90 dias; remuneração sobre o strike)'
+    venda_put_itm: '🔽 Venda de PUT — strike de 10% OTM até 20% ITM (mensais; prêmio pelo último negócio; remuneração sobre o strike)'
   };
 
   // ── Utilitários ────────────────────────────────────────────────────────────
@@ -529,18 +529,20 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   }
 
   function vendaPutItmTable(rows, expIdx) {
-    if (!rows.length) return '<div class="bo-empty">Nenhuma PUT ITM com liquidez neste vencimento.</div>';
+    if (!rows.length) return '<div class="bo-empty">Nenhuma PUT com negócio/bid neste vencimento.</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
-      '<th>PUT (venda no bid)</th><th>Strike</th><th>Bid</th>' +
-      '<th>ITM (R$)</th><th>ITM %</th><th>Noção/ação</th>' +
+      '<th>PUT (venda)</th><th>Strike</th><th>Prêmio</th><th>Fonte</th>' +
+      '<th>ITM/OTM (R$)</th><th>ITM/OTM %</th><th>Noção/ação</th>' +
       '<th>Rem. período</th><th>Rem. a.m.</th><th>Rem. a.a.</th><th>% CDI</th>' +
       '<th>Break-even</th><th>Margem até BE</th><th>Prazo (du)</th></tr></thead><tbody>';
     rows.forEach(function(r, j) {
+      var isItm = r.itm_amt > 0;
       h += rowAttr(expIdx, j) +
         '<td><span class="bo-badge put">' + r.symbol + '</span></td>' +
-        '<td>' + brl(r.strike) + '</td><td class="pos">' + brl(r.bid) + '</td>' +
-        '<td class="' + (r.itm_amt > 0 ? 'neg' : 'pos') + '">' + brl(r.itm_amt) + '</td>' +
-        '<td class="' + (r.itm_amt > 0 ? 'neg' : 'pos') + '">+' + fmt(r.itm_pct, 1) + '%</td>' +
+        '<td>' + brl(r.strike) + '</td><td class="pos">' + brl(r.premium) + '</td>' +
+        '<td><span class="bo-badge ' + (r.price_src === 'último' ? 'credit' : 'debit') + '">' + r.price_src + '</span></td>' +
+        '<td class="' + (isItm ? 'neg' : 'pos') + '">' + brl(r.itm_amt) + '</td>' +
+        '<td class="' + (isItm ? 'neg' : 'pos') + '">' + (isItm ? '+' : '') + fmt(r.itm_pct, 1) + '% ' + (isItm ? 'ITM' : 'OTM') + '</td>' +
         '<td>' + brl(r.strike) + '</td>' +
         '<td class="pos">' + fmt(r.rem_per) + '%</td>' +
         '<td class="pos">' + fmt(r.rem_am) + '%</td>' +
@@ -770,11 +772,13 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         at: r.sell_symbol, ak: r.sell_strike, ap: r.sell_bid,
         bt: r.buy_symbol,  bk: r.buy_strike,  bp: r.buy_ask});
     } else if (op === 'venda_put_itm') {
-      title = 'Venda de PUT ITM ' + d.ticker + ' — ' + r.symbol + ' @ ' + brl(r.bid);
+      title = 'Venda de PUT ' + d.ticker + ' — ' + r.symbol + ' @ ' + brl(r.premium) + ' (' + r.price_src + ')';
       boxes = [
         ['Noção (Notional)', brl(r.strike * qty), ''],
-        ['Prêmio Total Recebido', brl(r.bid * qty), 'pos'],
-        ['Quanto entrou ITM', brl(r.itm_amt) + ' (+' + fmt(r.itm_pct, 1) + '%)', r.itm_amt > 0 ? 'neg' : 'pos'],
+        ['Prêmio Total Recebido (' + r.price_src + ')', brl(r.premium * qty), 'pos'],
+        [r.itm_amt > 0 ? 'Quanto está ITM' : 'Distância OTM',
+            brl(Math.abs(r.itm_amt)) + ' (' + (r.itm_amt > 0 ? '+' : '') + fmt(r.itm_pct, 1) + '%)',
+            r.itm_amt > 0 ? 'neg' : 'pos'],
         ['Break-even', brl(r.breakeven), ''],
         ['Margem até o BE', '−' + fmt(r.be_margin) + '%', 'pos'],
         ['Prazo', dc + ' d.c. / ' + r.du + ' du', ''],
@@ -784,7 +788,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         ['% do CDI (a.a.)', fmt(r.pct_cdi, 0) + '%', r.pct_cdi >= 100 ? 'pos' : '']
       ];
       var vpParams = new URLSearchParams({vp: '1', ticker: r.symbol, ativo: d.ticker,
-        spot: d.spot, k: r.strike, prem: r.bid, qty: qty, exp: e.exp});
+        spot: d.spot, k: r.strike, prem: r.premium, qty: qty, exp: e.exp});
       return {title: title, boxes: boxes, href: '/venda_puts?' + vpParams.toString()};
     } else { // vaca_put — borboleta de PUTs (baixa)
       title = 'Vaca de Baixa (PUTs) ' + d.ticker + ' — ' + r.high_symbol + ' / 2× ' + r.mid_symbol + ' / ' + r.low_symbol;

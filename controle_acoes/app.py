@@ -3462,27 +3462,36 @@ def api_busca_operacoes(ticker):
             rows = _diversify(rows, lambda x: x['mid_symbol'], per_key=2)
 
         elif op == 'venda_put_itm':
-            # Venda a seco de PUT ITM: strike até 15% acima do spot, com liquidez no bid.
+            # Venda a seco de PUT: strike de 10% OTM até 20% ITM.
+            # Pouca liquidez nas ITMs → prêmio = último negócio (close); fallback bid.
             # Remuneração = prêmio/strike anualizada em dias úteis (~5/7 dos corridos),
             # como na calculadora "Venda de Puts".
             du = max(round(dc * 5.0 / 7.0), 1)
-            cands = [p for p in puts_ok
-                     if 0.98 * spot <= p['strike'] <= 1.15 * spot and p['bid'] >= 0.10]
+            # Não exige bid+ask no book: usa a lista completa do vencimento
+            all_puts_exp = sorted(puts_by_exp.get(exp, []), key=lambda x: x['strike'])
+            cands = [p for p in all_puts_exp
+                     if 0.90 * spot <= p['strike'] <= 1.20 * spot
+                     and (p['close'] > 0 or p['bid'] > 0)]
             for p in cands:
-                prem = p['bid']
+                use_last = p['close'] > 0
+                prem = p['close'] if use_last else p['bid']
+                if prem < 0.05:
+                    continue
                 rem_per = prem / p['strike']
                 rem_am  = ((1 + rem_per) ** (21.0  / du) - 1) * 100
                 rem_aa  = ((1 + rem_per) ** (252.0 / du) - 1) * 100
                 pct_cdi = (rem_aa / selic * 100) if selic > 0 else 0
                 be      = p['strike'] - prem
-                itm_amt = max(0.0, p['strike'] - spot)
+                itm_amt = p['strike'] - spot            # >0 = ITM, <0 = OTM
                 rows.append({
                     'symbol':    p['symbol'],
                     'strike':    p['strike'],
-                    'bid':       round(prem, 2),
+                    'premium':   round(prem, 2),
+                    'price_src': 'último' if use_last else 'bid',
+                    'bid':       round(p['bid'], 2),
                     'vol_fin':   p.get('vol_fin', 0),
                     'itm_amt':   round(itm_amt, 2),
-                    'itm_pct':   round(itm_amt / spot * 100, 1),   # % acima do spot
+                    'itm_pct':   round(itm_amt / spot * 100, 1),   # >0 = % ITM, <0 = % OTM
                     'rem_per':   round(rem_per * 100, 2),
                     'rem_am':    round(rem_am, 2),
                     'rem_aa':    round(rem_aa, 2),
@@ -3492,7 +3501,7 @@ def api_busca_operacoes(ticker):
                     'du':        du,
                 })
             rows.sort(key=lambda x: -x['pct_cdi'])
-            rows = rows[:12]
+            rows = rows[:14]
 
         expirations.append({
             'exp':          exp,

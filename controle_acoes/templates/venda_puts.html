@@ -256,6 +256,8 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     <option value="trava_baixa">📉 Trava de Baixa (débito, PUTs)</option>
                     <option value="trava_credito_alta">💰 Trava de Crédito Alta (PUTs)</option>
                     <option value="trava_credito_baixa">💰 Trava de Crédito Baixa (CALLs)</option>
+                    <option value="call_ratio_1x2">🚀 Ratio CALL 1x2 (venda 1 ITM, compra 2 OTM)</option>
+                    <option value="call_ratio_2x3">🚀 Ratio CALL 2x3 (venda 2 ITM, compra 3 OTM)</option>
                 </select>
             </div>
             <div>
@@ -780,7 +782,9 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         trava_alta:          { legs: ['CALL — COMPRA (K menor)', 'CALL — VENDA (K maior)', null], needSpot: false },
         trava_baixa:         { legs: ['PUT — COMPRA (K maior)',  'PUT — VENDA (K menor)',  null], needSpot: false },
         trava_credito_alta:  { legs: ['PUT — VENDA (K maior)',   'PUT — COMPRA (K menor)', null], needSpot: false },
-        trava_credito_baixa: { legs: ['CALL — VENDA (K menor)',  'CALL — COMPRA (K maior)', null], needSpot: false }
+        trava_credito_baixa: { legs: ['CALL — VENDA (K menor)',  'CALL — COMPRA (K maior)', null], needSpot: false },
+        call_ratio_1x2:      { legs: ['CALL — VENDA 1× (ITM, K menor)', 'CALL — COMPRA 2× (OTM, K maior)', null], needSpot: false },
+        call_ratio_2x3:      { legs: ['CALL — VENDA 2× (ITM, K menor)', 'CALL — COMPRA 3× (OTM, K maior)', null], needSpot: false }
     };
 
     window.estruturaOpChanged = function() {
@@ -898,7 +902,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 ['Break-even',      fmtBRL(be3), ''],
                 ['Retorno máx. %',  fmtPct(gPct3), 'positive']
             ].concat(pctBoxes(gPct3));
-        } else {
+        } else if (op === 'trava_credito_alta' || op === 'trava_credito_baixa') {
             // Travas de crédito: A = venda (recebe bid), B = compra (paga ask)
             var credit = aP - bP;
             var w2     = Math.abs(aK - bK);
@@ -914,6 +918,26 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 ['Break-even',       fmtBRL(be4), ''],
                 ['Retorno s/ margem %', fmtPct(gPct4), 'positive']
             ].concat(pctBoxes(gPct4));
+        } else {
+            // Ratio CALL backspread: A = CALL venda ITM (n×, bid), B = CALL compra OTM (m×, ask)
+            var nR = op === 'call_ratio_1x2' ? 1 : 2;
+            var mR = op === 'call_ratio_1x2' ? 2 : 3;
+            var netR   = nR * aP - mR * bP;                  // >0 crédito, <0 custo
+            var maxLR  = (nR * (bK - aK) - netR) * qty;      // em S = K comprado
+            var beUpR  = bK + (nR * (bK - aK) - netR) / (mR - nR);
+            var beLowR = netR > 0 ? aK + netR / nR : null;
+            var g10R   = spot ? (netR - nR * Math.max(0, spot * 1.10 - aK) + mR * Math.max(0, spot * 1.10 - bK)) * qty : null;
+            boxes = [
+                [netR >= 0 ? 'Crédito recebido' : 'Custo (débito)',
+                    fmtBRL(Math.abs(netR) * qty), netR >= 0 ? 'positive' : 'negative'],
+                ['Perda máxima (em ' + fmtBRL(bK) + ')', fmtBRL(Math.abs(maxLR)), maxLR > 0 ? 'negative' : 'positive'],
+                ['Resultado abaixo de ' + fmtBRL(aK), fmtBRL(netR * qty), netR >= 0 ? 'positive' : 'negative'],
+                ['BE superior', fmtBRL(beUpR), ''],
+                ['BE inferior', beLowR != null ? fmtBRL(beLowR) : '—', ''],
+                ['Ganho se subir 10%', g10R != null ? fmtBRL(g10R) : '— (informe a cotação)', g10R != null && g10R >= 0 ? 'positive' : 'negative'],
+                ['Acima do BE superior', 'Lucro ILIMITADO 🚀', 'positive'],
+                ['Prazo (dias corridos)', dc + ' d.c.', '']
+            ];
         }
 
         grid.innerHTML = boxes.map(function(b) {
@@ -963,6 +987,14 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 return qty * (credB - Math.max(0, S - aK) + Math.max(0, S - bK));
             };
             mk(aK, 'CALL v'); mk(bK, 'CALL c');
+        } else if (op === 'call_ratio_1x2' || op === 'call_ratio_2x3') {
+            var nP = op === 'call_ratio_1x2' ? 1 : 2;
+            var mP = op === 'call_ratio_1x2' ? 2 : 3;
+            var netP = nP * aP - mP * bP;
+            payoffFn = function(S) {
+                return qty * (netP - nP * Math.max(0, S - aK) + mP * Math.max(0, S - bK));
+            };
+            mk(aK, nP + '× CALL v'); mk(bK, mP + '× CALL c');
         }
 
         if (payoffFn) {

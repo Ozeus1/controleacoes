@@ -85,7 +85,7 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
     <button class="bo-obtn" data-op="seagull">🕊 Seagull (Gaivota)</button>
     <button class="bo-obtn" data-op="trava_alta">📈 Trava de Alta déb.</button>
     <button class="bo-obtn" data-op="trava_baixa">📉 Trava de Baixa déb.</button>
-    <button class="bo-obtn" data-op="trava_credito">💰 Trava de Crédito 2x1</button>
+    <button class="bo-obtn" data-op="trava_credito">💰 Ratio CALL 1x2 / 2x3</button>
   </div>
 
   <!-- Tickers (gerenciável: + adiciona, × exclui) -->
@@ -151,7 +151,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     seagull:       '🕊 Seagull / Gaivota de alta (trava de alta com CALLs financiada por venda de PUT OTM)',
     trava_alta:    '📈 Trava de Alta no débito (CALLs) — relação ganho/custo > 1',
     trava_baixa:   '📉 Trava de Baixa no débito (PUTs) — relação ganho/custo > 1',
-    trava_credito: '💰 Trava de Crédito — relação 2x1 (perda máx. até 2× o crédito)'
+    trava_credito: '💰 Ratio CALL — venda CALL ITM financia compra de CALLs OTM (1x2 e 2x3, lucro ilimitado na alta)'
   };
 
   // ── Utilitários ────────────────────────────────────────────────────────────
@@ -339,25 +339,31 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   }
 
   function creditTable(rows, expIdx) {
-    if (!rows.length) return '<div class="bo-empty">Nenhuma trava de crédito com relação 2x1 neste vencimento.</div>';
+    if (!rows.length) return '<div class="bo-empty">Nenhum ratio CALL viável neste vencimento.</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
-      '<th>Direção</th><th>Venda (bid)</th><th>K</th><th>Bid</th>' +
-      '<th>Compra (ask)</th><th>K</th><th>Ask</th>' +
-      '<th>Crédito</th><th>Perda máx.</th><th>Relação G/P</th>' +
-      '<th>Break-even</th><th>Dist. BE</th></tr></thead><tbody>';
+      '<th>Prop.</th><th>Montagem</th>' +
+      '<th>Venda ITM (bid)</th><th>K</th><th>Bid</th>' +
+      '<th>Compra OTM (ask)</th><th>K</th><th>Ask</th>' +
+      '<th>Crédito/Custo</th><th>Perda máx. (em K compr.)</th>' +
+      '<th>BE superior</th><th>Dist. BE sup.</th><th>BE inferior</th>' +
+      '<th>Ganho se +10%</th></tr></thead><tbody>';
     rows.forEach(function(r, j) {
-      var isAlta = r.tipo.indexOf('ALTA') === 0;
       h += rowAttr(expIdx, j) +
-        '<td><span class="bo-badge ' + (isAlta ? 'credit' : 'debit') + '">' + r.tipo + '</span></td>' +
-        '<td><span class="bo-badge ' + (isAlta ? 'put' : 'call') + '">' + r.sell_symbol + '</span></td>' +
+        '<td><span class="bo-badge call"><strong>' + r.tipo + '</strong></span></td>' +
+        '<td>' + (r.is_credit
+            ? '<span class="bo-badge credit">CRÉDITO</span>'
+            : '<span class="bo-badge debit">custo</span>') + '</td>' +
+        '<td><span class="bo-badge call">' + r.n_sell + '× ' + r.sell_symbol + '</span></td>' +
         '<td>' + brl(r.sell_strike) + '</td><td>' + brl(r.sell_bid) + '</td>' +
-        '<td><span class="bo-badge ' + (isAlta ? 'put' : 'call') + '">' + r.buy_symbol + '</span></td>' +
+        '<td><span class="bo-badge call">' + r.m_buy + '× ' + r.buy_symbol + '</span></td>' +
         '<td>' + brl(r.buy_strike) + '</td><td>' + brl(r.buy_ask) + '</td>' +
-        '<td class="pos">' + brl(r.credit) + '</td>' +
+        '<td class="' + (r.is_credit ? 'pos' : 'neg') + '">' + brl(Math.abs(r.credit)) +
+            (r.is_credit ? ' (créd.)' : ' (custo)') + '</td>' +
         '<td class="neg">' + brl(r.max_loss) + '</td>' +
-        '<td class="pos"><strong>' + (r.ratio == null ? '∞' : fmt(r.ratio)) + '</strong></td>' +
-        '<td>' + brl(r.breakeven) + '</td>' +
-        '<td>' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%</td>' +
+        '<td>' + brl(r.be_up) + '</td>' +
+        '<td>+' + fmt(r.be_up_dist) + '%</td>' +
+        '<td>' + (r.be_low != null ? brl(r.be_low) : '—') + '</td>' +
+        '<td class="' + (r.gain10 >= 0 ? 'pos' : 'neg') + '">' + brl(r.gain10) + '</td>' +
         '</tr>';
     });
     return h + '</tbody></table></div>';
@@ -504,19 +510,21 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       Object.assign(stParams, {op: op,
         at: r.buy_symbol,  ak: r.buy_strike,  ap: r.buy_ask,
         bt: r.sell_symbol, bk: r.sell_strike, bp: r.sell_bid});
-    } else { // trava_credito
-      var isAlta = r.tipo.indexOf('ALTA') === 0;
-      var gPctC = r.max_loss > 0 ? r.credit / r.max_loss * 100 : 0;
-      title = 'Trava de Crédito ' + (isAlta ? 'Alta' : 'Baixa') + ' ' + d.ticker +
-              ' — ' + r.sell_symbol + ' / ' + r.buy_symbol;
+    } else { // trava_credito → call ratio backspread 1x2 / 2x3
+      title = 'Ratio CALL ' + r.tipo + ' ' + d.ticker +
+              ' — venda ' + r.n_sell + '× ' + r.sell_symbol + ' / compra ' + r.m_buy + '× ' + r.buy_symbol;
       boxes = [
-        ['Crédito recebido', brl(r.credit * qty), 'pos'],
-        ['Perda máxima', brl(r.max_loss * qty), 'neg'],
-        ['Relação ganho/perda', r.ratio == null ? '∞' : fmt(r.ratio), 'pos'],
-        ['Break-even', brl(r.breakeven) + ' (' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%)', ''],
-        ['Retorno s/ margem %', fmt(gPctC) + '%', 'pos']
-      ].concat(pctBoxes(gPctC, dc));
-      Object.assign(stParams, {op: isAlta ? 'trava_credito_alta' : 'trava_credito_baixa',
+        [r.is_credit ? 'Crédito recebido' : 'Custo (débito)',
+            brl(Math.abs(r.credit) * qty), r.is_credit ? 'pos' : 'neg'],
+        ['Perda máxima (em ' + brl(r.buy_strike) + ')', brl(r.max_loss * qty), 'neg'],
+        ['Resultado abaixo de ' + brl(r.sell_strike), brl(r.credit * qty), r.credit >= 0 ? 'pos' : 'neg'],
+        ['BE superior', brl(r.be_up) + ' (+' + fmt(r.be_up_dist) + '%)', ''],
+        ['BE inferior', r.be_low != null ? brl(r.be_low) : '—', ''],
+        ['Ganho se subir 10% (' + brl(spot * 1.10) + ')', brl(r.gain10 * qty), r.gain10 >= 0 ? 'pos' : 'neg'],
+        ['Acima do BE superior', 'Lucro ILIMITADO 🚀', 'pos'],
+        ['Prazo (dias corridos)', dc + ' d.c.', '']
+      ];
+      Object.assign(stParams, {op: r.tipo === '1x2' ? 'call_ratio_1x2' : 'call_ratio_2x3',
         at: r.sell_symbol, ak: r.sell_strike, ap: r.sell_bid,
         bt: r.buy_symbol,  bk: r.buy_strike,  bp: r.buy_ask});
     }

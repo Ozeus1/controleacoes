@@ -3217,53 +3217,47 @@ def api_busca_operacoes(ticker):
             rows = _diversify(rows, lambda x: x['buy_symbol'], per_key=2)
 
         elif op == 'trava_credito':
-            # Travas no crédito com relação 2x1: perda máxima até 2x o crédito recebido
-            ps = [p for p in puts_ok if near(p['strike'])][:20]
-            for i, buy in enumerate(ps):
-                for sell in ps[i + 1:]:            # PUT vendida de strike maior → aposta na alta
-                    credit = sell['bid'] - buy['ask']
-                    if credit <= 0.01:
-                        continue
-                    width = sell['strike'] - buy['strike']
-                    max_loss = width - credit
-                    if max_loss > 2 * credit:      # exige relação 2x1
-                        continue
-                    ratio = None if max_loss <= 0.001 else credit / max_loss
-                    be = sell['strike'] - credit
-                    rows.append({
-                        'tipo': 'ALTA (PUT)',
-                        'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
-                        'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
-                        'credit':    round(credit, 2),
-                        'max_loss':  round(max_loss, 2),
-                        'ratio':     round(ratio, 2) if ratio is not None else None,
-                        'breakeven': round(be, 2),
-                        'be_dist':   round((be - spot) / spot * 100, 2),
-                    })
-            cs = [c for c in calls_ok if near(c['strike'])][:20]
-            for i, sell in enumerate(cs):
-                for buy in cs[i + 1:]:             # CALL vendida de strike menor → aposta na baixa
-                    credit = sell['bid'] - buy['ask']
-                    if credit <= 0.01:
-                        continue
-                    width = buy['strike'] - sell['strike']
-                    max_loss = width - credit
-                    if max_loss > 2 * credit:
-                        continue
-                    ratio = None if max_loss <= 0.001 else credit / max_loss
-                    be = sell['strike'] + credit
-                    rows.append({
-                        'tipo': 'BAIXA (CALL)',
-                        'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
-                        'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
-                        'credit':    round(credit, 2),
-                        'max_loss':  round(max_loss, 2),
-                        'ratio':     round(ratio, 2) if ratio is not None else None,
-                        'breakeven': round(be, 2),
-                        'be_dist':   round((be - spot) / spot * 100, 2),
-                    })
-            rows.sort(key=lambda x: -(x['ratio'] if x['ratio'] is not None else 999))
-            rows = _diversify(rows, lambda x: x['sell_symbol'], per_key=2, limit=12)
+            # Call ratio backspread: venda de CALL ITM financia compra de CALLs OTM.
+            # Proporções 1x2 e 2x3. Pequeno custo ou crédito aceitável.
+            # Lucro ilimitado na alta; perda máxima no strike comprado (K2).
+            itm_calls = [c for c in calls_ok
+                         if 0.85 * spot <= c['strike'] < spot and c['bid'] >= 0.10][:12]
+            otm_calls = [c for c in calls_ok
+                         if spot < c['strike'] <= 1.15 * spot and c['ask'] >= 0.03][:12]
+            for n_sell, m_buy, label in [(1, 2, '1x2'), (2, 3, '2x3')]:
+                for sell in itm_calls:
+                    for buy in otm_calls:
+                        if buy['strike'] <= sell['strike']:
+                            continue
+                        width = buy['strike'] - sell['strike']
+                        net = n_sell * sell['bid'] - m_buy * buy['ask']   # >0 crédito, <0 custo
+                        # custo aceitável: até 15% do valor da largura vendida
+                        if net < -0.15 * n_sell * width:
+                            continue
+                        max_loss = n_sell * width - net                   # em S = K2 (comprado)
+                        if max_loss <= 0:
+                            continue                                      # arbitragem improvável / dado ruim
+                        be_up  = buy['strike'] + max_loss / (m_buy - n_sell)
+                        be_low = (sell['strike'] + net / n_sell) if net > 0 else None
+                        s10 = spot * 1.10                                 # ganho se subir 10%
+                        gain10 = net - n_sell * max(0.0, s10 - sell['strike']) \
+                                     + m_buy * max(0.0, s10 - buy['strike'])
+                        rows.append({
+                            'tipo':      label,
+                            'n_sell':    n_sell, 'm_buy': m_buy,
+                            'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
+                            'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
+                            'credit':    round(net, 2),                   # negativo = pequeno custo
+                            'is_credit': net >= 0,
+                            'max_loss':  round(max_loss, 2),
+                            'be_up':     round(be_up, 2),
+                            'be_up_dist': round((be_up - spot) / spot * 100, 2),
+                            'be_low':    round(be_low, 2) if be_low is not None else None,
+                            'gain10':    round(gain10, 2),
+                        })
+            # Crédito primeiro; menor perda máxima; BE superior mais próximo
+            rows.sort(key=lambda x: (not x['is_credit'], x['max_loss'], x['be_up_dist']))
+            rows = _diversify(rows, lambda x: (x['tipo'], x['sell_symbol']), per_key=2, limit=12)
 
         expirations.append({
             'exp':          exp,

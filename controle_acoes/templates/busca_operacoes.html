@@ -94,12 +94,26 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
     <button class="bo-obtn" data-op="venda_put_itm">🔽 Venda de PUT ITM</button>
   </div>
 
-  <!-- Vencimentos: incluir semanais ou apenas mensais -->
-  <label id="bo-weekly-wrap" style="display:inline-flex;align-items:center;gap:.45rem;margin:.1rem 0 .6rem;
-         font-size:.83rem;color:var(--text-secondary);cursor:pointer;">
-    <input type="checkbox" id="bo-weekly" checked style="width:16px;height:16px;cursor:pointer;margin:0;">
-    Incluir vencimentos <strong>semanais</strong> (desmarcado: apenas <strong>mensais até 90 dias</strong>)
-  </label>
+  <!-- Vencimentos: incluir semanais + janela de prazo -->
+  <div style="display:flex;align-items:center;gap:1.4rem;flex-wrap:wrap;margin:.1rem 0 .6rem;">
+    <label id="bo-weekly-wrap" style="display:inline-flex;align-items:center;gap:.45rem;
+           font-size:.83rem;color:var(--text-secondary);cursor:pointer;">
+      <input type="checkbox" id="bo-weekly" checked style="width:16px;height:16px;cursor:pointer;margin:0;">
+      Incluir vencimentos <strong>semanais</strong> (desmarcado: apenas <strong>mensais</strong>)
+    </label>
+    <label style="display:inline-flex;align-items:center;gap:.45rem;
+           font-size:.83rem;color:var(--text-secondary);cursor:pointer;">
+      Prazo máx. de busca:
+      <select id="bo-days" style="background:var(--card-bg);color:var(--text-primary);
+              border:1px solid var(--border-color);border-radius:5px;padding:.2rem .4rem;
+              font-size:.82rem;cursor:pointer;">
+        <option value="60" selected>60 dias</option>
+        <option value="90">90 dias</option>
+        <option value="120">120 dias</option>
+        <option value="180">180 dias</option>
+      </select>
+    </label>
+  </div>
 
   <!-- Tickers (gerenciável: + adiciona, × exclui) -->
   <div style="margin-bottom:.6rem;">
@@ -568,8 +582,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     modeEl.style.display = '';
     modeEl.className = d.mode;
     modeEl.textContent = d.mode === 'semanal'
-      ? '📅 Semanais líquidas — até 8 vencimentos'
-      : '📅 Apenas mensais — até 90 dias';
+      ? '📅 Semanais líquidas — até 8 venc. em ' + d.max_days + ' dias'
+      : '📅 Apenas mensais — até ' + d.max_days + ' dias';
 
     var h = '';
     d.expirations.forEach(function(e, i) {
@@ -848,8 +862,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     modeEl.style.display = 'none';
 
     var weekly = document.getElementById('bo-weekly').checked ? '1' : '0';
+    var days   = document.getElementById('bo-days').value;
     fetch('/api/busca-operacoes/' + encodeURIComponent(ticker) +
-          '?op=' + encodeURIComponent(currentOp) + '&weekly=' + weekly)
+          '?op=' + encodeURIComponent(currentOp) + '&weekly=' + weekly + '&days=' + days)
       .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
       .then(function(res) {
         loading.style.display = 'none';
@@ -877,6 +892,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     });
   });
   document.getElementById('bo-weekly').addEventListener('change', function() {
+    if (currentTicker) load(currentTicker);
+  });
+  document.getElementById('bo-days').addEventListener('change', function() {
     if (currentTicker) load(currentTicker);
   });
   document.getElementById('add-bo-btn').addEventListener('click', function() {

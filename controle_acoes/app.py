@@ -3000,28 +3000,35 @@ def api_busca_operacoes(ticker):
     except (TypeError, ValueError):
         min_ratio = 4.0
     include_weekly = request.args.get('weekly', '1') != '0'
+    try:
+        max_days = int(request.args.get('days', 60))
+    except (TypeError, ValueError):
+        max_days = 60
+    if max_days not in (60, 90, 120, 180):
+        max_days = 60
 
-    # ── Seleção de vencimentos ────────────────────────────────────────────────
-    # Semanais = fora da 3ª sexta. Com toggle ligado e liquidez → até 8 vencimentos.
-    # Senão (ou para venda_put_itm): apenas mensais com até 90 dias corridos.
+    # ── Seleção de vencimentos (janela de max_days dias corridos) ────────────
+    # Semanais = fora da 3ª sexta. Com toggle ligado e liquidez → até 8 vencimentos
+    # dentro da janela. Senão (ou para venda_put_itm): apenas mensais na janela.
     weekly_exps = [e for e in all_exps if not _is_monthly(e)]
     weekly_liq  = any(
         _has_liquidity(calls_by_exp.get(e, [])) or _has_liquidity(puts_by_exp.get(e, []))
         for e in weekly_exps
     )
-    monthly_90 = [e for e in all_exps
-                  if _is_monthly(e) and (_date.fromisoformat(e) - today).days <= 90]
-    if not monthly_90:
-        monthly_90 = [e for e in all_exps if _is_monthly(e)][:3]
+    within_days = [e for e in all_exps
+                   if (_date.fromisoformat(e) - today).days <= max_days]
+    monthly_lim = [e for e in within_days if _is_monthly(e)]
+    if not monthly_lim:
+        monthly_lim = [e for e in all_exps if _is_monthly(e)][:3]
 
     if op == 'venda_put_itm':
-        selected_exps = monthly_90
+        selected_exps = monthly_lim
         mode = 'mensal'
     elif include_weekly and weekly_liq:
-        selected_exps = all_exps[:8]
+        selected_exps = within_days[:8]
         mode = 'semanal'
     else:
-        selected_exps = monthly_90
+        selected_exps = monthly_lim
         mode = 'mensal'
 
     def _diversify(rows_list, key_fn, per_key=2, limit=10):
@@ -3501,6 +3508,7 @@ def api_busca_operacoes(ticker):
         'spot_change': spot_change,
         'mode':        mode,
         'op':          op,
+        'max_days':    max_days,
         'selic':       round(selic, 2),
         'expirations': expirations,
     })

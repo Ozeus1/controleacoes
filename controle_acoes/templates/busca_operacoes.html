@@ -3,9 +3,12 @@
 {% block extra_scripts %}
 <style>
 #bo-tickers{display:flex;flex-wrap:wrap;gap:.35rem;}
-.bo-tbtn{padding:.25rem .6rem;border:1px solid #475569;border-radius:5px;font-size:.8rem;
-  cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap;transition:background .12s;}
+.bo-tbtn{display:inline-flex;align-items:center;gap:.35rem;padding:.25rem .5rem;border:1px solid #475569;
+  border-radius:5px;font-size:.8rem;cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);
+  white-space:nowrap;transition:background .12s;}
 .bo-tbtn.active{background:#7c3aed;border-color:#7c3aed;font-weight:700;}
+.bo-tdel{color:#94a3b8;font-weight:700;font-size:.85rem;line-height:1;padding:0 .1rem;border-radius:3px;}
+.bo-tdel:hover{color:#f87171;background:rgba(248,113,113,.15);}
 #bo-ops{display:flex;flex-wrap:wrap;gap:.4rem;margin:.7rem 0;}
 .bo-obtn{padding:.35rem .8rem;border:1px solid #475569;border-radius:6px;font-size:.82rem;
   cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap;transition:background .12s;}
@@ -37,6 +40,8 @@ table.bo-tab td{padding:.3rem .45rem;text-align:right;white-space:nowrap;color:v
   border-bottom:1px solid rgba(255,255,255,.04);}
 table.bo-tab td:first-child{text-align:left;}
 table.bo-tab tr:hover{background:rgba(255,255,255,.05);}
+tr.bo-row{cursor:pointer;}
+tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
 .pos{color:#34d399;}
 .neg{color:#f87171;}
 .bo-badge{display:inline-block;padding:.08rem .4rem;border-radius:4px;font-size:.72rem;font-weight:700;}
@@ -47,7 +52,6 @@ table.bo-tab tr:hover{background:rgba(255,255,255,.05);}
 .bo-badge.credit{background:rgba(52,211,153,.18);color:#34d399;}
 .bo-badge.debit{background:rgba(245,158,11,.15);color:#fbbf24;}
 .bo-empty{color:var(--text-secondary);font-size:.8rem;padding:.3rem 0 .6rem;}
-tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
 .metric-box{background:var(--hover-bg);border:1px solid var(--border-color);border-radius:6px;
   padding:.6rem .9rem;display:flex;flex-direction:column;gap:.15rem;}
 .metric-label{font-size:.75rem;color:var(--text-secondary);}
@@ -71,6 +75,7 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
     Escolha a <strong>operação</strong> e o <strong>ativo</strong>. O sistema varre a cadeia de opções
     (até 8 vencimentos com semanais líquidas; senão 3 mensais) e calcula somente a operação selecionada.
     Preços executáveis: compra pelo <em>ask</em>, venda pelo <em>bid</em>.
+    <strong>Clique em qualquer linha</strong> para ver o resumo do payoff e abrir o detalhamento.
   </p>
 
   <!-- Operações -->
@@ -83,24 +88,12 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
     <button class="bo-obtn" data-op="trava_credito">💰 Trava de Crédito 2x1</button>
   </div>
 
-  <!-- Tickers -->
+  <!-- Tickers (gerenciável: + adiciona, × exclui) -->
   <div style="margin-bottom:.6rem;">
-    <div id="bo-tickers" style="margin-bottom:.5rem;">
-      {% if ranking_vol %}
-        <button class="bo-tbtn" data-t="BOVA11">BOVA11</button>
-        {% for rv in ranking_vol %}
-        <button class="bo-tbtn" data-t="{{ rv.ticker }}">{{ rv.ticker }}</button>
-        {% endfor %}
-      {% else %}
-        {% for t in ['BOVA11','ABEV3','ASAI3','B3SA3','BBAS3','BBDC4','BBSE3','BRAP4',
-                     'ITUB4','LREN3','PETR3','PETR4','PRIO3','USIM5','VALE3','WEGE3'] %}
-        <button class="bo-tbtn" data-t="{{ t }}">{{ t }}</button>
-        {% endfor %}
-      {% endif %}
-    </div>
+    <div id="bo-tickers" style="margin-bottom:.5rem;"></div>
     <div style="display:flex;gap:.5rem;align-items:center;">
-      <input id="add-bo-input" type="text" placeholder="Outro ticker…" maxlength="10">
-      <button class="btn btn-secondary btn-sm" id="add-bo-btn">🔍 Buscar</button>
+      <input id="add-bo-input" type="text" placeholder="Novo ticker…" maxlength="10">
+      <button class="btn btn-secondary btn-sm" id="add-bo-btn">➕ Adicionar e buscar</button>
     </div>
   </div>
 
@@ -109,45 +102,37 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
   <div id="bo-results"></div>
 </div>
 
-<!-- Modal: detalhes do collar -->
-<div id="bo-collar-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+<!-- Modal: resumo da operação -->
+<div id="bo-modal" style="display:none; position:fixed; inset:0; z-index:9999;
      background:rgba(0,0,0,.75); align-items:center; justify-content:center; padding:1rem;">
   <div style="background:var(--card-bg,#1e293b); border-radius:10px; padding:1.2rem 1.4rem;
-              width:min(96vw,900px); max-height:92vh; overflow-y:auto;">
+              width:min(96vw,920px); max-height:92vh; overflow-y:auto;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
-      <h3 id="bcm-title" style="margin:0; font-size:1rem;">Collar</h3>
-      <button onclick="closeCollarModal()" style="background:none; border:none; font-size:1.4rem;
+      <h3 id="bm-title" style="margin:0; font-size:1rem;"></h3>
+      <button onclick="closeBoModal()" style="background:none; border:none; font-size:1.4rem;
               color:var(--text-secondary); cursor:pointer; line-height:1;">&times;</button>
     </div>
 
     <div style="display:flex; align-items:center; gap:.6rem; margin-bottom:1rem;">
       <label style="font-size:.85rem; color:var(--text-secondary);">Quantidade:</label>
-      <input id="bcm-qty" type="number" min="1" step="100" value="100"
+      <input id="bm-qty" type="number" min="1" step="100" value="100"
              style="width:110px; background:var(--hover-bg); color:var(--text-primary);
                     border:1px solid var(--border-color); border-radius:5px; padding:.3rem .5rem;">
     </div>
 
-    <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(175px,1fr)); gap:.75rem;">
-      <div class="metric-box"><span class="metric-label">Custo total da ação</span><span class="metric-value" id="bcm-stock-cost">—</span></div>
-      <div class="metric-box"><span class="metric-label">Custo líquido (ação + PUT − CALL)</span><span class="metric-value" id="bcm-net-cost">—</span></div>
-      <div class="metric-box"><span class="metric-label">Break-even (preço da ação)</span><span class="metric-value" id="bcm-be">—</span></div>
-      <div class="metric-box"><span class="metric-label">Lucro máximo</span><span class="metric-value pos" id="bcm-max-gain">—</span></div>
-      <div class="metric-box"><span class="metric-label">Perda máxima</span><span class="metric-value neg" id="bcm-max-loss">—</span></div>
-      <div class="metric-box"><span class="metric-label">Lucro máx. %</span><span class="metric-value pos" id="bcm-gain-pct">—</span></div>
-      <div class="metric-box"><span class="metric-label">Prazo (dias corridos)</span><span class="metric-value" id="bcm-days">—</span></div>
-      <div class="metric-box"><span class="metric-label">Lucro máx. % a.m.</span><span class="metric-value" id="bcm-rem-am">—</span></div>
-      <div class="metric-box"><span class="metric-label">Lucro máx. % a.a.</span><span class="metric-value" id="bcm-rem-aa">—</span></div>
-      <div class="metric-box"><span class="metric-label">% CDI (a.a.)</span><span class="metric-value" id="bcm-cdi">—</span></div>
-      <div class="metric-box"><span class="metric-label">Relação lucro/prejuízo</span><span class="metric-value" id="bcm-ratio">—</span></div>
-    </div>
+    <div id="bm-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:.75rem;"></div>
 
     <div style="margin-top:1.2rem; display:flex; gap:.6rem; flex-wrap:wrap;">
-      <a id="bcm-open-calc" href="#" class="btn btn-primary btn-sm">🧮 Abrir em Cálculos de Opções</a>
-      <button class="btn btn-secondary btn-sm" onclick="closeCollarModal()">Fechar</button>
+      <a id="bm-open-calc" href="#" class="btn btn-primary btn-sm">🧮 Abrir em Cálculos de Opções</a>
+      <button class="btn btn-secondary btn-sm" onclick="closeBoModal()">Fechar</button>
     </div>
   </div>
 </div>
 
+<script>
+var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ranking_vol else
+    "['ABEV3','ASAI3','B3SA3','BBAS3','BBDC4','BBSE3','BRAP4','ITUB4','LREN3','PETR3','PETR4','PRIO3','USIM5','VALE3','WEGE3']"|safe }};
+</script>
 <script>
 (function() {
   var SELIC = {{ selic }};
@@ -169,6 +154,7 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
     trava_credito: '💰 Trava de Crédito — relação 2x1 (perda máx. até 2× o crédito)'
   };
 
+  // ── Utilitários ────────────────────────────────────────────────────────────
   function fmt(v, dec) {
     dec = dec == null ? 2 : dec;
     return v == null ? '—' : v.toLocaleString('pt-BR', {minimumFractionDigits:dec, maximumFractionDigits:dec});
@@ -183,7 +169,67 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
               : '<span class="bo-badge risklow">baixo</span>';
   }
 
-  // ── Tabelas por operação ──────────────────────────────────────────────────
+  // ── Atalhos de tickers gerenciáveis (localStorage) ─────────────────────────
+  var KEY_CUSTOM  = 'bo-tickers-custom';
+  var KEY_REMOVED = 'bo-tickers-removed';
+  function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } }
+  function lsSet(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
+
+  function tickerList() {
+    var removed = lsGet(KEY_REMOVED);
+    var seen = {}, list = [];
+    ['BOVA11'].concat(SERVER_TICKERS).concat(lsGet(KEY_CUSTOM)).forEach(function(t) {
+      t = (t || '').toUpperCase();
+      if (t && !seen[t] && removed.indexOf(t) === -1) { seen[t] = 1; list.push(t); }
+    });
+    return list;
+  }
+
+  function renderTickers() {
+    var host = document.getElementById('bo-tickers');
+    host.innerHTML = tickerList().map(function(t) {
+      return '<span class="bo-tbtn' + (t === currentTicker ? ' active' : '') + '" data-t="' + t + '">' +
+             t + '<b class="bo-tdel" title="Remover atalho" data-t="' + t + '">×</b></span>';
+    }).join('');
+  }
+
+  function addTicker(t) {
+    t = (t || '').trim().toUpperCase();
+    if (!t) return;
+    var removed = lsGet(KEY_REMOVED);
+    var idx = removed.indexOf(t);
+    if (idx >= 0) { removed.splice(idx, 1); lsSet(KEY_REMOVED, removed); }
+    if (tickerList().indexOf(t) === -1) {
+      var custom = lsGet(KEY_CUSTOM);
+      custom.push(t);
+      lsSet(KEY_CUSTOM, custom);
+    }
+    renderTickers();
+  }
+
+  function removeTicker(t) {
+    var custom = lsGet(KEY_CUSTOM);
+    var idx = custom.indexOf(t);
+    if (idx >= 0) { custom.splice(idx, 1); lsSet(KEY_CUSTOM, custom); }
+    var removed = lsGet(KEY_REMOVED);
+    if (removed.indexOf(t) === -1 && (t === 'BOVA11' || SERVER_TICKERS.indexOf(t) !== -1)) {
+      removed.push(t); lsSet(KEY_REMOVED, removed);
+    }
+    renderTickers();
+  }
+
+  document.getElementById('bo-tickers').addEventListener('click', function(ev) {
+    var del = ev.target.closest('.bo-tdel');
+    if (del) { ev.stopPropagation(); removeTicker(del.dataset.t); return; }
+    var chip = ev.target.closest('.bo-tbtn');
+    if (chip) load(chip.dataset.t);
+  });
+
+  // ── Tabelas por operação (todas as linhas clicáveis) ───────────────────────
+  function rowAttr(expIdx, j) {
+    return '<tr class="bo-row" data-exp="' + expIdx + '" data-row="' + j + '" title="Clique para ver o resumo">';
+  }
+
   function collarTable(rows, expIdx) {
     if (!rows.length) return '<div class="bo-empty">Nenhum collar de risco zero/reduzido supera a Selic neste vencimento.</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
@@ -193,8 +239,7 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
       '<th>Ganho máx.</th><th>Ganho %</th><th>vs Selic</th><th>Ganho % a.a.</th>' +
       '<th>Result. mín.</th><th>Relação L/P</th></tr></thead><tbody>';
     rows.forEach(function(r, j) {
-      h += '<tr class="bo-collar-row" data-exp="' + expIdx + '" data-row="' + j + '" ' +
-        'title="Clique para ver os cálculos completos" style="cursor:pointer;">' +
+      h += rowAttr(expIdx, j) +
         '<td>' + riskBadge(r.risk_free) + '</td>' +
         '<td><span class="bo-badge put">' + r.put_symbol + '</span></td>' +
         '<td>' + brl(r.put_strike) + '</td><td>' + brl(r.put_ask) + '</td>' +
@@ -212,7 +257,7 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
     return h + '</tbody></table></div>';
   }
 
-  function fenceTable(rows) {
+  function fenceTable(rows, expIdx) {
     if (!rows.length) return '<div class="bo-empty">Nenhuma cerca de risco zero/reduzido supera a Selic neste vencimento.</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
       '<th>Risco</th><th>PUT compra</th><th>K</th><th>Ask</th>' +
@@ -221,8 +266,8 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
       '<th>Custo líq.</th><th>Break-even</th>' +
       '<th>Ganho máx.</th><th>Ganho %</th><th>vs Selic</th>' +
       '<th>Result. zona prot.</th><th>Protegido até</th><th>Queda prot.</th></tr></thead><tbody>';
-    rows.forEach(function(r) {
-      h += '<tr>' +
+    rows.forEach(function(r, j) {
+      h += rowAttr(expIdx, j) +
         '<td>' + riskBadge(r.risk_free) + '</td>' +
         '<td><span class="bo-badge put">' + r.put_buy_symbol + '</span></td>' +
         '<td>' + brl(r.put_buy_strike) + '</td><td>' + brl(r.put_buy_ask) + '</td>' +
@@ -242,7 +287,7 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
     return h + '</tbody></table></div>';
   }
 
-  function seagullTable(rows) {
+  function seagullTable(rows, expIdx) {
     if (!rows.length) return '<div class="bo-empty">Nenhuma gaivota viável neste vencimento.</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
       '<th>Montagem</th><th>CALL compra</th><th>K</th><th>Ask</th>' +
@@ -250,8 +295,8 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
       '<th>PUT venda</th><th>K</th><th>Bid</th>' +
       '<th>Custo/Crédito</th><th>Ganho máx.</th>' +
       '<th>Margem até PUT</th><th>Risco abaixo de</th></tr></thead><tbody>';
-    rows.forEach(function(r) {
-      h += '<tr>' +
+    rows.forEach(function(r, j) {
+      h += rowAttr(expIdx, j) +
         '<td>' + (r.is_credit
             ? '<span class="bo-badge credit">CRÉDITO</span>'
             : '<span class="bo-badge debit">débito</span>') + '</td>' +
@@ -270,15 +315,15 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
     return h + '</tbody></table></div>';
   }
 
-  function spreadTable(rows, isBull) {
+  function spreadTable(rows, isBull, expIdx) {
     if (!rows.length) return '<div class="bo-empty">Nenhuma trava com relação &gt; 1 neste vencimento.</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
       '<th>Compra (ask)</th><th>K</th><th>Ask</th>' +
       '<th>Venda (bid)</th><th>K</th><th>Bid</th>' +
       '<th>Custo</th><th>Ganho máx.</th><th>Relação</th>' +
       '<th>Break-even</th><th>Dist. BE</th></tr></thead><tbody>';
-    rows.forEach(function(r) {
-      h += '<tr>' +
+    rows.forEach(function(r, j) {
+      h += rowAttr(expIdx, j) +
         '<td><span class="bo-badge ' + (isBull ? 'call' : 'put') + '">' + r.buy_symbol + '</span></td>' +
         '<td>' + brl(r.buy_strike) + '</td><td>' + brl(r.buy_ask) + '</td>' +
         '<td><span class="bo-badge ' + (isBull ? 'call' : 'put') + '">' + r.sell_symbol + '</span></td>' +
@@ -293,16 +338,16 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
     return h + '</tbody></table></div>';
   }
 
-  function creditTable(rows) {
+  function creditTable(rows, expIdx) {
     if (!rows.length) return '<div class="bo-empty">Nenhuma trava de crédito com relação 2x1 neste vencimento.</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
       '<th>Direção</th><th>Venda (bid)</th><th>K</th><th>Bid</th>' +
       '<th>Compra (ask)</th><th>K</th><th>Ask</th>' +
       '<th>Crédito</th><th>Perda máx.</th><th>Relação G/P</th>' +
       '<th>Break-even</th><th>Dist. BE</th></tr></thead><tbody>';
-    rows.forEach(function(r) {
+    rows.forEach(function(r, j) {
       var isAlta = r.tipo.indexOf('ALTA') === 0;
-      h += '<tr>' +
+      h += rowAttr(expIdx, j) +
         '<td><span class="bo-badge ' + (isAlta ? 'credit' : 'debit') + '">' + r.tipo + '</span></td>' +
         '<td><span class="bo-badge ' + (isAlta ? 'put' : 'call') + '">' + r.sell_symbol + '</span></td>' +
         '<td>' + brl(r.sell_strike) + '</td><td>' + brl(r.sell_bid) + '</td>' +
@@ -321,11 +366,11 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
   function buildTable(op, rows, expIdx) {
     switch (op) {
       case 'collar':        return collarTable(rows, expIdx);
-      case 'fence':         return fenceTable(rows);
-      case 'seagull':       return seagullTable(rows);
-      case 'trava_alta':    return spreadTable(rows, true);
-      case 'trava_baixa':   return spreadTable(rows, false);
-      case 'trava_credito': return creditTable(rows);
+      case 'fence':         return fenceTable(rows, expIdx);
+      case 'seagull':       return seagullTable(rows, expIdx);
+      case 'trava_alta':    return spreadTable(rows, true, expIdx);
+      case 'trava_baixa':   return spreadTable(rows, false, expIdx);
+      case 'trava_credito': return creditTable(rows, expIdx);
       default:              return '';
     }
   }
@@ -351,8 +396,7 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
           '<span class="sub">' + e.dc + ' dias corridos · Selic no período: ' + fmt(e.selic_period) + '%</span>' +
         '</div>' +
         '<div class="bo-sec">' +
-          '<h4>' + OP_TITLES[d.op] +
-            (d.op === 'collar' ? ' <span class="sub">— clique na linha para detalhes</span>' : '') + '</h4>' +
+          '<h4>' + OP_TITLES[d.op] + '</h4>' +
           buildTable(d.op, e.rows, i) +
         '</div></div>';
     });
@@ -362,82 +406,160 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
     results.innerHTML = h;
   }
 
-  // ── Modal de detalhes do collar ───────────────────────────────────────────
-  function openCollarModal(expIdx, rowIdx) {
+  // ── Modal genérico de resumo ───────────────────────────────────────────────
+  function pctBoxes(gainPct, dc) {
+    var remAM = (Math.pow(1 + gainPct / 100, 30  / dc) - 1) * 100;
+    var remAA = (Math.pow(1 + gainPct / 100, 365 / dc) - 1) * 100;
+    var cdi   = SELIC > 0 ? remAA / SELIC * 100 : 0;
+    return [
+      ['Prazo (dias corridos)', dc + ' d.c.', ''],
+      ['Retorno % a.m.', fmt(remAM) + '%', ''],
+      ['Retorno % a.a.', fmt(remAA) + '%', ''],
+      ['% CDI (a.a.)',   fmt(cdi, 0) + '%', '']
+    ];
+  }
+
+  function modalContent(d, e, r, qty) {
+    var op = d.op, spot = d.spot, dc = e.dc;
+    var boxes = [], title = '', link = null;
+
+    if (op === 'collar') {
+      var net = spot + r.put_ask - r.call_bid;
+      var maxGain = (r.call_strike - net) * qty;
+      var maxLoss = (net - r.put_strike) * qty;
+      var gainPct = net > 0 ? (r.call_strike - net) / net * 100 : 0;
+      title = 'Collar ' + d.ticker + ' — ' + r.put_symbol + ' / ' + r.call_symbol;
+      boxes = [
+        ['Custo total da ação', brl(spot * qty), ''],
+        ['Custo líquido (ação + PUT − CALL)', brl(net * qty), ''],
+        ['Break-even (preço da ação)', brl(net), ''],
+        ['Lucro máximo', brl(maxGain), 'pos'],
+        ['Perda máxima', maxLoss > 0 ? brl(maxLoss) : brl(0) + ' (garantido +' + fmt(-maxLoss) + ')',
+            maxLoss > 0 ? 'neg' : 'pos'],
+        ['Lucro máx. %', fmt(gainPct) + '%', 'pos'],
+        ['Relação lucro/prejuízo', maxLoss > 0.001 ? fmt(maxGain / maxLoss) : '∞', '']
+      ].concat(pctBoxes(gainPct, dc));
+      link = new URLSearchParams({cp: '1', ativo: d.ticker, spot: spot, qty: qty,
+        pt: r.put_symbol, pk: r.put_strike, pp: r.put_ask,
+        ct: r.call_symbol, ck: r.call_strike, cprem: r.call_bid, exp: e.exp});
+      return {title: title, boxes: boxes, href: '/venda_puts?' + link.toString() + '#collar'};
+    }
+
+    var stParams = {st: '1', ativo: d.ticker, spot: spot, qty: qty, exp: e.exp};
+
+    if (op === 'fence') {
+      var netF = spot + r.put_buy_ask - r.put_sell_bid - r.call_bid;
+      var maxGF = (r.call_strike - netF) * qty;
+      var floorF = (r.put_buy_strike - netF) * qty;
+      var lossF = (netF - (r.put_buy_strike - r.put_sell_strike)) * qty;
+      var gPctF = netF > 0 ? (r.call_strike - netF) / netF * 100 : 0;
+      title = 'Fence ' + d.ticker + ' — ' + r.put_buy_symbol + ' / ' + r.put_sell_symbol + ' / ' + r.call_symbol;
+      boxes = [
+        ['Custo total da ação', brl(spot * qty), ''],
+        ['Custo líquido/ação', brl(netF), ''],
+        ['Break-even (subida)', brl(netF), ''],
+        ['Lucro máximo', brl(maxGF), 'pos'],
+        ['Lucro máx. %', fmt(gPctF) + '%', 'pos'],
+        ['Result. zona protegida', brl(floorF), floorF >= 0 ? 'pos' : 'neg'],
+        ['Protegido até', brl(r.put_sell_strike) + ' (−' + fmt(r.prot_drop_pct, 1) + '%)', ''],
+        ['Perda máx. (se S→0)', brl(Math.abs(lossF)), lossF > 0 ? 'neg' : 'pos'],
+        ['Relação lucro/perda', lossF > 0.001 ? fmt(maxGF / lossF) : '∞', '']
+      ].concat(pctBoxes(gPctF, dc));
+      Object.assign(stParams, {op: 'fence',
+        at: r.put_buy_symbol,  ak: r.put_buy_strike,  ap: r.put_buy_ask,
+        bt: r.put_sell_symbol, bk: r.put_sell_strike, bp: r.put_sell_bid,
+        ct2: r.call_symbol,    ck2: r.call_strike,    cp2: r.call_bid});
+    } else if (op === 'seagull') {
+      var netS  = r.net_cost;
+      var maxGS = r.max_gain * qty;
+      var lossS = (r.put_sell_strike + netS) * qty;
+      title = 'Seagull ' + d.ticker + ' — ' + r.call_buy_symbol + ' / ' + r.call_sell_symbol + ' / ' + r.put_sell_symbol;
+      boxes = [
+        [netS > 0 ? 'Custo (débito)' : 'Crédito recebido', brl(Math.abs(netS) * qty), netS > 0 ? '' : 'pos'],
+        ['Lucro máximo (acima de ' + brl(r.call_sell_strike) + ')', brl(maxGS), 'pos'],
+        ['Perda máx. (se S→0)', brl(Math.abs(lossS)), 'neg'],
+        ['Risco abaixo de (PUT vendida)', brl(r.put_sell_strike), ''],
+        ['Margem até a PUT', '−' + fmt(r.margin_pct, 1) + '%', ''],
+        ['BE inferior', netS <= 0 ? brl(r.put_sell_strike + netS) : '—', ''],
+        ['BE superior', netS > 0 ? brl(r.call_buy_strike + netS) : '—', ''],
+        ['Relação lucro/perda', lossS > 0.001 ? fmt(maxGS / lossS) : '∞', ''],
+        ['Prazo (dias corridos)', dc + ' d.c.', '']
+      ];
+      Object.assign(stParams, {op: 'seagull',
+        at: r.call_buy_symbol,  ak: r.call_buy_strike,  ap: r.call_buy_ask,
+        bt: r.call_sell_symbol, bk: r.call_sell_strike, bp: r.call_sell_bid,
+        ct2: r.put_sell_symbol, ck2: r.put_sell_strike, cp2: r.put_sell_bid});
+    } else if (op === 'trava_alta' || op === 'trava_baixa') {
+      var gPctT = r.cost > 0 ? r.max_gain / r.cost * 100 : 0;
+      title = (op === 'trava_alta' ? 'Trava de Alta ' : 'Trava de Baixa ') + d.ticker +
+              ' — ' + r.buy_symbol + ' / ' + r.sell_symbol;
+      boxes = [
+        ['Custo (débito)', brl(r.cost * qty), ''],
+        ['Lucro máximo', brl(r.max_gain * qty), 'pos'],
+        ['Perda máxima', brl(r.cost * qty), 'neg'],
+        ['Relação ganho/custo', fmt(r.ratio), r.ratio > 1 ? 'pos' : ''],
+        ['Break-even', brl(r.breakeven) + ' (' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%)', ''],
+        ['Retorno máx. %', fmt(gPctT) + '%', 'pos']
+      ].concat(pctBoxes(gPctT, dc));
+      Object.assign(stParams, {op: op,
+        at: r.buy_symbol,  ak: r.buy_strike,  ap: r.buy_ask,
+        bt: r.sell_symbol, bk: r.sell_strike, bp: r.sell_bid});
+    } else { // trava_credito
+      var isAlta = r.tipo.indexOf('ALTA') === 0;
+      var gPctC = r.max_loss > 0 ? r.credit / r.max_loss * 100 : 0;
+      title = 'Trava de Crédito ' + (isAlta ? 'Alta' : 'Baixa') + ' ' + d.ticker +
+              ' — ' + r.sell_symbol + ' / ' + r.buy_symbol;
+      boxes = [
+        ['Crédito recebido', brl(r.credit * qty), 'pos'],
+        ['Perda máxima', brl(r.max_loss * qty), 'neg'],
+        ['Relação ganho/perda', r.ratio == null ? '∞' : fmt(r.ratio), 'pos'],
+        ['Break-even', brl(r.breakeven) + ' (' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%)', ''],
+        ['Retorno s/ margem %', fmt(gPctC) + '%', 'pos']
+      ].concat(pctBoxes(gPctC, dc));
+      Object.assign(stParams, {op: isAlta ? 'trava_credito_alta' : 'trava_credito_baixa',
+        at: r.sell_symbol, ak: r.sell_strike, ap: r.sell_bid,
+        bt: r.buy_symbol,  bk: r.buy_strike,  bp: r.buy_ask});
+    }
+
+    var sp = new URLSearchParams(stParams);
+    return {title: title, boxes: boxes, href: '/venda_puts?' + sp.toString() + '#estrutura'};
+  }
+
+  function refreshModal() {
+    var modal = document.getElementById('bo-modal');
     var d = window.__boData;
-    if (!d || d.op !== 'collar') return;
-    var e = d.expirations[expIdx];
-    var r = e.rows[rowIdx];
-    if (!r) return;
-    var modal = document.getElementById('bo-collar-modal');
+    if (!d) return;
+    var e = d.expirations[parseInt(modal.dataset.exp)];
+    var r = e.rows[parseInt(modal.dataset.row)];
+    var qty = parseInt(document.getElementById('bm-qty').value) || 100;
+    var c = modalContent(d, e, r, qty);
+    document.getElementById('bm-title').textContent = c.title + ' · ' + dateBR(e.exp);
+    document.getElementById('bm-grid').innerHTML = c.boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
+             '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+    document.getElementById('bm-open-calc').href = c.href;
+  }
+
+  function openBoModal(expIdx, rowIdx) {
+    var modal = document.getElementById('bo-modal');
     modal.dataset.exp = expIdx;
     modal.dataset.row = rowIdx;
-    document.getElementById('bcm-title').textContent =
-      'Collar ' + d.ticker + ' — ' + r.put_symbol + ' / ' + r.call_symbol + ' · ' + dateBR(e.exp);
-    calcCollarModal();
+    refreshModal();
     modal.style.display = 'flex';
   }
 
-  function calcCollarModal() {
-    var d = window.__boData;
-    var modal = document.getElementById('bo-collar-modal');
-    var e = d.expirations[parseInt(modal.dataset.exp)];
-    var r = e.rows[parseInt(modal.dataset.row)];
-    var qty = parseInt(document.getElementById('bcm-qty').value) || 100;
-
-    var stock = d.spot, putP = r.put_ask, callP = r.call_bid;
-    var dc = e.dc;
-
-    var stockCost = stock * qty;
-    var netCost   = (stock + putP - callP) * qty;
-    var be        = stock + putP - callP;
-    var maxGain   = (r.call_strike - stock - putP + callP) * qty;
-    var maxLoss   = (stock + putP - callP - r.put_strike) * qty;
-    var absLoss   = Math.abs(maxLoss);
-    var gainPct   = netCost > 0 ? maxGain / netCost * 100 : 0;
-    var remAM     = (Math.pow(1 + gainPct / 100, 30 / dc) - 1) * 100;
-    var remAA     = (Math.pow(1 + gainPct / 100, 365 / dc) - 1) * 100;
-    var pctCDI    = SELIC > 0 ? remAA / SELIC * 100 : 0;
-    var ratio     = absLoss > 0.001 ? maxGain / absLoss : 0;
-
-    function setv(id, txt, cls) {
-      var el = document.getElementById(id);
-      el.textContent = txt;
-      if (cls !== undefined) el.className = 'metric-value ' + cls;
-    }
-    setv('bcm-stock-cost', brl(stockCost));
-    setv('bcm-net-cost',   brl(netCost));
-    setv('bcm-be',         brl(be));
-    setv('bcm-max-gain',   brl(maxGain), 'pos');
-    setv('bcm-max-loss',   maxLoss > 0 ? brl(absLoss) : brl(0) + ' (garantido +' + fmt(-maxLoss) + ')',
-         maxLoss > 0 ? 'neg' : 'pos');
-    setv('bcm-gain-pct',   fmt(gainPct) + '%', 'pos');
-    setv('bcm-days',       dc + ' d.c.');
-    setv('bcm-rem-am',     fmt(remAM) + '%');
-    setv('bcm-rem-aa',     fmt(remAA) + '%');
-    setv('bcm-cdi',        fmt(pctCDI, 0) + '%');
-    setv('bcm-ratio',      absLoss > 0.001 ? fmt(ratio) : '∞');
-
-    var params = new URLSearchParams({
-      cp: '1', ativo: d.ticker, spot: d.spot, qty: qty,
-      pt: r.put_symbol, pk: r.put_strike, pp: r.put_ask,
-      ct: r.call_symbol, ck: r.call_strike, cprem: r.call_bid,
-      exp: e.exp
-    });
-    document.getElementById('bcm-open-calc').href = '/venda_puts?' + params.toString() + '#collar';
-  }
-
-  window.closeCollarModal = function() {
-    document.getElementById('bo-collar-modal').style.display = 'none';
+  window.closeBoModal = function() {
+    document.getElementById('bo-modal').style.display = 'none';
   };
 
   results.addEventListener('click', function(ev) {
-    var tr = ev.target.closest('tr.bo-collar-row');
-    if (tr) openCollarModal(parseInt(tr.dataset.exp), parseInt(tr.dataset.row));
+    var tr = ev.target.closest('tr.bo-row');
+    if (tr) openBoModal(parseInt(tr.dataset.exp), parseInt(tr.dataset.row));
   });
-  document.getElementById('bcm-qty').addEventListener('input', calcCollarModal);
-  document.getElementById('bo-collar-modal').addEventListener('click', function(ev) {
-    if (ev.target === this) closeCollarModal();
+  document.getElementById('bm-qty').addEventListener('input', refreshModal);
+  document.getElementById('bo-modal').addEventListener('click', function(ev) {
+    if (ev.target === this) closeBoModal();
   });
 
   // ── Carregamento ──────────────────────────────────────────────────────────
@@ -445,9 +567,8 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
     ticker = (ticker || '').trim().toUpperCase();
     if (!ticker) return;
     currentTicker = ticker;
-    document.querySelectorAll('.bo-tbtn').forEach(function(b) {
-      b.classList.toggle('active', b.dataset.t === ticker);
-    });
+    addTicker(ticker);   // busca também adiciona ao atalho
+    renderTickers();
     loading.style.display = '';
     errBox.style.display = 'none';
     results.innerHTML = '';
@@ -481,15 +602,16 @@ tr.bo-collar-row:hover{background:rgba(124,58,237,.12)!important;}
       if (currentTicker) load(currentTicker);
     });
   });
-  document.querySelectorAll('.bo-tbtn').forEach(function(b) {
-    b.addEventListener('click', function() { load(b.dataset.t); });
-  });
   document.getElementById('add-bo-btn').addEventListener('click', function() {
-    load(document.getElementById('add-bo-input').value);
+    var inp = document.getElementById('add-bo-input');
+    load(inp.value);
+    inp.value = '';
   });
   document.getElementById('add-bo-input').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') load(this.value);
+    if (e.key === 'Enter') { load(this.value); this.value = ''; }
   });
+
+  renderTickers();
 })();
 </script>
 {% endblock %}

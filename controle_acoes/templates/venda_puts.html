@@ -40,6 +40,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
     <div class="calc-tabs">
         <button class="calc-tab {% if not edit_collar %}active{% endif %}" onclick="switchTab('put',this)">🔽 Venda de Puts</button>
         <button class="calc-tab {% if edit_collar %}active{% endif %}" onclick="switchTab('collar',this)" id="tab-collar">📐 Colar</button>
+        <button class="calc-tab" onclick="switchTab('estrutura',this)" id="tab-estrutura">🧩 Estruturas</button>
     </div>
 
     {# ══════════════════════════════════════════════════════ ABA: VENDA DE PUTS #}
@@ -233,6 +234,85 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             </div>
         </form>
     </div>
+
+    {# ══════════════════════════════════════════════════════ ABA: ESTRUTURAS #}
+    <div class="calc-pane" id="pane-estrutura">
+        <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(165px,1fr)); gap:.75rem; align-items:end;">
+            <div style="grid-column:span 2; min-width:230px;">
+                <label class="form-label" style="font-weight:700;">Operação</label>
+                <select class="form-control" id="e-op" onchange="estruturaOpChanged()">
+                    <option value="fence">🚧 Fence (Cerca)</option>
+                    <option value="seagull">🕊 Seagull (Gaivota de alta)</option>
+                    <option value="trava_alta">📈 Trava de Alta (débito, CALLs)</option>
+                    <option value="trava_baixa">📉 Trava de Baixa (débito, PUTs)</option>
+                    <option value="trava_credito_alta">💰 Trava de Crédito Alta (PUTs)</option>
+                    <option value="trava_credito_baixa">💰 Trava de Crédito Baixa (CALLs)</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label">Ativo</label>
+                <input class="form-control" id="e-ativo" style="text-transform:uppercase" placeholder="ex: BOVA11">
+            </div>
+            <div>
+                <label class="form-label" id="e-spot-lbl">Cotação do Ativo (R$)</label>
+                <input class="form-control" id="e-spot" type="number" step="0.01" min="0" oninput="estruturaCalc()">
+            </div>
+            <div>
+                <label class="form-label">Quantidade</label>
+                <input class="form-control" id="e-qty" type="number" min="1" value="100" oninput="estruturaCalc()">
+            </div>
+            <div>
+                <label class="form-label">Vencimento</label>
+                <input class="form-control" id="e-exp" type="date" oninput="estruturaCalc()">
+            </div>
+            <div>
+                <label class="form-label">Data de Entrada</label>
+                <input class="form-control" id="e-entry" type="date" value="{{ today.strftime('%Y-%m-%d') }}" oninput="estruturaCalc()">
+            </div>
+        </div>
+
+        {# Pernas #}
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:.75rem; margin-top:1rem;">
+            <fieldset id="e-legA" style="border:1px solid var(--border-color); border-radius:8px; padding:.6rem .8rem;">
+                <legend id="e-legA-lbl" style="font-size:.82rem; font-weight:700; padding:0 .4rem;">Perna A</legend>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:.5rem;">
+                    <div><label class="form-label" style="font-size:.72rem;">Ticker</label>
+                        <input class="form-control" id="e-a-t" style="text-transform:uppercase"></div>
+                    <div><label class="form-label" style="font-size:.72rem;">Strike</label>
+                        <input class="form-control" id="e-a-k" type="number" step="0.01" oninput="estruturaCalc()"></div>
+                    <div><label class="form-label" style="font-size:.72rem;">Prêmio</label>
+                        <input class="form-control" id="e-a-p" type="number" step="0.01" oninput="estruturaCalc()"></div>
+                </div>
+            </fieldset>
+            <fieldset id="e-legB" style="border:1px solid var(--border-color); border-radius:8px; padding:.6rem .8rem;">
+                <legend id="e-legB-lbl" style="font-size:.82rem; font-weight:700; padding:0 .4rem;">Perna B</legend>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:.5rem;">
+                    <div><label class="form-label" style="font-size:.72rem;">Ticker</label>
+                        <input class="form-control" id="e-b-t" style="text-transform:uppercase"></div>
+                    <div><label class="form-label" style="font-size:.72rem;">Strike</label>
+                        <input class="form-control" id="e-b-k" type="number" step="0.01" oninput="estruturaCalc()"></div>
+                    <div><label class="form-label" style="font-size:.72rem;">Prêmio</label>
+                        <input class="form-control" id="e-b-p" type="number" step="0.01" oninput="estruturaCalc()"></div>
+                </div>
+            </fieldset>
+            <fieldset id="e-legC" style="border:1px solid var(--border-color); border-radius:8px; padding:.6rem .8rem;">
+                <legend id="e-legC-lbl" style="font-size:.82rem; font-weight:700; padding:0 .4rem;">Perna C</legend>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:.5rem;">
+                    <div><label class="form-label" style="font-size:.72rem;">Ticker</label>
+                        <input class="form-control" id="e-c-t" style="text-transform:uppercase"></div>
+                    <div><label class="form-label" style="font-size:.72rem;">Strike</label>
+                        <input class="form-control" id="e-c-k" type="number" step="0.01" oninput="estruturaCalc()"></div>
+                    <div><label class="form-label" style="font-size:.72rem;">Prêmio</label>
+                        <input class="form-control" id="e-c-p" type="number" step="0.01" oninput="estruturaCalc()"></div>
+                </div>
+            </fieldset>
+        </div>
+
+        {# Painel de métricas dinâmico #}
+        <div id="e-metrics" style="margin-top:1.25rem; display:none;">
+            <div id="e-metrics-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(185px,1fr)); gap:.75rem;"></div>
+        </div>
+    </div>
 </div>
 
 {# ══════════════════════════════════════════════════════ TABELA: PUTS SALVAS #}
@@ -418,7 +498,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         document.querySelectorAll('.calc-pane').forEach(function(p){ p.classList.remove('active'); });
         btn.classList.add('active');
         document.getElementById('pane-' + tab).classList.add('active');
-        if (tab === 'collar') { location.hash = 'collar'; } else { location.hash = ''; }
+        location.hash = (tab === 'put') ? '' : tab;
     };
 
     // ── Cálculo Venda de Put ──────────────────────────────────────────────────
@@ -528,6 +608,184 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         panel.style.display = '';
     };
     collarCalc();
+
+    // ── Aba Estruturas: fence, seagull, travas ────────────────────────────────
+    var E_CFG = {
+        fence: {
+            legs: ['PUT — COMPRA (proteção, K maior)', 'PUT — VENDA (abaixo, K menor)', 'CALL — VENDA'],
+            needSpot: true
+        },
+        seagull: {
+            legs: ['CALL — COMPRA (K menor)', 'CALL — VENDA (K maior)', 'PUT — VENDA (OTM abaixo)'],
+            needSpot: false
+        },
+        trava_alta:          { legs: ['CALL — COMPRA (K menor)', 'CALL — VENDA (K maior)', null], needSpot: false },
+        trava_baixa:         { legs: ['PUT — COMPRA (K maior)',  'PUT — VENDA (K menor)',  null], needSpot: false },
+        trava_credito_alta:  { legs: ['PUT — VENDA (K maior)',   'PUT — COMPRA (K menor)', null], needSpot: false },
+        trava_credito_baixa: { legs: ['CALL — VENDA (K menor)',  'CALL — COMPRA (K maior)', null], needSpot: false }
+    };
+
+    window.estruturaOpChanged = function() {
+        var op  = document.getElementById('e-op').value;
+        var cfg = E_CFG[op];
+        ['A', 'B', 'C'].forEach(function(l, i) {
+            var fs  = document.getElementById('e-leg' + l);
+            var lbl = document.getElementById('e-leg' + l + '-lbl');
+            if (cfg.legs[i]) {
+                fs.style.display = '';
+                lbl.textContent = cfg.legs[i];
+                lbl.style.color = cfg.legs[i].indexOf('PUT') === 0 ? 'var(--danger-color)' : 'var(--accent-color,#3b82f6)';
+            } else {
+                fs.style.display = 'none';
+            }
+        });
+        document.getElementById('e-spot-lbl').style.fontWeight = cfg.needSpot ? '700' : '';
+        estruturaCalc();
+    };
+
+    window.estruturaCalc = function() {
+        var op    = document.getElementById('e-op').value;
+        var spot  = toFloat(document.getElementById('e-spot').value);
+        var qty   = toFloat(document.getElementById('e-qty').value) || 100;
+        var expS  = document.getElementById('e-exp').value;
+        var entS  = document.getElementById('e-entry').value;
+        var aK = toFloat(document.getElementById('e-a-k').value), aP = toFloat(document.getElementById('e-a-p').value);
+        var bK = toFloat(document.getElementById('e-b-k').value), bP = toFloat(document.getElementById('e-b-p').value);
+        var cK = toFloat(document.getElementById('e-c-k').value), cP = toFloat(document.getElementById('e-c-p').value);
+        var panel = document.getElementById('e-metrics');
+        var grid  = document.getElementById('e-metrics-grid');
+
+        var needC = !!E_CFG[op].legs[2];
+        var ok = aK && aP != null && bK && bP != null && expS &&
+                 (!needC || (cK && cP != null)) &&
+                 (!E_CFG[op].needSpot || spot);
+        if (!ok) { panel.style.display = 'none'; return; }
+
+        var today = new Date(); today.setHours(0,0,0,0);
+        var exp   = new Date(expS + 'T00:00:00');
+        var entry = entS ? new Date(entS + 'T00:00:00') : today;
+        var dc    = Math.max(Math.round((exp - today) / 86400000), 1);
+        var dcEnt = Math.max(Math.round((exp - entry) / 86400000), 1);
+
+        function pctBoxes(gainPct) {
+            var remAM = (Math.pow(1 + gainPct / 100, 30  / dcEnt) - 1) * 100;
+            var remAA = (Math.pow(1 + gainPct / 100, 365 / dcEnt) - 1) * 100;
+            var cdi   = SELIC > 0 ? remAA / SELIC * 100 : 0;
+            return [
+                ['Prazo (dias corridos)', dc + ' d.c.', ''],
+                ['Retorno % a.m.', fmtPct(remAM), ''],
+                ['Retorno % a.a.', fmtPct(remAA), ''],
+                ['% CDI (a.a.)',  fmtPct(cdi, 0), '']
+            ];
+        }
+
+        var boxes = [];
+
+        if (op === 'fence') {
+            // A = PUT compra (K2), B = PUT venda (K1 < K2), C = CALL venda
+            var net     = spot + aP - bP - cP;
+            var maxGain = (cK - net) * qty;
+            var floorR  = (aK - net) * qty;                 // zona protegida [K1, K2]
+            var lossMax = (net - (aK - bK)) * qty;          // se S -> 0
+            var gainPct = net > 0 ? (cK - net) / net * 100 : 0;
+            boxes = [
+                ['Custo total da ação', fmtBRL(spot * qty), ''],
+                ['Custo líquido/ação',  fmtBRL(net), ''],
+                ['Break-even (subida)', fmtBRL(net), ''],
+                ['Lucro máximo',        fmtBRL(maxGain), 'positive'],
+                ['Lucro máx. %',        fmtPct(gainPct), 'positive'],
+                ['Resultado zona protegida (' + fmtBRL(bK) + '–' + fmtBRL(aK) + ')',
+                    fmtBRL(floorR), floorR >= 0 ? 'positive' : 'negative'],
+                ['Protegido até (K PUT vendida)', fmtBRL(bK), ''],
+                ['Perda máx. (se S→0)', fmtBRL(Math.abs(lossMax)), lossMax > 0 ? 'negative' : 'positive'],
+                ['Relação lucro/perda', lossMax > 0.001 ? (maxGain / lossMax).toLocaleString('pt-BR', {maximumFractionDigits:2}) : '∞', '']
+            ].concat(pctBoxes(gainPct));
+        } else if (op === 'seagull') {
+            // A = CALL compra (K1), B = CALL venda (K2 > K1), C = PUT venda (K0)
+            var net2    = aP - bP - cP;                      // >0 débito, <=0 crédito
+            var width   = bK - aK;
+            var maxG2   = (width - net2) * qty;
+            var lossMax2 = (cK + net2) * qty;                // se S -> 0
+            var beLow   = net2 <= 0 ? cK + net2 : null;
+            var beHigh  = net2 > 0 ? aK + net2 : null;
+            boxes = [
+                [net2 > 0 ? 'Custo (débito)' : 'Crédito recebido', fmtBRL(Math.abs(net2) * qty), net2 > 0 ? '' : 'positive'],
+                ['Lucro máximo (acima de ' + fmtBRL(bK) + ')', fmtBRL(maxG2), 'positive'],
+                ['Perda máx. (se S→0)', fmtBRL(Math.abs(lossMax2)), 'negative'],
+                ['Risco abaixo de (PUT vendida)', fmtBRL(cK), ''],
+                ['BE inferior', beLow != null ? fmtBRL(beLow) : '—', ''],
+                ['BE superior', beHigh != null ? fmtBRL(beHigh) : '—', ''],
+                ['Margem até a PUT', spot ? '−' + fmtPct((spot - cK) / spot * 100, 1) : '—', ''],
+                ['Relação lucro/perda', lossMax2 > 0.001 ? (maxG2 / lossMax2).toLocaleString('pt-BR', {maximumFractionDigits:2}) : '∞', ''],
+                ['Prazo (dias corridos)', dc + ' d.c.', '']
+            ];
+        } else if (op === 'trava_alta' || op === 'trava_baixa') {
+            // A = compra (paga ask), B = venda (recebe bid)
+            var cost  = aP - bP;
+            var w     = Math.abs(bK - aK);
+            var maxG3 = (w - cost) * qty;
+            var ratio3 = cost > 0.001 ? (w - cost) / cost : 0;
+            var be3   = op === 'trava_alta' ? aK + cost : aK - cost;
+            var gPct3 = cost > 0 ? (w - cost) / cost * 100 : 0;
+            boxes = [
+                ['Custo (débito)',  fmtBRL(cost * qty), ''],
+                ['Lucro máximo',    fmtBRL(maxG3), 'positive'],
+                ['Perda máxima',    fmtBRL(cost * qty), 'negative'],
+                ['Relação ganho/custo', ratio3.toLocaleString('pt-BR', {maximumFractionDigits:2}), ratio3 > 1 ? 'positive' : ''],
+                ['Break-even',      fmtBRL(be3), ''],
+                ['Retorno máx. %',  fmtPct(gPct3), 'positive']
+            ].concat(pctBoxes(gPct3));
+        } else {
+            // Travas de crédito: A = venda (recebe bid), B = compra (paga ask)
+            var credit = aP - bP;
+            var w2     = Math.abs(aK - bK);
+            var maxL4  = (w2 - credit) * qty;
+            var ratio4 = maxL4 > 0.001 ? (credit * qty) / maxL4 : null;
+            var be4    = op === 'trava_credito_alta' ? aK - credit : aK + credit;
+            var gPct4  = maxL4 > 0 ? credit * qty / maxL4 * 100 : 0;
+            boxes = [
+                ['Crédito recebido', fmtBRL(credit * qty), 'positive'],
+                ['Perda máxima',     fmtBRL(maxL4), 'negative'],
+                ['Relação ganho/perda', ratio4 != null ? ratio4.toLocaleString('pt-BR', {maximumFractionDigits:2}) : '∞',
+                    (ratio4 == null || ratio4 >= 0.5) ? 'positive' : ''],
+                ['Break-even',       fmtBRL(be4), ''],
+                ['Retorno s/ margem %', fmtPct(gPct4), 'positive']
+            ].concat(pctBoxes(gPct4));
+        }
+
+        grid.innerHTML = boxes.map(function(b) {
+            return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
+                   '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+        }).join('');
+        panel.style.display = '';
+    };
+
+    // ── Pré-preenchimento de Estruturas via URL (vindo de Busca de Operações) ─
+    (function() {
+        var q = new URLSearchParams(location.search);
+        if (q.get('st') !== '1') return;
+        function setV(id, val) {
+            var el = document.getElementById(id);
+            if (el && val != null && val !== '') el.value = val;
+        }
+        setV('e-op',    q.get('op'));
+        setV('e-ativo', (q.get('ativo') || '').toUpperCase());
+        setV('e-spot',  q.get('spot'));
+        setV('e-qty',   q.get('qty'));
+        setV('e-exp',   q.get('exp'));
+        setV('e-a-t', (q.get('at') || '').toUpperCase()); setV('e-a-k', q.get('ak')); setV('e-a-p', q.get('ap'));
+        setV('e-b-t', (q.get('bt') || '').toUpperCase()); setV('e-b-k', q.get('bk')); setV('e-b-p', q.get('bp'));
+        setV('e-c-t', (q.get('ct2') || '').toUpperCase()); setV('e-c-k', q.get('ck2')); setV('e-c-p', q.get('cp2'));
+        estruturaOpChanged();
+    })();
+
+    // Estado inicial dos rótulos das pernas
+    estruturaOpChanged();
+
+    if (location.hash === '#estrutura') {
+        var tabE = document.getElementById('tab-estrutura');
+        if (tabE) switchTab('estrutura', tabE);
+    }
 
     // ── Pré-preenchimento do colar via URL (vindo de Busca de Operações) ─────
     (function() {

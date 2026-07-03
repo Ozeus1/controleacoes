@@ -581,7 +581,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
           (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
         : '');
-    modeEl.style.display = '';
+    modeEl.style.display = 'inline-block';
     modeEl.className = d.mode;
     modeEl.textContent = d.mode === 'semanal'
       ? '📅 Semanais líquidas — até 8 venc. em ' + d.max_days + ' dias'
@@ -859,7 +859,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     currentTicker = ticker;
     addTicker(ticker);   // busca também adiciona ao atalho
     renderTickers();
-    loading.style.display = '';
+    loading.style.display = 'block';
     errBox.style.display = 'none';
     results.innerHTML = '';
     spotEl.innerHTML = '';
@@ -873,16 +873,23 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       .then(function(res) {
         loading.style.display = 'none';
         if (!res.ok || res.j.error) {
-          errBox.textContent = res.j.error || 'Erro ao buscar operações.';
-          errBox.style.display = '';
+          errBox.textContent = '⚠️ ' + (res.j.error || 'Erro ao buscar operações.');
+          errBox.style.display = 'block';
           return;
         }
-        render(res.j);
+        try {
+          render(res.j);
+        } catch (e) {
+          errBox.textContent = '⚠️ Erro ao montar os resultados: ' + e;
+          errBox.style.display = 'block';
+          if (window.console) console.error(e);
+        }
       })
       .catch(function(e) {
         loading.style.display = 'none';
-        errBox.textContent = 'Falha na requisição: ' + e;
-        errBox.style.display = '';
+        errBox.textContent = '⚠️ Falha na requisição: ' + e;
+        errBox.style.display = 'block';
+        if (window.console) console.error(e);
       });
   }
 

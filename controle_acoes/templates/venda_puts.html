@@ -783,8 +783,8 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         trava_baixa:         { legs: ['PUT — COMPRA (K maior)',  'PUT — VENDA (K menor)',  null], needSpot: false },
         trava_credito_alta:  { legs: ['PUT — VENDA (K maior)',   'PUT — COMPRA (K menor)', null], needSpot: false },
         trava_credito_baixa: { legs: ['CALL — VENDA (K menor)',  'CALL — COMPRA (K maior)', null], needSpot: false },
-        call_ratio_1x2:      { legs: ['CALL — VENDA 1× (ITM, K menor)', 'CALL — COMPRA 2× (OTM, K maior)', null], needSpot: false },
-        call_ratio_2x3:      { legs: ['CALL — VENDA 2× (ITM, K menor)', 'CALL — COMPRA 3× (OTM, K maior)', null], needSpot: false }
+        call_ratio_1x2:      { legs: ['CALL — VENDA 1× (K menor, ±5% do spot)', 'CALL — COMPRA 2× (OTM, K maior)', null], needSpot: false },
+        call_ratio_2x3:      { legs: ['CALL — VENDA 2× (K menor, ±5% do spot)', 'CALL — COMPRA 3× (OTM, K maior)', null], needSpot: false }
     };
 
     window.estruturaOpChanged = function() {

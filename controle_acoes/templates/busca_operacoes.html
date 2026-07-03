@@ -151,7 +151,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     seagull:       '🕊 Seagull / Gaivota de alta (trava de alta com CALLs financiada por venda de PUT OTM)',
     trava_alta:    '📈 Trava de Alta no débito (CALLs) — relação ganho/custo > 1',
     trava_baixa:   '📉 Trava de Baixa no débito (PUTs) — relação ganho/custo > 1',
-    trava_credito: '💰 Ratio CALL — venda CALL ITM financia compra de CALLs OTM (1x2 e 2x3, lucro ilimitado na alta)'
+    trava_credito: '💰 Ratio CALL — venda CALL perto do dinheiro (máx. 5% ITM a 5% OTM) financia compra de CALLs OTM (1x2 e 2x3, lucro ilimitado na alta)'
   };
 
   // ── Utilitários ────────────────────────────────────────────────────────────
@@ -342,8 +342,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     if (!rows.length) return '<div class="bo-empty">Nenhum ratio CALL viável neste vencimento.</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
       '<th>Prop.</th><th>Montagem</th>' +
-      '<th>Venda ITM (bid)</th><th>K</th><th>Bid</th>' +
-      '<th>Compra OTM (ask)</th><th>K</th><th>Ask</th>' +
+      '<th>CALL venda (bid)</th><th>K</th><th>Bid</th>' +
+      '<th>CALL compra OTM (ask)</th><th>K</th><th>Ask</th>' +
       '<th>Crédito/Custo</th><th>Perda máx. (em K compr.)</th>' +
       '<th>BE superior</th><th>Dist. BE sup.</th><th>BE inferior</th>' +
       '<th>Ganho se +10%</th></tr></thead><tbody>';

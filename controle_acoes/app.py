@@ -3217,15 +3217,16 @@ def api_busca_operacoes(ticker):
             rows = _diversify(rows, lambda x: x['buy_symbol'], per_key=2)
 
         elif op == 'trava_credito':
-            # Call ratio backspread: venda de CALL ITM financia compra de CALLs OTM.
+            # Call ratio backspread: venda de CALL perto do dinheiro financia compra de CALLs OTM.
+            # CALL vendida: no máximo 5% ITM e até 5% OTM (0.95x a 1.05x do spot).
             # Proporções 1x2 e 2x3. Pequeno custo ou crédito aceitável.
             # Lucro ilimitado na alta; perda máxima no strike comprado (K2).
-            itm_calls = [c for c in calls_ok
-                         if 0.85 * spot <= c['strike'] < spot and c['bid'] >= 0.10][:12]
-            otm_calls = [c for c in calls_ok
-                         if spot < c['strike'] <= 1.15 * spot and c['ask'] >= 0.03][:12]
+            sell_cands = [c for c in calls_ok
+                          if 0.95 * spot <= c['strike'] <= 1.05 * spot and c['bid'] >= 0.10][:12]
+            otm_calls  = [c for c in calls_ok
+                          if spot < c['strike'] <= 1.18 * spot and c['ask'] >= 0.03][:12]
             for n_sell, m_buy, label in [(1, 2, '1x2'), (2, 3, '2x3')]:
-                for sell in itm_calls:
+                for sell in sell_cands:
                     for buy in otm_calls:
                         if buy['strike'] <= sell['strike']:
                             continue

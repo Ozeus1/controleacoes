@@ -66,7 +66,7 @@
     <div class="metric"><span>Diferenca de strike</span><strong id="m-strike">R$ 0,00</strong></div>
     <div class="metric"><span>Linhas</span><strong id="m-lines">0</strong></div>
     <div class="metric"><span>Resumo</span><strong id="m-summary">-</strong></div>
-  </div><div id="roll-detail" class="roll-detail"></div><div style="margin-top:.8rem;display:flex;gap:.6rem;flex-wrap:wrap;"><button class="btn btn-secondary btn-sm" id="payoff-btn">Abrir payoff da rolagem</button><button class="btn btn-secondary btn-sm" id="underlying-chart-btn" style="display:none;">Grafico</button></div>
+  </div><div id="roll-detail" class="roll-detail"></div><div style="margin-top:.8rem;display:flex;gap:.6rem;flex-wrap:wrap;"><button class="btn btn-warning btn-sm" id="commit-roll-btn" title="Grava a rolagem simulada na operacao registrada (com ajustes antes de confirmar)">💾 Gravar rolagem</button><button class="btn btn-secondary btn-sm" id="payoff-btn">Abrir payoff da rolagem</button><button class="btn btn-secondary btn-sm" id="underlying-chart-btn" style="display:none;">Grafico</button></div>
   <div id="payoff-wrap" class="payoff-wrap">
     <div style="overflow-x:auto;"><table class="payoff-table"><thead><tr><th>C/V</th><th>Qtd</th><th>Ticker</th><th>Tipo</th><th style="text-align:right;">Strike</th><th style="text-align:right;">Preco Entrada</th><th style="text-align:right;">Total</th></tr></thead><tbody id="payoff-legs-body"></tbody><tfoot><tr><td colspan="6" style="padding:.55rem .6rem;text-align:right;">Premios da nova estrutura:</td><td id="payoff-net" style="padding:.55rem .6rem;text-align:right;"></td></tr><tr><td colspan="6" style="padding:.55rem .6rem;text-align:right;">Resultado ja realizado na posicao antiga:</td><td id="payoff-carry" style="padding:.55rem .6rem;text-align:right;"></td></tr><tr style="font-weight:bold;background:var(--total-row-bg);"><td colspan="6" style="padding:.55rem .6rem;text-align:right;">Saldo total carregado no payoff:</td><td id="payoff-total-carry" style="padding:.55rem .6rem;text-align:right;"></td></tr></tfoot></table></div>
     <div class="payoff-metrics">
@@ -115,6 +115,63 @@
       </div>
       <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end;">
         <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('modal-commit-roll').style.display='none'">Cancelar</button>
+        <button type="submit" class="btn btn-warning btn-sm">🔄 Confirmar Rolagem</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══ MODAL: Gravar rolagem de trava registrada ═══ -->
+<div id="modal-commit-spread" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);align-items:center;justify-content:center;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.5rem;width:min(96vw,640px);color:var(--text-primary);max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+      <h5 style="margin:0;">🔄 Rolar Trava — <span id="rs-title"></span></h5>
+      <button type="button" onclick="document.getElementById('modal-commit-spread').style.display='none'"
+              style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;">&times;</button>
+    </div>
+    <form id="rs-form" method="POST">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:.75rem;margin-bottom:1rem;">
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Tipo de Rolagem</label>
+          <select name="roll_type" id="rs-type" class="form-control form-control-sm">
+            <option value="TEMPO">Tempo (vencimento)</option>
+            <option value="STRIKE">Strike</option>
+            <option value="AMBOS">Tempo + Strike</option>
+          </select></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Data da Rolagem</label>
+          <input type="date" name="roll_date" id="rs-date" class="form-control form-control-sm"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Novo Vencimento</label>
+          <input type="date" name="new_exp" id="rs-new-exp" class="form-control form-control-sm"></div>
+      </div>
+      <div style="background:rgba(16,185,129,.08);border-radius:6px;padding:.75rem;margin-bottom:.75rem;">
+        <div style="font-size:.8rem;font-weight:600;color:var(--success-color);margin-bottom:.5rem;">COMPRA (Long) — <span id="rs-long-old"></span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:.5rem;">
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Prêmio Venda (Fechar)</label>
+            <input type="text" name="close_long_price" id="rs-close-long" class="form-control form-control-sm" placeholder="0,00"></div>
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Novo Ticker</label>
+            <input type="text" name="new_long_ticker" id="rs-new-long-tk" class="form-control form-control-sm" style="text-transform:uppercase;"></div>
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Novo Strike</label>
+            <input type="text" name="new_long_strike" id="rs-new-long-k" class="form-control form-control-sm" placeholder="0,00"></div>
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Novo Prêmio</label>
+            <input type="text" name="new_long_price" id="rs-new-long-p" class="form-control form-control-sm" placeholder="0,00"></div>
+        </div>
+      </div>
+      <div style="background:rgba(239,68,68,.08);border-radius:6px;padding:.75rem;margin-bottom:.75rem;">
+        <div style="font-size:.8rem;font-weight:600;color:var(--danger-color);margin-bottom:.5rem;">VENDA (Short) — <span id="rs-short-old"></span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:.5rem;">
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Prêmio Recompra (Fechar)</label>
+            <input type="text" name="close_short_price" id="rs-close-short" class="form-control form-control-sm" placeholder="0,00"></div>
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Novo Ticker</label>
+            <input type="text" name="new_short_ticker" id="rs-new-short-tk" class="form-control form-control-sm" style="text-transform:uppercase;"></div>
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Novo Strike</label>
+            <input type="text" name="new_short_strike" id="rs-new-short-k" class="form-control form-control-sm" placeholder="0,00"></div>
+          <div><label style="font-size:.75rem;color:var(--text-secondary);">Novo Prêmio</label>
+            <input type="text" name="new_short_price" id="rs-new-short-p" class="form-control form-control-sm" placeholder="0,00"></div>
+        </div>
+      </div>
+      <div><label style="font-size:.8rem;color:var(--text-secondary);">Observações</label>
+        <input type="text" name="notes" class="form-control form-control-sm" placeholder="Motivo da rolagem..."></div>
+      <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('modal-commit-spread').style.display='none'">Cancelar</button>
         <button type="submit" class="btn btn-warning btn-sm">🔄 Confirmar Rolagem</button>
       </div>
     </form>
@@ -212,29 +269,72 @@ function rollTypeLabel(t){return t==='STRIKE'?'Strike':(t==='TIME_STRIKE'?'Tempo
 function loadSaved(){fetch('/api/rolagem-opcoes/list').then(function(r){return r.json();}).then(function(list){$('saved-list').innerHTML=list.length?list.map(function(s){return '<div class="saved-item '+(s.id===state.id?'active':'')+'" data-id="'+s.id+'"><strong>'+s.name+'</strong><span>'+(s.underlying||'-')+' - '+rollTypeLabel(s.roll_type)+'</span><button class="icon-btn" data-x="'+s.id+'" type="button">Excluir</button></div>';}).join(''):'<span style="color:var(--text-secondary);font-size:.82rem;">Nenhuma rolagem salva.</span>';$('saved-list').querySelectorAll('.saved-item').forEach(function(el){el.addEventListener('click',function(e){if(e.target.dataset.x)return;openSaved(list.find(function(s){return s.id===Number(el.dataset.id);}));});});$('saved-list').querySelectorAll('[data-x]').forEach(function(b){b.addEventListener('click',function(e){e.stopPropagation();if(!confirm('Excluir rolagem?'))return;fetch('/api/rolagem-opcoes/'+b.dataset.x+'/delete',{method:'POST'}).then(loadSaved);});});});}
 function openSaved(s){var p=s.payload||{};state.id=s.id;state.roll_type=p.roll_type||s.roll_type||'TIME';state.current=p.current||null;state.chain=null;state.lines=p.lines||[];state.selected_line=null;$('roll-name').value=s.name||'';$('underlying').value=p.underlying||s.underlying||'';$('current-symbol').value=p.current_symbol||'';$('option-kind').value=p.option_kind||'CALL';$('position-side').value=p.position_side||'SELL';$('quantity').value=p.quantity||100;$('avg-price').value=String(p.avg_price||'').replace('.',',');document.querySelectorAll('.roll-tab').forEach(function(b){b.classList.toggle('active',b.dataset.rollType===state.roll_type);});updateChartButton();updateUnderlyingSummary(true);renderCurrent();renderLines();loadSaved();}
 function resetAll(){state={id:null,roll_type:'TIME',chain:null,current:null,lines:[],selected_line:null,exp_filters:{}};$('roll-name').value='';$('underlying').value='';$('current-symbol').value='';$('avg-price').value='';$('quantity').value='100';$('current-quote').innerHTML='';$('exp-filters').innerHTML='';$('pick-list').innerHTML='';$('underlying-roll-summary').style.display='none';document.querySelectorAll('.roll-tab').forEach(function(b){b.classList.toggle('active',b.dataset.rollType==='TIME');});updateChartButton();renderLines();loadSaved();}
-// ── Gravar rolagem da linha na operação registrada (modal de ajustes) ───────
+// ── Gravar rolagem na operação registrada (modal de ajustes) ────────────────
+function rollTypeMap(){var m={TIME:'TEMPO',STRIKE:'STRIKE',TIME_STRIKE:'AMBOS'};return m[currentRollType()]||'TEMPO';}
+
+function openOptionCommitModal(l,optId,kFallback,expFallback){
+  var kOld=Number(l.current_strike||kFallback||0);
+  $('rr-title').textContent=l.current_symbol+' (K='+kOld.toFixed(2).replace('.',',')+' / venc '+dt(l.current_exp||expFallback)+')';
+  $('rr-type').value=rollTypeMap();
+  $('rr-date').value=new Date().toISOString().slice(0,10);
+  $('rr-close').value=String(closeVal(l)||0).replace('.',',');
+  $('rr-new-ticker').value=(l.new_symbol||l.current_symbol||'').toUpperCase();
+  $('rr-new-strike').value=String(l.new_strike||l.current_strike||0).replace('.',',');
+  $('rr-new-exp').value=l.new_exp||l.current_exp||'';
+  $('rr-new-prem').value=String(openVal(l)||0).replace('.',',');
+  $('rr-form').action='/roll_option/'+optId;
+  $('modal-commit-roll').style.display='flex';
+}
+
+function commitSpread(){
+  var id=(state.src||'').split(':')[1];
+  var longL=state.lines.find(function(l){return (l.side||'SELL')==='BUY';});
+  var shortL=state.lines.find(function(l){return (l.side||'SELL')==='SELL';});
+  if(!id||!longL||!shortL){alert('A rolagem de trava precisa de uma linha comprada e uma vendida.');return;}
+  $('rs-title').textContent=(longL.current_symbol||'')+' / '+(shortL.current_symbol||'');
+  $('rs-long-old').textContent=longL.current_symbol+' K='+Number(longL.current_strike||0).toFixed(2).replace('.',',');
+  $('rs-short-old').textContent=shortL.current_symbol+' K='+Number(shortL.current_strike||0).toFixed(2).replace('.',',');
+  $('rs-type').value=rollTypeMap();
+  $('rs-date').value=new Date().toISOString().slice(0,10);
+  $('rs-new-exp').value=longL.new_exp||shortL.new_exp||'';
+  $('rs-close-long').value=String(closeVal(longL)||0).replace('.',',');
+  $('rs-new-long-tk').value=(longL.new_symbol||longL.current_symbol||'').toUpperCase();
+  $('rs-new-long-k').value=String(longL.new_strike||longL.current_strike||0).replace('.',',');
+  $('rs-new-long-p').value=String(openVal(longL)||0).replace('.',',');
+  $('rs-close-short').value=String(closeVal(shortL)||0).replace('.',',');
+  $('rs-new-short-tk').value=(shortL.new_symbol||shortL.current_symbol||'').toUpperCase();
+  $('rs-new-short-k').value=String(shortL.new_strike||shortL.current_strike||0).replace('.',',');
+  $('rs-new-short-p').value=String(openVal(shortL)||0).replace('.',',');
+  $('rs-form').action='/roll_spread/'+id;
+  $('modal-commit-spread').style.display='flex';
+}
+
 function commitRoll(i){
+  var src=state.src||'';
+  if(src.indexOf('spread:')===0){commitSpread();return;}
+  if(src.indexOf('est:')===0){alert('Para operacoes estruturadas, grave a rolagem pelo botao 🔄 na pagina Opcoes.');return;}
   var l=state.lines[i];
   if(!l||!l.current_symbol){alert('Linha sem opcao atual.');return;}
+  var m=src.match(/^option:(\d+)$/);
+  if(m&&state.lines.length===1){openOptionCommitModal(l,m[1]);return;}
   fetch('/api/option-id/'+encodeURIComponent(l.current_symbol))
     .then(function(r){return r.json();})
     .then(function(d){
       if(d.error){alert(d.error);return;}
-      var map={TIME:'TEMPO',STRIKE:'STRIKE',TIME_STRIKE:'AMBOS'};
-      var kOld=Number(l.current_strike||d.strike||0);
-      $('rr-title').textContent=l.current_symbol+' (K='+kOld.toFixed(2).replace('.',',')+' / venc '+dt(l.current_exp||d.exp)+')';
-      $('rr-type').value=map[currentRollType()]||'TEMPO';
-      $('rr-date').value=new Date().toISOString().slice(0,10);
-      $('rr-close').value=String(closeVal(l)||0).replace('.',',');
-      $('rr-new-ticker').value=(l.new_symbol||l.current_symbol||'').toUpperCase();
-      $('rr-new-strike').value=String(l.new_strike||l.current_strike||0).replace('.',',');
-      $('rr-new-exp').value=l.new_exp||l.current_exp||'';
-      $('rr-new-prem').value=String(openVal(l)||0).replace('.',',');
-      $('rr-form').action='/roll_option/'+d.id;
-      $('modal-commit-roll').style.display='flex';
+      openOptionCommitModal(l,d.id,d.strike,d.exp);
     })
     .catch(function(e){alert('Erro ao localizar a opcao: '+e);});
 }
+
+$('commit-roll-btn').addEventListener('click',function(){
+  var src=state.src||'';
+  if(src.indexOf('spread:')===0){commitSpread();return;}
+  if(src.indexOf('est:')===0){alert('Para operacoes estruturadas, grave a rolagem pelo botao 🔄 na pagina Opcoes.');return;}
+  if(!state.lines.length){alert('Insira ao menos uma linha na rolagem.');return;}
+  var i=state.selected_line!=null?state.selected_line:(state.lines.length===1?0:null);
+  if(i==null){alert('Selecione na tabela a linha que deseja gravar.');return;}
+  commitRoll(i);
+});
 
 loadSaved();renderMetrics();
 
@@ -245,6 +345,7 @@ loadSaved();renderMetrics();
   if(q.get('roll')!=='1')return;
   var legsRaw=q.get('legs')||'';
   if(!legsRaw)return;
+  state.src=q.get('src')||null;   // origem: option:ID | spread:ID | est:ID
   state.roll_type='TIME';   // padrão: rolagem no tempo
   document.querySelectorAll('.roll-tab').forEach(function(b){b.classList.toggle('active',b.dataset.rollType==='TIME');});
   var ativo=(q.get('ativo')||'').toUpperCase();

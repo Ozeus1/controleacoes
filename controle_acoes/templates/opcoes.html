@@ -3,8 +3,8 @@
 {% block content %}
 {# Ícone que abre o simulador de Rolagem de Opções pré-carregado (padrão: rolagem no tempo).
    legs = ticker,tipo,side,qtd,preço médio,strike,vencimento — pernas separadas por | #}
-{% macro roll_sim_link(legs_str, ativo, nome) -%}
-<a href="{{ url_for('rolagem_opcoes') }}?roll=1&ativo={{ ativo or '' }}&nome={{ nome|urlencode }}&legs={{ legs_str|urlencode }}"
+{% macro roll_sim_link(legs_str, ativo, nome, src='') -%}
+<a href="{{ url_for('rolagem_opcoes') }}?roll=1&ativo={{ ativo or '' }}&nome={{ nome|urlencode }}&src={{ src }}&legs={{ legs_str|urlencode }}"
    class="btn btn-sm" style="background:#0d9488;color:white;" title="Simular rolagem no tempo">📆</a>
 {%- endmacro %}
 <style>
@@ -108,7 +108,7 @@
                 <td class="actions" style="white-space:nowrap;">
                     <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar operação"
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
-                    {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker) }}
+                    {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker, 'option:' ~ item.option.id) }}
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
                             data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}" data-roll-qty="{{ item.option.quantity }}"
@@ -257,7 +257,7 @@
                 <td class="actions" style="white-space:nowrap;">
                     <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar operação"
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
-                    {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker) }}
+                    {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker, 'option:' ~ item.option.id) }}
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
                             data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}" data-roll-qty="{{ item.option.quantity }}"
@@ -359,7 +359,7 @@
                 <td class="actions" style="white-space:nowrap;">
                     <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar operação"
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
-                    {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker) }}
+                    {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker, 'option:' ~ item.option.id) }}
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
                             data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}" data-roll-qty="{{ item.option.quantity }}"
@@ -459,7 +459,7 @@
                 <td class="actions" style="white-space:nowrap;">
                     <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar operação"
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
-                    {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker) }}
+                    {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker, 'option:' ~ item.option.id) }}
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
                             data-roll="{{ item.option.roll_history|e }}" data-roll-title="{{ item.option.ticker }}" data-roll-qty="{{ item.option.quantity }}"
@@ -569,7 +569,8 @@
                         ~ '|' ~
                         item.spread.leg_short_ticker ~ ',' ~ _sptype ~ ',SELL,' ~ item.spread.quantity ~ ',' ~ '%.2f'|format(item.spread.leg_short_price or 0) ~ ',' ~ '%.2f'|format(item.spread.leg_short_strike or 0) ~ ',' ~ _spexp,
                         item.spread.underlying_asset,
-                        'Rolagem trava ' ~ item.spread.underlying_asset) }}
+                        'Rolagem trava ' ~ item.spread.underlying_asset,
+                        'spread:' ~ item.spread.id) }}
                     {% if item.spread.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"
                             data-roll="{{ item.spread.roll_history|e }}" data-roll-title="{{ item.spread.underlying_asset }}" data-roll-qty="{{ item.spread.quantity }}"
@@ -739,7 +740,7 @@
                         {% set _ = roll_legs.append(l.ticker ~ ',' ~ l.opt_type ~ ',' ~ l.side ~ ',' ~ l.quantity ~ ',' ~ '%.2f'|format(l.entry_price or 0) ~ ',' ~ '%.2f'|format(l.strike or 0) ~ ',' ~ (l.expiration_date.isoformat() if l.expiration_date else '')) %}
                     {% endfor %}
                     {% if roll_legs %}
-                    {{ roll_sim_link(roll_legs|join('|'), op.underlying_asset, 'Rolagem ' ~ op.name) }}
+                    {{ roll_sim_link(roll_legs|join('|'), op.underlying_asset, 'Rolagem ' ~ op.name, 'est:' ~ op.id) }}
                     {% endif %}
                     {% if op.roll_history %}
                     <button class="btn btn-sm" style="background:#8b5cf6;color:white;" title="Histórico de rolagens"

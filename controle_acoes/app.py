@@ -261,6 +261,12 @@ def run_migrations():
         except Exception:
             pass  # coluna já existe
 
+    # RankingVol: grupo da lista (LIQ = com liquidez, GERAL = lista ampla)
+    try:
+        cursor.execute("ALTER TABLE ranking_vol ADD COLUMN grupo VARCHAR(10) DEFAULT 'LIQ'")
+    except Exception:
+        pass  # coluna já existe
+
     # Check existing columns in 'option' table
     cursor.execute("PRAGMA table_info(option)")
     existing_columns = {row[1] for row in cursor.fetchall()}
@@ -2030,7 +2036,7 @@ def api_simulacao_delete(sim_id):
 def simulador_liquidez():
     """Página: tabela de liquidez (ranking) + simulador de payoff integrado."""
     sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id).order_by(SimulacaoOpcoes.created_at.desc()).all()
-    ranking_vol = RankingVol.query.filter_by(user_id=current_user.id).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
     return render_template('simulador_liquidez.html', sims=sims, ranking_vol=ranking_vol, selic=_selic())
 
 
@@ -2038,7 +2044,7 @@ def simulador_liquidez():
 @login_required
 def cadeia_opcoes():
     """Cadeia de opções estilo HB — calls/puts em torno do spot por vencimento."""
-    ranking_vol = RankingVol.query.filter_by(user_id=current_user.id).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
     return render_template('cadeia_opcoes.html', ranking_vol=ranking_vol, selic=_selic())
 
 
@@ -2618,7 +2624,7 @@ def download_rtd_tsv():
 @login_required
 def rolagem_opcoes():
     """Simulador de rolagem de opcoes por tempo ou strike."""
-    ranking_vol = RankingVol.query.filter_by(user_id=current_user.id).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
     return render_template('rolagem_opcoes.html', ranking_vol=ranking_vol)
 
 
@@ -2910,7 +2916,7 @@ def api_cadeia(ticker):
 @login_required
 def busca_operacoes():
     """Página: sugestões de collar e travas no débito por vencimento."""
-    ranking_vol = RankingVol.query.filter_by(user_id=current_user.id).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
     return render_template('busca_operacoes.html', ranking_vol=ranking_vol, selic=_selic())
 
 
@@ -8033,37 +8039,88 @@ def delete_study_intl_stock(sid):
 
 # ── Ranking Volatilidade ─────────────────────────────────────────
 
+# Lista "Geral" do Ranking de Volatilidade — ações/BDRs/ETFs com opções na B3
+RANKING_GERAL_TICKERS = [
+    # Principais
+    'BOVA11','VALE3','PETR4','PETR3','ITUB4','ITUB3','BBAS3','PRIO3','SMAL11','BBDC4','BBDC3',
+    'BRAV3','B3SA3','EGIE3','CSNA3','MGLU3','EMBJ3','SUZB3','BPAC11','ITSA4','WEGE3','CSAN3',
+    'NATU3','BBSE3','BRKM5','AXIA3','USIM5','MBRF3','ABEV3','BRAP4','SBSP3','CYRE3','AZZA3',
+    'RENT3','IBOV11','LREN3','ASAI3','MRVE3','CVCB3','BEEF3','ENEV3','GGBR4','CMIG4','CMIG3',
+    'HAPV3','EQTL3','ROXO34','KLBN11','COGN3','TAEE11','CMIN3','IRBR3','RAIL3','ABCB4','CXSE3',
+    'TOTS3','ALOS3','VAMO3','RADL3','GOAU4','JHSF3','SANB11','CEAB3','RDOR3','VBBR3','UGPA3',
+    'DIRR3','CSMG3','YDUQ3','VIVT3','ISAE4','BOVV11','HYPE3','VIVA3','CPLE3','POMO4','MULT3',
+    'SLCE3','TIMS3','CURY3','RECV3','IGTI11','PSSA3','SAPR11','BRSR6','XPBR31','MOTV3','GMAT3',
+    'RAIZ4','ENGI11','ALPA4','FLRY3','MOVI3','EZTC3','ECOR3','BHIA3','HASH11','TUPY3','CPFE3',
+    'JBSS32','SMFT3',
+    # Small caps e BDRs
+    'LWSA3','ANIM3','TEND3','PCAR3','WIZC3','SMTO3','VULC3','LJQQ3','NVDC34','INTB3','SIMH3',
+    'POSI3','AURE3','SEER3','KEPL3','QUAL3','RAPT4','BMGB4','MYPK3','TTEN3','CASH3','ALUP11',
+    'SAUD3','GRND3','UNIP6','LEVE3','MDNE3','AMBP3','BMOB3','INBR32','MDIA3','DXCO3','SBFG3',
+    'FESA4','PLPL3','RANI3','VLID3','IVVB11','GOGL34','AGRO3','GFSA3','M1TA34','HBOR3','CAML3',
+    'BLAU3','PNVL3','EVEN3','TRIS3','ROMI3','TASA4','SOJA3','LOGG3','AURA33','ONCO3','LAVV3',
+    'TSLA34','MLAS3','ORVR3','GGPS3','JALL3','AMZO34','VVEO3','MSFT34','MELI34','AMAR3','PGMN3',
+    'DASA3','MILS3','TSMC34','GOLD11','ARML3','BERK34','MTRE3','JPMC34','CBAV3','AAPL34',
+    'MCDC34','COCA34','HBSA3','NASD11',
+]
+
+
+def _seed_ranking_geral(uid):
+    """Garante que a lista GERAL do usuário contenha os tickers padrão."""
+    existentes = {rv.ticker for rv in RankingVol.query.filter_by(user_id=uid, grupo='GERAL').all()}
+    novos = [t for t in RANKING_GERAL_TICKERS if t not in existentes]
+    for t in novos:
+        db.session.add(RankingVol(user_id=uid, ticker=t, grupo='GERAL'))
+    if novos:
+        db.session.commit()
+
+
+def _ranking_liq_filter(query):
+    """Filtra apenas a lista 'Com liquidez' (linhas antigas têm grupo NULL)."""
+    return query.filter(db.or_(RankingVol.grupo == 'LIQ', RankingVol.grupo.is_(None)))
+
+
 @app.route('/ranking-volatilidade')
 @login_required
 def ranking_volatilidade():
-    ranking_vol = RankingVol.query.filter_by(user_id=current_user.id).order_by(RankingVol.ticker).all()
-    return render_template('ranking_vol.html', ranking_vol=ranking_vol)
+    lista = (request.args.get('lista') or 'liq').lower()
+    if lista == 'geral':
+        _seed_ranking_geral(current_user.id)
+        q = RankingVol.query.filter_by(user_id=current_user.id, grupo='GERAL')
+    else:
+        lista = 'liq'
+        q = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id))
+    ranking_vol = q.order_by(RankingVol.ticker).all()
+    return render_template('ranking_vol.html', ranking_vol=ranking_vol, lista=lista)
 
 
 @app.route('/estudos/ranking_vol/add', methods=['POST'])
 @login_required
 def ranking_vol_add():
+    lista  = (request.form.get('lista') or 'liq').lower()
+    grupo  = 'GERAL' if lista == 'geral' else 'LIQ'
     ticker = request.form.get('ticker', '').strip().upper()
     if not ticker:
         flash('Ticker obrigatório.', 'danger')
-        return redirect(url_for('ranking_volatilidade'))
-    exists = RankingVol.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+        return redirect(url_for('ranking_volatilidade', lista=lista))
+    q = RankingVol.query.filter_by(user_id=current_user.id, ticker=ticker)
+    exists = (q.filter_by(grupo='GERAL') if grupo == 'GERAL' else _ranking_liq_filter(q)).first()
     if exists:
         flash(f'{ticker} já está no ranking.', 'warning')
-        return redirect(url_for('ranking_volatilidade'))
-    db.session.add(RankingVol(user_id=current_user.id, ticker=ticker))
+        return redirect(url_for('ranking_volatilidade', lista=lista))
+    db.session.add(RankingVol(user_id=current_user.id, ticker=ticker, grupo=grupo))
     db.session.commit()
     flash(f'{ticker} adicionado ao Ranking de Volatilidade.', 'success')
-    return redirect(url_for('ranking_volatilidade'))
+    return redirect(url_for('ranking_volatilidade', lista=lista))
 
 
 @app.route('/estudos/ranking_vol/delete/<int:rid>', methods=['POST'])
 @login_required
 def ranking_vol_delete(rid):
     rv = RankingVol.query.filter_by(id=rid, user_id=current_user.id).first_or_404()
+    lista = 'geral' if rv.grupo == 'GERAL' else 'liq'
     db.session.delete(rv)
     db.session.commit()
-    return redirect(url_for('ranking_volatilidade'))
+    return redirect(url_for('ranking_volatilidade', lista=lista))
 
 
 @app.route('/api/ranking_vol/ticker', methods=['POST', 'DELETE'])
@@ -8073,15 +8130,16 @@ def api_ranking_vol_ticker():
     ticker = (data.get('ticker') or '').strip().upper()
     if not ticker:
         return jsonify({'error': 'Ticker obrigatório.'}), 400
+    # Este endpoint opera sempre sobre a lista "Com liquidez"
     if request.method == 'DELETE':
-        rv = RankingVol.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+        rv = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id, ticker=ticker)).first()
         if rv:
             db.session.delete(rv)
             db.session.commit()
         return jsonify({'ok': True, 'ticker': ticker})
-    exists = RankingVol.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+    exists = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id, ticker=ticker)).first()
     if not exists:
-        db.session.add(RankingVol(user_id=current_user.id, ticker=ticker))
+        db.session.add(RankingVol(user_id=current_user.id, ticker=ticker, grupo='LIQ'))
         db.session.commit()
     return jsonify({'ok': True, 'ticker': ticker})
 
@@ -8108,7 +8166,11 @@ def _api_ranking_vol_update_impl():
     if not token:
         return jsonify({'error': 'Token OpLab não configurado. Configure em Perfil → OpLab.'}), 400
 
-    items = RankingVol.query.filter_by(user_id=uid).all()
+    # Atualiza somente a lista ativa (liq = com liquidez; geral = lista ampla)
+    lista = ((request.get_json(silent=True) or {}).get('lista')
+             or request.args.get('lista') or 'liq').lower()
+    q = RankingVol.query.filter_by(user_id=uid)
+    items = (q.filter_by(grupo='GERAL') if lista == 'geral' else _ranking_liq_filter(q)).all()
     if not items:
         return jsonify({'updated': 0, 'results': []})
 

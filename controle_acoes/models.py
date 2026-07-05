@@ -347,6 +347,7 @@ class RankingVol(db.Model):
     iv_percentil = db.Column(db.Float, nullable=True)   # IV Percentil (0-100)
     vol_impl     = db.Column(db.Float, nullable=True)   # Vol. Implícita % anualizada
     updated_at   = db.Column(db.DateTime, nullable=True)
+    grupo        = db.Column(db.String(10), nullable=True, default='LIQ')  # LIQ (com liquidez) | GERAL
 
 
 class StructuredOp(db.Model):

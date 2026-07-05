@@ -110,6 +110,31 @@
   Clique nos cabeçalhos para ordenar. Use o campo de busca para filtrar.
 </p>
 
+<!-- Seleção da lista -->
+<div style="display:flex;gap:.5rem;margin-bottom:.85rem;">
+  <a href="{{ url_for('ranking_volatilidade', lista='liq') }}" onclick="localStorage.setItem('rv-lista','liq')"
+     class="btn btn-sm" style="{{ 'background:#0ea5e9;color:#fff;font-weight:700;' if lista != 'geral'
+        else 'background:var(--hover-bg);color:var(--text-secondary);' }}">💧 Com liquidez</a>
+  <a href="{{ url_for('ranking_volatilidade', lista='geral') }}" onclick="localStorage.setItem('rv-lista','geral')"
+     class="btn btn-sm" style="{{ 'background:#0ea5e9;color:#fff;font-weight:700;' if lista == 'geral'
+        else 'background:var(--hover-bg);color:var(--text-secondary);' }}">🌐 Geral</a>
+</div>
+<script>
+// Restaura a última lista escolhida quando a página é aberta sem parâmetro
+(function(){
+  var params = new URLSearchParams(location.search);
+  if (!params.has('lista')) {
+    var saved = localStorage.getItem('rv-lista');
+    if (saved === 'geral') {
+      params.set('lista', 'geral');
+      location.replace(location.pathname + '?' + params.toString());
+    }
+  } else {
+    localStorage.setItem('rv-lista', params.get('lista'));
+  }
+})();
+</script>
+
 <!-- Filtro + status -->
 <div style="display:flex;gap:.75rem;align-items:center;margin-bottom:.75rem;flex-wrap:wrap">
   <input id="rv-filter" type="text" placeholder="Filtrar ticker…"
@@ -498,6 +523,7 @@
               style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer">&times;</button>
     </div>
     <form method="POST" action="{{ url_for('ranking_vol_add') }}">
+      <input type="hidden" name="lista" value="{{ lista|default('liq') }}">
       <label style="font-size:.85rem;margin-bottom:.3rem;display:block">Ticker (ex: PETR4, VALE3)</label>
       <input type="text" name="ticker" class="form-control" required
              style="text-transform:uppercase;margin-bottom:.75rem" placeholder="ABEV3">
@@ -563,7 +589,7 @@
     var btn=document.getElementById('btn-rv-update');
     var stat=document.getElementById('rv-status');
     btn.disabled=true; btn.textContent='⟳ Atualizando…'; stat.textContent='';
-    fetch('/api/ranking_vol/update',{method:'POST',
+    fetch('/api/ranking_vol/update?lista={{ lista|default("liq") }}',{method:'POST',
       headers:{'X-CSRFToken':document.querySelector('meta[name=csrf-token]')?.content||''}})
     .then(function(r){return r.text().then(function(text){
       var data=null;

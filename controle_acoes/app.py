@@ -4124,6 +4124,25 @@ def roll_option(id):
     return redirect(url_for('opcoes'))
 
 
+@app.route('/api/option-id/<ticker>')
+@login_required
+def api_option_id(ticker):
+    """Localiza a opção registrada (tabela Option) pelo ticker — usado pelo
+    simulador de rolagem para gravar a rolagem na operação real."""
+    opt = Option.query.filter_by(user_id=current_user.id, ticker=ticker.upper().strip()).first()
+    if not opt:
+        return jsonify({'error': f'Opção {ticker.upper()} não encontrada nas suas operações registradas.'}), 404
+    return jsonify({
+        'id':          opt.id,
+        'ticker':      opt.ticker,
+        'option_type': opt.option_type,
+        'strike':      opt.strike_price,
+        'exp':         opt.expiration_date.isoformat() if opt.expiration_date else '',
+        'premium':     opt.sale_price,
+        'quantity':    opt.quantity,
+    })
+
+
 @app.route('/roll_spread/<int:id>', methods=['POST'])
 @login_required
 def roll_spread(id):

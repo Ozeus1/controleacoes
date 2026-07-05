@@ -106,6 +106,7 @@
                 </td>
 
                 <td class="actions" style="white-space:nowrap;">
+                    <a href="{{ url_for('payoff_option', id=item.option.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
                     <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar operação"
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
                     {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker, 'option:' ~ item.option.id) }}
@@ -255,6 +256,7 @@
                     {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
                 </td>
                 <td class="actions" style="white-space:nowrap;">
+                    <a href="{{ url_for('payoff_option', id=item.option.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
                     <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar operação"
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
                     {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker, 'option:' ~ item.option.id) }}
@@ -357,6 +359,7 @@
                     {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
                 </td>
                 <td class="actions" style="white-space:nowrap;">
+                    <a href="{{ url_for('payoff_option', id=item.option.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
                     <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar operação"
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
                     {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker, 'option:' ~ item.option.id) }}
@@ -457,6 +460,7 @@
                     {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
                 </td>
                 <td class="actions" style="white-space:nowrap;">
+                    <a href="{{ url_for('payoff_option', id=item.option.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
                     <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar operação"
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
                     {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker, 'option:' ~ item.option.id) }}

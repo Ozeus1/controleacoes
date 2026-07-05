@@ -3888,6 +3888,71 @@ def payoff_estruturada(id):
                            legs_json=_json.dumps(legs))
 
 
+@app.route('/payoff/option/<int:id>')
+@login_required
+def payoff_option(id):
+    """Payoff de opção individual (venda coberta, venda a seco, compra a seco).
+    Venda coberta de CALL inclui a perna da ação (lastro) pelo preço médio da carteira."""
+    opt = Option.query.get_or_404(id)
+    if opt.user_id != current_user.id:
+        flash('Sem permissão.', 'danger')
+        return redirect(url_for('opcoes'))
+
+    ot     = (opt.option_type or 'VENDA_CALL').upper()
+    is_put = 'PUT' in ot
+    is_buy = 'COMPRA' in ot
+
+    legs = []
+    # Venda coberta de CALL: acrescenta a ação comprada (preço médio da carteira)
+    if ot == 'VENDA_CALL' and opt.underlying_asset:
+        asset = Asset.query.filter_by(user_id=current_user.id,
+                                      ticker=opt.underlying_asset.upper()).first()
+        if asset and (asset.avg_price or 0) > 0:
+            legs.append({
+                'ticker':          asset.ticker,
+                'side':            'BUY',
+                'opt_type':        'STOCK',
+                'quantity':        opt.quantity,
+                'strike':          0,
+                'entry_price':     asset.avg_price,
+                'current_price':   asset.current_price or 0,
+                'expiration_date': '',
+            })
+
+    legs.append({
+        'ticker':          opt.ticker,
+        'side':            'BUY' if is_buy else 'SELL',
+        'opt_type':        'PUT' if is_put else 'CALL',
+        'quantity':        opt.quantity,
+        'strike':          opt.strike_price,
+        'entry_price':     opt.sale_price,
+        'current_price':   opt.current_option_price or 0,
+        'expiration_date': opt.expiration_date.strftime('%Y-%m-%d') if opt.expiration_date else '',
+    })
+
+    titles = {
+        'VENDA_CALL':  'Venda Coberta de Call',
+        'VENDA_PUT':   'Venda a Seco de Put',
+        'COMPRA_CALL': 'Compra a Seco de Call',
+        'COMPRA_PUT':  'Compra a Seco de Put',
+    }
+    und_price, und_change = _get_underlying_quote(opt.underlying_asset, current_user.id)
+    t_days = max((opt.expiration_date - date.today()).days, 1) if opt.expiration_date else 30
+
+    import json as _json
+    return render_template('payoff.html',
+                           title=f"{titles.get(ot, 'Opção')} — {opt.ticker}",
+                           underlying=opt.underlying_asset or '',
+                           expiration=opt.expiration_date.strftime('%d/%m/%Y') if opt.expiration_date else '',
+                           legs=legs,
+                           underlying_price=und_price,
+                           underlying_change=und_change,
+                           selic=_selic(),
+                           T_days=t_days,
+                           days_nearest=t_days,
+                           legs_json=_json.dumps(legs))
+
+
 @app.route('/api/option/<int:id>/delta', methods=['POST'])
 @login_required
 def api_set_option_delta(id):

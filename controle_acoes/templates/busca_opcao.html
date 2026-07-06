@@ -331,7 +331,8 @@ function _render(d){
 
   var bc = document.getElementById('f-badges'); bc.innerHTML='';
   _chip(bc,'mat', d.maturity_type);
-  if(d.days_to_maturity!=null) _chip(bc,'days', d.days_to_maturity+'d p/ vencer');
+  if(d.days_calendar!=null)      _chip(bc,'days', d.days_calendar+'d p/ vencer');
+  else if(d.days_to_maturity!=null) _chip(bc,'days', d.days_to_maturity+' du p/ vencer');
   if(d._rtd_imported_at)       _chip(bc,'rtd',  '📊 RTD '+d._rtd_imported_at);
 
   _t('f-last', _brl(d.last));
@@ -366,7 +367,7 @@ function _render(d){
   _t('f-mat-type',   d.maturity_type||'—');
   _t('f-strike',     d.strike!=null?_brl(d.strike):'—');
   _t('f-expiration', _dt(d.expiration));
-  _t('f-days',       d.days_to_maturity!=null?d.days_to_maturity+' dias':'—');
+  _t('f-days',       _daysLabel(d));
   _t('f-bid',        _brl(d.bid));
   _t('f-ask',        _brl(d.ask));
 
@@ -461,6 +462,22 @@ function _setError(msg){
   var el=document.getElementById('bo-error');
   el.textContent=msg; el.style.display=msg?'block':'none';
 }
+/* days_to_maturity da OpLab é em dias ÚTEIS; days_calendar é derivado da data
+   de vencimento (dias corridos). Mostra corridos e, entre parênteses, úteis. */
+function _daysLabel(d){
+  var dc=d.days_calendar, du=d.days_to_maturity;
+  if(dc!=null && du!=null) return dc+' dias corridos ('+du+' úteis)';
+  if(dc!=null) return dc+' dias corridos';
+  if(du!=null) return du+' dias úteis';
+  return '—';
+}
+/* Prazo em dias corridos para anualizar (base 365).
+   Usa days_calendar; se ausente, converte dias úteis (~252 du/ano). */
+function _calDays(d){
+  if(d.days_calendar!=null && d.days_calendar>0) return d.days_calendar;
+  if(d.days_to_maturity!=null && d.days_to_maturity>0) return d.days_to_maturity*365/252;
+  return null;
+}
 /* ── Operação Estruturada ── */
 function _renderOp(d, isPut){
   var card  = document.getElementById('f-op-card');
@@ -469,7 +486,8 @@ function _renderOp(d, isPut){
   var S  = d.spot_price;   // cotação do subjacente
   var K  = d.strike;       // strike da opção
   var P  = d.last;         // prêmio recebido/pago (último negócio)
-  var T  = d.days_to_maturity;
+  var T  = _calDays(d);    // prazo em dias CORRIDOS (para anualizar base 365)
+  var Tlbl = (d.days_calendar!=null?d.days_calendar:Math.round(T))+'d corridos';  // rótulo do cenário
   if(!S||!K||!P||!T){ card.style.display='none'; return; }
 
   // Taxa Selic anual (retorna % bruta no bs_sigma_used? não — usamos referência 13.65%)
@@ -497,7 +515,7 @@ function _renderOp(d, isPut){
       {l:'Compra ação (spot)',     v:_brl(S),            cls:''},
       {l:'Recebe prêmio CALL',     v:_brl(P),            cls:'pos'},
       {l:'Custo líquido (S − P)',  v:_brl(custo_liq),    cls:'hi'},
-      {sep: 'Cenário: exercido no vencimento ('+T+'d)'},
+      {sep: 'Cenário: exercido no vencimento ('+Tlbl+')'},
       {l:'Recebe pelo ação (strike)',v:_brl(K),           cls:''},
       {l:'Ganho/perda vs spot',     v:_brlSgn(K-S),      cls: K>=S?'pos':'neg'},
       {l:'Retorno total se exercido',v:_brl(retorno_se_exec), cls:'pos'},
@@ -528,7 +546,7 @@ function _renderOp(d, isPut){
       {l:'Strike da PUT',           v:_brl(K),            cls:'hi'},
       {l:'Prêmio recebido',         v:_brl(P),            cls:'pos'},
       {l:'Capital reservado (K)',   v:_brl(K),            cls:''},
-      {sep: 'Cenário: exercido no vencimento ('+T+'d)'},
+      {sep: 'Cenário: exercido no vencimento ('+Tlbl+')'},
       {l:'Compra ação pelo strike', v:_brl(K),            cls:''},
       {l:'Custo efetivo (K − P)',   v:_brl(custo_liq),    cls:'hi'},
       {l:'Spot atual',              v:_brl(S),            cls:''},

@@ -2264,7 +2264,7 @@ def api_busca_opcao(ticker):
         'underlying':       underlying,
         'spot_price':       spot_price,
         'spot_change':      spot_change,
-        'days_to_maturity': d.get('days_to_maturity'),
+        'days_to_maturity': d.get('days_to_maturity'),   # dias ÚTEIS (padrão OpLab)
         # Preço — close é o último preço; open/high/low/prev_close chegam como 0 quando sem dado
         'last':             _fz(d.get('close')),
         'open':             _fz(d.get('open')),
@@ -2346,6 +2346,17 @@ def api_busca_opcao(ticker):
             result['type'] = rtd.option_type
         result['_rtd_imported_at'] = rtd.imported_at.strftime('%d/%m/%Y %H:%M') if rtd.imported_at else None
 
+    # ── Dias corridos (calendário) a partir da data de vencimento ────────────
+    # days_to_maturity da OpLab é em dias ÚTEIS; days_calendar (corridos) é usado
+    # para exibir o prazo e anualizar retornos (base 365).
+    result['days_calendar'] = None
+    if result.get('expiration'):
+        try:
+            _exp_d = datetime.strptime(str(result['expiration'])[:10], '%Y-%m-%d').date()
+            result['days_calendar'] = max((_exp_d - date.today()).days, 0)
+        except (ValueError, TypeError):
+            pass
+
     # ── Cálculo BS local quando OpLab não retornou gregas ───────────────────
     # 0.0 também é tratado como "sem dado" (OpLab/RTD retornam 0 fora do pregão)
     needs_bs     = not result.get('bs_price')
@@ -2354,15 +2365,13 @@ def api_busca_opcao(ticker):
         S = result['spot_price']
         K = result['strike']
 
-        # Prazo: days_to_maturity da OpLab; se ausente, deriva da data de vencimento
-        dtm = result.get('days_to_maturity')
-        if not dtm and result.get('expiration'):
-            try:
-                exp_d = datetime.strptime(str(result['expiration'])[:10], '%Y-%m-%d').date()
-                dtm = (exp_d - date.today()).days
-            except (ValueError, TypeError):
-                dtm = None
-        T = max(0, dtm or 0) / 365.0
+        # Prazo em anos: dias CORRIDOS / 365. Se só houver dias úteis
+        # (days_to_maturity da OpLab), converte por 252.
+        dcal = result.get('days_calendar')
+        if dcal:
+            T = dcal / 365.0
+        else:
+            T = max(0, result.get('days_to_maturity') or 0) / 252.0
 
         # Taxa Selic anualizada
         try:

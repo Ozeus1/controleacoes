@@ -58,15 +58,16 @@
 <div id="sl-liq-section" class="card" style="padding:1rem">
   <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.75rem">
     <span style="font-weight:600;font-size:.95rem">💧 Liquidez de Opções</span>
-    <div style="display:flex;gap:.35rem;flex-wrap:wrap" id="sl-ticker-btns">
-      {% for rv in ranking_vol %}
-      <button class="sl-ticker-btn" data-t="{{ rv.ticker }}"
-              onclick="slLoadLiq('{{ rv.ticker }}')">{{ rv.ticker }}</button>
-      {% else %}
-      <span style="color:var(--text-secondary);font-size:.85rem">Nenhum ativo no ranking. Adicione em <a href="{{ url_for('ranking_volatilidade') }}">Ranking Vol.</a></span>
-      {% endfor %}
+    <div style="display:flex;gap:.35rem;flex-wrap:wrap" id="sl-ticker-btns"></div>
+    <div style="display:flex;gap:.4rem;align-items:center">
+      <input id="sl-add-ticker" placeholder="Novo ticker…" maxlength="10"
+             style="padding:.25rem .5rem;background:var(--card-bg);border:1px solid var(--border-color);
+                    color:var(--text-primary);border-radius:5px;font-size:.8rem;width:110px;text-transform:uppercase"
+             onkeydown="if(event.key==='Enter')slAddTicker()">
+      <button class="btn btn-sm btn-secondary" onclick="slAddTicker()" title="Adicionar aos atalhos e buscar">➕</button>
     </div>
   </div>
+  <script>var SL_SERVER_TICKERS = {{ ranking_vol|map(attribute='ticker')|list|tojson }};</script>
 
   <div id="sl-liq-loading" style="color:var(--text-secondary);font-size:.85rem;padding:.5rem 0;display:none">
     Buscando dados via OpLab…
@@ -196,7 +197,7 @@
             </td>
             <td class="col-ticker"><input type="text" name="leg_ticker" placeholder="ex: PETRQ46"
                style="width:110px;text-transform:uppercase"></td>
-            <td><input type="text" name="leg_qty" value="1" style="width:60px;text-align:center" oninput="scheduleRedraw()"></td>
+            <td><input type="text" name="leg_qty" value="100" style="width:60px;text-align:center" oninput="scheduleRedraw()"></td>
             <td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px;text-align:right" oninput="scheduleRedraw()"></td>
             <td class="col-exp"><input type="date" name="leg_exp" style="width:135px"></td>
             <td class="col-strike"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px;text-align:right" oninput="scheduleRedraw()"></td>
@@ -259,7 +260,7 @@
       </div>
       <div style="flex:1">
         <label style="font-size:.82rem;display:block;margin-bottom:.25rem">Quantidade</label>
-        <input id="sl-leg-qty" type="number" min="1" value="1"
+        <input id="sl-leg-qty" type="number" min="1" step="100" value="100"
                style="width:100%;background:var(--card-bg);color:var(--text-primary);
                       border:1px solid var(--border-color);border-radius:4px;padding:.3rem .5rem">
       </div>
@@ -417,6 +418,52 @@ function _slRenderLiq(d){
   document.getElementById('sl-liq-tables').style.display = 'flex';
 }
 
+// ── Atalhos de tickers gerenciáveis (base: Ranking Vol + personalizados) ─────
+var SL_KEY_CUSTOM = 'sl-tickers-custom', SL_KEY_REMOVED = 'sl-tickers-removed';
+function slLsGet(k){ try{ return JSON.parse(localStorage.getItem(k))||[]; }catch(e){ return []; } }
+function slLsSet(k,v){ localStorage.setItem(k, JSON.stringify(v)); }
+function slTickList(){
+  var removed = slLsGet(SL_KEY_REMOVED), seen = {}, out = [];
+  (window.SL_SERVER_TICKERS||[]).concat(slLsGet(SL_KEY_CUSTOM)).forEach(function(t){
+    t = (t||'').toUpperCase();
+    if(t && !seen[t] && removed.indexOf(t) === -1){ seen[t] = 1; out.push(t); }
+  });
+  return out;
+}
+function slRenderTickers(active){
+  var host = document.getElementById('sl-ticker-btns');
+  if(!host) return;
+  host.innerHTML = slTickList().map(function(t){
+    return '<button class="sl-ticker-btn'+(t===active?' active':'')+'" data-t="'+t+'" onclick="slLoadLiq(\''+t+'\')">'+t+
+           '<span onclick="event.stopPropagation();slRemoveTicker(\''+t+'\')" title="Remover atalho" '+
+           'style="margin-left:.35rem;color:#94a3b8;font-weight:700;cursor:pointer">×</span></button>';
+  }).join('') || '<span style="color:var(--text-secondary);font-size:.85rem">Nenhum atalho — adicione um ticker ao lado.</span>';
+}
+window.slAddTicker = function(){
+  var inp = document.getElementById('sl-add-ticker');
+  var t = (inp.value||'').trim().toUpperCase();
+  if(!t) return;
+  inp.value = '';
+  var removed = slLsGet(SL_KEY_REMOVED), ri = removed.indexOf(t);
+  if(ri >= 0){ removed.splice(ri,1); slLsSet(SL_KEY_REMOVED, removed); }
+  if(slTickList().indexOf(t) === -1){
+    var custom = slLsGet(SL_KEY_CUSTOM); custom.push(t); slLsSet(SL_KEY_CUSTOM, custom);
+  }
+  slRenderTickers(t);
+  slLoadLiq(t);
+};
+window.slRemoveTicker = function(t){
+  var custom = slLsGet(SL_KEY_CUSTOM), ci = custom.indexOf(t);
+  if(ci >= 0){ custom.splice(ci,1); slLsSet(SL_KEY_CUSTOM, custom); }
+  else{
+    var removed = slLsGet(SL_KEY_REMOVED);
+    if(removed.indexOf(t) === -1){ removed.push(t); slLsSet(SL_KEY_REMOVED, removed); }
+  }
+  var act = document.querySelector('.sl-ticker-btn.active');
+  slRenderTickers(act && act.dataset.t !== t ? act.dataset.t : null);
+};
+slRenderTickers(null);
+
 window.slLoadLiq = function(ticker){
   document.querySelectorAll('.sl-ticker-btn').forEach(function(b){
     b.classList.toggle('active', b.dataset.t === ticker);
@@ -461,7 +508,7 @@ document.addEventListener('click', function(e){
     + ' &nbsp;Strike: <strong>' + parseFloat(strike).toLocaleString('pt-BR',{minimumFractionDigits:2}) + '</strong>'
     + ' &nbsp;Prêmio: <strong>R$ ' + parseFloat(close||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + '</strong>'
     + ' &nbsp;Venc: <strong>' + fmtDate_sl(due) + '</strong>';
-  document.getElementById('sl-leg-qty').value = 1;
+  document.getElementById('sl-leg-qty').value = 100;
   document.getElementById('sl-leg-side').value = 'BUY';
   document.getElementById('sl-leg-modal').style.display = 'flex';
   e.stopPropagation();
@@ -475,7 +522,7 @@ window.slCloseLegModal = function(){
 window.slConfirmLeg = function(){
   if(!_slPendingLeg) return;
   var side = document.getElementById('sl-leg-side').value;
-  var qty  = parseInt(document.getElementById('sl-leg-qty').value) || 1;
+  var qty  = parseInt(document.getElementById('sl-leg-qty').value) || 100;
   var p    = _slPendingLeg;
 
   // Formata prêmio como BR (vírgula)
@@ -505,7 +552,7 @@ function rowTemplate(type){
       '<option value="BUY">COMPRA</option><option value="SELL">VENDA</option>' +
     '</select></td>' +
     '<td class="col-ticker" style="' + hide + '"><input type="text" name="leg_ticker" placeholder="ex: PETRQ46" style="width:110px;text-transform:uppercase"' + dis + '></td>' +
-    '<td><input type="text" name="leg_qty" value="1" style="width:60px;text-align:center" oninput="scheduleRedraw()"></td>' +
+    '<td><input type="text" name="leg_qty" value="100" style="width:60px;text-align:center" oninput="scheduleRedraw()"></td>' +
     '<td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px;text-align:right" oninput="scheduleRedraw()"></td>' +
     '<td class="col-exp" style="' + hide + '"><input type="date" name="leg_exp" style="width:135px"' + dis + '></td>' +
     '<td class="col-strike" style="' + hide + '"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px;text-align:right" oninput="scheduleRedraw()"' + dis + '></td>' +

@@ -11,8 +11,20 @@
 <a id="estudo-opcoes"></a>
 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.5rem">
   <h3 style="margin:0">Estudo Opções Cobertas</h3>
-  <button class="btn btn-primary btn-sm" onclick="openAddOpcao()">+ Adicionar</button>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
+    <button class="btn btn-sm" id="btn-greeks-all" style="background:#10b981;color:white;"
+            onclick="updateAllGreeks()" title="Atualiza VE/Delta/Gama de todas as linhas via OpLab e recalcula VDX/NV">
+      ⚡ Atualizar todos
+    </button>
+    <button class="btn btn-primary btn-sm" onclick="openAddOpcao()">+ Adicionar</button>
+  </div>
 </div>
+<p style="font-size:.78rem;color:var(--text-secondary);margin:0 0 .5rem">
+  <span style="background:rgba(239,68,68,.25);padding:.05rem .45rem;border-radius:4px">🔴 rolagem provável</span>
+  call ITM vencendo em ≤ 7 dias ·
+  <span style="background:rgba(245,158,11,.2);padding:.05rem .45rem;border-radius:4px">🟠 avaliar rolagem</span>
+  ITM com ≤ 21 dias ou vencimento em ≤ 7 dias (teoria do Bastter: rolar quando a VE se esgota)
+</p>
 
 <div class="card">
   <div class="table-scroll">
@@ -51,8 +63,14 @@
         </td>
       {%- endmacro -%}
 
+      {%- macro roll_attrs(rf) -%}
+        {%- if rf == 'ALERT' %} style="background:rgba(239,68,68,.14)" title="🔴 Rolagem provável (Bastter): call ITM vencendo em até 7 dias — VE esgotada, exercício iminente"
+        {%- elif rf == 'WARN' %} style="background:rgba(245,158,11,.10)" title="🟠 Avaliar rolagem (Bastter): ITM com até 21 dias, ou vencimento em até 7 dias"
+        {%- endif -%}
+      {%- endmacro -%}
+
       {% for row in study_calls_vc %}
-      <tr>
+      <tr{{ roll_attrs(row.roll_flag) }}>
         <td><span class="ticker-badge">{{ row.ticker.upper() }}</span></td>
         <td>{{ row.underlying }}</td>
         <td data-ticker="{{ row.underlying }}" data-estudos-field="underlying_price">{{ '%.2f'|format(row.underlying_price) if row.underlying_price else '-' }}</td>
@@ -68,7 +86,8 @@
         <td>{{ '%.4f'|format(row.nv) if row.nv is not none else '-' }}</td>
         <td><span style="font-size:.75rem;color:var(--text-secondary)">V. Coberta</span></td>
         <td class="actions" style="white-space:nowrap;">
-          <button class="btn btn-sm" id="vc-greeks-btn-{{ row.id }}"
+          <button class="btn btn-sm greeks-btn" id="vc-greeks-btn-{{ row.id }}"
+                  data-ticker="{{ row.ticker }}" data-model="option" data-id="{{ row.id }}"
                   style="background:#10b981;color:white;" title="Atualizar VE/Delta/Gama via OpLab"
                   onclick="fetchGreeksOplab('{{ row.ticker }}', 'option', {{ row.id }}, 'vc', this)">⚡</button>
           <button class="btn btn-sm" onclick="openTVChart('{{ row.underlying }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
@@ -81,7 +100,7 @@
       {% endfor %}
 
       {% for row in study_calls_extra %}
-      <tr>
+      <tr{{ roll_attrs(row.roll_flag) }}>
         <td><span class="ticker-badge" style="background:var(--success-color)">{{ row.ticker.upper() }}</span></td>
         <td>{{ row.underlying }}</td>
         <td data-ticker="{{ row.underlying }}" data-estudos-field="underlying_price">{{ '%.2f'|format(row.underlying_price) if row.underlying_price else '-' }}</td>
@@ -97,7 +116,8 @@
         <td>{{ '%.4f'|format(row.nv) if row.nv is not none else '-' }}</td>
         <td><span style="font-size:.75rem;color:var(--success-color)">Estudo</span></td>
         <td class="actions" style="white-space:nowrap;">
-          <button class="btn btn-sm" id="so-greeks-btn-{{ row.id }}"
+          <button class="btn btn-sm greeks-btn" id="so-greeks-btn-{{ row.id }}"
+                  data-ticker="{{ row.ticker }}" data-model="study_option" data-id="{{ row.id }}"
                   style="background:#10b981;color:white;" title="Atualizar VE/Delta/Gama via OpLab"
                   onclick="fetchGreeksOplab('{{ row.ticker }}', 'study_option', {{ row.id }}, 'so', this)">⚡</button>
           <button class="btn btn-sm" onclick="openTVChart('{{ row.underlying }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
@@ -915,6 +935,36 @@ function fetchGreeksOplab(ticker, model, recId, prefix, btn) {
             btn.title = msg.length ? msg.join(' | ') : 'Atualizado';
         })
         .catch(function(e) { btn.innerHTML = origHTML; btn.disabled = false; alert('Erro: ' + e); });
+}
+
+// Atualiza VE/Delta/Gama de TODAS as linhas da tabela 1 com um clique,
+// depois recarrega a página para recalcular VDX/NV e as cores de rolagem
+function updateAllGreeks() {
+    var btns = Array.prototype.slice.call(document.querySelectorAll('.greeks-btn'));
+    var main = document.getElementById('btn-greeks-all');
+    if (!btns.length) { alert('Nenhuma linha para atualizar.'); return; }
+    main.disabled = true;
+    var ok = 0, fail = 0, fails = [];
+    function next(i) {
+        if (i >= btns.length) {
+            main.textContent = '✓ ' + ok + ' ok' + (fail ? ' / ' + fail + ' falhas' : '') + ' — recarregando…';
+            if (fails.length && window.console) console.warn('Greeks falharam:', fails.join(', '));
+            setTimeout(function() { location.reload(); }, 800);
+            return;
+        }
+        var b = btns[i];
+        main.textContent = '⚡ ' + (i + 1) + '/' + btns.length + ' — ' + b.dataset.ticker;
+        fetch('/api/oplab_greeks?ticker=' + encodeURIComponent(b.dataset.ticker) +
+              '&model=' + b.dataset.model + '&id=' + b.dataset.id)
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (d.error) { fail++; fails.push(b.dataset.ticker); }
+                else ok++;
+            })
+            .catch(function() { fail++; fails.push(b.dataset.ticker); })
+            .then(function() { next(i + 1); });
+    }
+    next(0);
 }
 
 // Busca IV Rank e IV Percentil via OpLab e preenche os campos do modal

@@ -7711,6 +7711,22 @@ def _calc_nv(ve, delta, gama):
     return ve - delta - gama
 
 
+def _roll_flag(days, spot, strike):
+    """Aviso de possível necessidade de rolagem (teoria do Bastter):
+    na venda coberta, quando a call está ITM perto do vencimento o VE se
+    esgota e o exercício fica provável — hora de avaliar a rolagem.
+    ALERT = ITM e vence em <= 7 dias (rolagem provável)
+    WARN  = ITM e vence em <= 21 dias, ou <= 7 dias mesmo OTM (atenção)"""
+    if days is None or not spot or not strike:
+        return None
+    itm = spot > strike
+    if days <= 7:
+        return 'ALERT' if itm else 'WARN'
+    if days <= 21 and itm:
+        return 'WARN'
+    return None
+
+
 @app.route('/estudos')
 @login_required
 def estudos():
@@ -7748,6 +7764,7 @@ def estudos():
             'gama': opt.gama,
             'vdx': vdx,
             'nv': nv,
+            'roll_flag': _roll_flag(days, up, opt.strike_price),
         })
 
     # B) Opções extras adicionadas diretamente nesta página
@@ -7772,6 +7789,7 @@ def estudos():
             'gama': so.gama,
             'vdx': vdx,
             'nv': nv,
+            'roll_flag': _roll_flag(days, so.underlying_price, so.strike),
         })
 
     # ── Tabela 2: Estudo Ações ───────────────────────────────────────

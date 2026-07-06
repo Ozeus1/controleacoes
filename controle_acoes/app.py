@@ -3543,28 +3543,31 @@ def api_busca_operacoes(ticker):
             rows = rows[:14]
 
         elif op == 'straddle_vendido':
-            # Straddle vendido: venda de CALL e PUT no MESMO strike (perto do ATM),
-            # com delta entre 40 e 50 em cada ponta. Crédito duplo; risco fora dos BEs.
+            # Straddle vendido: venda de 1 CALL + 1 PUT no MESMO strike, bem ATM
+            # (o strike mais próximo do preço atual do ativo). Crédito duplo;
+            # risco fora dos breakevens. Deltas exibidos apenas como informação.
             T = dc / 365.0
             put_map = {p['strike']: p for p in puts_ok}
+            cands = []
             for c in calls_ok:
-                if not (0.90 * spot <= c['strike'] <= 1.10 * spot):
-                    continue
                 p = put_map.get(c['strike'])
                 if not p or c['bid'] < 0.05 or p['bid'] < 0.05:
                     continue
-                d_call = _leg_delta_pct(c, True, T)
-                d_put  = _leg_delta_pct(p, False, T)
-                if d_call is None or d_put is None:
+                dist = abs(c['strike'] - spot) / spot
+                if dist > 0.05:          # bem ATM: strike até 5% do spot
                     continue
-                if not (40 <= d_call <= 50 and 40 <= d_put <= 50):
-                    continue
+                cands.append((dist, c, p))
+            cands.sort(key=lambda x: x[0])   # mais ATM primeiro
+            for dist, c, p in cands[:3]:
                 credit = c['bid'] + p['bid']
                 be_low, be_up = c['strike'] - credit, c['strike'] + credit
                 rows.append({
                     'strike':      c['strike'],
-                    'call_symbol': c['symbol'], 'call_bid': c['bid'], 'call_delta': d_call,
-                    'put_symbol':  p['symbol'], 'put_bid':  p['bid'], 'put_delta':  d_put,
+                    'atm_dist':    round((c['strike'] - spot) / spot * 100, 2),
+                    'call_symbol': c['symbol'], 'call_bid': c['bid'],
+                    'call_delta':  _leg_delta_pct(c, True, T),
+                    'put_symbol':  p['symbol'], 'put_bid':  p['bid'],
+                    'put_delta':   _leg_delta_pct(p, False, T),
                     'credit':      round(credit, 2),
                     'credit_pct':  round(credit / spot * 100, 2),
                     'be_low':      round(be_low, 2),
@@ -3572,8 +3575,6 @@ def api_busca_operacoes(ticker):
                     'be_low_dist': round((be_low - spot) / spot * 100, 2),
                     'be_up_dist':  round((be_up - spot) / spot * 100, 2),
                 })
-            rows.sort(key=lambda x: -x['credit_pct'])
-            rows = rows[:10]
 
         elif op == 'strangle_vendido':
             # Strangle vendido: venda de CALL OTM + PUT OTM (strikes diferentes),

@@ -187,7 +187,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     boi_put:       '🐂 Boi com PUT — compra 2 PUTs próximas do OTM financiadas (parcialmente) pela venda de 1 PUT ATM/ITM; custo até 40% da largura (lucro cresce na queda forte)',
     vaca_put:      '🐄 Vaca de Baixa (PUTs) — +1 PUT alta, −2 PUTs médias, +1 PUT baixa (lucro máximo se cair até o strike médio)',
     venda_put_itm: '🔽 Venda de PUT — strike de 10% OTM até 20% ITM (mensais; prêmio pelo último negócio; remuneração sobre o strike)',
-    straddle_vendido: '⚖️ Straddle vendido — venda de CALL + PUT no mesmo strike, delta entre 40 e 50 em cada ponta (crédito duplo; risco fora dos breakevens)',
+    straddle_vendido: '⚖️ Straddle vendido — venda de 1 CALL + 1 PUT no strike ATM (o mais próximo do spot; crédito duplo, lucro se o papel ficar parado)',
     strangle_vendido: '🔗 Strangle vendido — venda de CALL OTM + PUT OTM, delta entre 15 e 35 em cada ponta (lucro se o papel ficar entre os strikes)'
   };
 
@@ -561,9 +561,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   }
 
   function straddleTable(rows, expIdx) {
-    if (!rows.length) return '<div class="bo-empty">Nenhum straddle com deltas entre 40 e 50 neste vencimento.</div>';
+    if (!rows.length) return '<div class="bo-empty">Nenhum strike ATM com CALL e PUT líquidas neste vencimento.</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
-      '<th>Strike</th>' +
+      '<th>Strike</th><th>Dist. ATM</th>' +
       '<th>CALL venda (bid)</th><th>Bid</th><th>Δ CALL</th>' +
       '<th>PUT venda (bid)</th><th>Bid</th><th>Δ PUT</th>' +
       '<th>Crédito total</th><th>Crédito %</th>' +
@@ -571,6 +571,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     rows.forEach(function(r, j) {
       h += rowAttr(expIdx, j) +
         '<td><strong>' + brl(r.strike) + '</strong></td>' +
+        '<td>' + (r.atm_dist > 0 ? '+' : '') + fmt(r.atm_dist) + '%</td>' +
         '<td><span class="bo-badge call">' + r.call_symbol + '</span></td>' +
         '<td>' + brl(r.call_bid) + '</td><td>' + fmt(r.call_delta, 1) + '</td>' +
         '<td><span class="bo-badge put">' + r.put_symbol + '</span></td>' +

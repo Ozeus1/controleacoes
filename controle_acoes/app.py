@@ -3084,6 +3084,15 @@ def api_busca_operacoes(ticker):
         nd1 = 0.5 * (1 + math.erf(d1 / math.sqrt(2)))
         return round((nd1 if is_call else 1 - nd1) * 100, 1)
 
+    def _sell_prem(rw):
+        """Prêmio executável para perna vendida: bid; fallback último negócio
+        (books ralos costumam ter só o último)."""
+        if rw['bid'] >= 0.05:
+            return rw['bid'], 'bid'
+        if rw['close'] >= 0.05:
+            return rw['close'], 'último'
+        return None, None
+
     expirations = []
     for exp in selected_exps:
         dc = max((_date.fromisoformat(exp) - today).days, 1)
@@ -3547,26 +3556,32 @@ def api_busca_operacoes(ticker):
             # (o strike mais próximo do preço atual do ativo). Crédito duplo;
             # risco fora dos breakevens. Deltas exibidos apenas como informação.
             T = dc / 365.0
-            put_map = {p['strike']: p for p in puts_ok}
+            # Perna vendida não precisa de ask no book: usa lista completa do vencimento
+            all_calls_st = sorted(calls_by_exp.get(exp, []), key=lambda x: x['strike'])
+            put_map = {p['strike']: p for p in puts_by_exp.get(exp, [])}
             cands = []
-            for c in calls_ok:
+            for c in all_calls_st:
                 p = put_map.get(c['strike'])
-                if not p or c['bid'] < 0.05 or p['bid'] < 0.05:
+                if not p:
+                    continue
+                c_prem, c_src = _sell_prem(c)
+                p_prem, p_src = _sell_prem(p)
+                if c_prem is None or p_prem is None:
                     continue
                 dist = abs(c['strike'] - spot) / spot
                 if dist > 0.05:          # bem ATM: strike até 5% do spot
                     continue
-                cands.append((dist, c, p))
+                cands.append((dist, c, p, c_prem, c_src, p_prem, p_src))
             cands.sort(key=lambda x: x[0])   # mais ATM primeiro
-            for dist, c, p in cands[:3]:
-                credit = c['bid'] + p['bid']
+            for dist, c, p, c_prem, c_src, p_prem, p_src in cands[:3]:
+                credit = c_prem + p_prem
                 be_low, be_up = c['strike'] - credit, c['strike'] + credit
                 rows.append({
                     'strike':      c['strike'],
                     'atm_dist':    round((c['strike'] - spot) / spot * 100, 2),
-                    'call_symbol': c['symbol'], 'call_bid': c['bid'],
+                    'call_symbol': c['symbol'], 'call_bid': round(c_prem, 2), 'call_src': c_src,
                     'call_delta':  _leg_delta_pct(c, True, T),
-                    'put_symbol':  p['symbol'], 'put_bid':  p['bid'],
+                    'put_symbol':  p['symbol'], 'put_bid':  round(p_prem, 2), 'put_src': p_src,
                     'put_delta':   _leg_delta_pct(p, False, T),
                     'credit':      round(credit, 2),
                     'credit_pct':  round(credit / spot * 100, 2),
@@ -3581,25 +3596,31 @@ def api_busca_operacoes(ticker):
             # com delta entre 15 e 35 em cada ponta (faixa usual da estratégia).
             T = dc / 365.0
             call_cands, put_cands = [], []
-            for c in calls_ok:
-                if c['strike'] > spot and c['bid'] >= 0.05:
+            for c in sorted(calls_by_exp.get(exp, []), key=lambda x: x['strike']):
+                if c['strike'] > spot:
+                    c_prem, c_src = _sell_prem(c)
+                    if c_prem is None:
+                        continue
                     d_c = _leg_delta_pct(c, True, T)
                     if d_c is not None and 15 <= d_c <= 35:
-                        call_cands.append((c, d_c))
-            for p in puts_ok:
-                if p['strike'] < spot and p['bid'] >= 0.05:
+                        call_cands.append((c, d_c, c_prem, c_src))
+            for p in sorted(puts_by_exp.get(exp, []), key=lambda x: x['strike']):
+                if p['strike'] < spot:
+                    p_prem, p_src = _sell_prem(p)
+                    if p_prem is None:
+                        continue
                     d_p = _leg_delta_pct(p, False, T)
                     if d_p is not None and 15 <= d_p <= 35:
-                        put_cands.append((p, d_p))
-            for c, d_c in call_cands[:10]:
-                for p, d_p in put_cands[-10:]:
-                    credit = c['bid'] + p['bid']
+                        put_cands.append((p, d_p, p_prem, p_src))
+            for c, d_c, c_prem, c_src in call_cands[:10]:
+                for p, d_p, p_prem, p_src in put_cands[-10:]:
+                    credit = c_prem + p_prem
                     be_low, be_up = p['strike'] - credit, c['strike'] + credit
                     rows.append({
                         'call_symbol': c['symbol'], 'call_strike': c['strike'],
-                        'call_bid':    c['bid'],    'call_delta':  d_c,
+                        'call_bid':    round(c_prem, 2), 'call_src': c_src, 'call_delta': d_c,
                         'put_symbol':  p['symbol'], 'put_strike':  p['strike'],
-                        'put_bid':     p['bid'],    'put_delta':   d_p,
+                        'put_bid':     round(p_prem, 2), 'put_src': p_src, 'put_delta': d_p,
                         'credit':      round(credit, 2),
                         'credit_pct':  round(credit / spot * 100, 2),
                         'width_pct':   round((c['strike'] - p['strike']) / spot * 100, 1),

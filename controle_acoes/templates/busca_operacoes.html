@@ -205,6 +205,11 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     return rf ? '<span class="bo-badge riskfree">🛡 ZERO</span>'
               : '<span class="bo-badge risklow">baixo</span>';
   }
+  function srcTag(src) {
+    return src === 'último'
+      ? ' <span style="font-size:.65rem;color:#fbbf24" title="Prêmio pelo último negócio (sem bid no book)">últ.</span>'
+      : '';
+  }
 
   // ── Atalhos de tickers gerenciáveis (localStorage) ─────────────────────────
   var KEY_CUSTOM  = 'bo-tickers-custom';
@@ -573,9 +578,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         '<td><strong>' + brl(r.strike) + '</strong></td>' +
         '<td>' + (r.atm_dist > 0 ? '+' : '') + fmt(r.atm_dist) + '%</td>' +
         '<td><span class="bo-badge call">' + r.call_symbol + '</span></td>' +
-        '<td>' + brl(r.call_bid) + '</td><td>' + fmt(r.call_delta, 1) + '</td>' +
+        '<td>' + brl(r.call_bid) + srcTag(r.call_src) + '</td><td>' + fmt(r.call_delta, 1) + '</td>' +
         '<td><span class="bo-badge put">' + r.put_symbol + '</span></td>' +
-        '<td>' + brl(r.put_bid) + '</td><td>' + fmt(r.put_delta, 1) + '</td>' +
+        '<td>' + brl(r.put_bid) + srcTag(r.put_src) + '</td><td>' + fmt(r.put_delta, 1) + '</td>' +
         '<td class="pos"><strong>' + brl(r.credit) + '</strong></td>' +
         '<td class="pos">' + fmt(r.credit_pct) + '%</td>' +
         '<td>' + brl(r.be_low) + ' (' + fmt(r.be_low_dist) + '%)</td>' +
@@ -596,9 +601,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     rows.forEach(function(r, j) {
       h += rowAttr(expIdx, j) +
         '<td><span class="bo-badge call">' + r.call_symbol + '</span></td>' +
-        '<td>' + brl(r.call_strike) + '</td><td>' + brl(r.call_bid) + '</td><td>' + fmt(r.call_delta, 1) + '</td>' +
+        '<td>' + brl(r.call_strike) + '</td><td>' + brl(r.call_bid) + srcTag(r.call_src) + '</td><td>' + fmt(r.call_delta, 1) + '</td>' +
         '<td><span class="bo-badge put">' + r.put_symbol + '</span></td>' +
-        '<td>' + brl(r.put_strike) + '</td><td>' + brl(r.put_bid) + '</td><td>' + fmt(r.put_delta, 1) + '</td>' +
+        '<td>' + brl(r.put_strike) + '</td><td>' + brl(r.put_bid) + srcTag(r.put_src) + '</td><td>' + fmt(r.put_delta, 1) + '</td>' +
         '<td class="pos"><strong>' + brl(r.credit) + '</strong></td>' +
         '<td class="pos">' + fmt(r.credit_pct) + '%</td>' +
         '<td>' + fmt(r.width_pct, 1) + '%</td>' +

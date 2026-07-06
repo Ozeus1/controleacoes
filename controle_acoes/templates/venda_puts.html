@@ -266,6 +266,8 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     <option value="vaca_travada">🐄 Vaca Travada (+1 CALL baixa, −2 médias, +1 alta)</option>
                     <option value="boi_put">🐂 Boi com PUT (venda 1 PUT alta, compra 2 PUTs baixas)</option>
                     <option value="vaca_put">🐄 Vaca de Baixa com PUTs (+1 alta, −2 médias, +1 baixa)</option>
+                    <option value="straddle_vendido">⚖️ Straddle vendido (venda CALL + PUT no mesmo strike)</option>
+                    <option value="strangle_vendido">🔗 Strangle vendido (venda CALL OTM + PUT OTM)</option>
                 </select>
             </div>
             <div>
@@ -933,6 +935,8 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         call_ratio_2x3:      { legs: ['CALL — VENDA 2× (K menor, ±5% do spot)', 'CALL — COMPRA 3× (OTM, K maior)', null], needSpot: false },
         vaca_travada:        { legs: ['CALL — COMPRA 1× (K baixa)', 'CALL — VENDA 2× (K média)', 'CALL — COMPRA 1× (K alta)'], needSpot: false },
         boi_put:             { legs: ['PUT — VENDA 1× (ATM/ITM, financia)', 'PUT — COMPRA 2× (próx. OTM)', null], needSpot: false },
+        straddle_vendido:    { legs: ['CALL — VENDA (strike central)', 'PUT — VENDA (mesmo strike)', null], needSpot: false },
+        strangle_vendido:    { legs: ['CALL — VENDA (OTM, acima)', 'PUT — VENDA (OTM, abaixo)', null], needSpot: false },
         vaca_put:            { legs: ['PUT — COMPRA 1× (K alta)', 'PUT — VENDA 2× (K média)', 'PUT — COMPRA 1× (K baixa)'], needSpot: false }
     };
 
@@ -1088,6 +1092,21 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 ['Relação lucro/perda', maxLV > 0.001 ? (maxGV / maxLV).toLocaleString('pt-BR', {maximumFractionDigits:1}) : '∞', 'positive'],
                 ['Prazo (dias corridos)', dc + ' d.c.', '']
             ];
+        } else if (op === 'straddle_vendido' || op === 'strangle_vendido') {
+            // A = CALL venda (bid), B = PUT venda (bid). Straddle: aK === bK.
+            var credSS = aP + bP;
+            var beUpSS = aK + credSS, beLoSS = bK - credSS;
+            var isStradSS = op === 'straddle_vendido';
+            boxes = [
+                ['Crédito recebido', fmtBRL(credSS * qty), 'positive'],
+                [isStradSS ? 'Ganho máx. (em ' + fmtBRL(aK) + ')' : 'Ganho máx. (entre ' + fmtBRL(bK) + ' e ' + fmtBRL(aK) + ')',
+                    fmtBRL(credSS * qty), 'positive'],
+                ['BE inferior', fmtBRL(beLoSS), ''],
+                ['BE superior', fmtBRL(beUpSS), ''],
+                ['Zona de lucro', fmtBRL(beLoSS) + ' – ' + fmtBRL(beUpSS), ''],
+                ['Fora dos breakevens', 'Perda cresce sem limite ⚠️', 'negative'],
+                ['Prazo (dias corridos)', dc + ' d.c.', '']
+            ];
         } else if (op === 'boi_put') {
             // Put ratio backspread 1x2: A = PUT venda 1× (K alta, bid), B = PUT compra 2× (K baixa, ask)
             var netBoi = aP - 2 * bP;                        // >0 crédito, <0 custo
@@ -1230,6 +1249,15 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             legsArr = [{t: 'CALL', s: 1,  q: 1, K: aK, prem: aP},
                        {t: 'CALL', s: -1, q: 2, K: bK, prem: bP},
                        {t: 'CALL', s: 1,  q: 1, K: cK, prem: cP}];
+        } else if (op === 'straddle_vendido' || op === 'strangle_vendido') {
+            var credSS2 = aP + bP;
+            payoffFn = function(S) {
+                return qty * (credSS2 - Math.max(0, S - aK) - Math.max(0, bK - S));
+            };
+            if (aK === bK) { mk(aK, 'CALL+PUT v'); }
+            else { mk(bK, 'PUT v'); mk(aK, 'CALL v'); }
+            legsArr = [{t: 'CALL', s: -1, q: 1, K: aK, prem: aP},
+                       {t: 'PUT',  s: -1, q: 1, K: bK, prem: bP}];
         } else if (op === 'boi_put') {
             var netBoi2 = aP - 2 * bP;
             payoffFn = function(S) {

@@ -92,6 +92,8 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
     <button class="bo-obtn" data-op="boi_put">🐂 Boi com PUT 1x2</button>
     <button class="bo-obtn" data-op="vaca_put">🐄 Vaca de Baixa (PUTs)</button>
     <button class="bo-obtn" data-op="venda_put_itm">🔽 Venda de PUT</button>
+    <button class="bo-obtn" data-op="straddle_vendido">⚖️ Straddle vendido</button>
+    <button class="bo-obtn" data-op="strangle_vendido">🔗 Strangle vendido</button>
   </div>
 
   <!-- Vencimentos: incluir semanais + janela de prazo -->
@@ -184,7 +186,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     vaca_travada:  '🐄 Vaca Travada — +1 CALL baixa, −2 CALLs médias, +1 CALL alta (centro no dinheiro ou acima; aceita investimento; lucro máximo no strike médio)',
     boi_put:       '🐂 Boi com PUT — compra 2 PUTs próximas do OTM financiadas (parcialmente) pela venda de 1 PUT ATM/ITM; custo até 40% da largura (lucro cresce na queda forte)',
     vaca_put:      '🐄 Vaca de Baixa (PUTs) — +1 PUT alta, −2 PUTs médias, +1 PUT baixa (lucro máximo se cair até o strike médio)',
-    venda_put_itm: '🔽 Venda de PUT — strike de 10% OTM até 20% ITM (mensais; prêmio pelo último negócio; remuneração sobre o strike)'
+    venda_put_itm: '🔽 Venda de PUT — strike de 10% OTM até 20% ITM (mensais; prêmio pelo último negócio; remuneração sobre o strike)',
+    straddle_vendido: '⚖️ Straddle vendido — venda de CALL + PUT no mesmo strike, delta entre 40 e 50 em cada ponta (crédito duplo; risco fora dos breakevens)',
+    strangle_vendido: '🔗 Strangle vendido — venda de CALL OTM + PUT OTM, delta entre 15 e 35 em cada ponta (lucro se o papel ficar entre os strikes)'
   };
 
   // ── Utilitários ────────────────────────────────────────────────────────────
@@ -556,6 +560,54 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     return h + '</tbody></table></div>';
   }
 
+  function straddleTable(rows, expIdx) {
+    if (!rows.length) return '<div class="bo-empty">Nenhum straddle com deltas entre 40 e 50 neste vencimento.</div>';
+    var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
+      '<th>Strike</th>' +
+      '<th>CALL venda (bid)</th><th>Bid</th><th>Δ CALL</th>' +
+      '<th>PUT venda (bid)</th><th>Bid</th><th>Δ PUT</th>' +
+      '<th>Crédito total</th><th>Crédito %</th>' +
+      '<th>BE inferior</th><th>BE superior</th><th>Zona de lucro</th></tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += rowAttr(expIdx, j) +
+        '<td><strong>' + brl(r.strike) + '</strong></td>' +
+        '<td><span class="bo-badge call">' + r.call_symbol + '</span></td>' +
+        '<td>' + brl(r.call_bid) + '</td><td>' + fmt(r.call_delta, 1) + '</td>' +
+        '<td><span class="bo-badge put">' + r.put_symbol + '</span></td>' +
+        '<td>' + brl(r.put_bid) + '</td><td>' + fmt(r.put_delta, 1) + '</td>' +
+        '<td class="pos"><strong>' + brl(r.credit) + '</strong></td>' +
+        '<td class="pos">' + fmt(r.credit_pct) + '%</td>' +
+        '<td>' + brl(r.be_low) + ' (' + fmt(r.be_low_dist) + '%)</td>' +
+        '<td>' + brl(r.be_up) + ' (+' + fmt(r.be_up_dist) + '%)</td>' +
+        '<td class="pos">±' + fmt(r.credit_pct) + '%</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  function strangleTable(rows, expIdx) {
+    if (!rows.length) return '<div class="bo-empty">Nenhum strangle com deltas entre 15 e 35 neste vencimento.</div>';
+    var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
+      '<th>CALL venda (bid)</th><th>K</th><th>Bid</th><th>Δ</th>' +
+      '<th>PUT venda (bid)</th><th>K</th><th>Bid</th><th>Δ</th>' +
+      '<th>Crédito total</th><th>Crédito %</th><th>Largura</th>' +
+      '<th>BE inferior</th><th>BE superior</th></tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += rowAttr(expIdx, j) +
+        '<td><span class="bo-badge call">' + r.call_symbol + '</span></td>' +
+        '<td>' + brl(r.call_strike) + '</td><td>' + brl(r.call_bid) + '</td><td>' + fmt(r.call_delta, 1) + '</td>' +
+        '<td><span class="bo-badge put">' + r.put_symbol + '</span></td>' +
+        '<td>' + brl(r.put_strike) + '</td><td>' + brl(r.put_bid) + '</td><td>' + fmt(r.put_delta, 1) + '</td>' +
+        '<td class="pos"><strong>' + brl(r.credit) + '</strong></td>' +
+        '<td class="pos">' + fmt(r.credit_pct) + '%</td>' +
+        '<td>' + fmt(r.width_pct, 1) + '%</td>' +
+        '<td>' + brl(r.be_low) + ' (' + fmt(r.be_low_dist) + '%)</td>' +
+        '<td>' + brl(r.be_up) + ' (+' + fmt(r.be_up_dist) + '%)</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
   function buildTable(op, rows, expIdx) {
     switch (op) {
       case 'collar':        return collarTable(rows, expIdx);
@@ -570,6 +622,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       case 'boi_put':       return boiTable(rows, expIdx);
       case 'vaca_put':      return vacaPutTable(rows, expIdx);
       case 'venda_put_itm': return vendaPutItmTable(rows, expIdx);
+      case 'straddle_vendido': return straddleTable(rows, expIdx);
+      case 'strangle_vendido': return strangleTable(rows, expIdx);
       default:              return '';
     }
   }
@@ -771,6 +825,26 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       Object.assign(stParams, {op: 'boi_put',
         at: r.sell_symbol, ak: r.sell_strike, ap: r.sell_bid,
         bt: r.buy_symbol,  bk: r.buy_strike,  bp: r.buy_ask});
+    } else if (op === 'straddle_vendido' || op === 'strangle_vendido') {
+      var isStrad = op === 'straddle_vendido';
+      var kCall = isStrad ? r.strike : r.call_strike;
+      var kPut  = isStrad ? r.strike : r.put_strike;
+      title = (isStrad ? 'Straddle vendido ' : 'Strangle vendido ') + d.ticker +
+              ' — ' + r.call_symbol + ' / ' + r.put_symbol;
+      boxes = [
+        ['Crédito recebido', brl(r.credit * qty), 'pos'],
+        ['Crédito % do spot', fmt(r.credit_pct) + '%', 'pos'],
+        [isStrad ? 'Ganho máx. (em ' + brl(r.strike) + ')' : 'Ganho máx. (entre ' + brl(kPut) + ' e ' + brl(kCall) + ')',
+            brl(r.credit * qty), 'pos'],
+        ['Δ CALL / Δ PUT', fmt(r.call_delta, 1) + ' / ' + fmt(r.put_delta, 1), ''],
+        ['BE inferior', brl(r.be_low) + ' (' + fmt(r.be_low_dist) + '%)', ''],
+        ['BE superior', brl(r.be_up) + ' (+' + fmt(r.be_up_dist) + '%)', ''],
+        ['Fora dos breakevens', 'Perda cresce sem limite ⚠️', 'neg'],
+        ['Prazo (dias corridos)', dc + ' d.c.', '']
+      ];
+      Object.assign(stParams, {op: op,
+        at: r.call_symbol, ak: kCall, ap: r.call_bid,
+        bt: r.put_symbol,  bk: kPut,  bp: r.put_bid});
     } else if (op === 'venda_put_itm') {
       title = 'Venda de PUT ' + d.ticker + ' — ' + r.symbol + ' @ ' + brl(r.premium) + ' (' + r.price_src + ')';
       boxes = [

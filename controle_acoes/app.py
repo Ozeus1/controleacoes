@@ -2970,8 +2970,12 @@ def api_busca_operacoes(ticker):
                 continue
         except ValueError:
             continue
+        delta_raw = o.get('delta')
+        if delta_raw is None and isinstance(o.get('greeks'), dict):
+            delta_raw = o['greeks'].get('delta')
         row = {'symbol': sym, 'strike': round(strike, 2), 'bid': round(bid, 2),
-               'ask': round(ask, 2), 'close': round(close, 2), 'vol_fin': round(vol, 2)}
+               'ask': round(ask, 2), 'close': round(close, 2), 'vol_fin': round(vol, 2),
+               'delta': delta_raw}
         bucket = puts_by_exp if ('PUT' in cat or cat == 'P') else calls_by_exp
         bucket.setdefault(due, []).append(row)
 
@@ -3050,6 +3054,35 @@ def api_busca_operacoes(ticker):
             if len(out) >= limit:
                 break
         return out
+
+    r_cont = math.log(1 + selic / 100.0)
+
+    def _leg_delta_pct(row, is_call, T):
+        """Delta da perna em módulo, escala 0-100.
+        Usa o delta da OpLab quando presente; senão calcula via Black-Scholes
+        com a IV extraída do prêmio de mercado (último negócio ou mid)."""
+        d = row.get('delta')
+        if d is not None:
+            try:
+                d = abs(float(d))
+                return round(d * 100, 1) if d <= 1.5 else round(d, 1)
+            except (TypeError, ValueError):
+                pass
+        prem = row['close'] or ((row['bid'] + row['ask']) / 2 if (row['bid'] and row['ask']) else 0)
+        if not prem or T <= 0 or not spot or not row['strike']:
+            return None
+        intrinsic = max(0.0, (spot - row['strike']) if is_call else (row['strike'] - spot))
+        iv = None
+        if prem > intrinsic * 1.005:
+            iv = _implied_vol(spot, row['strike'], T, r_cont, prem, is_call)
+            if iv <= 0.006 or iv >= 4.9:
+                iv = None
+        if iv is None:
+            iv = 0.35
+        sq = math.sqrt(T)
+        d1 = (math.log(spot / row['strike']) + (r_cont + 0.5 * iv * iv) * T) / (iv * sq)
+        nd1 = 0.5 * (1 + math.erf(d1 / math.sqrt(2)))
+        return round((nd1 if is_call else 1 - nd1) * 100, 1)
 
     expirations = []
     for exp in selected_exps:
@@ -3508,6 +3541,74 @@ def api_busca_operacoes(ticker):
                 })
             rows.sort(key=lambda x: -x['pct_cdi'])
             rows = rows[:14]
+
+        elif op == 'straddle_vendido':
+            # Straddle vendido: venda de CALL e PUT no MESMO strike (perto do ATM),
+            # com delta entre 40 e 50 em cada ponta. Crédito duplo; risco fora dos BEs.
+            T = dc / 365.0
+            put_map = {p['strike']: p for p in puts_ok}
+            for c in calls_ok:
+                if not (0.90 * spot <= c['strike'] <= 1.10 * spot):
+                    continue
+                p = put_map.get(c['strike'])
+                if not p or c['bid'] < 0.05 or p['bid'] < 0.05:
+                    continue
+                d_call = _leg_delta_pct(c, True, T)
+                d_put  = _leg_delta_pct(p, False, T)
+                if d_call is None or d_put is None:
+                    continue
+                if not (40 <= d_call <= 50 and 40 <= d_put <= 50):
+                    continue
+                credit = c['bid'] + p['bid']
+                be_low, be_up = c['strike'] - credit, c['strike'] + credit
+                rows.append({
+                    'strike':      c['strike'],
+                    'call_symbol': c['symbol'], 'call_bid': c['bid'], 'call_delta': d_call,
+                    'put_symbol':  p['symbol'], 'put_bid':  p['bid'], 'put_delta':  d_put,
+                    'credit':      round(credit, 2),
+                    'credit_pct':  round(credit / spot * 100, 2),
+                    'be_low':      round(be_low, 2),
+                    'be_up':       round(be_up, 2),
+                    'be_low_dist': round((be_low - spot) / spot * 100, 2),
+                    'be_up_dist':  round((be_up - spot) / spot * 100, 2),
+                })
+            rows.sort(key=lambda x: -x['credit_pct'])
+            rows = rows[:10]
+
+        elif op == 'strangle_vendido':
+            # Strangle vendido: venda de CALL OTM + PUT OTM (strikes diferentes),
+            # com delta entre 15 e 35 em cada ponta (faixa usual da estratégia).
+            T = dc / 365.0
+            call_cands, put_cands = [], []
+            for c in calls_ok:
+                if c['strike'] > spot and c['bid'] >= 0.05:
+                    d_c = _leg_delta_pct(c, True, T)
+                    if d_c is not None and 15 <= d_c <= 35:
+                        call_cands.append((c, d_c))
+            for p in puts_ok:
+                if p['strike'] < spot and p['bid'] >= 0.05:
+                    d_p = _leg_delta_pct(p, False, T)
+                    if d_p is not None and 15 <= d_p <= 35:
+                        put_cands.append((p, d_p))
+            for c, d_c in call_cands[:10]:
+                for p, d_p in put_cands[-10:]:
+                    credit = c['bid'] + p['bid']
+                    be_low, be_up = p['strike'] - credit, c['strike'] + credit
+                    rows.append({
+                        'call_symbol': c['symbol'], 'call_strike': c['strike'],
+                        'call_bid':    c['bid'],    'call_delta':  d_c,
+                        'put_symbol':  p['symbol'], 'put_strike':  p['strike'],
+                        'put_bid':     p['bid'],    'put_delta':   d_p,
+                        'credit':      round(credit, 2),
+                        'credit_pct':  round(credit / spot * 100, 2),
+                        'width_pct':   round((c['strike'] - p['strike']) / spot * 100, 1),
+                        'be_low':      round(be_low, 2),
+                        'be_up':       round(be_up, 2),
+                        'be_low_dist': round((be_low - spot) / spot * 100, 2),
+                        'be_up_dist':  round((be_up - spot) / spot * 100, 2),
+                    })
+            rows.sort(key=lambda x: -x['credit_pct'])
+            rows = _diversify(rows, lambda x: x['call_symbol'], per_key=2)
 
         expirations.append({
             'exp':          exp,

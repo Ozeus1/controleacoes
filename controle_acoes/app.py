@@ -3084,24 +3084,58 @@ def api_busca_operacoes(ticker):
         nd1 = 0.5 * (1 + math.erf(d1 / math.sqrt(2)))
         return round((nd1 if is_call else 1 - nd1) * 100, 1)
 
+    # ── Preço efetivo por perna conforme o horário do pregão ─────────────────
+    # Opções na B3: seg–sex, 10h às 16h30 (Brasília). Fora do pregão o book
+    # está vazio/velho → usa o último negócio. No pregão, usa bid (venda) e
+    # ask (compra), mas cai para o último quando falta ponta no book ou o
+    # spread é abusivo (> 25% do mid, mínimo R$0,10).
+    _now_b = now_brt()
+    market_open = (_now_b.weekday() < 5
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+
+    def _eff(rw):
+        """Retorna (bid_eff, bid_src, ask_eff, ask_src)."""
+        bid, ask, last = rw['bid'], rw['ask'], rw['close']
+        last_ok = last if last >= 0.05 else None
+        if not market_open:
+            return last_ok, 'último', last_ok, 'último'
+        b_eff, b_src = (bid, 'bid') if bid >= 0.05 else (last_ok, 'último')
+        a_eff, a_src = (ask, 'ask') if ask >= 0.05 else (last_ok, 'último')
+        if bid >= 0.05 and ask >= 0.05 and last_ok:
+            mid = (bid + ask) / 2
+            if (ask - bid) > max(0.10, 0.25 * mid):   # spread abusivo
+                b_eff, b_src = last_ok, 'último'
+                a_eff, a_src = last_ok, 'último'
+        return b_eff, b_src, a_eff, a_src
+
     def _sell_prem(rw):
-        """Prêmio executável para perna vendida: bid; fallback último negócio
-        (books ralos costumam ter só o último)."""
-        if rw['bid'] >= 0.05:
-            return rw['bid'], 'bid'
-        if rw['close'] >= 0.05:
-            return rw['close'], 'último'
-        return None, None
+        """Prêmio executável para perna vendida (bid efetivo ou último)."""
+        b, b_src, _a, _asrc = _eff(rw)
+        return (b, b_src) if b else (None, None)
 
     expirations = []
     for exp in selected_exps:
         dc = max((_date.fromisoformat(exp) - today).days, 1)
         selic_period = ((1 + selic / 100) ** (dc / 365.0) - 1) * 100
 
-        # Só pernas executáveis: precisa de bid e ask no book
-        calls_ok = sorted([c for c in calls_by_exp.get(exp, []) if c['bid'] > 0 and c['ask'] > 0],
+        # Pernas com preço efetivo: bid/ask do book (pregão aberto e spread são)
+        # ou último negócio (pregão fechado, ponta ausente ou spread abusivo).
+        def _enrich(lst):
+            out = []
+            for rw in lst:
+                b, b_src, a, a_src = _eff(rw)
+                rw2 = dict(rw)
+                rw2['bid'] = round(b, 2) if b else 0
+                rw2['ask'] = round(a, 2) if a else 0
+                rw2['bid_src'] = b_src
+                rw2['ask_src'] = a_src
+                out.append(rw2)
+            return out
+        calls_all = _enrich(calls_by_exp.get(exp, []))
+        puts_all  = _enrich(puts_by_exp.get(exp, []))
+        calls_ok = sorted([c for c in calls_all if c['bid'] > 0 and c['ask'] > 0],
                           key=lambda x: x['strike'])
-        puts_ok  = sorted([p for p in puts_by_exp.get(exp, []) if p['bid'] > 0 and p['ask'] > 0],
+        puts_ok  = sorted([p for p in puts_all if p['bid'] > 0 and p['ask'] > 0],
                           key=lambda x: x['strike'])
         near = lambda k: 0.85 * spot <= k <= 1.15 * spot
 
@@ -3647,6 +3681,7 @@ def api_busca_operacoes(ticker):
         'mode':        mode,
         'op':          op,
         'max_days':    max_days,
+        'market_open': market_open,
         'selic':       round(selic, 2),
         'expirations': expirations,
     })

@@ -643,9 +643,10 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         : '');
     modeEl.style.display = 'inline-block';
     modeEl.className = d.mode;
-    modeEl.textContent = d.mode === 'semanal'
+    modeEl.textContent = (d.mode === 'semanal'
       ? '📅 Semanais líquidas — até 8 venc. em ' + d.max_days + ' dias'
-      : '📅 Apenas mensais — até ' + d.max_days + ' dias';
+      : '📅 Apenas mensais — até ' + d.max_days + ' dias') +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '');
 
     var h = '';
     d.expirations.forEach(function(e, i) {

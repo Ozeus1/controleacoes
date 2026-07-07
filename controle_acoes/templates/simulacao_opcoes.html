@@ -195,6 +195,9 @@
             <button type="button" class="btn btn-sm" style="background:#7c3aed;color:white;"
                     onclick="abrirEmCalculos()"
                     title="Abre esta estrutura pré-preenchida na página Cálculos de Opções para editar">🧮 Abrir em Cálculos</button>
+            <button type="button" class="btn btn-sm" style="background:#0ea5e9;color:white;"
+                    onclick="editarEmCadeia()"
+                    title="Abre o editor da Cadeia de Opções com estas pernas — serve para qualquer estrutura, mesmo fora dos modelos padrão">🔗 Editar em Cadeia de Opções</button>
             <button type="submit" class="btn btn-primary btn-sm">💾 Salvar</button>
             {% if sim %}
             <a href="{{ url_for('simulacao_opcoes') }}" class="btn btn-secondary btn-sm">✕ Fechar</a>
@@ -929,9 +932,32 @@ function abrirEmCalculos() {
         go('seagull', calls[0], calls[1], puts[0]); return;
     }
 
-    alert('Esta combinação de pernas não corresponde a nenhum modelo da aba Estruturas ' +
-          '(travas, straddle, strangle, ratio, vaca, boi, seagull, collar, fence). ' +
-          'Edite-a aqui mesmo ou pela Cadeia de Opções.');
+    if (confirm('Esta combinação de pernas não corresponde a nenhum modelo da aba Estruturas ' +
+                '(travas, straddle, strangle, ratio, vaca, boi, seagull, collar, fence).\n\n' +
+                'Deseja abri-la no editor da Cadeia de Opções?')) {
+        editarEmCadeia();
+    }
+}
+
+// ── Editar no simulador da Cadeia de Opções (aceita qualquer estrutura) ──────
+function editarEmCadeia() {
+    var parts = [];
+    document.querySelectorAll('#legs-body .leg-row').forEach(function(row) {
+        var lt = row.querySelector('[name=leg_type]').value;
+        var tk = (row.querySelector('[name=leg_ticker]').value || '').trim().toUpperCase();
+        if (!tk && lt !== 'STOCK') return;
+        var qty  = parseInt(row.querySelector('[name=leg_qty]').value) || 1;
+        var prem = parseVal(row.querySelector('[name=leg_premium]').value);
+        var k    = lt !== 'STOCK' ? parseVal(row.querySelector('[name=leg_strike]').value) : 0;
+        var exp  = (row.querySelector('[name=leg_exp]') || {}).value || '';
+        parts.push([tk, lt, row.querySelector('[name=leg_side]').value, qty,
+                    prem.toFixed(2), k.toFixed(2), exp].join(','));
+    });
+    if (!parts.length) { alert('Preencha as pernas da simulação primeiro.'); return; }
+    var ativo = (document.querySelector('[name=underlying]').value || '').trim().toUpperCase();
+    var nome  = (document.querySelector('[name=name]') || {}).value || '';
+    var q = new URLSearchParams({sim: '1', ativo: ativo, nome: nome, legs: parts.join('|')});
+    window.location.href = '/cadeia-opcoes?' + q.toString();
 }
 
 document.addEventListener('DOMContentLoaded',function(){

@@ -391,15 +391,21 @@ function _render(d){
   var bsSrc = document.getElementById('f-bs-src');
   if(bsSrc){
     if(d.bs_calc){
-      var srcLabel = {'IV-prem':'σ=VI prêmio','IV':'σ=IV','HV':'σ=HV','HV-ref':'σ=ref'}[d.bs_sigma_src] || 'calc';
-      bsSrc.textContent = '(' + srcLabel + ' ' + d.bs_sigma_used + '%)';
+      var srcLabel = {'IV':'σ=IV','HV':'σ=HV','HV-ref':'σ=ref'}[d.bs_sigma_src] || 'calc';
+      var txt = '(' + srcLabel + ' ' + d.bs_sigma_used + '%';
+      if (d.greeks_sigma_used != null && d.greeks_sigma_src === 'IV-prem') {
+        txt += ' · gregas: VI prêmio ' + d.greeks_sigma_used + '%';
+      }
+      bsSrc.textContent = txt + ')';
       var srcDesc = {
-        'IV-prem':'VI implícita extraída do prêmio de mercado (último negócio / mid do book)',
-        'IV':     'Calculado com Volatilidade Implícita do OpLab',
-        'HV':     'Calculado com Volatilidade Histórica (21d) do subjacente',
-        'HV-ref': 'Calculado com volatilidade de referência (OpLab sem histórico disponível)'
+        'IV':     'Preço teórico calculado com a Volatilidade Implícita do OpLab',
+        'HV':     'Preço teórico calculado com a Volatilidade Histórica (21d) do subjacente — compare com o último para avaliar se a opção está cara ou barata',
+        'HV-ref': 'Preço teórico com volatilidade de referência (OpLab sem histórico disponível)'
       }[d.bs_sigma_src] || '';
-      bsSrc.title = srcDesc + ' — σ=' + d.bs_sigma_used + '%';
+      if (d.greeks_sigma_src === 'IV-prem') {
+        srcDesc += '. Gregas calculadas com a VI implícita extraída do prêmio de mercado (' + d.greeks_sigma_used + '%).';
+      }
+      bsSrc.title = srcDesc;
       bsSrc.style.color = d.bs_sigma_src==='HV-ref' ? '#f59e0b' : '#34d399';
     } else if(d.bs_price != null){
       bsSrc.textContent = '(OpLab)';

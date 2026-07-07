@@ -2390,57 +2390,64 @@ def api_busca_opcao(ticker):
         if not premium and bid and ask:
             premium = (bid + ask) / 2.0
 
-        # Volatilidade — ordem de prioridade:
-        # 1. VI implícita do prêmio de mercado (só se prêmio acima da paridade)
-        # 2. VI informada pela OpLab/RTD
-        # 3. HV histórica do subjacente
-        # 4. Referência padrão por ativo
-        sigma = None
-        sigma_src = None
+        # ── Duas volatilidades com papéis diferentes ─────────────────────────
+        # σ de MERCADO (gregas + VI exibida): VI implícita do prêmio → VI OpLab → HV → ref.
+        # σ TEÓRICO (preço BS): NUNCA usa a VI do prêmio — o BS calculado com a VI
+        #   extraída do próprio último negócio reproduz o último por construção
+        #   (circular). Usa VI OpLab → HV → ref, permitindo comparar o teórico
+        #   com o preço de mercado (caro/barato vs vol histórica).
+        iv_field = result.get('iv')
+        if iv_field:
+            iv_field = iv_field / 100.0 if iv_field > 1.5 else iv_field
+
+        iv_prem = None
         if premium and T > 0 and premium > intrinsic * 1.01:
             iv_est = _implied_vol(S, K, T, r, premium, is_call)
             if 0.005 < iv_est < 4.9:   # descarta bissecção presa nos limites
-                sigma = iv_est
-                sigma_src = 'IV-prem'
-        if not sigma:
-            iv_field = result.get('iv')
-            if iv_field:
-                sigma = iv_field / 100.0 if iv_field > 1.5 else iv_field
-                sigma_src = 'IV'
-        if not sigma and underlying:
-            sigma = _hv_from_oplab(underlying, token)
-            if sigma:
-                sigma_src = 'HV'
-        if not sigma:
-            sigma = _hv_fallback(underlying)
-            sigma_src = 'HV-ref'
+                iv_prem = iv_est
 
-        # BS price + intrínseco/extrínseco
+        hv = _hv_from_oplab(underlying, token) if underlying else None
+
+        if iv_field:
+            sigma_teo, teo_src = iv_field, 'IV'
+        elif hv:
+            sigma_teo, teo_src = hv, 'HV'
+        else:
+            sigma_teo, teo_src = _hv_fallback(underlying), 'HV-ref'
+
+        if iv_prem:
+            sigma_mkt, mkt_src = iv_prem, 'IV-prem'
+        else:
+            sigma_mkt, mkt_src = sigma_teo, teo_src
+
+        # BS price (σ teórico, independente do prêmio) + intrínseco/extrínseco
         if needs_bs:
-            bs = _bs_price_opt(S, K, T, r, sigma, opt_type)
+            bs = _bs_price_opt(S, K, T, r, sigma_teo, opt_type)
             if bs is not None:
                 result['bs_price'] = bs
-                result['bs_calc']  = sigma_src
+                result['bs_calc']  = teo_src
         if not result.get('intrinsic_value'):
             result['intrinsic_value'] = round(intrinsic, 4)
         if not result.get('extrinsic_value') and premium:
             result['extrinsic_value'] = round(max(0.0, premium - intrinsic), 4)
 
-        # Gregas
+        # Gregas (σ de mercado — reflete a vol implícita atual)
         if needs_greeks and T > 0:
-            gk = _bs_greeks(S, K, T, r, sigma, opt_type)
+            gk = _bs_greeks(S, K, T, r, sigma_mkt, opt_type)
             if gk:
-                result.setdefault('bs_calc', sigma_src)
+                result.setdefault('bs_calc', teo_src)
                 for k2, v2 in gk.items():
                     if not result.get(k2):
                         result[k2] = v2
 
         # Preenche VI exibida quando a fonte foi o prêmio de mercado
-        if not result.get('iv') and sigma_src == 'IV-prem':
-            result['iv'] = round(sigma * 100, 2)
+        if not result.get('iv') and iv_prem:
+            result['iv'] = round(iv_prem * 100, 2)
 
-        result['bs_sigma_used'] = round(sigma * 100, 2)
-        result['bs_sigma_src']  = sigma_src  # 'IV-prem', 'IV', 'HV' ou 'HV-ref'
+        result['bs_sigma_used'] = round(sigma_teo * 100, 2)   # σ do preço teórico
+        result['bs_sigma_src']  = teo_src                      # 'IV', 'HV' ou 'HV-ref'
+        result['greeks_sigma_used'] = round(sigma_mkt * 100, 2)
+        result['greeks_sigma_src']  = mkt_src                  # 'IV-prem', 'IV', 'HV' ou 'HV-ref'
 
     # ── Salva/atualiza na tabela SearchedOption (lista RTD) ──────────────────
     # Limpa entradas > 10 dias antes de inserir

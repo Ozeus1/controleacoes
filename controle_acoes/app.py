@@ -2882,21 +2882,29 @@ def api_cadeia(ticker):
     if not selected_exps:
         selected_exps = all_exp_keys[:3]
 
+    # Quantidade de strikes exibidos abaixo/acima do spot (10 padrão, 20 opcional)
+    try:
+        n_strikes = int(request.args.get('n', 10))
+    except (TypeError, ValueError):
+        n_strikes = 10
+    if n_strikes not in (10, 20):
+        n_strikes = 10
+
     for exp in selected_exps:
         calls = sorted(calls_by_exp.get(exp, []), key=lambda x: x['strike'])
         puts  = sorted(puts_by_exp.get(exp, []),  key=lambda x: x['strike'])
 
         if spot:
-            calls_below = [c for c in calls if c['strike'] <= spot][-10:]
-            calls_above = [c for c in calls if c['strike'] >  spot][:10]
+            calls_below = [c for c in calls if c['strike'] <= spot][-n_strikes:]
+            calls_above = [c for c in calls if c['strike'] >  spot][:n_strikes]
             calls_sel   = calls_below + calls_above
 
-            puts_below  = [p for p in puts if p['strike'] <= spot][-10:]
-            puts_above  = [p for p in puts if p['strike'] >  spot][:10]
+            puts_below  = [p for p in puts if p['strike'] <= spot][-n_strikes:]
+            puts_above  = [p for p in puts if p['strike'] >  spot][:n_strikes]
             puts_sel    = puts_below + puts_above
         else:
-            calls_sel = calls[:10]
-            puts_sel  = puts[:20]
+            calls_sel = calls[:n_strikes]
+            puts_sel  = puts[:n_strikes * 2]
 
         # Monta linhas alinhadas por strike
         all_strikes = sorted({r['strike'] for r in calls_sel + puts_sel})

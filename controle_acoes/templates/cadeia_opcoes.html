@@ -118,6 +118,17 @@ table.cadeia td.empty{color:#334155;}
     </div>
   </div>
 
+  <!-- Quantidade de strikes exibidos antes/depois do spot -->
+  <div style="display:flex;gap:1rem;align-items:center;margin-top:.6rem;font-size:.82rem;color:var(--text-secondary);flex-wrap:wrap;">
+    <span>Strikes por lado do spot:</span>
+    <label style="display:inline-flex;align-items:center;gap:.3rem;cursor:pointer;">
+      <input type="radio" name="n-strikes" value="10" checked style="cursor:pointer;margin:0;"> 10
+    </label>
+    <label style="display:inline-flex;align-items:center;gap:.3rem;cursor:pointer;">
+      <input type="radio" name="n-strikes" value="20" style="cursor:pointer;margin:0;"> 20
+    </label>
+  </div>
+
   <div id="venc-tabs"></div>
   <div id="cadeia-loading">⏳ Carregando cadeia…</div>
   <div id="cadeia-error"></div>
@@ -220,6 +231,25 @@ document.getElementById('venc-tabs').addEventListener('click',function(e){
   btn.classList.add('active'); curExp=btn.dataset.exp; renderCurrentExp();
 });
 
+/* Seletor de strikes por lado do spot (10 padrão / 20) — persiste a escolha */
+function nStrikes(){
+  var el=document.querySelector('input[name="n-strikes"]:checked');
+  return el?el.value:'10';
+}
+(function(){
+  var saved=localStorage.getItem('cadeia-n-strikes');
+  if(saved==='20'){
+    var r=document.querySelector('input[name="n-strikes"][value="20"]');
+    if(r) r.checked=true;
+  }
+  document.querySelectorAll('input[name="n-strikes"]').forEach(function(r){
+    r.addEventListener('change',function(){
+      localStorage.setItem('cadeia-n-strikes',r.value);
+      if(curTicker) loadCadeia(curTicker);
+    });
+  });
+})();
+
 function loadCadeia(ticker){
   curTicker=ticker; allData=null; curExp=null;
   document.getElementById('cadeia-loading').style.display='block';
@@ -227,7 +257,7 @@ function loadCadeia(ticker){
   document.getElementById('cadeia-error').style.display='none';
   document.getElementById('cadeia-spot').innerHTML='';
   document.getElementById('venc-tabs').innerHTML='';
-  fetch('/api/cadeia/'+encodeURIComponent(ticker))
+  fetch('/api/cadeia/'+encodeURIComponent(ticker)+'?n='+nStrikes())
     .then(function(r){return r.text().then(function(text){
       var data=null;
       try{data=text?JSON.parse(text):{};}catch(_){

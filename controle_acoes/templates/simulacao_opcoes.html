@@ -192,6 +192,9 @@
             <button type="button" class="btn btn-sm" id="btn-atualizar-sim" style="background:#10b981;color:white;"
                     onclick="atualizarCotacoesSim()"
                     title="Atualiza os prêmios das opções desta simulação via OpLab e estima POP e gregas">⟳ Atualizar</button>
+            <button type="button" class="btn btn-sm" style="background:#7c3aed;color:white;"
+                    onclick="abrirEmCalculos()"
+                    title="Abre esta estrutura pré-preenchida na página Cálculos de Opções para editar">🧮 Abrir em Cálculos</button>
             <button type="submit" class="btn btn-primary btn-sm">💾 Salvar</button>
             {% if sim %}
             <a href="{{ url_for('simulacao_opcoes') }}" class="btn btn-secondary btn-sm">✕ Fechar</a>
@@ -828,6 +831,108 @@ window.atualizarCotacoesSim = function() {
             alert('Erro ao atualizar: ' + (e.message || e));
         });
 };
+
+// ── Abrir a estrutura pré-preenchida em Cálculos de Opções ───────────────────
+// Detecta o padrão das pernas e monta a URL da aba Estruturas (st=1&op=...)
+// ou da aba Colar (cp=1). Estruturas fora dos modelos suportados são avisadas.
+function abrirEmCalculos() {
+    var legs = [];
+    document.querySelectorAll('#legs-body .leg-row').forEach(function(row) {
+        var lt = row.querySelector('[name=leg_type]').value;
+        legs.push({
+            type: lt,
+            side: row.querySelector('[name=leg_side]').value,
+            qty:  parseInt(row.querySelector('[name=leg_qty]').value) || 1,
+            ticker: (row.querySelector('[name=leg_ticker]').value || '').trim().toUpperCase(),
+            strike: lt !== 'STOCK' ? parseVal(row.querySelector('[name=leg_strike]').value) : 0,
+            premium: parseVal(row.querySelector('[name=leg_premium]').value),
+            exp: (row.querySelector('[name=leg_exp]') || {}).value || ''
+        });
+    });
+    legs = legs.filter(function(l) { return l.ticker || l.type === 'STOCK'; });
+    if (!legs.length) { alert('Preencha as pernas da simulação primeiro.'); return; }
+
+    var ativo = (document.querySelector('[name=underlying]').value || '').trim().toUpperCase();
+    var calls  = legs.filter(function(l) { return l.type === 'CALL'; }).sort(function(a, b) { return a.strike - b.strike; });
+    var puts   = legs.filter(function(l) { return l.type === 'PUT'; }).sort(function(a, b) { return a.strike - b.strike; });
+    var stocks = legs.filter(function(l) { return l.type === 'STOCK'; });
+    var expS   = (legs.find(function(l) { return l.exp; }) || {}).exp || '';
+    var qtyBase = Math.min.apply(null, legs.filter(function(l) { return l.type !== 'STOCK'; })
+                                            .map(function(l) { return l.qty; }).concat([100]));
+
+    function go(op, A, B, C, spotVal) {
+        var p = {st: '1', op: op, ativo: ativo, qty: qtyBase, exp: expS};
+        if (spotVal) p.spot = spotVal.toFixed(2);
+        p.at = A.ticker; p.ak = A.strike.toFixed(2); p.ap = A.premium.toFixed(2);
+        p.bt = B.ticker; p.bk = B.strike.toFixed(2); p.bp = B.premium.toFixed(2);
+        if (C) { p.ct2 = C.ticker; p.ck2 = C.strike.toFixed(2); p.cp2 = C.premium.toFixed(2); }
+        window.location.href = '/venda_puts?' + new URLSearchParams(p).toString() + '#estrutura';
+    }
+
+    // ── Collar / Fence (com perna de ação) ──────────────────────────────────
+    if (stocks.length === 1) {
+        var spotV = stocks[0].premium;
+        var pB = puts.find(function(l) { return l.side === 'BUY'; });
+        var pS = puts.find(function(l) { return l.side === 'SELL'; });
+        var cS = calls.find(function(l) { return l.side === 'SELL'; });
+        if (legs.length === 4 && pB && pS && cS) { go('fence', pB, pS, cS, spotV); return; }
+        if (legs.length === 3 && pB && cS) {
+            var q = new URLSearchParams({cp: '1', ativo: ativo, spot: spotV.toFixed(2), qty: qtyBase,
+                pt: pB.ticker, pk: pB.strike.toFixed(2), pp: pB.premium.toFixed(2),
+                ct: cS.ticker, ck: cS.strike.toFixed(2), cprem: cS.premium.toFixed(2), exp: expS});
+            window.location.href = '/venda_puts?' + q.toString() + '#collar';
+            return;
+        }
+    }
+
+    // ── 2 pernas ─────────────────────────────────────────────────────────────
+    if (legs.length === 2 && calls.length === 1 && puts.length === 1) {
+        var c1 = calls[0], p1 = puts[0];
+        if (c1.side === 'SELL' && p1.side === 'SELL') {
+            go(Math.abs(c1.strike - p1.strike) < 0.01 ? 'straddle_vendido' : 'strangle_vendido', c1, p1);
+            return;
+        }
+    }
+    if (legs.length === 2 && calls.length === 2) {
+        var cLo = calls[0], cHi = calls[1];
+        // Ratio: venda n + compra 2n/1.5n em strike maior
+        if (cLo.side === 'SELL' && cHi.side === 'BUY' && cHi.qty > cLo.qty) {
+            var rz = cHi.qty / cLo.qty;
+            if (Math.abs(rz - 2) < 0.01)   { go('call_ratio_1x2', cLo, cHi); return; }
+            if (Math.abs(rz - 1.5) < 0.01) { go('call_ratio_2x3', cLo, cHi); return; }
+        }
+        if (cLo.side === 'BUY' && cHi.side === 'SELL') { go('trava_alta', cLo, cHi); return; }
+        if (cLo.side === 'SELL' && cHi.side === 'BUY') { go('trava_credito_baixa', cLo, cHi); return; }
+    }
+    if (legs.length === 2 && puts.length === 2) {
+        var pLo = puts[0], pHi = puts[1];
+        // Boi: venda PUT alta n + compra PUT baixa 2n
+        if (pHi.side === 'SELL' && pLo.side === 'BUY' && pLo.qty > pHi.qty &&
+            Math.abs(pLo.qty / pHi.qty - 2) < 0.01) { go('boi_put', pHi, pLo); return; }
+        if (pHi.side === 'BUY' && pLo.side === 'SELL') { go('trava_baixa', pHi, pLo); return; }
+        if (pHi.side === 'SELL' && pLo.side === 'BUY') { go('trava_credito_alta', pHi, pLo); return; }
+    }
+
+    // ── 3 pernas ─────────────────────────────────────────────────────────────
+    if (legs.length === 3 && calls.length === 3 &&
+        calls[0].side === 'BUY' && calls[1].side === 'SELL' && calls[2].side === 'BUY' &&
+        Math.abs(calls[1].qty / calls[0].qty - 2) < 0.01) {
+        go('vaca_travada', calls[0], calls[1], calls[2]); return;
+    }
+    if (legs.length === 3 && puts.length === 3 &&
+        puts[2].side === 'BUY' && puts[1].side === 'SELL' && puts[0].side === 'BUY' &&
+        Math.abs(puts[1].qty / puts[2].qty - 2) < 0.01) {
+        go('vaca_put', puts[2], puts[1], puts[0]); return;
+    }
+    if (legs.length === 3 && calls.length === 2 && puts.length === 1 &&
+        calls[0].side === 'BUY' && calls[1].side === 'SELL' && puts[0].side === 'SELL') {
+        go('seagull', calls[0], calls[1], puts[0]); return;
+    }
+
+    alert('Esta combinação de pernas não corresponde a nenhum modelo da aba Estruturas ' +
+          '(travas, straddle, strangle, ratio, vaca, boi, seagull, collar, fence). ' +
+          'Edite-a aqui mesmo ou pela Cadeia de Opções.');
+}
 
 document.addEventListener('DOMContentLoaded',function(){
     document.getElementById('legs-body').addEventListener('change', function(){ updateIVVisibility(); scheduleRedraw(); });

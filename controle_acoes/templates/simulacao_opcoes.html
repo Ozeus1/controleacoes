@@ -189,6 +189,9 @@
             <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('CALL')">+ Call</button>
             <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('PUT')">+ Put</button>
             <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('STOCK')">+ Ação</button>
+            <button type="button" class="btn btn-sm" id="btn-atualizar-sim" style="background:#10b981;color:white;"
+                    onclick="atualizarCotacoesSim()"
+                    title="Atualiza os prêmios das opções desta simulação via OpLab e estima POP e gregas">⟳ Atualizar</button>
             <button type="submit" class="btn btn-primary btn-sm">💾 Salvar</button>
             {% if sim %}
             <a href="{{ url_for('simulacao_opcoes') }}" class="btn btn-secondary btn-sm">✕ Fechar</a>
@@ -206,6 +209,11 @@
         <div title="Probability of Profit — probabilidade de lucro no vencimento via Black-Scholes">
             <span>POP</span><br><strong id="m-pop">—</strong>
         </div>
+        <div id="m-spot-box" style="display:none;"><span id="m-spot-lbl">Spot</span><br><strong id="m-spot">—</strong></div>
+        <div id="m-delta-box" style="display:none;" title="Delta total da posição (Σ sinal × qtd × delta)"><span>Delta</span><br><strong id="m-delta">—</strong></div>
+        <div id="m-gamma-box" style="display:none;" title="Gamma total da posição"><span>Gamma</span><br><strong id="m-gamma">—</strong></div>
+        <div id="m-theta-box" style="display:none;" title="Theta total da posição (R$/dia)"><span>Theta</span><br><strong id="m-theta">—</strong></div>
+        <div id="m-vega-box" style="display:none;" title="Vega total da posição (R$ por 1% de vol)"><span>Vega</span><br><strong id="m-vega">—</strong></div>
     </div>
 
     {# Aviso vencimentos diferentes #}
@@ -670,6 +678,156 @@ function scheduleRedraw(){
 }
 
 window.addEventListener('resize',function(){drawChart(readLegs());});
+
+// ── Atualizar cotações dos prêmios + estimar POP e gregas ────────────────────
+function fmtNum(v, dec) {
+    return v.toLocaleString('pt-BR', {minimumFractionDigits: dec, maximumFractionDigits: dec});
+}
+
+function ivFromPremiumSim(S, K, T, r, prem, isCall) {
+    // Bissecção da VI a partir do prêmio de mercado
+    if (!prem || prem <= 0 || T <= 0 || S <= 0 || K <= 0) return null;
+    var intrinsic = Math.max(0, isCall ? S - K : K - S);
+    if (prem <= intrinsic * 1.005) return null;   // abaixo da paridade não converge
+    var lo = 0.005, hi = 5;
+    for (var i = 0; i < 60; i++) {
+        var mid = (lo + hi) / 2;
+        if (blackScholes(S, K, T, r, mid, isCall) < prem) lo = mid; else hi = mid;
+    }
+    var iv = (lo + hi) / 2;
+    return (iv <= 0.006 || iv >= 4.9) ? null : iv;
+}
+
+function normPDFSim(x) { return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI); }
+
+function underlyingCandidatesSim() {
+    var typed = (document.querySelector('[name=underlying]').value || '').trim().toUpperCase();
+    var out = [];
+    if (typed) out.push(typed);
+    // Deriva do primeiro ticker de opção: raiz de 4 letras + sufixos comuns
+    var firstTk = '';
+    document.querySelectorAll('#legs-body .leg-row').forEach(function(row) {
+        if (firstTk) return;
+        if (row.querySelector('[name=leg_type]').value === 'STOCK') return;
+        var t = (row.querySelector('[name=leg_ticker]').value || '').trim().toUpperCase();
+        if (t.length >= 5) firstTk = t;
+    });
+    if (firstTk) {
+        var root = firstTk.slice(0, 4);
+        if (root === 'BOVA') out.push('BOVA11');
+        ['3', '4', '11'].forEach(function(suf) { out.push(root + suf); });
+    }
+    return out.filter(function(v, i, a) { return v && a.indexOf(v) === i; });
+}
+
+function fetchChainSim(cands, idx) {
+    if (idx >= cands.length) return Promise.reject(new Error('Cadeia não encontrada. Preencha o Ativo Subjacente.'));
+    return fetch('/api/rolagem-opcoes/cadeia/' + encodeURIComponent(cands[idx]))
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            if (d.error || !d.options || !d.options.length) return fetchChainSim(cands, idx + 1);
+            return d;
+        })
+        .catch(function() { return fetchChainSim(cands, idx + 1); });
+}
+
+window.atualizarCotacoesSim = function() {
+    var btn = document.getElementById('btn-atualizar-sim');
+    btn.disabled = true;
+    var orig = '⟳ Atualizar';
+    btn.textContent = '⟳ Buscando cadeia…';
+    fetchChainSim(underlyingCandidatesSim(), 0)
+        .then(function(d) {
+            var byTicker = {};
+            d.options.forEach(function(o) { byTicker[o.symbol] = o; });
+            var spot = Number(d.spot || 0);
+            var r = Math.log(1 + SELIC_RATE / 100);
+            var today = new Date(); today.setHours(0, 0, 0, 0);
+            var nOk = 0, nMiss = 0, missT = [];
+            var dTot = 0, gTot = 0, tTot = 0, vTot = 0, anyGreek = false;
+
+            document.querySelectorAll('#legs-body .leg-row').forEach(function(row) {
+                var lt = row.querySelector('[name=leg_type]').value;
+                var sign = row.querySelector('[name=leg_side]').value === 'SELL' ? -1 : 1;
+                var qty = parseInt(row.querySelector('[name=leg_qty]').value) || 1;
+                if (lt === 'STOCK') { dTot += sign * qty; anyGreek = anyGreek || spot > 0; return; }
+                var tk = (row.querySelector('[name=leg_ticker]').value || '').trim().toUpperCase();
+                if (!tk) return;
+                var o = byTicker[tk];
+                if (!o) { nMiss++; missT.push(tk); return; }
+                // Prêmio atualizado: último negócio; senão mid do book
+                var prem = o.close > 0 ? o.close : (o.mid > 0 ? o.mid : (o.bid || o.ask || 0));
+                if (prem > 0) {
+                    row.querySelector('[name=leg_premium]').value = prem.toFixed(2).replace('.', ',');
+                    nOk++;
+                }
+                // Preenche strike/vencimento se estiverem vazios/zerados
+                var skEl = row.querySelector('[name=leg_strike]');
+                if (skEl && (!skEl.value || parseVal(skEl.value) <= 0) && o.strike > 0) {
+                    skEl.value = o.strike.toFixed(2).replace('.', ',');
+                    skEl.style.border = ''; skEl.title = '';
+                }
+                var expEl = row.querySelector('[name=leg_exp]');
+                if (expEl && !expEl.value && o.exp) expEl.value = o.exp;
+
+                // VI implícita do prêmio → alimenta o POP e as gregas
+                var K = parseVal(row.querySelector('[name=leg_strike]').value);
+                var expS = expEl ? expEl.value : '';
+                if (spot > 0 && K > 0 && expS && prem > 0) {
+                    var T = Math.max((new Date(expS + 'T00:00:00') - today) / (365.25 * 86400000), 1 / 365);
+                    var isCall = lt === 'CALL';
+                    var iv = ivFromPremiumSim(spot, K, T, r, prem, isCall) || 0.35;
+                    var ivEl = row.querySelector('[name=leg_iv]');
+                    if (ivEl) ivEl.value = (iv * 100).toFixed(1).replace('.', ',');
+                    // Gregas da perna (por contrato) — agregadas na posição
+                    var sq = Math.sqrt(T);
+                    var d1 = (Math.log(spot / K) + (r + 0.5 * iv * iv) * T) / (iv * sq);
+                    var d2 = d1 - iv * sq;
+                    var delta = isCall ? normCDF(d1) : normCDF(d1) - 1;
+                    var gamma = normPDFSim(d1) / (spot * iv * sq);
+                    var theta = (-spot * normPDFSim(d1) * iv / (2 * sq)
+                                 - (isCall ? 1 : -1) * r * K * Math.exp(-r * T) * normCDF(isCall ? d2 : -d2)) / 365;
+                    var vega = spot * normPDFSim(d1) * sq / 100;
+                    dTot += sign * qty * delta;
+                    gTot += sign * qty * gamma;
+                    tTot += sign * qty * theta;
+                    vTot += sign * qty * vega;
+                    anyGreek = true;
+                }
+            });
+
+            // Spot + gregas na barra de métricas
+            if (spot > 0) {
+                document.getElementById('m-spot-box').style.display = '';
+                document.getElementById('m-spot-lbl').textContent = d.ticker + ' agora';
+                document.getElementById('m-spot').textContent = 'R$ ' + fmtNum(spot, 2);
+            }
+            if (anyGreek) {
+                document.getElementById('m-delta-box').style.display = '';
+                document.getElementById('m-gamma-box').style.display = '';
+                document.getElementById('m-theta-box').style.display = '';
+                document.getElementById('m-vega-box').style.display = '';
+                document.getElementById('m-delta').textContent = fmtNum(dTot, 1);
+                document.getElementById('m-gamma').textContent = fmtNum(gTot, 2);
+                var thEl = document.getElementById('m-theta');
+                thEl.textContent = 'R$ ' + fmtNum(tTot, 2);
+                thEl.className = tTot >= 0 ? 'positive' : 'negative';
+                document.getElementById('m-vega').textContent = 'R$ ' + fmtNum(vTot, 2);
+            }
+
+            updateIVVisibility();
+            drawChart(readLegs());   // redesenha → recalcula lucro/perda/BE/POP com VIs novas
+            btn.disabled = false;
+            btn.textContent = '✓ ' + nOk + ' atualizada(s)' + (nMiss ? ' · ' + nMiss + ' não encontrada(s)' : '');
+            if (nMiss && window.console) console.warn('Opções não encontradas na cadeia:', missT.join(', '));
+            setTimeout(function() { btn.textContent = orig; }, 4000);
+        })
+        .catch(function(e) {
+            btn.disabled = false;
+            btn.textContent = orig;
+            alert('Erro ao atualizar: ' + (e.message || e));
+        });
+};
 
 document.addEventListener('DOMContentLoaded',function(){
     document.getElementById('legs-body').addEventListener('change', function(){ updateIVVisibility(); scheduleRedraw(); });

@@ -334,7 +334,7 @@ function renderTable(expData,spot){
     html+='<tr>';
     if(c){
       var cE=enc(c.symbol,'CALL','SELL',c.close,s,exp);
-      html+='<td style="text-align:left"><span class="sym-link" data-opt="'+cE+'">'+c.symbol+'</span></td>';
+      html+='<td style="text-align:left"><span class="sym-link" data-opt="'+cE+'" title="Clique: VENDER esta CALL pelo último negócio (adiciona perna vendida no simulador)">'+c.symbol+'</span></td>';
       html+=fV(c.close)+fV(c.teorico||null)+fV(c.delta)+fV(c.liquidez||null);
       html+='<td class="val">'+brlK(c.vol_fin)+'</td>'+fVar(c.var_pct)+fV(c.mid||null);
       html+=baCell(c.symbol,'CALL',c.bid,c.ask,s,exp,c.close);
@@ -345,7 +345,7 @@ function renderTable(expData,spot){
       html+=fV(p.mid||null)+fVar(p.var_pct)+'<td class="val">'+brlK(p.vol_fin)+'</td>';
       html+=fV(p.liquidez||null)+fV(p.delta)+fV(p.teorico||null)+fV(p.close);
       var pE=enc(p.symbol,'PUT','SELL',p.close,s,exp);
-      html+='<td style="text-align:left"><span class="sym-link" data-opt="'+pE+'">'+p.symbol+'</span></td>';
+      html+='<td style="text-align:left"><span class="sym-link" data-opt="'+pE+'" title="Clique: VENDER esta PUT pelo último negócio (adiciona perna vendida no simulador)">'+p.symbol+'</span></td>';
     } else { html+='<td class="empty">—</td>'.repeat(9); }
     html+='</tr>';
   });
@@ -368,11 +368,15 @@ function enc(sym,type,side,prem,strike,exp){
     .replace(/"/g,'&quot;');
 }
 function baCell(sym,type,bid,ask,strike,exp,close){
-  var bE=enc(sym,type,type==='CALL'?'SELL':'BUY',bid||close,strike,exp);
-  var aE=enc(sym,type,type==='CALL'?'BUY':'SELL',ask||close,strike,exp);
+  // Convenção de mercado: clicar no BID = VENDER (você bate na compra do book);
+  // clicar no ASK = COMPRAR (você agride a venda do book). Vale p/ CALL e PUT.
+  var bE=enc(sym,type,'SELL',bid||close,strike,exp);
+  var aE=enc(sym,type,'BUY', ask||close,strike,exp);
+  var bT='VENDER '+type+' '+sym+' K='+brl(strike)+' pelo bid '+(bid?('R$ '+brl(bid)):'(sem bid — usa último)')+' — clique para adicionar como perna VENDIDA no simulador';
+  var aT='COMPRAR '+type+' '+sym+' K='+brl(strike)+' pelo ask '+(ask?('R$ '+brl(ask)):'(sem ask — usa último)')+' — clique para adicionar como perna COMPRADA no simulador';
   return '<td><div class="ba-cell">'
-    +'<span class="ba-v bid" data-opt="'+bE+'">'+(bid?brl(bid):'-')+'</span>'
-    +'<span class="ba-v ask" data-opt="'+aE+'">'+(ask?brl(ask):'-')+'</span>'
+    +'<span class="ba-v bid" data-opt="'+bE+'" title="'+bT+'">'+(bid?brl(bid):'-')+'</span>'
+    +'<span class="ba-v ask" data-opt="'+aE+'" title="'+aT+'">'+(ask?brl(ask):'-')+'</span>'
     +'</div></td>';
 }
 

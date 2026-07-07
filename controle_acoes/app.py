@@ -3007,9 +3007,6 @@ def api_busca_operacoes(ticker):
         tf = _third_friday(d.year, d.month)
         return abs((d - tf).days) <= 2  # tolera feriado na 3ª sexta
 
-    def _has_liquidity(rows):
-        return any(r['bid'] > 0 and r['ask'] > 0 for r in rows)
-
     selic = _selic()  # % a.a.
 
     # Operação solicitada — calcula somente ela
@@ -3027,26 +3024,27 @@ def api_busca_operacoes(ticker):
         max_days = 60
 
     # ── Seleção de vencimentos (janela de max_days dias corridos) ────────────
-    # Semanais = fora da 3ª sexta. Com toggle ligado e liquidez → até 8 vencimentos
-    # dentro da janela. Senão (ou para venda_put_itm): apenas mensais na janela.
-    weekly_exps = [e for e in all_exps if not _is_monthly(e)]
-    weekly_liq  = any(
-        _has_liquidity(calls_by_exp.get(e, [])) or _has_liquidity(puts_by_exp.get(e, []))
-        for e in weekly_exps
-    )
+    # Semanais = fora da 3ª sexta. Com o toggle ligado, inclui até 8 vencimentos
+    # (semanais + mensais) dentro da janela. Desligado (ou venda_put_itm): só mensais.
     within_days = [e for e in all_exps
                    if (_date.fromisoformat(e) - today).days <= max_days]
     monthly_lim = [e for e in within_days if _is_monthly(e)]
     if not monthly_lim:
         monthly_lim = [e for e in all_exps if _is_monthly(e)][:3]
 
+    # Existe alguma semanal dentro da janela de prazo escolhida?
+    weekly_in_window = any(not _is_monthly(e) for e in within_days)
+
     if op == 'venda_put_itm':
+        # Venda de PUT ITM é sempre mensal por definição
         selected_exps = monthly_lim
         mode = 'mensal'
-    elif include_weekly and weekly_liq:
+    elif include_weekly and weekly_in_window:
+        # Toggle marcado e há semanais na janela → inclui semanais + mensais
         selected_exps = within_days[:8]
         mode = 'semanal'
     else:
+        # Toggle desmarcado, ou não há semanais na janela → apenas mensais
         selected_exps = monthly_lim
         mode = 'mensal'
 

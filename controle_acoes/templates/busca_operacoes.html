@@ -643,9 +643,16 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         : '');
     modeEl.style.display = 'inline-block';
     modeEl.className = d.mode;
-    modeEl.textContent = (d.mode === 'semanal'
-      ? '📅 Semanais líquidas — até 8 venc. em ' + d.max_days + ' dias'
-      : '📅 Apenas mensais — até ' + d.max_days + ' dias') +
+    var weeklyOn = document.getElementById('bo-weekly').checked;
+    var modeTxt;
+    if (d.mode === 'semanal') {
+      modeTxt = '📅 Semanais + mensais — até 8 venc. em ' + d.max_days + ' dias';
+    } else if (weeklyOn) {
+      modeTxt = '📅 Apenas mensais — sem semanais em ' + d.max_days + ' dias';
+    } else {
+      modeTxt = '📅 Apenas mensais — até ' + d.max_days + ' dias';
+    }
+    modeEl.textContent = modeTxt +
       (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '');
 
     var h = '';

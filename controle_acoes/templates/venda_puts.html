@@ -340,6 +340,16 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             <canvas id="e-chart" style="display:block; width:100%;"></canvas>
             <div id="e-chart-tip" class="pf-tip"></div>
         </div>
+
+        {# Ação: levar a estrutura para o editor de pernas (cadeia de opções) #}
+        <div id="e-actions" style="display:none; margin-top:1.25rem; gap:.6rem; flex-wrap:wrap;">
+            <button type="button" class="btn btn-primary btn-sm" onclick="estruturaAddLeg()">
+                ➕ Adicionar perna / editar no simulador
+            </button>
+            <span style="font-size:.8rem; color:var(--text-secondary); align-self:center;">
+                Abre o simulador da Cadeia de Opções com estas pernas para incluir mais opções e salvar.
+            </span>
+        </div>
     </div>
 </div>
 
@@ -1283,7 +1293,45 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             drawPayoff('e-chart', 'e-chart-tip', 'e-chart-wrap', payoffFn,
                        {lo: rngE.lo, hi: rngE.hi, spot: spot, T: dc / 365,
                         legs: legsArr, strikes: strikeMarks});
+            // Guarda as pernas com ticker para o botão "Adicionar perna"
+            var tks = {
+                a: (document.getElementById('e-a-t').value || '').toUpperCase(),
+                b: (document.getElementById('e-b-t').value || '').toUpperCase(),
+                c: (document.getElementById('e-c-t').value || '').toUpperCase()
+            };
+            // legsArr segue a ordem A,B,(C); STOCK (fence) usa o ativo subjacente.
+            // Associa tickers na ordem das pernas de opção A,B,C.
+            var order = ['a', 'b', 'c'], oi = 0;
+            window.__estruturaLegs = legsArr.map(function(l) {
+                if (l.t === 'STOCK') {
+                    return {ticker: (document.getElementById('e-ativo').value || '').toUpperCase(),
+                            type: 'STOCK', side: l.s > 0 ? 'BUY' : 'SELL', qty: qty * (l.q || 1),
+                            premium: spot, strike: 0, exp: ''};
+                }
+                var tk = tks[order[oi++]] || '';
+                return {ticker: tk, type: l.t, side: l.s > 0 ? 'BUY' : 'SELL',
+                        qty: qty * (l.q || 1), premium: l.prem, strike: l.K, exp: expS};
+            });
+            document.getElementById('e-actions').style.display = 'flex';
+        } else {
+            document.getElementById('e-actions').style.display = 'none';
+            window.__estruturaLegs = null;
         }
+    };
+
+    // Abre a Cadeia de Opções com as pernas da estrutura para editar/adicionar/salvar
+    window.estruturaAddLeg = function() {
+        var legs = window.__estruturaLegs;
+        if (!legs || !legs.length) { alert('Preencha a estrutura primeiro.'); return; }
+        var ativo = (document.getElementById('e-ativo').value || '').toUpperCase();
+        var opSel = document.getElementById('e-op');
+        var nome  = (opSel.options[opSel.selectedIndex].text || 'Estrutura').replace(/[⚖️🔗🚧🕊📈📉💰🚀🐄🐂]/g, '').trim();
+        var parts = legs.map(function(l) {
+            return [l.ticker, l.type, l.side, l.qty,
+                    (l.premium || 0).toFixed(2), (l.strike || 0).toFixed(2), l.exp || ''].join(',');
+        });
+        var q = new URLSearchParams({sim: '1', ativo: ativo, nome: nome + ' ' + ativo, legs: parts.join('|')});
+        window.location.href = '/cadeia-opcoes?' + q.toString();
     };
 
     // ── Pré-preenchimento de Estruturas via URL (vindo de Busca de Operações) ─

@@ -775,11 +775,57 @@ function fVar(v){
   return '<td class="'+cls+'">'+(v>0?'+':'')+brl(v)+'%</td>';
 }
 
+/* ════ Pré-carga via URL (vindo de Busca de Operações / Estruturas) ════
+   legs=ticker,tipo,side,qtd,premio,strike,exp[,iv%]  — pernas separadas por |
+   Abre o editor já preenchido, pronto para adicionar mais pernas e salvar. */
+function prefillFromUrl(){
+  var q=new URLSearchParams(location.search);
+  if(q.get('sim')!=='1') return false;
+  var legsRaw=q.get('legs')||'';
+  if(!legsRaw) return false;
+  var ativo=(q.get('ativo')||'').toUpperCase();
+  if(q.get('nome')) document.getElementById('sim-name-input').value=q.get('nome');
+  if(ativo) document.getElementById('sim-underlying-input').value=ativo;
+  document.getElementById('legs-body').innerHTML='';
+  var n=0;
+  legsRaw.split('|').forEach(function(part){
+    var f=part.split(',');
+    if(f.length<6||!f[0]) return;
+    var type=(f[1]||'CALL').toUpperCase();
+    if(type!=='PUT'&&type!=='CALL'&&type!=='STOCK') type='CALL';
+    var side=(f[2]||'SELL').toUpperCase()==='BUY'?'BUY':'SELL';
+    var qty=Math.max(1,parseInt(f[3],10)||100);
+    var prem=(parseFloat(f[4])||0).toFixed(2).replace('.',',');
+    var strike=(parseFloat(f[5])||0).toFixed(2).replace('.',',');
+    var exp=f[6]||'';
+    addLegFilledC(type,side,qty,(f[0]||'').toUpperCase(),prem,exp,strike);
+    if(f[7]){
+      var rows=document.querySelectorAll('#legs-body .leg-row');
+      var ivEl=rows[rows.length-1].querySelector('[name=leg_iv]');
+      if(ivEl) ivEl.value=String(parseFloat(f[7])||'').replace('.',',');
+    }
+    n++;
+  });
+  if(!n){ addLegC('CALL'); return false; }
+  scheduleRedrawC();
+  document.getElementById('sim-section').scrollIntoView({behavior:'smooth',block:'start'});
+  return true;
+}
+
 /* ════ Init ════ */
-addLegC('CALL');
 loadSavedSims();
+var _prefilled=prefillFromUrl();
+if(!_prefilled) addLegC('CALL');
 var first=document.querySelector('.ct-btn');
-if(first){first.classList.add('active');loadCadeia(first.dataset.t);}
+if(first){
+  first.classList.add('active');
+  // Se veio pré-preenchido com um ativo, carrega a cadeia dele
+  var q0=new URLSearchParams(location.search);
+  var wantT=(q0.get('ativo')||'').toUpperCase();
+  var match=wantT?document.querySelector('.ct-btn[data-t="'+wantT+'"]'):null;
+  if(match){ document.querySelector('.ct-btn.active')&&document.querySelector('.ct-btn.active').classList.remove('active'); match.classList.add('active'); loadCadeia(wantT); }
+  else loadCadeia(first.dataset.t);
+}
 })();
 </script>
 {% endblock %}

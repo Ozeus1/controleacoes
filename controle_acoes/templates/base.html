@@ -704,6 +704,74 @@
   });
 })();
 </script>
+<script>
+/* ── Helpers de pernas: vencimento único + qtd em lotes de 100 ──────────────
+   Usado pelas telas de cadastro/simulação multi-pernas. A página deve ter os
+   checkboxes #chk-same-exp e #chk-lot100 e chamar:
+   initLegHelpers({container:'#legs-body', qty:'leg_qty', exp:'leg_exp',
+                   typeField:'leg_type', after:fn})
+   - Vencimento único: preencher um vencimento copia para todas as pernas
+     (pernas STOCK/readonly são puladas); novas linhas herdam automaticamente.
+   - Lote de 100: inputs de qtd viram number com min/step=100 (spinner anda de
+     100 em 100); desmarcado, passo 1. Preferências salvas no navegador. */
+window.initLegHelpers = function (o) {
+  var cont = document.querySelector(o.container);
+  var chkE = document.getElementById('chk-same-exp');
+  var chkL = document.getElementById('chk-lot100');
+  if (!cont || !chkE || !chkL) return;
+  chkE.checked = localStorage.getItem('legs-same-exp') !== '0';
+  chkL.checked = localStorage.getItem('legs-lot100') !== '0';
+
+  function isStockRow(el) {
+    if (!o.typeField) return false;
+    var row = el.closest('tr') || el.closest('.leg-row');
+    var t = row && row.querySelector('[name=' + o.typeField + ']');
+    return !!(t && t.value === 'STOCK');
+  }
+  function applyLot() {
+    cont.querySelectorAll('[name=' + o.qty + ']').forEach(function (i) {
+      if (i.type !== 'number') i.type = 'number';
+      if (chkL.checked) {
+        i.min = 100; i.step = 100;
+        if ((parseInt(i.value, 10) || 0) < 100) i.value = 100;
+      } else { i.min = 1; i.step = 1; }
+    });
+  }
+  function applySameExp(src) {
+    if (!chkE.checked) return;
+    var v = src ? src.value : '';
+    if (!v) {
+      cont.querySelectorAll('[name=' + o.exp + ']').forEach(function (i) {
+        if (!v && i.value && !isStockRow(i)) v = i.value;
+      });
+    }
+    if (!v) return;
+    var changed = false;
+    cont.querySelectorAll('[name=' + o.exp + ']').forEach(function (i) {
+      if (i.readOnly || i.disabled || isStockRow(i)) return;
+      if (i.value !== v) { i.value = v; changed = true; }
+    });
+    if (changed && typeof o.after === 'function') o.after();
+  }
+  chkE.addEventListener('change', function () {
+    localStorage.setItem('legs-same-exp', this.checked ? '1' : '0');
+    if (this.checked) applySameExp(null);
+  });
+  chkL.addEventListener('change', function () {
+    localStorage.setItem('legs-lot100', this.checked ? '1' : '0');
+    applyLot();
+    if (typeof o.after === 'function') o.after();
+  });
+  cont.addEventListener('change', function (e) {
+    if (e.target.name === o.exp) applySameExp(e.target);
+  });
+  // Novas linhas (addLeg) herdam lote e vencimento automaticamente
+  new MutationObserver(function () { applyLot(); applySameExp(null); })
+    .observe(cont, { childList: true });
+  applyLot();
+  applySameExp(null);
+};
+</script>
 </body>
 
 </html>

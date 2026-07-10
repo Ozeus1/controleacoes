@@ -94,7 +94,15 @@
         <script>var SELIC_RATE = {{ selic }};  /* % a.a. */</script>
 
         <div style="overflow-x:auto; margin-bottom:.8rem;">
-        <table id="legs-table">
+        <div style="display:flex;gap:1.4rem;flex-wrap:wrap;margin:.3rem 0 .55rem;font-size:.82rem;color:var(--text-secondary);">
+  <label style="display:inline-flex;align-items:center;gap:.35rem;cursor:pointer;">
+    <input type="checkbox" id="chk-same-exp" style="margin:0;cursor:pointer;"> Vencimento único (preencha 1× — vale p/ todas as pernas)
+  </label>
+  <label style="display:inline-flex;align-items:center;gap:.35rem;cursor:pointer;">
+    <input type="checkbox" id="chk-lot100" style="margin:0;cursor:pointer;"> Qtd em lotes de 100
+  </label>
+</div>
+<table id="legs-table">
             <thead>
                 <tr>
                     <th>Tipo</th>
@@ -977,6 +985,12 @@ document.addEventListener('DOMContentLoaded',function(){
     });
 
     drawChart(readLegs());
+});
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.initLegHelpers) initLegHelpers({
+        container: '#legs-body', qty: 'leg_qty', exp: 'leg_exp',
+        typeField: 'leg_type', after: scheduleRedraw
+    });
 });
 </script>
 {% endblock %}

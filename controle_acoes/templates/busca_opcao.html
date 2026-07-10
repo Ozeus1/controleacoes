@@ -246,6 +246,15 @@
 </div>
 
 <script>
+// Auto-busca quando chega com ?t=TICKER (vindo do Lançamento Coberto etc.)
+document.addEventListener('DOMContentLoaded', function(){
+  var t = new URLSearchParams(location.search).get('t');
+  if (t) {
+    document.getElementById('bo-ticker').value = t.toUpperCase();
+    buscar();
+  }
+});
+
 function buscar(){
   var t = document.getElementById('bo-ticker').value.trim().toUpperCase();
   if(!t) return;

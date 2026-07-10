@@ -3669,6 +3669,42 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: -x['pct_cdi'])
             rows = rows[:14]
 
+        elif op == 'lancamento_coberto':
+            # Lançamento coberto: compra a ação no spot + vende CALL.
+            # Taxa se exercido = (K − custo_líquido) / custo_líquido, onde
+            # custo_líquido = spot − prêmio. Ranqueia pela maior taxa no período
+            # (como o ranking "Maiores taxas — Lançamento coberto" da OpLab).
+            T = dc / 365.0
+            for c in sorted(calls_by_exp.get(exp, []), key=lambda x: x['strike']):
+                if not (0.60 * spot <= c['strike'] <= 1.20 * spot):
+                    continue
+                prem, src = _sell_prem(c)
+                if prem is None or prem < 0.05:
+                    continue
+                custo = spot - prem
+                if custo <= 0:
+                    continue
+                taxa_ex = (c['strike'] - custo) / custo * 100
+                if taxa_ex <= 0:                    # exercício daria prejuízo
+                    continue
+                taxa_aa = ((1 + taxa_ex / 100) ** (365.0 / dc) - 1) * 100
+                rows.append({
+                    'symbol':    c['symbol'],
+                    'strike':    c['strike'],
+                    'itm_pct':   round((spot - c['strike']) / spot * 100, 1),  # >0 = ITM
+                    'premium':   round(prem, 2),
+                    'price_src': src,
+                    'custo':     round(custo, 2),        # custo líquido = breakeven
+                    'protec':    round(prem / spot * 100, 2),
+                    'taxa_ex':   round(taxa_ex, 2),
+                    'taxa_aa':   round(taxa_aa, 2),
+                    'vs_selic':  round(taxa_ex - selic_period, 2),
+                    'delta':     _leg_delta_pct(c, True, T),
+                    'vol_fin':   c.get('vol_fin', 0),
+                })
+            rows.sort(key=lambda x: -x['taxa_ex'])
+            rows = rows[:14]
+
         elif op == 'straddle_vendido':
             # Straddle vendido: venda de 1 CALL + 1 PUT no MESMO strike, bem ATM
             # (o strike mais próximo do preço atual do ativo). Crédito duplo;

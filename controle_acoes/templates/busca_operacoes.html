@@ -178,10 +178,10 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     collar:        '🛡 Collars risco zero/reduzido acima da Selic (compra ação + compra PUT + venda CALL)',
     fence:         '🚧 Fence / Cerca (compra ação + compra PUT + venda PUT abaixo + venda CALL)',
     seagull:       '🕊 Seagull / Gaivota de alta (trava de alta com CALLs financiada por venda de PUT OTM)',
-    trava_alta:    '📈 Trava de Alta no débito (CALLs) — relação ganho/custo > 1',
-    trava_baixa:   '📉 Trava de Baixa no débito (PUTs) — relação ganho/custo > 1',
-    trava_alta_credito:  '📈💰 Trava de Alta no crédito (venda PUT K maior + compra PUT K menor) — perda máx. até 2× o crédito',
-    trava_baixa_credito: '📉💰 Trava de Baixa no crédito (venda CALL K menor + compra CALL K maior) — perda máx. até 2× o crédito',
+    trava_alta:    '📈 Trava de Alta no débito (CALLs) — compra ATM + venda OTM; EV > 0 (equação do trader), POP ≥ 35%, relação 0,8–3',
+    trava_baixa:   '📉 Trava de Baixa no débito (PUTs) — compra ATM + venda OTM; EV > 0, POP ≥ 35%, relação 0,8–3 (puts: exige prêmios firmes)',
+    trava_alta_credito:  '📈💰 Trava de Alta no crédito (PUTs OTM) — crédito 25–60% da largura; EV > 0, POP ≥ 55%',
+    trava_baixa_credito: '📉💰 Trava de Baixa no crédito (CALLs OTM) — crédito 25–60% da largura; EV > 0, POP ≥ 55%',
     trava_credito: '💰 Ratio CALL — venda CALL perto do dinheiro (máx. 5% ITM a 5% OTM) financia compra de CALLs OTM (1x2 e 2x3, lucro ilimitado na alta)',
     vaca_travada:  '🐄 Vaca Travada — +1 CALL baixa, −2 CALLs médias, +1 CALL alta (centro no dinheiro ou acima; aceita investimento; lucro máximo no strike médio)',
     boi_put:       '🐂 Boi com PUT — compra 2 PUTs próximas do OTM financiadas (parcialmente) pela venda de 1 PUT ATM/ITM; custo até 40% da largura (lucro cresce na queda forte)',
@@ -358,11 +358,13 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   }
 
   function spreadTable(rows, isBull, expIdx) {
-    if (!rows.length) return '<div class="bo-empty">Nenhuma trava com relação &gt; 1 neste vencimento.</div>';
+    if (!rows.length) return '<div class="bo-empty">Nenhuma trava passou nos critérios (EV &gt; 0, POP ≥ 35%, relação 0,8–3) neste vencimento.</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
       '<th>Compra (ask)</th><th>K</th><th>Ask</th>' +
       '<th>Venda (bid)</th><th>K</th><th>Bid</th>' +
       '<th>Custo</th><th>Ganho máx.</th><th>Relação</th>' +
+      '<th title="Probabilidade de lucro (log-normal, VI dos prêmios)">POP</th>' +
+      '<th title="Equação do trader: POP×ganho − (1−POP)×custo, em % do custo">EV</th>' +
       '<th>Break-even</th><th>Dist. BE</th></tr></thead><tbody>';
     rows.forEach(function(r, j) {
       h += rowAttr(expIdx, j) +
@@ -372,7 +374,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         '<td>' + brl(r.sell_strike) + '</td><td>' + brl(r.sell_bid) + '</td>' +
         '<td>' + brl(r.cost) + '</td>' +
         '<td class="pos">' + brl(r.max_gain) + '</td>' +
-        '<td class="pos"><strong>' + fmt(r.ratio) + '</strong></td>' +
+        '<td class="pos">' + fmt(r.ratio) + '</td>' +
+        '<td class="' + (r.pop >= 50 ? 'pos' : '') + '"><strong>' + fmt(r.pop, 1) + '%</strong></td>' +
+        '<td class="pos"><strong>+' + fmt(r.ev_pct, 1) + '%</strong></td>' +
         '<td>' + brl(r.breakeven) + '</td>' +
         '<td class="' + (Math.abs(r.be_dist) < 2 ? 'pos' : '') + '">' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%</td>' +
         '</tr>';
@@ -514,12 +518,14 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   }
 
   function creditSpreadTable(rows, isBull, expIdx) {
-    if (!rows.length) return '<div class="bo-empty">Nenhuma trava de crédito com relação 2x1 neste vencimento.</div>';
+    if (!rows.length) return '<div class="bo-empty">Nenhuma trava passou nos critérios (EV &gt; 0, POP ≥ 55%, crédito 25–60% da largura) neste vencimento.</div>';
     var badge = isBull ? 'put' : 'call';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
       '<th>Venda (bid)</th><th>K</th><th>Bid</th>' +
       '<th>Compra (ask)</th><th>K</th><th>Ask</th>' +
       '<th>Crédito</th><th>Perda máx.</th><th>Relação G/P</th>' +
+      '<th title="Probabilidade de lucro (log-normal, VI dos prêmios)">POP</th>' +
+      '<th title="Equação do trader: POP×crédito − (1−POP)×perda, em % do risco">EV</th>' +
       '<th>Break-even</th><th>Dist. BE</th></tr></thead><tbody>';
     rows.forEach(function(r, j) {
       h += rowAttr(expIdx, j) +
@@ -529,7 +535,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         '<td>' + brl(r.buy_strike) + '</td><td>' + brl(r.buy_ask) + '</td>' +
         '<td class="pos">' + brl(r.credit) + '</td>' +
         '<td class="neg">' + brl(r.max_loss) + '</td>' +
-        '<td class="pos"><strong>' + (r.ratio == null ? '∞' : fmt(r.ratio)) + '</strong></td>' +
+        '<td class="pos">' + (r.ratio == null ? '∞' : fmt(r.ratio)) + '</td>' +
+        '<td class="' + (r.pop >= 65 ? 'pos' : '') + '"><strong>' + fmt(r.pop, 1) + '%</strong></td>' +
+        '<td class="pos"><strong>+' + fmt(r.ev_pct, 1) + '%</strong></td>' +
         '<td>' + brl(r.breakeven) + '</td>' +
         '<td>' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%</td>' +
         '</tr>';
@@ -765,6 +773,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         ['Lucro máximo', brl(r.max_gain * qty), 'pos'],
         ['Perda máxima', brl(r.cost * qty), 'neg'],
         ['Relação ganho/custo', fmt(r.ratio), r.ratio > 1 ? 'pos' : ''],
+        ['POP (prob. de lucro)', fmt(r.pop, 1) + '%', r.pop >= 50 ? 'pos' : ''],
+        ['EV — equação do trader', brl(r.ev * qty) + ' (+' + fmt(r.ev_pct, 1) + '% do custo)', 'pos'],
         ['Break-even', brl(r.breakeven) + ' (' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%)', ''],
         ['Retorno máx. %', fmt(gPctT) + '%', 'pos']
       ].concat(pctBoxes(gPctT, dc));
@@ -780,6 +790,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         ['Crédito recebido', brl(r.credit * qty), 'pos'],
         ['Perda máxima', brl(r.max_loss * qty), 'neg'],
         ['Relação ganho/perda', r.ratio == null ? '∞' : fmt(r.ratio), 'pos'],
+        ['POP (prob. de lucro)', fmt(r.pop, 1) + '%', r.pop >= 65 ? 'pos' : ''],
+        ['EV — equação do trader', brl(r.ev * qty) + ' (+' + fmt(r.ev_pct, 1) + '% do risco)', 'pos'],
         ['Break-even', brl(r.breakeven) + ' (' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%)', ''],
         ['Lucro se ' + (isBullC ? 'ficar acima de' : 'ficar abaixo de') + ' ' + brl(r.sell_strike),
             brl(r.credit * qty), 'pos'],

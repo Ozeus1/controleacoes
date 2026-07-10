@@ -3153,6 +3153,24 @@ def api_busca_operacoes(ticker):
         b, b_src, _a, _asrc = _eff(rw)
         return (b, b_src) if b else (None, None)
 
+    def _iv_est(rw, is_call, T):
+        """VI implícita da perna extraída do prêmio (último ou mid); None se não converge."""
+        prem = rw['close'] or ((rw['bid'] + rw['ask']) / 2 if (rw['bid'] and rw['ask']) else 0)
+        if not prem or T <= 0 or not rw['strike']:
+            return None
+        intr = max(0.0, (spot - rw['strike']) if is_call else (rw['strike'] - spot))
+        if prem <= intr * 1.005:
+            return None
+        iv = _implied_vol(spot, rw['strike'], T, r_cont, prem, is_call)
+        return iv if 0.005 < iv < 4.9 else None
+
+    def _pop_above(be, T, iv):
+        """P(S_T > be) em % via log-normal risk-neutral."""
+        if be <= 0 or T <= 0 or not iv:
+            return None
+        d2v = (math.log(spot / be) + (r_cont - 0.5 * iv * iv) * T) / (iv * math.sqrt(T))
+        return _norm_cdf(d2v) * 100
+
     expirations = []
     for exp in selected_exps:
         dc = max((_date.fromisoformat(exp) - today).days, 1)
@@ -3177,8 +3195,6 @@ def api_busca_operacoes(ticker):
                           key=lambda x: x['strike'])
         puts_ok  = sorted([p for p in puts_all if p['bid'] > 0 and p['ask'] > 0],
                           key=lambda x: x['strike'])
-        near = lambda k: 0.85 * spot <= k <= 1.15 * spot
-
         rows = []
 
         if op == 'collar':
@@ -3311,101 +3327,129 @@ def api_busca_operacoes(ticker):
             rows = _diversify(rows, lambda x: (x['call_buy_symbol'], x['call_sell_symbol']), per_key=1)
 
         elif op in ('trava_alta', 'trava_baixa'):
-            # Travas no débito com relação ganho/custo > 1
-            if op == 'trava_alta':
-                cs = [c for c in calls_ok if near(c['strike'])][:20]
-                for i, buy in enumerate(cs):
-                    for sell in cs[i + 1:]:
-                        cost = buy['ask'] - sell['bid']
-                        if cost <= 0.01:
-                            continue
-                        width = sell['strike'] - buy['strike']
-                        max_gain = width - cost
-                        if max_gain <= 0 or max_gain / cost <= 1:
-                            continue
-                        be = buy['strike'] + cost
-                        rows.append({
-                            'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
-                            'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
-                            'cost':      round(cost, 2),
-                            'max_gain':  round(max_gain, 2),
-                            'ratio':     round(max_gain / cost, 2),
-                            'breakeven': round(be, 2),
-                            'be_dist':   round((be - spot) / spot * 100, 2),
-                        })
+            # Travas no DÉBITO otimizadas pela equação do trader:
+            #   EV = POP×ganho − (1−POP)×custo > 0 (POP via log-normal com IV dos prêmios)
+            # Regras de qualidade:
+            #   • perna comprada ATM/levemente OTM (ITM tem book ralo — evita)
+            #   • custo entre ~25% e 55% da largura → relação ganho/custo 0.8–3.0
+            #     (nem "loteria" OTM distante de POP baixo, nem trava cara sem ganho)
+            #   • POP mínimo 35%
+            #   • puts exigem prêmios mais firmes (menos líquidas que calls)
+            T = dc / 365.0
+            is_alta = op == 'trava_alta'
+            if is_alta:
+                buys = [c for c in calls_ok
+                        if 0.97 * spot <= c['strike'] <= 1.06 * spot and c['ask'] >= 0.10][:10]
             else:
-                ps = [p for p in puts_ok if near(p['strike'])][:20]
-                for i, sell in enumerate(ps):
-                    for buy in ps[i + 1:]:
-                        cost = buy['ask'] - sell['bid']
-                        if cost <= 0.01:
-                            continue
-                        width = buy['strike'] - sell['strike']
-                        max_gain = width - cost
-                        if max_gain <= 0 or max_gain / cost <= 1:
-                            continue
-                        be = buy['strike'] - cost
-                        rows.append({
-                            'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
-                            'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
-                            'cost':      round(cost, 2),
-                            'max_gain':  round(max_gain, 2),
-                            'ratio':     round(max_gain / cost, 2),
-                            'breakeven': round(be, 2),
-                            'be_dist':   round((be - spot) / spot * 100, 2),
-                        })
-            rows.sort(key=lambda x: -x['ratio'])
+                buys = [p for p in puts_ok
+                        if 0.94 * spot <= p['strike'] <= 1.03 * spot and p['ask'] >= 0.15][:10]
+            for buy in buys:
+                if is_alta:
+                    sells = [c for c in calls_ok
+                             if buy['strike'] < c['strike'] <= 1.18 * spot and c['bid'] >= 0.03][:8]
+                else:
+                    sells = [p for p in puts_ok
+                             if 0.82 * spot <= p['strike'] < buy['strike'] and p['bid'] >= 0.05][:8]
+                for sell in sells:
+                    cost  = buy['ask'] - sell['bid']
+                    width = abs(sell['strike'] - buy['strike'])
+                    if cost <= 0.01 or width <= 0:
+                        continue
+                    max_gain = width - cost
+                    if max_gain <= 0:
+                        continue
+                    ratio = max_gain / cost
+                    if ratio < 0.8 or ratio > 3.0:
+                        continue
+                    be = buy['strike'] + cost if is_alta else buy['strike'] - cost
+                    iv = _iv_est(buy, is_alta, T) or _iv_est(sell, is_alta, T) or 0.35
+                    p_above = _pop_above(be, T, iv)
+                    if p_above is None:
+                        continue
+                    pop = p_above if is_alta else 100 - p_above
+                    ev  = pop / 100 * max_gain - (1 - pop / 100) * cost
+                    if pop < 35 or ev <= 0:      # equação do trader
+                        continue
+                    liq = min(buy.get('vol_fin') or 0, sell.get('vol_fin') or 0)
+                    rows.append({
+                        'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
+                        'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
+                        'cost':      round(cost, 2),
+                        'max_gain':  round(max_gain, 2),
+                        'ratio':     round(ratio, 2),
+                        'pop':       round(pop, 1),
+                        'ev':        round(ev, 2),
+                        'ev_pct':    round(ev / cost * 100, 1),   # expectância por R$ arriscado
+                        'liq':       liq,
+                        'breakeven': round(be, 2),
+                        'be_dist':   round((be - spot) / spot * 100, 2),
+                    })
+            # Maior expectância por unidade de risco; empate: mais volume (liquidez)
+            rows.sort(key=lambda x: (-x['ev_pct'], -x['liq']))
             rows = _diversify(rows, lambda x: x['buy_symbol'], per_key=2)
 
         elif op in ('trava_alta_credito', 'trava_baixa_credito'):
-            # Travas no crédito clássicas, relação 2x1 (perda máx. até 2x o crédito)
-            if op == 'trava_alta_credito':
-                # Bull put spread: vende PUT de strike maior, compra PUT de strike menor
-                ps = [p for p in puts_ok if near(p['strike'])][:20]
-                for i, buy in enumerate(ps):
-                    for sell in ps[i + 1:]:
-                        credit = sell['bid'] - buy['ask']
-                        if credit <= 0.01:
-                            continue
-                        width = sell['strike'] - buy['strike']
-                        max_loss = width - credit
-                        if max_loss > 2 * credit:
-                            continue
-                        ratio = None if max_loss <= 0.001 else credit / max_loss
-                        be = sell['strike'] - credit
-                        rows.append({
-                            'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
-                            'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
-                            'credit':    round(credit, 2),
-                            'max_loss':  round(max_loss, 2),
-                            'ratio':     round(ratio, 2) if ratio is not None else None,
-                            'breakeven': round(be, 2),
-                            'be_dist':   round((be - spot) / spot * 100, 2),  # margem de queda até o BE
-                        })
+            # Travas no CRÉDITO otimizadas pela equação do trader:
+            #   EV = POP×crédito − (1−POP)×perda_máx > 0
+            # Regras de qualidade (sweet spot clássico das verticais de crédito):
+            #   • perna vendida OTM (fora do dinheiro — mais líquida que ITM)
+            #   • crédito entre 25% e 60% da largura → POP típico 55–80%
+            #   • POP mínimo 55% (a estratégia vive de taxa de acerto alta)
+            #   • puts exigem prêmios mais firmes (menos líquidas que calls)
+            T = dc / 365.0
+            is_alta = op == 'trava_alta_credito'
+            if is_alta:
+                # Bull put: vende PUT OTM abaixo do spot, compra PUT mais abaixo
+                sells = [p for p in puts_ok
+                         if 0.85 * spot <= p['strike'] <= 0.99 * spot and p['bid'] >= 0.10][:10]
             else:
-                # Bear call spread: vende CALL de strike menor, compra CALL de strike maior
-                cs = [c for c in calls_ok if near(c['strike'])][:20]
-                for i, sell in enumerate(cs):
-                    for buy in cs[i + 1:]:
-                        credit = sell['bid'] - buy['ask']
-                        if credit <= 0.01:
-                            continue
-                        width = buy['strike'] - sell['strike']
-                        max_loss = width - credit
-                        if max_loss > 2 * credit:
-                            continue
-                        ratio = None if max_loss <= 0.001 else credit / max_loss
-                        be = sell['strike'] + credit
-                        rows.append({
-                            'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
-                            'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
-                            'credit':    round(credit, 2),
-                            'max_loss':  round(max_loss, 2),
-                            'ratio':     round(ratio, 2) if ratio is not None else None,
-                            'breakeven': round(be, 2),
-                            'be_dist':   round((be - spot) / spot * 100, 2),  # margem de alta até o BE
-                        })
-            rows.sort(key=lambda x: -(x['ratio'] if x['ratio'] is not None else 999))
+                # Bear call: vende CALL OTM acima do spot, compra CALL mais acima
+                sells = [c for c in calls_ok
+                         if 1.01 * spot <= c['strike'] <= 1.15 * spot and c['bid'] >= 0.05][:10]
+            for sell in sells:
+                if is_alta:
+                    buys = [p for p in puts_ok
+                            if 0.75 * spot <= p['strike'] < sell['strike'] and p['ask'] >= 0.03][:8]
+                else:
+                    buys = [c for c in calls_ok
+                            if sell['strike'] < c['strike'] <= 1.28 * spot and c['ask'] >= 0.01][:8]
+                for buy in buys:
+                    credit = sell['bid'] - buy['ask']
+                    width  = abs(sell['strike'] - buy['strike'])
+                    if credit <= 0.01 or width <= 0:
+                        continue
+                    if not (0.25 * width <= credit <= 0.60 * width):
+                        continue
+                    max_loss = width - credit
+                    if max_loss <= 0.001:
+                        continue
+                    ratio = credit / max_loss
+                    be = sell['strike'] - credit if is_alta else sell['strike'] + credit
+                    is_call_leg = not is_alta
+                    iv = _iv_est(sell, is_call_leg, T) or _iv_est(buy, is_call_leg, T) or 0.35
+                    p_above = _pop_above(be, T, iv)
+                    if p_above is None:
+                        continue
+                    pop = p_above if is_alta else 100 - p_above
+                    ev  = pop / 100 * credit - (1 - pop / 100) * max_loss
+                    if pop < 55 or ev <= 0:      # equação do trader
+                        continue
+                    liq = min(sell.get('vol_fin') or 0, buy.get('vol_fin') or 0)
+                    rows.append({
+                        'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
+                        'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
+                        'credit':    round(credit, 2),
+                        'max_loss':  round(max_loss, 2),
+                        'ratio':     round(ratio, 2),
+                        'pop':       round(pop, 1),
+                        'ev':        round(ev, 2),
+                        'ev_pct':    round(ev / max_loss * 100, 1),   # expectância por R$ de risco
+                        'liq':       liq,
+                        'breakeven': round(be, 2),
+                        'be_dist':   round((be - spot) / spot * 100, 2),
+                    })
+            # Maior expectância por unidade de risco; empate: mais volume (liquidez)
+            rows.sort(key=lambda x: (-x['ev_pct'], -x['liq']))
             rows = _diversify(rows, lambda x: x['sell_symbol'], per_key=2)
 
         elif op == 'trava_credito':

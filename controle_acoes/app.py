@@ -861,9 +861,11 @@ def _calc_structured_metrics(op):
         selic_val = 14.5
     r_cont = math.log(1 + selic_val / 100)
 
-    # Cotação do ativo subjacente (para bisecção de IV)
+    # Cotação do ativo subjacente (para bisecção de IV) — SEM rede: esta função
+    # roda uma vez por estruturada no render de /opcoes; ir ao Yahoo aqui
+    # travava a página por vários segundos por operação.
     try:
-        spot_ref, _ = _get_underlying_quote(op.underlying_asset, op.user_id)
+        spot_ref, _ = _get_underlying_quote_cached(op.underlying_asset, op.user_id)
     except Exception:
         spot_ref = None
     today_d = date.today()
@@ -1078,9 +1080,11 @@ def _calc_structured_metrics_safe(op):
 def opcoes():
     all_options = Option.query.filter_by(user_id=current_user.id).all()
 
-    # Get list of unique underlyings to fetch quotes
+    # Cotações dos subjacentes SEM rede: usa os valores salvos no banco.
+    # A atualização ao vivo acontece só pelo botão "Atualizar Cotações" (async),
+    # feeder MT5 ou auto-update OpLab — o render da página não pode travar em HTTP.
     underlyings = list(set([o.underlying_asset for o in all_options]))
-    quotes = get_quotes(underlyings, user_id=current_user.id) if underlyings else {}
+    quotes = _quotes_from_db(underlyings, current_user.id) if underlyings else {}
 
     # Get avg_price of underlying assets from user's portfolio
     underlying_avg_prices = {}
@@ -1201,9 +1205,9 @@ def opcoes():
     # Process spreads
     all_spreads = OptionSpread.query.filter_by(user_id=current_user.id).all()
 
-    # Fetch quotes for spread underlyings
+    # Cotações dos subjacentes dos spreads — também sem rede (valores do banco)
     spread_underlyings = list(set([s.underlying_asset for s in all_spreads]))
-    spread_quotes = get_quotes(spread_underlyings, user_id=current_user.id) if spread_underlyings else {}
+    spread_quotes = _quotes_from_db(spread_underlyings, current_user.id) if spread_underlyings else {}
 
     spreads_alta_put = []    # crédito: vende put alta + compra put baixa
     spreads_alta_call = []   # débito:  compra call baixa + vende call alta
@@ -4052,6 +4056,43 @@ def venda_puts_delete(id):
     return redirect(url_for('venda_puts'))
 
 
+def _get_underlying_quote_cached(ticker, user_id):
+    """Retorna (price, daily_change) do subjacente SEM rede — apenas valores
+    já salvos no banco (atualizados pelo botão Atualizar Cotações / feeder).
+    Usada no render das páginas para não travar a tela com HTTP síncrono."""
+    if not ticker:
+        return None, None
+    t = ticker.strip().upper()
+    a = Asset.query.filter_by(ticker=t, user_id=user_id).first()
+    if a and a.current_price:
+        return a.current_price, getattr(a, 'daily_change', None)
+    try:
+        op = StructuredOp.query.filter_by(underlying_asset=t, user_id=user_id)\
+                               .filter(StructuredOp.underlying_price.isnot(None)).first()
+        if op and op.underlying_price:
+            return op.underlying_price, op.underlying_change
+    except Exception:
+        pass
+    sp = OptionSpread.query.filter_by(underlying_asset=t, user_id=user_id).first()
+    if sp and sp.underlying_price:
+        return sp.underlying_price, sp.underlying_change
+    so = StudyOption.query.filter_by(underlying_asset=t, user_id=user_id).first()
+    if so and so.underlying_price:
+        return so.underlying_price, None
+    return None, None
+
+
+def _quotes_from_db(tickers, user_id):
+    """Mapa {ticker: {'price', 'change_percent'}} SEM rede, no formato de
+    get_quotes(). Fonte: Asset → StructuredOp → OptionSpread → StudyOption."""
+    out = {}
+    for t in {(x or '').strip().upper() for x in tickers if x}:
+        price, change = _get_underlying_quote_cached(t, user_id)
+        if price:
+            out[t] = {'price': price, 'change_percent': change or 0.0}
+    return out
+
+
 def _get_underlying_quote(ticker, user_id):
     """Retorna (price, daily_change) do ativo subjacente.
     Tenta primeiro cotação ao vivo via Yahoo Finance; fallback em dados do banco."""
@@ -4098,27 +4139,8 @@ def _get_underlying_quote(ticker, user_id):
     except Exception:
         pass
 
-    # 2. Asset cadastrado em /acoes — usa daily_change salvo durante o pregão
-    a = Asset.query.filter_by(ticker=t, user_id=user_id).first()
-    if a and a.current_price:
-        return a.current_price, getattr(a, 'daily_change', None)
-    # 3. StructuredOp — underlying_price salvo pelo import do Excel
-    try:
-        op = StructuredOp.query.filter_by(underlying_asset=t, user_id=user_id)\
-                               .filter(StructuredOp.underlying_price.isnot(None)).first()
-        if op and op.underlying_price:
-            return op.underlying_price, op.underlying_change
-    except Exception:
-        pass
-    # 4. OptionSpread — cotação salva diretamente no modelo
-    sp = OptionSpread.query.filter_by(underlying_asset=t, user_id=user_id).first()
-    if sp and sp.underlying_price:
-        return sp.underlying_price, sp.underlying_change
-    # 5. StudyOption — tem underlying_price salvo pelo import
-    so = StudyOption.query.filter_by(underlying_asset=t, user_id=user_id).first()
-    if so and so.underlying_price:
-        return so.underlying_price, None
-    return None, None
+    # 2-5. Fallback: valores já salvos no banco
+    return _get_underlying_quote_cached(ticker, user_id)
 
 
 def _spread_roll_adjustment(sp):

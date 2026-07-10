@@ -634,6 +634,7 @@
                 <th>Ativo</th>
                 <th>Nome</th>
                 <th>Pernas</th>
+                <th title="Vencimento da perna mais curta da operação">Venc.</th>
                 <th>Montagem</th>
                 <th>Lucro Atual</th>
                 <th title="Lucro atual / Lucro máximo">Lucro %</th>
@@ -669,6 +670,19 @@
                         </small>
                     </div>
                     {% endfor %}
+                </td>
+                {% set _leg_exps = op.legs | selectattr('expiration_date') | map(attribute='expiration_date') | list %}
+                <td style="white-space:nowrap;">
+                    {% if _leg_exps %}
+                        {% set _near = _leg_exps | min %}
+                        {% set _dias = (_near - today).days if today else none %}
+                        {{ _near.strftime('%d/%m/%Y') }}<br>
+                        {% if _dias is not none %}
+                            {% if _dias <= 7 %}<small class="negative">{{ _dias }}d</small>
+                            {% elif _dias <= 21 %}<small style="color:#f59e0b">{{ _dias }}d</small>
+                            {% else %}<small style="color:var(--text-secondary)">{{ _dias }}d</small>{% endif %}
+                        {% endif %}
+                    {% else %}—{% endif %}
                 </td>
                 <td class="{{ 'positive' if item.net >= 0 else 'negative' }}" style="white-space:nowrap;">
                     {{ 'R$ ' + "%.2f"|format(item.net|abs)|replace('.', ',') }}

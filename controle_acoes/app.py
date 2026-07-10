@@ -750,19 +750,43 @@ def _implied_vol(S0, K, T, r, target, is_call):
     return (lo + hi) / 2
 
 
-def _calc_pop(S, breakevens, T, sigma, r=0.0):
+def _calc_pop(S, breakevens, T, sigma, r=0.0, payoff_fn=None):
     """
-    Probability of Profit (POP) via Black-Scholes log-normal.
+    Probability of Profit (POP) via distribuição log-normal (Black-Scholes).
 
-    P(S_T > B) = N(d2)   onde d2 = [ln(S/B) + (r - σ²/2)T] / (σ√T)
-    P(S_T < B) = N(-d2)
+    Com payoff_fn: integra numericamente a densidade log-normal de S_T sobre a
+    região onde payoff_fn(S_T) > 0 — funciona para qualquer formato de payoff
+    (lucro entre os BEs, fora deles, assimétrico etc.) e sempre retorna 0-100.
 
-    Para múltiplos breakevens:
-      - 1 BE (trava, venda simples): POP = P(lucro no vencimento)
-      - 2 BEs [low, high] (Iron Condor, borboleta): POP = P(low < S_T < high)
-        = N(d2_high) - N(d2_low)
+    Sem payoff_fn (fallback analítico): P(S_T > B) = N(d2(B)), com d2
+    decrescente em B. Para 2 BEs, P(low < S_T < high) = N(d2_low) - N(d2_high)
+    — assume lucro ENTRE os breakevens.
     """
-    if not breakevens or S <= 0 or T <= 0 or sigma <= 0:
+    if S <= 0 or T <= 0 or sigma <= 0:
+        return None
+
+    # ── Caminho preferido: integração numérica sobre o payoff real ──────────
+    if payoff_fn is not None:
+        mu = math.log(S) + (r - 0.5 * sigma * sigma) * T
+        sd = sigma * math.sqrt(T)
+        lo = max(S * math.exp(-4 * sd), 0.01)
+        hi = S * math.exp(4 * sd)
+        tot = win = 0.0
+        M = 500
+        step = (hi - lo) / (M + 1)
+        for k in range(M + 1):
+            sk = lo + step * (k + 0.5)
+            z = (math.log(sk) - mu) / sd
+            w = math.exp(-0.5 * z * z) / sk   # ∝ densidade log-normal
+            tot += w
+            try:
+                if payoff_fn(sk) > 0:
+                    win += w
+            except Exception:
+                pass
+        return round(win / tot * 100, 1) if tot > 0 else None
+
+    if not breakevens:
         return None
 
     def _d2(B):
@@ -782,20 +806,13 @@ def _calc_pop(S, breakevens, T, sigma, r=0.0):
         # Crédito acima do BE → lucra se S_T > BE
         return round(_norm_cdf(d) * 100, 1)
 
-    if len(bes) == 2:
-        d_low  = _d2(bes[0])
-        d_high = _d2(bes[1])
-        if d_low is None or d_high is None:
-            return None
-        # Lucra se BE_low < S_T < BE_high
-        return round((_norm_cdf(d_high) - _norm_cdf(d_low)) * 100, 1)
-
-    # Mais de 2 BEs: usa o par extremo
+    # 2+ BEs: lucra entre os extremos. d2 é DECRESCENTE em B, logo
+    # P(low < S_T < high) = N(d2(low)) − N(d2(high))  (sempre >= 0)
     d_low  = _d2(bes[0])
     d_high = _d2(bes[-1])
     if d_low is None or d_high is None:
         return None
-    return round((_norm_cdf(d_high) - _norm_cdf(d_low)) * 100, 1)
+    return round(max(0.0, (_norm_cdf(d_low) - _norm_cdf(d_high))) * 100, 1)
 
 
 def _calc_structured_metrics(op):
@@ -1002,7 +1019,8 @@ def _calc_structured_metrics(op):
             exp_dates = [l.expiration_date for l in legs if l.expiration_date]
             T = max(((max(exp_dates) - date.today()).days / 252.0), 1/252) if exp_dates else 30/252
             pop = _calc_pop(S0, breakevens, T, sigma_avg,
-                            r=math.log(1 + _selic() / 100))
+                            r=math.log(1 + _selic() / 100),
+                            payoff_fn=payoff_at)
     except Exception as _e:
         print(f"[POP] erro em _calc_structured_metrics op={op.id}: {_e}")
 

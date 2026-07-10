@@ -142,7 +142,8 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         '<td class="pos">' + fmt(r.taxa_aa, 1) + '%</td>' +
         '<td class="' + (r.vs_selic >= 0 ? 'pos' : 'neg') + '">' + (r.vs_selic >= 0 ? '+' : '') + fmt(r.vs_selic) + ' p.p.</td>' +
         '<td>' + fmt(r.delta, 1) + '</td>' +
-        '<td>' + (r.vol_fin ? fmt(r.vol_fin / 1000, 1) + 'k' : '—') + '</td>' +
+        '<td>' + (r.vol_fin ? fmt(r.vol_fin / 1000, 1) + 'k'
+                : (r.vol_qtd ? fmt(r.vol_qtd, 0) + ' un.' : '—')) + '</td>' +
         '</tr>';
     });
     h += '</tbody></table></div>';

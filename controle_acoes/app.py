@@ -3831,6 +3831,13 @@ def api_lancamento_coberto(ticker):
             continue
         if close < 0.05:                          # precisa ter tido negócio
             continue
+        # Só séries com negociação registrada: volume (qtd) e/ou financeiro > 0.
+        # Elimina prints antigos/estagnados que geram taxas absurdas.
+        vol_qtd = float(o.get('volume') or 0)
+        vol_fin = float(o.get('financial_volume') or o.get('volume_financial') or 0)
+        trades  = float(o.get('trades') or o.get('business') or o.get('negocios') or 0)
+        if vol_qtd <= 0 and vol_fin <= 0 and trades <= 0:
+            continue
         try:
             exp_d = _date.fromisoformat(due)
         except ValueError:
@@ -3872,7 +3879,8 @@ def api_lancamento_coberto(ticker):
             'taxa_aa':   round(taxa_aa, 2),
             'vs_selic':  round(taxa_ex - selic_per, 2),
             'delta':     delta,
-            'vol_fin':   round(float(o.get('financial_volume') or 0), 2),
+            'vol_fin':   round(vol_fin, 2),
+            'vol_qtd':   round(vol_qtd, 0),
         })
 
     rows.sort(key=lambda x: -x['taxa_ex'])

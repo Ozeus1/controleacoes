@@ -776,8 +776,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         ['POP (prob. de lucro)', fmt(r.pop, 1) + '%', r.pop >= 50 ? 'pos' : ''],
         ['EV — equação do trader', brl(r.ev * qty) + ' (+' + fmt(r.ev_pct, 1) + '% do custo)', 'pos'],
         ['Break-even', brl(r.breakeven) + ' (' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%)', ''],
-        ['Retorno máx. %', fmt(gPctT) + '%', 'pos']
-      ].concat(pctBoxes(gPctT, dc));
+        ['Retorno máx. %', fmt(gPctT) + '%', 'pos'],
+        ['Prazo (dias corridos)', dc + ' d.c.', '']
+      ];
       Object.assign(stParams, {op: op,
         at: r.buy_symbol,  ak: r.buy_strike,  ap: r.buy_ask,
         bt: r.sell_symbol, bk: r.sell_strike, bp: r.sell_bid});
@@ -795,8 +796,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         ['Break-even', brl(r.breakeven) + ' (' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%)', ''],
         ['Lucro se ' + (isBullC ? 'ficar acima de' : 'ficar abaixo de') + ' ' + brl(r.sell_strike),
             brl(r.credit * qty), 'pos'],
-        ['Retorno s/ margem %', fmt(gPctCS) + '%', 'pos']
-      ].concat(pctBoxes(gPctCS, dc));
+        ['Retorno s/ margem %', fmt(gPctCS) + '%', 'pos'],
+        ['Prazo (dias corridos)', dc + ' d.c.', '']
+      ];
       Object.assign(stParams, {op: isBullC ? 'trava_credito_alta' : 'trava_credito_baixa',
         at: r.sell_symbol, ak: r.sell_strike, ap: r.sell_bid,
         bt: r.buy_symbol,  bk: r.buy_strike,  bp: r.buy_ask});

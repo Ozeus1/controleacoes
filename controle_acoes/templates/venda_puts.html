@@ -341,13 +341,17 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             <div id="e-chart-tip" class="pf-tip"></div>
         </div>
 
-        {# Ação: levar a estrutura para o editor de pernas (cadeia de opções) #}
+        {# Ações: salvar simulação / levar para o editor de pernas #}
         <div id="e-actions" style="display:none; margin-top:1.25rem; gap:.6rem; flex-wrap:wrap;">
+            <button type="button" class="btn btn-sm" id="e-save-btn" style="background:#10b981;color:white;"
+                    onclick="estruturaSalvarSim()" title="Salva esta estrutura nas Simulações de Opções">
+                💾 Salvar simulação
+            </button>
             <button type="button" class="btn btn-primary btn-sm" onclick="estruturaAddLeg()">
                 ➕ Adicionar perna / editar no simulador
             </button>
             <span style="font-size:.8rem; color:var(--text-secondary); align-self:center;">
-                Abre o simulador da Cadeia de Opções com estas pernas para incluir mais opções e salvar.
+                Salva nas Simulações de Opções, ou abre a Cadeia de Opções para incluir mais pernas.
             </span>
         </div>
     </div>
@@ -1063,8 +1067,9 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 ['Perda máxima',    fmtBRL(cost * qty), 'negative'],
                 ['Relação ganho/custo', ratio3.toLocaleString('pt-BR', {maximumFractionDigits:2}), ratio3 > 1 ? 'positive' : ''],
                 ['Break-even',      fmtBRL(be3), ''],
-                ['Retorno máx. %',  fmtPct(gPct3), 'positive']
-            ].concat(pctBoxes(gPct3));
+                ['Retorno máx. %',  fmtPct(gPct3), 'positive'],
+                ['Prazo (dias corridos)', dc + ' d.c.', '']
+            ];
         } else if (op === 'trava_credito_alta' || op === 'trava_credito_baixa') {
             // Travas de crédito: A = venda (recebe bid), B = compra (paga ask)
             var credit = aP - bP;
@@ -1079,8 +1084,9 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 ['Relação ganho/perda', ratio4 != null ? ratio4.toLocaleString('pt-BR', {maximumFractionDigits:2}) : '∞',
                     (ratio4 == null || ratio4 >= 0.5) ? 'positive' : ''],
                 ['Break-even',       fmtBRL(be4), ''],
-                ['Retorno s/ margem %', fmtPct(gPct4), 'positive']
-            ].concat(pctBoxes(gPct4));
+                ['Retorno s/ margem %', fmtPct(gPct4), 'positive'],
+                ['Prazo (dias corridos)', dc + ' d.c.', '']
+            ];
         } else if (op === 'vaca_travada') {
             // Borboleta de CALLs: A = compra 1× (K baixa), B = venda 2× (K média), C = compra 1× (K alta)
             var costV = aP - 2 * bP + cP;                    // >0 débito, <=0 crédito
@@ -1332,6 +1338,40 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         });
         var q = new URLSearchParams({sim: '1', ativo: ativo, nome: nome + ' ' + ativo, legs: parts.join('|')});
         window.location.href = '/cadeia-opcoes?' + q.toString();
+    };
+
+    // Salva a estrutura diretamente nas Simulações de Opções
+    window.estruturaSalvarSim = function() {
+        var legs = window.__estruturaLegs;
+        if (!legs || !legs.length) { alert('Preencha a estrutura primeiro.'); return; }
+        var ativo = (document.getElementById('e-ativo').value || '').toUpperCase();
+        var opSel = document.getElementById('e-op');
+        var nomeBase = (opSel.options[opSel.selectedIndex].text || 'Estrutura').replace(/[⚖️🔗🚧🕊📈📉💰🚀🐄🐂]/g, '').trim();
+        var nome = prompt('Nome da simulação:', nomeBase + ' ' + ativo);
+        if (nome === null) return;                 // cancelou
+        nome = nome.trim() || (nomeBase + ' ' + ativo);
+        var btn = document.getElementById('e-save-btn');
+        btn.disabled = true;
+        fetch('/api/simulacao/save', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                name: nome,
+                underlying: ativo,
+                legs: legs.map(function(l) {
+                    return {type: l.type, side: l.side, qty: l.qty, strike: l.strike,
+                            premium: l.premium, exp: l.exp || '', ticker: l.ticker, iv: 0};
+                })
+            })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+            btn.disabled = false;
+            if (d.error) { alert('Erro ao salvar: ' + d.error); return; }
+            btn.textContent = '✓ Salva!';
+            setTimeout(function() { btn.textContent = '💾 Salvar simulação'; }, 3000);
+        })
+        .catch(function(e) { btn.disabled = false; alert('Erro ao salvar: ' + e); });
     };
 
     // ── Pré-preenchimento de Estruturas via URL (vindo de Busca de Operações) ─

@@ -240,9 +240,9 @@
                     class="{{ 'active' if request.endpoint == 'fiis' else '' }}">FIIs</a>
 
                 {# ── Opções (dropdown com Estudos e Simulação) ── #}
-                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes'] else '' }}">
+                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','lancamento_coberto'] else '' }}">
                     <a href="{{ url_for('opcoes') }}"
-                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes'] else '' }}"
+                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','lancamento_coberto'] else '' }}"
                        onclick="toggleNavDrop(this,event)">
                         Opções <span class="nav-caret">▾</span>
                     </a>
@@ -269,6 +269,8 @@
                            class="{{ 'active' if request.endpoint == 'busca_opcao' else '' }}">🔍 Busca de Opção</a>
                         <a href="{{ url_for('busca_operacoes') }}"
                            class="{{ 'active' if request.endpoint == 'busca_operacoes' else '' }}">🎯 Busca de Operações</a>
+                        <a href="{{ url_for('lancamento_coberto') }}"
+                           class="{{ 'active' if request.endpoint == 'lancamento_coberto' else '' }}">📋 Lançamento Coberto</a>
                     </div>
                 </div>
 

@@ -3669,42 +3669,6 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: -x['pct_cdi'])
             rows = rows[:14]
 
-        elif op == 'lancamento_coberto':
-            # Lançamento coberto: compra a ação no spot + vende CALL.
-            # Taxa se exercido = (K − custo_líquido) / custo_líquido, onde
-            # custo_líquido = spot − prêmio. Ranqueia pela maior taxa no período
-            # (como o ranking "Maiores taxas — Lançamento coberto" da OpLab).
-            T = dc / 365.0
-            for c in sorted(calls_by_exp.get(exp, []), key=lambda x: x['strike']):
-                if not (0.60 * spot <= c['strike'] <= 1.20 * spot):
-                    continue
-                prem, src = _sell_prem(c)
-                if prem is None or prem < 0.05:
-                    continue
-                custo = spot - prem
-                if custo <= 0:
-                    continue
-                taxa_ex = (c['strike'] - custo) / custo * 100
-                if taxa_ex <= 0:                    # exercício daria prejuízo
-                    continue
-                taxa_aa = ((1 + taxa_ex / 100) ** (365.0 / dc) - 1) * 100
-                rows.append({
-                    'symbol':    c['symbol'],
-                    'strike':    c['strike'],
-                    'itm_pct':   round((spot - c['strike']) / spot * 100, 1),  # >0 = ITM
-                    'premium':   round(prem, 2),
-                    'price_src': src,
-                    'custo':     round(custo, 2),        # custo líquido = breakeven
-                    'protec':    round(prem / spot * 100, 2),
-                    'taxa_ex':   round(taxa_ex, 2),
-                    'taxa_aa':   round(taxa_aa, 2),
-                    'vs_selic':  round(taxa_ex - selic_period, 2),
-                    'delta':     _leg_delta_pct(c, True, T),
-                    'vol_fin':   c.get('vol_fin', 0),
-                })
-            rows.sort(key=lambda x: -x['taxa_ex'])
-            rows = rows[:14]
-
         elif op == 'straddle_vendido':
             # Straddle vendido: venda de 1 CALL + 1 PUT no MESMO strike, bem ATM
             # (o strike mais próximo do preço atual do ativo). Crédito duplo;
@@ -3804,6 +3768,117 @@ def api_busca_operacoes(ticker):
         'market_open': market_open,
         'selic':       round(selic, 2),
         'expirations': expirations,
+    })
+
+
+@app.route('/lancamento-coberto')
+@login_required
+def lancamento_coberto():
+    """Página: ranking de lançamento coberto por ativo (vencimentos longos)."""
+    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    return render_template('lancamento_coberto.html', ranking_vol=ranking_vol, selic=_selic())
+
+
+@app.route('/api/lancamento-coberto/<ticker>')
+@login_required
+def api_lancamento_coberto(ticker):
+    """Ranking de lançamento coberto (compra ação + venda CALL) para um ativo.
+    Varre TODOS os vencimentos até 2 anos — o objetivo são séries longas —
+    exigindo que a CALL tenha tido negócio (último > 0). Uma chamada OpLab
+    por ativo. Taxa se exercido = (K − custo_líquido)/custo_líquido."""
+    ticker = ticker.strip().upper()
+    token  = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    if not spot:
+        return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
+
+    try:
+        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+    except OplabApiError as e:
+        return jsonify({'error': str(e), 'status': e.status_code}), 503
+    except Exception:
+        app.logger.exception('api_lancamento_coberto error for %s', ticker)
+        return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+
+    opt_list = data if isinstance(data, list) else (
+        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+    )
+
+    from datetime import date as _date
+    today  = _date.today()
+    selic  = _selic()
+    r_cont = math.log(1 + selic / 100.0)
+
+    rows = []
+    for o in opt_list:
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        if 'PUT' in cat or cat == 'P':
+            continue
+        sym    = str(o.get('symbol') or o.get('ticker') or '').upper()
+        strike = float(o.get('strike') or 0)
+        close  = float(o.get('close') or 0)
+        due    = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due:
+            due = due.split('T')[0]
+        if not sym or strike <= 0 or not due:
+            continue
+        if close < 0.05:                          # precisa ter tido negócio
+            continue
+        try:
+            exp_d = _date.fromisoformat(due)
+        except ValueError:
+            continue
+        dc = (exp_d - today).days
+        if dc <= 0 or dc > 730:                   # até 2 anos
+            continue
+        if not (0.50 * spot <= strike <= 1.30 * spot):
+            continue
+        custo = spot - close
+        if custo <= 0:
+            continue
+        taxa_ex = (strike - custo) / custo * 100
+        if taxa_ex <= 0:                          # exercício daria prejuízo
+            continue
+        taxa_aa = ((1 + taxa_ex / 100) ** (365.0 / dc) - 1) * 100
+        selic_per = ((1 + selic / 100) ** (dc / 365.0) - 1) * 100
+
+        # Delta via BS com IV extraída do prêmio (informativo)
+        delta = None
+        T = dc / 365.0
+        intr = max(0.0, spot - strike)
+        if close > intr * 1.005:
+            iv = _implied_vol(spot, strike, T, r_cont, close, True)
+            if 0.005 < iv < 4.9:
+                d1 = (math.log(spot / strike) + (r_cont + 0.5 * iv * iv) * T) / (iv * math.sqrt(T))
+                delta = round(_norm_cdf(d1) * 100, 1)
+
+        rows.append({
+            'symbol':    sym,
+            'exp':       due,
+            'dc':        dc,
+            'strike':    round(strike, 2),
+            'itm_pct':   round((spot - strike) / spot * 100, 1),   # >0 = ITM
+            'premium':   round(close, 2),
+            'custo':     round(custo, 2),                          # custo líquido = BE
+            'protec':    round(close / spot * 100, 2),
+            'taxa_ex':   round(taxa_ex, 2),
+            'taxa_aa':   round(taxa_aa, 2),
+            'vs_selic':  round(taxa_ex - selic_per, 2),
+            'delta':     delta,
+            'vol_fin':   round(float(o.get('financial_volume') or 0), 2),
+        })
+
+    rows.sort(key=lambda x: -x['taxa_ex'])
+    return jsonify({
+        'ticker':      ticker,
+        'spot':        spot,
+        'spot_change': spot_change,
+        'selic':       round(selic, 2),
+        'rows':        rows[:40],
+        'total':       len(rows),
     })
 
 

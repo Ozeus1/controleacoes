@@ -94,7 +94,6 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
     <button class="bo-obtn" data-op="venda_put_itm">🔽 Venda de PUT</button>
     <button class="bo-obtn" data-op="straddle_vendido">⚖️ Straddle vendido</button>
     <button class="bo-obtn" data-op="strangle_vendido">🔗 Strangle vendido</button>
-    <button class="bo-obtn" data-op="lancamento_coberto">📋 Lançamento Coberto</button>
   </div>
 
   <!-- Vencimentos: incluir semanais + janela de prazo -->
@@ -188,7 +187,6 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     boi_put:       '🐂 Boi com PUT — compra 2 PUTs próximas do OTM financiadas (parcialmente) pela venda de 1 PUT ATM/ITM; custo até 40% da largura (lucro cresce na queda forte)',
     vaca_put:      '🐄 Vaca de Baixa (PUTs) — +1 PUT alta, −2 PUTs médias, +1 PUT baixa (lucro máximo se cair até o strike médio)',
     venda_put_itm: '🔽 Venda de PUT — strike de 10% OTM até 20% ITM (mensais; prêmio pelo último negócio; remuneração sobre o strike)',
-    lancamento_coberto: '📋 Lançamento Coberto — compra a ação + vende CALL; ranqueado pela taxa de lucro se exercido no período',
     straddle_vendido: '⚖️ Straddle vendido — venda de 1 CALL + 1 PUT no strike ATM (o mais próximo do spot; crédito duplo, lucro se o papel ficar parado)',
     strangle_vendido: '🔗 Strangle vendido — venda de CALL OTM + PUT OTM, delta entre 15 e 35 em cada ponta (lucro se o papel ficar entre os strikes)'
   };
@@ -624,35 +622,6 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     return h + '</tbody></table></div>';
   }
 
-  function coveredCallTable(rows, expIdx) {
-    if (!rows.length) return '<div class="bo-empty">Nenhuma CALL com taxa positiva se exercida neste vencimento.</div>';
-    var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
-      '<th>CALL (venda)</th><th>Strike</th><th>ITM/OTM</th>' +
-      '<th>Prêmio</th><th>Fonte</th>' +
-      '<th title="Spot − prêmio = preço de equilíbrio">Custo líq. (BE)</th>' +
-      '<th title="Prêmio / spot — colchão contra queda">Proteção</th>' +
-      '<th title="(Strike − custo líquido) / custo líquido">Taxa se exercido</th>' +
-      '<th>Taxa a.a.</th><th>vs Selic per.</th><th>Δ</th><th>Vol. fin.</th></tr></thead><tbody>';
-    rows.forEach(function(r, j) {
-      var isItm = r.itm_pct > 0;
-      h += rowAttr(expIdx, j) +
-        '<td><span class="bo-badge call">' + r.symbol + '</span></td>' +
-        '<td>' + brl(r.strike) + '</td>' +
-        '<td class="' + (isItm ? 'neg' : 'pos') + '">' + (isItm ? '' : '+') + fmt(-r.itm_pct, 1) + '% ' + (isItm ? 'ITM' : 'OTM') + '</td>' +
-        '<td class="pos">' + brl(r.premium) + '</td>' +
-        '<td>' + srcTag(r.price_src) + (r.price_src === 'último' ? '' : '<span style="font-size:.7rem;color:var(--text-secondary)">' + r.price_src + '</span>') + '</td>' +
-        '<td>' + brl(r.custo) + '</td>' +
-        '<td class="pos">' + fmt(r.protec) + '%</td>' +
-        '<td class="pos"><strong>+' + fmt(r.taxa_ex) + '%</strong></td>' +
-        '<td class="pos">' + fmt(r.taxa_aa, 1) + '%</td>' +
-        '<td class="' + (r.vs_selic >= 0 ? 'pos' : 'neg') + '">' + (r.vs_selic >= 0 ? '+' : '') + fmt(r.vs_selic) + ' p.p.</td>' +
-        '<td>' + fmt(r.delta, 1) + '</td>' +
-        '<td>' + (r.vol_fin ? fmt(r.vol_fin / 1000, 1) + 'k' : '—') + '</td>' +
-        '</tr>';
-    });
-    return h + '</tbody></table></div>';
-  }
-
   function buildTable(op, rows, expIdx) {
     switch (op) {
       case 'collar':        return collarTable(rows, expIdx);
@@ -669,7 +638,6 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       case 'venda_put_itm': return vendaPutItmTable(rows, expIdx);
       case 'straddle_vendido': return straddleTable(rows, expIdx);
       case 'strangle_vendido': return strangleTable(rows, expIdx);
-      case 'lancamento_coberto': return coveredCallTable(rows, expIdx);
       default:              return '';
     }
   }
@@ -905,24 +873,6 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       Object.assign(stParams, {op: op,
         at: r.call_symbol, ak: kCall, ap: r.call_bid,
         bt: r.put_symbol,  bk: kPut,  bp: r.put_bid});
-    } else if (op === 'lancamento_coberto') {
-      title = 'Lançamento Coberto ' + d.ticker + ' — ' + r.symbol + ' K=' + brl(r.strike);
-      var ganhoAcao = (r.strike - spot) * qty;
-      boxes = [
-        ['Compra ação (spot)', brl(spot * qty), ''],
-        ['Recebe prêmio CALL (' + r.price_src + ')', brl(r.premium * qty), 'pos'],
-        ['Custo líquido (S − P)', brl(r.custo * qty), ''],
-        ['Recebe pela ação (strike)', brl(r.strike * qty), ''],
-        ['Ganho/perda da ação vs spot', brl(ganhoAcao), ganhoAcao >= 0 ? 'pos' : 'neg'],
-        ['Retorno total se exercido', brl((r.strike - r.custo) * qty), 'pos'],
-        ['Taxa se exercido (período)', '+' + fmt(r.taxa_ex) + '%', 'pos'],
-        ['Taxa anualizada', fmt(r.taxa_aa, 1) + '% a.a.', 'pos'],
-        ['vs Selic no período', (r.vs_selic >= 0 ? '+' : '') + fmt(r.vs_selic) + ' p.p.', r.vs_selic >= 0 ? 'pos' : 'neg'],
-        ['Proteção (P / S)', fmt(r.protec) + '%', 'pos'],
-        ['Preço de equilíbrio', brl(r.custo), ''],
-        ['Prazo (dias corridos)', dc + ' d.c.', '']
-      ];
-      return {title: title, boxes: boxes, href: '/busca-opcao?t=' + encodeURIComponent(r.symbol)};
     } else if (op === 'venda_put_itm') {
       title = 'Venda de PUT ' + d.ticker + ' — ' + r.symbol + ' @ ' + brl(r.premium) + ' (' + r.price_src + ')';
       boxes = [

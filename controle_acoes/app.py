@@ -4217,6 +4217,7 @@ def payoff_estruturada(id):
         return redirect(url_for('opcoes'))
     legs = [
         {
+            'id':               leg.id,
             'ticker':           leg.ticker,
             'side':             leg.side,
             'opt_type':         leg.opt_type,
@@ -4244,6 +4245,8 @@ def payoff_estruturada(id):
                            selic=_selic(),
                            T_days=t_days,
                            days_nearest=days_nearest,
+                           manage_op_id=op.id,
+                           today=date.today(),
                            legs_json=_json.dumps(legs))
 
 
@@ -4662,6 +4665,7 @@ def roll_estruturada(id):
     roll_date  = request.form.get('roll_date', date.today().isoformat())
     notes_text = request.form.get('notes', '')
     new_exp    = request.form.get('new_exp', '')
+    next_url   = request.form.get('next', '')
 
     # Listas paralelas para cada perna (por leg_id)
     leg_ids         = request.form.getlist('leg_id')
@@ -4678,8 +4682,14 @@ def roll_estruturada(id):
             'notes':     notes_text,
             'legs':      [],
         }
+        try:
+            exit_d = datetime.strptime(roll_date, '%Y-%m-%d').date()
+        except ValueError:
+            exit_d = date.today()
+        entry_d = op.created_at.date() if op.created_at else None
 
         net_roll = 0.0
+        realized = 0.0
         for i, lid in enumerate(leg_ids):
             leg = StructuredLeg.query.get(int(lid))
             if not leg or leg.operation.user_id != current_user.id:
@@ -4699,6 +4709,40 @@ def roll_estruturada(id):
             else:
                 net_roll += (cp - np_) * qty
 
+            # A perna foi de fato manejada? (ticker/strike/prêmio/venc mudaram)
+            old_exp_iso = leg.expiration_date.isoformat() if leg.expiration_date else ''
+            changed = (nt != leg.ticker
+                       or abs(nk - (leg.strike or 0)) > 0.001
+                       or abs(np_ - (leg.entry_price or 0)) > 0.001
+                       or (ne or '') != old_exp_iso)
+
+            # Resultado REALIZADO no fechamento da perna antiga → Histórico
+            if changed:
+                if leg.side == 'SELL':
+                    pnl = ((leg.entry_price or 0) - cp) * qty   # vendeu, recomprou
+                else:
+                    pnl = (cp - (leg.entry_price or 0)) * qty   # comprou, vendeu
+                realized += pnl
+                base = (leg.entry_price or 0) * qty
+                db.session.add(TradeHistory(
+                    user_id      = current_user.id,
+                    ticker       = leg.ticker,
+                    strategy     = 'Opções',
+                    entry_date   = entry_d,
+                    exit_date    = exit_d,
+                    buy_price    = round(cp if leg.side == 'SELL' else (leg.entry_price or 0), 4),
+                    sell_price   = round((leg.entry_price or 0) if leg.side == 'SELL' else cp, 4),
+                    quantity     = qty,
+                    profit_value = round(pnl, 2),
+                    profit_pct   = round(pnl / base * 100, 2) if base > 0 else 0,
+                    days_held    = (exit_d - entry_d).days if entry_d else 0,
+                    reason       = 'MANEJO',
+                    underlying   = op.underlying_asset,
+                    notes        = (f"Manejo estruturada '{op.name}' | {leg.side} {leg.opt_type} "
+                                    f"K={leg.strike or 0:.2f} @ {leg.entry_price or 0:.2f} → fechada a {cp:.2f}"
+                                    + (f" | nova: {nt} K={nk:.2f} @ {np_:.2f}" if nt != leg.ticker else '')),
+                ))
+
             roll_entry['legs'].append({
                 'old_ticker':    leg.ticker,
                 'old_strike':    leg.strike,
@@ -4711,6 +4755,8 @@ def roll_estruturada(id):
                 'new_exp':       ne,
                 'side':          leg.side,
                 'quantity':      qty,
+                'realized_pnl':  round(((leg.entry_price or 0) - cp) * qty if leg.side == 'SELL'
+                                       else (cp - (leg.entry_price or 0)) * qty, 2) if changed else None,
             })
 
             # Atualiza a perna
@@ -4725,15 +4771,19 @@ def roll_estruturada(id):
                     pass
 
         roll_entry['net_roll'] = round(net_roll, 4)
+        roll_entry['realized_pnl'] = round(realized, 2)
         _append_roll(op, roll_entry)
         op.created_at = datetime.strptime(roll_date, '%Y-%m-%d')
 
         db.session.commit()
-        flash(f'Rolagem da estruturada registrada! Crédito/Débito: R$ {net_roll:.2f}', 'success')
+        flash(f'Manejo registrado! Resultado realizado: R$ {realized:.2f} · '
+              f'Crédito/Débito da rolagem: R$ {net_roll:.2f}', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Erro na rolagem: {e}', 'danger')
 
+    if next_url and next_url.startswith('/'):
+        return redirect(next_url)
     return redirect(url_for('opcoes'))
 
 

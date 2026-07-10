@@ -13,12 +13,110 @@
             {% endif %}
         </div>
         <div style="display:flex; gap:.5rem; margin-left:auto;">
+            {% if manage_op_id is defined and manage_op_id %}
+            <button class="btn btn-sm" style="background:#f59e0b;color:white;" onclick="openManejo()"
+                    title="Fechar/substituir pernas registrando o resultado realizado no Histórico">🔧 Manejo</button>
+            {% endif %}
             {% if underlying %}
             <button class="btn btn-outline-info btn-sm" onclick="openChart()">📈 Gráfico {{ underlying }}</button>
             {% endif %}
             <a href="{{ url_for('opcoes') }}" class="btn btn-secondary btn-sm">← Voltar</a>
         </div>
     </div>
+
+    {# ── Modal de manejo (só estruturadas) ── #}
+    {% if manage_op_id is defined and manage_op_id %}
+    <div id="manejo-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+         background:rgba(0,0,0,.75); align-items:center; justify-content:center; padding:1rem;">
+        <div style="background:var(--card-bg,#1e293b); border-radius:10px; padding:1.4rem;
+                    width:min(96vw,860px); max-height:92vh; overflow-y:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+                <h5 style="margin:0;">🔧 Manejo — {{ title }}</h5>
+                <button onclick="closeManejo()" style="background:none; border:none; font-size:1.4rem;
+                        color:var(--text-secondary); cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <p style="font-size:.82rem; color:var(--text-secondary); margin:0 0 1rem;">
+                Marque as pernas manejadas: informe o <strong>preço de fechamento</strong> da perna antiga
+                (o resultado realizado vai para o <strong>Histórico</strong>) e os dados da
+                <strong>nova perna</strong> que a substitui. Pernas não marcadas ficam como estão.
+            </p>
+            <form method="POST" action="{{ url_for('roll_estruturada', id=manage_op_id) }}">
+                <input type="hidden" name="next" value="{{ request.path }}">
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:.75rem; margin-bottom:1rem;">
+                    <div><label style="font-size:.78rem;color:var(--text-secondary);">Tipo</label>
+                        <select name="roll_type" class="form-control form-control-sm">
+                            <option value="MANEJO">Manejo (ajuste de pernas)</option>
+                            <option value="TEMPO">Tempo (vencimento)</option>
+                            <option value="STRIKE">Strike</option>
+                            <option value="AMBOS">Tempo + Strike</option>
+                        </select></div>
+                    <div><label style="font-size:.78rem;color:var(--text-secondary);">Data</label>
+                        <input type="date" name="roll_date" class="form-control form-control-sm"
+                               value="{{ today.isoformat() if today is defined else '' }}"></div>
+                    <div><label style="font-size:.78rem;color:var(--text-secondary);">Observações</label>
+                        <input type="text" name="notes" class="form-control form-control-sm" placeholder="Motivo do manejo..."></div>
+                </div>
+
+                {% for leg in legs %}
+                {% if leg.opt_type != 'STOCK' %}
+                <fieldset class="mj-leg" style="border:1px solid var(--border-color); border-radius:8px;
+                          padding:.7rem .9rem; margin-bottom:.7rem;">
+                    <legend style="font-size:.82rem; padding:0 .4rem; display:flex; align-items:center; gap:.5rem;">
+                        <label style="display:inline-flex; align-items:center; gap:.4rem; cursor:pointer; margin:0; white-space:nowrap;">
+                            <input type="checkbox" class="mj-chk" onchange="mjToggle(this)" style="margin:0;cursor:pointer;">
+                            <span style="padding:.05rem .45rem; border-radius:4px; font-weight:700;
+                                  background:{{ 'rgba(239,68,68,.15)' if leg.side=='SELL' else 'rgba(16,185,129,.15)' }};
+                                  color:{{ 'var(--danger-color)' if leg.side=='SELL' else 'var(--success-color)' }};">
+                                {{ 'V' if leg.side=='SELL' else 'C' }}</span>
+                            <strong>{{ leg.ticker }}</strong>
+                            <span style="color:var(--text-secondary);">{{ leg.opt_type }} K={{ '%.2f'|format(leg.strike or 0)|replace('.', ',') }}
+                                @ {{ '%.2f'|format(leg.entry_price or 0)|replace('.', ',') }} × {{ leg.quantity }}</span>
+                        </label>
+                    </legend>
+                    <div class="mj-fields" style="display:none; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:.6rem;">
+                        <input type="hidden" name="leg_id" value="{{ leg.id }}" disabled>
+                        <div><label style="font-size:.72rem;color:var(--text-secondary);">Fechamento (R$) — {{ 'recompra' if leg.side=='SELL' else 'venda' }}</label>
+                            <input type="text" name="leg_close_price" class="form-control form-control-sm"
+                                   value="{{ '%.2f'|format(leg.current_price or 0)|replace('.', ',') }}" disabled></div>
+                        <div><label style="font-size:.72rem;color:var(--text-secondary);">Novo ticker</label>
+                            <input type="text" name="leg_new_ticker" class="form-control form-control-sm"
+                                   style="text-transform:uppercase;" value="{{ leg.ticker }}" disabled></div>
+                        <div><label style="font-size:.72rem;color:var(--text-secondary);">Novo strike</label>
+                            <input type="text" name="leg_new_strike" class="form-control form-control-sm"
+                                   value="{{ '%.2f'|format(leg.strike or 0)|replace('.', ',') }}" disabled></div>
+                        <div><label style="font-size:.72rem;color:var(--text-secondary);">Novo prêmio</label>
+                            <input type="text" name="leg_new_premium" class="form-control form-control-sm"
+                                   value="{{ '%.2f'|format(leg.entry_price or 0)|replace('.', ',') }}" disabled></div>
+                        <div><label style="font-size:.72rem;color:var(--text-secondary);">Novo vencimento</label>
+                            <input type="date" name="leg_new_exp" class="form-control form-control-sm"
+                                   value="{{ leg.expiration_date }}" disabled></div>
+                    </div>
+                </fieldset>
+                {% endif %}
+                {% endfor %}
+
+                <div style="display:flex; gap:.5rem; justify-content:flex-end; margin-top:1rem;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="closeManejo()">Cancelar</button>
+                    <button type="submit" class="btn btn-warning btn-sm">🔧 Confirmar Manejo</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+    function openManejo() { document.getElementById('manejo-modal').style.display = 'flex'; }
+    function closeManejo() { document.getElementById('manejo-modal').style.display = 'none'; }
+    // Habilita os campos apenas das pernas marcadas (inputs disabled não são enviados)
+    function mjToggle(chk) {
+        var fs = chk.closest('.mj-leg');
+        var fields = fs.querySelector('.mj-fields');
+        fields.style.display = chk.checked ? 'grid' : 'none';
+        fields.querySelectorAll('input').forEach(function (i) { i.disabled = !chk.checked; });
+    }
+    document.getElementById('manejo-modal').addEventListener('click', function (ev) {
+        if (ev.target === this) closeManejo();
+    });
+    </script>
+    {% endif %}
 
     {# ── Modal gráfico TradingView ── #}
     {% if underlying %}

@@ -731,6 +731,8 @@ window.initLegHelpers = function (o) {
   function applyLot() {
     cont.querySelectorAll('[name=' + o.qty + ']').forEach(function (i) {
       if (i.type !== 'number') i.type = 'number';
+      // Spinner do input number ocupa ~20px — garante largura p/ "1000" + setas
+      i.style.minWidth = '85px';
       if (chkL.checked) {
         i.min = 100; i.step = 100;
         if ((parseInt(i.value, 10) || 0) < 100) i.value = 100;

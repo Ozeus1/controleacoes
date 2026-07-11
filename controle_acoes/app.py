@@ -3961,7 +3961,7 @@ def api_venda_put_longa(ticker):
         except ValueError:
             continue
         dc = (exp_d - today).days
-        if dc <= 0 or dc > 730:                   # até 2 anos
+        if dc <= 40 or dc > 730:                  # >40 dias até 2 anos
             continue
         if not (0.50 * spot <= strike <= 1.30 * spot):
             continue
@@ -3969,6 +3969,8 @@ def api_venda_put_longa(ticker):
         # Rentabilidade do prêmio com capital reservado = strike
         taxa_per = close / strike * 100
         taxa_aa  = ((1 + taxa_per / 100) ** (365.0 / dc) - 1) * 100
+        if taxa_aa > 999:                         # composto explode em prazos curtos
+            taxa_aa = None
         selic_per = ((1 + selic / 100) ** (dc / 365.0) - 1) * 100
         custo_ef  = strike - close                # preço de equilíbrio se exercido
         margem    = (spot - custo_ef) / spot * 100  # >0 = BE abaixo do spot
@@ -3993,7 +3995,7 @@ def api_venda_put_longa(ticker):
             'custo_ef':  round(custo_ef, 2),                       # BE se exercido
             'margem':    round(margem, 2),
             'taxa_per':  round(taxa_per, 2),
-            'taxa_aa':   round(taxa_aa, 2),
+            'taxa_aa':   round(taxa_aa, 2) if taxa_aa is not None else None,
             'vs_selic':  round(taxa_per - selic_per, 2),
             'delta':     delta,
             'vol_fin':   round(vol_fin, 2),
@@ -4006,7 +4008,7 @@ def api_venda_put_longa(ticker):
         'spot':        spot,
         'spot_change': spot_change,
         'selic':       round(selic, 2),
-        'rows':        rows[:40],
+        'rows':        rows[:60],
         'total':       len(rows),
     })
 

@@ -44,7 +44,7 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     <div id="pl-spot"></div>
   </div>
   <p style="color:var(--text-secondary);font-size:.85rem;margin:.2rem 0 .8rem;">
-    Venda de PUT cash-secured. Varre <strong>todos os vencimentos até 2 anos</strong> do ativo escolhido,
+    Venda de PUT cash-secured. Varre <strong>vencimentos acima de 40 dias corridos até 2 anos</strong> do ativo escolhido,
     considerando apenas PUTs com <strong>negócio efetivado</strong> (prêmio = último).
     Rendimento do prêmio com <strong>capital reservado = strike</strong>: retorno = prêmio / strike no período.
     Se exercido, compra a ação ao <strong>custo efetivo K − P</strong>. Clique na linha para ver o detalhamento.
@@ -139,7 +139,7 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         '<td>' + brl(r.custo_ef) + '</td>' +
         '<td class="' + (r.margem >= 0 ? 'pos' : 'neg') + '">' + (r.margem >= 0 ? '+' : '') + fmt(r.margem) + '%</td>' +
         '<td class="pos"><strong>+' + fmt(r.taxa_per) + '%</strong></td>' +
-        '<td class="pos">' + fmt(r.taxa_aa, 1) + '%</td>' +
+        '<td class="pos">' + (r.taxa_aa != null ? fmt(r.taxa_aa, 1) + '%' : '—') + '</td>' +
         '<td class="' + (r.vs_selic >= 0 ? 'pos' : 'neg') + '">' + (r.vs_selic >= 0 ? '+' : '') + fmt(r.vs_selic) + ' p.p.</td>' +
         '<td>' + fmt(r.delta, 1) + '</td>' +
         '<td>' + (r.vol_fin ? fmt(r.vol_fin / 1000, 1) + 'k'
@@ -149,7 +149,7 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     h += '</tbody></table></div>';
     if (d.total > d.rows.length) {
       h += '<p style="font-size:.78rem;color:var(--text-secondary);margin-top:.5rem;">Mostrando os ' +
-           d.rows.length + ' maiores rendimentos de ' + d.total + ' séries negociadas.</p>';
+           d.rows.length + ' maiores rendimentos de ' + d.total + ' séries negociadas (venc. &gt; 40 dias).</p>';
     }
     document.getElementById('pl-results').innerHTML = h;
   }
@@ -198,7 +198,7 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       ['Recebe prêmio PUT (último)', brl(r.premium * qty), 'pos'],
       ['Capital reservado (strike)', brl(r.strike * qty), ''],
       ['Retorno no período (P / K)', '+' + fmt(r.taxa_per) + '%', 'pos'],
-      ['Retorno anualizado', fmt(r.taxa_aa, 1) + '% a.a.', 'pos'],
+      ['Retorno anualizado', r.taxa_aa != null ? fmt(r.taxa_aa, 1) + '% a.a.' : '—', 'pos'],
       ['vs Selic no período', (r.vs_selic >= 0 ? '+' : '') + fmt(r.vs_selic) + ' p.p.', r.vs_selic >= 0 ? 'pos' : 'neg'],
       ['Se exercido: compra pelo strike', brl(r.strike * qty), ''],
       ['Custo efetivo (K − P)', brl(r.custo_ef * qty), ''],

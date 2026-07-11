@@ -3547,6 +3547,122 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: (abs(x['mid_dist']), x['max_loss'], -x['max_gain']))
             rows = _diversify(rows, lambda x: x['mid_symbol'], per_key=2)
 
+        elif op in ('boi_coberto', 'vaca_tradicional', 'vaca_revertida', 'borboleta', 'condor'):
+            # Estruturas clássicas de CALLs — recomendações usuais de montagem:
+            #   boi_coberto:      -1 ITM, +2 ATM, -1 OTM — custo zero/reduzido ou
+            #                     pequeno crédito; lucro máx. deve superar o CDI do período
+            #   vaca_tradicional: +1 baixa, -3 médias, +2 altas — montada no crédito
+            #   vaca_revertida:   +1 baixa, -5 médias, +5 altas — crédito; lucro
+            #                     ilimitado na alta forte (slope +1 acima da asa)
+            #   borboleta:        +1 baixa, -2 médias, +1 alta — débito <= 30% da asa,
+            #                     centro próximo do ATM (aposta em preço-alvo)
+            #   condor:           +1, -1, -1, +1 — débito <= 40% da asa; platô de lucro
+            #                     entre os strikes vendidos, idealmente contendo o spot
+            SPECS = {
+                'boi_coberto':      {'qty': (-1, 2, -1),
+                                     'rngs': [(0.85, 0.995), (0.97, 1.06), (1.00, 1.20)]},
+                'vaca_tradicional': {'qty': (1, -3, 2),
+                                     'rngs': [(0.92, 1.03), (0.99, 1.15), (1.01, 1.28)]},
+                'vaca_revertida':   {'qty': (1, -5, 5),
+                                     'rngs': [(0.92, 1.03), (0.99, 1.15), (1.01, 1.28)]},
+                'borboleta':        {'qty': (1, -2, 1),
+                                     'rngs': [(0.88, 1.02), (0.95, 1.10), (1.00, 1.22)]},
+                'condor':           {'qty': (1, -1, -1, 1),
+                                     'rngs': [(0.85, 0.99), (0.93, 1.05), (0.98, 1.12), (1.02, 1.25)]},
+            }
+            spec  = SPECS[op]
+            qtys  = spec['qty']
+            nlegs = len(qtys)
+            ncand = 8 if nlegs == 4 else 10
+
+            def _cands(rng, q):
+                lo, hi = rng
+                if q > 0:   # comprada paga ask
+                    return [c for c in calls_ok
+                            if lo * spot <= c['strike'] <= hi * spot and c['ask'] >= 0.03][:ncand]
+                return [c for c in calls_ok
+                        if lo * spot <= c['strike'] <= hi * spot and c['bid'] >= 0.05][:ncand]
+
+            def _eval_struct(legs):
+                """legs: [(row, qty)] strikes crescentes. Payoff linear por partes."""
+                net = sum((-q) * (c['ask'] if q > 0 else c['bid']) for c, q in legs)  # >0 crédito
+                ks  = [c['strike'] for c, _ in legs]
+
+                def pay(S):
+                    return net + sum(q * max(0.0, S - c['strike']) for c, q in legs)
+
+                slope = sum(q for _, q in legs)                # inclinação acima da última asa
+                far   = ks[-1] * 1.6
+                pts   = [0.0] + ks + [far]
+                vals  = [pay(x) for x in pts]
+                bes   = []
+                for i in range(len(pts) - 1):
+                    v0, v1 = vals[i], vals[i + 1]
+                    if (v0 < 0 <= v1) or (v0 >= 0 > v1):
+                        if abs(v1 - v0) > 1e-9:
+                            bes.append(pts[i] + (0 - v0) * (pts[i + 1] - pts[i]) / (v1 - v0))
+                max_gain = None if slope > 0 else max(vals)    # None = ilimitado
+                max_loss = max(0.0, -min(vals))
+                return net, max_gain, max_loss, bes
+
+            import itertools as _it
+            cand_lists = [_cands(spec['rngs'][i], qtys[i]) for i in range(nlegs)]
+            for combo in _it.product(*cand_lists):
+                ks = [c['strike'] for c in combo]
+                if any(ks[i] >= ks[i + 1] for i in range(nlegs - 1)):
+                    continue
+                legs = list(zip(combo, qtys))
+                net, max_gain, max_loss, bes = _eval_struct(legs)
+                cost = -net                                   # >0 débito
+                w_lo = ks[1] - ks[0]
+                if max_loss <= 0.001 and cost > 0:
+                    continue                                  # dado inconsistente
+                if op == 'boi_coberto':
+                    # custo zero/reduzido ou pequeno crédito; lucro máx. > CDI do período
+                    if cost > 0.10 * w_lo:
+                        continue
+                    if max_gain is None or max_gain <= 0 or max_loss <= 0:
+                        continue
+                    if max_gain < max_loss * selic_period / 100:
+                        continue
+                elif op in ('vaca_tradicional', 'vaca_revertida'):
+                    # vacas montadas no crédito (aceita custo residual de até 10% da asa)
+                    if cost > 0.10 * w_lo:
+                        continue
+                elif op == 'borboleta':
+                    # débito baixo em relação à asa; recusa borboleta "de graça" (dado ruim)
+                    if cost <= 0 or cost > 0.30 * w_lo:
+                        continue
+                elif op == 'condor':
+                    if cost <= 0 or cost > 0.40 * w_lo:
+                        continue
+                montagem = ('CRÉDITO' if net > 0.005
+                            else ('ZERO' if cost <= 0.15 * w_lo else 'INVEST'))
+                ratio = (round(max_gain / max_loss, 1)
+                         if (max_gain is not None and max_loss > 0.001) else None)
+                rows.append({
+                    'legs': [{'sym': c['symbol'], 'k': c['strike'], 'q': q,
+                              'px': (c['ask'] if q > 0 else c['bid']),
+                              'src': (c['ask_src'] if q > 0 else c['bid_src'])}
+                             for c, q in legs],
+                    'net':       round(net, 2),
+                    'is_credit': net >= 0,
+                    'montagem':  montagem,
+                    'max_gain':  round(max_gain, 2) if max_gain is not None else None,
+                    'gain_unl':  max_gain is None,
+                    'max_loss':  round(max_loss, 2),
+                    'ratio':     ratio,
+                    'bes':       [round(b, 2) for b in bes],
+                    'center_dist': round((ks[1] - spot) / spot * 100, 1),
+                })
+            if op == 'boi_coberto':
+                rows.sort(key=lambda x: (not x['is_credit'], -(x['ratio'] or 999), x['max_loss']))
+            elif op in ('vaca_tradicional', 'vaca_revertida'):
+                rows.sort(key=lambda x: (not x['is_credit'], -x['net'], x['max_loss']))
+            else:   # borboleta / condor: centro mais perto do spot, melhor relação
+                rows.sort(key=lambda x: (abs(x['center_dist']), -(x['ratio'] or 0)))
+            rows = _diversify(rows, lambda x: x['legs'][1]['sym'], per_key=2, limit=12)
+
         elif op == 'boi_put':
             # Boi com PUT (put ratio backspread 1x2): compra 2 PUTs próximas do OTM
             # (até ~7% abaixo do spot); a venda de 1 PUT ATM/ITM financia parcialmente.

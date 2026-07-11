@@ -89,6 +89,11 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
     <button class="bo-obtn" data-op="trava_baixa_credito">📉💰 Trava de Baixa créd.</button>
     <button class="bo-obtn" data-op="trava_credito">💰 Ratio CALL 1x2 / 2x3</button>
     <button class="bo-obtn" data-op="vaca_travada">🐄 Vaca Travada</button>
+    <button class="bo-obtn" data-op="boi_coberto">🐂 Boi Coberto</button>
+    <button class="bo-obtn" data-op="vaca_tradicional">🐄 Vaca Tradicional</button>
+    <button class="bo-obtn" data-op="vaca_revertida">🐄🔄 Vaca Revertida</button>
+    <button class="bo-obtn" data-op="borboleta">🦋 Borboleta</button>
+    <button class="bo-obtn" data-op="condor">🦅 Condor</button>
     <button class="bo-obtn" data-op="boi_put">🐂 Boi com PUT 1x2</button>
     <button class="bo-obtn" data-op="vaca_put">🐄 Vaca de Baixa (PUTs)</button>
     <button class="bo-obtn" data-op="venda_put_itm">🔽 Venda de PUT</button>
@@ -184,6 +189,11 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     trava_baixa_credito: '📉💰 Trava de Baixa no crédito (CALLs OTM) — crédito 25–60% da largura; EV > 0, POP ≥ 55%',
     trava_credito: '💰 Ratio CALL — venda CALL perto do dinheiro (máx. 5% ITM a 5% OTM) financia compra de CALLs OTM (1x2 e 2x3, lucro ilimitado na alta)',
     vaca_travada:  '🐄 Vaca Travada — +1 CALL baixa, −2 CALLs médias, +1 CALL alta (centro no dinheiro ou acima; aceita investimento; lucro máximo no strike médio)',
+    boi_coberto:   '🐂 Boi Coberto — venda 1 CALL ITM, compra 2 CALLs ATM, venda 1 CALL OTM (custo zero/reduzido ou pequeno crédito; lucro máx. acima do CDI do período)',
+    vaca_tradicional: '🐄 Vaca Tradicional — +1 CALL baixa, −3 CALLs médias, +2 CALLs altas (montada no crédito; lucro máximo no strike médio)',
+    vaca_revertida: '🐄🔄 Vaca Revertida — +1 CALL baixa, −5 CALLs médias, +5 CALLs altas (crédito; lucro ILIMITADO na alta forte)',
+    borboleta:     '🦋 Borboleta — +1 CALL baixa, −2 CALLs médias, +1 CALL alta (débito ≤ 30% da asa; centro próximo do ATM = preço-alvo)',
+    condor:        '🦅 Condor — +1 CALL baixa, −1 e −1 CALLs médias, +1 CALL alta (débito ≤ 40% da asa; platô de lucro entre os strikes vendidos)',
     boi_put:       '🐂 Boi com PUT — compra 2 PUTs próximas do OTM financiadas (parcialmente) pela venda de 1 PUT ATM/ITM; custo até 40% da largura (lucro cresce na queda forte)',
     vaca_put:      '🐄 Vaca de Baixa (PUTs) — +1 PUT alta, −2 PUTs médias, +1 PUT baixa (lucro máximo se cair até o strike médio)',
     venda_put_itm: '🔽 Venda de PUT — strike de 10% OTM até 20% ITM (mensais; prêmio pelo último negócio; remuneração sobre o strike)',
@@ -622,7 +632,38 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     return h + '</tbody></table></div>';
   }
 
+  var GEN_OPS = ['boi_coberto', 'vaca_tradicional', 'vaca_revertida', 'borboleta', 'condor'];
+
+  function legStr(l) {
+    return '<span class="bo-badge ' + (l.q > 0 ? 'call' : 'put') + '" title="' +
+           (l.q > 0 ? 'COMPRA @ ' : 'VENDA @ ') + brl(l.px) + '">' +
+           (l.q > 0 ? '+' : '') + l.q + '× ' + l.sym + '</span>';
+  }
+
+  function estruturaGenTable(rows, expIdx) {
+    if (!rows.length) return '<div class="bo-empty">Nenhuma montagem dentro das regras neste vencimento.</div>';
+    var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
+      '<th>Pernas (qtd × série)</th><th>Strikes</th><th>Montagem</th>' +
+      '<th>Lucro máx.</th><th>Perda máx.</th><th>Relação</th>' +
+      '<th>Breakevens</th><th>Centro vs spot</th></tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += rowAttr(expIdx, j) +
+        '<td>' + r.legs.map(legStr).join(' ') + '</td>' +
+        '<td>' + r.legs.map(function(l) { return fmt(l.k); }).join(' / ') + '</td>' +
+        '<td><span class="bo-badge ' + (r.is_credit ? 'credit' : 'debit') + '">' + r.montagem +
+             ' ' + brl(Math.abs(r.net)) + '</span></td>' +
+        '<td class="pos"><strong>' + (r.gain_unl ? 'ILIMITADO 🚀' : brl(r.max_gain)) + '</strong></td>' +
+        '<td class="neg">' + brl(r.max_loss) + '</td>' +
+        '<td>' + (r.ratio == null ? (r.gain_unl ? '∞' : '—') : fmt(r.ratio, 1)) + '</td>' +
+        '<td>' + (r.bes.length ? r.bes.map(function(b) { return brl(b); }).join(' · ') : '—') + '</td>' +
+        '<td>' + (r.center_dist > 0 ? '+' : '') + fmt(r.center_dist, 1) + '%</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
   function buildTable(op, rows, expIdx) {
+    if (GEN_OPS.indexOf(op) !== -1) return estruturaGenTable(rows, expIdx);
     switch (op) {
       case 'collar':        return collarTable(rows, expIdx);
       case 'fence':         return fenceTable(rows, expIdx);
@@ -718,6 +759,36 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         pt: r.put_symbol, pk: r.put_strike, pp: r.put_ask,
         ct: r.call_symbol, ck: r.call_strike, cprem: r.call_bid, exp: e.exp});
       return {title: title, boxes: boxes, href: '/venda_puts?' + link.toString() + '#collar'};
+    }
+
+    if (GEN_OPS.indexOf(op) !== -1) {
+      var opNames = {boi_coberto: 'Boi Coberto', vaca_tradicional: 'Vaca Tradicional',
+                     vaca_revertida: 'Vaca Revertida', borboleta: 'Borboleta', condor: 'Condor'};
+      title = opNames[op] + ' ' + d.ticker + ' — ' +
+              r.legs.map(function(l) { return (l.q > 0 ? '+' : '') + l.q + '× ' + l.sym; }).join(' / ');
+      boxes = r.legs.map(function(l) {
+        return [(l.q > 0 ? 'Compra ' : 'Venda ') + Math.abs(l.q) + '× ' + l.sym +
+                ' (K ' + fmt(l.k) + ')',
+                brl(l.px * Math.abs(l.q) * qty) + (l.src === 'último' ? ' (últ.)' : ''),
+                l.q > 0 ? 'neg' : 'pos'];
+      });
+      boxes = boxes.concat([
+        [r.is_credit ? 'Crédito recebido' : 'Custo (débito)',
+            brl(Math.abs(r.net) * qty), r.is_credit ? 'pos' : 'neg'],
+        ['Lucro máximo', r.gain_unl ? 'ILIMITADO na alta 🚀' : brl(r.max_gain * qty), 'pos'],
+        ['Perda máxima', brl(r.max_loss * qty), 'neg'],
+        ['Relação lucro/perda', r.ratio == null ? (r.gain_unl ? '∞' : '—') : fmt(r.ratio, 1), ''],
+        ['Breakevens', r.bes.length ? r.bes.map(function(b) { return brl(b); }).join(' · ') : '—', ''],
+        ['Centro vs spot', (r.center_dist > 0 ? '+' : '') + fmt(r.center_dist, 1) + '%', ''],
+        ['Prazo (dias corridos)', dc + ' d.c.', '']
+      ]);
+      var legsStr = r.legs.map(function(l) {
+        return [l.sym, 'CALL', l.q > 0 ? 'BUY' : 'SELL', Math.abs(l.q) * qty,
+                l.px, l.k, e.exp].join(',');
+      }).join('|');
+      var cadeiaP = new URLSearchParams({sim: '1', ativo: d.ticker,
+        nome: opNames[op] + ' ' + d.ticker, legs: legsStr});
+      return {title: title, boxes: boxes, href: '/cadeia-opcoes?' + cadeiaP.toString()};
     }
 
     var stParams = {st: '1', ativo: d.ticker, spot: spot, qty: qty, exp: e.exp};
@@ -933,7 +1004,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     var openBtn = document.getElementById('bm-open-calc');
     openBtn.href = c.href;
     openBtn.textContent = c.href.indexOf('/busca-opcao') === 0
-      ? '🔍 Abrir em Busca de Opção' : '🧮 Abrir em Cálculos de Opções';
+      ? '🔍 Abrir em Busca de Opção'
+      : (c.href.indexOf('/cadeia-opcoes') === 0
+          ? '🔗 Editar em Cadeia de Opções' : '🧮 Abrir em Cálculos de Opções');
   }
 
   function openBoModal(expIdx, rowIdx) {

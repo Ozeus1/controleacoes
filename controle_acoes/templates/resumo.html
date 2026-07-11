@@ -33,14 +33,13 @@
 
     /* ── Celular / PWA ────────────────────────────────── */
     @media (max-width: 768px) {
-        .kpi-grid { grid-template-columns: repeat(5, 1fr); gap: .4rem; margin-bottom: 1.2rem; }
-        .kpi-card { padding: .55rem .3rem; border-radius: 8px; }
-        .kpi-label { font-size: .58rem; line-height: 1.15; min-height: 2em;
+        .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: .55rem; margin-bottom: 1.2rem; }
+        .kpi-card { padding: .8rem .5rem; border-radius: 10px; }
+        .kpi-label { font-size: .72rem; line-height: 1.2; min-height: 2em;
                      display: flex; align-items: center; justify-content: center; }
-        .kpi-value { font-size: .72rem; margin-top: .3rem; line-height: 1.2; }
-        .kpi-card.kpi-main .kpi-value { font-size: .78rem; }
-        .kpi-sub { font-size: .58rem; margin-top: .15rem !important; }
-        .kpi-sub br { display: none; }
+        .kpi-value { font-size: 1.05rem; margin-top: .3rem; line-height: 1.25; }
+        .kpi-card.kpi-main .kpi-value { font-size: 1.15rem; }
+        .kpi-sub { font-size: .68rem; margin-top: .2rem !important; }
         a.kpi-link::after { display: none; }
 
         .pies-grid { gap: .5rem; }
@@ -48,9 +47,10 @@
         .pie-card h3 { font-size: .78rem; margin-bottom: .4rem; }
         .pie-box { height: 205px; }
 
-        /* série mensal precisa de largura p/ ler os meses — rola na horizontal */
-        .chart-scroll .chart-inner { min-width: 640px; height: 280px; }
-        .chart-scroll .chart-inner.h-280 { min-width: 640px; height: 250px; }
+        /* gráficos de série contidos na tela (sem rolagem lateral) */
+        .chart-scroll { overflow-x: visible; }
+        .chart-scroll .chart-inner { height: 250px; }
+        .chart-scroll .chart-inner.h-280 { height: 230px; }
     }
 </style>
 
@@ -90,6 +90,13 @@
                     ({{ avg_4m_realized_pct | pct }})
                 </strong>
             </div>
+        </a>
+        <a href="{{ url_for('dividendos') }}" class="card kpi-card kpi-link">
+            <div class="kpi-label">Dividendos Acumulados</div>
+            <div class="kpi-value" style="color: var(--success-color);">
+                {{ total_dividends | brl }}
+            </div>
+            <div class="kpi-sub">Ações + FIIs recebidos</div>
         </a>
     </div>
 
@@ -409,7 +416,7 @@
             borderColor: '#facc15',
             backgroundColor: 'rgba(250,204,21,0.1)',
             pointBackgroundColor: '#facc15',
-            pointRadius: 4,
+            pointRadius: isMobile ? 2.5 : 4,
             pointHoverRadius: 6,
             borderWidth: 2.5,
             fill: false,
@@ -429,7 +436,10 @@
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: { labels: { color: themeColors.text } },
+                legend: { labels: { color: themeColors.text,
+                                    font: { size: isMobile ? 10 : 12 },
+                                    boxWidth: isMobile ? 12 : 40,
+                                    padding: isMobile ? 6 : 10 } },
                 datalabels: { display: false },   // controlado por dataset
                 tooltip: {
                     callbacks: {
@@ -451,18 +461,27 @@
                 }
             },
             scales: {
-                x: { ticks: { color: themeColors.textSecondary }, grid: { color: 'var(--total-row-bg)' } },
+                x: { ticks: { color: themeColors.textSecondary,
+                              font: { size: isMobile ? 9 : 11 },
+                              maxRotation: isMobile ? 60 : 50 },
+                     grid: { color: 'var(--total-row-bg)' } },
                 y: {
                     position: 'left',
                     ticks: { color: themeColors.textSecondary,
-                             callback: v => 'R$ ' + v.toLocaleString('pt-BR') },
+                             font: { size: isMobile ? 9 : 11 },
+                             callback: v => isMobile
+                                 ? 'R$' + (Math.abs(v) >= 1000 ? (v/1000).toLocaleString('pt-BR', {maximumFractionDigits:1}) + 'k' : v)
+                                 : 'R$ ' + v.toLocaleString('pt-BR') },
                     grid: { color: 'var(--total-row-bg)' }
                 },
                 yLine: {
                     position: 'right',
                     grid: { drawOnChartArea: false },
                     ticks: { color: '#facc15',
-                             callback: v => 'R$ ' + v.toLocaleString('pt-BR', {maximumFractionDigits:0}) }
+                             font: { size: isMobile ? 9 : 11 },
+                             callback: v => isMobile
+                                 ? 'R$' + (Math.abs(v) >= 1000 ? (v/1000).toLocaleString('pt-BR', {maximumFractionDigits:1}) + 'k' : v)
+                                 : 'R$ ' + v.toLocaleString('pt-BR', {maximumFractionDigits:0}) }
                 }
             }
         }
@@ -493,7 +512,7 @@
                         borderColor: '#10b981',
                         backgroundColor: 'rgba(16,185,129,0.1)',
                         pointBackgroundColor: '#10b981',
-                        pointRadius: 4,
+                        pointRadius: isMobile ? 2.5 : 4,
                         borderWidth: 2.5,
                         fill: true,
                         tension: 0.3,
@@ -505,7 +524,7 @@
                         borderColor: '#f59e0b',
                         backgroundColor: 'rgba(245,158,11,0.07)',
                         pointBackgroundColor: '#f59e0b',
-                        pointRadius: 4,
+                        pointRadius: isMobile ? 2.5 : 4,
                         borderWidth: 2.5,
                         fill: false,
                         tension: 0.3,
@@ -518,7 +537,10 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    legend: { labels: { color: themeColors.text } },
+                    legend: { labels: { color: themeColors.text,
+                                        font: { size: isMobile ? 10 : 12 },
+                                        boxWidth: isMobile ? 12 : 40,
+                                        padding: isMobile ? 6 : 10 } },
                     datalabels: { display: false },
                     tooltip: {
                         callbacks: {
@@ -550,9 +572,13 @@
                     }
                 },
                 scales: {
-                    x: { ticks: { color: themeColors.textSecondary }, grid: { color: 'var(--total-row-bg)' } },
+                    x: { ticks: { color: themeColors.textSecondary,
+                                  font: { size: isMobile ? 9 : 11 },
+                                  maxRotation: isMobile ? 60 : 50 },
+                         grid: { color: 'var(--total-row-bg)' } },
                     y: {
                         ticks: { color: themeColors.textSecondary,
+                                 font: { size: isMobile ? 9 : 11 },
                                  callback: v => v.toFixed(1).replace('.', ',') + '%' },
                         grid: { color: 'var(--total-row-bg)' }
                     }

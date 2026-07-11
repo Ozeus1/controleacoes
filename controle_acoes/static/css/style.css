@@ -624,12 +624,15 @@ label {
     .main-nav {
         display: none;
         flex-direction: column;
+        align-items: stretch;
         width: 100%;
+        gap: 0;                        /* remove o espaçamento gigante do desktop */
         background-color: var(--card-bg);
-        padding: 0.5rem;
-        border-radius: 0.5rem;
-        border-bottom: none;
-        padding-bottom: 0.5rem;
+        padding: 0.4rem;
+        border: 1px solid var(--border-color);
+        border-radius: 0.65rem;
+        max-height: calc(100vh - 130px);   /* menu longo rola dentro do painel */
+        overflow-y: auto;
     }
 
     .main-nav.open {
@@ -638,11 +641,23 @@ label {
 
     .main-nav > a,
     .main-nav > .nav-dropdown > .nav-dropdown-toggle {
-        padding: 0.75rem;
-        border-bottom: 1px solid var(--nav-mobile-border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;    /* texto à esquerda, caret à direita */
         width: 100%;
-        text-align: center;
-        justify-content: center;
+        padding: 0.6rem 0.9rem;
+        font-size: 0.95rem;
+        text-align: left;
+        border-bottom: 1px solid var(--nav-mobile-border);
+        border-radius: 0.4rem;
+    }
+
+    .main-nav > a.active,
+    .main-nav > .nav-dropdown > .nav-dropdown-toggle.active {
+        background: var(--hover-bg);
+        border-left: 3px solid var(--accent-color);
+        border-bottom-color: var(--nav-mobile-border);
+        color: var(--text-primary);
     }
 
     /* Submenus mobile: expande inline */
@@ -657,11 +672,12 @@ label {
         transform: none;
         box-shadow: none;
         border: none;
-        border-radius: 0;
+        border-radius: 0.4rem;
         background: var(--hover-bg);
-        padding: 0;
+        padding: 0.15rem 0;
         display: none;
         width: 100%;
+        margin: 0.15rem 0 0.3rem;
     }
 
     .nav-dropdown.open .nav-dropdown-menu {
@@ -669,10 +685,20 @@ label {
     }
 
     .nav-dropdown-menu a {
-        padding: .6rem 1.5rem;
+        display: block;
+        padding: 0.5rem 1.2rem;
         border-bottom: 1px solid var(--nav-mobile-border) !important;
-        text-align: center;
-        font-size: .9rem;
+        text-align: left;
+        font-size: 0.88rem;
+    }
+
+    .nav-dropdown-menu a:last-child {
+        border-bottom: none !important;
+    }
+
+    .nav-dropdown-menu a.active {
+        background: rgba(124, 58, 237, 0.15);
+        color: var(--text-primary);
     }
 
     .menu-toggle {
@@ -703,9 +729,9 @@ label {
     .nav-user-mobile {
         display: flex;
         flex-direction: column;
-        align-items: center;
+        align-items: stretch;
         gap: 0.5rem;
-        padding-top: 0.75rem;
+        padding: 0.75rem 0.35rem 0.4rem;
         margin-top: 0.5rem;
         border-top: 1px solid var(--border-color);
         width: 100%;
@@ -713,24 +739,40 @@ label {
 
     .nav-user-mobile .welcome-text {
         font-size: 0.85rem;
-        margin-bottom: 0.25rem;
+        text-align: center;
     }
 
     .nav-mobile-links {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        justify-content: center;
+        display: grid;
+        grid-template-columns: 1fr 1fr;      /* botões em 2 colunas uniformes */
+        gap: 0.45rem;
+        width: 100%;
     }
 
     .nav-mobile-links a {
         font-size: 0.85rem;
-        padding: 0.4rem 0.75rem !important;
+        padding: 0.55rem 0.5rem !important;
         border-bottom: none !important;
         background-color: var(--dropdown-hover);
         border-radius: 0.5rem;
         width: auto !important;
         white-space: nowrap;
+        text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .nav-mobile-section-label {
+        grid-column: 1 / -1;
+        font-size: 0.72rem;
+        color: var(--text-secondary);
+        text-align: left;
+        margin: 0.3rem 0 0 0.15rem;
+    }
+
+    .nav-mobile-links a:last-child {      /* Sair ocupa a linha inteira */
+        grid-column: 1 / -1;
+        background: rgba(239, 68, 68, 0.12);
     }
 }
 

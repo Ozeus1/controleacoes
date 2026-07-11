@@ -5992,9 +5992,12 @@ def resumo():
         cart_acum_pct.append(round(cart_running, 2))
         selic_acum_pct.append(round(selic_running, 2) if selic_m is not None else None)
 
+    total_dividends = round(sum(monthly_div_acoes.values()) + sum(monthly_div_fiis.values()), 2)
+
     return render_template('resumo.html',
                          total_equity=total_equity, total_acoes=total_acoes,
                          total_fiis=total_fiis, total_etfs=total_etfs,
+                         total_dividends=total_dividends,
                          total_realized_profit=total_realized_profit,
                          avg_4m_realized_profit=avg_4m_realized_profit,
                          avg_4m_realized_pct=avg_4m_realized_pct,

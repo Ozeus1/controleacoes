@@ -4082,6 +4082,31 @@ def api_venda_put_longa(ticker):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# PWA — manifest, service worker e página offline
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/manifest.json')
+def pwa_manifest():
+    from flask import send_from_directory
+    return send_from_directory(app.static_folder, 'manifest.json',
+                               mimetype='application/manifest+json')
+
+
+@app.route('/sw.js')
+def pwa_service_worker():
+    # Servido na raiz para o service worker controlar o site inteiro (scope '/')
+    from flask import send_from_directory
+    resp = send_from_directory(app.static_folder, 'sw.js', mimetype='application/javascript')
+    resp.headers['Cache-Control'] = 'no-cache'
+    return resp
+
+
+@app.route('/offline.html')
+def pwa_offline():
+    return render_template('offline.html')
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Venda de Puts — CRUD
 # ─────────────────────────────────────────────────────────────────────────────
 

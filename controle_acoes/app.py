@@ -3935,6 +3935,20 @@ def api_venda_put_longa(ticker):
     selic  = _selic()
     r_cont = math.log(1 + selic / 100.0)
 
+    def _third_friday(y, m):
+        count, day = 0, 1
+        while True:
+            d = _date(y, m, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    return d
+            day += 1
+
+    def _is_monthly(exp_d):
+        tf = _third_friday(exp_d.year, exp_d.month)
+        return abs((exp_d - tf).days) <= 2  # tolera feriado na 3ª sexta
+
     rows = []
     for o in opt_list:
         cat = str(o.get('category') or o.get('type') or '').upper()
@@ -3962,6 +3976,9 @@ def api_venda_put_longa(ticker):
             continue
         dc = (exp_d - today).days
         if dc <= 40 or dc > 730:                  # >40 dias até 2 anos
+            continue
+        # Só vencimentos mensais (3ª sexta-feira); descarta semanais (sufixo W+dígito)
+        if not _is_monthly(exp_d) or sym.rstrip('0123456789').endswith('W'):
             continue
         if not (0.50 * spot <= strike <= 1.30 * spot):
             continue
@@ -4003,12 +4020,20 @@ def api_venda_put_longa(ticker):
         })
 
     rows.sort(key=lambda x: -x['taxa_per'])
+    # No máximo 10 alternativas por vencimento
+    per_exp, capped = {}, []
+    for r in rows:
+        n = per_exp.get(r['exp'], 0)
+        if n >= 10:
+            continue
+        per_exp[r['exp']] = n + 1
+        capped.append(r)
     return jsonify({
         'ticker':      ticker,
         'spot':        spot,
         'spot_change': spot_change,
         'selic':       round(selic, 2),
-        'rows':        rows[:60],
+        'rows':        capped[:60],
         'total':       len(rows),
     })
 

@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}Venda de PUT Longa{% endblock %}
+{% block extra_scripts %}
+<style>
+#pl-tickers{display:flex;flex-wrap:wrap;gap:.35rem;}
+.pl-tbtn{padding:.25rem .6rem;border:1px solid #475569;border-radius:5px;font-size:.8rem;
+  cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap;transition:background .12s;}
+.pl-tbtn.active{background:#7c3aed;border-color:#7c3aed;font-weight:700;}
+#pl-spot{font-size:1rem;font-weight:700;color:var(--text-primary);display:inline-flex;gap:.5rem;align-items:baseline;}
+#pl-spot .chg-pos{color:#34d399;font-size:.85rem;}
+#pl-spot .chg-neg{color:#f87171;font-size:.85rem;}
+#pl-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
+#pl-error{display:none;color:#f87171;padding:1rem;}
+.pl-wrap{overflow-x:auto;}
+table.pl-tab{width:100%;border-collapse:collapse;font-size:.8rem;}
+table.pl-tab th{padding:.35rem .5rem;text-align:right;white-space:nowrap;
+  background:var(--card-bg);color:var(--text-secondary);font-weight:600;
+  border-bottom:1px solid var(--border-color);}
+table.pl-tab th:first-child,table.pl-tab th:nth-child(2){text-align:left;}
+table.pl-tab td{padding:.35rem .5rem;text-align:right;white-space:nowrap;color:var(--text-primary);
+  border-bottom:1px solid rgba(255,255,255,.04);}
+table.pl-tab td:first-child,table.pl-tab td:nth-child(2){text-align:left;}
+table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
+.pos{color:#34d399;}
+.neg{color:#f87171;}
+.pl-badge{display:inline-block;padding:.08rem .4rem;border-radius:4px;font-size:.72rem;font-weight:700;
+  background:rgba(236,72,153,.15);color:#f9a8d4;}
+.metric-box{background:var(--hover-bg);border:1px solid var(--border-color);border-radius:6px;
+  padding:.6rem .9rem;display:flex;flex-direction:column;gap:.15rem;}
+.metric-label{font-size:.75rem;color:var(--text-secondary);}
+.metric-value{font-size:1.05rem;font-weight:600;color:var(--text-primary);}
+.metric-value.pos{color:#34d399;}
+.metric-value.neg{color:#f87171;}
+#pl-add-input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
+  border-radius:5px;padding:.25rem .5rem;font-size:.82rem;width:110px;text-transform:uppercase;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="padding:1.2rem 1.4rem;">
+
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.4rem;">
+    <h2 style="margin:0;">🛡️ Venda de PUT Longa</h2>
+    <div id="pl-spot"></div>
+  </div>
+  <p style="color:var(--text-secondary);font-size:.85rem;margin:.2rem 0 .8rem;">
+    Venda de PUT cash-secured. Varre <strong>todos os vencimentos até 2 anos</strong> do ativo escolhido,
+    considerando apenas PUTs com <strong>negócio efetivado</strong> (prêmio = último).
+    Rendimento do prêmio com <strong>capital reservado = strike</strong>: retorno = prêmio / strike no período.
+    Se exercido, compra a ação ao <strong>custo efetivo K − P</strong>. Clique na linha para ver o detalhamento.
+  </p>
+
+  <!-- Tickers -->
+  <div style="margin-bottom:.6rem;">
+    <div id="pl-tickers" style="margin-bottom:.5rem;">
+      <button class="pl-tbtn" data-t="BOVA11" onclick="plLoad('BOVA11')">BOVA11</button>
+      {% for rv in ranking_vol %}
+      <button class="pl-tbtn" data-t="{{ rv.ticker }}" onclick="plLoad('{{ rv.ticker }}')">{{ rv.ticker }}</button>
+      {% endfor %}
+    </div>
+    <div style="display:flex;gap:.5rem;align-items:center;">
+      <input id="pl-add-input" type="text" placeholder="Outro ticker…" maxlength="10"
+             onkeydown="if(event.key==='Enter')plLoad(this.value)">
+      <button class="btn btn-secondary btn-sm" onclick="plLoad(document.getElementById('pl-add-input').value)">🔍 Buscar</button>
+    </div>
+  </div>
+
+  <div id="pl-loading">⏳ Varrendo a cadeia de opções (até 2 anos)…</div>
+  <div id="pl-error"></div>
+  <div id="pl-results"></div>
+</div>
+
+<!-- Modal: detalhamento -->
+<div id="pl-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+     background:rgba(0,0,0,.75); align-items:center; justify-content:center; padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b); border-radius:10px; padding:1.2rem 1.4rem;
+              width:min(96vw,900px); max-height:92vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <h3 id="plm-title" style="margin:0; font-size:1rem;"></h3>
+      <button onclick="plCloseModal()" style="background:none; border:none; font-size:1.4rem;
+              color:var(--text-secondary); cursor:pointer; line-height:1;">&times;</button>
+    </div>
+    <div style="display:flex; align-items:center; gap:.6rem; margin-bottom:1rem;">
+      <label style="font-size:.85rem; color:var(--text-secondary);">Quantidade:</label>
+      <input id="plm-qty" type="number" min="100" step="100" value="100"
+             style="width:110px; background:var(--hover-bg); color:var(--text-primary);
+                    border:1px solid var(--border-color); border-radius:5px; padding:.3rem .5rem;">
+    </div>
+    <div id="plm-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(185px,1fr)); gap:.75rem;"></div>
+    <div style="margin-top:1.2rem; display:flex; gap:.6rem; flex-wrap:wrap;">
+      <a id="plm-open" href="#" class="btn btn-primary btn-sm">🔍 Abrir em Busca de Opção</a>
+      <button class="btn btn-secondary btn-sm" onclick="plCloseModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var curTicker = '';
+
+  function fmt(v, dec) {
+    dec = dec == null ? 2 : dec;
+    return v == null ? '—' : v.toLocaleString('pt-BR', {minimumFractionDigits: dec, maximumFractionDigits: dec});
+  }
+  function brl(v) { return v == null ? '—' : 'R$ ' + fmt(v); }
+  function dateBR(iso) {
+    var p = (iso || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+  }
+
+  function render(d) {
+    window.__plData = d;
+    document.getElementById('pl-spot').innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
+          (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
+        : '');
+    if (!d.rows.length) {
+      document.getElementById('pl-results').innerHTML =
+        '<div style="color:var(--text-secondary);padding:1rem;">Nenhuma PUT negociada até 2 anos.</div>';
+      return;
+    }
+    var h = '<div class="pl-wrap"><table class="pl-tab"><thead><tr>' +
+      '<th>#</th><th>PUT (venda)</th><th>Vencimento</th><th>Dias</th>' +
+      '<th>Strike</th><th>ITM/OTM</th><th>Prêmio (últ.)</th>' +
+      '<th title="Strike − prêmio = preço de equilíbrio se exercido">Custo ef. (BE)</th>' +
+      '<th title="(Spot − custo efetivo) / spot — quanto o BE fica abaixo do preço atual">Margem</th>' +
+      '<th title="Prêmio / strike (capital reservado = strike)">Retorno período</th>' +
+      '<th>Retorno a.a.</th><th>vs Selic per.</th><th>Δ</th><th>Vol. fin.</th></tr></thead><tbody>';
+    d.rows.forEach(function(r, j) {
+      var isItm = r.itm_pct > 0;
+      h += '<tr data-i="' + j + '" title="Clique para ver o detalhamento">' +
+        '<td>' + (j + 1) + '</td>' +
+        '<td><span class="pl-badge">' + r.symbol + '</span></td>' +
+        '<td>' + dateBR(r.exp) + '</td><td>' + r.dc + 'd</td>' +
+        '<td>' + brl(r.strike) + '</td>' +
+        '<td class="' + (isItm ? 'neg' : 'pos') + '">' + (isItm ? '−' : '+') + fmt(Math.abs(r.itm_pct), 1) + '% ' + (isItm ? 'ITM' : 'OTM') + '</td>' +
+        '<td class="pos">' + brl(r.premium) + '</td>' +
+        '<td>' + brl(r.custo_ef) + '</td>' +
+        '<td class="' + (r.margem >= 0 ? 'pos' : 'neg') + '">' + (r.margem >= 0 ? '+' : '') + fmt(r.margem) + '%</td>' +
+        '<td class="pos"><strong>+' + fmt(r.taxa_per) + '%</strong></td>' +
+        '<td class="pos">' + fmt(r.taxa_aa, 1) + '%</td>' +
+        '<td class="' + (r.vs_selic >= 0 ? 'pos' : 'neg') + '">' + (r.vs_selic >= 0 ? '+' : '') + fmt(r.vs_selic) + ' p.p.</td>' +
+        '<td>' + fmt(r.delta, 1) + '</td>' +
+        '<td>' + (r.vol_fin ? fmt(r.vol_fin / 1000, 1) + 'k'
+                : (r.vol_qtd ? fmt(r.vol_qtd, 0) + ' un.' : '—')) + '</td>' +
+        '</tr>';
+    });
+    h += '</tbody></table></div>';
+    if (d.total > d.rows.length) {
+      h += '<p style="font-size:.78rem;color:var(--text-secondary);margin-top:.5rem;">Mostrando os ' +
+           d.rows.length + ' maiores rendimentos de ' + d.total + ' séries negociadas.</p>';
+    }
+    document.getElementById('pl-results').innerHTML = h;
+  }
+
+  window.plLoad = function(ticker) {
+    ticker = (ticker || '').trim().toUpperCase();
+    if (!ticker) return;
+    curTicker = ticker;
+    document.querySelectorAll('.pl-tbtn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.t === ticker);
+    });
+    document.getElementById('pl-loading').style.display = 'block';
+    document.getElementById('pl-error').style.display = 'none';
+    document.getElementById('pl-results').innerHTML = '';
+    document.getElementById('pl-spot').innerHTML = '';
+    fetch('/api/venda-put-longa/' + encodeURIComponent(ticker))
+      .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+      .then(function(res) {
+        document.getElementById('pl-loading').style.display = 'none';
+        if (!res.ok || res.j.error) {
+          var e = document.getElementById('pl-error');
+          e.textContent = '⚠️ ' + (res.j.error || 'Erro ao buscar.');
+          e.style.display = 'block';
+          return;
+        }
+        render(res.j);
+      })
+      .catch(function(e) {
+        document.getElementById('pl-loading').style.display = 'none';
+        var el = document.getElementById('pl-error');
+        el.textContent = '⚠️ Falha na requisição: ' + e;
+        el.style.display = 'block';
+      });
+  };
+
+  // ── Modal de detalhamento ──────────────────────────────────────────────────
+  function refreshModal() {
+    var d = window.__plData;
+    var modal = document.getElementById('pl-modal');
+    var r = d.rows[parseInt(modal.dataset.i)];
+    var qty = parseInt(document.getElementById('plm-qty').value) || 100;
+    document.getElementById('plm-title').textContent =
+      'Venda de PUT ' + d.ticker + ' — ' + r.symbol + ' K=' + brl(r.strike) + ' · ' + dateBR(r.exp);
+    var custoVsSpot = r.custo_ef - d.spot;   // <0 = BE abaixo do spot (bom)
+    var boxes = [
+      ['Recebe prêmio PUT (último)', brl(r.premium * qty), 'pos'],
+      ['Capital reservado (strike)', brl(r.strike * qty), ''],
+      ['Retorno no período (P / K)', '+' + fmt(r.taxa_per) + '%', 'pos'],
+      ['Retorno anualizado', fmt(r.taxa_aa, 1) + '% a.a.', 'pos'],
+      ['vs Selic no período', (r.vs_selic >= 0 ? '+' : '') + fmt(r.vs_selic) + ' p.p.', r.vs_selic >= 0 ? 'pos' : 'neg'],
+      ['Se exercido: compra pelo strike', brl(r.strike * qty), ''],
+      ['Custo efetivo (K − P)', brl(r.custo_ef * qty), ''],
+      ['Custo ef. vs spot', (custoVsSpot >= 0 ? '+' : '') + brl(custoVsSpot), custoVsSpot <= 0 ? 'pos' : 'neg'],
+      ['Margem de segurança', (r.margem >= 0 ? '+' : '') + fmt(r.margem) + '%', r.margem >= 0 ? 'pos' : 'neg'],
+      ['Preço de equilíbrio', brl(r.custo_ef), ''],
+      ['Spot atual', brl(d.spot), ''],
+      ['Prazo', r.dc + ' dias corridos', '']
+    ];
+    document.getElementById('plm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
+             '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+    document.getElementById('plm-open').href = '/busca-opcao?t=' + encodeURIComponent(r.symbol);
+  }
+
+  document.getElementById('pl-results').addEventListener('click', function(ev) {
+    var tr = ev.target.closest('tr[data-i]');
+    if (!tr) return;
+    var modal = document.getElementById('pl-modal');
+    modal.dataset.i = tr.dataset.i;
+    refreshModal();
+    modal.style.display = 'flex';
+  });
+  document.getElementById('plm-qty').addEventListener('input', refreshModal);
+  window.plCloseModal = function() { document.getElementById('pl-modal').style.display = 'none'; };
+  document.getElementById('pl-modal').addEventListener('click', function(ev) {
+    if (ev.target === this) plCloseModal();
+  });
+})();
+</script>
+{% endblock %}

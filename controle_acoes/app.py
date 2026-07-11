@@ -3894,6 +3894,123 @@ def api_lancamento_coberto(ticker):
     })
 
 
+@app.route('/venda-put-longa')
+@login_required
+def venda_put_longa():
+    """Página: ranking de venda de PUT (cash-secured) de longo prazo."""
+    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    return render_template('venda_put_longa.html', ranking_vol=ranking_vol, selic=_selic())
+
+
+@app.route('/api/venda-put-longa/<ticker>')
+@login_required
+def api_venda_put_longa(ticker):
+    """Ranking de venda de PUT cash-secured para um ativo. Varre TODOS os
+    vencimentos até 2 anos exigindo PUT com negócio efetivado (último > 0 e
+    volume/negócios > 0). Rendimento do prêmio com capital = strike:
+    retorno = P/K no período; custo efetivo se exercido = K − P."""
+    ticker = ticker.strip().upper()
+    token  = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    if not spot:
+        return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
+
+    try:
+        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+    except OplabApiError as e:
+        return jsonify({'error': str(e), 'status': e.status_code}), 503
+    except Exception:
+        app.logger.exception('api_venda_put_longa error for %s', ticker)
+        return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+
+    opt_list = data if isinstance(data, list) else (
+        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+    )
+
+    from datetime import date as _date
+    today  = _date.today()
+    selic  = _selic()
+    r_cont = math.log(1 + selic / 100.0)
+
+    rows = []
+    for o in opt_list:
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        if 'PUT' not in cat and cat != 'P':
+            continue
+        sym    = str(o.get('symbol') or o.get('ticker') or '').upper()
+        strike = float(o.get('strike') or 0)
+        close  = float(o.get('close') or 0)
+        due    = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due:
+            due = due.split('T')[0]
+        if not sym or strike <= 0 or not due:
+            continue
+        if close < 0.05:                          # precisa ter tido negócio
+            continue
+        # Só séries com negociação registrada — elimina prints estagnados.
+        vol_qtd = float(o.get('volume') or 0)
+        vol_fin = float(o.get('financial_volume') or o.get('volume_financial') or 0)
+        trades  = float(o.get('trades') or o.get('business') or o.get('negocios') or 0)
+        if vol_qtd <= 0 and vol_fin <= 0 and trades <= 0:
+            continue
+        try:
+            exp_d = _date.fromisoformat(due)
+        except ValueError:
+            continue
+        dc = (exp_d - today).days
+        if dc <= 0 or dc > 730:                   # até 2 anos
+            continue
+        if not (0.50 * spot <= strike <= 1.30 * spot):
+            continue
+
+        # Rentabilidade do prêmio com capital reservado = strike
+        taxa_per = close / strike * 100
+        taxa_aa  = ((1 + taxa_per / 100) ** (365.0 / dc) - 1) * 100
+        selic_per = ((1 + selic / 100) ** (dc / 365.0) - 1) * 100
+        custo_ef  = strike - close                # preço de equilíbrio se exercido
+        margem    = (spot - custo_ef) / spot * 100  # >0 = BE abaixo do spot
+
+        # Delta via BS com IV extraída do prêmio (informativo)
+        delta = None
+        T = dc / 365.0
+        intr = max(0.0, strike - spot)
+        if close > intr * 1.005:
+            iv = _implied_vol(spot, strike, T, r_cont, close, False)
+            if 0.005 < iv < 4.9:
+                d1 = (math.log(spot / strike) + (r_cont + 0.5 * iv * iv) * T) / (iv * math.sqrt(T))
+                delta = round((_norm_cdf(d1) - 1) * 100, 1)
+
+        rows.append({
+            'symbol':    sym,
+            'exp':       due,
+            'dc':        dc,
+            'strike':    round(strike, 2),
+            'itm_pct':   round((strike - spot) / spot * 100, 1),   # >0 = ITM (put)
+            'premium':   round(close, 2),
+            'custo_ef':  round(custo_ef, 2),                       # BE se exercido
+            'margem':    round(margem, 2),
+            'taxa_per':  round(taxa_per, 2),
+            'taxa_aa':   round(taxa_aa, 2),
+            'vs_selic':  round(taxa_per - selic_per, 2),
+            'delta':     delta,
+            'vol_fin':   round(vol_fin, 2),
+            'vol_qtd':   round(vol_qtd, 0),
+        })
+
+    rows.sort(key=lambda x: -x['taxa_per'])
+    return jsonify({
+        'ticker':      ticker,
+        'spot':        spot,
+        'spot_change': spot_change,
+        'selic':       round(selic, 2),
+        'rows':        rows[:40],
+        'total':       len(rows),
+    })
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Venda de Puts — CRUD
 # ─────────────────────────────────────────────────────────────────────────────

@@ -3787,10 +3787,14 @@ def lancamento_coberto():
 @login_required
 def api_lancamento_coberto(ticker):
     """Ranking de lançamento coberto (compra ação + venda CALL) para um ativo.
-    Varre TODOS os vencimentos até 2 anos — o objetivo são séries longas —
-    exigindo que a CALL tenha tido negócio (último > 0). Uma chamada OpLab
-    por ativo. Taxa se exercido = (K − custo_líquido)/custo_líquido."""
+    Varre vencimentos MENSAIS acima de 60 dias até 2 anos, exigindo que a
+    CALL tenha tido negócio efetivado. Uma chamada OpLab por ativo.
+    Taxa se exercido = (K − custo_líquido)/custo_líquido.
+    ?m=itm|otm|both filtra a moneyness da CALL (default both)."""
     ticker = ticker.strip().upper()
+    money  = (request.args.get('m') or 'both').lower()
+    if money not in ('itm', 'otm', 'both'):
+        money = 'both'
     token  = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
         return jsonify({'error': 'Token OpLab não configurado'}), 400
@@ -3815,6 +3819,20 @@ def api_lancamento_coberto(ticker):
     today  = _date.today()
     selic  = _selic()
     r_cont = math.log(1 + selic / 100.0)
+
+    def _third_friday(y, m):
+        count, day = 0, 1
+        while True:
+            d = _date(y, m, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    return d
+            day += 1
+
+    def _is_monthly(exp_d):
+        tf = _third_friday(exp_d.year, exp_d.month)
+        return abs((exp_d - tf).days) <= 2  # tolera feriado na 3ª sexta
 
     rows = []
     for o in opt_list:
@@ -3843,9 +3861,16 @@ def api_lancamento_coberto(ticker):
         except ValueError:
             continue
         dc = (exp_d - today).days
-        if dc <= 0 or dc > 730:                   # até 2 anos
+        if dc <= 60 or dc > 730:                  # >60 dias até 2 anos
+            continue
+        # Só vencimentos mensais (3ª sexta-feira); descarta semanais (sufixo W+dígito)
+        if not _is_monthly(exp_d) or sym.rstrip('0123456789').endswith('W'):
             continue
         if not (0.50 * spot <= strike <= 1.30 * spot):
+            continue
+        # Moneyness: CALL é ITM quando strike < spot
+        is_itm = strike < spot
+        if (money == 'itm' and not is_itm) or (money == 'otm' and is_itm):
             continue
         custo = spot - close
         if custo <= 0:
@@ -3854,6 +3879,8 @@ def api_lancamento_coberto(ticker):
         if taxa_ex <= 0:                          # exercício daria prejuízo
             continue
         taxa_aa = ((1 + taxa_ex / 100) ** (365.0 / dc) - 1) * 100
+        if taxa_aa > 999:                         # composto explode em prazos curtos
+            taxa_aa = None
         selic_per = ((1 + selic / 100) ** (dc / 365.0) - 1) * 100
 
         # Delta via BS com IV extraída do prêmio (informativo)
@@ -3876,7 +3903,7 @@ def api_lancamento_coberto(ticker):
             'custo':     round(custo, 2),                          # custo líquido = BE
             'protec':    round(close / spot * 100, 2),
             'taxa_ex':   round(taxa_ex, 2),
-            'taxa_aa':   round(taxa_aa, 2),
+            'taxa_aa':   round(taxa_aa, 2) if taxa_aa is not None else None,
             'vs_selic':  round(taxa_ex - selic_per, 2),
             'delta':     delta,
             'vol_fin':   round(vol_fin, 2),
@@ -3884,12 +3911,20 @@ def api_lancamento_coberto(ticker):
         })
 
     rows.sort(key=lambda x: -x['taxa_ex'])
+    # No máximo 10 alternativas por vencimento
+    per_exp, capped = {}, []
+    for r in rows:
+        n = per_exp.get(r['exp'], 0)
+        if n >= 10:
+            continue
+        per_exp[r['exp']] = n + 1
+        capped.append(r)
     return jsonify({
         'ticker':      ticker,
         'spot':        spot,
         'spot_change': spot_change,
         'selic':       round(selic, 2),
-        'rows':        rows[:40],
+        'rows':        capped[:60],
         'total':       len(rows),
     })
 

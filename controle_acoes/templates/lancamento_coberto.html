@@ -44,9 +44,9 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     <div id="lc-spot"></div>
   </div>
   <p style="color:var(--text-secondary);font-size:.85rem;margin:.2rem 0 .8rem;">
-    Compra a ação + vende CALL. Varre <strong>todos os vencimentos até 2 anos</strong> do ativo escolhido,
+    Compra a ação + vende CALL. Varre <strong>vencimentos mensais acima de 60 dias até 2 anos</strong> do ativo escolhido,
     considerando apenas CALLs que <strong>tiveram negócio</strong> (prêmio = último).
-    Ranking pela <strong>taxa de lucro se exercido</strong> no período — vencimentos longos e ITM profundo entram na busca.
+    Ranking pela <strong>taxa de lucro se exercido</strong> no período.
     Clique na linha para ver o detalhamento.
   </p>
 
@@ -58,10 +58,17 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       <button class="lc-tbtn" data-t="{{ rv.ticker }}" onclick="lcLoad('{{ rv.ticker }}')">{{ rv.ticker }}</button>
       {% endfor %}
     </div>
-    <div style="display:flex;gap:.5rem;align-items:center;">
+    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
       <input id="lc-add-input" type="text" placeholder="Outro ticker…" maxlength="10"
              onkeydown="if(event.key==='Enter')lcLoad(this.value)">
       <button class="btn btn-secondary btn-sm" onclick="lcLoad(document.getElementById('lc-add-input').value)">🔍 Buscar</button>
+      <span style="width:1px;height:20px;background:var(--border-color);margin:0 .3rem;"></span>
+      <label style="font-size:.82rem;color:var(--text-secondary);display:inline-flex;align-items:center;gap:.3rem;white-space:nowrap;cursor:pointer;">
+        <input type="checkbox" id="lc-chk-otm" checked onchange="lcMoneyChanged()"> OTM
+      </label>
+      <label style="font-size:.82rem;color:var(--text-secondary);display:inline-flex;align-items:center;gap:.3rem;white-space:nowrap;cursor:pointer;">
+        <input type="checkbox" id="lc-chk-itm" checked onchange="lcMoneyChanged()"> ITM
+      </label>
     </div>
   </div>
 
@@ -108,6 +115,20 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
   }
 
+  var sortKey = 'taxa_ex', sortDir = -1;    // padrão: maior taxa primeiro
+
+  function sortRows(rows) {
+    rows.sort(function(a, b) {
+      var va = a[sortKey], vb = b[sortKey];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;               // nulos sempre no fim
+      if (vb == null) return -1;
+      if (va < vb) return -sortDir;
+      if (va > vb) return sortDir;
+      return 0;
+    });
+  }
+
   function render(d) {
     window.__lcData = d;
     document.getElementById('lc-spot').innerHTML = d.ticker + ' ' + brl(d.spot) +
@@ -120,13 +141,30 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         '<div style="color:var(--text-secondary);padding:1rem;">Nenhuma CALL negociada com taxa positiva até 2 anos.</div>';
       return;
     }
-    var h = '<div class="lc-wrap"><table class="lc-tab"><thead><tr>' +
-      '<th>#</th><th>CALL (venda)</th><th>Vencimento</th><th>Dias</th>' +
-      '<th>Strike</th><th>ITM/OTM</th><th>Prêmio (últ.)</th>' +
-      '<th title="Spot − prêmio = preço de equilíbrio">Custo líq. (BE)</th>' +
-      '<th title="Prêmio / spot">Proteção</th>' +
-      '<th title="(Strike − custo líquido) / custo líquido">Taxa se exercido</th>' +
-      '<th>Taxa a.a.</th><th>vs Selic per.</th><th>Δ</th><th>Vol. fin.</th></tr></thead><tbody>';
+    sortRows(d.rows);
+    var cols = [
+      ['symbol',   'CALL (venda)', ''],
+      ['exp',      'Vencimento', ''],
+      ['dc',       'Dias', ''],
+      ['strike',   'Strike', ''],
+      ['itm_pct',  'ITM/OTM', ''],
+      ['premium',  'Prêmio (últ.)', ''],
+      ['custo',    'Custo líq. (BE)', 'Spot − prêmio = preço de equilíbrio'],
+      ['protec',   'Proteção', 'Prêmio / spot'],
+      ['taxa_ex',  'Taxa se exercido', '(Strike − custo líquido) / custo líquido'],
+      ['taxa_aa',  'Taxa a.a.', ''],
+      ['vs_selic', 'vs Selic per.', ''],
+      ['delta',    'Δ', ''],
+      ['vol_fin',  'Vol. fin.', '']
+    ];
+    var h = '<div class="lc-wrap"><table class="lc-tab"><thead><tr><th>#</th>';
+    cols.forEach(function(c) {
+      var arrow = sortKey === c[0] ? (sortDir === -1 ? ' ▼' : ' ▲') : '';
+      h += '<th class="lc-sort" data-k="' + c[0] + '"' +
+           (c[2] ? ' title="' + c[2] + '"' : ' title="Clique para ordenar"') +
+           ' style="cursor:pointer;user-select:none;">' + c[1] + arrow + '</th>';
+    });
+    h += '</tr></thead><tbody>';
     d.rows.forEach(function(r, j) {
       var isItm = r.itm_pct > 0;
       h += '<tr data-i="' + j + '" title="Clique para ver o detalhamento">' +
@@ -139,7 +177,7 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         '<td>' + brl(r.custo) + '</td>' +
         '<td class="pos">' + fmt(r.protec) + '%</td>' +
         '<td class="pos"><strong>+' + fmt(r.taxa_ex) + '%</strong></td>' +
-        '<td class="pos">' + fmt(r.taxa_aa, 1) + '%</td>' +
+        '<td class="pos">' + (r.taxa_aa != null ? fmt(r.taxa_aa, 1) + '%' : '—') + '</td>' +
         '<td class="' + (r.vs_selic >= 0 ? 'pos' : 'neg') + '">' + (r.vs_selic >= 0 ? '+' : '') + fmt(r.vs_selic) + ' p.p.</td>' +
         '<td>' + fmt(r.delta, 1) + '</td>' +
         '<td>' + (r.vol_fin ? fmt(r.vol_fin / 1000, 1) + 'k'
@@ -149,10 +187,27 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     h += '</tbody></table></div>';
     if (d.total > d.rows.length) {
       h += '<p style="font-size:.78rem;color:var(--text-secondary);margin-top:.5rem;">Mostrando as ' +
-           d.rows.length + ' melhores taxas de ' + d.total + ' séries negociadas.</p>';
+           d.rows.length + ' melhores taxas de ' + d.total + ' séries negociadas (mensais, venc. &gt; 60 dias).</p>';
     }
     document.getElementById('lc-results').innerHTML = h;
   }
+
+  function lcMoney() {
+    var otm = document.getElementById('lc-chk-otm').checked;
+    var itm = document.getElementById('lc-chk-itm').checked;
+    if (otm && !itm) return 'otm';
+    if (itm && !otm) return 'itm';
+    if (!otm && !itm) {                       // nenhum marcado → volta para ambos
+      document.getElementById('lc-chk-otm').checked = true;
+      document.getElementById('lc-chk-itm').checked = true;
+    }
+    return 'both';
+  }
+
+  window.lcMoneyChanged = function() {
+    lcMoney();
+    if (curTicker) lcLoad(curTicker);
+  };
 
   window.lcLoad = function(ticker) {
     ticker = (ticker || '').trim().toUpperCase();
@@ -165,7 +220,7 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('lc-error').style.display = 'none';
     document.getElementById('lc-results').innerHTML = '';
     document.getElementById('lc-spot').innerHTML = '';
-    fetch('/api/lancamento-coberto/' + encodeURIComponent(ticker))
+    fetch('/api/lancamento-coberto/' + encodeURIComponent(ticker) + '?m=' + lcMoney())
       .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
       .then(function(res) {
         document.getElementById('lc-loading').style.display = 'none';
@@ -202,7 +257,7 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       ['Ganho/perda da ação vs spot', brl(ganhoAcao), ganhoAcao >= 0 ? 'pos' : 'neg'],
       ['Retorno total se exercido', brl((r.strike - r.custo) * qty), 'pos'],
       ['Taxa se exercido (período)', '+' + fmt(r.taxa_ex) + '%', 'pos'],
-      ['Taxa anualizada', fmt(r.taxa_aa, 1) + '% a.a.', 'pos'],
+      ['Taxa anualizada', r.taxa_aa != null ? fmt(r.taxa_aa, 1) + '% a.a.' : '—', 'pos'],
       ['vs Selic no período', (r.vs_selic >= 0 ? '+' : '') + fmt(r.vs_selic) + ' p.p.', r.vs_selic >= 0 ? 'pos' : 'neg'],
       ['Proteção (P / S)', fmt(r.protec) + '%', 'pos'],
       ['Preço de equilíbrio', brl(r.custo), ''],
@@ -216,6 +271,14 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   }
 
   document.getElementById('lc-results').addEventListener('click', function(ev) {
+    var th = ev.target.closest('th.lc-sort');
+    if (th) {                                  // clique no cabeçalho → ordenar
+      var k = th.dataset.k;
+      if (sortKey === k) { sortDir = -sortDir; }
+      else { sortKey = k; sortDir = -1; }
+      if (window.__lcData) render(window.__lcData);
+      return;
+    }
     var tr = ev.target.closest('tr[data-i]');
     if (!tr) return;
     var modal = document.getElementById('lc-modal');

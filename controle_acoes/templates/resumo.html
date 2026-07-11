@@ -26,6 +26,16 @@
     .pie-card h3 { font-size: 1.05rem; margin-bottom: .8rem; text-align: center; }
     .pie-box { position: relative; width: 100%; max-width: 460px; height: 280px; }
 
+    /* ── Seletor de período dos gráficos ── */
+    .periodo-btn {
+        background: var(--hover-bg); color: var(--text-secondary);
+        border: 1px solid var(--border-color); font-size: .75rem;
+        padding: .2rem .6rem; border-radius: 5px; cursor: pointer;
+    }
+    .periodo-btn.periodo-active {
+        background: var(--accent-color); color: #fff; border-color: transparent; font-weight: 600;
+    }
+
     /* ── Gráficos de série: rolagem horizontal no celular ── */
     .chart-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .chart-scroll .chart-inner { position: relative; height: 320px; }
@@ -189,6 +199,11 @@
     <div class="card" style="padding:1.5rem; margin-bottom:2rem;">
         <div style="display:flex; align-items:center; flex-wrap:wrap; gap:.75rem; margin-bottom:1rem;">
             <h3 style="margin:0; font-size:1rem; flex:1;">Resultado Mensal</h3>
+            <div style="display:flex; gap:.25rem;">
+                <button class="periodo-btn" data-p="6">6M</button>
+                <button class="periodo-btn" data-p="12">12M</button>
+                <button class="periodo-btn" data-p="24">24M</button>
+            </div>
             <div style="display:flex; gap:.4rem; flex-wrap:wrap;" id="resumo-series-btns">
                 <button class="btn btn-sm resumo-tog active" data-series="lucro"
                     style="background:#10b981; color:#fff; border:none;">📈 Lucro Operações</button>
@@ -209,6 +224,11 @@
     <div class="card" style="padding:1.5rem; margin-bottom:2rem;">
         <div style="display:flex; align-items:center; flex-wrap:wrap; gap:.75rem; margin-bottom:1rem;">
             <h3 style="margin:0; font-size:1rem; flex:1;">Rentabilidade Acumulada vs Selic</h3>
+            <div style="display:flex; gap:.25rem;">
+                <button class="periodo-btn" data-p="6">6M</button>
+                <button class="periodo-btn" data-p="12">12M</button>
+                <button class="periodo-btn" data-p="24">24M</button>
+            </div>
             {% if current_user.is_admin %}
             <a href="{{ url_for('selic_mensal') }}" class="btn btn-sm btn-secondary"
                style="font-size:.78rem;">⚙️ Editar Selic</a>
@@ -378,12 +398,19 @@
 
     let activeSeries = new Set(['lucro','div_acoes','div_fiis']);
 
+    // ── Período de plotagem (6/12/24 meses, padrão 6) ────────────────────────
+    let periodo = parseInt(localStorage.getItem('resumo-periodo') || '6');
+    if ([6, 12, 24].indexOf(periodo) === -1) periodo = 6;
+    function winSlice(arr) {
+        return periodo >= arr.length ? arr.slice() : arr.slice(-periodo);
+    }
+
     function totalLine() {
-        // Soma mês a mês apenas das séries ativas
-        return monthLabels.map((_, i) =>
+        // Soma mês a mês apenas das séries ativas (dentro da janela)
+        return winSlice(monthLabels).map((_, i) =>
             Object.entries(ALL_SERIES)
                 .filter(([k]) => activeSeries.has(k))
-                .reduce((acc, [, s]) => acc + (s.data[i] || 0), 0)
+                .reduce((acc, [, s]) => acc + (winSlice(s.data)[i] || 0), 0)
         );
     }
 
@@ -393,8 +420,8 @@
             .map(([, s]) => ({
                 type: 'bar',
                 label: s.label,
-                data:  s.data,
-                _pct:  s.pct,
+                data:  winSlice(s.data),
+                _pct:  winSlice(s.pct),
                 backgroundColor: s.bg,
                 borderRadius: 4,
                 barPercentage: 0.7,
@@ -431,7 +458,7 @@
     const ctxProfit = document.getElementById('profitChart').getContext('2d');
     let resumoChart = new Chart(ctxProfit, {
         type: 'bar',
-        data: { labels: monthLabels, datasets: buildDatasets() },
+        data: { labels: winSlice(monthLabels), datasets: buildDatasets() },
         options: {
             responsive: true,
             maintainAspectRatio: false,
@@ -450,7 +477,7 @@
                                 const i = ctx.dataIndex;
                                 const totalPct = Object.entries(ALL_SERIES)
                                     .filter(([k]) => activeSeries.has(k))
-                                    .reduce((acc, [, s]) => acc + (s.pct[i] || 0), 0);
+                                    .reduce((acc, [, s]) => acc + (winSlice(s.pct)[i] || 0), 0);
                                 return 'Total: ' + fmtBRL(v) + '  (' + fmtPct(totalPct) + ' carteira)';
                             }
                             const pct = ctx.dataset._pct ? ctx.dataset._pct[ctx.dataIndex] : 0;
@@ -488,10 +515,13 @@
     });
 
     // ── Gráfico Rentabilidade Acumulada vs Selic ──────────────────────────────
+    let refreshSelicChart = function() {};
     (function() {
-        const cartData  = {{ cart_acum_pct  | tojson }};
-        const selicData = {{ selic_acum_pct | tojson }};
-        const labels    = {{ months | tojson }};
+        const cartFull  = {{ cart_acum_pct  | tojson }};
+        const selicFull = {{ selic_acum_pct | tojson }};
+        // Janela ativa (recalculada por refreshSelicChart) — os tooltips leem daqui
+        let cartData  = [];
+        let selicData = [];
 
         function fmtP(v) {
             if (v === null || v === undefined) return '—';
@@ -501,10 +531,10 @@
         const ctxS = document.getElementById('selicChart');
         if (!ctxS) return;
 
-        new Chart(ctxS.getContext('2d'), {
+        const selicChartObj = new Chart(ctxS.getContext('2d'), {
             type: 'line',
             data: {
-                labels: labels,
+                labels: [],
                 datasets: [
                     {
                         label: 'Carteira (acumulado)',
@@ -585,7 +615,42 @@
                 }
             }
         });
+
+        refreshSelicChart = function() {
+            // Janela dos últimos N meses com rebase: o acumulado reinicia em 0
+            // no começo do período, para a comparação carteira × Selic valer
+            // dentro da janela escolhida.
+            const off   = Math.max(0, cartFull.length - periodo);
+            const baseC = off > 0 ? (cartFull[off - 1]  || 0) : 0;
+            const baseS = off > 0 ? (selicFull[off - 1] || 0) : 0;
+            cartData  = cartFull.slice(off).map(v => v == null ? null : +(v - baseC).toFixed(2));
+            selicData = selicFull.slice(off).map(v => v == null ? null : +(v - baseS).toFixed(2));
+            selicChartObj.data.labels = monthLabels.slice(off);
+            selicChartObj.data.datasets[0].data = cartData;
+            selicChartObj.data.datasets[1].data = selicData;
+            selicChartObj.update();
+        };
+        refreshSelicChart();
     })();
+
+    // ── Botões de período (6/12/24 meses) ─────────────────────────────────────
+    function setPeriodo(p) {
+        periodo = p;
+        localStorage.setItem('resumo-periodo', String(p));
+        document.querySelectorAll('.periodo-btn').forEach(b => {
+            b.classList.toggle('periodo-active', parseInt(b.dataset.p) === p);
+        });
+        resumoChart.data.labels = winSlice(monthLabels);
+        resumoChart.data.datasets = buildDatasets();
+        resumoChart.update();
+        refreshSelicChart();
+    }
+    document.querySelectorAll('.periodo-btn').forEach(b => {
+        b.addEventListener('click', () => setPeriodo(parseInt(b.dataset.p)));
+    });
+    document.querySelectorAll('.periodo-btn').forEach(b => {
+        b.classList.toggle('periodo-active', parseInt(b.dataset.p) === periodo);
+    });
 
     // Botões de toggle das séries
     document.querySelectorAll('.resumo-tog').forEach(btn => {

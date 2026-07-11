@@ -58,10 +58,17 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       <button class="pl-tbtn" data-t="{{ rv.ticker }}" onclick="plLoad('{{ rv.ticker }}')">{{ rv.ticker }}</button>
       {% endfor %}
     </div>
-    <div style="display:flex;gap:.5rem;align-items:center;">
+    <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
       <input id="pl-add-input" type="text" placeholder="Outro ticker…" maxlength="10"
              onkeydown="if(event.key==='Enter')plLoad(this.value)">
       <button class="btn btn-secondary btn-sm" onclick="plLoad(document.getElementById('pl-add-input').value)">🔍 Buscar</button>
+      <span style="width:1px;height:20px;background:var(--border-color);margin:0 .3rem;"></span>
+      <label style="font-size:.82rem;color:var(--text-secondary);display:inline-flex;align-items:center;gap:.3rem;white-space:nowrap;cursor:pointer;">
+        <input type="checkbox" id="pl-chk-otm" checked onchange="plMoneyChanged()"> OTM
+      </label>
+      <label style="font-size:.82rem;color:var(--text-secondary);display:inline-flex;align-items:center;gap:.3rem;white-space:nowrap;cursor:pointer;">
+        <input type="checkbox" id="pl-chk-itm" checked onchange="plMoneyChanged()"> ITM
+      </label>
     </div>
   </div>
 
@@ -108,6 +115,20 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
   }
 
+  var sortKey = 'taxa_per', sortDir = -1;   // padrão: maior retorno primeiro
+
+  function sortRows(rows) {
+    rows.sort(function(a, b) {
+      var va = a[sortKey], vb = b[sortKey];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;               // nulos sempre no fim
+      if (vb == null) return -1;
+      if (va < vb) return -sortDir;
+      if (va > vb) return sortDir;
+      return 0;
+    });
+  }
+
   function render(d) {
     window.__plData = d;
     document.getElementById('pl-spot').innerHTML = d.ticker + ' ' + brl(d.spot) +
@@ -120,13 +141,30 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         '<div style="color:var(--text-secondary);padding:1rem;">Nenhuma PUT negociada até 2 anos.</div>';
       return;
     }
-    var h = '<div class="pl-wrap"><table class="pl-tab"><thead><tr>' +
-      '<th>#</th><th>PUT (venda)</th><th>Vencimento</th><th>Dias</th>' +
-      '<th>Strike</th><th>ITM/OTM</th><th>Prêmio (últ.)</th>' +
-      '<th title="Strike − prêmio = preço de equilíbrio se exercido">Custo ef. (BE)</th>' +
-      '<th title="(Spot − custo efetivo) / spot — quanto o BE fica abaixo do preço atual">Margem</th>' +
-      '<th title="Prêmio / strike (capital reservado = strike)">Retorno período</th>' +
-      '<th>Retorno a.a.</th><th>vs Selic per.</th><th>Δ</th><th>Vol. fin.</th></tr></thead><tbody>';
+    sortRows(d.rows);
+    var cols = [
+      ['symbol',   'PUT (venda)', ''],
+      ['exp',      'Vencimento', ''],
+      ['dc',       'Dias', ''],
+      ['strike',   'Strike', ''],
+      ['itm_pct',  'ITM/OTM', ''],
+      ['premium',  'Prêmio (últ.)', ''],
+      ['custo_ef', 'Custo ef. (BE)', 'Strike − prêmio = preço de equilíbrio se exercido'],
+      ['margem',   'Margem', '(Spot − custo efetivo) / spot — quanto o BE fica abaixo do preço atual'],
+      ['taxa_per', 'Retorno período', 'Prêmio / strike (capital reservado = strike)'],
+      ['taxa_aa',  'Retorno a.a.', ''],
+      ['vs_selic', 'vs Selic per.', ''],
+      ['delta',    'Δ', ''],
+      ['vol_fin',  'Vol. fin.', '']
+    ];
+    var h = '<div class="pl-wrap"><table class="pl-tab"><thead><tr><th>#</th>';
+    cols.forEach(function(c) {
+      var arrow = sortKey === c[0] ? (sortDir === -1 ? ' ▼' : ' ▲') : '';
+      h += '<th class="pl-sort" data-k="' + c[0] + '"' +
+           (c[2] ? ' title="' + c[2] + '"' : ' title="Clique para ordenar"') +
+           ' style="cursor:pointer;user-select:none;">' + c[1] + arrow + '</th>';
+    });
+    h += '</tr></thead><tbody>';
     d.rows.forEach(function(r, j) {
       var isItm = r.itm_pct > 0;
       h += '<tr data-i="' + j + '" title="Clique para ver o detalhamento">' +
@@ -154,6 +192,23 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('pl-results').innerHTML = h;
   }
 
+  function plMoney() {
+    var otm = document.getElementById('pl-chk-otm').checked;
+    var itm = document.getElementById('pl-chk-itm').checked;
+    if (otm && !itm) return 'otm';
+    if (itm && !otm) return 'itm';
+    if (!otm && !itm) {                       // nenhum marcado → volta para ambos
+      document.getElementById('pl-chk-otm').checked = true;
+      document.getElementById('pl-chk-itm').checked = true;
+    }
+    return 'both';
+  }
+
+  window.plMoneyChanged = function() {
+    var m = plMoney();
+    if (curTicker) plLoad(curTicker);
+  };
+
   window.plLoad = function(ticker) {
     ticker = (ticker || '').trim().toUpperCase();
     if (!ticker) return;
@@ -165,7 +220,7 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('pl-error').style.display = 'none';
     document.getElementById('pl-results').innerHTML = '';
     document.getElementById('pl-spot').innerHTML = '';
-    fetch('/api/venda-put-longa/' + encodeURIComponent(ticker))
+    fetch('/api/venda-put-longa/' + encodeURIComponent(ticker) + '?m=' + plMoney())
       .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
       .then(function(res) {
         document.getElementById('pl-loading').style.display = 'none';
@@ -216,6 +271,14 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   }
 
   document.getElementById('pl-results').addEventListener('click', function(ev) {
+    var th = ev.target.closest('th.pl-sort');
+    if (th) {                                  // clique no cabeçalho → ordenar
+      var k = th.dataset.k;
+      if (sortKey === k) { sortDir = -sortDir; }
+      else { sortKey = k; sortDir = -1; }
+      if (window.__plData) render(window.__plData);
+      return;
+    }
     var tr = ev.target.closest('tr[data-i]');
     if (!tr) return;
     var modal = document.getElementById('pl-modal');

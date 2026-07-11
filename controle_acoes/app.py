@@ -3908,8 +3908,12 @@ def api_venda_put_longa(ticker):
     """Ranking de venda de PUT cash-secured para um ativo. Varre TODOS os
     vencimentos até 2 anos exigindo PUT com negócio efetivado (último > 0 e
     volume/negócios > 0). Rendimento do prêmio com capital = strike:
-    retorno = P/K no período; custo efetivo se exercido = K − P."""
+    retorno = P/K no período; custo efetivo se exercido = K − P.
+    ?m=itm|otm|both filtra a moneyness da PUT (default both)."""
     ticker = ticker.strip().upper()
+    money  = (request.args.get('m') or 'both').lower()
+    if money not in ('itm', 'otm', 'both'):
+        money = 'both'
     token  = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
         return jsonify({'error': 'Token OpLab não configurado'}), 400
@@ -3981,6 +3985,10 @@ def api_venda_put_longa(ticker):
         if not _is_monthly(exp_d) or sym.rstrip('0123456789').endswith('W'):
             continue
         if not (0.50 * spot <= strike <= 1.30 * spot):
+            continue
+        # Moneyness: PUT é ITM quando strike > spot
+        is_itm = strike > spot
+        if (money == 'itm' and not is_itm) or (money == 'otm' and is_itm):
             continue
 
         # Rentabilidade do prêmio com capital reservado = strike

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block title %}Importar Extrato B3{% endblock %}
+{% block content %}
+<div class="card" style="padding:1.3rem 1.5rem; max-width:760px; margin:0 auto;">
+  <h2 style="margin:0 0 .5rem;">📥 Importar Extrato de Negociação (B3)</h2>
+  <p style="color:var(--text-secondary); font-size:.88rem; line-height:1.5;">
+    Reconstrói a <strong>curva real de patrimônio</strong> a partir do seu extrato de negociação da B3.
+    O sistema lê todas as compras e vendas <strong>à vista</strong> de ações, FIIs e ETFs (ignora opções,
+    futuros, renda fixa e exercícios), reconstrói a posição de cada mês, valoriza a mercado com a
+    cotação histórica (Yahoo) e grava os pontos reais no gráfico de Evolução do Patrimônio.
+    Também preenche as <strong>datas de entrada/saída</strong> dos ativos.
+  </p>
+
+  <div style="background:rgba(59,130,246,.08); border:1px solid rgba(59,130,246,.35);
+              border-radius:8px; padding:.75rem .9rem; font-size:.82rem; margin:.6rem 0 1rem;">
+    <strong>ℹ️ Posição inicial:</strong> uso como âncora a sua carteira em
+    <strong>{{ initial_date }}</strong> ({{ initial_count }} ativos, do Extrato de Posição B3) para
+    cobrir o que você já tinha antes do início do extrato de negociação.
+    Os snapshots <em>estimados</em> são substituídos pelos reais; os snapshots reais já coletados
+    (a partir de quando o app começou a registrar) são preservados. Pode reimportar quando quiser.
+  </div>
+
+  <div style="border:2px dashed var(--border-color); border-radius:10px; padding:1.4rem;
+              text-align:center; margin-bottom:1rem;">
+    <input type="file" id="b3-file" accept=".csv,text/csv"
+           style="display:block; margin:0 auto .8rem; color:var(--text-primary);">
+    <div style="font-size:.78rem; color:var(--text-secondary);">
+      Arquivo <code>negociacao-AAAA-MM-DD-...csv</code> exportado em
+      <em>investidor.b3.com.br → Extrato → Negociação</em>.
+    </div>
+  </div>
+
+  <button id="b3-run" class="btn btn-primary" style="width:100%;">🔄 Reconstruir curva de patrimônio</button>
+
+  <div id="b3-progress" style="display:none; margin-top:1rem; padding:.8rem 1rem;
+       background:var(--hover-bg); border:1px solid var(--border-color); border-radius:8px;">
+    <div style="display:flex; align-items:center; gap:.6rem;">
+      <div class="b3-spinner" style="width:16px; height:16px; border:2px solid var(--border-color);
+           border-top-color:var(--accent-color); border-radius:50%; animation:b3spin 1s linear infinite;"></div>
+      <span id="b3-msg" style="font-size:.86rem;">Processando…</span>
+    </div>
+  </div>
+
+  <div id="b3-result" style="display:none; margin-top:1rem; padding:.8rem 1rem; border-radius:8px; font-size:.88rem;"></div>
+
+  <div style="margin-top:1.2rem;">
+    <a href="{{ url_for('resumo') }}" class="btn btn-secondary btn-sm">← Voltar ao Resumo</a>
+  </div>
+</div>
+
+<style>@keyframes b3spin{to{transform:rotate(360deg);}}</style>
+
+<script>
+(function() {
+  var runBtn  = document.getElementById('b3-run');
+  var fileInp = document.getElementById('b3-file');
+  var prog    = document.getElementById('b3-progress');
+  var msgEl   = document.getElementById('b3-msg');
+  var resEl   = document.getElementById('b3-result');
+  var polling = null;
+
+  function showResult(text, ok) {
+    prog.style.display = 'none';
+    resEl.style.display = 'block';
+    resEl.style.background = ok ? 'rgba(16,185,129,.12)' : 'rgba(248,113,113,.12)';
+    resEl.style.border = '1px solid ' + (ok ? 'rgba(16,185,129,.4)' : 'rgba(248,113,113,.4)');
+    resEl.innerHTML = (ok ? '✅ ' : '⚠️ ') + text +
+      (ok ? ' <a href="{{ url_for("resumo") }}" style="color:var(--accent-color);">Ver o gráfico →</a>' : '');
+    runBtn.disabled = false;
+  }
+
+  function poll(taskId) {
+    fetch('/api/update_progress/' + taskId)
+      .then(function(r) { return r.json(); })
+      .then(function(t) {
+        if (!t || !t.status) { return; }
+        msgEl.textContent = t.msg || 'Processando…';
+        if (t.status === 'done') {
+          clearInterval(polling);
+          showResult(t.msg || 'Concluído.', t.category !== 'danger' && t.category !== 'warning');
+        }
+      })
+      .catch(function() {});
+  }
+
+  runBtn.addEventListener('click', function() {
+    var f = fileInp.files[0];
+    if (!f) { alert('Selecione o arquivo CSV do extrato de negociação.'); return; }
+    runBtn.disabled = true;
+    resEl.style.display = 'none';
+    prog.style.display = 'block';
+    msgEl.textContent = 'Enviando e lendo o arquivo…';
+
+    var fd = new FormData();
+    fd.append('csv', f);
+    fetch('/api/importar-b3', { method: 'POST', body: fd })
+      .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+      .then(function(res) {
+        if (!res.ok || res.j.error) { showResult(res.j.error || 'Falha ao enviar.', false); return; }
+        msgEl.textContent = res.j.trades + ' operações à vista lidas. Reconstruindo…';
+        polling = setInterval(function() { poll(res.j.task_id); }, 1500);
+        poll(res.j.task_id);
+      })
+      .catch(function(e) { showResult('Falha na requisição: ' + e, false); });
+  });
+})();
+</script>
+{% endblock %}

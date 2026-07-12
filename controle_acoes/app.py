@@ -6524,6 +6524,323 @@ def historico():
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Importação do extrato de negociação da B3 → reconstrução da curva real
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Posição inicial em 01/09/2025 (extrato de posição B3), consolidada por ticker.
+# Serve de âncora quando o CSV de negociação começa depois dessa data.
+_B3_INITIAL_POSITION_DATE = '2025-09-01'
+_B3_INITIAL_POSITION = {
+    'BBAS3': 60, 'BRSR6': 200, 'HYPE3': 200, 'PETR4': 100,
+    'AIEC11': 25, 'BRCO11': 12, 'BTLG11': 10, 'CACR11': 17, 'CPTS11': 250,
+    'GARE11': 220, 'HGCR11': 10, 'HGLG11': 10, 'HGRU11': 6, 'HSLG11': 10,
+    'HSML11': 11, 'INLG11': 14, 'ITIT11': 12, 'KNCR11': 12, 'KNSC11': 160,
+    'LVBI11': 6, 'MCCI11': 15, 'MFII11': 13, 'MXRF11': 350, 'NSLU11': 4,
+    'PMLL11': 8, 'RBRF11': 174, 'RBRL11': 12, 'RBRP11': 17, 'RBRR11': 10,
+    'RBVA11': 200, 'RVBI11': 25, 'RZAK11': 10, 'RZAT11': 11, 'RZTR11': 13,
+    'SNCI11': 11, 'TGAR11': 13, 'TRXF11': 7, 'TVRI11': 5, 'URPR11': 15,
+    'VGHF11': 350, 'VGIP11': 9, 'VGIR11': 350, 'VILG11': 11, 'VISC11': 10,
+    'VRTM11': 192, 'VTLT11': 11, 'XPCI11': 17, 'XPIN11': 19, 'XPML11': 13,
+    'AAZQ11': 260, 'AGRX11': 170, 'FGAA11': 270, 'OIAG11': 296, 'RURA11': 200,
+    'RZAG11': 200, 'SNAG11': 260, 'VGIA11': 350, 'XPCA11': 260,
+}
+
+# ETFs de índice (tratados como tipo ETF na curva)
+_KNOWN_ETFS = {
+    'BOVA11', 'BOVX11', 'SMAL11', 'IVVB11', 'GOLD11', 'SPXS11', 'DOLA11',
+    'BTCI11', 'FIXA11', 'XFIX11', 'HASH11', 'QBTC11', 'ETHE11',
+}
+
+
+def _b3_norm_ticker(code):
+    """Normaliza um código de negociação B3 para o ticker do ativo à vista.
+    Remove o sufixo 'F' de fracionário (ex.: PETR4F → PETR4)."""
+    code = (code or '').strip().upper()
+    if len(code) > 5 and code.endswith('F') and code[-2].isdigit():
+        code = code[:-1]
+    return code
+
+
+def _b3_classify(ticker):
+    """Classifica o ticker em ACAO / FII / ETF a partir das fontes conhecidas
+    (posição inicial, ETFs de índice) e de heurística pelo sufixo."""
+    if ticker in _KNOWN_ETFS:
+        return 'ETF'
+    # Tickers 11 do FIAGRO/FII da posição inicial já são fundos imobiliários
+    if ticker in _B3_INITIAL_POSITION and ticker.endswith('11'):
+        return 'FII'
+    if ticker.endswith('11') or ticker.endswith('11B'):
+        return 'FII'
+    return 'ACAO'
+
+
+def parse_b3_trades(raw_bytes):
+    """Lê o CSV de negociação da B3 (encoding Latin-1) e devolve só as operações
+    à VISTA de ações/ETF/FII, como lista de dicts ordenada por data crescente:
+        {date: date, side: 'C'|'V', ticker, qty, price}
+    Ignora opções, futuros, renda fixa, exercícios e mercado a termo."""
+    import csv as _csv
+    import io as _io
+    from datetime import date as _date
+
+    text = raw_bytes.decode('latin-1', errors='replace')
+    # separador ';'; primeira linha é cabeçalho
+    reader = _csv.reader(_io.StringIO(text), delimiter=';')
+    rows = list(reader)
+    if not rows:
+        return []
+    trades = []
+    for r in rows[1:]:
+        if len(r) < 9:
+            continue
+        data_str, tipo_mov, mercado, _venc, _inst, code, qtd, _preco, valor = r[:9]
+        mercado = (mercado or '').strip()
+        # Só mercado à vista / fracionário de ações; descarta o resto
+        if not (mercado.startswith('Mercado') and 'Vista' in mercado
+                or mercado.startswith('Mercado') and 'racion' in mercado):
+            continue
+        tipo_mov = (tipo_mov or '').strip().lower()
+        if tipo_mov.startswith('compra'):
+            side = 'C'
+        elif tipo_mov.startswith('venda'):
+            side = 'V'
+        else:
+            continue
+        try:
+            d, m, y = data_str.strip().split('/')
+            dt = _date(int(y), int(m), int(d))
+        except (ValueError, AttributeError):
+            continue
+        ticker = _b3_norm_ticker(code)
+        if not ticker:
+            continue
+        try:
+            qty = int(float((qtd or '0').strip().replace('.', '').replace(',', '.')))
+        except ValueError:
+            continue
+        # preço unitário: usa 'Valor'/qty (mais robusto que o campo Preço formatado)
+        try:
+            val = float((valor or '0').replace('R$', '').replace('.', '').replace(',', '.').strip())
+            price = val / qty if qty else 0.0
+        except (ValueError, ZeroDivisionError):
+            price = 0.0
+        if qty <= 0:
+            continue
+        trades.append({'date': dt, 'side': side, 'ticker': ticker,
+                       'qty': qty, 'price': round(price, 4)})
+    trades.sort(key=lambda t: t['date'])
+    return trades
+
+
+def _b3_daily_positions(trades, initial_pos, initial_date):
+    """Percorre as operações em ordem e devolve a posição (qtd por ticker) ao
+    FIM de cada dia com movimentação, mais o conjunto de tickers envolvidos.
+    Retorna (list[(date, {ticker: qty})], set(tickers))."""
+    from datetime import date as _date
+    pos = dict(initial_pos)
+    tickers = set(pos.keys())
+    by_day = {}
+    for t in trades:
+        tickers.add(t['ticker'])
+        delta = t['qty'] if t['side'] == 'C' else -t['qty']
+        pos[t['ticker']] = pos.get(t['ticker'], 0) + delta
+        # guarda uma cópia do estado ao fim do dia
+        by_day[t['date']] = {k: v for k, v in pos.items() if v != 0}
+    days = sorted(by_day.items())
+    return days, tickers
+
+
+def _fetch_close_history(tickers, start, end):
+    """Baixa o fechamento diário (Yahoo) de cada ticker no período.
+    Retorna {ticker: {date_iso: close}}. Falhas por ticker são ignoradas."""
+    import yfinance as yf
+    out = {}
+    for tk in sorted(tickers):
+        try:
+            h = yf.Ticker(f'{tk}.SA').history(start=start.isoformat(),
+                                              end=(end + timedelta(days=1)).isoformat(),
+                                              auto_adjust=False)
+            if h is None or h.empty:
+                continue
+            series = {}
+            for idx, row in h.iterrows():
+                series[idx.date().isoformat()] = float(row['Close'])
+            if series:
+                out[tk] = series
+        except Exception:
+            app.logger.warning('histórico Yahoo falhou para %s', tk)
+    return out
+
+
+def rebuild_equity_from_b3(user_id, trades, task_id=None):
+    """Reconstrói os snapshots diários de patrimônio a partir das operações da
+    B3 (à vista), valorizando cada dia a preço de mercado (Yahoo). Grava
+    PortfolioSnapshot reais, substituindo os estimados e preservando os reais.
+    Também preenche entry_date/exit_date dos ativos que ainda não têm.
+    Retorna dict com o resumo."""
+    from datetime import date as _date, timedelta as _td
+
+    init_date = _date.fromisoformat(_B3_INITIAL_POSITION_DATE)
+    days, tickers = _b3_daily_positions(trades, _B3_INITIAL_POSITION, init_date)
+    if not days:
+        return {'ok': False, 'msg': 'Nenhuma operação à vista encontrada no CSV.'}
+
+    first_day = min(days[0][0], init_date)
+    last_day  = now_brt().date()
+
+    if task_id:
+        _set_task(task_id, {'status': 'running',
+                            'msg': f'Baixando cotação histórica de {len(tickers)} ativos…',
+                            'category': ''})
+    hist = _fetch_close_history(tickers, first_day, last_day)
+
+    # Preço mais recente conhecido por ticker (para dias sem cotação, usa o último)
+    def _price_on(tk, day_iso, last_known):
+        series = hist.get(tk)
+        if series and day_iso in series:
+            last_known[tk] = series[day_iso]
+            return series[day_iso]
+        return last_known.get(tk, 0.0)
+
+    # Sequência de posições por dia: expande para TODO dia (carrega a última
+    # posição conhecida) e valoriza mensalmente (último dia de cada mês).
+    pos_events = dict(days)                       # {date: {ticker: qty}}
+    cur_pos = {k: v for k, v in _B3_INITIAL_POSITION.items() if v}
+    last_known_price = {}
+
+    # gera fim de cada mês entre first_day e last_day
+    from dateutil.relativedelta import relativedelta as _rd
+    snapshots = []                                # [(date, acoes, fiis, etfs)]
+    cursor = _date(first_day.year, first_day.month, 1)
+    while cursor <= last_day:
+        # último dia do mês (ou hoje, no mês corrente)
+        nxt = cursor + _rd(months=1)
+        month_end = min(nxt - _td(days=1), last_day)
+        # aplica todos os eventos de posição até o fim do mês
+        for dd, p in days:
+            if dd <= month_end:
+                cur_pos = p
+        # valoriza a posição no fim do mês
+        acoes = fiis = etfs = 0.0
+        me_iso = month_end.isoformat()
+        for tk, qty in cur_pos.items():
+            if qty <= 0:
+                continue
+            px = _price_on(tk, me_iso, last_known_price)
+            val = qty * px
+            tp = _b3_classify(tk)
+            if tp == 'FII':
+                fiis += val
+            elif tp == 'ETF':
+                etfs += val
+            else:
+                acoes += val
+        snapshots.append((month_end, round(acoes, 2), round(fiis, 2), round(etfs, 2)))
+        cursor = nxt
+
+    # ── Grava snapshots: remove estimados, preserva reais ────────────────────
+    if task_id:
+        _set_task(task_id, {'status': 'running', 'msg': 'Gravando histórico…', 'category': ''})
+    PortfolioSnapshot.query.filter_by(user_id=user_id, estimated=True).delete()
+    written = 0
+    for (dd, acoes, fiis, etfs) in snapshots:
+        iso = dd.isoformat()
+        existing = PortfolioSnapshot.query.filter_by(user_id=user_id, snap_date=iso).first()
+        if existing and not existing.estimated:
+            continue                              # snapshot real já coletado: preserva
+        if existing is None:
+            existing = PortfolioSnapshot(user_id=user_id, snap_date=iso)
+            db.session.add(existing)
+        existing.total_acoes = acoes
+        existing.total_fiis  = fiis
+        existing.total_etfs  = etfs
+        existing.total_equity = round(acoes + fiis + etfs, 2)
+        existing.estimated = False                # reconstruído do extrato = real
+        existing.created_at = datetime.utcnow()
+        written += 1
+
+    # ── Preenche entry_date / exit_date pelos primeiros/últimos negócios ──────
+    first_buy, last_by_ticker, ran_out = {}, {}, {}
+    running = dict(_B3_INITIAL_POSITION)
+    for t in trades:
+        tk = t['ticker']
+        if t['side'] == 'C' and tk not in first_buy:
+            first_buy[tk] = t['date']
+        running[tk] = running.get(tk, 0) + (t['qty'] if t['side'] == 'C' else -t['qty'])
+        last_by_ticker[tk] = t['date']
+        ran_out[tk] = (running[tk] <= 0)          # zerou nesta última operação?
+    dates_set = 0
+    for tk in set(list(first_buy) + list(_B3_INITIAL_POSITION)):
+        asset = Asset.query.filter_by(user_id=user_id, ticker=tk).first()
+        if not asset:
+            continue
+        if asset.entry_date is None:
+            asset.entry_date = (first_buy.get(tk)
+                                or _date.fromisoformat(_B3_INITIAL_POSITION_DATE))
+            dates_set += 1
+        # saída só se a posição terminou zerada e o ativo está sem quantidade
+        if asset.exit_date is None and (asset.quantity or 0) <= 0 and ran_out.get(tk):
+            asset.exit_date = last_by_ticker.get(tk)
+            dates_set += 1
+
+    db.session.commit()
+    return {'ok': True, 'snapshots': written, 'tickers': len(tickers),
+            'dates_set': dates_set,
+            'period': f'{first_day.isoformat()} → {last_day.isoformat()}',
+            'quotes': len(hist)}
+
+
+@app.route('/importar-b3', methods=['GET'])
+@login_required
+def importar_b3():
+    """Página: upload do extrato de negociação da B3 para reconstruir a curva."""
+    return render_template('importar_b3.html',
+                           initial_date=_B3_INITIAL_POSITION_DATE,
+                           initial_count=len(_B3_INITIAL_POSITION))
+
+
+@app.route('/api/importar-b3', methods=['POST'])
+@login_required
+def api_importar_b3():
+    """Recebe o CSV, dispara a reconstrução em background e devolve task_id."""
+    f = request.files.get('csv')
+    if not f:
+        return jsonify({'error': 'Envie o arquivo CSV do extrato de negociação.'}), 400
+    raw = f.read()
+    try:
+        trades = parse_b3_trades(raw)
+    except Exception as e:
+        app.logger.exception('parse_b3_trades falhou')
+        return jsonify({'error': f'Não consegui ler o CSV: {e}'}), 400
+    if not trades:
+        return jsonify({'error': 'Nenhuma operação à vista (ações/FII/ETF) encontrada no arquivo.'}), 400
+
+    uid = current_user.id
+    task_id = str(uuid.uuid4())
+    _set_task(task_id, {'status': 'running', 'msg': 'Processando…', 'category': ''})
+
+    def _run():
+        with app.app_context():
+            try:
+                res = rebuild_equity_from_b3(uid, trades, task_id=task_id)
+                if res.get('ok'):
+                    msg = (f"Histórico reconstruído: {res['snapshots']} meses, "
+                           f"{res['tickers']} ativos ({res['quotes']} com cotação), "
+                           f"{res['dates_set']} datas de entrada/saída. Período {res['period']}.")
+                    _set_task(task_id, {'status': 'done', 'msg': msg, 'category': 'success'})
+                else:
+                    _set_task(task_id, {'status': 'done', 'msg': res.get('msg', 'Falha.'),
+                                        'category': 'warning'})
+            except Exception as e:
+                app.logger.exception('rebuild_equity_from_b3 falhou')
+                _set_task(task_id, {'status': 'done',
+                                    'msg': f'Erro ao reconstruir: {e}', 'category': 'danger'})
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({'task_id': task_id, 'trades': len(trades)})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Patrimônio: totais por tipo, snapshots diários e curva de evolução
 # ─────────────────────────────────────────────────────────────────────────────
 

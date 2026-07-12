@@ -210,6 +210,7 @@
                             <div class="dropdown-section-label">🔧 Ferramentas</div>
                             <a href="{{ url_for('config') }}">⚙️ APIs</a>
                             <a href="{{ url_for('importar_excel') }}">📊 Importar Excel</a>
+                            <a href="{{ url_for('importar_b3') }}">📥 Importar Extrato B3</a>
                             {% if current_user.is_admin %}
                             <a href="{{ url_for('selic_mensal') }}">📈 Selic Mensal</a>
                             {% endif %}
@@ -309,6 +310,7 @@
                         <span class="nav-mobile-section-label">🔧 Ferramentas</span>
                         <a href="{{ url_for('config') }}">⚙️ APIs</a>
                         <a href="{{ url_for('importar_excel') }}">📊 Importar Excel</a>
+                        <a href="{{ url_for('importar_b3') }}">📥 Importar Extrato B3</a>
                         <span class="nav-mobile-section-label">⚙️ Preferências</span>
                         <a href="#" onclick="toggleIndicators(); return false;">👁️ Alternar Barra</a>
                         <a href="#" onclick="toggleTheme(); return false;">🌓 Alternar Tema</a>

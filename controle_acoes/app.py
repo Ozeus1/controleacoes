@@ -6567,60 +6567,52 @@ def record_portfolio_snapshot(user_id):
 
 
 def _reconstruct_equity_history(user_id, months_back=24):
-    """Reconstrói (estima) o patrimônio no fim de cada mês passado, a partir do
-    patrimônio atual, desfazendo mês a mês:
-      • as vendas realizadas no mês (TradeHistory) — devolve o capital de compra;
-      • as compras que entraram no mês (Asset.entry_date) — retira o investido;
-      • a variação de preço do mês, aproximada pela Selic (proxy neutro), já que
-        não há série histórica de cotação por ativo.
-    Só é usado para preencher meses sem snapshot real. Retorna {YYYY-MM: equity_fim}."""
+    """Estima o patrimônio no fim de cada mês passado, recuando a partir do
+    patrimônio atual. A cada mês desfazemos o APORTE LÍQUIDO do mês (compras −
+    vendas, a preço de custo) e a valorização de preço (proxy: Selic do mês).
+
+    Só cobre datas anteriores ao início dos snapshots reais. É uma ESTIMATIVA:
+    as datas de entrada vêm de importação, então serve para dar contexto ao
+    gráfico (trecho tracejado), não como número exato. Nunca retorna acima do
+    patrimônio atual (a curva estimada não pode "subir acima" do real de hoje).
+    Retorna {YYYY-MM: equity_fim_do_mes}."""
     from dateutil.relativedelta import relativedelta
     total_now, _, _, _ = _equity_by_type(user_id)
+    if total_now <= 0:
+        return {}
 
-    hist = TradeHistory.query.filter_by(user_id=user_id).all()
-    assets = Asset.query.filter_by(user_id=user_id).all()
-
-    # Vendas por mês: capital que saiu da carteira (preço de venda × qtd)
-    sold_by_month = {}
-    for h in hist:
-        if h.exit_date and h.sell_price and h.quantity:
-            mk = h.exit_date.strftime('%Y-%m')
-            sold_by_month[mk] = sold_by_month.get(mk, 0.0) + h.sell_price * h.quantity
-    # Compras por mês: capital investido em posições que ainda constam (entry_date)
-    bought_by_month = {}
-    for a in assets:
+    # Aporte líquido por mês = investido em novas posições − capital das vendas.
+    # Positivo = a carteira cresceu por dinheiro novo naquele mês.
+    net_flow = {}
+    for a in Asset.query.filter_by(user_id=user_id).all():
         if a.entry_date and (a.quantity or 0) > 0:
             mk = a.entry_date.strftime('%Y-%m')
-            bought_by_month[mk] = bought_by_month.get(mk, 0.0) + (a.quantity * (a.avg_price or 0))
+            net_flow[mk] = net_flow.get(mk, 0.0) + a.quantity * (a.avg_price or 0)
+    for h in TradeHistory.query.filter_by(user_id=user_id).all():
+        if h.exit_date and h.buy_price and h.quantity:
+            mk = h.exit_date.strftime('%Y-%m')
+            net_flow[mk] = net_flow.get(mk, 0.0) - h.buy_price * h.quantity
 
+    selic_rows = {s.mes_ano: s.taxa for s in SelicMensal.query.all()}
+    _last_selic = selic_rows[max(selic_rows)] if selic_rows else 0.0
     today = now_brt().date()
     cur = today.replace(day=1)
     result = {}
     equity = total_now
-    selic_rows = {s.mes_ano: s.taxa for s in SelicMensal.query.all()}
-    # Caminha para trás: o valor de "equity" representa o patrimônio no INÍCIO
-    # do mês 'cur'; ao recuar um mês desfazemos os fluxos e o preço daquele mês.
     for _ in range(months_back):
         mk = cur.strftime('%Y-%m')
-        # Desfaz os fluxos de caixa do mês (compras entram +, vendas saem −)
-        equity -= bought_by_month.get(mk, 0.0)
-        equity += sold_by_month.get(mk, 0.0)
-        # Desfaz a valorização de preço do mês (proxy: taxa Selic do mês)
-        taxa = selic_rows.get(_mesano_key(mk), 0.0) / 100.0
+        # remove a valorização do mês (o valor de mercado subiu ~Selic no mês);
+        # meses ainda não cadastrados usam a última Selic conhecida
+        taxa = (selic_rows.get(mk, _last_selic) or 0.0) / 100.0
         if taxa:
             equity = equity / (1 + taxa)
+        # remove o aporte líquido do mês (não existia no mês anterior)
+        equity -= net_flow.get(mk, 0.0)
         equity = max(equity, 0.0)
         prev = cur - relativedelta(months=1)
-        # equity agora ≈ patrimônio no fim do mês anterior
-        result[prev.strftime('%Y-%m')] = round(equity, 2)
+        result[prev.strftime('%Y-%m')] = round(min(equity, total_now), 2)
         cur = prev
     return result
-
-
-def _mesano_key(iso_ym):
-    """'2026-07' → '07/2026' (formato usado na tabela SelicMensal)."""
-    y, m = iso_ym.split('-')
-    return f'{m}/{y}'
 
 
 def _dividends_owned(user_id, today):
@@ -6810,9 +6802,20 @@ def resumo():
     avg_4m_realized_profit = round(sum(monthly_profit.get(k, 0) for k in avg_months) / avg_count, 2)
     profit_pct_by_month = dict(zip(sorted_months, profit_pct_data))
     avg_4m_realized_pct = round(sum(profit_pct_by_month.get(k, 0) for k in avg_months) / avg_count, 2)
-    # Selic mensal para os meses do gráfico
+    # Selic mensal para os meses do gráfico. Meses ainda não cadastrados
+    # (posteriores ao último registro) usam a última Selic conhecida, para a
+    # linha da Selic não interromper nos meses mais recentes.
     selic_rows = {s.mes_ano: s.taxa for s in SelicMensal.query.all()}
-    selic_data = [selic_rows.get(_mesano_key(k), None) for k in sorted_months]
+    _last_selic_key = max(selic_rows) if selic_rows else None
+    _last_selic_val = selic_rows.get(_last_selic_key) if _last_selic_key else None
+    selic_data = []
+    for k in sorted_months:
+        if k in selic_rows:
+            selic_data.append(selic_rows[k])
+        elif _last_selic_key and k > _last_selic_key:
+            selic_data.append(_last_selic_val)   # mês futuro sem cadastro
+        else:
+            selic_data.append(None)
 
     # % acumulada carteira vs Selic — soma progressiva mês a mês
     cart_acum_pct  = []

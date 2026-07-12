@@ -2871,7 +2871,29 @@ def api_cadeia(ticker):
                 m = 1; y += 1
         return result[:n]
 
-    target_exps = _next_monthly_expirations(3)
+    def _is_monthly_exp(exp_str):
+        """True se a data é a 3ª sexta-feira do mês (±2 dias p/ feriado)."""
+        dd = _date.fromisoformat(exp_str)
+        day, count = 1, 0
+        while True:
+            d = _date(dd.year, dd.month, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    tf = d
+                    break
+            day += 1
+        return abs((dd - tf).days) <= 2
+
+    # Parâmetros de janela (iguais aos da Busca de Operações):
+    # weekly=1 inclui semanais; days = prazo máximo (60/90/120/180).
+    include_weekly = request.args.get('weekly', '0') == '1'
+    try:
+        max_days = int(request.args.get('days', 60))
+    except (TypeError, ValueError):
+        max_days = 60
+    if max_days not in (60, 90, 120, 180):
+        max_days = 60
 
     # Normaliza opções
     calls_by_exp = {}
@@ -2917,24 +2939,27 @@ def api_cadeia(ticker):
     result_exps = []
     all_exp_keys = sorted(set(list(calls_by_exp.keys()) + list(puts_by_exp.keys())))
 
-    # Filtra os 3 próximos vencimentos mensais — ou os 3 mais próximos disponíveis
-    def _closest_exp(target, available):
-        target_d = _date.fromisoformat(target)
-        best = min(available, key=lambda x: abs((_date.fromisoformat(x) - target_d).days))
-        if abs((_date.fromisoformat(best) - target_d).days) <= 10:
-            return best
-        return None
+    today = _date.today()
+    # Vencimentos dentro da janela de prazo escolhida
+    within = []
+    for e in all_exp_keys:
+        try:
+            dc = (_date.fromisoformat(e) - today).days
+        except ValueError:
+            continue
+        if 0 < dc <= max_days:
+            within.append(e)
 
-    selected_exps = []
-    used = set()
-    for t in target_exps:
-        found = _closest_exp(t, [e for e in all_exp_keys if e not in used])
-        if found:
-            selected_exps.append(found)
-            used.add(found)
+    if include_weekly:
+        # todos os vencimentos (semanais + mensais) na janela — até 8
+        selected_exps = within[:8]
+    else:
+        # apenas mensais na janela — até 3
+        selected_exps = [e for e in within if _is_monthly_exp(e)][:3]
 
+    # Fallback: sem nada na janela, usa os 3 vencimentos mais próximos
     if not selected_exps:
-        selected_exps = all_exp_keys[:3]
+        selected_exps = within[:3] or all_exp_keys[:3]
 
     # Quantidade de strikes exibidos abaixo/acima do spot (10 padrão, 20 opcional)
     try:
@@ -2980,6 +3005,8 @@ def api_cadeia(ticker):
         'spot':        spot,
         'spot_change': spot_change,
         'expirations': result_exps,
+        'weekly':      include_weekly,
+        'max_days':    max_days,
     })
 
 

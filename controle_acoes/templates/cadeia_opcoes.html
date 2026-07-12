@@ -129,6 +129,24 @@ table.cadeia td.empty{color:#334155;}
     </label>
   </div>
 
+  <!-- Vencimentos: incluir semanais + janela de prazo (p/ testar semanais e travas) -->
+  <div style="display:flex;gap:1.4rem;align-items:center;margin-top:.55rem;font-size:.82rem;color:var(--text-secondary);flex-wrap:wrap;">
+    <label style="display:inline-flex;align-items:center;gap:.45rem;cursor:pointer;">
+      <input type="checkbox" id="cadeia-weekly" style="width:15px;height:15px;cursor:pointer;margin:0;">
+      Incluir vencimentos <strong>semanais</strong> (desmarcado: apenas <strong>mensais</strong>)
+    </label>
+    <label style="display:inline-flex;align-items:center;gap:.45rem;cursor:pointer;">
+      Prazo máx. de busca:
+      <select id="cadeia-days" style="background:var(--card-bg);color:var(--text-primary);
+              border:1px solid var(--border-color);border-radius:5px;padding:.2rem .4rem;font-size:.82rem;cursor:pointer;">
+        <option value="60" selected>60 dias</option>
+        <option value="90">90 dias</option>
+        <option value="120">120 dias</option>
+        <option value="180">180 dias</option>
+      </select>
+    </label>
+  </div>
+
   <div id="venc-tabs"></div>
   <div id="cadeia-loading">⏳ Carregando cadeia…</div>
   <div id="cadeia-error"></div>
@@ -258,6 +276,28 @@ function nStrikes(){
   });
 })();
 
+/* Vencimentos: semanais + janela de prazo (padrão: mensais, 60 dias) */
+function cadeiaWeekly(){ var c=document.getElementById('cadeia-weekly'); return c&&c.checked?'1':'0'; }
+function cadeiaDays(){ var s=document.getElementById('cadeia-days'); return s?s.value:'60'; }
+(function(){
+  var wk=document.getElementById('cadeia-weekly'), dy=document.getElementById('cadeia-days');
+  if(wk){
+    wk.checked = localStorage.getItem('cadeia-weekly')==='1';   // padrão desmarcado
+    wk.addEventListener('change',function(){
+      localStorage.setItem('cadeia-weekly', wk.checked?'1':'0');
+      if(curTicker) loadCadeia(curTicker);
+    });
+  }
+  if(dy){
+    var sd=localStorage.getItem('cadeia-days');
+    if(sd && ['60','90','120','180'].indexOf(sd)!==-1) dy.value=sd;
+    dy.addEventListener('change',function(){
+      localStorage.setItem('cadeia-days', dy.value);
+      if(curTicker) loadCadeia(curTicker);
+    });
+  }
+})();
+
 function loadCadeia(ticker){
   curTicker=ticker; allData=null; curExp=null;
   document.getElementById('cadeia-loading').style.display='block';
@@ -265,7 +305,7 @@ function loadCadeia(ticker){
   document.getElementById('cadeia-error').style.display='none';
   document.getElementById('cadeia-spot').innerHTML='';
   document.getElementById('venc-tabs').innerHTML='';
-  fetch('/api/cadeia/'+encodeURIComponent(ticker)+'?n='+nStrikes())
+  fetch('/api/cadeia/'+encodeURIComponent(ticker)+'?n='+nStrikes()+'&weekly='+cadeiaWeekly()+'&days='+cadeiaDays())
     .then(function(r){return r.text().then(function(text){
       var data=null;
       try{data=text?JSON.parse(text):{};}catch(_){

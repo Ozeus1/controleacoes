@@ -292,8 +292,13 @@ def run_migrations():
         print("[MIGRATION] Added column 'dividend_yield' to 'asset' table.")
 
     if 'exit_date' not in asset_columns:
-        cursor.execute("ALTER TABLE asset ADD COLUMN exit_date DATE")
-        print("[MIGRATION] Added column 'exit_date' to 'asset' table.")
+        # try/except: com múltiplos workers gunicorn, dois podem correr a migração
+        # ao mesmo tempo — o segundo veria "duplicate column name" e o worker morreria.
+        try:
+            cursor.execute("ALTER TABLE asset ADD COLUMN exit_date DATE")
+            print("[MIGRATION] Added column 'exit_date' to 'asset' table.")
+        except Exception:
+            pass  # coluna já criada por outro worker
 
     # Check existing columns in 'international' table
     cursor.execute("PRAGMA table_info(international)")

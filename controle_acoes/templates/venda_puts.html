@@ -268,6 +268,8 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     <option value="vaca_tradicional">🐄 Vaca Tradicional (+1 CALL baixa, −3 médias, +2 altas)</option>
                     <option value="vaca_revertida">🐄🔄 Vaca Revertida (+1 CALL baixa, −5 médias, +5 altas)</option>
                     <option value="borboleta">🦋 Borboleta (+1 CALL baixa, −2 médias, +1 alta)</option>
+                    <option value="condor">🦅 Condor (+1 CALL baixa, −1 e −1 médias, +1 alta)</option>
+                    <option value="iron_condor">🦅💰 Iron Condor (trava de alta PUT + trava de baixa CALL)</option>
                     <option value="boi_put">🐂 Boi com PUT (venda 1 PUT alta, compra 2 PUTs baixas)</option>
                     <option value="vaca_put">🐄 Vaca de Baixa com PUTs (+1 alta, −2 médias, +1 baixa)</option>
                     <option value="straddle_vendido">⚖️ Straddle vendido (venda CALL + PUT no mesmo strike)</option>
@@ -329,6 +331,17 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                         <input class="form-control" id="e-c-k" type="number" step="0.01" oninput="estruturaCalc()"></div>
                     <div><label class="form-label" style="font-size:.72rem;">Prêmio</label>
                         <input class="form-control" id="e-c-p" type="number" step="0.01" oninput="estruturaCalc()"></div>
+                </div>
+            </fieldset>
+            <fieldset id="e-legD" style="border:1px solid var(--border-color); border-radius:8px; padding:.6rem .8rem; display:none;">
+                <legend id="e-legD-lbl" style="font-size:.82rem; font-weight:700; padding:0 .4rem;">Perna D</legend>
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:.5rem;">
+                    <div><label class="form-label" style="font-size:.72rem;">Ticker</label>
+                        <input class="form-control" id="e-d-t" style="text-transform:uppercase"></div>
+                    <div><label class="form-label" style="font-size:.72rem;">Strike</label>
+                        <input class="form-control" id="e-d-k" type="number" step="0.01" oninput="estruturaCalc()"></div>
+                    <div><label class="form-label" style="font-size:.72rem;">Prêmio</label>
+                        <input class="form-control" id="e-d-p" type="number" step="0.01" oninput="estruturaCalc()"></div>
                 </div>
             </fieldset>
         </div>
@@ -956,25 +969,28 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         vaca_tradicional:    { legs: ['CALL — COMPRA 1× (K baixa)', 'CALL — VENDA 3× (K média)', 'CALL — COMPRA 2× (K alta)'], needSpot: false },
         vaca_revertida:      { legs: ['CALL — COMPRA 1× (K baixa)', 'CALL — VENDA 5× (K média)', 'CALL — COMPRA 5× (K alta)'], needSpot: false },
         borboleta:           { legs: ['CALL — COMPRA 1× (K baixa)', 'CALL — VENDA 2× (K média)', 'CALL — COMPRA 1× (K alta)'], needSpot: false },
+        condor:              { legs: ['CALL — COMPRA 1× (K1 baixa)', 'CALL — VENDA 1× (K2)', 'CALL — VENDA 1× (K3)', 'CALL — COMPRA 1× (K4 alta)'], needSpot: false },
+        iron_condor:         { legs: ['PUT — COMPRA (K1 mais baixa)', 'PUT — VENDA (K2, abaixo do spot)', 'CALL — VENDA (K3, acima do spot)', 'CALL — COMPRA (K4 mais alta)'], needSpot: false },
         boi_put:             { legs: ['PUT — VENDA 1× (ATM/ITM, financia)', 'PUT — COMPRA 2× (próx. OTM)', null], needSpot: false },
         straddle_vendido:    { legs: ['CALL — VENDA (strike central)', 'PUT — VENDA (mesmo strike)', null], needSpot: false },
         strangle_vendido:    { legs: ['CALL — VENDA (OTM, acima)', 'PUT — VENDA (OTM, abaixo)', null], needSpot: false },
         vaca_put:            { legs: ['PUT — COMPRA 1× (K alta)', 'PUT — VENDA 2× (K média)', 'PUT — COMPRA 1× (K baixa)'], needSpot: false }
     };
 
-    // Estruturas genéricas de CALLs em 3 strikes: quantidades das pernas A/B/C
-    // (positivo = compra, negativo = venda). Payoff linear por partes.
+    // Estruturas genéricas de CALLs em 3 ou 4 strikes: quantidades das pernas
+    // A/B/C/(D) — positivo = compra, negativo = venda. Payoff linear por partes.
     var GEN3 = {
         boi_coberto:      [-1, 2, -1],
         vaca_tradicional: [1, -3, 2],
         vaca_revertida:   [1, -5, 5],
-        borboleta:        [1, -2, 1]
+        borboleta:        [1, -2, 1],
+        condor:           [1, -1, -1, 1]
     };
 
     window.estruturaOpChanged = function() {
         var op  = document.getElementById('e-op').value;
         var cfg = E_CFG[op];
-        ['A', 'B', 'C'].forEach(function(l, i) {
+        ['A', 'B', 'C', 'D'].forEach(function(l, i) {
             var fs  = document.getElementById('e-leg' + l);
             var lbl = document.getElementById('e-leg' + l + '-lbl');
             if (cfg.legs[i]) {
@@ -998,12 +1014,15 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         var aK = toFloat(document.getElementById('e-a-k').value), aP = toFloat(document.getElementById('e-a-p').value);
         var bK = toFloat(document.getElementById('e-b-k').value), bP = toFloat(document.getElementById('e-b-p').value);
         var cK = toFloat(document.getElementById('e-c-k').value), cP = toFloat(document.getElementById('e-c-p').value);
+        var dK = toFloat(document.getElementById('e-d-k').value), dP = toFloat(document.getElementById('e-d-p').value);
         var panel = document.getElementById('e-metrics');
         var grid  = document.getElementById('e-metrics-grid');
 
         var needC = !!E_CFG[op].legs[2];
+        var needD = !!E_CFG[op].legs[3];
         var ok = aK && aP != null && bK && bP != null && expS &&
                  (!needC || (cK && cP != null)) &&
+                 (!needD || (dK && dP != null)) &&
                  (!E_CFG[op].needSpot || spot);
         if (!ok) {
             panel.style.display = 'none';
@@ -1179,19 +1198,39 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 ['Relação lucro/perda', maxLVP > 0.001 ? (maxGVP / maxLVP).toLocaleString('pt-BR', {maximumFractionDigits:1}) : '∞', 'positive'],
                 ['Prazo (dias corridos)', dc + ' d.c.', '']
             ];
+        } else if (op === 'iron_condor') {
+            // A = PUT compra (K1), B = PUT venda (K2), C = CALL venda (K3), D = CALL compra (K4)
+            var credIC = -aP + bP + cP - dP;                 // >0 crédito
+            var wPutIC = bK - aK, wCallIC = dK - cK;
+            var maxLIC = Math.max(wPutIC, wCallIC) - credIC;
+            var beLoIC = bK - credIC, beUpIC = cK + credIC;
+            boxes = [
+                ['Crédito recebido', fmtBRL(credIC * qty), credIC >= 0 ? 'positive' : 'negative'],
+                ['Ganho máx. (entre ' + fmtBRL(bK) + ' e ' + fmtBRL(cK) + ')', fmtBRL(credIC * qty), 'positive'],
+                ['Perda máxima', fmtBRL(Math.abs(maxLIC) * qty), 'negative'],
+                ['Relação ganho/perda', maxLIC > 0.001
+                    ? (credIC / maxLIC).toLocaleString('pt-BR', {maximumFractionDigits: 2}) : '∞', ''],
+                ['BE inferior', fmtBRL(beLoIC), ''],
+                ['BE superior', fmtBRL(beUpIC), ''],
+                ['Zona de lucro', fmtBRL(beLoIC) + ' – ' + fmtBRL(beUpIC), 'positive'],
+                ['Asa PUT / asa CALL', fmtBRL(wPutIC) + ' / ' + fmtBRL(wCallIC), ''],
+                ['Prazo (dias corridos)', dc + ' d.c.', '']
+            ];
         } else if (GEN3[op]) {
-            // Estrutura genérica de CALLs em 3 strikes (A=K baixa, B=K média, C=K alta)
+            // Estrutura genérica de CALLs em 3 ou 4 strikes (A=K baixa … última = K alta)
             var qsG = GEN3[op];
-            var ksG = [aK, bK, cK], psG = [aP, bP, cP];
+            var ksG = [aK, bK, cK, dK].slice(0, qsG.length);
+            var psG = [aP, bP, cP, dP].slice(0, qsG.length);
             var netG = 0;                                    // >0 crédito, <0 débito
-            for (var gi = 0; gi < 3; gi++) netG += (-qsG[gi]) * psG[gi];
+            for (var gi = 0; gi < qsG.length; gi++) netG += (-qsG[gi]) * psG[gi];
             function payG(S) {
                 var v = netG;
-                for (var gj = 0; gj < 3; gj++) v += qsG[gj] * Math.max(0, S - ksG[gj]);
+                for (var gj = 0; gj < qsG.length; gj++) v += qsG[gj] * Math.max(0, S - ksG[gj]);
                 return v;
             }
-            var slopeG = qsG[0] + qsG[1] + qsG[2];
-            var ptsG = [0, aK, bK, cK, cK * 1.6];
+            var slopeG = qsG.reduce(function(a, b) { return a + b; }, 0);
+            var lastK = ksG[ksG.length - 1];
+            var ptsG = [0].concat(ksG).concat([lastK * 1.6]);
             var valsG = ptsG.map(payG);
             var besG = [];
             for (var gk = 0; gk < ptsG.length - 1; gk++) {
@@ -1345,19 +1384,34 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             legsArr = [{t: 'PUT', s: 1,  q: 1, K: aK, prem: aP},
                        {t: 'PUT', s: -1, q: 2, K: bK, prem: bP},
                        {t: 'PUT', s: 1,  q: 1, K: cK, prem: cP}];
+        } else if (op === 'iron_condor') {
+            var credICP = -aP + bP + cP - dP;
+            payoffFn = function(S) {
+                return qty * (credICP + Math.max(0, aK - S) - Math.max(0, bK - S)
+                                      - Math.max(0, S - cK) + Math.max(0, S - dK));
+            };
+            mk(aK, 'PUT c'); mk(bK, 'PUT v'); mk(cK, 'CALL v'); mk(dK, 'CALL c');
+            legsArr = [{t: 'PUT',  s: 1,  q: 1, K: aK, prem: aP},
+                       {t: 'PUT',  s: -1, q: 1, K: bK, prem: bP},
+                       {t: 'CALL', s: -1, q: 1, K: cK, prem: cP},
+                       {t: 'CALL', s: 1,  q: 1, K: dK, prem: dP}];
         } else if (GEN3[op]) {
             var qsP  = GEN3[op];
-            var netGP = -(qsP[0] * aP + qsP[1] * bP + qsP[2] * cP);   // >0 crédito
+            var ksP  = [aK, bK, cK, dK].slice(0, qsP.length);
+            var psP  = [aP, bP, cP, dP].slice(0, qsP.length);
+            var netGP = 0;                                    // >0 crédito
+            for (var pi = 0; pi < qsP.length; pi++) netGP += (-qsP[pi]) * psP[pi];
             payoffFn = function(S) {
-                return qty * (netGP + qsP[0] * Math.max(0, S - aK) +
-                              qsP[1] * Math.max(0, S - bK) + qsP[2] * Math.max(0, S - cK));
+                var v = netGP;
+                for (var pj = 0; pj < qsP.length; pj++) v += qsP[pj] * Math.max(0, S - ksP[pj]);
+                return qty * v;
             };
-            mk(aK, Math.abs(qsP[0]) + '× CALL ' + (qsP[0] > 0 ? 'c' : 'v'));
-            mk(bK, Math.abs(qsP[1]) + '× CALL ' + (qsP[1] > 0 ? 'c' : 'v'));
-            mk(cK, Math.abs(qsP[2]) + '× CALL ' + (qsP[2] > 0 ? 'c' : 'v'));
-            legsArr = [{t: 'CALL', s: qsP[0] > 0 ? 1 : -1, q: Math.abs(qsP[0]), K: aK, prem: aP},
-                       {t: 'CALL', s: qsP[1] > 0 ? 1 : -1, q: Math.abs(qsP[1]), K: bK, prem: bP},
-                       {t: 'CALL', s: qsP[2] > 0 ? 1 : -1, q: Math.abs(qsP[2]), K: cK, prem: cP}];
+            legsArr = [];
+            for (var pl = 0; pl < qsP.length; pl++) {
+                mk(ksP[pl], Math.abs(qsP[pl]) + '× CALL ' + (qsP[pl] > 0 ? 'c' : 'v'));
+                legsArr.push({t: 'CALL', s: qsP[pl] > 0 ? 1 : -1, q: Math.abs(qsP[pl]),
+                              K: ksP[pl], prem: psP[pl]});
+            }
         }
 
         if (payoffFn) {
@@ -1370,11 +1424,12 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             var tks = {
                 a: (document.getElementById('e-a-t').value || '').toUpperCase(),
                 b: (document.getElementById('e-b-t').value || '').toUpperCase(),
-                c: (document.getElementById('e-c-t').value || '').toUpperCase()
+                c: (document.getElementById('e-c-t').value || '').toUpperCase(),
+                d: (document.getElementById('e-d-t').value || '').toUpperCase()
             };
-            // legsArr segue a ordem A,B,(C); STOCK (fence) usa o ativo subjacente.
-            // Associa tickers na ordem das pernas de opção A,B,C.
-            var order = ['a', 'b', 'c'], oi = 0;
+            // legsArr segue a ordem A,B,(C),(D); STOCK (fence) usa o ativo subjacente.
+            // Associa tickers na ordem das pernas de opção A,B,C,D.
+            var order = ['a', 'b', 'c', 'd'], oi = 0;
             window.__estruturaLegs = legsArr.map(function(l) {
                 if (l.t === 'STOCK') {
                     return {ticker: (document.getElementById('e-ativo').value || '').toUpperCase(),
@@ -1457,6 +1512,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         setV('e-a-t', (q.get('at') || '').toUpperCase()); setV('e-a-k', q.get('ak')); setV('e-a-p', q.get('ap'));
         setV('e-b-t', (q.get('bt') || '').toUpperCase()); setV('e-b-k', q.get('bk')); setV('e-b-p', q.get('bp'));
         setV('e-c-t', (q.get('ct2') || '').toUpperCase()); setV('e-c-k', q.get('ck2')); setV('e-c-p', q.get('cp2'));
+        setV('e-d-t', (q.get('dt') || '').toUpperCase());  setV('e-d-k', q.get('dk'));  setV('e-d-p', q.get('dp'));
         estruturaOpChanged();
     })();
 

@@ -94,6 +94,7 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
     <button class="bo-obtn" data-op="vaca_revertida">🐄🔄 Vaca Revertida</button>
     <button class="bo-obtn" data-op="borboleta">🦋 Borboleta</button>
     <button class="bo-obtn" data-op="condor">🦅 Condor</button>
+    <button class="bo-obtn" data-op="iron_condor">🦅💰 Iron Condor</button>
     <button class="bo-obtn" data-op="boi_put">🐂 Boi com PUT 1x2</button>
     <button class="bo-obtn" data-op="vaca_put">🐄 Vaca de Baixa (PUTs)</button>
     <button class="bo-obtn" data-op="venda_put_itm">🔽 Venda de PUT</button>
@@ -194,6 +195,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     vaca_revertida: '🐄🔄 Vaca Revertida — +1 CALL baixa, −5 CALLs médias, +5 CALLs altas (crédito; lucro ILIMITADO na alta forte)',
     borboleta:     '🦋 Borboleta — +1 CALL baixa, −2 CALLs médias, +1 CALL alta (débito ≤ 30% da asa; centro próximo do ATM = preço-alvo)',
     condor:        '🦅 Condor — +1 CALL baixa, −1 e −1 CALLs médias, +1 CALL alta (débito ≤ 40% da asa; platô de lucro entre os strikes vendidos)',
+    iron_condor:   '🦅💰 Iron Condor — trava de alta com PUT (vende K2 / compra K1, abaixo do spot) + trava de baixa com CALL (vende K3 / compra K4, acima); crédito ≥ 25% da asa; lucro se ficar entre K2 e K3',
     boi_put:       '🐂 Boi com PUT — compra 2 PUTs próximas do OTM financiadas (parcialmente) pela venda de 1 PUT ATM/ITM; custo até 40% da largura (lucro cresce na queda forte)',
     vaca_put:      '🐄 Vaca de Baixa (PUTs) — +1 PUT alta, −2 PUTs médias, +1 PUT baixa (lucro máximo se cair até o strike médio)',
     venda_put_itm: '🔽 Venda de PUT — strike de 10% OTM até 20% ITM (mensais; prêmio pelo último negócio; remuneração sobre o strike)',
@@ -662,8 +664,34 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     return h + '</tbody></table></div>';
   }
 
+  function ironCondorTable(rows, expIdx) {
+    if (!rows.length) return '<div class="bo-empty">Nenhum iron condor com crédito ≥ 25% da asa neste vencimento.</div>';
+    var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
+      '<th>PUT compra</th><th>PUT venda</th><th>CALL venda</th><th>CALL compra</th>' +
+      '<th>Crédito</th><th>% da asa</th><th>Perda máx.</th><th>Relação</th>' +
+      '<th>POP</th><th>BE inferior</th><th>BE superior</th><th>Zona</th></tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += rowAttr(expIdx, j) +
+        '<td><span class="bo-badge put">' + r.put_buy_symbol + '</span> ' + fmt(r.put_buy_strike) + '</td>' +
+        '<td><span class="bo-badge put">' + r.put_sell_symbol + '</span> ' + fmt(r.put_sell_strike) + '</td>' +
+        '<td><span class="bo-badge call">' + r.call_sell_symbol + '</span> ' + fmt(r.call_sell_strike) + '</td>' +
+        '<td><span class="bo-badge call">' + r.call_buy_symbol + '</span> ' + fmt(r.call_buy_strike) + '</td>' +
+        '<td class="pos"><strong>' + brl(r.credit) + '</strong></td>' +
+        '<td class="pos">' + fmt(r.credit_pct, 1) + '%</td>' +
+        '<td class="neg">' + brl(r.max_loss) + '</td>' +
+        '<td>' + fmt(r.ratio) + '</td>' +
+        '<td class="' + (r.pop >= 60 ? 'pos' : '') + '">' + (r.pop != null ? fmt(r.pop, 1) + '%' : '—') + '</td>' +
+        '<td>' + brl(r.be_low) + ' (' + fmt(r.be_low_dist) + '%)</td>' +
+        '<td>' + brl(r.be_up) + ' (+' + fmt(r.be_up_dist) + '%)</td>' +
+        '<td class="pos">' + fmt(r.zone_pct, 1) + '%</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
   function buildTable(op, rows, expIdx) {
     if (GEN_OPS.indexOf(op) !== -1) return estruturaGenTable(rows, expIdx);
+    if (op === 'iron_condor') return ironCondorTable(rows, expIdx);
     switch (op) {
       case 'collar':        return collarTable(rows, expIdx);
       case 'fence':         return fenceTable(rows, expIdx);
@@ -782,23 +810,41 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         ['Centro vs spot', (r.center_dist > 0 ? '+' : '') + fmt(r.center_dist, 1) + '%', ''],
         ['Prazo (dias corridos)', dc + ' d.c.', '']
       ]);
-      if (r.legs.length === 3) {
-        // 3 pernas: abre em Cálculos de Opções (aba Estruturas)
-        var sp3 = new URLSearchParams({st: '1', ativo: d.ticker, spot: spot, qty: qty,
-          exp: e.exp, op: op,
-          at: r.legs[0].sym, ak: r.legs[0].k, ap: r.legs[0].px,
-          bt: r.legs[1].sym, bk: r.legs[1].k, bp: r.legs[1].px,
-          ct2: r.legs[2].sym, ck2: r.legs[2].k, cp2: r.legs[2].px});
-        return {title: title, boxes: boxes, href: '/venda_puts?' + sp3.toString() + '#estrutura'};
+      // Abre em Cálculos de Opções (aba Estruturas) — pernas A/B/C/(D)
+      var spG = new URLSearchParams({st: '1', ativo: d.ticker, spot: spot, qty: qty,
+        exp: e.exp, op: op,
+        at: r.legs[0].sym, ak: r.legs[0].k, ap: r.legs[0].px,
+        bt: r.legs[1].sym, bk: r.legs[1].k, bp: r.legs[1].px,
+        ct2: r.legs[2].sym, ck2: r.legs[2].k, cp2: r.legs[2].px});
+      if (r.legs[3]) {
+        spG.set('dt', r.legs[3].sym); spG.set('dk', r.legs[3].k); spG.set('dp', r.legs[3].px);
       }
-      // 4+ pernas (condor): edita na Cadeia de Opções
-      var legsStr = r.legs.map(function(l) {
-        return [l.sym, 'CALL', l.q > 0 ? 'BUY' : 'SELL', Math.abs(l.q) * qty,
-                l.px, l.k, e.exp].join(',');
-      }).join('|');
-      var cadeiaP = new URLSearchParams({sim: '1', ativo: d.ticker,
-        nome: opNames[op] + ' ' + d.ticker, legs: legsStr});
-      return {title: title, boxes: boxes, href: '/cadeia-opcoes?' + cadeiaP.toString()};
+      return {title: title, boxes: boxes, href: '/venda_puts?' + spG.toString() + '#estrutura'};
+    }
+
+    if (op === 'iron_condor') {
+      title = 'Iron Condor ' + d.ticker + ' — PUTs ' + r.put_buy_symbol + '/' + r.put_sell_symbol +
+              ' + CALLs ' + r.call_sell_symbol + '/' + r.call_buy_symbol;
+      boxes = [
+        ['Crédito recebido', brl(r.credit * qty), 'pos'],
+        ['Crédito % da asa', fmt(r.credit_pct, 1) + '%', 'pos'],
+        ['Ganho máx. (entre ' + brl(r.put_sell_strike) + ' e ' + brl(r.call_sell_strike) + ')',
+            brl(r.credit * qty), 'pos'],
+        ['Perda máxima', brl(r.max_loss * qty), 'neg'],
+        ['Relação ganho/perda', fmt(r.ratio), ''],
+        ['POP (prob. de lucro)', r.pop != null ? fmt(r.pop, 1) + '%' : '—', r.pop >= 60 ? 'pos' : ''],
+        ['BE inferior', brl(r.be_low) + ' (' + fmt(r.be_low_dist) + '%)', ''],
+        ['BE superior', brl(r.be_up) + ' (+' + fmt(r.be_up_dist) + '%)', ''],
+        ['Zona de lucro', fmt(r.zone_pct, 1) + '% do spot', 'pos'],
+        ['Prazo (dias corridos)', dc + ' d.c.', '']
+      ];
+      var spIC = new URLSearchParams({st: '1', ativo: d.ticker, spot: spot, qty: qty,
+        exp: e.exp, op: 'iron_condor',
+        at: r.put_buy_symbol,   ak: r.put_buy_strike,   ap: r.put_buy_ask,
+        bt: r.put_sell_symbol,  bk: r.put_sell_strike,  bp: r.put_sell_bid,
+        ct2: r.call_sell_symbol, ck2: r.call_sell_strike, cp2: r.call_sell_bid,
+        dt: r.call_buy_symbol,  dk: r.call_buy_strike,  dp: r.call_buy_ask});
+      return {title: title, boxes: boxes, href: '/venda_puts?' + spIC.toString() + '#estrutura'};
     }
 
     var stParams = {st: '1', ativo: d.ticker, spot: spot, qty: qty, exp: e.exp};

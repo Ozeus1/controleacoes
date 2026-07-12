@@ -3670,6 +3670,76 @@ def api_busca_operacoes(ticker):
                 rows.sort(key=lambda x: (abs(x['center_dist']), -(x['ratio'] or 0)))
             rows = _diversify(rows, lambda x: x['legs'][1]['sym'], per_key=2, limit=12)
 
+        elif op == 'iron_condor':
+            # Iron Condor: trava de alta com PUT (abaixo do spot) + trava de baixa
+            # com CALL (acima). Vende PUT K2 / compra PUT K1 < K2; vende CALL K3 /
+            # compra CALL K4 > K3. Crédito duplo; lucro se o papel ficar entre K2 e K3.
+            # Regra usual: crédito >= 25% da asa mais larga; strikes vendidos OTM.
+            T_ic = dc / 365.0
+            put_sell  = [p for p in puts_ok
+                         if 0.85 * spot <= p['strike'] <= 0.99 * spot and p['bid'] >= 0.05][:10]
+            call_sell = [c for c in calls_ok
+                         if 1.01 * spot <= c['strike'] <= 1.15 * spot and c['bid'] >= 0.05][:10]
+            for ps_ in put_sell:
+                put_buy = [p for p in puts_ok
+                           if 0.70 * spot <= p['strike'] < ps_['strike'] and p['ask'] >= 0.01][:6]
+                for pb_ in put_buy:
+                    w_put = ps_['strike'] - pb_['strike']
+                    cred_put = ps_['bid'] - pb_['ask']
+                    if cred_put <= 0:
+                        continue
+                    for cs_ in call_sell:
+                        call_buy = [c for c in calls_ok
+                                    if cs_['strike'] < c['strike'] <= 1.30 * spot and c['ask'] >= 0.01][:6]
+                        for cb_ in call_buy:
+                            w_call = cb_['strike'] - cs_['strike']
+                            cred_call = cs_['bid'] - cb_['ask']
+                            if cred_call <= 0:
+                                continue
+                            credit = cred_put + cred_call
+                            w_max  = max(w_put, w_call)
+                            max_loss = w_max - credit
+                            if max_loss <= 0:
+                                continue
+                            if credit < 0.25 * w_max:          # crédito mínimo usual (~1/3 da asa)
+                                continue
+                            be_low = ps_['strike'] - credit
+                            be_up  = cs_['strike'] + credit
+                            # POP: P(be_low < S < be_up) via lognormal com VI média das vendidas
+                            iv_p = _iv_est(ps_, False, T_ic)
+                            iv_c = _iv_est(cs_, True, T_ic)
+                            ivm  = None
+                            if iv_p and iv_c:
+                                ivm = (iv_p + iv_c) / 2
+                            elif iv_p or iv_c:
+                                ivm = iv_p or iv_c
+                            pop = None
+                            if ivm:
+                                p_lo = _pop_above(be_low, T_ic, ivm)
+                                p_hi = _pop_above(be_up, T_ic, ivm)
+                                if p_lo is not None and p_hi is not None:
+                                    pop = max(0.0, min(100.0, p_lo - p_hi))
+                            rows.append({
+                                'put_buy_symbol':  pb_['symbol'], 'put_buy_strike':  pb_['strike'], 'put_buy_ask':  pb_['ask'],
+                                'put_sell_symbol': ps_['symbol'], 'put_sell_strike': ps_['strike'], 'put_sell_bid': ps_['bid'],
+                                'call_sell_symbol': cs_['symbol'], 'call_sell_strike': cs_['strike'], 'call_sell_bid': cs_['bid'],
+                                'call_buy_symbol':  cb_['symbol'], 'call_buy_strike':  cb_['strike'], 'call_buy_ask':  cb_['ask'],
+                                'credit':    round(credit, 2),
+                                'credit_pct': round(credit / w_max * 100, 1),   # % da asa
+                                'max_loss':  round(max_loss, 2),
+                                'ratio':     round(credit / max_loss, 2),
+                                'be_low':    round(be_low, 2),
+                                'be_low_dist': round((be_low - spot) / spot * 100, 2),
+                                'be_up':     round(be_up, 2),
+                                'be_up_dist': round((be_up - spot) / spot * 100, 2),
+                                'zone_pct':  round((be_up - be_low) / spot * 100, 1),
+                                'pop':       round(pop, 1) if pop is not None else None,
+                            })
+            # Melhor relação crédito/asa primeiro; POP como desempate
+            rows.sort(key=lambda x: (-x['credit_pct'], -(x['pop'] or 0)))
+            rows = _diversify(rows, lambda x: (x['put_sell_symbol'], x['call_sell_symbol']),
+                              per_key=2, limit=12)
+
         elif op == 'boi_put':
             # Boi com PUT (put ratio backspread 1x2): compra 2 PUTs próximas do OTM
             # (até ~7% abaixo do spot); a venda de 1 PUT ATM/ITM financia parcialmente.

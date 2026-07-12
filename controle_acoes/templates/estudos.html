@@ -196,6 +196,7 @@
         <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
         <td class="actions" style="white-space:nowrap;">
           <button class="btn btn-sm" onclick="openRadarAndUpdate({{ ss.id }}, '{{ ss.ticker }}', 'stock')" title="Análise Radar + atualizar RSI/ATR" style="background:#8b5cf6;color:white;">📊</button>
+          <button class="btn btn-sm" onclick="openRadarFund('{{ ss.ticker }}')" title="Análise Fundamentalista (IA)" style="background:#7c3aed;color:white;font-weight:700;">📊F</button>
           <button class="btn btn-sm" onclick="openTVChart('{{ ss.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
           <button class="btn btn-primary btn-sm" id="edit-stock-btn-{{ ss.id }}"
             onclick="openEditAcao({{ ss.id }}, '{{ ss.ticker }}',
@@ -277,6 +278,7 @@
         <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
         <td class="actions" style="white-space:nowrap;">
           <button class="btn btn-sm" onclick="openRadarAndUpdate({{ ss.id }}, '{{ ss.ticker }}', 'intl')" title="Análise Radar + atualizar RSI/ATR" style="background:#8b5cf6;color:white;">📊</button>
+          <button class="btn btn-sm" onclick="openRadarFund('{{ ss.ticker }}')" title="Análise Fundamentalista (IA)" style="background:#7c3aed;color:white;font-weight:700;">📊F</button>
           <button class="btn btn-sm" onclick="openTVChart('{{ ss.ticker }}', true)" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditIntlAcao({{ ss.id }}, '{{ ss.ticker }}',
@@ -1252,6 +1254,7 @@ function setSelect(id, val) {
 </script>
 
 {% include "_radar_modal.html" %}
+{% include "_radar_fund_modal.html" %}
 
 <!-- ── Quote Hint Tooltip ─────────────────────────────────────── -->
 <div id="qhint" style="

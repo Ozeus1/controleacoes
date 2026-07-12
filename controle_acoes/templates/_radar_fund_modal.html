@@ -1,0 +1,241 @@
+<!-- Modal Análise Fundamentalista (IA) -->
+<div id="rfund-modal" style="display:none; position:fixed; inset:0; z-index:10001;
+     background:rgba(0,0,0,.82); align-items:flex-start; justify-content:center; overflow-y:auto; padding:2rem 1rem;">
+  <div style="background:#fff; border-radius:12px; width:min(96vw,900px);
+              margin:auto; padding:0; position:relative; color:#1e293b; overflow:hidden;">
+    <div style="padding:1.2rem 1.5rem; background:#fff; border-bottom:1px solid #e2e8f0;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div id="rf-company" style="font-size:.82rem; color:#64748b; margin-bottom:.1rem;"></div>
+          <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;">
+            <span id="rf-ticker" style="font-size:1.5rem; font-weight:700; color:#0f172a;"></span>
+            <span style="padding:.2rem .7rem; border-radius:6px; font-weight:700; font-size:.78rem; background:#8b5cf618; color:#7c3aed; border:1px solid #8b5cf644;">📊F Fundamentalista</span>
+          </div>
+          <div style="font-size:2rem; font-weight:700; color:#0f172a; margin:.3rem 0;" id="rf-price"></div>
+          <div id="rf-pills" style="display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.4rem; font-size:.78rem;"></div>
+        </div>
+        <button onclick="closeRadarFund()" style="background:none;border:none;font-size:1.6rem;
+                color:#94a3b8;cursor:pointer;line-height:1; margin-top:-.2rem;">&times;</button>
+      </div>
+    </div>
+    <div id="rf-loading" style="text-align:center;padding:2rem;color:#64748b;background:#fff;">Gerando análise fundamentalista…</div>
+    <div id="rf-error" style="display:none;text-align:center;padding:2rem;color:#ef4444;background:#fff;"></div>
+    <div id="rf-body" style="display:none; padding:1.2rem 1.5rem; background:#f8fafc;">
+
+      <p id="rf-summary" style="font-size:.9rem; color:#334155; margin:0 0 1rem; padding:.75rem 1rem;
+         background:#fff; border-radius:8px; border-left:3px solid #7c3aed; display:none;"></p>
+
+      <!-- Valuation -->
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; margin-bottom:1rem;">
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Preço atual</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#0f172a;" id="rf-cur"></div>
+        </div>
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Valor estimado</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#3b82f6;" id="rf-fair"></div>
+        </div>
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Margem de segurança</div>
+          <div style="font-size:1.2rem; font-weight:700;" id="rf-mos"></div>
+        </div>
+      </div>
+
+      <!-- Múltiplos -->
+      <div id="rf-mult-card" style="background:#fff; border-radius:8px; padding:.9rem 1rem; margin-bottom:1rem; border:1px solid #e2e8f0; display:none;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.5rem;">Múltiplos e Indicadores</div>
+        <div id="rf-mult" style="display:grid; grid-template-columns:repeat(3,1fr); gap:.2rem .9rem; font-size:.85rem; color:#334155; line-height:1.6;"></div>
+      </div>
+
+      <!-- Valuation por método -->
+      <div id="rf-vald-card" style="background:#fff; border-radius:8px; padding:.9rem 1rem; margin-bottom:1rem; border:1px solid #e2e8f0; display:none;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.5rem;">Valuation por Método</div>
+        <div id="rf-vald" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:.5rem; font-size:.85rem; color:#334155;"></div>
+      </div>
+
+      <!-- DRE / Balanço / Fluxo -->
+      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; margin-bottom:1rem;">
+        <div id="rf-dre-card" style="background:#fff; border-radius:8px; padding:.8rem .9rem; border:1px solid #e2e8f0; display:none;">
+          <div style="font-size:.72rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.4rem;">DRE / Resultado</div>
+          <div id="rf-dre" style="font-size:.82rem; color:#334155; line-height:1.6;"></div>
+        </div>
+        <div id="rf-bs-card" style="background:#fff; border-radius:8px; padding:.8rem .9rem; border:1px solid #e2e8f0; display:none;">
+          <div style="font-size:.72rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.4rem;">Balanço</div>
+          <div id="rf-bs" style="font-size:.82rem; color:#334155; line-height:1.6;"></div>
+        </div>
+        <div id="rf-cf-card" style="background:#fff; border-radius:8px; padding:.8rem .9rem; border:1px solid #e2e8f0; display:none;">
+          <div style="font-size:.72rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.4rem;">Fluxo de Caixa</div>
+          <div id="rf-cf" style="font-size:.82rem; color:#334155; line-height:1.6;"></div>
+        </div>
+      </div>
+
+      <!-- Pontos fortes / Riscos -->
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:.75rem; margin-bottom:1rem;">
+        <div id="rf-str-card" style="background:#fff; border-radius:8px; padding:.9rem 1rem; border:1px solid #e2e8f0; display:none;">
+          <div style="font-size:.75rem; font-weight:700; color:#16a34a; text-transform:uppercase; margin-bottom:.4rem;">✅ Pontos Fortes</div>
+          <ul id="rf-str" style="margin:0; padding-left:1.1rem; font-size:.84rem; color:#334155; line-height:1.5;"></ul>
+        </div>
+        <div id="rf-risk-card" style="background:#fff; border-radius:8px; padding:.9rem 1rem; border:1px solid #e2e8f0; display:none;">
+          <div style="font-size:.75rem; font-weight:700; color:#dc2626; text-transform:uppercase; margin-bottom:.4rem;">⚠️ Riscos</div>
+          <ul id="rf-risk" style="margin:0; padding-left:1.1rem; font-size:.84rem; color:#334155; line-height:1.5;"></ul>
+        </div>
+      </div>
+
+      <!-- Checklist -->
+      <div id="rf-chk-card" style="background:#fff; border-radius:8px; padding:.9rem 1rem; margin-bottom:1rem; border:1px solid #e2e8f0; display:none;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.4rem;">📋 Checklist do Investidor</div>
+        <ul id="rf-chk" style="margin:0; padding-left:1.1rem; font-size:.84rem; color:#334155; line-height:1.5;"></ul>
+      </div>
+
+      <!-- Conclusão -->
+      <div id="rf-concl-card" style="background:#faf5ff; border:1px solid #e9d5ff; border-radius:8px; padding:.9rem 1rem; margin-bottom:.6rem; display:none;">
+        <div style="font-size:.75rem; font-weight:700; color:#7c3aed; text-transform:uppercase; margin-bottom:.4rem;">Conclusão</div>
+        <div id="rf-concl" style="font-size:.86rem; color:#334155; line-height:1.55;"></div>
+      </div>
+
+      <div id="rf-meta" style="font-size:.72rem; color:#94a3b8; margin-top:.4rem;"></div>
+    </div>
+  </div>
+</div>
+<script>
+(function() {
+  var modal = document.getElementById('rfund-modal');
+  if (!modal) return;
+  function brl(v) {
+    if (v == null || v === '') return '-';
+    var n = parseFloat(v); if (isNaN(n)) return '-';
+    return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+  }
+  function pctFrac(v) {   // recebe fração (0.124) → "12,4%"
+    var n = parseFloat(v); if (isNaN(n)) return null;
+    var x = (n > -1.5 && n < 1.5) ? n * 100 : n;
+    return (x >= 0 ? '+' : '') + x.toLocaleString('pt-BR', {minimumFractionDigits:1, maximumFractionDigits:1}) + '%';
+  }
+  function big(v) {
+    var n = parseFloat(v); if (isNaN(n)) return '-';
+    var a = Math.abs(n), s = n < 0 ? '-' : '';
+    if (a >= 1e9) return s + 'R$ ' + (a/1e9).toLocaleString('pt-BR',{maximumFractionDigits:2}) + ' bi';
+    if (a >= 1e6) return s + 'R$ ' + (a/1e6).toLocaleString('pt-BR',{maximumFractionDigits:2}) + ' mi';
+    if (a >= 1e3) return s + 'R$ ' + (a/1e3).toLocaleString('pt-BR',{maximumFractionDigits:1}) + ' mil';
+    return brl(n);
+  }
+  function set(id, v) { var e = document.getElementById(id); if (e) e.textContent = v; }
+  function showCard(cardId, has) { var e = document.getElementById(cardId); if (e) e.style.display = has ? '' : 'none'; }
+  function fillList(id, arr) {
+    var ul = document.getElementById(id); if (!ul) return;
+    ul.innerHTML = (arr || []).map(function(x){ return '<li>' + String(x) + '</li>'; }).join('');
+  }
+  // rótulos amigáveis para múltiplos e demonstrativos
+  var MULT_LABELS = {pl:'P/L', pvp:'P/VP', ev_ebitda:'EV/EBITDA', net_debt_ebitda:'Dív. líq./EBITDA',
+    dividend_yield:'Dividend Yield', roe:'ROE', roic:'ROIC', profit_margin:'Margem líquida',
+    ebitda_margin:'Margem EBITDA', debt_to_equity:'Dív./Patrim.', revenue_growth:'Cresc. receita'};
+  var PCT_KEYS = {dividend_yield:1, roe:1, roic:1, profit_margin:1, ebitda_margin:1, revenue_growth:1};
+  var VAL_LABELS = {graham:'Graham', dcf:'DCF', bazin:'Bazin', consensus:'Consenso', ddm:'DDM'};
+  var DRE_LABELS = {revenue:'Receita', net_income:'Lucro líquido', ebitda:'EBITDA', gross_profit:'Lucro bruto', operating_income:'Result. operac.'};
+  var BS_LABELS  = {cash:'Caixa', debt:'Dívida', net_debt:'Dívida líquida', equity:'Patrimônio', total_assets:'Ativo total'};
+  var CF_LABELS  = {free_cash_flow:'Fluxo de caixa livre', operating_cash_flow:'FC operacional', capex:'Capex'};
+
+  function kvHtml(obj, labels, isBig) {
+    var rows = [];
+    Object.keys(obj || {}).forEach(function(k) {
+      var v = obj[k];
+      if (v == null || v === '') return;
+      var lbl = labels[k] || k;
+      var val;
+      if (isBig) val = big(v);
+      else if (PCT_KEYS[k]) val = pctFrac(v);
+      else { var n = parseFloat(v); val = isNaN(n) ? v : n.toLocaleString('pt-BR', {maximumFractionDigits:2}); }
+      if (val == null) return;
+      rows.push('<span>' + lbl + ': <strong>' + val + '</strong></span>');
+    });
+    return rows;
+  }
+
+  window.openRadarFund = function(ticker) {
+    ticker = (ticker || '').toUpperCase().trim(); if (!ticker) return;
+    set('rf-ticker', ticker); set('rf-company', ''); set('rf-price', '');
+    document.getElementById('rf-loading').style.display = '';
+    document.getElementById('rf-error').style.display = 'none';
+    document.getElementById('rf-body').style.display = 'none';
+    document.getElementById('rf-pills').innerHTML = '';
+    modal.style.display = 'flex';
+    fetch('/api/radar_analise?analyzer=ai&ticker=' + encodeURIComponent(ticker) + '&_=' + Date.now(), {cache:'no-store'})
+      .then(function(r){ return r.json(); })
+      .then(function(d){ renderFund(d, ticker); })
+      .catch(function(e){
+        document.getElementById('rf-loading').style.display = 'none';
+        document.getElementById('rf-error').style.display = '';
+        document.getElementById('rf-error').textContent = 'Erro ao gerar análise: ' + e.message;
+      });
+  };
+  window.closeRadarFund = function(){ modal.style.display = 'none'; };
+  modal.addEventListener('click', function(e){ if (e.target === modal) closeRadarFund(); });
+
+  function renderFund(d, ticker) {
+    document.getElementById('rf-loading').style.display = 'none';
+    if (d.error) {
+      document.getElementById('rf-error').style.display = '';
+      document.getElementById('rf-error').textContent = d.error;
+      return;
+    }
+    document.getElementById('rf-body').style.display = '';
+    set('rf-company', d.company || '-');
+    set('rf-price', brl(d.price));
+    set('rf-cur', brl(d.price));
+    set('rf-fair', d.estimated_value != null ? brl(d.estimated_value) : '-');
+    var mosEl = document.getElementById('rf-mos');
+    if (d.margin_of_safety != null) {
+      var mos = parseFloat(d.margin_of_safety);
+      mosEl.textContent = pctFrac(mos);
+      mosEl.style.color = mos >= 0 ? '#16a34a' : '#dc2626';
+    } else { mosEl.textContent = '-'; mosEl.style.color = '#334155'; }
+
+    // resumo executivo
+    var sm = document.getElementById('rf-summary');
+    if (d.executive_summary) { sm.textContent = d.executive_summary; sm.style.display = ''; }
+    else sm.style.display = 'none';
+
+    // múltiplos
+    var mr = kvHtml(d.multiples, MULT_LABELS, false);
+    document.getElementById('rf-mult').innerHTML = mr.join('');
+    showCard('rf-mult-card', mr.length > 0);
+
+    // valuation por método
+    var vr = Object.keys(d.valuation_detail || {}).filter(function(k){ return d.valuation_detail[k] != null; })
+      .map(function(k){
+        return '<div style="background:#f8fafc;border-radius:6px;padding:.4rem .5rem;text-align:center;">' +
+               '<div style="font-size:.7rem;color:#64748b;">' + (VAL_LABELS[k]||k) + '</div>' +
+               '<div style="font-weight:700;color:#0f172a;">' + brl(d.valuation_detail[k]) + '</div></div>';
+      });
+    document.getElementById('rf-vald').innerHTML = vr.join('');
+    showCard('rf-vald-card', vr.length > 0);
+
+    // demonstrativos
+    var dre = kvHtml(d.income_statement, DRE_LABELS, true);
+    document.getElementById('rf-dre').innerHTML = dre.map(function(x){return '<div>'+x+'</div>';}).join('');
+    showCard('rf-dre-card', dre.length > 0);
+    var bs = kvHtml(d.balance_sheet, BS_LABELS, true);
+    document.getElementById('rf-bs').innerHTML = bs.map(function(x){return '<div>'+x+'</div>';}).join('');
+    showCard('rf-bs-card', bs.length > 0);
+    var cf = kvHtml(d.cash_flow, CF_LABELS, true);
+    document.getElementById('rf-cf').innerHTML = cf.map(function(x){return '<div>'+x+'</div>';}).join('');
+    showCard('rf-cf-card', cf.length > 0);
+
+    // fortes / riscos / checklist
+    fillList('rf-str', d.strengths); showCard('rf-str-card', (d.strengths||[]).length > 0);
+    fillList('rf-risk', d.risks);    showCard('rf-risk-card', (d.risks||[]).length > 0);
+    fillList('rf-chk', d.checklist); showCard('rf-chk-card', (d.checklist||[]).length > 0);
+
+    // conclusão
+    var cc = d.conclusion || d.fundamental_summary;
+    if (cc) { set('rf-concl', cc); showCard('rf-concl-card', true); } else showCard('rf-concl-card', false);
+
+    // meta (cache + disclaimer)
+    var meta = [];
+    if (d.cache_status) meta.push('Fonte: ' + (d.cache_status === 'hit' ? 'cache do dia' : d.cache_status === 'miss' ? 'calculado agora' : d.cache_status) + (d.cache_date ? ' (' + d.cache_date + ')' : ''));
+    if (d.market_refreshed) meta.push('preço atualizado no pregão');
+    if (d.disclaimer) meta.push(d.disclaimer);
+    set('rf-meta', meta.join(' · '));
+  }
+})();
+</script>

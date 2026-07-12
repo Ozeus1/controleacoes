@@ -11295,10 +11295,54 @@ def api_radar_analise():
     ticker = request.args.get('ticker', '').strip().upper()
     if not ticker:
         return jsonify({'error': 'ticker obrigatório'}), 400
+    analyzer = (request.args.get('analyzer') or 'technical').strip().lower()
+    if analyzer not in ('technical', 'ai'):
+        analyzer = 'technical'
     RADAR_URL = 'https://acoes.receberbemevinhos.com.br/api_res.php'
     RADAR_KEY  = 'radar_8acddd4976bc3c1e9b9c814c3b408f9dcbf1dfd0d75795f9'
+
+    # ── Modo IA: relatório fundamentalista completo ──────────────────────────
+    if analyzer == 'ai':
+        try:
+            resp = _req.get(RADAR_URL, params={'ticker': ticker, 'analyzer': 'ai',
+                                               'api_key': RADAR_KEY}, timeout=45)
+            raw = resp.json()
+            if not raw.get('ok', True) and raw.get('error'):
+                return jsonify({'error': raw.get('error')}), 502
+            d = raw.get('data', raw)
+            rep = d.get('report', {}) if isinstance(d.get('report'), dict) else {}
+            fr  = d.get('fundamental_result', {}) if isinstance(d.get('fundamental_result'), dict) else {}
+            cache = d.get('cache', {}) if isinstance(d.get('cache'), dict) else {}
+            out = {
+                'analyzer':       'ai',
+                'company':        d.get('company_name', ''),
+                'price':          d.get('price'),
+                'estimated_value': d.get('estimated_value') or (rep.get('valuation') or {}).get('estimated_value'),
+                'margin_of_safety': d.get('margin_of_safety') or (rep.get('valuation') or {}).get('margin_of_safety'),
+                'executive_summary': rep.get('executive_summary'),
+                'multiples':      rep.get('multiples') or {},
+                'valuation_detail': rep.get('valuation_detail') or {},
+                'income_statement': rep.get('income_statement') or {},
+                'balance_sheet':  rep.get('balance_sheet') or {},
+                'cash_flow':      rep.get('cash_flow') or {},
+                'strengths':      rep.get('strengths') or [],
+                'risks':          rep.get('risks') or [],
+                'checklist':      rep.get('investor_checklist') or [],
+                'conclusion':     rep.get('conclusion'),
+                'fundamental_summary': (fr.get('layer3') or {}).get('summary'),
+                'generated_at':   d.get('generated_at'),
+                'disclaimer':     d.get('disclaimer'),
+                'cache_status':   cache.get('status'),
+                'cache_date':     cache.get('date'),
+                'market_refreshed': cache.get('market_refreshed'),
+            }
+            return jsonify(out)
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
     try:
-        resp = _req.get(RADAR_URL, params={'ticker': ticker, 'api_key': RADAR_KEY}, timeout=30)
+        resp = _req.get(RADAR_URL, params={'ticker': ticker, 'analyzer': 'technical',
+                                           'api_key': RADAR_KEY}, timeout=30)
         raw  = resp.json()
         # A API retorna { ok, data: { ... } }
         d = raw.get('data', raw)
@@ -11306,6 +11350,14 @@ def api_radar_analise():
         mc   = d.get('market_context', {})
         tr   = d.get('technical_reading', {})
         fund = d.get('fundamentals_summary', {})
+        # A API nova traz também screen_data já estruturado — usa como fallback.
+        sd = d.get('screen_data', {}) if isinstance(d.get('screen_data'), dict) else {}
+        if not isinstance(tr, dict) or not tr:
+            tr = sd.get('indicadores_tecnicos', {}) if isinstance(sd.get('indicadores_tecnicos'), dict) else {}
+        if not isinstance(mc, dict) or not mc:
+            mc = sd.get('niveis_operacionais', {}) if isinstance(sd.get('niveis_operacionais'), dict) else {}
+        if not isinstance(fund, dict) or not fund:
+            fund = sd.get('fundamentos_resumidos', {}) if isinstance(sd.get('fundamentos_resumidos'), dict) else {}
         if not isinstance(fund, dict):
             fund = {}
         if not any(fund.get(k) not in (None, '', '-') for k in ('pl', 'pvp', 'dividend_yield', 'eps', 'sector', 'industry')):

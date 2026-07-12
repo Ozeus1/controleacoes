@@ -54,6 +54,7 @@
                 <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                     <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9; color:white;">📈</button>
                     <button class="btn btn-sm" onclick="openRadar('{{ item.asset.ticker }}')" title="Analise Radar" style="background:#8b5cf6; color:white;">&#128202;</button>
+                    <button class="btn btn-sm" onclick="openRadarFund('{{ item.asset.ticker }}')" title="Analise Fundamentalista (IA)" style="background:#7c3aed; color:white; font-weight:700; padding-left:.3rem; padding-right:.3rem;">&#128202;F</button>
                     <button class="btn btn-sm btn-dates" title="Datas de entrada/saída"
                         style="background:#f59e0b; color:white;"
                         data-id="{{ item.asset.id }}" data-ticker="{{ item.asset.ticker }}"
@@ -532,6 +533,7 @@
 
 <!-- ── Quote Hint Tooltip ─────────────────────────────────────── -->
 {% include "_radar_modal.html" %}
+{% include "_radar_fund_modal.html" %}
 
 <div id="qhint" style="
     display:none; position:fixed; z-index:99999;

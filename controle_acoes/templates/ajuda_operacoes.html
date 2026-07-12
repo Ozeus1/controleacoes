@@ -506,7 +506,10 @@ function badgeTipo(t){
   var m={credito:['CRÉDITO','credito'],debito:['DÉBITO','debito'],zero:['~ZERO/CRÉD.','zero'],arb:['TRAVADO','zero']};
   return '<span class="aj-badge '+m[t][1]+'">'+m[t][0]+'</span>';
 }
-function ul(items){ return '<ul>'+items.map(function(i){return '<li>'+i+'</li>';}).join('')+'</ul>'; }
+// Escapa <, > e & — os textos usam "A<B<C" que o navegador leria como tags,
+// quebrando o layout (os cards seguintes entravam dentro do anterior).
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function ul(items){ return '<ul>'+items.map(function(i){return '<li>'+esc(i)+'</li>';}).join('')+'</ul>'; }
 
 var host=document.getElementById('aj-conteudo');
 var html='';
@@ -514,11 +517,11 @@ CATS.forEach(function(cat){
   html+='<h3 class="aj-cat-title" id="'+cat.id+'">'+cat.nome+'</h3><div class="aj-grid">';
   OPS.forEach(function(op,idx){
     if(op.cat!==cat.id) return;
-    html+='<div class="aj-card" data-nome="'+op.nome.toLowerCase()+'">'+
-      '<h4>'+op.nome+' '+badgeCen(op.cen)+' '+badgeTipo(op.tipo)+'</h4>'+
+    html+='<div class="aj-card" data-nome="'+esc(op.nome.toLowerCase())+'">'+
+      '<h4>'+esc(op.nome)+' '+badgeCen(op.cen)+' '+badgeTipo(op.tipo)+'</h4>'+
       '<div class="aj-canvas-wrap"><canvas id="aj-cv-'+idx+'" width="400" height="130"></canvas></div>'+
-      '<div class="aj-sec"><b class="lbl">🧩 Montagem</b>'+op.mont+'</div>'+
-      '<div class="aj-sec"><b class="lbl">💡 Cenário ideal</b>'+op.cenario+'</div>'+
+      '<div class="aj-sec"><b class="lbl">🧩 Montagem</b>'+esc(op.mont)+'</div>'+
+      '<div class="aj-sec"><b class="lbl">💡 Cenário ideal</b>'+esc(op.cenario)+'</div>'+
       '<div class="aj-sec"><b class="lbl">🎯 Seleção algorítmica</b>'+ul(op.sel)+'</div>'+
       '<div class="aj-sec"><b class="lbl">🔧 Manejo</b>'+ul(op.man)+'</div>'+
       (op.busca?'<a class="aj-buscar" href="'+op.busca+'">🔍 Buscar esta operação</a>':'')+

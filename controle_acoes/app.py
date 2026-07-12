@@ -2966,6 +2966,13 @@ def busca_operacoes():
     return render_template('busca_operacoes.html', ranking_vol=ranking_vol, selic=_selic())
 
 
+@app.route('/ajuda-operacoes')
+@login_required
+def ajuda_operacoes():
+    """Página: guia de referência das operações estruturadas (Vol. 2 e 4)."""
+    return render_template('ajuda_operacoes.html')
+
+
 @app.route('/busca-operacoes-avancadas')
 @login_required
 def busca_operacoes_avancadas():

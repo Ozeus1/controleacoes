@@ -248,9 +248,9 @@
                     class="{{ 'active' if request.endpoint == 'fiis' else '' }}">FIIs</a>
 
                 {# ── Opções (dropdown com Estudos e Simulação) ── #}
-                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','lancamento_coberto','venda_put_longa'] else '' }}">
+                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','lancamento_coberto','venda_put_longa','ajuda_operacoes'] else '' }}">
                     <a href="{{ url_for('opcoes') }}"
-                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','lancamento_coberto','venda_put_longa'] else '' }}"
+                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','lancamento_coberto','venda_put_longa','ajuda_operacoes'] else '' }}"
                        onclick="toggleNavDrop(this,event)">
                         Opções <span class="nav-caret">▾</span>
                     </a>
@@ -283,6 +283,8 @@
                            class="{{ 'active' if request.endpoint == 'lancamento_coberto' else '' }}">📋 Lançamento Coberto</a>
                         <a href="{{ url_for('venda_put_longa') }}"
                            class="{{ 'active' if request.endpoint == 'venda_put_longa' else '' }}">🛡️ Venda de PUT Longa</a>
+                        <a href="{{ url_for('ajuda_operacoes') }}"
+                           class="{{ 'active' if request.endpoint == 'ajuda_operacoes' else '' }}">📖 Ajuda de Operações</a>
                     </div>
                 </div>
 

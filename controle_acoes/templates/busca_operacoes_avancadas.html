@@ -487,6 +487,15 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     if (e.key === 'Enter') { load(this.value); this.value = ''; }
   });
 
+  // Pré-seleção de operação via URL (?op=...) — usado pela Ajuda de Operações
+  var qOp = new URLSearchParams(location.search).get('op');
+  if (qOp && OP_TITLES[qOp]) {
+    currentOp = qOp;
+    document.querySelectorAll('.ba-obtn').forEach(function(x) {
+      x.classList.toggle('active', x.dataset.op === qOp);
+    });
+  }
+
   renderTickers();
 })();
 </script>

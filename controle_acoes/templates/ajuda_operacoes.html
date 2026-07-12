@@ -1,0 +1,544 @@
+{% extends "base.html" %}
+{% block title %}Ajuda de Operações{% endblock %}
+{% block extra_scripts %}
+<style>
+.aj-toolbar{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin:.4rem 0 .9rem;}
+.aj-toolbar input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
+  border-radius:6px;padding:.35rem .6rem;font-size:.85rem;width:240px;}
+.aj-navcat{padding:.25rem .6rem;border:1px solid #475569;border-radius:6px;font-size:.78rem;cursor:pointer;
+  color:#e2e8f0;background:var(--hover-bg,#334155);text-decoration:none;}
+.aj-navcat:hover{background:#0ea5e9;color:#fff;}
+.aj-cat-title{margin:1.4rem 0 .6rem;font-size:1.05rem;border-bottom:2px solid var(--accent-color,#7c3aed);
+  padding-bottom:.25rem;display:flex;align-items:center;gap:.5rem;}
+.aj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:.9rem;}
+@media (max-width:768px){.aj-grid{grid-template-columns:1fr;}}
+.aj-card{background:var(--card-bg);border:1px solid var(--border-color);border-radius:10px;padding: .9rem 1rem;}
+.aj-card h4{margin:0 0 .35rem;font-size:.95rem;display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;}
+.aj-badge{display:inline-block;padding:.08rem .45rem;border-radius:4px;font-size:.68rem;font-weight:700;}
+.aj-badge.alta{background:rgba(16,185,129,.15);color:#6ee7b7;}
+.aj-badge.baixa{background:rgba(248,113,113,.15);color:#fca5a5;}
+.aj-badge.lateral{background:rgba(251,191,36,.15);color:#fde68a;}
+.aj-badge.vol{background:rgba(14,165,233,.15);color:#7dd3fc;}
+.aj-badge.arb{background:rgba(167,139,250,.15);color:#c4b5fd;}
+.aj-badge.credito{background:rgba(16,185,129,.2);color:#34d399;}
+.aj-badge.debito{background:rgba(248,113,113,.2);color:#f87171;}
+.aj-badge.zero{background:rgba(148,163,184,.2);color:#cbd5e1;}
+.aj-canvas-wrap{background:rgba(0,0,0,.15);border:1px solid var(--border-color);border-radius:8px;
+  padding:.3rem;margin:.4rem 0 .55rem;text-align:center;}
+.aj-sec{font-size:.8rem;color:var(--text-primary);margin:.35rem 0;}
+.aj-sec b.lbl{color:var(--text-secondary);font-size:.74rem;text-transform:uppercase;letter-spacing:.03em;display:block;margin-bottom:.1rem;}
+.aj-sec ul{margin:.15rem 0 .15rem 1.1rem;padding:0;}
+.aj-sec li{margin:.12rem 0;line-height:1.35;}
+.aj-buscar{display:inline-block;margin-top:.45rem;font-size:.78rem;padding:.28rem .7rem;border-radius:6px;
+  background:var(--accent-color,#7c3aed);color:#fff;text-decoration:none;}
+.aj-buscar:hover{opacity:.9;color:#fff;}
+.aj-info{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);border-radius:8px;
+  padding:.7rem .9rem;font-size:.82rem;margin:.8rem 0;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="padding:1.2rem 1.4rem;">
+  <h2 style="margin:0 0 .3rem;">📖 Ajuda de Operações</h2>
+  <p style="color:var(--text-secondary);font-size:.85rem;margin:.2rem 0 .6rem;">
+    Guia de referência das operações estruturadas (guias técnicos Vol. 2 e Vol. 4, complementados).
+    Cada card traz a <strong>montagem</strong>, o <strong>cenário ideal</strong>, os parâmetros de
+    <strong>seleção algorítmica</strong> (vencimento, deltas, VI), as regras de <strong>manejo</strong>
+    e o <strong>gráfico de payoff</strong> no vencimento (eixo horizontal = preço do ativo; verde = lucro,
+    vermelho = prejuízo; linhas pontilhadas = strikes). Nos calendários o resultado é avaliado no
+    vencimento curto. O botão <em>Buscar</em> abre a operação já selecionada na tela de busca.
+  </p>
+  <div class="aj-toolbar">
+    <input id="aj-filtro" type="text" placeholder="🔎 Filtrar operações…">
+    <a class="aj-navcat" href="#cat-dir">📈 Direcionais</a>
+    <a class="aj-navcat" href="#cat-renda">💰 Renda e Proteção</a>
+    <a class="aj-navcat" href="#cat-vol">⚖️ Volatilidade e Neutras</a>
+    <a class="aj-navcat" href="#cat-sint">🧬 Sintéticas e Avançadas</a>
+    <a class="aj-navcat" href="#cat-cal">📅 Calendário (multi-venc.)</a>
+  </div>
+  <div id="aj-conteudo"></div>
+
+  <div class="aj-info" id="aj-riscos">
+    <strong>⚠️ Considerações de risco e manejo (Vol. 4):</strong>
+    <ul style="margin:.3rem 0 0 1.1rem;">
+      <li><strong>Gamma das semanais:</strong> cresce exponencialmente perto do vencimento — o delta fica
+        instável; nos 2 últimos dias monitore a posição com muito mais frequência (5–15 min) e evite
+        carregar pernas semanais vendidas ATM até o fim.</li>
+      <li><strong>Liquidez:</strong> use ordens limitadas e confira a profundidade do book antes de executar
+        spreads com várias pernas; em papéis pouco negociados o spread bid-ask corrói o resultado teórico.</li>
+      <li><strong>Margem (B3 CORE):</strong> travas de calendário/diagonais são eficientes em margem — a ponta
+        comprada serve de garantia para a vendida — mas simule no CORE para evitar chamadas de margem em
+        movimentos bruscos.</li>
+      <li><strong>Pin Risk:</strong> com DTE &lt; 5 e o preço colado num strike vendido, encerre ou role a
+        posição — o exercício no vencimento é imprevisível.</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+(function(){
+/* ── Mini motor de payoff p/ os desenhos ─────────────────────────────────────
+   Pernas: {t:'C'|'P'|'S', q, K, p} com spot normalizado em 100.
+   Calendários: {cal:true, dcS, dcL, iv, legs:[{t,q,K,p,long:bool}]} — avaliado
+   no vencimento curto; perna longa reprecificada por Black-Scholes. */
+function ncdf(x){ return 0.5*(1+erf(x/Math.SQRT2)); }
+function erf(x){ var s=x<0?-1:1; x=Math.abs(x);
+  var a1=0.254829592,a2=-0.284496736,a3=1.421413741,a4=-1.453152027,a5=1.061405429,p=0.3275911;
+  var t=1/(1+p*x), y=1-(((((a5*t+a4)*t)+a3)*t+a2)*t+a1)*t*Math.exp(-x*x);
+  return s*y; }
+function bsJ(S,K,T,r,sig,call){
+  if(T<=0) return call?Math.max(0,S-K):Math.max(0,K-S);
+  var d1=(Math.log(S/K)+(r+0.5*sig*sig)*T)/(sig*Math.sqrt(T)), d2=d1-sig*Math.sqrt(T);
+  if(call) return S*ncdf(d1)-K*Math.exp(-r*T)*ncdf(d2);
+  return K*Math.exp(-r*T)*ncdf(-d2)-S*ncdf(-d1);
+}
+function payFn(spec){
+  var net=0;
+  spec.legs.forEach(function(l){ net += (-l.q)*(l.t==='S'?100:l.p); });
+  return function(S){
+    var v=net;
+    spec.legs.forEach(function(l){
+      if(l.t==='S'){ v+=l.q*S; return; }
+      if(spec.cal && l.long){
+        v+=l.q*bsJ(S,l.K,(spec.dcL-spec.dcS)/365,0.10,spec.iv||0.30,l.t==='C');
+      } else {
+        v+=l.q*(l.t==='C'?Math.max(0,S-l.K):Math.max(0,l.K-S));
+      }
+    });
+    return v;
+  };
+}
+function draw(cv,spec){
+  var ctx=cv.getContext('2d'), W=cv.width, H=cv.height;
+  var f=payFn(spec), lo=70, hi=130, N=140;
+  var xs=[],ys=[],ymin=1e9,ymax=-1e9;
+  for(var i=0;i<=N;i++){ var S=lo+(hi-lo)*i/N, v=f(S);
+    xs.push(S); ys.push(v); if(v<ymin)ymin=v; if(v>ymax)ymax=v; }
+  var pad=Math.max((ymax-ymin)*0.15, 0.5); ymin-=pad; ymax+=pad;
+  function X(S){ return 6+(W-12)*(S-lo)/(hi-lo); }
+  function Y(v){ return H-8-(H-16)*(v-ymin)/(ymax-ymin); }
+  ctx.clearRect(0,0,W,H);
+  // zonas lucro/prejuízo
+  var y0=Y(0);
+  for(var i2=0;i2<N;i2++){
+    var x1=X(xs[i2]), x2=X(xs[i2+1]);
+    var v1=ys[i2], v2=ys[i2+1];
+    ctx.beginPath();
+    ctx.moveTo(x1,y0); ctx.lineTo(x1,Y(v1)); ctx.lineTo(x2,Y(v2)); ctx.lineTo(x2,y0); ctx.closePath();
+    ctx.fillStyle = (v1+v2)/2>=0 ? 'rgba(16,185,129,.22)' : 'rgba(248,113,113,.20)';
+    ctx.fill();
+  }
+  // linha zero e spot
+  ctx.strokeStyle='rgba(148,163,184,.6)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(6,y0); ctx.lineTo(W-6,y0); ctx.stroke();
+  ctx.strokeStyle='rgba(148,163,184,.35)'; ctx.setLineDash([2,3]);
+  ctx.beginPath(); ctx.moveTo(X(100),8); ctx.lineTo(X(100),H-8); ctx.stroke();
+  // strikes
+  ctx.strokeStyle='rgba(251,191,36,.45)';
+  (spec.legs||[]).forEach(function(l){ if(l.K){
+    ctx.beginPath(); ctx.moveTo(X(l.K),8); ctx.lineTo(X(l.K),H-8); ctx.stroke(); }});
+  ctx.setLineDash([]);
+  // curva
+  ctx.strokeStyle='#38bdf8'; ctx.lineWidth=2;
+  ctx.beginPath();
+  for(var i3=0;i3<=N;i3++){ var px=X(xs[i3]), py=Y(ys[i3]); i3?ctx.lineTo(px,py):ctx.moveTo(px,py); }
+  ctx.stroke();
+}
+
+/* ── Conteúdo (Vol. 2 + Vol. 4, complementado) ─────────────────────────────── */
+var CATS=[
+  {id:'cat-dir',  nome:'📈 Direcionais (Alta/Baixa)'},
+  {id:'cat-renda',nome:'💰 Renda e Proteção'},
+  {id:'cat-vol',  nome:'⚖️ Volatilidade e Neutras'},
+  {id:'cat-sint', nome:'🧬 Sintéticas e Avançadas'},
+  {id:'cat-cal',  nome:'📅 Calendário — múltiplos vencimentos (semanal → mensal)'}
+];
+function B(pg,op){ return pg+'?op='+op; }
+var BO='/busca-operacoes', BA='/busca-operacoes-avancadas';
+
+var OPS=[
+/* ══ DIRECIONAIS ══ */
+{cat:'cat-dir',nome:'Call a Seco (Long Call)',cen:'alta',tipo:'debito',
+ legs:[{t:'C',q:1,K:105,p:3}],
+ mont:'Compra de 1 CALL.',
+ cenario:'Forte expectativa de alta, com VI baixa ou em ascensão (compra Vega barato).',
+ sel:['Vencimento: DTE > 60d para mitigar o Theta, ou 30–45d para alavancagem máxima','Strike: OTM com Δ 0,30–0,45 (alavancagem) ou ATM Δ ≈ 0,50 (sensibilidade)','VI: IV Percentile < 30% ou em ascensão'],
+ man:['Take profit: alvo de preço atingido ou prêmio dobrou (+100%)','Stop: perda de 50% do prêmio pago ou quebra de suporte','Rolagem: não usual — a posição costuma ser encerrada'],
+ busca:B(BA,'call_seco')},
+{cat:'cat-dir',nome:'Put a Seco (Long Put)',cen:'baixa',tipo:'debito',
+ legs:[{t:'P',q:1,K:95,p:3}],
+ mont:'Compra de 1 PUT.',
+ cenario:'Forte expectativa de queda, com VI baixa ou em ascensão.',
+ sel:['Vencimento: DTE > 60d ou 30–45d para alavancagem','Strike: OTM Δ −0,30 a −0,45 ou ATM Δ ≈ −0,50','VI: IV Percentile < 30%'],
+ man:['Take profit: alvo atingido ou prêmio dobrou','Stop: perda de 50% do prêmio ou rompimento de resistência','Rolagem: não usual'],
+ busca:B(BA,'put_seco')},
+{cat:'cat-dir',nome:'Trava de Alta com CALL (Bull Call Spread)',cen:'alta',tipo:'debito',
+ legs:[{t:'C',q:1,K:100,p:5},{t:'C',q:-1,K:110,p:2}],
+ mont:'Compra CALL strike A + venda CALL strike B (B > A), mesmo vencimento.',
+ cenario:'Alta moderada com risco e lucro limitados.',
+ sel:['Vencimento: DTE 20–40d','Comprada: ATM/leve ITM Δ ≈ 0,60 · Vendida: OTM Δ ≈ 0,30','Relação risco/retorno mínima 1:2 (débito ≤ ⅓ da largura)'],
+ man:['TP: preço no strike B ou 80% do lucro máximo','Stop: preço abaixo do strike A ou débito −80%','DTE < 5 e OTM: fechar (Pin Risk)'],
+ busca:B(BO,'trava_alta')},
+{cat:'cat-dir',nome:'Trava de Alta com PUT (Bull Put Spread)',cen:'alta',tipo:'credito',
+ legs:[{t:'P',q:-1,K:95,p:3},{t:'P',q:1,K:88,p:1.2}],
+ mont:'Venda PUT strike B + compra PUT strike A (B > A). Crédito.',
+ cenario:'Alta moderada; lucra se o papel ficar acima do strike vendido.',
+ sel:['Vencimento: DTE 20–40d','Vendida: OTM Δ ≈ −0,30 · Comprada: Δ −0,10 a −0,15','Crédito ≥ ⅓ da largura do spread'],
+ man:['TP: recompra com 20% do crédito (80% de lucro)','Stop: preço abaixo do strike vendido ou prêmio 2× o crédito','DTE < 5 e OTM: deixar expirar'],
+ busca:B(BO,'trava_alta_credito')},
+{cat:'cat-dir',nome:'Trava de Baixa com PUT (Bear Put Spread)',cen:'baixa',tipo:'debito',
+ legs:[{t:'P',q:1,K:100,p:5},{t:'P',q:-1,K:90,p:2}],
+ mont:'Compra PUT strike B + venda PUT strike A (B > A). Débito.',
+ cenario:'Queda moderada com risco e lucro limitados.',
+ sel:['Vencimento: DTE 20–40d','Comprada: ATM/leve ITM Δ ≈ −0,60 · Vendida: OTM Δ ≈ −0,30','Relação risco/retorno mínima 1:2'],
+ man:['TP: preço no strike vendido ou 80% do lucro máx.','Stop: acima do strike comprado ou débito −80%','DTE < 5 e OTM: fechar (Pin Risk)'],
+ busca:B(BO,'trava_baixa')},
+{cat:'cat-dir',nome:'Trava de Baixa com CALL (Bear Call Spread)',cen:'baixa',tipo:'credito',
+ legs:[{t:'C',q:-1,K:105,p:3},{t:'C',q:1,K:112,p:1.2}],
+ mont:'Venda CALL strike A + compra CALL strike B (B > A). Crédito.',
+ cenario:'Queda moderada; lucra se o papel ficar abaixo do strike vendido.',
+ sel:['Vencimento: DTE 20–40d','Vendida: OTM Δ ≈ 0,30 · Comprada: Δ 0,10–0,15','Crédito ≥ ⅓ da largura'],
+ man:['TP: recompra com 20% do crédito','Stop: acima do strike vendido ou prêmio 2× o crédito','DTE < 5 e OTM: deixar expirar'],
+ busca:B(BO,'trava_baixa_credito')},
+{cat:'cat-dir',nome:'Call Backspread (Ratio Volatility)',cen:'alta',tipo:'zero',
+ legs:[{t:'C',q:-1,K:92,p:9},{t:'C',q:2,K:108,p:2.2}],
+ mont:'Venda 1 CALL ITM + compra 2 CALLs OTM (mesmo vencimento).',
+ cenario:'Alta explosiva: lucro ILIMITADO na alta, risco limitado na baixa.',
+ sel:['Vencimento: DTE 30–60d','Vendida: ITM Δ 0,70–0,80 · Compradas: 2× OTM Δ 0,20–0,30','Custo: débito baixo ou pequeno crédito'],
+ man:['TP: gerenciar o delta se disparar; lucro parcial nas compradas','Stop: se cair e a vendida virar OTM, fechar','Perto do vencimento em mercado lateral: fechar (Theta corrói o miolo)'],
+ busca:B(BO,'trava_credito')},
+{cat:'cat-dir',nome:'Put Backspread',cen:'baixa',tipo:'zero',
+ legs:[{t:'P',q:-1,K:108,p:9},{t:'P',q:2,K:92,p:2.2}],
+ mont:'Venda 1 PUT ITM + compra 2 PUTs OTM.',
+ cenario:'Queda explosiva: lucro cresce forte na baixa, risco limitado na alta.',
+ sel:['Vencimento: DTE 30–60d','Vendida: ITM Δ −0,70 a −0,80 · Compradas: 2× OTM Δ −0,20 a −0,30','Custo: débito baixo ou crédito'],
+ man:['TP: gerenciar o delta se despencar','Stop: se subir e a vendida virar OTM, fechar','Lateral perto do vencimento: fechar'],
+ busca:B(BA,'put_backspread')},
+{cat:'cat-dir',nome:'Seagull de Alta',cen:'alta',tipo:'credito',
+ legs:[{t:'P',q:-1,K:90,p:2.5},{t:'C',q:1,K:100,p:4},{t:'C',q:-1,K:108,p:2}],
+ mont:'Venda PUT OTM + compra CALL A + venda CALL B (B > A).',
+ cenario:'Alta moderada com colchão; risco real só abaixo da PUT vendida.',
+ sel:['Vencimento: DTE 30–60d','PUT vendida: Δ −0,15 a −0,25 · CALL comprada: Δ 0,40–0,50 · CALL vendida: Δ 0,20–0,30','Montar com crédito líquido'],
+ man:['TP: trava de alta lucrando ou crédito capturado','Stop: PUT vendida ameaçada → rolar ou fechar','Perto do vencimento: gerenciar as pernas individualmente'],
+ busca:B(BA,'seagull_alta')},
+{cat:'cat-dir',nome:'Seagull de Baixa',cen:'baixa',tipo:'credito',
+ legs:[{t:'C',q:-1,K:110,p:2.5},{t:'P',q:1,K:100,p:4},{t:'P',q:-1,K:90,p:2}],
+ mont:'Venda CALL OTM + compra PUT B + venda PUT A (B > A).',
+ cenario:'Queda moderada com proteção contra alta; crédito.',
+ sel:['Vencimento: DTE 30–60d','CALL vendida: Δ 0,15–0,25 · PUT comprada: Δ −0,40 a −0,50 · PUT vendida: Δ −0,20 a −0,30','Crédito líquido'],
+ man:['TP: trava de baixa lucrando ou crédito capturado','Stop: CALL vendida ameaçada → rolar ou fechar','Gerenciar pernas perto do vencimento'],
+ busca:B(BA,'seagull_baixa')},
+{cat:'cat-dir',nome:'Christmas Tree Spread',cen:'alta',tipo:'zero',
+ legs:[{t:'C',q:-1,K:92,p:9},{t:'C',q:1,K:104,p:2.6},{t:'C',q:1,K:109,p:1.6},{t:'C',q:1,K:114,p:0.9}],
+ mont:'Venda 1 CALL ITM + compra 3 CALLs OTM escalonadas (variante de ratio).',
+ cenario:'Alta moderada-forte com risco limitado e lucro maior que trava simples.',
+ sel:['Vencimento: DTE 30–60d','Vendida: ITM Δ 0,70–0,80 · Compradas: 3 OTM com strikes crescentes e espaçados','Custo: débito baixo ou crédito'],
+ man:['Gerenciar Delta e Gamma da posição','Fechar se o ativo se mover forte contra'],
+ busca:B(BA,'christmas_tree')},
+{cat:'cat-dir',nome:'Ladder de CALLs',cen:'alta',tipo:'zero',
+ legs:[{t:'C',q:1,K:100,p:4},{t:'C',q:-1,K:108,p:2},{t:'C',q:-1,K:115,p:1}],
+ mont:'Compra CALL A + venda CALL B + venda CALL C (A < B < C).',
+ cenario:'Movimento direcional com zona de lucro ampla; risco cresce acima do último strike vendido.',
+ sel:['Vencimento: DTE 30–60d','Comprada: Δ 0,45–0,60 · Vendidas: Δ 0,25–0,40 e 0,10–0,25','Escalonar strikes p/ o perfil desejado'],
+ man:['Exige manejo ativo se o ativo passar dos strikes vendidos (perda ilimitada na ponta)'],
+ busca:B(BA,'ladder_call')},
+
+/* ══ RENDA E PROTEÇÃO ══ */
+{cat:'cat-renda',nome:'Venda Coberta (Covered Call)',cen:'lateral',tipo:'credito',
+ legs:[{t:'S',q:1},{t:'C',q:-1,K:108,p:2}],
+ mont:'Ação em carteira + venda de CALL OTM.',
+ cenario:'Mercado lateral/levemente altista; renda extra sobre a carteira.',
+ sel:['Vencimento: DTE 30–45d (Theta ótimo)','Strike: OTM Δ 0,20–0,35','VI: IV Percentile > 50% (prêmios gordos); liquidez com spread < 2%'],
+ man:['TP: recompra da CALL com 50% do prêmio','Rolagem automática: Δ da vendida ≥ 0,60 → roll up and out','DTE < 10 e OTM: fechar ou deixar expirar'],
+ busca:B(BA,'venda_coberta')},
+{cat:'cat-renda',nome:'Venda de PUT (Cash Secured Put)',cen:'alta',tipo:'credito',
+ legs:[{t:'P',q:-1,K:92,p:2}],
+ mont:'Venda de PUT OTM com caixa reservado para o exercício.',
+ cenario:'Comprar a ação mais barato ou gerar renda em mercado lateral/alta.',
+ sel:['Vencimento: DTE 30–45d','Strike: OTM Δ −0,20 a −0,35','VI: IV Percentile > 50%'],
+ man:['TP: recompra com 50% do prêmio','Δ ≤ −0,60 → roll down and out ou aceitar o exercício','DTE < 10 e OTM: deixar expirar'],
+ busca:B(BO,'venda_put_itm')},
+{cat:'cat-renda',nome:'Collar',cen:'lateral',tipo:'zero',
+ legs:[{t:'S',q:1},{t:'P',q:1,K:92,p:2},{t:'C',q:-1,K:108,p:2}],
+ mont:'Ação + compra de PUT OTM (proteção) + venda de CALL OTM (renda).',
+ cenario:'Proteger posição comprada contra quedas com custo compensado.',
+ sel:['Vencimento: DTE 30–60d','PUT: Δ −0,20 a −0,30 · CALL: Δ 0,20–0,30','Custo zero ou pequeno crédito'],
+ man:['Alta: CALL exercida → entrega as ações','Queda: PUT limita a perda no strike','Rolagem de todas as pernas se o cenário se mantiver'],
+ busca:B(BO,'collar')},
+{cat:'cat-renda',nome:'Protective Put',cen:'alta',tipo:'debito',
+ legs:[{t:'S',q:1},{t:'P',q:1,K:97,p:3}],
+ mont:'Ação + compra de PUT (seguro).',
+ cenario:'Proteção contra quedas fortes mantendo todo o potencial de alta.',
+ sel:['Vencimento: DTE > 60d (proteção de longo prazo)','Strike: ATM/leve OTM Δ −0,40 a −0,50'],
+ man:['A PUT valoriza na queda (sem TP direto)','Se subir, pode-se encerrar a PUT para reduzir custo','Rolar a PUT para manter a proteção'],
+ busca:B(BA,'protective_put')},
+{cat:'cat-renda',nome:'Covered Put',cen:'baixa',tipo:'credito',
+ legs:[{t:'S',q:-1},{t:'P',q:-1,K:92,p:2}],
+ mont:'Ação vendida (aluguel) + venda de PUT OTM.',
+ cenario:'Mercado lateral/levemente baixista; renda sobre posição short.',
+ sel:['Vencimento: DTE 30–45d','Strike: OTM Δ −0,20 a −0,35','VI > 50%'],
+ man:['TP: recompra da PUT com 50% do prêmio','Δ ≤ −0,60 → rolagem ou fechar','Atenção: risco ilimitado na alta (short da ação)'],
+ busca:B(BA,'covered_put')},
+{cat:'cat-renda',nome:'Strangle Vendido',cen:'lateral',tipo:'credito',
+ legs:[{t:'C',q:-1,K:110,p:2},{t:'P',q:-1,K:90,p:2}],
+ mont:'Venda CALL OTM + venda PUT OTM (mesmo vencimento).',
+ cenario:'Lateral com VI alta; lucra com Theta e queda de VI. Risco ilimitado nas duas pontas.',
+ sel:['Vencimento: DTE 30–45d','CALL Δ 0,15–0,25 · PUT Δ −0,15 a −0,25','VI: IV Percentile > 70%'],
+ man:['TP: recompra com 50% do prêmio','Perna com Δ chegando a ±0,40 → rolar/fechar a ameaçada'],
+ busca:B(BO,'strangle_vendido')},
+{cat:'cat-renda',nome:'Straddle Vendido',cen:'lateral',tipo:'credito',
+ legs:[{t:'C',q:-1,K:100,p:4},{t:'P',q:-1,K:100,p:4}],
+ mont:'Venda CALL ATM + venda PUT ATM (mesmo strike).',
+ cenario:'Mercado extremamente lateral, VI alta. Risco ilimitado — exige manejo constante.',
+ sel:['Vencimento: DTE 30–45d','Strikes ATM (Δ ±0,50)','VI > 70%'],
+ man:['TP: recompra com 50% do prêmio','Movimento forte em qualquer direção → rolar/fechar'],
+ busca:B(BO,'straddle_vendido')},
+{cat:'cat-renda',nome:'Iron Condor',cen:'lateral',tipo:'credito',
+ legs:[{t:'P',q:1,K:85,p:0.8},{t:'P',q:-1,K:92,p:2},{t:'C',q:-1,K:108,p:2},{t:'C',q:1,K:115,p:0.8}],
+ mont:'Strangle vendido + strangle mais OTM comprado (proteção). 4 pernas, mesmo vencimento.',
+ cenario:'Lateral com risco limitado; crédito.',
+ sel:['Vencimento: DTE 30–45d','Vendidos: Δ ±0,20–0,30 · Comprados: Δ ±0,05–0,10','Crédito ≥ ¼–⅓ da asa; VI > 70%'],
+ man:['TP: recompra com 50% do crédito','Strike interno ameaçado → rolar a perna ou fechar'],
+ busca:B(BO,'iron_condor')},
+{cat:'cat-renda',nome:'Iron Butterfly',cen:'lateral',tipo:'credito',
+ legs:[{t:'P',q:1,K:90,p:1},{t:'P',q:-1,K:100,p:4},{t:'C',q:-1,K:100,p:4},{t:'C',q:1,K:110,p:1}],
+ mont:'Straddle ATM vendido + strangle OTM comprado (proteção).',
+ cenario:'Extremamente lateral; crédito maior que o Iron Condor, zona de lucro mais estreita.',
+ sel:['Vencimento: DTE 30–45d','Miolo: ATM Δ ±0,50 · Asas: Δ ±0,05–0,10','VI > 70%'],
+ man:['TP: recompra com 50% do crédito','Movimento forte → rolar as pernas ameaçadas'],
+ busca:B(BA,'iron_butterfly')},
+{cat:'cat-renda',nome:'Jade Lizard',cen:'lateral',tipo:'credito',
+ legs:[{t:'P',q:-1,K:92,p:2},{t:'C',q:-1,K:106,p:2},{t:'C',q:1,K:110,p:0.8}],
+ mont:'Venda PUT OTM + trava de baixa com CALL (venda CALL OTM + compra CALL mais OTM).',
+ cenario:'Alta/lateral. Se o crédito ≥ largura da trava de CALL, NÃO há risco na alta — o risco fica só na queda.',
+ sel:['Vencimento: DTE 30–45d','PUT: Δ −0,15 a −0,25 · CALL vendida: Δ 0,20–0,30 · CALL comprada: Δ 0,05–0,10','Crédito significativo (≥ largura da trava)'],
+ man:['TP: recompra com 50% do crédito','Queda ameaçando a PUT → rolar a PUT ou fechar'],
+ busca:B(BA,'jade_lizard')},
+
+/* ══ VOLATILIDADE E NEUTRAS ══ */
+{cat:'cat-vol',nome:'Straddle Comprado',cen:'vol',tipo:'debito',
+ legs:[{t:'C',q:1,K:100,p:4},{t:'P',q:1,K:100,p:4}],
+ mont:'Compra CALL ATM + compra PUT ATM (mesmo strike).',
+ cenario:'Grande movimento em qualquer direção (balanço, evento); VI baixa e em ascensão.',
+ sel:['Vencimento: DTE 30–60d','Strikes ATM (Δ ±0,50)','VI: IV Percentile < 30% (comprar VI barata)'],
+ man:['TP: realizar na perna que valorizou com o movimento','Stop: lateral ou VI caindo → fechar (Theta+Vega contra)'],
+ busca:B(BA,'straddle_comprado')},
+{cat:'cat-vol',nome:'Strangle Comprado',cen:'vol',tipo:'debito',
+ legs:[{t:'C',q:1,K:108,p:2},{t:'P',q:1,K:92,p:2}],
+ mont:'Compra CALL OTM + compra PUT OTM.',
+ cenario:'Grande movimento com custo menor que o straddle (precisa de movimento maior).',
+ sel:['Vencimento: DTE 30–60d','CALL Δ 0,20–0,30 · PUT Δ −0,20 a −0,30','VI < 30%'],
+ man:['TP: perna vencedora','Stop: lateral/VI caindo → fechar'],
+ busca:B(BA,'strangle_comprado')},
+{cat:'cat-vol',nome:'Borboleta (Butterfly)',cen:'lateral',tipo:'debito',
+ legs:[{t:'C',q:1,K:92,p:9},{t:'C',q:-2,K:100,p:4},{t:'C',q:1,K:108,p:1.5}],
+ mont:'+1 CALL A −2 CALLs B +1 CALL C (A<B<C, asas equidistantes).',
+ cenario:'Preço convergindo para o miolo (B); lucra com Theta e estabilidade.',
+ sel:['Vencimento: DTE curto 15–25d (Theta máximo no miolo)','Asas Δ ≈ 0,70 / miolo Δ ≈ 0,50 / asa Δ ≈ 0,30 · débito ≤ 30% da asa','VI < 30% (queda de VI ajuda)'],
+ man:['TP: preço no miolo com 50% do lucro máx.','Stop: saiu da região das asas','DTE < 5 fora do miolo: fechar (Pin Risk)'],
+ busca:B(BO,'borboleta')},
+{cat:'cat-vol',nome:'Condor',cen:'lateral',tipo:'debito',
+ legs:[{t:'C',q:1,K:88,p:12},{t:'C',q:-1,K:96,p:6},{t:'C',q:-1,K:104,p:2.5},{t:'C',q:1,K:112,p:0.9}],
+ mont:'+1 CALL A −1 B −1 C +1 D (A<B<C<D); platô de lucro entre B e C.',
+ cenario:'Lateral com faixa de lucro mais ampla que a borboleta.',
+ sel:['Vencimento: DTE 30–45d','Asas compradas Δ 0,05–0,10 ITM/OTM extremos · vendidas Δ 0,20–0,30','Débito ≤ 40% da asa; VI < 30%'],
+ man:['TP: 50% do lucro máximo com o preço no platô','Stop: saiu da região entre as asas internas'],
+ busca:B(BO,'condor')},
+{cat:'cat-vol',nome:'Broken Wing Butterfly',cen:'lateral',tipo:'zero',
+ legs:[{t:'C',q:1,K:92,p:9},{t:'C',q:-2,K:100,p:4},{t:'C',q:1,K:112,p:0.8}],
+ mont:'Borboleta com asas NÃO equidistantes (asa de proteção mais espaçada).',
+ cenario:'Lateral com leve viés; reduz/zera o custo da borboleta em troca de risco assimétrico.',
+ sel:['Vencimento: DTE 15–25d','Espaçar mais a asa superior (custo ↓, risco na ponta larga ↑)'],
+ man:['Como a borboleta, com triggers ajustados ao perfil assimétrico'],
+ busca:B(BA,'broken_wing')},
+{cat:'cat-vol',nome:'Strap',cen:'vol',tipo:'debito',
+ legs:[{t:'C',q:2,K:100,p:4},{t:'P',q:1,K:100,p:4}],
+ mont:'Compra 2 CALLs ATM + 1 PUT ATM.',
+ cenario:'Movimento forte com viés de ALTA (ganha 2× mais na subida).',
+ sel:['Vencimento: DTE 30–60d','Strikes ATM','VI baixa'],
+ man:['Como o straddle comprado, gerenciando o viés direcional'],
+ busca:B(BA,'strap')},
+{cat:'cat-vol',nome:'Strip',cen:'vol',tipo:'debito',
+ legs:[{t:'C',q:1,K:100,p:4},{t:'P',q:2,K:100,p:4}],
+ mont:'Compra 1 CALL ATM + 2 PUTs ATM.',
+ cenario:'Movimento forte com viés de BAIXA (ganha 2× mais na queda).',
+ sel:['Vencimento: DTE 30–60d','Strikes ATM','VI baixa'],
+ man:['Como o straddle comprado, gerenciando o viés'],
+ busca:B(BA,'strip')},
+{cat:'cat-vol',nome:'Guts (Long)',cen:'vol',tipo:'debito',
+ legs:[{t:'C',q:1,K:92,p:9},{t:'P',q:1,K:108,p:9}],
+ mont:'Compra CALL ITM + PUT ITM (strikes cruzados).',
+ cenario:'Grande movimento com VI baixa; mais sensível ao preço que o straddle (deltas altos).',
+ sel:['Vencimento: DTE 30–60d','Δ ≈ ±0,70–0,80'],
+ man:['Como straddle/strangle; maior sensibilidade ao preço'],
+ busca:B(BA,'guts_long')},
+{cat:'cat-vol',nome:'Guts (Short)',cen:'lateral',tipo:'credito',
+ legs:[{t:'C',q:-1,K:94,p:8},{t:'P',q:-1,K:106,p:8}],
+ mont:'Venda CALL ITM + PUT ITM.',
+ cenario:'Lateral com VI alta; como straddle vendido com opções ITM. Risco ilimitado.',
+ sel:['Vencimento: DTE 30–60d','Δ ≈ ±0,60–0,70'],
+ man:['Manejo constante; rolar/fechar a perna ameaçada'],
+ busca:B(BA,'guts_short')},
+{cat:'cat-vol',nome:'Box Spread',cen:'arb',tipo:'arb',
+ legs:[{t:'C',q:1,K:95,p:7},{t:'C',q:-1,K:105,p:2},{t:'P',q:-1,K:95,p:2},{t:'P',q:1,K:105,p:6.6}],
+ mont:'Trava de alta com CALL + trava de baixa com PUT (mesmos strikes A/B).',
+ cenario:'Arbitragem de juros: o valor no vencimento é fixo (B−A); lucro = valor − custo vs Selic.',
+ sel:['Qualquer DTE; alta liquidez','Débito < largura descontada pela taxa livre de risco'],
+ man:['Carregar até o vencimento — lucro travado se montado corretamente'],
+ busca:B(BA,'box_spread')},
+{cat:'cat-vol',nome:'Ratio Spread (Call/Put)',cen:'lateral',tipo:'zero',
+ legs:[{t:'C',q:1,K:94,p:7},{t:'C',q:-2,K:106,p:2.4}],
+ mont:'Compra 1 opção ITM + venda 2 (ou mais) OTM, mesmo vencimento.',
+ cenario:'Movimento limitado na direção da comprada; lucra com o Theta das vendidas. Risco ilimitado além da ponta vendida.',
+ sel:['Vencimento: DTE 30–60d','Comprada: Δ 0,60–0,70 · Vendidas: 2× Δ 0,20–0,30','Débito baixo ou crédito'],
+ man:['TP: lateral/direção esperada → realizar nas vendidas','Stop: movimento forte contra → fechar (risco da ponta nua)'],
+ busca:B(BO,'trava_credito')},
+
+/* ══ SINTÉTICAS E AVANÇADAS ══ */
+{cat:'cat-sint',nome:'Ação Sintética (Long Synthetic)',cen:'alta',tipo:'zero',
+ legs:[{t:'C',q:1,K:100,p:4},{t:'P',q:-1,K:100,p:4}],
+ mont:'Compra CALL ATM + venda PUT ATM (mesmo strike/vencimento).',
+ cenario:'Replica a ação comprada com fração do capital (alavancagem).',
+ sel:['Vencimento: DTE > 90d (menos Theta)','Strikes ATM Δ ±0,50'],
+ man:['Gerenciar como a própria ação','Rolar para manter a exposição'],
+ busca:B(BA,'acao_sintetica')},
+{cat:'cat-sint',nome:'Short Sintético',cen:'baixa',tipo:'zero',
+ legs:[{t:'C',q:-1,K:100,p:4},{t:'P',q:1,K:100,p:4}],
+ mont:'Venda CALL ATM + compra PUT ATM.',
+ cenario:'Replica venda a descoberto (sem aluguel). Risco ilimitado na alta.',
+ sel:['Vencimento: DTE > 90d','Strikes ATM'],
+ man:['Gerenciar como short da ação; rolar para manter'],
+ busca:B(BA,'short_sintetico')},
+{cat:'cat-sint',nome:'Risk Reversal / Combo / Split Strike',cen:'alta',tipo:'zero',
+ legs:[{t:'C',q:1,K:106,p:2.2},{t:'P',q:-1,K:94,p:2.2}],
+ mont:'Compra CALL OTM + venda PUT OTM (strikes diferentes).',
+ cenario:'Viés direcional (geralmente alta) com custo zero ou crédito; muito usado em hedge.',
+ sel:['Vencimento: DTE 30–90d (split strike: > 90d)','CALL Δ 0,20–0,30 · PUT Δ −0,20 a −0,30','Custo zero ou pequeno crédito'],
+ man:['TP: realizar na CALL com o movimento','Stop: PUT vendida ameaçada → rolar ou fechar'],
+ busca:B(BA,'risk_reversal')},
+{cat:'cat-sint',nome:'Conversion / Reversal (arbitragem)',cen:'arb',tipo:'arb',
+ legs:[{t:'S',q:1},{t:'P',q:1,K:100,p:4},{t:'C',q:-1,K:100,p:4.4}],
+ mont:'Conversion: ação + PUT comprada + CALL vendida (mesmo strike). Reversal: o espelho com ação vendida.',
+ cenario:'Arbitragem de distorções de precificação (paridade put-call); resultado fixo no vencimento.',
+ sel:['Qualquer DTE; strikes ATM; alta liquidez','Montar apenas com custo zero ou crédito vs taxa de juros'],
+ man:['Carregar até o vencimento — lucro é a taxa livre de risco capturada'],
+ busca:null},
+{cat:'cat-sint',nome:'Synthetic Straddle',cen:'vol',tipo:'debito',
+ legs:[{t:'S',q:1},{t:'P',q:2,K:100,p:4}],
+ mont:'Ação em carteira + compra de 2 PUTs ATM.',
+ cenario:'Replica o straddle comprado para quem já tem a ação (exposição à volatilidade).',
+ sel:['Vencimento: DTE 30–60d','PUTs ATM','VI baixa'],
+ man:['Como o straddle comprado, com a ação como componente'],
+ busca:B(BA,'synthetic_straddle')},
+{cat:'cat-sint',nome:'Fence (Cerca)',cen:'lateral',tipo:'zero',
+ legs:[{t:'S',q:1},{t:'P',q:1,K:96,p:2.5},{t:'P',q:-1,K:88,p:1},{t:'C',q:-1,K:108,p:2}],
+ mont:'Ação + PUT comprada + PUT mais OTM vendida + CALL OTM vendida (variação do collar).',
+ cenario:'Proteção com custo reduzido/crédito; abaixo da PUT vendida o risco volta.',
+ sel:['Vencimento: DTE 30–60d','Zona protegida entre os strikes das PUTs'],
+ man:['Gerenciar as pernas individualmente, rolando quando necessário'],
+ busca:B(BO,'fence')},
+
+/* ══ CALENDÁRIO (Vol. 4) ══ */
+{cat:'cat-cal',nome:'Neutral Calendar Spread (ATM) — Lateral',cen:'lateral',tipo:'debito',
+ cal:true,dcS:7,dcL:35,iv:0.30,
+ legs:[{t:'C',q:-1,K:100,p:1.8},{t:'C',q:1,K:100,p:4,long:true}],
+ mont:'Venda CALL semanal ATM + compra CALL mensal ATM (mesmo strike).',
+ cenario:'Mercado lateral: a semanal derrete (Theta acelerado) e a mensal segura o valor. Vega positivo — ganha se a VI do venc. longo subir.',
+ sel:['Entrada: segunda/terça da semana de vencimento','Saída: quinta/sexta de manhã, antes da aceleração final do Gamma','Strike ATM (Δ ≈ 0,50) nos dois vencimentos'],
+ man:['Preço fugiu da zona → rolar a semanal para novo strike ATM ou fechar','Gamma da semanal explode nos 2 últimos dias — monitorar de perto'],
+ busca:B(BA,'neutral_calendar')},
+{cat:'cat-cal',nome:'Double Calendar Spread — Lateral',cen:'lateral',tipo:'debito',
+ cal:true,dcS:7,dcL:35,iv:0.30,
+ legs:[{t:'C',q:-1,K:107,p:0.7},{t:'P',q:-1,K:93,p:0.7},{t:'C',q:1,K:107,p:1.9,long:true},{t:'P',q:1,K:93,p:1.9,long:true}],
+ mont:'Venda strangle semanal OTM + compra do MESMO strangle no mensal.',
+ cenario:'“Tenda” de lucro ampla entre os dois strikes vendidos; ganha com estabilidade.',
+ sel:['Strikes OTM Δ ≈ ±0,20–0,30 nos dois vencimentos','Perna longa mensal, curta semanal'],
+ man:['Monitorar o Delta total; rebalancear se o preço ameaçar um strike vendido'],
+ busca:B(BA,'double_calendar')},
+{cat:'cat-cal',nome:'Bull Diagonal — Poor Man’s Covered Call (Alta)',cen:'alta',tipo:'debito',
+ cal:true,dcS:7,dcL:35,iv:0.30,
+ legs:[{t:'C',q:-1,K:106,p:0.8},{t:'C',q:1,K:88,p:12.6,long:true}],
+ mont:'Compra CALL mensal DEEP ITM (Δ > 0,80, substitui a ação) + venda CALL semanal OTM.',
+ cenario:'Alta com renda recorrente: a semanal paga o Theta da posição e reduz o custo da ITM.',
+ sel:['Longa: mensal Δ > 0,80 (Theta baixo) · Curta: semanal Δ 0,20–0,30','Débito bem menor que comprar a ação'],
+ man:['Ativo passou do strike da semanal → roll up and out (próxima semana)','Alta forte: fechar com lucro na perna ITM'],
+ busca:B(BA,'pmcc')},
+{cat:'cat-cal',nome:'Bull Calendar Spread (OTM) — Alta moderada',cen:'alta',tipo:'debito',
+ cal:true,dcS:7,dcL:35,iv:0.30,
+ legs:[{t:'C',q:-1,K:106,p:0.8},{t:'C',q:1,K:106,p:2.2,long:true}],
+ mont:'Venda CALL semanal OTM + compra CALL mensal OTM (mesmo strike).',
+ cenario:'Aposta em alta ATÉ o strike: lucro máximo se o ativo chegar lá no vencimento da semanal.',
+ sel:['Strike OTM no alvo do movimento (Δ ≈ 0,20–0,35)','Direcional + Theta'],
+ man:['Alta além do strike: rolar a semanal para cima; lateral: capturar o Theta'],
+ busca:B(BA,'bull_calendar')},
+{cat:'cat-cal',nome:'Bear Diagonal — Poor Man’s Covered Put (Baixa)',cen:'baixa',tipo:'debito',
+ cal:true,dcS:7,dcL:35,iv:0.30,
+ legs:[{t:'P',q:-1,K:94,p:0.8},{t:'P',q:1,K:112,p:12.6,long:true}],
+ mont:'Compra PUT mensal DEEP ITM (Δ < −0,80) + venda PUT semanal OTM.',
+ cenario:'Queda com renda: a PUT ITM valoriza na baixa; a semanal financia o “seguro”.',
+ sel:['Longa: mensal Δ < −0,80 · Curta: semanal Δ −0,20 a −0,30'],
+ man:['Queda forte: rolar a semanal para baixo ou realizar na ITM'],
+ busca:B(BA,'pmcp')},
+{cat:'cat-cal',nome:'Bear Calendar Spread (OTM) — Baixa moderada',cen:'baixa',tipo:'debito',
+ cal:true,dcS:7,dcL:35,iv:0.30,
+ legs:[{t:'P',q:-1,K:94,p:0.8},{t:'P',q:1,K:94,p:2.2,long:true}],
+ mont:'Venda PUT semanal OTM + compra PUT mensal OTM (mesmo strike).',
+ cenario:'Queda moderada até o strike; melhor resultado se o ativo estacionar nele no venc. semanal.',
+ sel:['Strike OTM no alvo da queda (Δ ≈ −0,20 a −0,35)'],
+ man:['Como o bull calendar, espelhado para baixo'],
+ busca:B(BA,'bear_calendar')},
+{cat:'cat-cal',nome:'Diagonal / Double Diagonal',cen:'lateral',tipo:'debito',
+ cal:true,dcS:7,dcL:35,iv:0.30,
+ legs:[{t:'C',q:-1,K:107,p:0.7},{t:'P',q:-1,K:93,p:0.7},{t:'C',q:1,K:111,p:1.1,long:true},{t:'P',q:1,K:89,p:1.1,long:true}],
+ mont:'Diagonal: vende curta OTM + compra longa em OUTRO strike. Double Diagonal: uma diagonal de CALL + uma de PUT (4 pernas).',
+ cenario:'Neutra tipo Iron Condor, mas entre vencimentos — mais flexível e melhor em Theta.',
+ sel:['Curtas: Δ ≈ ±0,20–0,30 (semanal) · Longas: mais OTM no mensal','VI do venc. longo > curto (contango) favorece'],
+ man:['Manejo ativo das 4 pernas; rolagem individual ou em conjunto','Margem eficiente na B3 (longas garantem as curtas)'],
+ busca:B(BA,'double_diagonal')}
+];
+
+/* ── Render ── */
+function badgeCen(c){
+  var m={alta:['ALTA','alta'],baixa:['BAIXA','baixa'],lateral:['LATERAL','lateral'],vol:['VOLATILIDADE','vol'],arb:['ARBITRAGEM','arb']};
+  return '<span class="aj-badge '+m[c][1]+'">'+m[c][0]+'</span>';
+}
+function badgeTipo(t){
+  var m={credito:['CRÉDITO','credito'],debito:['DÉBITO','debito'],zero:['~ZERO/CRÉD.','zero'],arb:['TRAVADO','zero']};
+  return '<span class="aj-badge '+m[t][1]+'">'+m[t][0]+'</span>';
+}
+function ul(items){ return '<ul>'+items.map(function(i){return '<li>'+i+'</li>';}).join('')+'</ul>'; }
+
+var host=document.getElementById('aj-conteudo');
+var html='';
+CATS.forEach(function(cat){
+  html+='<h3 class="aj-cat-title" id="'+cat.id+'">'+cat.nome+'</h3><div class="aj-grid">';
+  OPS.forEach(function(op,idx){
+    if(op.cat!==cat.id) return;
+    html+='<div class="aj-card" data-nome="'+op.nome.toLowerCase()+'">'+
+      '<h4>'+op.nome+' '+badgeCen(op.cen)+' '+badgeTipo(op.tipo)+'</h4>'+
+      '<div class="aj-canvas-wrap"><canvas id="aj-cv-'+idx+'" width="400" height="130"></canvas></div>'+
+      '<div class="aj-sec"><b class="lbl">🧩 Montagem</b>'+op.mont+'</div>'+
+      '<div class="aj-sec"><b class="lbl">💡 Cenário ideal</b>'+op.cenario+'</div>'+
+      '<div class="aj-sec"><b class="lbl">🎯 Seleção algorítmica</b>'+ul(op.sel)+'</div>'+
+      '<div class="aj-sec"><b class="lbl">🔧 Manejo</b>'+ul(op.man)+'</div>'+
+      (op.busca?'<a class="aj-buscar" href="'+op.busca+'">🔍 Buscar esta operação</a>':'')+
+      '</div>';
+  });
+  html+='</div>';
+});
+host.innerHTML=html;
+OPS.forEach(function(op,idx){
+  var cv=document.getElementById('aj-cv-'+idx);
+  if(cv) draw(cv,op);
+});
+
+// filtro
+document.getElementById('aj-filtro').addEventListener('input',function(){
+  var q=this.value.trim().toLowerCase();
+  document.querySelectorAll('.aj-card').forEach(function(c){
+    c.style.display=(!q||c.dataset.nome.indexOf(q)!==-1)?'':'none';
+  });
+});
+})();
+</script>
+{% endblock %}

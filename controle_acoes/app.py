@@ -3549,8 +3549,10 @@ def api_busca_operacoes(ticker):
 
         elif op in ('boi_coberto', 'vaca_tradicional', 'vaca_revertida', 'borboleta', 'condor'):
             # Estruturas clássicas de CALLs — recomendações usuais de montagem:
-            #   boi_coberto:      -1 ITM, +2 ATM, -1 OTM — custo zero/reduzido ou
-            #                     pequeno crédito; lucro máx. deve superar o CDI do período
+            #   boi_coberto:      -1 ITM (moderada), +2 ATM, -1 OTM — a venda ITM paga
+            #                     parte da montagem e a venda OTM limita o ganho;
+            #                     asa superior mais larga que a ITM (lucro na alta);
+            #                     crédito pequeno ou nulo; lucro máx. > CDI do período
             #   vaca_tradicional: +1 baixa, -3 médias, +2 altas — montada no crédito
             #   vaca_revertida:   +1 baixa, -5 médias, +5 altas — crédito; lucro
             #                     ilimitado na alta forte (slope +1 acima da asa)
@@ -3560,7 +3562,7 @@ def api_busca_operacoes(ticker):
             #                     entre os strikes vendidos, idealmente contendo o spot
             SPECS = {
                 'boi_coberto':      {'qty': (-1, 2, -1),
-                                     'rngs': [(0.85, 0.995), (0.97, 1.06), (1.00, 1.20)]},
+                                     'rngs': [(0.93, 0.995), (0.99, 1.05), (1.02, 1.20)]},
                 'vaca_tradicional': {'qty': (1, -3, 2),
                                      'rngs': [(0.92, 1.03), (0.99, 1.15), (1.01, 1.28)]},
                 'vaca_revertida':   {'qty': (1, -5, 5),
@@ -3618,11 +3620,16 @@ def api_busca_operacoes(ticker):
                 if max_loss <= 0.001 and cost > 0:
                     continue                                  # dado inconsistente
                 if op == 'boi_coberto':
-                    # custo zero/reduzido ou pequeno crédito; lucro máx. > CDI do período
-                    if cost > 0.10 * w_lo:
+                    # asa superior (OTM) mais larga que a ITM → estrutura lucra na alta
+                    w_up = ks[2] - ks[1]
+                    if w_up <= w_lo:
+                        continue
+                    # crédito pequeno ou nulo: tolera custo residual, limita crédito
+                    if net < -0.05 * w_lo or net > 0.30 * w_lo:
                         continue
                     if max_gain is None or max_gain <= 0 or max_loss <= 0:
                         continue
+                    # lucro máximo (na alta) precisa superar o CDI do período s/ capital em risco
                     if max_gain < max_loss * selic_period / 100:
                         continue
                 elif op in ('vaca_tradicional', 'vaca_revertida'):

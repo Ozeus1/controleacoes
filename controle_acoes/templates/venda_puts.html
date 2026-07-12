@@ -264,6 +264,10 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     <option value="call_ratio_1x2">🚀 Ratio CALL 1x2 (venda 1 ITM, compra 2 OTM)</option>
                     <option value="call_ratio_2x3">🚀 Ratio CALL 2x3 (venda 2 ITM, compra 3 OTM)</option>
                     <option value="vaca_travada">🐄 Vaca Travada (+1 CALL baixa, −2 médias, +1 alta)</option>
+                    <option value="boi_coberto">🐂 Boi Coberto (−1 CALL ITM, +2 ATM, −1 OTM)</option>
+                    <option value="vaca_tradicional">🐄 Vaca Tradicional (+1 CALL baixa, −3 médias, +2 altas)</option>
+                    <option value="vaca_revertida">🐄🔄 Vaca Revertida (+1 CALL baixa, −5 médias, +5 altas)</option>
+                    <option value="borboleta">🦋 Borboleta (+1 CALL baixa, −2 médias, +1 alta)</option>
                     <option value="boi_put">🐂 Boi com PUT (venda 1 PUT alta, compra 2 PUTs baixas)</option>
                     <option value="vaca_put">🐄 Vaca de Baixa com PUTs (+1 alta, −2 médias, +1 baixa)</option>
                     <option value="straddle_vendido">⚖️ Straddle vendido (venda CALL + PUT no mesmo strike)</option>
@@ -948,10 +952,23 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         call_ratio_1x2:      { legs: ['CALL — VENDA 1× (K menor, ±5% do spot)', 'CALL — COMPRA 2× (OTM, K maior)', null], needSpot: false },
         call_ratio_2x3:      { legs: ['CALL — VENDA 2× (K menor, ±5% do spot)', 'CALL — COMPRA 3× (OTM, K maior)', null], needSpot: false },
         vaca_travada:        { legs: ['CALL — COMPRA 1× (K baixa)', 'CALL — VENDA 2× (K média)', 'CALL — COMPRA 1× (K alta)'], needSpot: false },
+        boi_coberto:         { legs: ['CALL — VENDA 1× (ITM, K baixa)', 'CALL — COMPRA 2× (ATM, K média)', 'CALL — VENDA 1× (OTM, K alta)'], needSpot: false },
+        vaca_tradicional:    { legs: ['CALL — COMPRA 1× (K baixa)', 'CALL — VENDA 3× (K média)', 'CALL — COMPRA 2× (K alta)'], needSpot: false },
+        vaca_revertida:      { legs: ['CALL — COMPRA 1× (K baixa)', 'CALL — VENDA 5× (K média)', 'CALL — COMPRA 5× (K alta)'], needSpot: false },
+        borboleta:           { legs: ['CALL — COMPRA 1× (K baixa)', 'CALL — VENDA 2× (K média)', 'CALL — COMPRA 1× (K alta)'], needSpot: false },
         boi_put:             { legs: ['PUT — VENDA 1× (ATM/ITM, financia)', 'PUT — COMPRA 2× (próx. OTM)', null], needSpot: false },
         straddle_vendido:    { legs: ['CALL — VENDA (strike central)', 'PUT — VENDA (mesmo strike)', null], needSpot: false },
         strangle_vendido:    { legs: ['CALL — VENDA (OTM, acima)', 'PUT — VENDA (OTM, abaixo)', null], needSpot: false },
         vaca_put:            { legs: ['PUT — COMPRA 1× (K alta)', 'PUT — VENDA 2× (K média)', 'PUT — COMPRA 1× (K baixa)'], needSpot: false }
+    };
+
+    // Estruturas genéricas de CALLs em 3 strikes: quantidades das pernas A/B/C
+    // (positivo = compra, negativo = venda). Payoff linear por partes.
+    var GEN3 = {
+        boi_coberto:      [-1, 2, -1],
+        vaca_tradicional: [1, -3, 2],
+        vaca_revertida:   [1, -5, 5],
+        borboleta:        [1, -2, 1]
     };
 
     window.estruturaOpChanged = function() {
@@ -1162,6 +1179,43 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 ['Relação lucro/perda', maxLVP > 0.001 ? (maxGVP / maxLVP).toLocaleString('pt-BR', {maximumFractionDigits:1}) : '∞', 'positive'],
                 ['Prazo (dias corridos)', dc + ' d.c.', '']
             ];
+        } else if (GEN3[op]) {
+            // Estrutura genérica de CALLs em 3 strikes (A=K baixa, B=K média, C=K alta)
+            var qsG = GEN3[op];
+            var ksG = [aK, bK, cK], psG = [aP, bP, cP];
+            var netG = 0;                                    // >0 crédito, <0 débito
+            for (var gi = 0; gi < 3; gi++) netG += (-qsG[gi]) * psG[gi];
+            function payG(S) {
+                var v = netG;
+                for (var gj = 0; gj < 3; gj++) v += qsG[gj] * Math.max(0, S - ksG[gj]);
+                return v;
+            }
+            var slopeG = qsG[0] + qsG[1] + qsG[2];
+            var ptsG = [0, aK, bK, cK, cK * 1.6];
+            var valsG = ptsG.map(payG);
+            var besG = [];
+            for (var gk = 0; gk < ptsG.length - 1; gk++) {
+                var gv0 = valsG[gk], gv1 = valsG[gk + 1];
+                if (((gv0 < 0 && gv1 >= 0) || (gv0 >= 0 && gv1 < 0)) && Math.abs(gv1 - gv0) > 1e-9) {
+                    besG.push(ptsG[gk] + (0 - gv0) * (ptsG[gk + 1] - ptsG[gk]) / (gv1 - gv0));
+                }
+            }
+            var maxGG = slopeG > 0 ? null : Math.max.apply(null, valsG);
+            var maxLG = Math.max(0, -Math.min.apply(null, valsG));
+            boxes = [
+                [netG >= 0 ? 'Crédito recebido' : 'Custo (débito)',
+                    fmtBRL(Math.abs(netG) * qty), netG >= 0 ? 'positive' : 'negative'],
+                ['Lucro máximo', maxGG == null ? 'ILIMITADO na alta 🚀' : fmtBRL(maxGG * qty), 'positive'],
+                ['Perda máxima', fmtBRL(maxLG * qty), 'negative'],
+                ['Relação lucro/perda',
+                    maxGG == null ? '∞'
+                        : (maxLG > 0.001 ? (maxGG / maxLG).toLocaleString('pt-BR', {maximumFractionDigits: 1}) : '∞'),
+                    'positive'],
+                ['Breakevens', besG.length
+                    ? besG.map(function(b) { return fmtBRL(b); }).join(' · ') : '—', ''],
+                ['Resultado abaixo de ' + fmtBRL(aK), fmtBRL(netG * qty), netG >= 0 ? 'positive' : 'negative'],
+                ['Prazo (dias corridos)', dc + ' d.c.', '']
+            ];
         } else {
             // Ratio CALL backspread: A = CALL venda ITM (n×, bid), B = CALL compra OTM (m×, ask)
             var nR = op === 'call_ratio_1x2' ? 1 : 2;
@@ -1291,6 +1345,19 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             legsArr = [{t: 'PUT', s: 1,  q: 1, K: aK, prem: aP},
                        {t: 'PUT', s: -1, q: 2, K: bK, prem: bP},
                        {t: 'PUT', s: 1,  q: 1, K: cK, prem: cP}];
+        } else if (GEN3[op]) {
+            var qsP  = GEN3[op];
+            var netGP = -(qsP[0] * aP + qsP[1] * bP + qsP[2] * cP);   // >0 crédito
+            payoffFn = function(S) {
+                return qty * (netGP + qsP[0] * Math.max(0, S - aK) +
+                              qsP[1] * Math.max(0, S - bK) + qsP[2] * Math.max(0, S - cK));
+            };
+            mk(aK, Math.abs(qsP[0]) + '× CALL ' + (qsP[0] > 0 ? 'c' : 'v'));
+            mk(bK, Math.abs(qsP[1]) + '× CALL ' + (qsP[1] > 0 ? 'c' : 'v'));
+            mk(cK, Math.abs(qsP[2]) + '× CALL ' + (qsP[2] > 0 ? 'c' : 'v'));
+            legsArr = [{t: 'CALL', s: qsP[0] > 0 ? 1 : -1, q: Math.abs(qsP[0]), K: aK, prem: aP},
+                       {t: 'CALL', s: qsP[1] > 0 ? 1 : -1, q: Math.abs(qsP[1]), K: bK, prem: bP},
+                       {t: 'CALL', s: qsP[2] > 0 ? 1 : -1, q: Math.abs(qsP[2]), K: cK, prem: cP}];
         }
 
         if (payoffFn) {
@@ -1331,7 +1398,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         if (!legs || !legs.length) { alert('Preencha a estrutura primeiro.'); return; }
         var ativo = (document.getElementById('e-ativo').value || '').toUpperCase();
         var opSel = document.getElementById('e-op');
-        var nome  = (opSel.options[opSel.selectedIndex].text || 'Estrutura').replace(/[⚖️🔗🚧🕊📈📉💰🚀🐄🐂]/g, '').trim();
+        var nome  = (opSel.options[opSel.selectedIndex].text || 'Estrutura').replace(/[⚖️🔗🚧🕊📈📉💰🚀🐄🐂🦋🔄🦅]/g, '').trim();
         var parts = legs.map(function(l) {
             return [l.ticker, l.type, l.side, l.qty,
                     (l.premium || 0).toFixed(2), (l.strike || 0).toFixed(2), l.exp || ''].join(',');
@@ -1346,7 +1413,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         if (!legs || !legs.length) { alert('Preencha a estrutura primeiro.'); return; }
         var ativo = (document.getElementById('e-ativo').value || '').toUpperCase();
         var opSel = document.getElementById('e-op');
-        var nomeBase = (opSel.options[opSel.selectedIndex].text || 'Estrutura').replace(/[⚖️🔗🚧🕊📈📉💰🚀🐄🐂]/g, '').trim();
+        var nomeBase = (opSel.options[opSel.selectedIndex].text || 'Estrutura').replace(/[⚖️🔗🚧🕊📈📉💰🚀🐄🐂🦋🔄🦅]/g, '').trim();
         var nome = prompt('Nome da simulação:', nomeBase + ' ' + ativo);
         if (nome === null) return;                 // cancelou
         nome = nome.trim() || (nomeBase + ' ' + ativo);

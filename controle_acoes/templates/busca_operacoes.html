@@ -189,7 +189,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     trava_baixa_credito: '📉💰 Trava de Baixa no crédito (CALLs OTM) — crédito 25–60% da largura; EV > 0, POP ≥ 55%',
     trava_credito: '💰 Ratio CALL — venda CALL perto do dinheiro (máx. 5% ITM a 5% OTM) financia compra de CALLs OTM (1x2 e 2x3, lucro ilimitado na alta)',
     vaca_travada:  '🐄 Vaca Travada — +1 CALL baixa, −2 CALLs médias, +1 CALL alta (centro no dinheiro ou acima; aceita investimento; lucro máximo no strike médio)',
-    boi_coberto:   '🐂 Boi Coberto — venda 1 CALL ITM, compra 2 CALLs ATM, venda 1 CALL OTM (custo zero/reduzido ou pequeno crédito; lucro máx. acima do CDI do período)',
+    boi_coberto:   '🐂 Boi Coberto — venda 1 CALL ITM moderada paga parte da montagem, compra 2 ATM, venda 1 OTM limita o ganho (asa OTM mais larga; crédito pequeno ou nulo; lucro na alta > CDI)',
     vaca_tradicional: '🐄 Vaca Tradicional — +1 CALL baixa, −3 CALLs médias, +2 CALLs altas (montada no crédito; lucro máximo no strike médio)',
     vaca_revertida: '🐄🔄 Vaca Revertida — +1 CALL baixa, −5 CALLs médias, +5 CALLs altas (crédito; lucro ILIMITADO na alta forte)',
     borboleta:     '🦋 Borboleta — +1 CALL baixa, −2 CALLs médias, +1 CALL alta (débito ≤ 30% da asa; centro próximo do ATM = preço-alvo)',
@@ -782,6 +782,16 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         ['Centro vs spot', (r.center_dist > 0 ? '+' : '') + fmt(r.center_dist, 1) + '%', ''],
         ['Prazo (dias corridos)', dc + ' d.c.', '']
       ]);
+      if (r.legs.length === 3) {
+        // 3 pernas: abre em Cálculos de Opções (aba Estruturas)
+        var sp3 = new URLSearchParams({st: '1', ativo: d.ticker, spot: spot, qty: qty,
+          exp: e.exp, op: op,
+          at: r.legs[0].sym, ak: r.legs[0].k, ap: r.legs[0].px,
+          bt: r.legs[1].sym, bk: r.legs[1].k, bp: r.legs[1].px,
+          ct2: r.legs[2].sym, ck2: r.legs[2].k, cp2: r.legs[2].px});
+        return {title: title, boxes: boxes, href: '/venda_puts?' + sp3.toString() + '#estrutura'};
+      }
+      // 4+ pernas (condor): edita na Cadeia de Opções
       var legsStr = r.legs.map(function(l) {
         return [l.sym, 'CALL', l.q > 0 ? 'BUY' : 'SELL', Math.abs(l.q) * qty,
                 l.px, l.k, e.exp].join(',');

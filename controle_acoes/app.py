@@ -5,7 +5,7 @@ import sqlite3
 import math
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, SearchedOption, RtdOptionData
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, SearchedOption, RtdOptionData, PortfolioSnapshot
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -290,6 +290,10 @@ def run_migrations():
     if 'dividend_yield' not in asset_columns:
         cursor.execute("ALTER TABLE asset ADD COLUMN dividend_yield FLOAT")
         print("[MIGRATION] Added column 'dividend_yield' to 'asset' table.")
+
+    if 'exit_date' not in asset_columns:
+        cursor.execute("ALTER TABLE asset ADD COLUMN exit_date DATE")
+        print("[MIGRATION] Added column 'exit_date' to 'asset' table.")
 
     # Check existing columns in 'international' table
     cursor.execute("PRAGMA table_info(international)")
@@ -599,6 +603,22 @@ def run_migrations():
             updated_at DATETIME
         )
     """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS portfolio_snapshot (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            snap_date VARCHAR(10) NOT NULL,
+            total_equity FLOAT NOT NULL DEFAULT 0.0,
+            total_acoes FLOAT NOT NULL DEFAULT 0.0,
+            total_fiis FLOAT NOT NULL DEFAULT 0.0,
+            total_etfs FLOAT NOT NULL DEFAULT 0.0,
+            estimated BOOLEAN NOT NULL DEFAULT 0,
+            created_at DATETIME,
+            FOREIGN KEY (user_id) REFERENCES user(id)
+        )
+    """)
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_snap_user_date ON portfolio_snapshot(user_id, snap_date)")
 
     # Adiciona colunas novas em rtd_option_data (iv_ask, iv_bid, iv_over_hv)
     cursor.execute("PRAGMA table_info(rtd_option_data)")
@@ -6113,17 +6133,28 @@ def buy_asset(id):
     if request.method == 'POST':
         qty_buy = int(request.form.get('quantity'))
         price_buy = float(request.form.get('price').replace(',', '.'))
-        
+
+        was_zero = (asset.quantity or 0) <= 0
         # Calculate New Average Price
         current_total = asset.quantity * asset.avg_price
         new_investment = qty_buy * price_buy
         total_qty = asset.quantity + qty_buy
-        
+
         if total_qty > 0:
             new_avg_price = (current_total + new_investment) / total_qty
             asset.avg_price = new_avg_price
             asset.quantity = total_qty
-            
+
+            # Recompra de posição zerada: nova entrada, limpa a saída anterior
+            if was_zero:
+                buy_date_str = request.form.get('date')
+                if buy_date_str:
+                    try:
+                        asset.entry_date = datetime.strptime(buy_date_str, '%Y-%m-%d').date()
+                    except ValueError:
+                        pass
+                asset.exit_date = None
+
             db.session.commit()
             flash(f'Compra registrada! Novo PM: R$ {new_avg_price:.2f}')
         
@@ -6194,6 +6225,7 @@ def exit_trade(id):
             if qty_sell == asset.quantity:
                 # Total Exit - KEEP ASSET (Soft Delete) for Dividends
                 asset.quantity = 0
+                asset.exit_date = date_sell   # marca a saída total (usado no cálculo de dividendos por posse)
                 flash("Saída TOTAL registrada com sucesso!", "success")
             else:
                 # Partial Exit
@@ -6485,6 +6517,136 @@ def historico():
     trades = query.order_by(TradeHistory.exit_date.desc()).all()
     return render_template('historico.html', history=trades, q=q)
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Patrimônio: totais por tipo, snapshots diários e curva de evolução
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _equity_by_type(user_id):
+    """Patrimônio atual a preço de mercado, separado por tipo.
+    Retorna (total, acoes, fiis, etfs). ETF é tipo próprio; SWING conta como ação."""
+    assets = Asset.query.filter(Asset.user_id == user_id, Asset.quantity > 0).all()
+    acoes = fiis = etfs = 0.0
+    for a in assets:
+        price = a.current_price if (a.current_price or 0) > 0 else a.avg_price
+        val = (a.quantity or 0) * (price or 0)
+        if a.type == 'FII':
+            fiis += val
+        elif a.type == 'ETF':
+            etfs += val
+        else:
+            acoes += val
+    return acoes + fiis + etfs, acoes, fiis, etfs
+
+
+def record_portfolio_snapshot(user_id):
+    """Grava/atualiza a foto do patrimônio de HOJE (um registro por dia; o
+    último sobrescreve). Chamado após atualizar cotações e 1x/dia pelo scheduler."""
+    try:
+        today_iso = now_brt().date().isoformat()
+        total, acoes, fiis, etfs = _equity_by_type(user_id)
+        snap = PortfolioSnapshot.query.filter_by(user_id=user_id, snap_date=today_iso).first()
+        if snap is None:
+            snap = PortfolioSnapshot(user_id=user_id, snap_date=today_iso)
+            db.session.add(snap)
+        snap.total_equity = round(total, 2)
+        snap.total_acoes  = round(acoes, 2)
+        snap.total_fiis   = round(fiis, 2)
+        snap.total_etfs   = round(etfs, 2)
+        snap.estimated    = False
+        snap.created_at   = datetime.utcnow()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        app.logger.exception('record_portfolio_snapshot falhou (user %s)', user_id)
+
+
+def _reconstruct_equity_history(user_id, months_back=24):
+    """Reconstrói (estima) o patrimônio no fim de cada mês passado, a partir do
+    patrimônio atual, desfazendo mês a mês:
+      • as vendas realizadas no mês (TradeHistory) — devolve o capital de compra;
+      • as compras que entraram no mês (Asset.entry_date) — retira o investido;
+      • a variação de preço do mês, aproximada pela Selic (proxy neutro), já que
+        não há série histórica de cotação por ativo.
+    Só é usado para preencher meses sem snapshot real. Retorna {YYYY-MM: equity_fim}."""
+    from dateutil.relativedelta import relativedelta
+    total_now, _, _, _ = _equity_by_type(user_id)
+
+    hist = TradeHistory.query.filter_by(user_id=user_id).all()
+    assets = Asset.query.filter_by(user_id=user_id).all()
+
+    # Vendas por mês: capital que saiu da carteira (preço de venda × qtd)
+    sold_by_month = {}
+    for h in hist:
+        if h.exit_date and h.sell_price and h.quantity:
+            mk = h.exit_date.strftime('%Y-%m')
+            sold_by_month[mk] = sold_by_month.get(mk, 0.0) + h.sell_price * h.quantity
+    # Compras por mês: capital investido em posições que ainda constam (entry_date)
+    bought_by_month = {}
+    for a in assets:
+        if a.entry_date and (a.quantity or 0) > 0:
+            mk = a.entry_date.strftime('%Y-%m')
+            bought_by_month[mk] = bought_by_month.get(mk, 0.0) + (a.quantity * (a.avg_price or 0))
+
+    today = now_brt().date()
+    cur = today.replace(day=1)
+    result = {}
+    equity = total_now
+    selic_rows = {s.mes_ano: s.taxa for s in SelicMensal.query.all()}
+    # Caminha para trás: o valor de "equity" representa o patrimônio no INÍCIO
+    # do mês 'cur'; ao recuar um mês desfazemos os fluxos e o preço daquele mês.
+    for _ in range(months_back):
+        mk = cur.strftime('%Y-%m')
+        # Desfaz os fluxos de caixa do mês (compras entram +, vendas saem −)
+        equity -= bought_by_month.get(mk, 0.0)
+        equity += sold_by_month.get(mk, 0.0)
+        # Desfaz a valorização de preço do mês (proxy: taxa Selic do mês)
+        taxa = selic_rows.get(_mesano_key(mk), 0.0) / 100.0
+        if taxa:
+            equity = equity / (1 + taxa)
+        equity = max(equity, 0.0)
+        prev = cur - relativedelta(months=1)
+        # equity agora ≈ patrimônio no fim do mês anterior
+        result[prev.strftime('%Y-%m')] = round(equity, 2)
+        cur = prev
+    return result
+
+
+def _mesano_key(iso_ym):
+    """'2026-07' → '07/2026' (formato usado na tabela SelicMensal)."""
+    y, m = iso_ym.split('-')
+    return f'{m}/{y}'
+
+
+def _dividends_owned(user_id, today):
+    """Dividendos efetivamente recebidos, filtrados pelo PERÍODO DE POSSE do ativo.
+    Um dividendo só conta se a data-com (ex_date; se faltar, payment_date) estava
+    entre a entrada e a saída do ativo. Retorna listas de tuplas
+    (mes 'YYYY-MM', valor) para ações e para FIIs, além do total de cada."""
+    divs = Dividend.query.join(Asset).filter(
+        Asset.user_id == user_id,
+        Dividend.payment_date != None
+    ).all()
+    monthly_acoes, monthly_fiis = {}, {}
+    for d in divs:
+        if not d.payment_date or d.payment_date > today:
+            continue
+        a = d.asset
+        # Data que define a titularidade: data-com (preferida) ou pagamento
+        own_date = d.ex_date or d.payment_date
+        if a.entry_date and own_date < a.entry_date:
+            continue                                  # comprou depois da data-com
+        if a.exit_date and own_date > a.exit_date:
+            continue                                  # já tinha vendido na data-com
+        mk = d.payment_date.strftime('%Y-%m')
+        val = d.amount or 0
+        if a.type == 'FII':
+            monthly_fiis[mk] = monthly_fiis.get(mk, 0) + val
+        else:
+            monthly_acoes[mk] = monthly_acoes.get(mk, 0) + val
+    return monthly_acoes, monthly_fiis
+
+
 @app.route('/resumo')
 @login_required
 def resumo():
@@ -6572,31 +6734,20 @@ def resumo():
     # Sort table by Value desc
     fii_table_data.sort(key=lambda x: x['value'], reverse=True)
             
-    # 2. Monthly Profit from History (trades)
-    from collections import defaultdict as _dd2
+    # Grava a foto do patrimônio de hoje (curva de evolução real daqui pra frente)
+    record_portfolio_snapshot(current_user.id)
+
+    # 2. Lucro realizado mensal (TradeHistory)
     monthly_profit = {}
     for h in history:
         if h.exit_date:
             month_key = h.exit_date.strftime('%Y-%m')
             monthly_profit[month_key] = monthly_profit.get(month_key, 0) + (h.profit_value or 0)
 
-    # 3. Dividendos mensais — de ações e FIIs (amount já inclui qty, igual à página Dividendos)
-    all_dividends = Dividend.query.join(Asset).filter(
-        Asset.user_id == current_user.id,
-        Dividend.payment_date != None
-    ).all()
-    monthly_div_acoes = {}
-    monthly_div_fiis  = {}
+    # 3. Dividendos mensais — filtrados pelo período de POSSE do ativo
+    #    (só conta se a data-com estava dentro de entrada→saída).
     today_d = date.today()
-    for d in all_dividends:
-        if not d.payment_date or d.payment_date > today_d:
-            continue
-        mk  = d.payment_date.strftime('%Y-%m')
-        val = d.amount or 0          # já é amount * qty (gravado assim na importação)
-        if d.asset.type == 'FII':
-            monthly_div_fiis[mk]  = monthly_div_fiis.get(mk, 0)  + val
-        else:
-            monthly_div_acoes[mk] = monthly_div_acoes.get(mk, 0) + val
+    monthly_div_acoes, monthly_div_fiis = _dividends_owned(current_user.id, today_d)
 
     # Todos os meses com pelo menos um dado
     all_months_set = (set(monthly_profit.keys()) |
@@ -6607,20 +6758,45 @@ def resumo():
     div_acoes_data= [round(monthly_div_acoes.get(k, 0), 2) for k in sorted_months]
     div_fiis_data = [round(monthly_div_fiis.get(k, 0), 2)  for k in sorted_months]
 
-    # Patrimônio início de cada mês (mesmo algoritmo da página histórico)
-    total_acoes_atual = total_acoes or 1
-    month_total_profit_resumo = {k: monthly_profit.get(k, 0) for k in sorted_months}
-    def _port_start(month_key):
-        p = total_acoes_atual
-        for mk in sorted_months:
-            if mk > month_key:
-                p -= month_total_profit_resumo.get(mk, 0)
-        return max(p, 1)
+    # ── Patrimônio-base de cada mês = FECHAMENTO DO MÊS ANTERIOR ──────────────
+    # Preferimos snapshots reais; onde faltarem, usamos a reconstrução histórica.
+    # Guardamos dois valores por mês: base p/ LUCRO (ações+ETF, pois FII quase
+    # não é negociado) e base p/ DIVIDENDOS (ações+FII).
+    from dateutil.relativedelta import relativedelta as _rd
+    snaps = PortfolioSnapshot.query.filter_by(user_id=current_user.id).all()
+    # último snapshot de cada mês (o do dia mais recente vence)
+    snap_by_month = {}
+    for s in snaps:
+        mk = s.snap_date[:7]
+        cur = snap_by_month.get(mk)
+        if cur is None or s.snap_date > cur.snap_date:
+            snap_by_month[mk] = s
+    est_hist = _reconstruct_equity_history(current_user.id, months_back=30)
 
-    # % de cada série em relação ao patrimônio início do mês
-    profit_pct_data   = [round(monthly_profit.get(k,0)    / _port_start(k) * 100, 2) for k in sorted_months]
-    div_acoes_pct     = [round(monthly_div_acoes.get(k,0)  / _port_start(k) * 100, 2) for k in sorted_months]
-    div_fiis_pct      = [round(monthly_div_fiis.get(k,0)   / _port_start(k) * 100, 2) for k in sorted_months]
+    def _prev_month(mk):
+        y, m = mk.split('-')
+        d = date(int(y), int(m), 1) - _rd(months=1)
+        return d.strftime('%Y-%m')
+
+    def _base_equity(mk_prev):
+        """Patrimônio (total, ações+ETF, ações+FII) no fim do mês mk_prev."""
+        s = snap_by_month.get(mk_prev)
+        if s is not None:
+            return (s.total_equity or 0,
+                    (s.total_acoes or 0) + (s.total_etfs or 0),
+                    (s.total_acoes or 0) + (s.total_fiis or 0))
+        est = est_hist.get(mk_prev)          # total estimado; sem split por tipo
+        return (est, est, est) if est else (None, None, None)
+
+    profit_pct_data, div_acoes_pct, div_fiis_pct = [], [], []
+    for k in sorted_months:
+        prev = _prev_month(k)
+        base_total, base_neg, base_div = _base_equity(prev)
+        base_neg = base_neg if (base_neg and base_neg > 0) else (total_acoes + total_etfs or 1)
+        base_div = base_div if (base_div and base_div > 0) else (total_acoes + total_fiis or 1)
+        profit_pct_data.append(round(monthly_profit.get(k, 0)   / base_neg * 100, 2))
+        div_acoes_pct.append(round(monthly_div_acoes.get(k, 0)  / base_div * 100, 2))
+        div_fiis_pct.append(round(monthly_div_fiis.get(k, 0)    / base_div * 100, 2))
 
     total_realized_profit = sum(h.profit_value for h in history if h.profit_value)
     current_month_key = date.today().strftime('%Y-%m')
@@ -6631,10 +6807,10 @@ def resumo():
     avg_4m_realized_pct = round(sum(profit_pct_by_month.get(k, 0) for k in avg_months) / avg_count, 2)
     # Selic mensal para os meses do gráfico
     selic_rows = {s.mes_ano: s.taxa for s in SelicMensal.query.all()}
-    selic_data = [selic_rows.get(k, None) for k in sorted_months]
+    selic_data = [selic_rows.get(_mesano_key(k), None) for k in sorted_months]
 
     # % acumulada carteira vs Selic — soma progressiva mês a mês
-    cart_acum_pct  = []   # soma acumulada (lucro+div_acoes+div_fiis) / patrimônio
+    cart_acum_pct  = []
     selic_acum_pct = []
     cart_running  = 0.0
     selic_running = 0.0
@@ -6648,6 +6824,30 @@ def resumo():
         selic_acum_pct.append(round(selic_running, 2) if selic_m is not None else None)
 
     total_dividends = round(sum(monthly_div_acoes.values()) + sum(monthly_div_fiis.values()), 2)
+
+    # ── Curva de evolução do patrimônio (mensal): real onde há snapshot,
+    #    estimado onde não há. Total = ações + FIIs + ETFs. ──────────────────────
+    equity_months, equity_vals, equity_est = [], [], []
+    if sorted_months:
+        first = sorted_months[0]
+        walk = _prev_month(first)     # começa no fechamento anterior ao 1º mês
+        # gera a sequência de meses de 'walk' até o mês atual
+        y0, m0 = map(int, walk.split('-'))
+        cursor_d = date(y0, m0, 1)
+        end_d = date(int(current_month_key[:4]), int(current_month_key[5:]), 1)
+        while cursor_d <= end_d:
+            mk = cursor_d.strftime('%Y-%m')
+            if mk == current_month_key:
+                # mês corrente sempre com o patrimônio atual real
+                equity_vals.append(round(total_equity, 2)); equity_est.append(False)
+            else:
+                s = snap_by_month.get(mk)
+                if s is not None:
+                    equity_vals.append(round(s.total_equity or 0, 2)); equity_est.append(False)
+                else:
+                    equity_vals.append(est_hist.get(mk)); equity_est.append(True)
+            equity_months.append(mk)
+            cursor_d += _rd(months=1)
 
     return render_template('resumo.html',
                          total_equity=total_equity, total_acoes=total_acoes,
@@ -6666,6 +6866,9 @@ def resumo():
                          selic_data=selic_data,
                          cart_acum_pct=cart_acum_pct,
                          selic_acum_pct=selic_acum_pct,
+                         equity_months=equity_months,
+                         equity_vals=equity_vals,
+                         equity_est=equity_est,
                          stock_sectors=stock_sectors)
 
 
@@ -8266,6 +8469,8 @@ def update_quotes():
         else:
             final_msg += f'Internacional: Falha ({", ".join(intl_msgs)}). '
 
+        record_portfolio_snapshot(current_user.id)
+
         if errs:
             flash(f'{final_msg} Erros: {len(errs)}. {errs[0]}', 'warning')
         else:
@@ -8333,6 +8538,9 @@ def update_quotes_async():
                     final_msg += f'ETFs via Yahoo: {etf_count}/{etf_tried}. '
                     final_msg += 'Ações/FIIs via MT5 Feeder. '
                     intl_success, _ = update_intl_quotes_logic(user_id)
+
+                # Foto do patrimônio do dia com os preços recém-atualizados
+                record_portfolio_snapshot(user_id)
 
                 category = 'warning' if errs else 'success'
                 _set_task(task_id, {'status': 'done', 'msg': final_msg.strip() or 'Atualizado.', 'category': category})
@@ -10347,6 +10555,48 @@ def update_asset_date(id):
     
     return redirect(url_for('dividendos'))
 
+
+@app.route('/api/asset-dates/<int:id>', methods=['POST'])
+@login_required
+def api_asset_dates(id):
+    """Salva a data de entrada e/ou saída de um ativo (usado no modal da carteira).
+    Essas datas definem o período de posse para rentabilidade e dividendos."""
+    asset = Asset.query.get_or_404(id)
+    if asset.user_id != current_user.id:
+        return jsonify({'error': 'Não autorizado'}), 403
+    data = request.get_json(silent=True) or request.form
+
+    def _parse(v):
+        v = (v or '').strip()
+        if not v:
+            return None, True
+        try:
+            return datetime.strptime(v, '%Y-%m-%d').date(), True
+        except ValueError:
+            return None, False
+
+    if 'entry_date' in data:
+        d, ok = _parse(data.get('entry_date'))
+        if not ok:
+            return jsonify({'error': 'Data de entrada inválida'}), 400
+        asset.entry_date = d
+    if 'exit_date' in data:
+        d, ok = _parse(data.get('exit_date'))
+        if not ok:
+            return jsonify({'error': 'Data de saída inválida'}), 400
+        asset.exit_date = d
+
+    if asset.entry_date and asset.exit_date and asset.exit_date < asset.entry_date:
+        return jsonify({'error': 'A saída não pode ser anterior à entrada'}), 400
+
+    db.session.commit()
+    return jsonify({
+        'ok': True,
+        'entry_date': asset.entry_date.isoformat() if asset.entry_date else '',
+        'exit_date':  asset.exit_date.isoformat() if asset.exit_date else '',
+    })
+
+
 # --- Context Processor for Indices ---
 @app.context_processor
 def inject_indices():
@@ -11704,6 +11954,24 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
     return assets_ok, options_ok, oplab_covered_assets
 
 
+_snapshot_last_day = {}   # {user_id: 'YYYY-MM-DD'} — garante 1 snapshot/dia por usuário
+
+
+def _daily_snapshot_sweep(now):
+    """Grava a foto do patrimônio 1×/dia útil (após o fechamento, 17h+) para
+    cada usuário com ativos — cobre quem não abriu o Resumo nem atualizou cotações."""
+    if now.weekday() >= 5 or now.hour < 17:
+        return
+    today_iso = now.date().isoformat()
+    uids = [row[0] for row in db.session.query(Asset.user_id)
+            .filter(Asset.quantity > 0).distinct().all()]
+    for uid in uids:
+        if _snapshot_last_day.get(uid) == today_iso:
+            continue
+        record_portfolio_snapshot(uid)
+        _snapshot_last_day[uid] = today_iso
+
+
 def _oplab_scheduler_loop():
     """Daemon thread: checks every 30 s which users need an OpLab refresh."""
     while True:
@@ -11711,6 +11979,7 @@ def _oplab_scheduler_loop():
         with app.app_context():
             try:
                 now = now_brt()
+                _daily_snapshot_sweep(now)
                 rows = Settings.query.filter_by(key='oplab_auto_update', value='true').all()
                 for s in rows:
                     uid   = s.user_id

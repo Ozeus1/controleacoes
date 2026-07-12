@@ -241,6 +241,28 @@
         </div>
     </div>
 
+    <!-- Gráfico: Evolução do Patrimônio -->
+    <div class="card" style="padding:1.5rem; margin-bottom:2rem;">
+        <div style="display:flex; align-items:center; flex-wrap:wrap; gap:.75rem; margin-bottom:.4rem;">
+            <h3 style="margin:0; font-size:1rem; flex:1;">Evolução do Patrimônio</h3>
+            <div style="display:flex; gap:.25rem;">
+                <button class="periodo-btn" data-p="6">6M</button>
+                <button class="periodo-btn" data-p="12">12M</button>
+                <button class="periodo-btn" data-p="24">24M</button>
+            </div>
+        </div>
+        <p style="color:var(--text-secondary); font-size:.76rem; margin:0 0 .8rem;">
+            Ações + FIIs + ETFs a preço de mercado. Trecho <span style="color:#34d399;">contínuo</span> = valores reais
+            (registrados a cada atualização); trecho <span style="color:#94a3b8;">tracejado</span> = estimativa
+            reconstruída do histórico para datas anteriores ao início do registro.
+        </p>
+        <div class="chart-scroll">
+            <div class="chart-inner h-280">
+                <canvas id="equityChart"></canvas>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <!-- Chart.js -->
@@ -633,6 +655,85 @@
         refreshSelicChart();
     })();
 
+    // ── Gráfico Evolução do Patrimônio ────────────────────────────────────────
+    let refreshEquityChart = function() {};
+    (function() {
+        const eqMonths = {{ equity_months | tojson }};
+        const eqVals   = {{ equity_vals   | tojson }};
+        const eqEst    = {{ equity_est    | tojson }};
+        const ctxE = document.getElementById('equityChart');
+        if (!ctxE || !eqMonths.length) return;
+
+        function fmtBRLc(v) {
+            return v == null ? '—' : new Intl.NumberFormat('pt-BR', {style:'currency', currency:'BRL'}).format(v);
+        }
+
+        const equityChartObj = new Chart(ctxE.getContext('2d'), {
+            type: 'line',
+            data: { labels: [], datasets: [
+                {   // trecho REAL (verde, contínuo)
+                    label: 'Patrimônio (real)',
+                    data: [], borderColor: '#10b981',
+                    backgroundColor: 'rgba(16,185,129,0.12)',
+                    pointBackgroundColor: '#10b981',
+                    pointRadius: isMobile ? 2.5 : 4, borderWidth: 2.5, fill: true, tension: 0.25,
+                    spanGaps: false, datalabels: { display: false }
+                },
+                {   // trecho ESTIMADO (cinza, tracejado)
+                    label: 'Patrimônio (estimado)',
+                    data: [], borderColor: '#94a3b8', borderDash: [5,4],
+                    backgroundColor: 'rgba(148,163,184,0.08)',
+                    pointBackgroundColor: '#94a3b8',
+                    pointRadius: isMobile ? 2 : 3, borderWidth: 2, fill: true, tension: 0.25,
+                    spanGaps: false, datalabels: { display: false }
+                }
+            ]},
+            plugins: [ChartDataLabels],
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: themeColors.text,
+                              font: { size: isMobile ? 10 : 12 },
+                              boxWidth: isMobile ? 12 : 40, padding: isMobile ? 6 : 10 } },
+                    datalabels: { display: false },
+                    tooltip: { callbacks: { label: function(ctx) {
+                        if (ctx.parsed.y == null) return null;
+                        return fmtBRLc(ctx.parsed.y) + (ctx.datasetIndex === 1 ? '  (estimado)' : '');
+                    } } }
+                },
+                scales: {
+                    x: { ticks: { color: themeColors.textSecondary,
+                                  font: { size: isMobile ? 9 : 11 }, maxRotation: isMobile ? 60 : 50 },
+                         grid: { color: 'var(--total-row-bg)' } },
+                    y: { ticks: { color: themeColors.textSecondary, font: { size: isMobile ? 9 : 11 },
+                                  callback: v => isMobile
+                                      ? 'R$' + (Math.abs(v) >= 1000 ? (v/1000).toLocaleString('pt-BR', {maximumFractionDigits:0}) + 'k' : v)
+                                      : 'R$ ' + v.toLocaleString('pt-BR', {maximumFractionDigits:0}) },
+                         grid: { color: 'var(--total-row-bg)' } }
+                }
+            }
+        });
+
+        refreshEquityChart = function() {
+            const off = Math.max(0, eqMonths.length - periodo - 1);  // +1 mês de contexto
+            const L = eqMonths.slice(off), V = eqVals.slice(off), E = eqEst.slice(off);
+            // separa as duas séries; o ponto de emenda entra nas duas para a linha não quebrar
+            const realArr = [], estArr = [];
+            for (let i = 0; i < V.length; i++) {
+                const isEst = E[i];
+                const prevReal = i > 0 && !E[i-1];
+                const nextReal = i < V.length-1 && !E[i+1];
+                realArr.push(!isEst ? V[i] : ((prevReal || nextReal) ? V[i] : null));
+                estArr.push(isEst ? V[i] : (i < V.length-1 && E[i+1] ? V[i] : null));
+            }
+            equityChartObj.data.labels = L;
+            equityChartObj.data.datasets[0].data = realArr;
+            equityChartObj.data.datasets[1].data = estArr;
+            equityChartObj.update();
+        };
+        refreshEquityChart();
+    })();
+
     // ── Botões de período (6/12/24 meses) ─────────────────────────────────────
     function setPeriodo(p) {
         periodo = p;
@@ -644,6 +745,7 @@
         resumoChart.data.datasets = buildDatasets();
         resumoChart.update();
         refreshSelicChart();
+        refreshEquityChart();
     }
     document.querySelectorAll('.periodo-btn').forEach(b => {
         b.addEventListener('click', () => setPeriodo(parseInt(b.dataset.p)));

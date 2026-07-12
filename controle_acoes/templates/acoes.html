@@ -54,6 +54,11 @@
                 <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                     <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9; color:white;">📈</button>
                     <button class="btn btn-sm" onclick="openRadar('{{ item.asset.ticker }}')" title="Analise Radar" style="background:#8b5cf6; color:white;">&#128202;</button>
+                    <button class="btn btn-sm btn-dates" title="Datas de entrada/saída"
+                        style="background:#f59e0b; color:white;"
+                        data-id="{{ item.asset.id }}" data-ticker="{{ item.asset.ticker }}"
+                        data-entry="{{ item.asset.entry_date.isoformat() if item.asset.entry_date else '' }}"
+                        data-exit="{{ item.asset.exit_date.isoformat() if item.asset.exit_date else '' }}">📅</button>
                     <a href="{{ url_for('buy_asset', id=item.asset.id) }}" class="btn btn-sm"
                         style="background:var(--success-color); color: white;" title="Registrar Nova Compra">➕</a>
                     <a href="{{ url_for('exit_trade', id=item.asset.id) }}" class="btn btn-sm"
@@ -157,6 +162,11 @@
                 </td>
                 <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                     <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9; color:white;">📈</button>
+                    <button class="btn btn-sm btn-dates" title="Datas de entrada/saída"
+                        style="background:#f59e0b; color:white;"
+                        data-id="{{ item.asset.id }}" data-ticker="{{ item.asset.ticker }}"
+                        data-entry="{{ item.asset.entry_date.isoformat() if item.asset.entry_date else '' }}"
+                        data-exit="{{ item.asset.exit_date.isoformat() if item.asset.exit_date else '' }}">📅</button>
                     <a href="{{ url_for('buy_asset', id=item.asset.id) }}" class="btn btn-sm"
                         style="background:var(--success-color); color: white;" title="Registrar Nova Compra">➕</a>
                     <a href="{{ url_for('exit_trade', id=item.asset.id) }}" class="btn btn-sm"
@@ -802,4 +812,5 @@
     });
 })();
 </script>
+{% include "_dates_modal.html" %}
 {% endblock %}

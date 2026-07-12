@@ -68,7 +68,8 @@ class Asset(db.Model):
     
     # History/Duration
     entry_date = db.Column(db.Date, nullable=True)
-    
+    exit_date  = db.Column(db.Date, nullable=True)   # data da saída total (posição zerada)
+
     # FII Specific
     fii_type = db.Column(db.String(50), nullable=True)
     
@@ -494,6 +495,22 @@ class MarketIndex(db.Model):
     def __repr__(self):
         return f'<MarketIndex {self.ticker}>'
 
+
+
+class PortfolioSnapshot(db.Model):
+    """Foto diária do patrimônio para a curva de evolução.
+    Um registro por (usuário, dia); o último do dia sobrescreve.
+    total_equity = ações + FIIs + ETFs (a preço de mercado)."""
+    __tablename__ = 'portfolio_snapshot'
+    id           = db.Column(db.Integer, primary_key=True)
+    user_id      = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    snap_date    = db.Column(db.String(10), nullable=False, index=True)   # YYYY-MM-DD
+    total_equity = db.Column(db.Float, nullable=False, default=0.0)
+    total_acoes  = db.Column(db.Float, nullable=False, default=0.0)
+    total_fiis   = db.Column(db.Float, nullable=False, default=0.0)
+    total_etfs   = db.Column(db.Float, nullable=False, default=0.0)
+    estimated    = db.Column(db.Boolean, nullable=False, default=False)   # True = reconstruído do histórico
+    created_at   = db.Column(db.DateTime, default=datetime.utcnow)
 
 
 class ChartCache(db.Model):

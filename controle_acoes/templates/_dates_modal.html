@@ -1,0 +1,83 @@
+{# Modal reutilizável de datas de entrada/saída de ativo.
+   Requer botões com classe .btn-dates e data-id/ticker/entry/exit. #}
+<div id="dates-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+     background:rgba(0,0,0,.75); align-items:center; justify-content:center; padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b); border-radius:10px; padding:1.2rem 1.4rem;
+              width:min(94vw,420px);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:.6rem;">
+      <h3 id="dm-title" style="margin:0; font-size:1rem;">Datas do ativo</h3>
+      <button onclick="closeDatesModal()" style="background:none; border:none; font-size:1.4rem;
+              color:var(--text-secondary); cursor:pointer; line-height:1;">&times;</button>
+    </div>
+    <p style="color:var(--text-secondary); font-size:.78rem; margin:.1rem 0 .9rem;">
+      Definem o período de posse usado no cálculo de rentabilidade e de dividendos
+      (só entram os dividendos com data-com dentro deste intervalo).
+    </p>
+    <div style="display:flex; flex-direction:column; gap:.7rem;">
+      <label style="font-size:.85rem; color:var(--text-primary);">
+        Data de entrada (compra)
+        <input type="date" id="dm-entry" style="width:100%; margin-top:.25rem;
+               background:var(--hover-bg); color:var(--text-primary);
+               border:1px solid var(--border-color); border-radius:6px; padding:.4rem .5rem;">
+      </label>
+      <label style="font-size:.85rem; color:var(--text-primary);">
+        Data de saída (venda total) <span style="color:var(--text-secondary);">— deixe em branco se ainda tem o ativo</span>
+        <input type="date" id="dm-exit" style="width:100%; margin-top:.25rem;
+               background:var(--hover-bg); color:var(--text-primary);
+               border:1px solid var(--border-color); border-radius:6px; padding:.4rem .5rem;">
+      </label>
+    </div>
+    <div id="dm-error" style="color:#f87171; font-size:.8rem; margin-top:.5rem; display:none;"></div>
+    <div style="margin-top:1.1rem; display:flex; gap:.6rem; justify-content:flex-end;">
+      <button class="btn btn-secondary btn-sm" onclick="closeDatesModal()">Cancelar</button>
+      <button class="btn btn-primary btn-sm" id="dm-save">💾 Salvar</button>
+    </div>
+  </div>
+</div>
+<script>
+(function() {
+  var modal = document.getElementById('dates-modal');
+  if (!modal) return;
+  var curId = null, curBtn = null;
+
+  function open(btn) {
+    curId = btn.dataset.id; curBtn = btn;
+    document.getElementById('dm-title').textContent = 'Datas — ' + btn.dataset.ticker;
+    document.getElementById('dm-entry').value = btn.dataset.entry || '';
+    document.getElementById('dm-exit').value  = btn.dataset.exit || '';
+    document.getElementById('dm-error').style.display = 'none';
+    modal.style.display = 'flex';
+  }
+  window.closeDatesModal = function() { modal.style.display = 'none'; };
+
+  document.addEventListener('click', function(ev) {
+    var b = ev.target.closest('.btn-dates');
+    if (b) { ev.preventDefault(); open(b); }
+  });
+  modal.addEventListener('click', function(ev) { if (ev.target === modal) closeDatesModal(); });
+
+  document.getElementById('dm-save').addEventListener('click', function() {
+    var btn = this; btn.disabled = true;
+    var err = document.getElementById('dm-error');
+    fetch('/api/asset-dates/' + curId, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        entry_date: document.getElementById('dm-entry').value,
+        exit_date:  document.getElementById('dm-exit').value
+      })
+    })
+    .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+    .then(function(res) {
+      btn.disabled = false;
+      if (!res.ok || res.j.error) {
+        err.textContent = '⚠️ ' + (res.j.error || 'Erro ao salvar.');
+        err.style.display = 'block';
+        return;
+      }
+      if (curBtn) { curBtn.dataset.entry = res.j.entry_date; curBtn.dataset.exit = res.j.exit_date; }
+      closeDatesModal();
+    })
+    .catch(function(e) { btn.disabled = false; err.textContent = '⚠️ ' + e; err.style.display = 'block'; });
+  });
+})();
+</script>

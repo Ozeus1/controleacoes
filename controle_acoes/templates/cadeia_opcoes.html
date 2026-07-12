@@ -827,6 +827,20 @@ function prefillFromUrl(){
   if(q.get('nome')) document.getElementById('sim-name-input').value=q.get('nome');
   if(ativo) document.getElementById('sim-underlying-input').value=ativo;
   document.getElementById('legs-body').innerHTML='';
+  // Se as pernas têm vencimentos DIFERENTES (calendar/diagonal), desmarca o
+  // "Vencimento único" ANTES de preencher, senão o MutationObserver do
+  // initLegHelpers copiaria o 1º vencimento para todas, colapsando a estrutura.
+  var _exps=[];
+  legsRaw.split('|').forEach(function(part){
+    var f=part.split(','); if(f.length<7) return;
+    var t=(f[1]||'').toUpperCase();
+    if(t!=='STOCK' && f[6]) _exps.push(f[6]);
+  });
+  var _multiExp = (new Set(_exps)).size > 1;
+  if(_multiExp){
+    var chk=document.getElementById('chk-same-exp');
+    if(chk){ chk.checked=false; try{ localStorage.setItem('legs-same-exp','0'); }catch(e){} }
+  }
   var n=0;
   legsRaw.split('|').forEach(function(part){
     var f=part.split(',');
@@ -847,6 +861,7 @@ function prefillFromUrl(){
     n++;
   });
   if(!n){ addLegC('CALL'); return false; }
+  window.__prefillMultiExp=_multiExp;
   scheduleRedrawC();
   document.getElementById('sim-section').scrollIntoView({behavior:'smooth',block:'start'});
   return true;

@@ -737,7 +737,14 @@ window.initLegHelpers = function (o) {
   var chkE = document.getElementById('chk-same-exp');
   var chkL = document.getElementById('chk-lot100');
   if (!cont || !chkE || !chkL) return;
-  chkE.checked = localStorage.getItem('legs-same-exp') !== '0';
+  // Estrutura pré-carregada com vencimentos diferentes (calendar/diagonal):
+  // mantém "Vencimento único" DESMARCADO e não sincroniza, senão colapsaria
+  // todas as pernas no mesmo vencimento.
+  if (window.__prefillMultiExp) {
+    chkE.checked = false;
+  } else {
+    chkE.checked = localStorage.getItem('legs-same-exp') !== '0';
+  }
   chkL.checked = localStorage.getItem('legs-lot100') !== '0';
 
   function isStockRow(el) {

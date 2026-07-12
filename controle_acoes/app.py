@@ -9437,23 +9437,46 @@ def importar_excel():
 # ESTUDOS
 # ─────────────────────────────────────────────────────────────────
 
-STUDY_STRATEGIES = [
-    'Venda de Call Coberta',
-    'Venda de Put',
-    'Compra de Put',
-    'Trava de Alta com Call',
-    'Trava de Alta com Put',
-    'Trava de Baixa com Call',
-    'Trava de Baixa com Put',
-    'Strangle Vendido',
-    'Borboleta',
-    'Iron Condor',
-    'Compra de Call',
-    'Boi',
-    'Vaca',
-    'Outros',
-    'ne',
+# Estratégias de estudo agrupadas por CENÁRIO (direção do mercado + volatilidade),
+# com base no guia de operações. Cada grupo vira um <optgroup> no seletor para
+# orientar a escolha. O rótulo do grupo traz a dica de quando usar.
+STUDY_STRATEGY_GROUPS = [
+    ('📈 Alta — Vol. baixa (comprar prêmio)', [
+        'Compra de Call', 'Trava de Alta com Call', 'Call Backspread',
+        'Ratio Call', 'Risk Reversal', 'Seagull de Alta',
+    ]),
+    ('📈 Alta — Vol. alta (vender prêmio)', [
+        'Venda de Put', 'Trava de Alta com Put', 'Jade Lizard',
+    ]),
+    ('📉 Baixa — Vol. baixa (comprar prêmio)', [
+        'Compra de Put', 'Trava de Baixa com Put', 'Put Backspread', 'Seagull de Baixa',
+    ]),
+    ('📉 Baixa — Vol. alta (vender prêmio)', [
+        'Trava de Baixa com Call',
+    ]),
+    ('➡️ Lateral — Vol. alta (vender prêmio)', [
+        'Venda de Call Coberta', 'Strangle Vendido', 'Straddle Vendido',
+        'Iron Condor', 'Iron Butterfly', 'Borboleta', 'Condor',
+        'Boi', 'Vaca', 'Ratio Spread',
+    ]),
+    ('➡️ Lateral — Vol. baixa / renda', [
+        'Collar', 'Fence', 'Calendar Spread', 'Diagonal Spread',
+    ]),
+    ('⚡ Volatilidade (movimento forte em qualquer direção)', [
+        'Compra de Call', 'Compra de Put', 'Straddle Comprado', 'Strangle Comprado',
+        'Strap', 'Strip', 'Guts',
+    ]),
+    ('🧬 Outras', [
+        'Ação Sintética', 'Short Sintético', 'Box Spread', 'Outros', 'ne',
+    ]),
 ]
+
+# Lista plana (compatível com valores já salvos), sem duplicatas, preservando ordem.
+STUDY_STRATEGIES = []
+for _grp, _items in STUDY_STRATEGY_GROUPS:
+    for _s in _items:
+        if _s not in STUDY_STRATEGIES:
+            STUDY_STRATEGIES.append(_s)
 
 # Mapeamento dos valores da planilha para os do programa
 _STRATEGY_MAP = {
@@ -9623,6 +9646,7 @@ def estudos():
         study_intl_stocks=study_intl_stocks,
         free_stocks=free_stocks,
         strategies=STUDY_STRATEGIES,
+        strategy_groups=STUDY_STRATEGY_GROUPS,
     )
 
 
@@ -9745,6 +9769,23 @@ def add_study_stock():
     db.session.commit()
     flash('Ação de estudo adicionada.', 'success')
     return redirect(url_for('estudos') + '#estudo-acoes')
+
+
+@app.route('/estudos/ir-para-estudo/<ticker>')
+@login_required
+def estudo_ir(ticker):
+    """Abre a tela Estudos já na edição da ação. Se ela ainda não estiver na
+    lista de Estudo de Ações, cria um registro em branco e abre a edição.
+    Usado pelo ícone de atalho no Ranking de Volatilidade."""
+    ticker = (ticker or '').strip().upper()
+    if not ticker:
+        return redirect(url_for('estudos') + '#estudo-acoes')
+    ss = StudyStock.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+    if ss is None:
+        ss = StudyStock(user_id=current_user.id, ticker=ticker)
+        db.session.add(ss)
+        db.session.commit()
+    return redirect(url_for('estudos', edit_stock=ss.id) + '#estudo-acoes')
 
 
 @app.route('/estudos/edit_study_stock/<int:sid>', methods=['POST'])

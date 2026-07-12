@@ -197,7 +197,7 @@
         <td class="actions" style="white-space:nowrap;">
           <button class="btn btn-sm" onclick="openRadarAndUpdate({{ ss.id }}, '{{ ss.ticker }}', 'stock')" title="Análise Radar + atualizar RSI/ATR" style="background:#8b5cf6;color:white;">📊</button>
           <button class="btn btn-sm" onclick="openTVChart('{{ ss.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
-          <button class="btn btn-primary btn-sm"
+          <button class="btn btn-primary btn-sm" id="edit-stock-btn-{{ ss.id }}"
             onclick="openEditAcao({{ ss.id }}, '{{ ss.ticker }}',
               '{{ ss.trend or '' }}', '{{ ss.rsi or '' }}',
               '{{ ss.iv_rank or '' }}', '{{ ss.iv_percentil or '' }}',
@@ -517,8 +517,12 @@
               <label>Estratégia Sugerida</label>
               <select name="strategy" class="form-control">
                 <option value="">—</option>
-                {% for s in strategies %}
-                <option value="{{ s }}">{{ s }}</option>
+                {% for grp, items in strategy_groups %}
+                <optgroup label="{{ grp }}">
+                  {% for s in items %}
+                  <option value="{{ s }}">{{ s }}</option>
+                  {% endfor %}
+                </optgroup>
                 {% endfor %}
               </select>
             </div>
@@ -530,8 +534,12 @@
               <label>Estratégia Ativa</label>
               <select name="strategy_active" class="form-control">
                 <option value="">—</option>
-                {% for s in strategies %}
-                <option value="{{ s }}">{{ s }}</option>
+                {% for grp, items in strategy_groups %}
+                <optgroup label="{{ grp }}">
+                  {% for s in items %}
+                  <option value="{{ s }}">{{ s }}</option>
+                  {% endfor %}
+                </optgroup>
                 {% endfor %}
               </select>
             </div>
@@ -606,8 +614,12 @@
               <label>Estratégia Sugerida</label>
               <select name="strategy" id="ea-strategy" class="form-control">
                 <option value="">—</option>
-                {% for s in strategies %}
-                <option value="{{ s }}">{{ s }}</option>
+                {% for grp, items in strategy_groups %}
+                <optgroup label="{{ grp }}">
+                  {% for s in items %}
+                  <option value="{{ s }}">{{ s }}</option>
+                  {% endfor %}
+                </optgroup>
                 {% endfor %}
               </select>
             </div>
@@ -619,8 +631,12 @@
               <label>Estratégia Ativa</label>
               <select name="strategy_active" id="ea-strat-active" class="form-control">
                 <option value="">—</option>
-                {% for s in strategies %}
-                <option value="{{ s }}">{{ s }}</option>
+                {% for grp, items in strategy_groups %}
+                <optgroup label="{{ grp }}">
+                  {% for s in items %}
+                  <option value="{{ s }}">{{ s }}</option>
+                  {% endfor %}
+                </optgroup>
                 {% endfor %}
               </select>
             </div>
@@ -684,8 +700,12 @@
               <label>Estratégia Sugerida</label>
               <select name="strategy" class="form-control">
                 <option value="">—</option>
-                {% for s in strategies %}
-                <option value="{{ s }}">{{ s }}</option>
+                {% for grp, items in strategy_groups %}
+                <optgroup label="{{ grp }}">
+                  {% for s in items %}
+                  <option value="{{ s }}">{{ s }}</option>
+                  {% endfor %}
+                </optgroup>
                 {% endfor %}
               </select>
             </div>
@@ -697,8 +717,12 @@
               <label>Estratégia Ativa</label>
               <select name="strategy_active" class="form-control">
                 <option value="">—</option>
-                {% for s in strategies %}
-                <option value="{{ s }}">{{ s }}</option>
+                {% for grp, items in strategy_groups %}
+                <optgroup label="{{ grp }}">
+                  {% for s in items %}
+                  <option value="{{ s }}">{{ s }}</option>
+                  {% endfor %}
+                </optgroup>
                 {% endfor %}
               </select>
             </div>
@@ -773,8 +797,12 @@
               <label>Estratégia Sugerida</label>
               <select name="strategy" id="eia-strategy" class="form-control">
                 <option value="">—</option>
-                {% for s in strategies %}
-                <option value="{{ s }}">{{ s }}</option>
+                {% for grp, items in strategy_groups %}
+                <optgroup label="{{ grp }}">
+                  {% for s in items %}
+                  <option value="{{ s }}">{{ s }}</option>
+                  {% endfor %}
+                </optgroup>
                 {% endfor %}
               </select>
             </div>
@@ -786,8 +814,12 @@
               <label>Estratégia Ativa</label>
               <select name="strategy_active" id="eia-strat-active" class="form-control">
                 <option value="">—</option>
-                {% for s in strategies %}
-                <option value="{{ s }}">{{ s }}</option>
+                {% for grp, items in strategy_groups %}
+                <optgroup label="{{ grp }}">
+                  {% for s in items %}
+                  <option value="{{ s }}">{{ s }}</option>
+                  {% endfor %}
+                </optgroup>
                 {% endfor %}
               </select>
             </div>
@@ -1284,6 +1316,22 @@ function setSelect(id, val) {
         var badge=e.target.closest('.ticker-badge');if(!badge)return;
         if(!e.relatedTarget||!e.relatedTarget.closest('.ticker-badge')){hint.style.display='none';active=null;}
     });
+})();
+</script>
+<script>
+// Abre a edição direto quando vem do atalho do Ranking (?edit_stock=<sid>)
+(function() {
+  var m = new URLSearchParams(location.search).get('edit_stock');
+  if (!m) return;
+  var btn = document.getElementById('edit-stock-btn-' + m);
+  if (btn) {
+    // pequeno atraso p/ garantir que o Bootstrap Modal e o scroll estejam prontos
+    setTimeout(function() {
+      var row = btn.closest('tr');
+      if (row && row.scrollIntoView) row.scrollIntoView({behavior: 'smooth', block: 'center'});
+      btn.click();
+    }, 350);
+  }
 })();
 </script>
 {% endblock %}

@@ -201,6 +201,8 @@
                   onclick="openTVChart('{{ rv.ticker }}')" title="Gráfico TradingView">📈</button>
           <button class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#8b5cf6;color:#fff;margin-right:.2rem"
                   onclick="openRadar('{{ rv.ticker }}')" title="Análise Radar">📊</button>
+          <a class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#10b981;color:#fff;margin-right:.2rem;text-decoration:none"
+             href="{{ url_for('estudo_ir', ticker=rv.ticker) }}" title="Abrir/editar na tela Estudos">📋</a>
           <button class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#7c3aed;color:#fff;margin-right:.2rem"
                   onclick="openLiquidez('{{ rv.ticker }}')" title="Ver Liquidez de Opções">💧</button>
           <form method="POST" action="{{ url_for('ranking_vol_delete', rid=rv.id) }}" style="display:inline"

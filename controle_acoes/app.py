@@ -6566,55 +6566,6 @@ def record_portfolio_snapshot(user_id):
         app.logger.exception('record_portfolio_snapshot falhou (user %s)', user_id)
 
 
-def _reconstruct_equity_history(user_id, months_back=24):
-    """Estima o patrimônio no fim de cada mês passado, recuando a partir do
-    patrimônio atual. A cada mês desfazemos o APORTE LÍQUIDO do mês (compras −
-    vendas, a preço de custo) e a valorização de preço (proxy: Selic do mês).
-
-    Só cobre datas anteriores ao início dos snapshots reais. É uma ESTIMATIVA:
-    as datas de entrada vêm de importação, então serve para dar contexto ao
-    gráfico (trecho tracejado), não como número exato. Nunca retorna acima do
-    patrimônio atual (a curva estimada não pode "subir acima" do real de hoje).
-    Retorna {YYYY-MM: equity_fim_do_mes}."""
-    from dateutil.relativedelta import relativedelta
-    total_now, _, _, _ = _equity_by_type(user_id)
-    if total_now <= 0:
-        return {}
-
-    # Aporte líquido por mês = investido em novas posições − capital das vendas.
-    # Positivo = a carteira cresceu por dinheiro novo naquele mês.
-    net_flow = {}
-    for a in Asset.query.filter_by(user_id=user_id).all():
-        if a.entry_date and (a.quantity or 0) > 0:
-            mk = a.entry_date.strftime('%Y-%m')
-            net_flow[mk] = net_flow.get(mk, 0.0) + a.quantity * (a.avg_price or 0)
-    for h in TradeHistory.query.filter_by(user_id=user_id).all():
-        if h.exit_date and h.buy_price and h.quantity:
-            mk = h.exit_date.strftime('%Y-%m')
-            net_flow[mk] = net_flow.get(mk, 0.0) - h.buy_price * h.quantity
-
-    selic_rows = {s.mes_ano: s.taxa for s in SelicMensal.query.all()}
-    _last_selic = selic_rows[max(selic_rows)] if selic_rows else 0.0
-    today = now_brt().date()
-    cur = today.replace(day=1)
-    result = {}
-    equity = total_now
-    for _ in range(months_back):
-        mk = cur.strftime('%Y-%m')
-        # remove a valorização do mês (o valor de mercado subiu ~Selic no mês);
-        # meses ainda não cadastrados usam a última Selic conhecida
-        taxa = (selic_rows.get(mk, _last_selic) or 0.0) / 100.0
-        if taxa:
-            equity = equity / (1 + taxa)
-        # remove o aporte líquido do mês (não existia no mês anterior)
-        equity -= net_flow.get(mk, 0.0)
-        equity = max(equity, 0.0)
-        prev = cur - relativedelta(months=1)
-        result[prev.strftime('%Y-%m')] = round(min(equity, total_now), 2)
-        cur = prev
-    return result
-
-
 def _dividends_owned(user_id, today):
     """Dividendos efetivamente recebidos, filtrados pelo PERÍODO DE POSSE do ativo.
     Um dividendo só conta se a data-com (ex_date; se faltar, payment_date) estava
@@ -6756,41 +6707,50 @@ def resumo():
     div_fiis_data = [round(monthly_div_fiis.get(k, 0), 2)  for k in sorted_months]
 
     # ── Patrimônio-base de cada mês = FECHAMENTO DO MÊS ANTERIOR ──────────────
-    # Preferimos snapshots reais; onde faltarem, usamos a reconstrução histórica.
-    # Guardamos dois valores por mês: base p/ LUCRO (ações+ETF, pois FII quase
-    # não é negociado) e base p/ DIVIDENDOS (ações+FII).
+    # Onde EXISTE snapshot real do fechamento do mês anterior, usamos ele (regra
+    # nova, exata — vale daqui pra frente). Onde NÃO existe (meses passados sem
+    # registro), voltamos à base antiga: patrimônio reconstruído a partir do
+    # atual, desfazendo o lucro realizado dos meses seguintes. Isso mantém os
+    # gráficos como estavam antes e evita a distorção da reconstrução por fluxos.
     from dateutil.relativedelta import relativedelta as _rd
     snaps = PortfolioSnapshot.query.filter_by(user_id=current_user.id).all()
-    # último snapshot de cada mês (o do dia mais recente vence)
     snap_by_month = {}
     for s in snaps:
         mk = s.snap_date[:7]
         cur = snap_by_month.get(mk)
         if cur is None or s.snap_date > cur.snap_date:
             snap_by_month[mk] = s
-    est_hist = _reconstruct_equity_history(current_user.id, months_back=30)
 
     def _prev_month(mk):
         y, m = mk.split('-')
         d = date(int(y), int(m), 1) - _rd(months=1)
         return d.strftime('%Y-%m')
 
-    def _base_equity(mk_prev):
-        """Patrimônio (total, ações+ETF, ações+FII) no fim do mês mk_prev."""
-        s = snap_by_month.get(mk_prev)
-        if s is not None:
-            return (s.total_equity or 0,
-                    (s.total_acoes or 0) + (s.total_etfs or 0),
-                    (s.total_acoes or 0) + (s.total_fiis or 0))
-        est = est_hist.get(mk_prev)          # total estimado; sem split por tipo
-        return (est, est, est) if est else (None, None, None)
+    # Base antiga (fórmula original): desfaz o lucro dos meses posteriores.
+    base_neg_now = (total_acoes + total_etfs) or 1     # ações+ETF (lucro é negociado)
+    base_div_now = (total_acoes + total_fiis) or 1     # ações+FII (dividendos)
+    month_profit = {k: monthly_profit.get(k, 0) for k in sorted_months}
+    def _old_base(base_now, mk_prev):
+        p = base_now
+        for m in sorted_months:
+            if m > mk_prev:
+                p -= month_profit.get(m, 0)
+        return max(p, 1)
+
+    def _base_for(mk):
+        """(base p/ lucro, base p/ dividendos) referentes ao fim do mês anterior a mk."""
+        prev = _prev_month(mk)
+        s = snap_by_month.get(prev)
+        if s is not None:                              # snapshot real → regra nova
+            bn = (s.total_acoes or 0) + (s.total_etfs or 0)
+            bd = (s.total_acoes or 0) + (s.total_fiis or 0)
+            return (bn if bn > 0 else base_neg_now,
+                    bd if bd > 0 else base_div_now)
+        return _old_base(base_neg_now, prev), _old_base(base_div_now, prev)
 
     profit_pct_data, div_acoes_pct, div_fiis_pct = [], [], []
     for k in sorted_months:
-        prev = _prev_month(k)
-        base_total, base_neg, base_div = _base_equity(prev)
-        base_neg = base_neg if (base_neg and base_neg > 0) else (total_acoes + total_etfs or 1)
-        base_div = base_div if (base_div and base_div > 0) else (total_acoes + total_fiis or 1)
+        base_neg, base_div = _base_for(k)
         profit_pct_data.append(round(monthly_profit.get(k, 0)   / base_neg * 100, 2))
         div_acoes_pct.append(round(monthly_div_acoes.get(k, 0)  / base_div * 100, 2))
         div_fiis_pct.append(round(monthly_div_fiis.get(k, 0)    / base_div * 100, 2))
@@ -6834,26 +6794,34 @@ def resumo():
     total_dividends = round(sum(monthly_div_acoes.values()) + sum(monthly_div_fiis.values()), 2)
 
     # ── Curva de evolução do patrimônio (mensal): real onde há snapshot,
-    #    estimado onde não há. Total = ações + FIIs + ETFs. ──────────────────────
+    #    estimado onde não há. Total = ações + FIIs + ETFs.
+    #    A estimativa do passado desfaz apenas o lucro realizado dos meses
+    #    seguintes (mesma base dos percentuais) — curva suave, sem os degraus
+    #    que os fluxos de importação criavam. ──────────────────────────────────
     equity_months, equity_vals, equity_est = [], [], []
     if sorted_months:
         first = sorted_months[0]
         walk = _prev_month(first)     # começa no fechamento anterior ao 1º mês
-        # gera a sequência de meses de 'walk' até o mês atual
         y0, m0 = map(int, walk.split('-'))
         cursor_d = date(y0, m0, 1)
         end_d = date(int(current_month_key[:4]), int(current_month_key[5:]), 1)
         while cursor_d <= end_d:
             mk = cursor_d.strftime('%Y-%m')
             if mk == current_month_key:
-                # mês corrente sempre com o patrimônio atual real
                 equity_vals.append(round(total_equity, 2)); equity_est.append(False)
             else:
                 s = snap_by_month.get(mk)
                 if s is not None:
                     equity_vals.append(round(s.total_equity or 0, 2)); equity_est.append(False)
                 else:
-                    equity_vals.append(est_hist.get(mk)); equity_est.append(True)
+                    # estimativa: patrimônio atual menos o lucro realizado dos
+                    # meses posteriores a este (limitado ao patrimônio atual)
+                    est = total_equity
+                    for m in sorted_months:
+                        if m > mk:
+                            est -= month_profit.get(m, 0)
+                    equity_vals.append(round(min(max(est, 0.0), total_equity), 2))
+                    equity_est.append(True)
             equity_months.append(mk)
             cursor_d += _rd(months=1)
 

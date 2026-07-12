@@ -1,0 +1,449 @@
+{% extends "base.html" %}
+{% block title %}Busca de Operações Avançadas{% endblock %}
+{% block extra_scripts %}
+<style>
+.ba-cat{margin:.2rem 0 .55rem;}
+.ba-cat-lbl{font-size:.78rem;font-weight:700;color:var(--text-secondary);
+  text-transform:uppercase;letter-spacing:.04em;margin:0 0 .3rem;}
+#ba-ops button{margin:0 .35rem .4rem 0;padding:.32rem .7rem;border:1px solid #475569;border-radius:6px;
+  font-size:.8rem;cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);transition:background .12s;}
+#ba-ops button.active{background:#0ea5e9;border-color:#0ea5e9;font-weight:700;}
+#ba-tickers{display:flex;flex-wrap:wrap;gap:.35rem;}
+.ba-tbtn{padding:.25rem .55rem;border:1px solid #475569;border-radius:5px;font-size:.8rem;
+  cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap;
+  display:inline-flex;align-items:center;gap:.35rem;}
+.ba-tbtn.active{background:#0ea5e9;border-color:#0ea5e9;font-weight:700;}
+.ba-tbtn .ba-tdel{color:#94a3b8;font-weight:700;cursor:pointer;font-style:normal;}
+.ba-tbtn .ba-tdel:hover{color:#f87171;}
+#ba-spot{font-size:1rem;font-weight:700;color:var(--text-primary);display:inline-flex;gap:.5rem;align-items:baseline;}
+#ba-spot .chg-pos{color:#34d399;font-size:.85rem;}
+#ba-spot .chg-neg{color:#f87171;font-size:.85rem;}
+#ba-mode{display:none;font-size:.75rem;color:#fbbf24;background:rgba(251,191,36,.1);
+  border:1px solid rgba(251,191,36,.4);border-radius:5px;padding:.15rem .5rem;}
+#ba-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
+#ba-error{display:none;color:#f87171;padding:1rem;}
+.ba-exp-card{background:var(--card-bg);border:1px solid var(--border-color);border-radius:8px;
+  padding: .9rem 1rem;margin-bottom:1rem;}
+.ba-exp-head{display:flex;align-items:baseline;gap:.8rem;flex-wrap:wrap;margin-bottom:.4rem;}
+.ba-exp-head h3{margin:0;font-size:.95rem;}
+.ba-exp-head .sub{font-size:.78rem;color:var(--text-secondary);}
+.ba-sec h4{font-size:.8rem;color:var(--text-secondary);margin:.6rem 0 .35rem;font-weight:600;}
+.ba-wrap{overflow-x:auto;}
+table.ba-tab{width:100%;border-collapse:collapse;font-size:.78rem;}
+table.ba-tab th{padding:.3rem .45rem;text-align:right;white-space:nowrap;color:var(--text-secondary);
+  font-weight:600;border-bottom:1px solid var(--border-color);}
+table.ba-tab th:first-child{text-align:left;}
+table.ba-tab td{padding:.3rem .45rem;text-align:right;white-space:nowrap;color:var(--text-primary);
+  border-bottom:1px solid rgba(255,255,255,.04);}
+table.ba-tab td:first-child{text-align:left;}
+table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
+.pos{color:#34d399;}
+.neg{color:#f87171;}
+.ba-badge{display:inline-block;padding:.06rem .35rem;border-radius:4px;font-size:.7rem;font-weight:700;margin:0 .1rem .1rem 0;}
+.ba-badge.call{background:rgba(59,130,246,.15);color:#93c5fd;}
+.ba-badge.put{background:rgba(236,72,153,.15);color:#f9a8d4;}
+.ba-badge.stock{background:rgba(250,204,21,.15);color:#fde68a;}
+.ba-badge.credit{background:rgba(16,185,129,.15);color:#6ee7b7;}
+.ba-badge.debit{background:rgba(248,113,113,.15);color:#fca5a5;}
+.ba-empty{color:var(--text-secondary);font-size:.8rem;padding:.4rem 0 .6rem;}
+.metric-box{background:var(--hover-bg);border:1px solid var(--border-color);border-radius:6px;
+  padding:.6rem .9rem;display:flex;flex-direction:column;gap:.15rem;}
+.metric-label{font-size:.75rem;color:var(--text-secondary);}
+.metric-value{font-size:1rem;font-weight:600;color:var(--text-primary);}
+.metric-value.pos{color:#34d399;}
+.metric-value.neg{color:#f87171;}
+#add-ba-input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
+  border-radius:5px;padding:.25rem .5rem;font-size:.82rem;width:110px;text-transform:uppercase;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="padding:1.2rem 1.4rem;">
+
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.4rem;">
+    <h2 style="margin:0;">🚀 Busca de Operações Avançadas</h2>
+    <div id="ba-spot"></div>
+    <span id="ba-mode"></span>
+  </div>
+  <p style="color:var(--text-secondary);font-size:.85rem;margin:.2rem 0 .8rem;">
+    Operações do guia técnico (Vol. 2), <strong>selecionadas pelo delta recomendado</strong> de cada perna.
+    Escolha a operação e o ativo; o sistema varre a cadeia e monta as melhores combinações por vencimento.
+    Preços executáveis: compra pelo <em>ask</em>, venda pelo <em>bid</em>.
+    <strong>Clique em qualquer linha</strong> para ver o resumo e abrir na Cadeia de Opções.
+  </p>
+
+  <!-- Operações por categoria -->
+  <div id="ba-ops">
+    <div class="ba-cat">
+      <div class="ba-cat-lbl">📈 Direcionais</div>
+      <button class="ba-obtn active" data-op="call_seco">🎯 Call a Seco</button>
+      <button class="ba-obtn" data-op="put_seco">🎯 Put a Seco</button>
+      <button class="ba-obtn" data-op="seagull_baixa">🕊 Seagull de Baixa</button>
+      <button class="ba-obtn" data-op="christmas_tree">🎄 Christmas Tree</button>
+      <button class="ba-obtn" data-op="ladder_call">🪜 Ladder (CALLs)</button>
+    </div>
+    <div class="ba-cat">
+      <div class="ba-cat-lbl">💰 Renda e Proteção</div>
+      <button class="ba-obtn" data-op="venda_coberta">📋 Venda Coberta (Δ)</button>
+      <button class="ba-obtn" data-op="protective_put">🛡 Protective Put</button>
+      <button class="ba-obtn" data-op="covered_put">📉 Covered Put</button>
+      <button class="ba-obtn" data-op="jade_lizard">🦎 Jade Lizard</button>
+      <button class="ba-obtn" data-op="iron_butterfly">🦋💰 Iron Butterfly</button>
+    </div>
+    <div class="ba-cat">
+      <div class="ba-cat-lbl">⚖️ Volatilidade e Neutras</div>
+      <button class="ba-obtn" data-op="straddle_comprado">⚖️ Straddle Comprado</button>
+      <button class="ba-obtn" data-op="strangle_comprado">🔗 Strangle Comprado</button>
+      <button class="ba-obtn" data-op="guts_long">💪 Guts (Long)</button>
+      <button class="ba-obtn" data-op="strap">📈⚖️ Strap</button>
+      <button class="ba-obtn" data-op="strip">📉⚖️ Strip</button>
+      <button class="ba-obtn" data-op="box_spread">📦 Box Spread</button>
+    </div>
+    <div class="ba-cat">
+      <div class="ba-cat-lbl">🧬 Sintéticas e Avançadas</div>
+      <button class="ba-obtn" data-op="acao_sintetica">🧬 Ação Sintética</button>
+      <button class="ba-obtn" data-op="short_sintetico">🧬📉 Short Sintético</button>
+      <button class="ba-obtn" data-op="risk_reversal">🔄 Risk Reversal</button>
+      <button class="ba-obtn" data-op="synthetic_straddle">🧬⚖️ Synthetic Straddle</button>
+    </div>
+  </div>
+
+  <!-- Vencimentos -->
+  <div style="display:flex;align-items:center;gap:1.4rem;flex-wrap:wrap;margin:.1rem 0 .6rem;">
+    <label style="display:inline-flex;align-items:center;gap:.45rem;
+           font-size:.83rem;color:var(--text-secondary);cursor:pointer;">
+      <input type="checkbox" id="ba-weekly" style="width:16px;height:16px;cursor:pointer;margin:0;">
+      Incluir vencimentos <strong>semanais</strong>
+    </label>
+    <label style="display:inline-flex;align-items:center;gap:.45rem;
+           font-size:.83rem;color:var(--text-secondary);cursor:pointer;">
+      Prazo máx. de busca:
+      <select id="ba-days" style="background:var(--card-bg);color:var(--text-primary);
+              border:1px solid var(--border-color);border-radius:5px;padding:.2rem .4rem;
+              font-size:.82rem;cursor:pointer;">
+        <option value="60" selected>60 dias</option>
+        <option value="90">90 dias</option>
+        <option value="120">120 dias</option>
+        <option value="180">180 dias</option>
+      </select>
+    </label>
+  </div>
+
+  <!-- Tickers -->
+  <div style="margin-bottom:.6rem;">
+    <div id="ba-tickers" style="margin-bottom:.5rem;"></div>
+    <div style="display:flex;gap:.5rem;align-items:center;">
+      <input id="add-ba-input" type="text" placeholder="Novo ticker…" maxlength="10">
+      <button class="btn btn-secondary btn-sm" id="add-ba-btn">➕ Adicionar e buscar</button>
+    </div>
+  </div>
+
+  <div id="ba-loading">⏳ Varrendo a cadeia de opções…</div>
+  <div id="ba-error"></div>
+  <div id="ba-results"></div>
+</div>
+
+<!-- Modal -->
+<div id="ba-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+     background:rgba(0,0,0,.75); align-items:center; justify-content:center; padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b); border-radius:10px; padding:1.2rem 1.4rem;
+              width:min(96vw,920px); max-height:92vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <h3 id="bam-title" style="margin:0; font-size:1rem;"></h3>
+      <button onclick="baCloseModal()" style="background:none; border:none; font-size:1.4rem;
+              color:var(--text-secondary); cursor:pointer; line-height:1;">&times;</button>
+    </div>
+    <div style="display:flex; align-items:center; gap:.6rem; margin-bottom:1rem;">
+      <label style="font-size:.85rem; color:var(--text-secondary);">Quantidade:</label>
+      <input id="bam-qty" type="number" min="1" step="100" value="100"
+             style="width:110px; background:var(--hover-bg); color:var(--text-primary);
+                    border:1px solid var(--border-color); border-radius:5px; padding:.3rem .5rem;">
+    </div>
+    <div id="bam-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(185px,1fr)); gap:.75rem;"></div>
+    <div style="margin-top:1.2rem; display:flex; gap:.6rem; flex-wrap:wrap;">
+      <a id="bam-open" href="#" class="btn btn-primary btn-sm">🔗 Editar em Cadeia de Opções</a>
+      <button class="btn btn-secondary btn-sm" onclick="baCloseModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ranking_vol else
+    "['ABEV3','ASAI3','B3SA3','BBAS3','BBDC4','BBSE3','BRAP4','ITUB4','LREN3','PETR3','PETR4','PRIO3','USIM5','VALE3','WEGE3']"|safe }};
+</script>
+<script>
+(function() {
+  var currentOp = 'call_seco';
+  var currentTicker = '';
+
+  var loading = document.getElementById('ba-loading');
+  var errBox  = document.getElementById('ba-error');
+  var results = document.getElementById('ba-results');
+  var spotEl  = document.getElementById('ba-spot');
+  var modeEl  = document.getElementById('ba-mode');
+
+  var OP_TITLES = {
+    call_seco:      '🎯 Call a Seco — compra 1 CALL com Δ 0,30–0,45 (alavancagem direcional de alta; DTE recomendado > 60d ou 30–45d)',
+    put_seco:       '🎯 Put a Seco — compra 1 PUT com Δ −0,30 a −0,45 (alavancagem direcional de baixa)',
+    seagull_baixa:  '🕊 Seagull de Baixa — venda CALL OTM (Δ 0,15–0,25) + compra PUT (Δ ≈ −0,45) + venda PUT OTM (Δ ≈ −0,25); crédito preferível',
+    christmas_tree: '🎄 Christmas Tree — venda 1 CALL ITM (Δ 0,70–0,80) + compra 3 CALLs OTM escalonadas (débito baixo ou crédito)',
+    ladder_call:    '🪜 Ladder de CALLs — compra 1 CALL (Δ 0,45–0,60) + venda 2 CALLs de strikes crescentes (zona de lucro ampla)',
+    venda_coberta:  '📋 Venda Coberta por delta — compra a ação + vende CALL OTM Δ 0,20–0,35 (DTE 30–45d; máximo Theta)',
+    protective_put: '🛡 Protective Put — compra a ação + compra PUT Δ −0,40 a −0,50 (seguro contra quedas)',
+    covered_put:    '📉 Covered Put — vende a ação (aluguel) + vende PUT OTM Δ −0,20 a −0,35 (renda em mercado de baixa)',
+    jade_lizard:    '🦎 Jade Lizard — venda PUT OTM (Δ ≈ −0,20) + trava de baixa com CALL; crédito ≥ largura da trava → SEM risco na alta',
+    iron_butterfly: '🦋💰 Iron Butterfly — venda straddle ATM + compra strangle OTM de proteção (Δ ≈ 0,05–0,10); crédito',
+    straddle_comprado: '⚖️ Straddle Comprado — compra CALL + PUT ATM (mesmo strike; lucra com movimento forte em qualquer direção)',
+    strangle_comprado: '🔗 Strangle Comprado — compra CALL OTM (Δ 0,20–0,30) + PUT OTM (Δ −0,20 a −0,30); mais barato que o straddle',
+    guts_long:      '💪 Guts (Long) — compra CALL ITM (Δ 0,70–0,80) + PUT ITM (Δ −0,70 a −0,80); volatilidade com opções ITM',
+    strap:          '📈⚖️ Strap — compra 2 CALLs ATM + 1 PUT ATM (movimento forte com viés de ALTA)',
+    strip:          '📉⚖️ Strip — compra 1 CALL ATM + 2 PUTs ATM (movimento forte com viés de BAIXA)',
+    box_spread:     '📦 Box Spread — trava de alta com CALL + trava de baixa com PUT (mesmos strikes); arbitragem: débito < largura descontada pela Selic',
+    acao_sintetica: '🧬 Ação Sintética — compra CALL ATM + venda PUT ATM (mesmo strike; replica a ação com pouco capital)',
+    short_sintetico: '🧬📉 Short Sintético — venda CALL ATM + compra PUT ATM (replica venda a descoberto; risco ilimitado na alta)',
+    risk_reversal:  '🔄 Risk Reversal — compra CALL OTM (Δ 0,20–0,30) + venda PUT OTM (Δ −0,20 a −0,30); custo zero ou pequeno crédito',
+    synthetic_straddle: '🧬⚖️ Synthetic Straddle — compra a ação + 2 PUTs ATM (replica straddle comprado para quem tem a ação)'
+  };
+  var OP_NAMES = {};
+  Object.keys(OP_TITLES).forEach(function(k) {
+    OP_NAMES[k] = OP_TITLES[k].split('—')[0].replace(/[^\wÀ-ú() ]/g, '').trim();
+  });
+
+  function fmt(v, dec) {
+    dec = dec == null ? 2 : dec;
+    return v == null ? '—' : v.toLocaleString('pt-BR', {minimumFractionDigits:dec, maximumFractionDigits:dec});
+  }
+  function brl(v) { return v == null ? '—' : 'R$ ' + fmt(v); }
+  function dateBR(iso) {
+    var p = (iso || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+  }
+
+  // ── Tickers gerenciáveis (mesmas chaves da Busca de Operações) ─────────────
+  var KEY_CUSTOM  = 'bo-tickers-custom';
+  var KEY_REMOVED = 'bo-tickers-removed';
+  function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } }
+  function lsSet(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
+  function tickerList() {
+    var removed = lsGet(KEY_REMOVED);
+    var seen = {}, list = [];
+    ['BOVA11'].concat(SERVER_TICKERS).concat(lsGet(KEY_CUSTOM)).forEach(function(t) {
+      t = (t || '').toUpperCase();
+      if (t && !seen[t] && removed.indexOf(t) === -1) { seen[t] = 1; list.push(t); }
+    });
+    return list;
+  }
+  function renderTickers() {
+    document.getElementById('ba-tickers').innerHTML = tickerList().map(function(t) {
+      return '<span class="ba-tbtn' + (t === currentTicker ? ' active' : '') + '" data-t="' + t + '">' +
+             t + '<b class="ba-tdel" title="Remover atalho" data-t="' + t + '">×</b></span>';
+    }).join('');
+  }
+  function addTicker(t) {
+    t = (t || '').trim().toUpperCase();
+    if (!t) return;
+    var removed = lsGet(KEY_REMOVED);
+    var idx = removed.indexOf(t);
+    if (idx >= 0) { removed.splice(idx, 1); lsSet(KEY_REMOVED, removed); }
+    if (tickerList().indexOf(t) === -1) {
+      var custom = lsGet(KEY_CUSTOM);
+      custom.push(t);
+      lsSet(KEY_CUSTOM, custom);
+    }
+    renderTickers();
+  }
+  function removeTicker(t) {
+    var custom = lsGet(KEY_CUSTOM);
+    var idx = custom.indexOf(t);
+    if (idx >= 0) { custom.splice(idx, 1); lsSet(KEY_CUSTOM, custom); }
+    var removed = lsGet(KEY_REMOVED);
+    if (removed.indexOf(t) === -1 && (t === 'BOVA11' || SERVER_TICKERS.indexOf(t) !== -1)) {
+      removed.push(t); lsSet(KEY_REMOVED, removed);
+    }
+    renderTickers();
+  }
+  document.getElementById('ba-tickers').addEventListener('click', function(ev) {
+    var del = ev.target.closest('.ba-tdel');
+    if (del) { ev.stopPropagation(); removeTicker(del.dataset.t); return; }
+    var chip = ev.target.closest('.ba-tbtn');
+    if (chip) load(chip.dataset.t);
+  });
+
+  // ── Tabela genérica ────────────────────────────────────────────────────────
+  function legBadge(l) {
+    var cls = l.tp === 'STOCK' ? 'stock' : (l.tp === 'CALL' ? 'call' : 'put');
+    var tip = (l.q > 0 ? 'COMPRA' : 'VENDA') + ' @ ' + brl(l.px) +
+              (l.delta != null ? ' · Δ ' + fmt(l.delta, 1) : '');
+    return '<span class="ba-badge ' + cls + '" title="' + tip + '">' +
+           (l.q > 0 ? '+' : '') + l.q + '× ' + l.sym + '</span>';
+  }
+
+  function genTable(rows, expIdx) {
+    if (!rows.length) return '<div class="ba-empty">Nenhuma montagem dentro dos deltas/regras neste vencimento.</div>';
+    var h = '<div class="ba-wrap"><table class="ba-tab"><thead><tr>' +
+      '<th>Pernas (qtd × série)</th><th>Strikes</th><th>Deltas</th><th>Montagem</th>' +
+      '<th>Lucro máx.</th><th>Perda máx.</th><th>Relação</th><th>Breakevens</th></tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += '<tr class="ba-row" data-exp="' + expIdx + '" data-row="' + j + '" title="Clique para ver o resumo">' +
+        '<td>' + r.legs.map(legBadge).join(' ') + '</td>' +
+        '<td>' + r.legs.map(function(l) { return l.k != null ? fmt(l.k) : 'ação'; }).join(' / ') + '</td>' +
+        '<td>' + r.legs.map(function(l) { return l.delta != null ? fmt(l.delta, 0) : '—'; }).join(' / ') + '</td>' +
+        '<td><span class="ba-badge ' + (r.is_credit ? 'credit' : 'debit') + '">' + r.montagem +
+             ' ' + brl(Math.abs(r.net)) + '</span></td>' +
+        '<td class="pos"><strong>' + (r.gain_unl ? 'ILIMITADO 🚀' : brl(r.max_gain)) + '</strong></td>' +
+        '<td class="neg">' + (r.loss_unl ? 'ILIMITADA ⚠️' : brl(r.max_loss)) + '</td>' +
+        '<td>' + (r.ratio != null ? fmt(r.ratio) : (r.gain_unl ? '∞' : '—')) + '</td>' +
+        '<td>' + (r.bes.length ? r.bes.map(function(b) { return brl(b); }).join(' · ') : '—') + '</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  function render(d) {
+    window.__baData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
+          (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
+        : '');
+    modeEl.style.display = 'inline-block';
+    modeEl.textContent = '📅 até ' + d.max_days + ' dias' +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '');
+    var h = '';
+    d.expirations.forEach(function(e, i) {
+      h += '<div class="ba-exp-card">' +
+        '<div class="ba-exp-head">' +
+          '<h3>📆 ' + dateBR(e.exp) + (e.is_monthly ? ' (mensal)' : ' (semanal)') + '</h3>' +
+          '<span class="sub">' + e.dc + ' dias corridos · Selic no período: ' + fmt(e.selic_period) + '%</span>' +
+        '</div>' +
+        '<div class="ba-sec"><h4>' + OP_TITLES[d.op] + '</h4>' +
+        genTable(e.rows, i) + '</div></div>';
+    });
+    if (!d.expirations.length) {
+      h = '<div class="ba-empty" style="padding:1.5rem;">Nenhum vencimento com opções líquidas encontrado.</div>';
+    }
+    results.innerHTML = h;
+  }
+
+  // ── Modal ──────────────────────────────────────────────────────────────────
+  function refreshModal() {
+    var modal = document.getElementById('ba-modal');
+    var d = window.__baData;
+    if (!d) return;
+    var e = d.expirations[parseInt(modal.dataset.exp)];
+    var r = e.rows[parseInt(modal.dataset.row)];
+    var qty = parseInt(document.getElementById('bam-qty').value) || 100;
+    document.getElementById('bam-title').textContent =
+      OP_NAMES[d.op] + ' ' + d.ticker + ' · ' + dateBR(e.exp);
+    var boxes = r.legs.map(function(l) {
+      return [(l.q > 0 ? 'Compra ' : 'Venda ') + Math.abs(l.q) + '× ' +
+              (l.tp === 'STOCK' ? 'ação ' + l.sym : l.sym + ' (K ' + fmt(l.k) + ')') +
+              (l.delta != null ? ' · Δ ' + fmt(l.delta, 1) : ''),
+              brl(l.px * Math.abs(l.q) * qty),
+              l.q > 0 ? 'neg' : 'pos'];
+    });
+    boxes = boxes.concat([
+      [r.is_credit ? 'Crédito recebido' : 'Custo (débito)',
+          brl(Math.abs(r.net) * qty), r.is_credit ? 'pos' : 'neg'],
+      ['Lucro máximo', r.gain_unl ? 'ILIMITADO 🚀' : brl(r.max_gain * qty), 'pos'],
+      ['Perda máxima', r.loss_unl ? 'ILIMITADA ⚠️' : brl(r.max_loss * qty), 'neg'],
+      ['Relação lucro/perda', r.ratio != null ? fmt(r.ratio) : (r.gain_unl ? '∞' : '—'), ''],
+      ['Breakevens', r.bes.length ? r.bes.map(function(b) { return brl(b); }).join(' · ') : '—', ''],
+      ['Prazo (dias corridos)', e.dc + ' d.c.', '']
+    ]);
+    document.getElementById('bam-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
+             '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+    var legsStr = r.legs.map(function(l) {
+      return [l.sym, l.tp, l.q > 0 ? 'BUY' : 'SELL', Math.abs(l.q) * qty,
+              l.px, l.k || 0, l.tp === 'STOCK' ? '' : e.exp].join(',');
+    }).join('|');
+    var q = new URLSearchParams({sim: '1', ativo: d.ticker,
+      nome: OP_NAMES[d.op] + ' ' + d.ticker, legs: legsStr});
+    document.getElementById('bam-open').href = '/cadeia-opcoes?' + q.toString();
+  }
+
+  results.addEventListener('click', function(ev) {
+    var tr = ev.target.closest('tr.ba-row');
+    if (!tr) return;
+    var modal = document.getElementById('ba-modal');
+    modal.dataset.exp = tr.dataset.exp;
+    modal.dataset.row = tr.dataset.row;
+    refreshModal();
+    modal.style.display = 'flex';
+  });
+  document.getElementById('bam-qty').addEventListener('input', refreshModal);
+  window.baCloseModal = function() { document.getElementById('ba-modal').style.display = 'none'; };
+  document.getElementById('ba-modal').addEventListener('click', function(ev) {
+    if (ev.target === this) baCloseModal();
+  });
+
+  // ── Carregamento ──────────────────────────────────────────────────────────
+  function load(ticker) {
+    ticker = (ticker || '').trim().toUpperCase();
+    if (!ticker) return;
+    currentTicker = ticker;
+    addTicker(ticker);
+    renderTickers();
+    loading.style.display = 'block';
+    errBox.style.display = 'none';
+    results.innerHTML = '';
+    spotEl.innerHTML = '';
+    modeEl.style.display = 'none';
+    var weekly = document.getElementById('ba-weekly').checked ? '1' : '0';
+    var days   = document.getElementById('ba-days').value;
+    fetch('/api/busca-operacoes/' + encodeURIComponent(ticker) +
+          '?op=' + encodeURIComponent(currentOp) + '&weekly=' + weekly + '&days=' + days)
+      .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+      .then(function(res) {
+        loading.style.display = 'none';
+        if (!res.ok || res.j.error) {
+          errBox.textContent = '⚠️ ' + (res.j.error || 'Erro ao buscar operações.');
+          errBox.style.display = 'block';
+          return;
+        }
+        try {
+          render(res.j);
+        } catch (e) {
+          errBox.textContent = '⚠️ Erro ao montar os resultados: ' + e;
+          errBox.style.display = 'block';
+          if (window.console) console.error(e);
+        }
+      })
+      .catch(function(e) {
+        loading.style.display = 'none';
+        errBox.textContent = '⚠️ Falha na requisição: ' + e;
+        errBox.style.display = 'block';
+        if (window.console) console.error(e);
+      });
+  }
+
+  document.querySelectorAll('.ba-obtn').forEach(function(b) {
+    b.addEventListener('click', function() {
+      currentOp = b.dataset.op;
+      document.querySelectorAll('.ba-obtn').forEach(function(x) {
+        x.classList.toggle('active', x === b);
+      });
+      if (currentTicker) load(currentTicker);
+    });
+  });
+  document.getElementById('ba-weekly').addEventListener('change', function() {
+    if (currentTicker) load(currentTicker);
+  });
+  document.getElementById('ba-days').addEventListener('change', function() {
+    if (currentTicker) load(currentTicker);
+  });
+  document.getElementById('add-ba-btn').addEventListener('click', function() {
+    var inp = document.getElementById('add-ba-input');
+    load(inp.value);
+    inp.value = '';
+  });
+  document.getElementById('add-ba-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { load(this.value); this.value = ''; }
+  });
+
+  renderTickers();
+})();
+</script>
+{% endblock %}

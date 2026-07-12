@@ -2966,6 +2966,62 @@ def busca_operacoes():
     return render_template('busca_operacoes.html', ranking_vol=ranking_vol, selic=_selic())
 
 
+@app.route('/busca-operacoes-avancadas')
+@login_required
+def busca_operacoes_avancadas():
+    """Página: busca de operações avançadas (guia técnico Vol. 2), por categoria."""
+    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    return render_template('busca_operacoes_avancadas.html', ranking_vol=ranking_vol, selic=_selic())
+
+
+# Especificações das operações avançadas (guia técnico Vol. 2).
+# legs: (tipo 'C'/'P'/'S', quantidade, janela de delta recomendada) — 'S' = ação.
+# same: pares de índices de perna com o MESMO strike; asc: strikes crescentes.
+# rule: restrição de montagem (credit, zero_cost, low_cost, jade, box).
+_ADV_SPECS = {
+    # ── Direcionais ──
+    'call_seco':      {'legs': [('C', 1, (0.30, 0.45))]},
+    'put_seco':       {'legs': [('P', 1, (-0.45, -0.30))]},
+    'seagull_baixa':  {'legs': [('C', -1, (0.15, 0.25)), ('P', 1, (-0.50, -0.40)),
+                                ('P', -1, (-0.30, -0.20))]},
+    'christmas_tree': {'legs': [('C', -1, (0.70, 0.80)), ('C', 1, (0.25, 0.35)),
+                                ('C', 1, (0.15, 0.25)), ('C', 1, (0.05, 0.15))],
+                       'asc': [0, 1, 2, 3], 'rule': 'low_cost'},
+    'ladder_call':    {'legs': [('C', 1, (0.45, 0.60)), ('C', -1, (0.25, 0.40)),
+                                ('C', -1, (0.10, 0.25))], 'asc': [0, 1, 2]},
+    # ── Renda e Proteção ──
+    'venda_coberta':  {'legs': [('S', 1, None), ('C', -1, (0.20, 0.35))]},
+    'protective_put': {'legs': [('S', 1, None), ('P', 1, (-0.50, -0.40))]},
+    'covered_put':    {'legs': [('S', -1, None), ('P', -1, (-0.35, -0.20))]},
+    'jade_lizard':    {'legs': [('P', -1, (-0.25, -0.15)), ('C', -1, (0.20, 0.30)),
+                                ('C', 1, (0.05, 0.12))], 'asc': [1, 2], 'rule': 'jade'},
+    'iron_butterfly': {'legs': [('P', 1, (-0.12, -0.04)), ('P', -1, (-0.58, -0.42)),
+                                ('C', -1, (0.42, 0.58)), ('C', 1, (0.04, 0.12))],
+                       'same': [(1, 2)], 'rule': 'credit'},
+    # ── Volatilidade e Neutras ──
+    'straddle_comprado': {'legs': [('C', 1, (0.42, 0.58)), ('P', 1, (-0.58, -0.42))],
+                          'same': [(0, 1)]},
+    'strangle_comprado': {'legs': [('C', 1, (0.20, 0.32)), ('P', 1, (-0.32, -0.20))]},
+    'guts_long':      {'legs': [('C', 1, (0.68, 0.82)), ('P', 1, (-0.82, -0.68))],
+                       'asc': [0, 1]},
+    'strap':          {'legs': [('C', 2, (0.42, 0.58)), ('P', 1, (-0.58, -0.42))],
+                       'same': [(0, 1)]},
+    'strip':          {'legs': [('C', 1, (0.42, 0.58)), ('P', 2, (-0.58, -0.42))],
+                       'same': [(0, 1)]},
+    'box_spread':     {'legs': [('C', 1, (0.55, 0.90)), ('C', -1, (0.10, 0.45)),
+                                ('P', -1, (-0.45, -0.10)), ('P', 1, (-0.90, -0.55))],
+                       'same': [(0, 2), (1, 3)], 'asc': [0, 1], 'rule': 'box'},
+    # ── Sintéticas e Avançadas ──
+    'acao_sintetica': {'legs': [('C', 1, (0.40, 0.60)), ('P', -1, (-0.60, -0.40))],
+                       'same': [(0, 1)]},
+    'short_sintetico': {'legs': [('C', -1, (0.40, 0.60)), ('P', 1, (-0.60, -0.40))],
+                        'same': [(0, 1)]},
+    'risk_reversal':  {'legs': [('C', 1, (0.20, 0.30)), ('P', -1, (-0.30, -0.20))],
+                       'rule': 'zero_cost'},
+    'synthetic_straddle': {'legs': [('S', 1, None), ('P', 2, (-0.58, -0.42))]},
+}
+
+
 @app.route('/api/busca-operacoes/<ticker>')
 @login_required
 def api_busca_operacoes(ticker):
@@ -3739,6 +3795,153 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: (-x['credit_pct'], -(x['pop'] or 0)))
             rows = _diversify(rows, lambda x: (x['put_sell_symbol'], x['call_sell_symbol']),
                               per_key=2, limit=12)
+
+        elif op in _ADV_SPECS:
+            # ── Operações avançadas (guia técnico Vol. 2): seleção por DELTA ────
+            # Motor genérico: pernas CALL/PUT/AÇÃO com quantidades; candidatos
+            # escolhidos pela janela de delta recomendada; payoff linear por
+            # partes com detecção de ganho/perda ilimitados nas caudas.
+            spec  = _ADV_SPECS[op]
+            legs  = spec['legs']              # [(tipo 'C'/'P'/'S', qty, (dlo, dhi))]
+            T_adv = dc / 365.0
+
+            def _leg_delta(rw, is_call):
+                d = rw.get('delta')
+                try:
+                    d = float(d) if d not in (None, '') else None
+                except (TypeError, ValueError):
+                    d = None
+                if d:
+                    d = abs(d)
+                    if d > 1:
+                        d /= 100.0
+                    return d if is_call else -d
+                iv = _iv_est(rw, is_call, T_adv)
+                if not iv or T_adv <= 0:
+                    return None
+                d1 = (math.log(spot / rw['strike']) + (r_cont + 0.5 * iv * iv) * T_adv) / (iv * math.sqrt(T_adv))
+                nd = _norm_cdf(d1)
+                return nd if is_call else nd - 1
+
+            def _leg_cands(tp, q, win):
+                if tp == 'S':
+                    return [None]
+                pool = calls_ok if tp == 'C' else puts_ok
+                need = 'ask' if q > 0 else 'bid'
+                out = []
+                for rw in pool:
+                    if rw[need] < 0.02:
+                        continue
+                    dl = _leg_delta(rw, tp == 'C')
+                    if dl is None or not (win[0] <= dl <= win[1]):
+                        continue
+                    out.append((abs(dl - (win[0] + win[1]) / 2), rw, dl))
+                out.sort(key=lambda x: x[0])
+                return [(rw, dl) for _, rw, dl in out[:4]]
+
+            import itertools as _it
+            cand_lists = [_leg_cands(tp, q, win) for tp, q, win in legs]
+            if all(cand_lists):
+                for combo in _it.product(*cand_lists):
+                    # strikes das pernas de opção, na ordem das pernas
+                    opt_ks = [c[0]['strike'] for c in combo if c is not None]
+                    oi_map, oi = [], 0
+                    for c in combo:
+                        oi_map.append(oi if c is not None else None)
+                        if c is not None:
+                            oi += 1
+                    ok_c = True
+                    for pair in spec.get('same', []):
+                        a, b = oi_map[pair[0]], oi_map[pair[1]]
+                        if abs(opt_ks[a] - opt_ks[b]) > 0.011:
+                            ok_c = False
+                            break
+                    if ok_c and spec.get('asc'):
+                        seq = [opt_ks[oi_map[i]] for i in spec['asc']]
+                        if any(seq[i] >= seq[i + 1] for i in range(len(seq) - 1)):
+                            ok_c = False
+                    if not ok_c:
+                        continue
+
+                    net, row_legs = 0.0, []
+                    for (tp, q, _win), c in zip(legs, combo):
+                        if tp == 'S':
+                            net += (-q) * spot
+                            row_legs.append({'sym': ticker, 'tp': 'STOCK', 'k': None,
+                                             'q': q, 'px': round(spot, 2), 'delta': None})
+                        else:
+                            rw, dl = c
+                            px = rw['ask'] if q > 0 else rw['bid']
+                            net += (-q) * px
+                            row_legs.append({'sym': rw['symbol'],
+                                             'tp': 'CALL' if tp == 'C' else 'PUT',
+                                             'k': rw['strike'], 'q': q, 'px': px,
+                                             'delta': round(dl * 100, 1)})
+
+                    def _pay(S):
+                        v = net
+                        for (tp, q, _w), c in zip(legs, combo):
+                            if tp == 'S':
+                                v += q * S
+                            elif tp == 'C':
+                                v += q * max(0.0, S - c[0]['strike'])
+                            else:
+                                v += q * max(0.0, c[0]['strike'] - S)
+                        return v
+
+                    r_slope = sum(q for tp, q, _w in legs if tp in ('C', 'S'))
+                    far  = max(opt_ks) * 1.8
+                    pts  = [0.0] + sorted(opt_ks) + [far]
+                    vals = [_pay(x) for x in pts]
+                    bes  = []
+                    for i in range(len(pts) - 1):
+                        v0, v1 = vals[i], vals[i + 1]
+                        if ((v0 < 0 <= v1) or (v0 >= 0 > v1)) and abs(v1 - v0) > 1e-9:
+                            bes.append(pts[i] + (0 - v0) * (pts[i + 1] - pts[i]) / (v1 - v0))
+                    gain_unl = r_slope > 0
+                    loss_unl = r_slope < 0
+                    max_gain = None if gain_unl else max(vals)
+                    max_loss = None if loss_unl else max(0.0, -min(vals))
+                    cost = -net
+
+                    # Regras de montagem específicas
+                    rule = spec.get('rule')
+                    if rule == 'credit' and net <= 0:
+                        continue
+                    if rule == 'zero_cost' and cost > 0.02 * spot:
+                        continue
+                    if rule == 'low_cost' and cost > 0.05 * spot:
+                        continue
+                    if rule == 'jade':
+                        # crédito >= largura da trava de CALL → sem risco na alta
+                        wc = opt_ks[2] - opt_ks[1]
+                        if net <= 0 or net < wc:
+                            continue
+                    if rule == 'box':
+                        width = opt_ks[1] - opt_ks[0]
+                        # débito menor que a largura descontada pela Selic do período
+                        if cost <= 0 or cost >= width / (1 + selic_period / 100):
+                            continue
+                    if max_gain is not None and max_loss is not None and max_gain <= 0:
+                        continue
+
+                    ratio = (round(max_gain / max_loss, 2)
+                             if (max_gain is not None and max_loss and max_loss > 0.001) else None)
+                    rows.append({
+                        'legs':      row_legs,
+                        'net':       round(net, 2),
+                        'is_credit': net >= 0,
+                        'montagem':  'CRÉDITO' if net > 0.005 else ('ZERO' if abs(net) <= 0.02 * spot else 'DÉBITO'),
+                        'max_gain':  round(max_gain, 2) if max_gain is not None else None,
+                        'gain_unl':  gain_unl,
+                        'max_loss':  round(max_loss, 2) if max_loss is not None else None,
+                        'loss_unl':  loss_unl,
+                        'ratio':     ratio,
+                        'bes':       [round(b, 2) for b in bes],
+                        'center_dist': round((opt_ks[0] - spot) / spot * 100, 1),
+                    })
+            rows.sort(key=lambda x: (not x['is_credit'], -(x['ratio'] or 0), -x['net']))
+            rows = _diversify(rows, lambda x: x['legs'][0]['sym'], per_key=2, limit=10)
 
         elif op == 'boi_put':
             # Boi com PUT (put ratio backspread 1x2): compra 2 PUTs próximas do OTM

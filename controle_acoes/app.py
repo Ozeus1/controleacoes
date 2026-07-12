@@ -2984,6 +2984,10 @@ _ADV_SPECS = {
     'put_seco':       {'legs': [('P', 1, (-0.45, -0.30))]},
     'seagull_baixa':  {'legs': [('C', -1, (0.15, 0.25)), ('P', 1, (-0.50, -0.40)),
                                 ('P', -1, (-0.30, -0.20))]},
+    'seagull_alta':   {'legs': [('P', -1, (-0.25, -0.15)), ('C', 1, (0.40, 0.50)),
+                                ('C', -1, (0.20, 0.30))], 'asc': [1, 2], 'rule': 'credit'},
+    'put_backspread': {'legs': [('P', -1, (-0.80, -0.70)), ('P', 2, (-0.30, -0.20))],
+                       'rule': 'low_cost'},
     'christmas_tree': {'legs': [('C', -1, (0.70, 0.80)), ('C', 1, (0.25, 0.35)),
                                 ('C', 1, (0.15, 0.25)), ('C', 1, (0.05, 0.15))],
                        'asc': [0, 1, 2, 3], 'rule': 'low_cost'},
@@ -3004,6 +3008,12 @@ _ADV_SPECS = {
     'strangle_comprado': {'legs': [('C', 1, (0.20, 0.32)), ('P', 1, (-0.32, -0.20))]},
     'guts_long':      {'legs': [('C', 1, (0.68, 0.82)), ('P', 1, (-0.82, -0.68))],
                        'asc': [0, 1]},
+    'guts_short':     {'legs': [('C', -1, (0.58, 0.72)), ('P', -1, (-0.72, -0.58))],
+                       'asc': [0, 1], 'rule': 'credit'},
+    'borboleta_delta': {'legs': [('C', 1, (0.60, 0.80)), ('C', -2, (0.42, 0.58)),
+                                 ('C', 1, (0.20, 0.40))], 'asc': [0, 1, 2]},
+    'broken_wing':    {'legs': [('C', 1, (0.60, 0.80)), ('C', -2, (0.42, 0.58)),
+                                ('C', 1, (0.08, 0.30))], 'asc': [0, 1, 2], 'rule': 'bwb'},
     'strap':          {'legs': [('C', 2, (0.42, 0.58)), ('P', 1, (-0.58, -0.42))],
                        'same': [(0, 1)]},
     'strip':          {'legs': [('C', 1, (0.42, 0.58)), ('P', 2, (-0.58, -0.42))],
@@ -3230,6 +3240,174 @@ def api_busca_operacoes(ticker):
             return None
         d2v = (math.log(spot / be) + (r_cont - 0.5 * iv * iv) * T) / (iv * math.sqrt(T))
         return _norm_cdf(d2v) * 100
+
+    # ── Operações MULTI-VENCIMENTO: calendar / diagonal / double diagonal ────
+    # Vende a perna curta e compra a longa. O resultado é avaliado NO VENCIMENTO
+    # CURTO: a perna curta vale o intrínseco e a longa é reprecificada por
+    # Black-Scholes com o tempo restante (valores estimados).
+    if op in ('calendar_spread', 'diagonal_spread', 'double_diagonal'):
+        def _enrich_cal(lst):
+            out = []
+            for rw in lst:
+                b, b_src, a, a_src = _eff(rw)
+                rw2 = dict(rw)
+                rw2['bid'] = round(b, 2) if b else 0
+                rw2['ask'] = round(a, 2) if a else 0
+                out.append(rw2)
+            return sorted([r2 for r2 in out if r2['bid'] > 0 and r2['ask'] > 0],
+                          key=lambda x: x['strike'])
+
+        def _dl(rw, is_call, T):
+            d = rw.get('delta')
+            try:
+                d = float(d) if d not in (None, '') else None
+            except (TypeError, ValueError):
+                d = None
+            if d:
+                d = abs(d)
+                if d > 1:
+                    d /= 100.0
+                return d if is_call else -d
+            iv = _iv_est(rw, is_call, T)
+            if not iv or T <= 0:
+                return None
+            d1 = (math.log(spot / rw['strike']) + (r_cont + 0.5 * iv * iv) * T) / (iv * math.sqrt(T))
+            nd = _norm_cdf(d1)
+            return nd if is_call else nd - 1
+
+        def _cands_cal(pool, is_call, T, win, side):
+            need = 'bid' if side == 'sell' else 'ask'
+            out = []
+            for rw in pool:
+                if rw[need] < 0.02:
+                    continue
+                dv = _dl(rw, is_call, T)
+                if dv is None or not (win[0] <= dv <= win[1]):
+                    continue
+                out.append((abs(dv - (win[0] + win[1]) / 2), rw, dv))
+            out.sort(key=lambda x: x[0])
+            return [(rw, dv) for _, rw, dv in out[:3]]
+
+        # Pares curto→longo (perna longa pelo menos ~20 dias além da curta)
+        pairs = []
+        for i in range(len(selected_exps) - 1):
+            for j in range(i + 1, len(selected_exps)):
+                dc_s = (_date.fromisoformat(selected_exps[i]) - today).days
+                dc_l = (_date.fromisoformat(selected_exps[j]) - today).days
+                if dc_l >= dc_s + 20:
+                    pairs.append((selected_exps[i], selected_exps[j], dc_s, dc_l))
+        pairs = pairs[:4]
+
+        expirations = []
+        for exp_s, exp_l, dc_s, dc_l in pairs:
+            T_s, T_l = dc_s / 365.0, dc_l / 365.0
+            calls_s = _enrich_cal(calls_by_exp.get(exp_s, []))
+            calls_l = _enrich_cal(calls_by_exp.get(exp_l, []))
+            puts_s  = _enrich_cal(puts_by_exp.get(exp_s, []))
+            puts_l  = _enrich_cal(puts_by_exp.get(exp_l, []))
+            rows = []
+
+            def _eval_cal(sel):
+                """sel: [(rw, delta, is_call, qty, exp, dc)] — vende curto/compra longo."""
+                net = 0.0
+                legs_out = []
+                for rw, dv, is_c, q, expx, dcx in sel:
+                    px = rw['ask'] if q > 0 else rw['bid']
+                    net += (-q) * px
+                    legs_out.append({'sym': rw['symbol'], 'tp': 'CALL' if is_c else 'PUT',
+                                     'k': rw['strike'], 'q': q, 'px': px,
+                                     'delta': round(dv * 100, 1), 'exp': expx,
+                                     'iv': _iv_est(rw, is_c, dcx / 365.0)})
+                def val(S):
+                    v = net
+                    for lg, (rw, dv, is_c, q, expx, dcx) in zip(legs_out, sel):
+                        if dcx <= dc_s:                      # perna curta: intrínseco
+                            intr = max(0.0, S - lg['k']) if is_c else max(0.0, lg['k'] - S)
+                            v += q * intr
+                        else:                                # perna longa: BS no tempo restante
+                            T_rem = (dcx - dc_s) / 365.0
+                            sig = lg['iv'] or 0.35
+                            v += q * _bs_price(S, lg['k'], T_rem, r_cont, sig, is_c)
+                    return v
+                grid = [spot * (0.70 + 0.01 * k) for k in range(61)]   # 0.70–1.30 × spot
+                vals = [val(S) for S in grid]
+                bes = []
+                for k in range(len(grid) - 1):
+                    v0, v1 = vals[k], vals[k + 1]
+                    if ((v0 < 0 <= v1) or (v0 >= 0 > v1)) and abs(v1 - v0) > 1e-9:
+                        bes.append(grid[k] + (0 - v0) * (grid[k + 1] - grid[k]) / (v1 - v0))
+                return net, legs_out, max(vals), max(0.0, -min(vals)), bes
+
+            combos = []
+            if op == 'calendar_spread':
+                # mesmo strike ATM: vende curto, compra longo (Δ 0,40–0,60)
+                for cs, dvs in _cands_cal(calls_s, True, T_s, (0.40, 0.60), 'sell'):
+                    for cl in calls_l:
+                        if abs(cl['strike'] - cs['strike']) > 0.011 or cl['ask'] < 0.02:
+                            continue
+                        dvl = _dl(cl, True, T_l)
+                        combos.append([(cs, dvs, True, -1, exp_s, dc_s),
+                                       (cl, dvl or dvs, True, 1, exp_l, dc_l)])
+            elif op == 'diagonal_spread':
+                # curta OTM (Δ 0,20–0,35) vendida; longa ATM (Δ 0,40–0,55) comprada
+                for cs, dvs in _cands_cal(calls_s, True, T_s, (0.20, 0.35), 'sell'):
+                    for cl, dvl in _cands_cal(calls_l, True, T_l, (0.40, 0.55), 'buy'):
+                        if cl['strike'] >= cs['strike']:
+                            continue
+                        combos.append([(cs, dvs, True, -1, exp_s, dc_s),
+                                       (cl, dvl, True, 1, exp_l, dc_l)])
+            else:   # double_diagonal
+                for cs, dvs in _cands_cal(calls_s, True, T_s, (0.18, 0.32), 'sell')[:2]:
+                    for ps, dps in _cands_cal(puts_s, False, T_s, (-0.32, -0.18), 'sell')[:2]:
+                        for cl, dvl in _cands_cal(calls_l, True, T_l, (0.08, 0.22), 'buy')[:2]:
+                            if cl['strike'] < cs['strike']:
+                                continue
+                            for pl, dpl in _cands_cal(puts_l, False, T_l, (-0.22, -0.08), 'buy')[:2]:
+                                if pl['strike'] > ps['strike']:
+                                    continue
+                                combos.append([(cs, dvs, True, -1, exp_s, dc_s),
+                                               (ps, dps, False, -1, exp_s, dc_s),
+                                               (cl, dvl, True, 1, exp_l, dc_l),
+                                               (pl, dpl, False, 1, exp_l, dc_l)])
+
+            for sel in combos:
+                net, legs_out, max_gain, max_loss, bes = _eval_cal(sel)
+                cost = -net
+                if op in ('calendar_spread', 'diagonal_spread') and cost <= 0:
+                    continue                                  # sempre montadas no débito
+                if max_gain <= 0:
+                    continue
+                ratio = round(max_gain / max_loss, 2) if max_loss > 0.001 else None
+                for lg in legs_out:
+                    lg.pop('iv', None)
+                rows.append({
+                    'legs':      legs_out,
+                    'net':       round(net, 2),
+                    'is_credit': net >= 0,
+                    'montagem':  'CRÉDITO' if net > 0.005 else 'DÉBITO',
+                    'max_gain':  round(max_gain, 2), 'gain_unl': False,
+                    'max_loss':  round(max_loss, 2), 'loss_unl': False,
+                    'ratio':     ratio,
+                    'bes':       [round(b, 2) for b in bes],
+                    'est':       True,                        # valores estimados (BS)
+                })
+            rows.sort(key=lambda x: -(x['ratio'] or 0))
+            rows = rows[:8]
+            expirations.append({
+                'exp':          exp_s,
+                'exp_long':     exp_l,
+                'dc':           dc_s,
+                'dc_long':      dc_l,
+                'is_monthly':   True,
+                'selic_period': round(((1 + selic / 100) ** (dc_s / 365.0) - 1) * 100, 2),
+                'rows':         rows,
+            })
+
+        return jsonify({
+            'ticker': ticker, 'spot': spot, 'spot_change': spot_change,
+            'op': op, 'max_days': max_days, 'market_open': market_open,
+            'selic': round(selic, 2), 'expirations': expirations,
+        })
 
     expirations = []
     for exp in selected_exps:
@@ -3916,6 +4094,12 @@ def api_busca_operacoes(ticker):
                         # crédito >= largura da trava de CALL → sem risco na alta
                         wc = opt_ks[2] - opt_ks[1]
                         if net <= 0 or net < wc:
+                            continue
+                    if rule == 'bwb':
+                        # broken wing: asa superior mais espaçada que a inferior
+                        if opt_ks[2] - opt_ks[1] <= opt_ks[1] - opt_ks[0]:
+                            continue
+                        if cost > 0.05 * spot:
                             continue
                     if rule == 'box':
                         width = opt_ks[1] - opt_ks[0]

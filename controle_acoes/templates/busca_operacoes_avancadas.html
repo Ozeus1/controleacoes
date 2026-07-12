@@ -78,7 +78,9 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <div class="ba-cat-lbl">📈 Direcionais</div>
       <button class="ba-obtn active" data-op="call_seco">🎯 Call a Seco</button>
       <button class="ba-obtn" data-op="put_seco">🎯 Put a Seco</button>
+      <button class="ba-obtn" data-op="seagull_alta">🕊 Seagull de Alta</button>
       <button class="ba-obtn" data-op="seagull_baixa">🕊 Seagull de Baixa</button>
+      <button class="ba-obtn" data-op="put_backspread">🚀📉 Put Backspread</button>
       <button class="ba-obtn" data-op="christmas_tree">🎄 Christmas Tree</button>
       <button class="ba-obtn" data-op="ladder_call">🪜 Ladder (CALLs)</button>
     </div>
@@ -95,6 +97,9 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="straddle_comprado">⚖️ Straddle Comprado</button>
       <button class="ba-obtn" data-op="strangle_comprado">🔗 Strangle Comprado</button>
       <button class="ba-obtn" data-op="guts_long">💪 Guts (Long)</button>
+      <button class="ba-obtn" data-op="guts_short">💪📉 Guts (Short)</button>
+      <button class="ba-obtn" data-op="borboleta_delta">🦋 Borboleta (Δ)</button>
+      <button class="ba-obtn" data-op="broken_wing">🦋🩹 Broken Wing Butterfly</button>
       <button class="ba-obtn" data-op="strap">📈⚖️ Strap</button>
       <button class="ba-obtn" data-op="strip">📉⚖️ Strip</button>
       <button class="ba-obtn" data-op="box_spread">📦 Box Spread</button>
@@ -105,6 +110,9 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="short_sintetico">🧬📉 Short Sintético</button>
       <button class="ba-obtn" data-op="risk_reversal">🔄 Risk Reversal</button>
       <button class="ba-obtn" data-op="synthetic_straddle">🧬⚖️ Synthetic Straddle</button>
+      <button class="ba-obtn" data-op="calendar_spread">📅 Calendar Spread</button>
+      <button class="ba-obtn" data-op="diagonal_spread">📐 Diagonal Spread</button>
+      <button class="ba-obtn" data-op="double_diagonal">📐📐 Double Diagonal</button>
     </div>
   </div>
 
@@ -185,7 +193,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   var OP_TITLES = {
     call_seco:      '🎯 Call a Seco — compra 1 CALL com Δ 0,30–0,45 (alavancagem direcional de alta; DTE recomendado > 60d ou 30–45d)',
     put_seco:       '🎯 Put a Seco — compra 1 PUT com Δ −0,30 a −0,45 (alavancagem direcional de baixa)',
+    seagull_alta:   '🕊 Seagull de Alta — venda PUT OTM (Δ −0,15 a −0,25) + compra CALL ATM (Δ 0,40–0,50) + venda CALL OTM (Δ 0,20–0,30); crédito líquido',
     seagull_baixa:  '🕊 Seagull de Baixa — venda CALL OTM (Δ 0,15–0,25) + compra PUT (Δ ≈ −0,45) + venda PUT OTM (Δ ≈ −0,25); crédito preferível',
+    put_backspread: '🚀📉 Put Backspread — venda 1 PUT ITM (Δ −0,70 a −0,80) + compra 2 PUTs OTM (Δ −0,20 a −0,30); débito baixo ou crédito; lucro cresce na queda forte',
     christmas_tree: '🎄 Christmas Tree — venda 1 CALL ITM (Δ 0,70–0,80) + compra 3 CALLs OTM escalonadas (débito baixo ou crédito)',
     ladder_call:    '🪜 Ladder de CALLs — compra 1 CALL (Δ 0,45–0,60) + venda 2 CALLs de strikes crescentes (zona de lucro ampla)',
     venda_coberta:  '📋 Venda Coberta por delta — compra a ação + vende CALL OTM Δ 0,20–0,35 (DTE 30–45d; máximo Theta)',
@@ -196,13 +206,19 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     straddle_comprado: '⚖️ Straddle Comprado — compra CALL + PUT ATM (mesmo strike; lucra com movimento forte em qualquer direção)',
     strangle_comprado: '🔗 Strangle Comprado — compra CALL OTM (Δ 0,20–0,30) + PUT OTM (Δ −0,20 a −0,30); mais barato que o straddle',
     guts_long:      '💪 Guts (Long) — compra CALL ITM (Δ 0,70–0,80) + PUT ITM (Δ −0,70 a −0,80); volatilidade com opções ITM',
+    guts_short:     '💪📉 Guts (Short) — venda CALL ITM + PUT ITM (Δ 0,60–0,70); mercado lateral com IV alta; risco ilimitado nas pontas',
+    borboleta_delta: '🦋 Borboleta — compra CALL ITM (Δ ≈ 0,70) + venda 2 CALLs ATM (Δ ≈ 0,50) + compra CALL OTM (Δ ≈ 0,30); lucro máximo no miolo',
+    broken_wing:    '🦋🩹 Broken Wing Butterfly — borboleta com asa superior mais espaçada (reduz o custo; perfil assimétrico)',
     strap:          '📈⚖️ Strap — compra 2 CALLs ATM + 1 PUT ATM (movimento forte com viés de ALTA)',
     strip:          '📉⚖️ Strip — compra 1 CALL ATM + 2 PUTs ATM (movimento forte com viés de BAIXA)',
     box_spread:     '📦 Box Spread — trava de alta com CALL + trava de baixa com PUT (mesmos strikes); arbitragem: débito < largura descontada pela Selic',
     acao_sintetica: '🧬 Ação Sintética — compra CALL ATM + venda PUT ATM (mesmo strike; replica a ação com pouco capital)',
     short_sintetico: '🧬📉 Short Sintético — venda CALL ATM + compra PUT ATM (replica venda a descoberto; risco ilimitado na alta)',
     risk_reversal:  '🔄 Risk Reversal — compra CALL OTM (Δ 0,20–0,30) + venda PUT OTM (Δ −0,20 a −0,30); custo zero ou pequeno crédito',
-    synthetic_straddle: '🧬⚖️ Synthetic Straddle — compra a ação + 2 PUTs ATM (replica straddle comprado para quem tem a ação)'
+    synthetic_straddle: '🧬⚖️ Synthetic Straddle — compra a ação + 2 PUTs ATM (replica straddle comprado para quem tem a ação)',
+    calendar_spread: '📅 Calendar Spread — vende opção do vencimento CURTO + compra a mesma no vencimento LONGO (mesmo strike ATM); lucra com o Theta da curta · valores no venc. curto estimados por BS',
+    diagonal_spread: '📐 Diagonal Spread — vende CALL curta OTM (Δ 0,20–0,35) + compra CALL longa ATM (Δ 0,40–0,55); calendar com viés direcional · valores estimados por BS',
+    double_diagonal: '📐📐 Double Diagonal — vende strangle no venc. curto + compra strangle mais OTM no venc. longo; Iron Condor entre vencimentos · valores estimados por BS'
   };
   var OP_NAMES = {};
   Object.keys(OP_TITLES).forEach(function(k) {
@@ -273,7 +289,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   function legBadge(l) {
     var cls = l.tp === 'STOCK' ? 'stock' : (l.tp === 'CALL' ? 'call' : 'put');
     var tip = (l.q > 0 ? 'COMPRA' : 'VENDA') + ' @ ' + brl(l.px) +
-              (l.delta != null ? ' · Δ ' + fmt(l.delta, 1) : '');
+              (l.delta != null ? ' · Δ ' + fmt(l.delta, 1) : '') +
+              (l.exp ? ' · venc. ' + dateBR(l.exp) : '');
     return '<span class="ba-badge ' + cls + '" title="' + tip + '">' +
            (l.q > 0 ? '+' : '') + l.q + '× ' + l.sym + '</span>';
   }
@@ -290,8 +307,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         '<td>' + r.legs.map(function(l) { return l.delta != null ? fmt(l.delta, 0) : '—'; }).join(' / ') + '</td>' +
         '<td><span class="ba-badge ' + (r.is_credit ? 'credit' : 'debit') + '">' + r.montagem +
              ' ' + brl(Math.abs(r.net)) + '</span></td>' +
-        '<td class="pos"><strong>' + (r.gain_unl ? 'ILIMITADO 🚀' : brl(r.max_gain)) + '</strong></td>' +
-        '<td class="neg">' + (r.loss_unl ? 'ILIMITADA ⚠️' : brl(r.max_loss)) + '</td>' +
+        '<td class="pos"><strong>' + (r.gain_unl ? 'ILIMITADO 🚀' : (r.est ? '≈ ' : '') + brl(r.max_gain)) + '</strong></td>' +
+        '<td class="neg">' + (r.loss_unl ? 'ILIMITADA ⚠️' : (r.est ? '≈ ' : '') + brl(r.max_loss)) + '</td>' +
         '<td>' + (r.ratio != null ? fmt(r.ratio) : (r.gain_unl ? '∞' : '—')) + '</td>' +
         '<td>' + (r.bes.length ? r.bes.map(function(b) { return brl(b); }).join(' · ') : '—') + '</td>' +
         '</tr>';
@@ -311,10 +328,14 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '');
     var h = '';
     d.expirations.forEach(function(e, i) {
+      var head = e.exp_long
+        ? '📆 ' + dateBR(e.exp) + ' (curto, ' + e.dc + 'd) → ' + dateBR(e.exp_long) + ' (longo, ' + e.dc_long + 'd)'
+        : '📆 ' + dateBR(e.exp) + (e.is_monthly ? ' (mensal)' : ' (semanal)');
       h += '<div class="ba-exp-card">' +
         '<div class="ba-exp-head">' +
-          '<h3>📆 ' + dateBR(e.exp) + (e.is_monthly ? ' (mensal)' : ' (semanal)') + '</h3>' +
-          '<span class="sub">' + e.dc + ' dias corridos · Selic no período: ' + fmt(e.selic_period) + '%</span>' +
+          '<h3>' + head + '</h3>' +
+          '<span class="sub">' + e.dc + ' dias corridos · Selic no período: ' + fmt(e.selic_period) + '%' +
+          (e.exp_long ? ' · resultado no venc. curto (estimado por BS)' : '') + '</span>' +
         '</div>' +
         '<div class="ba-sec"><h4>' + OP_TITLES[d.op] + '</h4>' +
         genTable(e.rows, i) + '</div></div>';
@@ -345,8 +366,10 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     boxes = boxes.concat([
       [r.is_credit ? 'Crédito recebido' : 'Custo (débito)',
           brl(Math.abs(r.net) * qty), r.is_credit ? 'pos' : 'neg'],
-      ['Lucro máximo', r.gain_unl ? 'ILIMITADO 🚀' : brl(r.max_gain * qty), 'pos'],
-      ['Perda máxima', r.loss_unl ? 'ILIMITADA ⚠️' : brl(r.max_loss * qty), 'neg'],
+      ['Lucro máximo' + (r.est ? ' (estimado no venc. curto)' : ''),
+          r.gain_unl ? 'ILIMITADO 🚀' : (r.est ? '≈ ' : '') + brl(r.max_gain * qty), 'pos'],
+      ['Perda máxima' + (r.est ? ' (estimada)' : ''),
+          r.loss_unl ? 'ILIMITADA ⚠️' : (r.est ? '≈ ' : '') + brl(r.max_loss * qty), 'neg'],
       ['Relação lucro/perda', r.ratio != null ? fmt(r.ratio) : (r.gain_unl ? '∞' : '—'), ''],
       ['Breakevens', r.bes.length ? r.bes.map(function(b) { return brl(b); }).join(' · ') : '—', ''],
       ['Prazo (dias corridos)', e.dc + ' d.c.', '']
@@ -357,7 +380,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     }).join('');
     var legsStr = r.legs.map(function(l) {
       return [l.sym, l.tp, l.q > 0 ? 'BUY' : 'SELL', Math.abs(l.q) * qty,
-              l.px, l.k || 0, l.tp === 'STOCK' ? '' : e.exp].join(',');
+              l.px, l.k || 0, l.tp === 'STOCK' ? '' : (l.exp || e.exp)].join(',');
     }).join('|');
     var q = new URLSearchParams({sim: '1', ativo: d.ticker,
       nome: OP_NAMES[d.op] + ' ' + d.ticker, legs: legsStr});

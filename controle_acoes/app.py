@@ -3245,7 +3245,11 @@ def api_busca_operacoes(ticker):
     # Vende a perna curta e compra a longa. O resultado é avaliado NO VENCIMENTO
     # CURTO: a perna curta vale o intrínseco e a longa é reprecificada por
     # Black-Scholes com o tempo restante (valores estimados).
-    if op in ('calendar_spread', 'diagonal_spread', 'double_diagonal'):
+    # Ops do Vol. 4 (curta semanal → longa mensal): a perna longa PRECISA ser
+    # mensal e o intervalo mínimo entre vencimentos cai para 7 dias.
+    _CAL_V4 = ('neutral_calendar', 'double_calendar', 'pmcc', 'bull_calendar',
+               'pmcp', 'bear_calendar')
+    if op in ('calendar_spread', 'diagonal_spread', 'double_diagonal') + _CAL_V4:
         def _enrich_cal(lst):
             out = []
             for rw in lst:
@@ -3288,14 +3292,33 @@ def api_busca_operacoes(ticker):
             out.sort(key=lambda x: x[0])
             return [(rw, dv) for _, rw, dv in out[:3]]
 
-        # Pares curto→longo (perna longa pelo menos ~20 dias além da curta)
+        def _third_friday_cal(y, m):
+            count, day = 0, 1
+            while True:
+                dd = _date(y, m, day)
+                if dd.weekday() == 4:
+                    count += 1
+                    if count == 3:
+                        return dd
+                day += 1
+
+        def _is_monthly_cal(exp_str):
+            dd = _date.fromisoformat(exp_str)
+            return abs((dd - _third_friday_cal(dd.year, dd.month)).days) <= 2
+
+        # Pares curto→longo. Vol. 4: longa mensal, gap mínimo 7 dias (curta
+        # semanal); demais: gap mínimo 20 dias.
+        min_gap = 7 if op in _CAL_V4 else 20
         pairs = []
         for i in range(len(selected_exps) - 1):
             for j in range(i + 1, len(selected_exps)):
                 dc_s = (_date.fromisoformat(selected_exps[i]) - today).days
                 dc_l = (_date.fromisoformat(selected_exps[j]) - today).days
-                if dc_l >= dc_s + 20:
-                    pairs.append((selected_exps[i], selected_exps[j], dc_s, dc_l))
+                if dc_l < dc_s + min_gap:
+                    continue
+                if op in _CAL_V4 and not _is_monthly_cal(selected_exps[j]):
+                    continue
+                pairs.append((selected_exps[i], selected_exps[j], dc_s, dc_l))
         pairs = pairs[:4]
 
         expirations = []
@@ -3356,6 +3379,51 @@ def api_busca_operacoes(ticker):
                             continue
                         combos.append([(cs, dvs, True, -1, exp_s, dc_s),
                                        (cl, dvl, True, 1, exp_l, dc_l)])
+            elif op in ('neutral_calendar', 'bull_calendar', 'bear_calendar'):
+                # Vol. 4: vende curta (semanal) e compra longa (mensal) no MESMO strike.
+                # neutral = ATM (Δ ~0,50); bull = CALL OTM; bear = PUT OTM.
+                is_call = op != 'bear_calendar'
+                win = ((0.42, 0.58) if op == 'neutral_calendar'
+                       else ((0.20, 0.35) if is_call else (-0.35, -0.20)))
+                pool_s = calls_s if is_call else puts_s
+                pool_l = calls_l if is_call else puts_l
+                for cs, dvs in _cands_cal(pool_s, is_call, T_s, win, 'sell'):
+                    for cl in pool_l:
+                        if abs(cl['strike'] - cs['strike']) > 0.011 or cl['ask'] < 0.02:
+                            continue
+                        dvl = _dl(cl, is_call, T_l)
+                        combos.append([(cs, dvs, is_call, -1, exp_s, dc_s),
+                                       (cl, dvl or dvs, is_call, 1, exp_l, dc_l)])
+            elif op in ('pmcc', 'pmcp'):
+                # Poor Man's Covered Call/Put: longa mensal DEEP ITM (|Δ| > 0,80)
+                # substitui a ação; curta semanal OTM (|Δ| 0,20–0,30) gera renda.
+                is_call = op == 'pmcc'
+                win_s = (0.20, 0.30) if is_call else (-0.30, -0.20)
+                win_l = (0.78, 0.92) if is_call else (-0.92, -0.78)
+                pool_s = calls_s if is_call else puts_s
+                pool_l = calls_l if is_call else puts_l
+                for cs, dvs in _cands_cal(pool_s, is_call, T_s, win_s, 'sell'):
+                    for cl, dvl in _cands_cal(pool_l, is_call, T_l, win_l, 'buy'):
+                        if is_call and cl['strike'] >= cs['strike']:
+                            continue
+                        if not is_call and cl['strike'] <= cs['strike']:
+                            continue
+                        combos.append([(cs, dvs, is_call, -1, exp_s, dc_s),
+                                       (cl, dvl, is_call, 1, exp_l, dc_l)])
+            elif op == 'double_calendar':
+                # Vende strangle semanal OTM + compra o MESMO strangle no mensal.
+                for cs, dvs in _cands_cal(calls_s, True, T_s, (0.18, 0.32), 'sell')[:3]:
+                    for ps, dps in _cands_cal(puts_s, False, T_s, (-0.32, -0.18), 'sell')[:3]:
+                        cl = next((c for c in calls_l
+                                   if abs(c['strike'] - cs['strike']) <= 0.011 and c['ask'] >= 0.02), None)
+                        pl = next((p for p in puts_l
+                                   if abs(p['strike'] - ps['strike']) <= 0.011 and p['ask'] >= 0.02), None)
+                        if not cl or not pl:
+                            continue
+                        combos.append([(cs, dvs, True, -1, exp_s, dc_s),
+                                       (ps, dps, False, -1, exp_s, dc_s),
+                                       (cl, _dl(cl, True, T_l) or dvs, True, 1, exp_l, dc_l),
+                                       (pl, _dl(pl, False, T_l) or dps, False, 1, exp_l, dc_l)])
             else:   # double_diagonal
                 for cs, dvs in _cands_cal(calls_s, True, T_s, (0.18, 0.32), 'sell')[:2]:
                     for ps, dps in _cands_cal(puts_s, False, T_s, (-0.32, -0.18), 'sell')[:2]:
@@ -3373,8 +3441,8 @@ def api_busca_operacoes(ticker):
             for sel in combos:
                 net, legs_out, max_gain, max_loss, bes = _eval_cal(sel)
                 cost = -net
-                if op in ('calendar_spread', 'diagonal_spread') and cost <= 0:
-                    continue                                  # sempre montadas no débito
+                if cost <= 0 and op != 'double_diagonal':
+                    continue                                  # calendários/diagonais: débito
                 if max_gain <= 0:
                     continue
                 ratio = round(max_gain / max_loss, 2) if max_loss > 0.001 else None

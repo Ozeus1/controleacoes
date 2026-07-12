@@ -114,6 +114,21 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="diagonal_spread">📐 Diagonal Spread</button>
       <button class="ba-obtn" data-op="double_diagonal">📐📐 Double Diagonal</button>
     </div>
+    <div class="ba-cat">
+      <div class="ba-cat-lbl">📅 Calendário — Lateral (semanal → mensal · marque "incluir semanais")</div>
+      <button class="ba-obtn" data-op="neutral_calendar">🔁 Neutral Calendar (ATM)</button>
+      <button class="ba-obtn" data-op="double_calendar">🔁🔁 Double Calendar</button>
+    </div>
+    <div class="ba-cat">
+      <div class="ba-cat-lbl">📅 Calendário — Alta</div>
+      <button class="ba-obtn" data-op="pmcc">🐂📅 Bull Diagonal (PMCC)</button>
+      <button class="ba-obtn" data-op="bull_calendar">🐂🔁 Bull Calendar (OTM)</button>
+    </div>
+    <div class="ba-cat">
+      <div class="ba-cat-lbl">📅 Calendário — Baixa</div>
+      <button class="ba-obtn" data-op="pmcp">🐻📅 Bear Diagonal (PMCP)</button>
+      <button class="ba-obtn" data-op="bear_calendar">🐻🔁 Bear Calendar (OTM)</button>
+    </div>
   </div>
 
   <!-- Vencimentos -->
@@ -218,7 +233,13 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     synthetic_straddle: '🧬⚖️ Synthetic Straddle — compra a ação + 2 PUTs ATM (replica straddle comprado para quem tem a ação)',
     calendar_spread: '📅 Calendar Spread — vende opção do vencimento CURTO + compra a mesma no vencimento LONGO (mesmo strike ATM); lucra com o Theta da curta · valores no venc. curto estimados por BS',
     diagonal_spread: '📐 Diagonal Spread — vende CALL curta OTM (Δ 0,20–0,35) + compra CALL longa ATM (Δ 0,40–0,55); calendar com viés direcional · valores estimados por BS',
-    double_diagonal: '📐📐 Double Diagonal — vende strangle no venc. curto + compra strangle mais OTM no venc. longo; Iron Condor entre vencimentos · valores estimados por BS'
+    double_diagonal: '📐📐 Double Diagonal — vende strangle no venc. curto + compra strangle mais OTM no venc. longo; Iron Condor entre vencimentos · valores estimados por BS',
+    neutral_calendar: '🔁 Neutral Calendar (ATM) — vende CALL semanal ATM + compra CALL mensal ATM (mesmo strike); Theta máximo no mercado lateral · valores estimados por BS',
+    double_calendar: '🔁🔁 Double Calendar — vende strangle semanal OTM + compra o MESMO strangle no mensal; "tenda" de lucro ampla entre os strikes · valores estimados por BS',
+    pmcc:            '🐂📅 Bull Diagonal (Poor Man\'s Covered Call) — compra CALL mensal deep ITM (Δ > 0,80, substitui a ação) + vende CALL semanal OTM (Δ 0,20–0,30) para renda · estimado por BS',
+    bull_calendar:   '🐂🔁 Bull Calendar (OTM) — vende CALL semanal OTM + compra CALL mensal OTM no mesmo strike; alta moderada até o strike + Theta · estimado por BS',
+    pmcp:            '🐻📅 Bear Diagonal (Poor Man\'s Covered Put) — compra PUT mensal deep ITM (Δ < −0,80) + vende PUT semanal OTM (Δ −0,20 a −0,30) para renda · estimado por BS',
+    bear_calendar:   '🐻🔁 Bear Calendar (OTM) — vende PUT semanal OTM + compra PUT mensal OTM no mesmo strike; queda moderada até o strike + Theta · estimado por BS'
   };
   var OP_NAMES = {};
   Object.keys(OP_TITLES).forEach(function(k) {

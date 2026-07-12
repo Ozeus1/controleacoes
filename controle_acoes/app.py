@@ -11283,15 +11283,30 @@ def api_radar_analise():
                 fund['industry'] = fund.get('industry') or info.get('industry')
             except Exception as yf_err:
                 app.logger.info('radar fundamentals fallback %s: %s', ticker, yf_err)
+        def _as_pct(v):
+            """Normaliza um percentual: frações (0.0666) viram 6.66; já-percentual fica."""
+            try:
+                x = float(v)
+            except (TypeError, ValueError):
+                return None
+            return round(x * 100, 2) if -1.5 < x < 1.5 else round(x, 2)
+
         macd = tr.get('macd', {})
         entry = d.get('entry', {})
+        chart = d.get('chart_data', {})
+        if not isinstance(chart, dict):
+            chart = {}
+        overlays = chart.get('overlays', {}) if isinstance(chart.get('overlays'), dict) else {}
         out = {
             'company':      d.get('company_name', ''),
             'price':        d.get('price'),
+            'currency':     d.get('currency', 'BRL'),
             'signal':       sig.get('label', '') if isinstance(sig, dict) else str(sig),
             'signal_code':  sig.get('code', '')  if isinstance(sig, dict) else '',
             'rationale':    sig.get('reason', '') if isinstance(sig, dict) else '',
             'day_change':   mc.get('change_percent'),
+            'week_change':  mc.get('change_week') or mc.get('week_change'),
+            'month_change': mc.get('change_month') or mc.get('month_change'),
             'entry_min':    entry.get('low')  if isinstance(entry, dict) else None,
             'entry_max':    entry.get('high') if isinstance(entry, dict) else None,
             'stop_loss':    d.get('stop'),
@@ -11299,27 +11314,46 @@ def api_radar_analise():
             'support':      d.get('support'),
             'resistance':   d.get('resistance'),
             'rsi14':        d.get('rsi14') or tr.get('rsi14'),
-            'atr14':        d.get('atr14'),
+            'atr14':        d.get('atr14') or tr.get('atr14'),
             'sma9':         tr.get('sma9'),
             'sma21':        tr.get('sma21'),
             'sma50':        tr.get('sma50'),
+            'sma200':       tr.get('sma200'),
+            'ema9':         tr.get('ema9'),
             'macd_line':    macd.get('line')      if isinstance(macd, dict) else None,
             'macd_signal':  macd.get('signal')    if isinstance(macd, dict) else None,
             'macd_hist':    macd.get('histogram') if isinstance(macd, dict) else None,
+            'bb_upper':     tr.get('bollinger_upper') or tr.get('bb_upper'),
+            'bb_lower':     tr.get('bollinger_lower') or tr.get('bb_lower'),
+            'stoch_k':      tr.get('stoch_k'),
+            'stoch_d':      tr.get('stoch_d'),
+            'adx':          tr.get('adx'),
             'daily_trend':  d.get('trend_daily',  {}).get('label') if isinstance(d.get('trend_daily'), dict)  else d.get('trend_daily'),
             'weekly_trend': d.get('trend_weekly', {}).get('label') if isinstance(d.get('trend_weekly'), dict) else d.get('trend_weekly'),
             'open':         mc.get('open'),
+            'prev_close':   mc.get('previous_close') or mc.get('prev_close'),
             'day_high':     mc.get('day_high'),
             'day_low':      mc.get('day_low'),
             'week52_low':   mc.get('fifty_two_week_low'),
             'week52_high':  mc.get('fifty_two_week_high'),
             'volume':       mc.get('volume'),
+            'avg_volume':   mc.get('average_volume') or mc.get('avg_volume'),
+            'market_cap':   mc.get('market_cap'),
             'pl':           fund.get('pl'),
             'pvp':          fund.get('pvp'),
-            'dy':           fund.get('dividend_yield'),
+            'dy':           _as_pct(fund.get('dividend_yield')),
             'eps':          fund.get('eps'),
+            'roe':          _as_pct(fund.get('roe')),
+            'net_margin':   _as_pct(fund.get('net_margin') or fund.get('margem_liquida')),
             'sector':       fund.get('sector'),
             'industry':     fund.get('industry'),
+            # Gráfico pronto da API: candles + médias + linhas automáticas
+            'chart': {
+                'candles':   chart.get('candles') or [],
+                'sma21':     overlays.get('sma21') or [],
+                'sma50':     overlays.get('sma50') or [],
+                'lines':     chart.get('automatic_lines') or [],
+            },
         }
         return jsonify(out)
     except Exception as e:

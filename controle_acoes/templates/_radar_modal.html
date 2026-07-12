@@ -1,0 +1,327 @@
+<!-- Modal Radar de Analise -->
+<div id="radar-modal" style="display:none; position:fixed; inset:0; z-index:10000;
+     background:rgba(0,0,0,.82); align-items:flex-start; justify-content:center; overflow-y:auto; padding:2rem 1rem;">
+  <div style="background:#fff; border-radius:12px; width:min(96vw,900px);
+              margin:auto; padding:0; position:relative; color:#1e293b; overflow:hidden;">
+    <div style="padding:1.2rem 1.5rem; background:#fff; border-bottom:1px solid #e2e8f0;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div id="radar-company" style="font-size:.82rem; color:#64748b; margin-bottom:.1rem;"></div>
+          <div style="display:flex; align-items:center; gap:.75rem; flex-wrap:wrap;">
+            <span id="radar-ticker" style="font-size:1.5rem; font-weight:700; color:#0f172a;"></span>
+            <span id="radar-signal-badge" style="padding:.25rem .8rem; border-radius:6px; font-weight:600; font-size:.85rem;"></span>
+          </div>
+          <div style="font-size:2rem; font-weight:700; color:#0f172a; margin:.3rem 0;" id="radar-price"></div>
+          <div id="radar-pills" style="display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.4rem; font-size:.78rem;"></div>
+        </div>
+        <button onclick="closeRadar()" style="background:none;border:none;font-size:1.6rem;
+                color:#94a3b8;cursor:pointer;line-height:1; margin-top:-.2rem;">&times;</button>
+      </div>
+    </div>
+    <div id="radar-loading" style="text-align:center;padding:2rem;color:#64748b;background:#fff;">Carregando analise...</div>
+    <div id="radar-error" style="display:none;text-align:center;padding:2rem;color:#ef4444;background:#fff;"></div>
+    <div id="radar-body" style="display:none; padding:1.2rem 1.5rem; background:#f8fafc;">
+      <p id="radar-rationale" style="font-size:.9rem; color:#334155; margin:0 0 1rem; padding:.75rem 1rem;
+         background:#fff; border-radius:8px; border-left:3px solid #3b82f6;"></p>
+      <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:.75rem; margin-bottom:1rem;">
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Suporte</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#10b981;" id="r-support"></div>
+        </div>
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Resistencia</div>
+          <div style="font-size:1.2rem; font-weight:700; color:#3b82f6;" id="r-resist"></div>
+        </div>
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">RSI 14</div>
+          <div style="font-size:1.2rem; font-weight:700;" id="r-rsi"></div>
+        </div>
+        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
+          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">ATR 14</div>
+          <div style="font-size:1.2rem; font-weight:700;" id="r-atr"></div>
+        </div>
+      </div>
+      <div style="display:flex; gap:.5rem; margin-bottom:1rem; flex-wrap:wrap;">
+        <span id="r-trend-d" style="padding:.3rem .8rem; border-radius:20px; font-size:.82rem; background:#e2e8f0; color:#334155;"></span>
+        <span id="r-trend-w" style="padding:.3rem .8rem; border-radius:20px; font-size:.82rem; background:#e2e8f0; color:#334155;"></span>
+      </div>
+      <div style="background:#fff; border-radius:8px; padding:.9rem 1rem; margin-bottom:1rem; border:1px solid #e2e8f0;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.5rem;">Leitura Tecnica</div>
+        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:.2rem .9rem; font-size:.85rem; color:#334155; line-height:1.6;">
+          <span>SMA 9: <strong id="r-sma9"></strong></span>
+          <span>SMA 21: <strong id="r-sma21"></strong></span>
+          <span>SMA 50: <strong id="r-sma50"></strong></span>
+          <span id="r-row-sma200" style="display:none;">SMA 200: <strong id="r-sma200"></strong></span>
+          <span>RSI 14: <strong id="r-rsi2"></strong></span>
+          <span id="r-row-adx" style="display:none;">ADX: <strong id="r-adx"></strong></span>
+          <span>MACD linha: <strong id="r-macd-l"></strong></span>
+          <span>MACD sinal: <strong id="r-macd-s"></strong></span>
+          <span>MACD hist.: <strong id="r-macd-h"></strong></span>
+          <span id="r-row-stoch" style="display:none;">Estocastico K/D: <strong id="r-stoch"></strong></span>
+          <span id="r-row-bb" style="display:none; grid-column:1 / -1;">Bollinger: <strong id="r-bb"></strong></span>
+        </div>
+      </div>
+      <div style="background:#fff; border-radius:8px; padding:.9rem 1rem; margin-bottom:1rem; border:1px solid #e2e8f0;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.5rem;">Contexto de Mercado</div>
+        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:.2rem .9rem; font-size:.85rem; color:#334155; line-height:1.7;">
+          <span>Variacao do dia: <strong id="r-change"></strong></span>
+          <span id="r-row-wchange" style="display:none;">Variacao semana: <strong id="r-wchange"></strong></span>
+          <span id="r-row-mchange" style="display:none;">Variacao mes: <strong id="r-mchange"></strong></span>
+          <span>Abertura: <strong id="r-open"></strong></span>
+          <span id="r-row-prevclose" style="display:none;">Fech. anterior: <strong id="r-prevclose"></strong></span>
+          <span>Volume: <strong id="r-vol"></strong></span>
+          <span id="r-row-avgvol" style="display:none;">Volume medio: <strong id="r-avgvol"></strong></span>
+          <span>Max./min. dia: <strong id="r-hilo"></strong></span>
+          <span>52 semanas: <strong id="r-52w"></strong></span>
+          <span id="r-row-mcap" style="display:none;">Valor de mercado: <strong id="r-mcap"></strong></span>
+        </div>
+      </div>
+      <div style="background:#fff; border-radius:8px; padding:.9rem 1rem; margin-bottom:1rem; border:1px solid #e2e8f0;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.5rem;">Fundamentos Resumidos</div>
+        <div style="display:grid; grid-template-columns:repeat(2,1fr); gap:.2rem .9rem; font-size:.85rem; color:#334155; line-height:1.7;">
+          <span>P/L: <strong id="r-pe"></strong></span>
+          <span id="r-row-pvp" style="display:none;">P/VP: <strong id="r-pvp"></strong></span>
+          <span>LPA/EPS: <strong id="r-eps"></strong></span>
+          <span id="r-row-dy" style="display:none;">Dividend Yield: <strong id="r-dy"></strong></span>
+          <span id="r-row-roe" style="display:none;">ROE: <strong id="r-roe"></strong></span>
+          <span id="r-row-nmargin" style="display:none;">Margem liquida: <strong id="r-nmargin"></strong></span>
+          <span>Setor: <strong id="r-sector"></strong></span>
+          <span>Industria: <strong id="r-industry"></strong></span>
+        </div>
+      </div>
+      <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.4rem;">Gráfico</div>
+      <canvas id="radar-chart" style="width:100%; height:230px; background:#0b1220; border-radius:8px; display:none;"></canvas>
+      <div id="radar-tv-wrap" style="border-radius:8px; overflow:hidden;"></div>
+    </div>
+  </div>
+</div>
+<script>
+(function() {
+    var radarModal = document.getElementById('radar-modal');
+    var tvBuiltFor = '';
+    window.openRadar = function(ticker) {
+        ticker = (ticker || '').toUpperCase().trim();
+        if (!ticker) return;
+        document.getElementById('radar-ticker').textContent = ticker;
+        document.getElementById('radar-company').textContent = '';
+        document.getElementById('radar-loading').style.display = '';
+        document.getElementById('radar-error').style.display = 'none';
+        document.getElementById('radar-body').style.display = 'none';
+        radarModal.style.display = 'flex';
+        radarModal.scrollTop = 0;
+        fetch('/api/radar_analise?ticker=' + encodeURIComponent(ticker) + '&_=' + Date.now(), {cache: 'no-store'})
+            .then(function(r) { return r.json(); })
+            .then(function(d) { renderRadar(d, ticker); })
+            .catch(function(e) {
+                document.getElementById('radar-loading').style.display = 'none';
+                document.getElementById('radar-error').style.display = '';
+                document.getElementById('radar-error').textContent = 'Erro ao buscar analise: ' + e.message;
+            });
+    };
+    window.closeRadar = function() { radarModal.style.display = 'none'; };
+    radarModal.addEventListener('click', function(e) { if (e.target === radarModal) closeRadar(); });
+    function brl(v) {
+        if (v == null) return '-';
+        return 'R$ ' + parseFloat(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+    function num(v, dec) {
+        if (v == null) return '-';
+        return parseFloat(v).toLocaleString('pt-BR', {minimumFractionDigits: dec || 2, maximumFractionDigits: dec || 2});
+    }
+    function dash(v) { return (v != null && v !== '' && v !== 'None' && v !== 'undefined') ? v : '-'; }
+    function set(id, val) { var el = document.getElementById(id); if (el) el.textContent = val; }
+    function renderRadar(d, ticker) {
+        document.getElementById('radar-loading').style.display = 'none';
+        if (d.error) {
+            document.getElementById('radar-error').style.display = '';
+            document.getElementById('radar-error').textContent = d.error;
+            return;
+        }
+        document.getElementById('radar-body').style.display = '';
+        set('radar-company', dash(d.company));
+        set('radar-ticker', ticker);
+        set('radar-price', brl(d.price));
+        var sb = document.getElementById('radar-signal-badge');
+        var sig = (d.signal_code || d.signal || '').toLowerCase();
+        var sigMap = {comprar:'#16a34a', vender:'#dc2626', aguardar:'#d97706', wait:'#d97706', buy:'#16a34a', sell:'#dc2626'};
+        var col = sigMap[sig] || '#64748b';
+        sb.textContent = d.signal || '-';
+        sb.style.background = col + '18';
+        sb.style.color = col;
+        sb.style.border = '1px solid ' + col + '44';
+        var pills = document.getElementById('radar-pills');
+        pills.innerHTML = '';
+        function pill(label, val, c) {
+            if (!val) return;
+            var s = document.createElement('span');
+            s.style.cssText = 'padding:.2rem .6rem;border-radius:4px;background:' + c + '15;color:' + c + ';border:1px solid ' + c + '33;';
+            s.textContent = label + ': ' + brl(val);
+            pills.appendChild(s);
+        }
+        if (d.entry_min && d.entry_max) {
+            var e = document.createElement('span');
+            e.style.cssText = 'padding:.2rem .6rem;border-radius:4px;background:#64748b15;color:#475569;border:1px solid #64748b33;';
+            e.textContent = 'Entrada: ' + brl(d.entry_min) + ' a ' + brl(d.entry_max);
+            pills.appendChild(e);
+        }
+        pill('Stop', d.stop_loss, '#dc2626');
+        pill('Alvo', d.target, '#16a34a');
+        set('radar-rationale', dash(d.rationale));
+        set('r-support', brl(d.support));
+        set('r-resist', brl(d.resistance));
+        var rsiVal = d.rsi14 != null ? num(d.rsi14, 2) : '-';
+        set('r-rsi', rsiVal);
+        set('r-rsi2', rsiVal);
+        set('r-atr', brl(d.atr14));
+        set('r-trend-d', 'Tendencia diaria: ' + dash(d.daily_trend));
+        set('r-trend-w', 'Tendencia semanal: ' + dash(d.weekly_trend));
+        set('r-sma9', brl(d.sma9));
+        set('r-sma21', brl(d.sma21));
+        set('r-sma50', brl(d.sma50));
+        set('r-macd-l', d.macd_line != null ? num(d.macd_line, 3) : '-');
+        set('r-macd-s', d.macd_signal != null ? num(d.macd_signal, 3) : '-');
+        set('r-macd-h', d.macd_hist != null ? num(d.macd_hist, 3) : '-');
+        var ch = parseFloat(d.day_change);
+        set('r-change', isNaN(ch) ? '-' : (ch >= 0 ? '+' : '') + num(ch, 2) + '%');
+        set('r-vol', d.volume ? parseInt(d.volume).toLocaleString('pt-BR') : '-');
+        set('r-open', brl(d.open));
+        set('r-hilo', (d.day_high && d.day_low) ? brl(d.day_high) + ' / ' + brl(d.day_low) : '-');
+        set('r-52w', (d.week52_low && d.week52_high) ? brl(d.week52_low) + ' ate ' + brl(d.week52_high) : '-');
+        set('r-pe', d.pl != null ? num(d.pl, 2) : '-');
+        set('r-eps', d.eps != null ? num(d.eps, 2) : '-');
+        set('r-sector', dash(d.sector));
+        set('r-industry', dash(d.industry));
+
+        // ── Campos extras (aparecem só quando a API os fornece) ──────────────
+        function pct(v) {
+            var n = parseFloat(v);
+            return isNaN(n) ? null : (n >= 0 ? '+' : '') + num(n, 2) + '%';
+        }
+        function bigNum(v) {
+            var n = parseFloat(v);
+            if (isNaN(n)) return null;
+            if (n >= 1e9) return 'R$ ' + num(n / 1e9, 2) + ' bi';
+            if (n >= 1e6) return 'R$ ' + num(n / 1e6, 2) + ' mi';
+            return 'R$ ' + num(n, 0);
+        }
+        function optRow(rowId, fieldId, val) {
+            var row = document.getElementById(rowId);
+            if (val == null || val === '' || val === '-') { if (row) row.style.display = 'none'; return; }
+            if (row) row.style.display = '';
+            if (fieldId) set(fieldId, val);
+        }
+        // Leitura técnica extra
+        optRow('r-row-sma200', 'r-sma200', d.sma200 != null ? brl(d.sma200) : null);
+        optRow('r-row-adx', 'r-adx', d.adx != null ? num(d.adx, 2) : null);
+        optRow('r-row-stoch', 'r-stoch',
+            (d.stoch_k != null && d.stoch_d != null) ? num(d.stoch_k, 1) + ' / ' + num(d.stoch_d, 1) : null);
+        optRow('r-row-bb', 'r-bb',
+            (d.bb_lower != null && d.bb_upper != null) ? brl(d.bb_lower) + ' — ' + brl(d.bb_upper) : null);
+        // Contexto de mercado extra
+        optRow('r-row-wchange', 'r-wchange', pct(d.week_change));
+        optRow('r-row-mchange', 'r-mchange', pct(d.month_change));
+        optRow('r-row-prevclose', 'r-prevclose', d.prev_close != null ? brl(d.prev_close) : null);
+        optRow('r-row-avgvol', 'r-avgvol', d.avg_volume ? parseInt(d.avg_volume).toLocaleString('pt-BR') : null);
+        optRow('r-row-mcap', 'r-mcap', bigNum(d.market_cap));
+        // Fundamentos extra
+        optRow('r-row-pvp', 'r-pvp', d.pvp != null ? num(d.pvp, 2) : null);
+        optRow('r-row-dy', 'r-dy', d.dy != null ? num(d.dy, 2) + '%' : null);
+        optRow('r-row-roe', 'r-roe', d.roe != null ? num(d.roe, 2) + '%' : null);
+        optRow('r-row-nmargin', 'r-nmargin', d.net_margin != null ? num(d.net_margin, 2) + '%' : null);
+        // Pills de variação semana/mês no topo
+        if (d.week_change != null && !isNaN(parseFloat(d.week_change))) {
+            var wc = parseFloat(d.week_change), wcol = wc >= 0 ? '#16a34a' : '#dc2626';
+            var wp = document.createElement('span');
+            wp.style.cssText = 'padding:.2rem .6rem;border-radius:4px;background:' + wcol + '15;color:' + wcol + ';border:1px solid ' + wcol + '33;';
+            wp.textContent = 'Semana: ' + pct(wc);
+            pills.appendChild(wp);
+        }
+
+        // ── Gráfico: usa candles da própria API se houver; senão TradingView ──
+        var ch = d.chart || {};
+        var candles = ch.candles || [];
+        var chEl = document.getElementById('radar-chart');
+        if (candles.length >= 2 && chEl) {
+            chEl.style.display = 'block';
+            document.getElementById('radar-tv-wrap').style.display = 'none';
+            drawRadarChart(chEl, ch, d);
+        } else {
+            chEl.style.display = 'none';
+            document.getElementById('radar-tv-wrap').style.display = 'block';
+            if (tvBuiltFor !== ticker) {
+                tvBuiltFor = ticker;
+                MyChart.openInline('radar-tv-wrap', ticker);
+            }
+        }
+    }
+
+    // Desenha candles + SMA21/50 + linhas automáticas (suporte/resistência/alvo)
+    function drawRadarChart(cv, ch, d) {
+        var candles = ch.candles || [];
+        var dpr = window.devicePixelRatio || 1;
+        var W = cv.clientWidth || 640, H = 230;
+        cv.width = W * dpr; cv.height = H * dpr;
+        var ctx = cv.getContext('2d'); ctx.scale(dpr, dpr);
+        ctx.clearRect(0, 0, W, H);
+        function val(c, k) { return c[k] != null ? +c[k] : (c[k[0]] != null ? +c[k[0]] : null); }
+        var highs = candles.map(function(c){ return +(c.h != null ? c.h : c.high); });
+        var lows  = candles.map(function(c){ return +(c.l != null ? c.l : c.low); });
+        var lo = Math.min.apply(null, lows), hi = Math.max.apply(null, highs);
+        // inclui linhas automáticas na escala
+        (ch.lines || []).forEach(function(l){ var y = +(l.value != null ? l.value : l.price); if (!isNaN(y)) { lo = Math.min(lo, y); hi = Math.max(hi, y); } });
+        var pad = (hi - lo) * 0.08 || 1; lo -= pad; hi += pad;
+        var padL = 4, padR = 54, plotW = W - padL - padR;
+        function X(i){ return padL + plotW * (i / (candles.length - 1)); }
+        function Y(v){ return H - 18 - (H - 26) * (v - lo) / (hi - lo); }
+        // grade + eixo de preço à direita
+        ctx.strokeStyle = 'rgba(148,163,184,.12)'; ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+        for (var g = 0; g <= 4; g++) {
+            var vy = lo + (hi - lo) * g / 4, yy = Y(vy);
+            ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(W - padR, yy); ctx.stroke();
+            ctx.fillText(vy.toFixed(2), W - padR + 4, yy + 3);
+        }
+        // candles
+        var cw = Math.max(1.5, plotW / candles.length * 0.6);
+        candles.forEach(function(c, i) {
+            var o = +(c.o != null ? c.o : c.open), cl = +(c.c != null ? c.c : c.close);
+            var h = +(c.h != null ? c.h : c.high), l = +(c.l != null ? c.l : c.low);
+            var up = cl >= o, col = up ? '#22c55e' : '#ef4444';
+            var x = X(i);
+            ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(x, Y(h)); ctx.lineTo(x, Y(l)); ctx.stroke();
+            var yo = Y(o), yc = Y(cl), top = Math.min(yo, yc), bh = Math.max(1, Math.abs(yc - yo));
+            ctx.fillRect(x - cw / 2, top, cw, bh);
+        });
+        // médias móveis
+        function drawMA(arr, color) {
+            if (!arr || arr.length < 2) return;
+            ctx.strokeStyle = color; ctx.lineWidth = 1.4; ctx.beginPath();
+            var started = false;
+            arr.forEach(function(v, i) {
+                var y = +(v && v.value != null ? v.value : v);
+                if (isNaN(y) || i >= candles.length) return;
+                var x = X(i);
+                started ? ctx.lineTo(x, Y(y)) : (ctx.moveTo(x, Y(y)), started = true);
+            });
+            ctx.stroke();
+        }
+        drawMA(ch.sma21, '#3b82f6');
+        drawMA(ch.sma50, '#f59e0b');
+        // linhas automáticas (suporte/resistência/alvo/entrada)
+        (ch.lines || []).forEach(function(l) {
+            var v = +(l.value != null ? l.value : l.price); if (isNaN(v)) return;
+            var color = l.color || ({support:'#22c55e',resistance:'#60a5fa',target:'#22c55e',stop:'#ef4444',entry:'#94a3b8'}[(l.type||'').toLowerCase()] || '#94a3b8');
+            var y = Y(v);
+            ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+            ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(W - padR, y); ctx.stroke();
+            ctx.setLineDash([]);
+            if (l.label) { ctx.fillStyle = color; ctx.textAlign = 'left'; ctx.fillText(l.label, padL + 3, y - 3); }
+        });
+        // legenda das médias
+        ctx.textAlign = 'left'; ctx.font = '10px sans-serif';
+        ctx.fillStyle = '#3b82f6'; ctx.fillText('SMA21', padL + 3, 12);
+        ctx.fillStyle = '#f59e0b'; ctx.fillText('SMA50', padL + 48, 12);
+    }
+})();
+</script>

@@ -184,6 +184,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     </div>
     <div id="bam-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(185px,1fr)); gap:.75rem;"></div>
     <div style="margin-top:1.2rem; display:flex; gap:.6rem; flex-wrap:wrap;">
+      <a id="bam-calc" href="#" class="btn btn-secondary btn-sm" style="display:none;">🧮 Abrir em Cálculos de Opções</a>
       <a id="bam-open" href="#" class="btn btn-primary btn-sm">🔗 Editar em Cadeia de Opções</a>
       <button class="btn btn-secondary btn-sm" onclick="baCloseModal()">Fechar</button>
     </div>
@@ -406,6 +407,34 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     var q = new URLSearchParams({sim: '1', ativo: d.ticker,
       nome: OP_NAMES[d.op] + ' ' + d.ticker, legs: legsStr});
     document.getElementById('bam-open').href = '/cadeia-opcoes?' + q.toString();
+
+    // "Abrir em Cálculos de Opções" (aba Estruturas) — só p/ operações de 1
+    // vencimento e ≤4 pernas que existem como preset na tela de Cálculos.
+    var calcBtn = document.getElementById('bam-calc');
+    var calcUrl = estruturaHref(d, e, r, qty);
+    if (calcUrl) { calcBtn.href = calcUrl; calcBtn.style.display = ''; }
+    else { calcBtn.removeAttribute('href'); calcBtn.style.display = 'none'; }
+  }
+
+  // Presets da aba "Estruturas" (venda_puts) → assinatura fixa das pernas.
+  // Só mapeamos operações avançadas que casam exatamente com um preset.
+  var ESTRUTURA_PRESET = {
+    borboleta_delta: 'borboleta'  // +1 CALL ITM / −2 CALL ATM / +1 CALL OTM
+  };
+  function estruturaHref(d, e, r, qty) {
+    var preset = ESTRUTURA_PRESET[d.op];
+    if (!preset) return null;
+    var legs = (r.legs || []).filter(function(l) { return l.tp !== 'STOCK'; });
+    // preset borboleta usa 3 pernas em strike crescente (A<B<C)
+    var sorted = legs.slice().sort(function(a, b) { return (a.k || 0) - (b.k || 0); });
+    if (sorted.length < 3) return null;
+    var A = sorted[0], B = sorted[1], C = sorted[2];
+    var p = new URLSearchParams({st: '1', ativo: d.ticker, spot: d.spot, qty: qty,
+      exp: e.exp, op: preset,
+      at: A.sym, ak: A.k, ap: A.px,
+      bt: B.sym, bk: B.k, bp: B.px,
+      ct2: C.sym, ck2: C.k, cp2: C.px});
+    return '/venda_puts?' + p.toString() + '#estrutura';
   }
 
   results.addEventListener('click', function(ev) {

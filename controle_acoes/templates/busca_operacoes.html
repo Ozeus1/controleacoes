@@ -159,6 +159,7 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
 
     <div style="margin-top:1.2rem; display:flex; gap:.6rem; flex-wrap:wrap;">
       <a id="bm-open-calc" href="#" class="btn btn-primary btn-sm">🧮 Abrir em Cálculos de Opções</a>
+      <a id="bm-open-cadeia" href="#" class="btn btn-secondary btn-sm">🔗 Editar em Cadeia de Opções</a>
       <button class="btn btn-secondary btn-sm" onclick="closeBoModal()">Fechar</button>
     </div>
   </div>
@@ -1044,6 +1045,88 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     return {title: title, boxes: boxes, href: '/venda_puts?' + sp.toString() + '#estrutura'};
   }
 
+  // ── Pernas normalizadas p/ abrir na Cadeia de Opções (tela 4) ───────────────
+  // Cada perna: {sym, tp:'CALL'|'PUT'|'STOCK', side:'BUY'|'SELL', q, px, k, exp}
+  var CADEIA_NAMES = {
+    collar:'Collar', fence:'Fence', seagull:'Seagull', trava_alta:'Trava de Alta (déb.)',
+    trava_baixa:'Trava de Baixa (déb.)', trava_alta_credito:'Trava de Alta (créd.)',
+    trava_baixa_credito:'Trava de Baixa (créd.)', trava_credito:'Ratio CALL',
+    vaca_travada:'Vaca Travada', boi_coberto:'Boi Coberto', vaca_tradicional:'Vaca Tradicional',
+    vaca_revertida:'Vaca Revertida', borboleta:'Borboleta', condor:'Condor',
+    iron_condor:'Iron Condor', boi_put:'Boi com PUT', vaca_put:'Vaca de Baixa (PUTs)',
+    venda_put_itm:'Venda de PUT', straddle_vendido:'Straddle vendido', strangle_vendido:'Strangle vendido'
+  };
+
+  function cadeiaLegs(d, e, r) {
+    var op = d.op, spot = d.spot, exp = e.exp, L = [];
+    function leg(sym, tp, side, q, px, k) {
+      if (!sym && tp !== 'STOCK') return; L.push({sym:sym||'', tp:tp, side:side, q:q, px:px||0, k:k||0}); }
+
+    if (op === 'collar') {
+      leg(d.ticker, 'STOCK', 'BUY', 1, spot, 0);
+      leg(r.put_symbol, 'PUT', 'BUY', 1, r.put_ask, r.put_strike);
+      leg(r.call_symbol, 'CALL', 'SELL', 1, r.call_bid, r.call_strike);
+    } else if (GEN_OPS.indexOf(op) !== -1) {
+      r.legs.forEach(function(l) {
+        leg(l.sym, l.tp || 'CALL', l.q > 0 ? 'BUY' : 'SELL', Math.abs(l.q), l.px, l.k); });
+    } else if (op === 'iron_condor') {
+      leg(r.put_buy_symbol, 'PUT', 'BUY', 1, r.put_buy_ask, r.put_buy_strike);
+      leg(r.put_sell_symbol, 'PUT', 'SELL', 1, r.put_sell_bid, r.put_sell_strike);
+      leg(r.call_sell_symbol, 'CALL', 'SELL', 1, r.call_sell_bid, r.call_sell_strike);
+      leg(r.call_buy_symbol, 'CALL', 'BUY', 1, r.call_buy_ask, r.call_buy_strike);
+    } else if (op === 'fence') {
+      leg(d.ticker, 'STOCK', 'BUY', 1, spot, 0);
+      leg(r.put_buy_symbol, 'PUT', 'BUY', 1, r.put_buy_ask, r.put_buy_strike);
+      leg(r.put_sell_symbol, 'PUT', 'SELL', 1, r.put_sell_bid, r.put_sell_strike);
+      leg(r.call_symbol, 'CALL', 'SELL', 1, r.call_bid, r.call_strike);
+    } else if (op === 'seagull') {
+      leg(r.call_buy_symbol, 'CALL', 'BUY', 1, r.call_buy_ask, r.call_buy_strike);
+      leg(r.call_sell_symbol, 'CALL', 'SELL', 1, r.call_sell_bid, r.call_sell_strike);
+      leg(r.put_sell_symbol, 'PUT', 'SELL', 1, r.put_sell_bid, r.put_sell_strike);
+    } else if (op === 'trava_alta' || op === 'trava_baixa') {
+      var tp1 = op === 'trava_alta' ? 'CALL' : 'PUT';
+      leg(r.buy_symbol, tp1, 'BUY', 1, r.buy_ask, r.buy_strike);
+      leg(r.sell_symbol, tp1, 'SELL', 1, r.sell_bid, r.sell_strike);
+    } else if (op === 'trava_alta_credito' || op === 'trava_baixa_credito') {
+      var tp2 = op === 'trava_alta_credito' ? 'PUT' : 'CALL';
+      leg(r.sell_symbol, tp2, 'SELL', 1, r.sell_bid, r.sell_strike);
+      leg(r.buy_symbol, tp2, 'BUY', 1, r.buy_ask, r.buy_strike);
+    } else if (op === 'trava_credito') { // ratio CALL n×m
+      leg(r.sell_symbol, 'CALL', 'SELL', r.n_sell, r.sell_bid, r.sell_strike);
+      leg(r.buy_symbol, 'CALL', 'BUY', r.m_buy, r.buy_ask, r.buy_strike);
+    } else if (op === 'vaca_travada') {
+      leg(r.low_symbol, 'CALL', 'BUY', 1, r.low_ask, r.low_strike);
+      leg(r.mid_symbol, 'CALL', 'SELL', 2, r.mid_bid, r.mid_strike);
+      leg(r.high_symbol, 'CALL', 'BUY', 1, r.high_ask, r.high_strike);
+    } else if (op === 'boi_put') {
+      leg(r.sell_symbol, 'PUT', 'SELL', 1, r.sell_bid, r.sell_strike);
+      leg(r.buy_symbol, 'PUT', 'BUY', 2, r.buy_ask, r.buy_strike);
+    } else if (op === 'straddle_vendido' || op === 'strangle_vendido') {
+      var isStrad = op === 'straddle_vendido';
+      leg(r.call_symbol, 'CALL', 'SELL', 1, r.call_bid, isStrad ? r.strike : r.call_strike);
+      leg(r.put_symbol, 'PUT', 'SELL', 1, r.put_bid, isStrad ? r.strike : r.put_strike);
+    } else if (op === 'venda_put_itm') {
+      leg(r.symbol, 'PUT', 'SELL', 1, r.premium, r.strike);
+    } else if (op === 'vaca_put') {
+      leg(r.high_symbol, 'PUT', 'BUY', 1, r.high_ask, r.high_strike);
+      leg(r.mid_symbol, 'PUT', 'SELL', 2, r.mid_bid, r.mid_strike);
+      leg(r.low_symbol, 'PUT', 'BUY', 1, r.low_ask, r.low_strike);
+    }
+    return L;
+  }
+
+  function cadeiaHref(d, e, r, qty) {
+    var legs = cadeiaLegs(d, e, r);
+    if (!legs.length) return null;
+    var legsStr = legs.map(function(l) {
+      return [l.sym, l.tp, l.side, l.q * qty, l.px, l.k,
+              l.tp === 'STOCK' ? '' : e.exp].join(',');
+    }).join('|');
+    var q = new URLSearchParams({sim: '1', ativo: d.ticker,
+      nome: (CADEIA_NAMES[d.op] || d.op) + ' ' + d.ticker, legs: legsStr});
+    return '/cadeia-opcoes?' + q.toString();
+  }
+
   function refreshModal() {
     var modal = document.getElementById('bo-modal');
     var d = window.__boData;
@@ -1063,6 +1146,13 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       ? '🔍 Abrir em Busca de Opção'
       : (c.href.indexOf('/cadeia-opcoes') === 0
           ? '🔗 Editar em Cadeia de Opções' : '🧮 Abrir em Cálculos de Opções');
+
+    // Botão "Editar em Cadeia de Opções" (tela 4) — some quando o próprio
+    // "Abrir" já aponta para a Cadeia, senão mostra as pernas montadas.
+    var cadBtn = document.getElementById('bm-open-cadeia');
+    var cadUrl = c.href.indexOf('/cadeia-opcoes') === 0 ? null : cadeiaHref(d, e, r, qty);
+    if (cadUrl) { cadBtn.href = cadUrl; cadBtn.style.display = ''; }
+    else { cadBtn.removeAttribute('href'); cadBtn.style.display = 'none'; }
   }
 
   function openBoModal(expIdx, rowIdx) {

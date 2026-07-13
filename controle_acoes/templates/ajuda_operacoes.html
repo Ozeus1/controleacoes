@@ -560,13 +560,24 @@ function badgeTipo(t){
 function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function ul(items){ return '<ul>'+items.map(function(i){return '<li>'+esc(i)+'</li>';}).join('')+'</ul>'; }
 
+// Extrai o código da operação (?op=xxx) do link de busca para criar a âncora.
+function opCode(busca){
+  if(!busca) return '';
+  var m=/[?&]op=([a-z_0-9]+)/.exec(busca);
+  return m?m[1]:'';
+}
 var host=document.getElementById('aj-conteudo');
 var html='';
+var _seenOp={};
 CATS.forEach(function(cat){
   html+='<h3 class="aj-cat-title" id="'+cat.id+'">'+cat.nome+'</h3><div class="aj-grid">';
   OPS.forEach(function(op,idx){
     if(op.cat!==cat.id) return;
-    html+='<div class="aj-card" data-nome="'+esc(op.nome.toLowerCase())+'">'+
+    var code=opCode(op.busca);
+    // 1ª ocorrência de cada operação recebe a âncora id="ajuda-<op>"
+    var anchorId = (code && !_seenOp[code]) ? (' id="ajuda-'+code+'"') : '';
+    if(code) _seenOp[code]=true;
+    html+='<div class="aj-card"'+anchorId+' data-op="'+esc(code)+'" data-nome="'+esc(op.nome.toLowerCase())+'">'+
       '<h4>'+esc(op.nome)+' '+badgeCen(op.cen)+' '+badgeTipo(op.tipo)+'</h4>'+
       '<div class="aj-canvas-wrap"><canvas id="aj-cv-'+idx+'" width="400" height="130"></canvas></div>'+
       '<div class="aj-sec"><b class="lbl">🧩 Montagem</b>'+esc(op.mont)+'</div>'+
@@ -591,6 +602,26 @@ document.getElementById('aj-filtro').addEventListener('input',function(){
     c.style.display=(!q||c.dataset.nome.indexOf(q)!==-1)?'':'none';
   });
 });
+
+// Ao chegar de ?op=<código> (ícone "?" das telas de busca): rola até o card e destaca.
+(function(){
+  var op=new URLSearchParams(location.search).get('op');
+  if(!op) return;
+  var card=document.getElementById('ajuda-'+op);
+  if(!card){
+    // fallback: acha por data-op (caso a âncora tenha caído noutro card)
+    card=document.querySelector('.aj-card[data-op="'+op+'"]');
+  }
+  if(card){
+    setTimeout(function(){
+      card.scrollIntoView({behavior:'smooth',block:'center'});
+      card.style.transition='box-shadow .3s, border-color .3s';
+      card.style.boxShadow='0 0 0 3px var(--accent-color,#7c3aed)';
+      card.style.borderColor='var(--accent-color,#7c3aed)';
+      setTimeout(function(){ card.style.boxShadow=''; card.style.borderColor=''; },2600);
+    },250);
+  }
+})();
 })();
 </script>
 {% endblock %}

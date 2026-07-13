@@ -1160,6 +1160,25 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     });
   }
 
+  // Ícone "?" ao lado de cada operação → card de ajuda correspondente
+  (function(){
+    var ALIAS={borboleta_delta:'borboleta',calendar_spread:'neutral_calendar',diagonal_spread:'double_diagonal'};
+    document.querySelectorAll('.bo-obtn').forEach(function(btn){
+      var op=btn.dataset.op; if(!op) return;
+      var help=ALIAS[op]||op;
+      var a=document.createElement('a');
+      a.href='/ajuda-operacoes?op='+encodeURIComponent(help);
+      a.title='Ajuda: entenda a operação';
+      a.textContent='?';
+      a.style.cssText='margin-left:.3rem;display:inline-flex;align-items:center;justify-content:center;'+
+        'width:1.15rem;height:1.15rem;border-radius:50%;background:var(--hover-bg,#334155);'+
+        'color:var(--accent-color,#7c3aed);font-weight:700;font-size:.72rem;text-decoration:none;'+
+        'border:1px solid var(--border-color);vertical-align:middle;';
+      a.addEventListener('click',function(e){ e.stopPropagation(); });
+      btn.insertAdjacentElement('afterend', a);
+    });
+  })();
+
   renderTickers();
 })();
 </script>

@@ -149,6 +149,8 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       ['strike',   'Strike', ''],
       ['itm_pct',  'ITM/OTM', ''],
       ['premium',  'Prêmio (últ.)', ''],
+      ['bid',      'Bid', 'Melhor oferta de compra (quem quer comprar a PUT)'],
+      ['ask',      'Ask', 'Melhor oferta de venda (quem quer vender a PUT)'],
       ['custo_ef', 'Custo ef. (BE)', 'Strike − prêmio = preço de equilíbrio se exercido'],
       ['margem',   'Margem', '(Spot − custo efetivo) / spot — quanto o BE fica abaixo do preço atual'],
       ['taxa_per', 'Retorno período', 'Prêmio / strike (capital reservado = strike)'],
@@ -174,6 +176,8 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         '<td>' + brl(r.strike) + '</td>' +
         '<td class="' + (isItm ? 'neg' : 'pos') + '">' + (isItm ? '−' : '+') + fmt(Math.abs(r.itm_pct), 1) + '% ' + (isItm ? 'ITM' : 'OTM') + '</td>' +
         '<td class="pos">' + brl(r.premium) + '</td>' +
+        '<td>' + (r.bid != null ? brl(r.bid) : '—') + '</td>' +
+        '<td>' + (r.ask != null ? brl(r.ask) : '—') + '</td>' +
         '<td>' + brl(r.custo_ef) + '</td>' +
         '<td class="' + (r.margem >= 0 ? 'pos' : 'neg') + '">' + (r.margem >= 0 ? '+' : '') + fmt(r.margem) + '%</td>' +
         '<td class="pos"><strong>+' + fmt(r.taxa_per) + '%</strong></td>' +

@@ -149,6 +149,8 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       ['strike',   'Strike', ''],
       ['itm_pct',  'ITM/OTM', ''],
       ['premium',  'Prêmio (últ.)', ''],
+      ['bid',      'Bid', 'Melhor oferta de compra (quem quer comprar a CALL)'],
+      ['ask',      'Ask', 'Melhor oferta de venda (quem quer vender a CALL)'],
       ['custo',    'Custo líq. (BE)', 'Spot − prêmio = preço de equilíbrio'],
       ['protec',   'Proteção', 'Prêmio / spot'],
       ['taxa_ex',  'Taxa se exercido', '(Strike − custo líquido) / custo líquido'],
@@ -174,6 +176,8 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         '<td>' + brl(r.strike) + '</td>' +
         '<td class="' + (isItm ? 'neg' : 'pos') + '">' + (isItm ? '−' : '+') + fmt(Math.abs(r.itm_pct), 1) + '% ' + (isItm ? 'ITM' : 'OTM') + '</td>' +
         '<td class="pos">' + brl(r.premium) + '</td>' +
+        '<td>' + (r.bid != null ? brl(r.bid) : '—') + '</td>' +
+        '<td>' + (r.ask != null ? brl(r.ask) : '—') + '</td>' +
         '<td>' + brl(r.custo) + '</td>' +
         '<td class="pos">' + fmt(r.protec) + '%</td>' +
         '<td class="pos"><strong>+' + fmt(r.taxa_ex) + '%</strong></td>' +

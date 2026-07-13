@@ -4600,6 +4600,9 @@ def api_lancamento_coberto(ticker):
                 d1 = (math.log(spot / strike) + (r_cont + 0.5 * iv * iv) * T) / (iv * math.sqrt(T))
                 delta = round(_norm_cdf(d1) * 100, 1)
 
+        bid = float(o.get('bid') or 0)
+        ask = float(o.get('ask') or 0)
+
         rows.append({
             'symbol':    sym,
             'exp':       due,
@@ -4607,6 +4610,8 @@ def api_lancamento_coberto(ticker):
             'strike':    round(strike, 2),
             'itm_pct':   round((spot - strike) / spot * 100, 1),   # >0 = ITM
             'premium':   round(close, 2),
+            'bid':       round(bid, 2) if bid else None,
+            'ask':       round(ask, 2) if ask else None,
             'custo':     round(custo, 2),                          # custo líquido = BE
             'protec':    round(close / spot * 100, 2),
             'taxa_ex':   round(taxa_ex, 2),
@@ -4752,6 +4757,9 @@ def api_venda_put_longa(ticker):
                 d1 = (math.log(spot / strike) + (r_cont + 0.5 * iv * iv) * T) / (iv * math.sqrt(T))
                 delta = round((_norm_cdf(d1) - 1) * 100, 1)
 
+        bid = float(o.get('bid') or 0)
+        ask = float(o.get('ask') or 0)
+
         rows.append({
             'symbol':    sym,
             'exp':       due,
@@ -4759,6 +4767,8 @@ def api_venda_put_longa(ticker):
             'strike':    round(strike, 2),
             'itm_pct':   round((strike - spot) / spot * 100, 1),   # >0 = ITM (put)
             'premium':   round(close, 2),
+            'bid':       round(bid, 2) if bid else None,
+            'ask':       round(ask, 2) if ask else None,
             'custo_ef':  round(custo_ef, 2),                       # BE se exercido
             'margem':    round(margem, 2),
             'taxa_per':  round(taxa_per, 2),

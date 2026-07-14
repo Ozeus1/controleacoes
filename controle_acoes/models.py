@@ -125,6 +125,10 @@ class Option(db.Model):
     # Calculated/Fetched on fly, but maybe store last fetch for underlying?
     last_update = db.Column(db.DateTime, nullable=True)
 
+    # Cotação do ativo subjacente (p/ opções cujo ativo não está na carteira)
+    underlying_price  = db.Column(db.Float, nullable=True)
+    underlying_change = db.Column(db.Float, nullable=True)
+
     # Study fields
     vdx   = db.Column(db.Float, nullable=True)   # calculado
     nv    = db.Column(db.Float, nullable=True)   # calculado
@@ -362,6 +366,7 @@ class StructuredOp(db.Model):
     underlying_change     = db.Column(db.Float, nullable=True)
     uses_stock_collateral = db.Column(db.Boolean, default=False)  # ação em carteira como garantia
     status                = db.Column(db.String(10), default='OPEN')   # OPEN | CLOSED
+    pop                   = db.Column(db.Float, nullable=True)  # POP salvo ao abrir o payoff
     created_at    = db.Column(db.DateTime, default=datetime.now)
     roll_history  = db.Column(db.Text, nullable=True)  # JSON array de rolagens
     legs = db.relationship('StructuredLeg', backref='operation', lazy=True,

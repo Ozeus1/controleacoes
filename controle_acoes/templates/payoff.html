@@ -482,6 +482,15 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
         if (pop !== null && isFinite(pop)) {
             popEl.textContent = pop.toFixed(1).replace('.', ',') + '%';
             popEl.className = pop >= 50 ? 'positive' : 'negative';
+            // Persiste o POP p/ a lista /opcoes mostrar o mesmo valor
+            var popSaveUrl = '{{ pop_save_url or '' }}';
+            if (popSaveUrl) {
+                fetch(popSaveUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ pop: Math.max(0, Math.min(100, pop)) })
+                }).catch(function() {});
+            }
         }
     })();
 

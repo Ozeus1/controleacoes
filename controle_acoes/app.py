@@ -371,6 +371,33 @@ def run_migrations():
         cursor.execute("ALTER TABLE option_spread ADD COLUMN underlying_change FLOAT")
         print("[MIGRATION] Added option_spread.underlying_change")
 
+    # Add underlying_price / underlying_change to option if missing
+    # (cotação do subjacente das opções cujo ativo não está na carteira)
+    cursor.execute("PRAGMA table_info(option)")
+    opt_cols = {row[1] for row in cursor.fetchall()}
+    if 'underlying_price' not in opt_cols:
+        try:
+            cursor.execute("ALTER TABLE option ADD COLUMN underlying_price FLOAT")
+            print("[MIGRATION] Added option.underlying_price")
+        except Exception:
+            pass
+    if 'underlying_change' not in opt_cols:
+        try:
+            cursor.execute("ALTER TABLE option ADD COLUMN underlying_change FLOAT")
+            print("[MIGRATION] Added option.underlying_change")
+        except Exception:
+            pass
+
+    # Add pop to structured_op if missing (POP salvo ao abrir o payoff)
+    cursor.execute("PRAGMA table_info(structured_op)")
+    sop_cols = {row[1] for row in cursor.fetchall()}
+    if 'pop' not in sop_cols:
+        try:
+            cursor.execute("ALTER TABLE structured_op ADD COLUMN pop FLOAT")
+            print("[MIGRATION] Added structured_op.pop")
+        except Exception:
+            pass
+
     # Add underlying and notes columns to trade_history if missing
     cursor.execute("PRAGMA table_info(trade_history)")
     th_cols = {row[1] for row in cursor.fetchall()}
@@ -5004,6 +5031,23 @@ def _get_underlying_quote_cached(ticker, user_id):
     if a and a.current_price:
         return a.current_price, getattr(a, 'daily_change', None)
     try:
+        # Subjacente fora da carteira: preço salvo na própria Option pelo
+        # Atualizar Cotações (ex.: AXIA3/MULT3 em venda a seco de puts)
+        o = Option.query.filter_by(underlying_asset=t, user_id=user_id)\
+                        .filter(Option.underlying_price > 0)\
+                        .order_by(Option.last_update.desc()).first()
+        if o and o.underlying_price:
+            return o.underlying_price, o.underlying_change
+    except Exception:
+        pass
+    try:
+        ps = PutSale.query.filter_by(underlying_asset=t, user_id=user_id)\
+                          .filter(PutSale.underlying_price > 0).first()
+        if ps and ps.underlying_price:
+            return ps.underlying_price, getattr(ps, 'underlying_change', None)
+    except Exception:
+        pass
+    try:
         op = StructuredOp.query.filter_by(underlying_asset=t, user_id=user_id)\
                                .filter(StructuredOp.underlying_price.isnot(None)).first()
         if op and op.underlying_price:
@@ -5153,6 +5197,7 @@ def payoff_spread(id):
     import json as _json
     roll_adjustment, roll_history = _spread_roll_adjustment(sp)
     return render_template('payoff.html',
+                           pop_save_url=url_for('save_payoff_pop', kind='spread', id=sp.id),
                            title=type_labels.get(sp.spread_type, sp.spread_type),
                            underlying=sp.underlying_asset,
                            expiration=sp.expiration_date.strftime('%d/%m/%Y') if sp.expiration_date else '',
@@ -5195,6 +5240,7 @@ def payoff_estruturada(id):
     days_nearest = max((min(exp_dates) - date.today()).days, 0) if exp_dates else None
     import json as _json
     return render_template('payoff.html',
+                           pop_save_url=url_for('save_payoff_pop', kind='estruturada', id=op.id),
                            title=op.name,
                            underlying=op.underlying_asset or '',
                            expiration=expiration,
@@ -5207,6 +5253,32 @@ def payoff_estruturada(id):
                            manage_op_id=op.id,
                            today=date.today(),
                            legs_json=_json.dumps(legs))
+
+
+@app.route('/api/payoff-pop/<kind>/<int:id>', methods=['POST'])
+@login_required
+def save_payoff_pop(kind, id):
+    """Persiste o POP calculado na página de payoff, para exibir na lista
+    /opcoes (travas e estruturadas). Chamado automaticamente pelo payoff.html."""
+    try:
+        pop = float((request.get_json(silent=True) or {}).get('pop'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'pop inválido'}), 400
+    if not (0.0 <= pop <= 100.0):
+        return jsonify({'error': 'pop fora de 0-100'}), 400
+
+    if kind == 'spread':
+        rec = OptionSpread.query.get_or_404(id)
+    elif kind == 'estruturada':
+        rec = StructuredOp.query.get_or_404(id)
+    else:
+        return jsonify({'error': 'tipo desconhecido'}), 400
+    if rec.user_id != current_user.id:
+        return jsonify({'error': 'sem permissão'}), 403
+
+    rec.pop = round(pop, 1)
+    db.session.commit()
+    return jsonify({'ok': True, 'pop': rec.pop})
 
 
 @app.route('/payoff/option/<int:id>')
@@ -12293,6 +12365,11 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
         if o.underlying_asset:
             uk = o.underlying_asset.upper()
             if uk in prices and prices[uk] > 0:
+                # Grava na própria Option — subjacentes fora da carteira
+                # (ex.: AXIA3, MULT3) não têm Asset onde salvar o preço
+                o.underlying_price = prices[uk]
+                if uk in variations:
+                    o.underlying_change = variations[uk]
                 # Propaga para o Asset correspondente se existir
                 asset_obj = next((a for a in assets if a.ticker.upper() == uk), None)
                 if asset_obj and asset_obj.type != 'ETF':

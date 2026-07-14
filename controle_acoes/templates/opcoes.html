@@ -76,7 +76,8 @@
                 <td>{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.exercise_price)|replace('.', ',') }}</td>
-                <td class="{{ 'positive' if item.lastro >= 0 else 'negative' }}">
+                {# Verde enquanto a cotação está abaixo do preço de exercício; vermelho se ultrapassar #}
+                <td class="{{ 'negative' if item.lastro > 0 else 'positive' }}">
                     R$ {{ "%.2f"|format(item.lastro)|replace('.', ',') }}
                 </td>
                 <td>R$ {{ "%.2f"|format(item.total_sold)|replace('.', ',') }}</td>
@@ -557,7 +558,7 @@
                 <td class="positive">R$ {{ "%.2f"|format(item.max_gain)|replace('.', ',') }}</td>
                 <td class="negative">R$ {{ "%.2f"|format(item.max_loss)|replace('.', ',') }}</td>
                 {% set pop_val = item.spread.pop if item.spread.pop else item['pop'] %}
-                <td title="{{ 'Manual' if item.spread.pop else 'Calculado via BS' }}">
+                <td title="{{ 'Salvo (payoff/manual)' if item.spread.pop else 'Calculado via BS' }}">
                     {% if pop_val %}
                     <span class="{{ 'positive' if pop_val >= 50 else '' }}">{{ "%.1f"|format(pop_val)|replace('.', ',') }}%</span>
                     {% else %}—{% endif %}
@@ -741,10 +742,12 @@
                     <span style="color:var(--text-secondary);">—</span>
                     {% endif %}
                 </td>
-                <td style="text-align:center; white-space:nowrap;" title="Probability of Profit via Black-Scholes">
-                    {% if item['pop'] is not none %}
-                    <span class="{{ 'positive' if item['pop'] >= 50 else 'negative' }}"
-                          style="font-weight:600;">{{ "%.1f"|format(item['pop'])|replace('.', ',') }}%</span>
+                {% set spop = item.op.pop if item.op.pop else item['pop'] %}
+                <td style="text-align:center; white-space:nowrap;"
+                    title="{{ 'Salvo ao abrir o payoff' if item.op.pop else 'Probability of Profit via Black-Scholes' }}">
+                    {% if spop is not none %}
+                    <span class="{{ 'positive' if spop >= 50 else 'negative' }}"
+                          style="font-weight:600;">{{ "%.1f"|format(spop)|replace('.', ',') }}%</span>
                     {% else %}
                     <span style="color:var(--text-secondary);">—</span>
                     {% endif %}

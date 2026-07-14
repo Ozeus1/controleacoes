@@ -253,7 +253,15 @@
   var modal=document.getElementById('tv-modal');
   window.openTVChart=function(ticker,isIntl){
     ticker=(ticker||'').toUpperCase();
-    MyChart.open(ticker, isIntl);
+    // Passa a cotação atual da linha (mesma da coluna ÚLT./Var.%) para o
+    // cabeçalho do gráfico casar com a tabela.
+    var quote=null;
+    var tr=document.querySelector('#rv-tbody tr[data-ticker="'+ticker+'"]');
+    if(tr){
+      var p=tr.getAttribute('data-price'), v=tr.getAttribute('data-var');
+      if(p!==''&&p!=null) quote={price:parseFloat(p), change:(v!==''&&v!=null)?parseFloat(v):null};
+    }
+    MyChart.open(ticker, isIntl, quote);
   };
   window.closeTVChart=function(){modal.style.display='none';};
   modal.addEventListener('click',function(e){if(e.target===modal)closeTVChart();});

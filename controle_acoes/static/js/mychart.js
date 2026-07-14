@@ -721,11 +721,21 @@ function ensureModal() {
 }
 
 // ── Abertura ──────────────────────────────────────────────────────────────────
-MyChart.open = function(ticker, isIntl) {
+MyChart.open = function(ticker, isIntl, quote) {
     ticker = (ticker || '').toUpperCase().trim();
     var yfticker = ticker;
     if (!isIntl && isB3Ticker(ticker))
         yfticker = ticker + '.SA';
+
+    // Cotação atual vinda da tela que abriu o gráfico (ranking, ações, etc.).
+    // Usada no cabeçalho para casar com a tabela — os candles ficam só p/ o
+    // desenho e como fallback quando o gráfico é aberto sem cotação.
+    var liveQuote = null;
+    if (quote && quote.price != null && !isNaN(parseFloat(quote.price))) {
+        liveQuote = { price: parseFloat(quote.price),
+                      change: (quote.change != null && !isNaN(parseFloat(quote.change)))
+                                ? parseFloat(quote.change) : null };
+    }
 
     ensureModal();
     _modal.style.display = 'flex';
@@ -734,7 +744,7 @@ MyChart.open = function(ticker, isIntl) {
     document.getElementById('mc-change').textContent = '';
     document.getElementById('mc-status').textContent = '⏳ Carregando dados…';
 
-    _state = { ticker: ticker, yfticker: yfticker, period: '8mo',
+    _state = { ticker: ticker, yfticker: yfticker, period: '8mo', liveQuote: liveQuote,
                _vis: [], _layout: null, _crossX: null, _crossY: null };
     _view  = null;
     _setTool('cursor');
@@ -972,12 +982,16 @@ function _draw() {
     ctx.fillStyle = '#fff'; ctx.font = 'bold 10px Inter,sans-serif'; ctx.textAlign = 'left';
     ctx.fillText(fmtPrice(lastClose), W - padR + 4, yLast + 4);
 
-    // Header
-    var chgPct = (lastClose - prevClose) / prevClose * 100;
-    document.getElementById('mc-price').textContent = 'R$ ' + fmtPrice(lastClose);
+    // Header — usa a cotação atual da tela que abriu o gráfico (casa com a
+    // tabela); só cai p/ o último candle quando não veio cotação.
+    var lq = _state && _state.liveQuote;
+    var hdrPrice = (lq && lq.price != null) ? lq.price : lastClose;
+    var hdrChg   = (lq && lq.change != null) ? lq.change
+                                             : (lastClose - prevClose) / prevClose * 100;
+    document.getElementById('mc-price').textContent = 'R$ ' + fmtPrice(hdrPrice);
     var chgEl = document.getElementById('mc-change');
-    chgEl.textContent = (chgPct >= 0 ? '+' : '') + chgPct.toFixed(2).replace('.', ',') + '%';
-    chgEl.style.color = chgPct >= 0 ? '#26a69a' : '#ef5350';
+    chgEl.textContent = (hdrChg >= 0 ? '+' : '') + hdrChg.toFixed(2).replace('.', ',') + '%';
+    chgEl.style.color = hdrChg >= 0 ? '#26a69a' : '#ef5350';
 
     document.getElementById('mc-status').textContent =
         vis.length + ' candles  |  ' + fmtDate(vis[0].t) + ' – ' + fmtDate(vis[vis.length-1].t)

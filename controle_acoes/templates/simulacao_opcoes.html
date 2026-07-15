@@ -207,6 +207,10 @@
                     onclick="editarEmCadeia()"
                     title="Abre o editor da Cadeia de Opções com estas pernas — serve para qualquer estrutura, mesmo fora dos modelos padrão">🔗 Editar em Cadeia de Opções</button>
             <button type="submit" class="btn btn-primary btn-sm">💾 Salvar</button>
+            <button type="submit" name="salvar_producao" value="1" class="btn btn-sm"
+                    style="background:#f59e0b;color:white;"
+                    onclick="return confirm('Salvar esta operação nas tabelas de acompanhamento (página Opções)?\n\nUse quando a operação foi efetivamente lançada na bolsa. A simulação também será salva/atualizada.');"
+                    title="Grava a operação nas tabelas de acompanhamento da página Opções (posição efetivamente lançada na bolsa): 1 opção → tabela da opção; trava de 2 pernas → Travas; demais → Operações Estruturadas">🚀 Salvar em Produção</button>
             {% if sim %}
             <a href="{{ url_for('simulacao_opcoes') }}" class="btn btn-secondary btn-sm">✕ Fechar</a>
             {% endif %}

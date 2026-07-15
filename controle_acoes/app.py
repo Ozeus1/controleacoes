@@ -1901,6 +1901,96 @@ def _build_ticker_maps(uid):
 
     return asset_tickers, option_tickers, ticker_map_text, option_map_text
 
+def _sim_to_producao(sim):
+    """Converte uma simulação em posição REAL de acompanhamento (/opcoes).
+    Classificação automática pela estrutura das pernas:
+      - 1 opção (a seco, ou venda de CALL com ação = coberta) → Option
+      - 2 opções do mesmo tipo/vencimento, 1 compra + 1 venda, mesma qtd → OptionSpread
+      - qualquer outra combinação (incl. pernas de ação) → StructuredOp
+    Retorna (nome_da_tabela_destino, None) ou (None, mensagem_de_erro)."""
+    legs       = list(sim.legs or [])
+    opt_legs   = [l for l in legs if l.leg_type in ('CALL', 'PUT')]
+    stock_legs = [l for l in legs if l.leg_type == 'STOCK']
+    today = date.today()
+
+    if not opt_legs:
+        return None, 'A simulação não tem pernas de opção.'
+    for l in opt_legs:
+        if not (l.ticker or '').strip() or not l.expiration or not l.strike:
+            return None, 'Toda perna de opção precisa de ticker, strike e vencimento.'
+
+    # ── 1 opção → Option (venda coberta quando há perna de ação + venda de CALL)
+    only_covered_stock = (not stock_legs or
+                          (len(opt_legs) == 1 and opt_legs[0].side == 'SELL'
+                           and opt_legs[0].leg_type == 'CALL'))
+    if len(opt_legs) == 1 and only_covered_stock:
+        l = opt_legs[0]
+        ot = ('VENDA_' if l.side == 'SELL' else 'COMPRA_') + l.leg_type
+        db.session.add(Option(
+            user_id=sim.user_id, option_type=ot, ticker=l.ticker.strip().upper(),
+            underlying_asset=(sim.underlying or '').upper(), quantity=l.quantity,
+            strike_price=l.strike, expiration_date=l.expiration,
+            sale_price=l.premium, current_option_price=l.premium,
+            entry_date=today, last_update=now_brt()))
+        labels = {'VENDA_CALL': 'Venda Coberta de Calls', 'VENDA_PUT': 'Venda a Seco de Puts',
+                  'COMPRA_CALL': 'Compra a Seco de Calls', 'COMPRA_PUT': 'Compra a Seco de Puts'}
+        return labels.get(ot, ot), None
+
+    # ── 2 opções mesmo tipo/vencimento, compra + venda, mesma qtd → OptionSpread
+    if (len(opt_legs) == 2 and not stock_legs
+            and opt_legs[0].leg_type == opt_legs[1].leg_type
+            and opt_legs[0].expiration == opt_legs[1].expiration
+            and {opt_legs[0].side, opt_legs[1].side} == {'BUY', 'SELL'}
+            and opt_legs[0].quantity == opt_legs[1].quantity):
+        lb = next(l for l in opt_legs if l.side == 'BUY')
+        ls = next(l for l in opt_legs if l.side == 'SELL')
+        is_call = lb.leg_type == 'CALL'
+        # compra strike menor que a venda = alta; maior = baixa (CALLs e PUTs)
+        alta = lb.strike < ls.strike
+        sp_type = ('TRAVA_ALTA_' if alta else 'TRAVA_BAIXA_') + ('CALL' if is_call else 'PUT')
+        db.session.add(OptionSpread(
+            user_id=sim.user_id, spread_type=sp_type,
+            underlying_asset=(sim.underlying or '').upper(),
+            quantity=lb.quantity, expiration_date=lb.expiration, entry_date=today,
+            leg_long_ticker=lb.ticker.strip().upper(),  leg_long_strike=lb.strike,
+            leg_long_price=lb.premium,  leg_long_current=lb.premium,
+            leg_short_ticker=ls.ticker.strip().upper(), leg_short_strike=ls.strike,
+            leg_short_price=ls.premium, leg_short_current=ls.premium))
+        labels = {'TRAVA_ALTA_CALL': 'Trava de Alta com Calls',
+                  'TRAVA_BAIXA_CALL': 'Trava de Baixa com Calls',
+                  'TRAVA_ALTA_PUT': 'Trava de Alta com Puts',
+                  'TRAVA_BAIXA_PUT': 'Trava de Baixa com Puts'}
+        return labels[sp_type], None
+
+    # ── Demais estruturas → StructuredOp com todas as pernas (incl. ação)
+    op = StructuredOp(user_id=sim.user_id,
+                      name=(sim.name or ('Estruturada ' + (sim.underlying or ''))).strip()[:100],
+                      underlying_asset=(sim.underlying or '').upper(),
+                      status='OPEN', created_at=datetime.now())
+    db.session.add(op)
+    db.session.flush()
+    for l in legs:
+        db.session.add(StructuredLeg(
+            op_id=op.id,
+            ticker=(l.ticker or sim.underlying or '').strip().upper(),
+            side=l.side, opt_type=l.leg_type, quantity=l.quantity,
+            strike=l.strike or 0.0, expiration_date=l.expiration,
+            entry_price=l.premium or 0.0, current_price=l.premium or 0.0,
+            last_update=now_brt()))
+    return 'Operações Estruturadas', None
+
+
+def _sim_producao_redirect(sim):
+    """Trata o clique em 'Salvar em Produção': cria os registros e redireciona."""
+    destino, err = _sim_to_producao(sim)
+    if err:
+        flash('Simulação salva, mas NÃO enviada à produção: ' + err, 'warning')
+        return redirect(url_for('simulacao_edit', id=sim.id))
+    db.session.commit()
+    flash(f'Operação salva em produção na tabela "{destino}". Use Atualizar Cotações para trazer os preços ao vivo.', 'success')
+    return redirect(url_for('opcoes'))
+
+
 @app.route('/simulacao_opcoes')
 @login_required
 def simulacao_opcoes():
@@ -1953,6 +2043,8 @@ def simulacao_new():
             db.session.add(leg)
 
         db.session.commit()
+        if request.form.get('salvar_producao'):
+            return _sim_producao_redirect(sim)
         flash('Simulação salva.', 'success')
         return redirect(url_for('simulacao_edit', id=sim.id))
 
@@ -2007,6 +2099,8 @@ def simulacao_edit(id):
             db.session.add(leg)
 
         db.session.commit()
+        if request.form.get('salvar_producao'):
+            return _sim_producao_redirect(sim)
         flash('Simulação atualizada.', 'success')
         return redirect(url_for('simulacao_edit', id=sim.id))
 

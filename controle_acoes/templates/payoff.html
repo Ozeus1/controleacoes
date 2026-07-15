@@ -95,7 +95,21 @@
                 {% endif %}
                 {% endfor %}
 
+                {# ── Prévia da simulação do manejo (fluxos + novo payoff) ── #}
+                <div id="mj-sim-wrap" style="display:none; margin-top:1rem; border:1px solid var(--border-color);
+                     border-radius:8px; padding:.8rem .9rem; background:rgba(0,0,0,.12);">
+                    <div style="font-size:.8rem; color:var(--text-secondary); margin-bottom:.5rem;">
+                        🔮 <strong>Simulação</strong> — nada foi gravado ainda. Fluxos do manejo e o payoff resultante:
+                    </div>
+                    <div id="mj-sim-boxes" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+                         gap:.6rem; margin-bottom:.7rem;"></div>
+                    <canvas id="mj-sim-cv" width="780" height="230"
+                            style="display:block; width:100%; background:rgba(0,0,0,.18); border-radius:8px;"></canvas>
+                </div>
+
                 <div style="display:flex; gap:.5rem; justify-content:flex-end; margin-top:1rem;">
+                    <button type="button" class="btn btn-sm" style="background:#0ea5e9;color:white;"
+                            onclick="mjSimular()" title="Prévia: quanto sai/entra com o manejo e o novo gráfico de payoff, sem gravar nada">🔮 Simular manejo</button>
                     <button type="button" class="btn btn-secondary btn-sm" onclick="closeManejo()">Cancelar</button>
                     <button type="submit" class="btn btn-warning btn-sm">🔧 Confirmar Manejo</button>
                 </div>
@@ -111,9 +125,206 @@
         var fields = fs.querySelector('.mj-fields');
         fields.style.display = chk.checked ? 'grid' : 'none';
         fields.querySelectorAll('input').forEach(function (i) { i.disabled = !chk.checked; });
+        mjSimRefresh();
     }
     document.getElementById('manejo-modal').addEventListener('click', function (ev) {
         if (ev.target === this) closeManejo();
+    });
+
+    /* ── Simulação de manejo: fluxos + novo payoff (autossuficiente) ────────── */
+    var MJ_LEGS = {{ legs_json | safe }};
+    var MJ_ROLL_ADJ = {{ roll_adjustment|default(0)|tojson }};
+    // SELIC_RATE é definida num <script> posterior — resolve na hora do uso
+    function MJ_R() { return Math.log(1 + (typeof SELIC_RATE !== 'undefined' ? SELIC_RATE : 14.5) / 100); }
+
+    function mjNum(v) { return parseFloat(String(v == null ? '' : v).replace(',', '.')) || 0; }
+    function mjNcdf(x) {
+        var t = 1 / (1 + 0.2316419 * Math.abs(x));
+        var p = t * (0.319381530 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+        var c = 1 - Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI) * p;
+        return x >= 0 ? c : 1 - c;
+    }
+    function mjBS(S, K, T, sig, isCall) {
+        if (T <= 0 || sig <= 0) return Math.max(0, isCall ? S - K : K - S);
+        var rr = MJ_R();
+        var d1 = (Math.log(S / K) + (rr + 0.5 * sig * sig) * T) / (sig * Math.sqrt(T));
+        var d2 = d1 - sig * Math.sqrt(T);
+        if (isCall) return S * mjNcdf(d1) - K * Math.exp(-rr * T) * mjNcdf(d2);
+        return K * Math.exp(-rr * T) * mjNcdf(-d2) - S * mjNcdf(-d1);
+    }
+    function mjSpot() {
+        var cv = document.getElementById('payoff-chart');
+        return cv ? (parseFloat(cv.dataset.spot) || 0) : 0;
+    }
+    function mjIV(l) {   // IV por bissecção a partir do prêmio de entrada
+        var today = new Date(); today.setHours(0, 0, 0, 0);
+        var T = l.exp ? Math.max((new Date(l.exp + 'T00:00:00') - today) / (365.25 * 864e5), 1 / 365) : 30 / 365;
+        var S0 = mjSpot() || l.strike;
+        if (!l.entry || l.entry <= 0 || !l.strike) return 0.30;
+        var lo = 0.001, hi = 5.0;
+        for (var i = 0; i < 60; i++) {
+            var mid = (lo + hi) / 2;
+            if (mjBS(S0, l.strike, T, mid, l.type === 'CALL') < l.entry) lo = mid; else hi = mid;
+            if (hi - lo < 1e-6) break;
+        }
+        return (lo + hi) / 2;
+    }
+
+    function mjCollect() {
+        // Constrói pernas simuladas + fluxos de caixa do manejo
+        var byId = {};
+        MJ_LEGS.forEach(function (l) { byId[l.id] = l; });
+        var sim = [], saiu = 0, entrou = 0, realizado = 0, algum = false;
+        MJ_LEGS.filter(function (l) { return l.opt_type === 'STOCK'; }).forEach(function (l) {
+            sim.push({side: l.side, type: 'STOCK', qty: l.quantity, strike: 0,
+                      entry: l.entry_price || 0, exp: ''});
+        });
+        document.querySelectorAll('#manejo-modal .mj-leg').forEach(function (fs) {
+            var idEl = fs.querySelector('[name=leg_id]');
+            var l = idEl ? byId[parseInt(idEl.value)] : null;
+            if (!l) return;
+            var base = {side: l.side, type: l.opt_type, qty: l.quantity,
+                        strike: l.strike || 0, entry: l.entry_price || 0,
+                        exp: l.expiration_date || ''};
+            if (!fs.querySelector('.mj-chk').checked) { sim.push(base); return; }
+            algum = true;
+            var close = mjNum(fs.querySelector('[name=leg_close_price]').value);
+            var nk    = mjNum(fs.querySelector('[name=leg_new_strike]').value) || base.strike;
+            var np    = mjNum(fs.querySelector('[name=leg_new_premium]').value);
+            var ne    = fs.querySelector('[name=leg_new_exp]').value || base.exp;
+            var q     = l.quantity;
+            if (l.side === 'SELL') {           // recompra a antiga, vende a nova
+                saiu += close * q;  realizado += (base.entry - close) * q;  entrou += np * q;
+            } else {                            // vende a antiga, compra a nova
+                entrou += close * q; realizado += (close - base.entry) * q; saiu += np * q;
+            }
+            sim.push({side: l.side, type: l.opt_type, qty: q, strike: nk, entry: np, exp: ne});
+        });
+        return {legs: sim, saiu: saiu, entrou: entrou, realizado: realizado, algum: algum};
+    }
+
+    function mjPayoffFn(simLegs, adj) {
+        var exps = simLegs.filter(function (l) { return l.type !== 'STOCK' && l.exp; })
+                          .map(function (l) { return l.exp; })
+                          .filter(function (v, i, a) { return a.indexOf(v) === i; }).sort();
+        var multi = exps.length > 1, refD = exps.length ? new Date(exps[0] + 'T00:00:00') : null;
+        var net = simLegs.reduce(function (a, l) {
+            return a + (l.side === 'SELL' ? 1 : -1) * l.qty * (l.type === 'STOCK' ? l.entry : l.entry);
+        }, 0);
+        return function (S) {
+            var total = net + adj;
+            simLegs.forEach(function (l) {
+                var sign = l.side === 'BUY' ? 1 : -1;
+                if (l.type === 'STOCK') { total += sign * l.qty * S; return; }
+                var isCall = l.type === 'CALL';
+                var Trem = 0;
+                if (multi && refD && l.exp)
+                    Trem = Math.max((new Date(l.exp + 'T00:00:00') - refD) / (365.25 * 864e5), 0);
+                if (Trem < 1 / 365) total += sign * l.qty * Math.max(0, isCall ? S - l.strike : l.strike - S);
+                else                total += sign * l.qty * mjBS(S, l.strike, Trem, mjIV(l), isCall);
+            });
+            return total;
+        };
+    }
+
+    function mjFmt(v) {
+        return 'R$ ' + Math.abs(v).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+    function mjBox(lbl, val, cls) {
+        return '<div style="background:var(--hover-bg,#334155); border-radius:6px; padding:.45rem .6rem;">' +
+               '<div style="font-size:.68rem; color:var(--text-secondary); text-transform:uppercase;">' + lbl + '</div>' +
+               '<div class="' + (cls || '') + '" style="font-weight:700; font-size:.9rem;">' + val + '</div></div>';
+    }
+
+    window.mjSimular = function () {
+        var c = mjCollect();
+        var wrap = document.getElementById('mj-sim-wrap');
+        if (!c.algum) {
+            wrap.style.display = 'block';
+            document.getElementById('mj-sim-boxes').innerHTML =
+                '<div style="grid-column:1/-1; font-size:.82rem; color:var(--text-secondary);">Marque ao menos uma perna para simular o manejo.</div>';
+            document.getElementById('mj-sim-cv').style.display = 'none';
+            return;
+        }
+        var saldo = c.entrou - c.saiu;
+        var f = mjPayoffFn(c.legs, MJ_ROLL_ADJ + c.realizado);
+
+        // Amostra a curva p/ máximos e breakevens
+        var ks = c.legs.map(function (l) { return l.strike; }).filter(Boolean);
+        var kMin = ks.length ? Math.min.apply(null, ks) : 10;
+        var kMax = ks.length ? Math.max.apply(null, ks) : 60;
+        var pad = Math.max((kMax - kMin) * 0.55, kMax * 0.25);
+        var lo = Math.max(0.01, kMin - pad), hi = kMax + pad, N = 300;
+        var xs = [], ys = [], yMin = 1e18, yMax = -1e18;
+        for (var i = 0; i <= N; i++) {
+            var S = lo + (hi - lo) * i / N, v = f(S);
+            xs.push(S); ys.push(v);
+            if (v < yMin) yMin = v; if (v > yMax) yMax = v;
+        }
+        var bes = [];
+        for (var b = 1; b <= N; b++) {
+            if ((ys[b - 1] < 0 && ys[b] >= 0) || (ys[b - 1] >= 0 && ys[b] < 0)) {
+                var x0 = xs[b - 1], x1 = xs[b], y0 = ys[b - 1], y1 = ys[b];
+                bes.push(x0 + (0 - y0) * (x1 - x0) / (y1 - y0));
+            }
+        }
+        var gainUnl = ys[N] > ys[N - 1] + 1e-9, lossUnl = ys[N] < ys[N - 1] - 1e-9;
+        var gainDn  = ys[0] > ys[1] + 1e-9,    lossDn  = ys[0] < ys[1] - 1e-9;
+
+        document.getElementById('mj-sim-boxes').innerHTML =
+            mjBox('💸 Sai (recompras + novas compras)', '−' + mjFmt(c.saiu), 'negative') +
+            mjBox('💰 Entra (vendas + novos prêmios)', '+' + mjFmt(c.entrou), 'positive') +
+            mjBox('Saldo do manejo', (saldo >= 0 ? '+' : '−') + mjFmt(saldo), saldo >= 0 ? 'positive' : 'negative') +
+            mjBox('Resultado realizado (fechamentos)', (c.realizado >= 0 ? '+' : '−') + mjFmt(c.realizado),
+                  c.realizado >= 0 ? 'positive' : 'negative') +
+            mjBox('Novo lucro máx.', (gainUnl || gainDn) ? 'ILIMITADO 🚀' : mjFmt(yMax), 'positive') +
+            mjBox('Nova perda máx.', (lossUnl || lossDn) ? 'ILIMITADA ⚠️' : mjFmt(yMin), 'negative') +
+            mjBox('Novo(s) breakeven(s)', bes.length ? bes.map(function (x) {
+                return x.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            }).join(' / ') : '—', '');
+
+        // Desenha o novo payoff
+        var cv = document.getElementById('mj-sim-cv');
+        cv.style.display = 'block';
+        var ctx = cv.getContext('2d'), W = cv.width, H = cv.height;
+        var padY = Math.max((yMax - yMin) * 0.15, 1); var y0v = yMin - padY, y1v = yMax + padY;
+        function X(S) { return 8 + (W - 16) * (S - lo) / (hi - lo); }
+        function Y(v) { return H - 12 - (H - 24) * (v - y0v) / (y1v - y0v); }
+        ctx.clearRect(0, 0, W, H);
+        var yz = Y(0);
+        for (var j = 0; j < N; j++) {
+            ctx.beginPath();
+            ctx.moveTo(X(xs[j]), yz); ctx.lineTo(X(xs[j]), Y(ys[j]));
+            ctx.lineTo(X(xs[j + 1]), Y(ys[j + 1])); ctx.lineTo(X(xs[j + 1]), yz); ctx.closePath();
+            ctx.fillStyle = (ys[j] + ys[j + 1]) / 2 >= 0 ? 'rgba(16,185,129,.20)' : 'rgba(248,113,113,.18)';
+            ctx.fill();
+        }
+        ctx.strokeStyle = 'rgba(148,163,184,.6)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(8, yz); ctx.lineTo(W - 8, yz); ctx.stroke();
+        ctx.setLineDash([3, 3]); ctx.strokeStyle = 'rgba(251,191,36,.5)';
+        ks.filter(function (v, i2, a) { return a.indexOf(v) === i2; }).forEach(function (k) {
+            ctx.beginPath(); ctx.moveTo(X(k), 8); ctx.lineTo(X(k), H - 8); ctx.stroke();
+        });
+        var sp = mjSpot();
+        if (sp > lo && sp < hi) {
+            ctx.strokeStyle = 'rgba(56,189,248,.7)';
+            ctx.beginPath(); ctx.moveTo(X(sp), 8); ctx.lineTo(X(sp), H - 8); ctx.stroke();
+        }
+        ctx.setLineDash([]);
+        ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.beginPath();
+        for (var m2 = 0; m2 <= N; m2++) { m2 ? ctx.lineTo(X(xs[m2]), Y(ys[m2])) : ctx.moveTo(X(xs[m2]), Y(ys[m2])); }
+        ctx.stroke();
+        wrap.style.display = 'block';
+    };
+
+    // Recalcula ao editar campos com a prévia aberta
+    function mjSimRefresh() {
+        var wrap = document.getElementById('mj-sim-wrap');
+        if (wrap && wrap.style.display !== 'none') mjSimular();
+    }
+    document.querySelectorAll('#manejo-modal input').forEach(function (i) {
+        i.addEventListener('input', mjSimRefresh);
+        i.addEventListener('change', mjSimRefresh);
     });
     </script>
     {% endif %}

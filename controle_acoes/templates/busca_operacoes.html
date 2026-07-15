@@ -100,6 +100,7 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
     <button class="bo-obtn" data-op="venda_put_itm">🔽 Venda de PUT</button>
     <button class="bo-obtn" data-op="straddle_vendido">⚖️ Straddle vendido</button>
     <button class="bo-obtn" data-op="strangle_vendido">🔗 Strangle vendido</button>
+    <button class="bo-obtn" data-op="zebra">🦓 ZEBRA</button>
   </div>
 
   <!-- Vencimentos: incluir semanais + janela de prazo -->
@@ -201,7 +202,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     vaca_put:      '🐄 Vaca de Baixa (PUTs) — +1 PUT alta, −2 PUTs médias, +1 PUT baixa (lucro máximo se cair até o strike médio)',
     venda_put_itm: '🔽 Venda de PUT — strike de 10% OTM até 20% ITM (mensais; prêmio pelo último negócio; remuneração sobre o strike)',
     straddle_vendido: '⚖️ Straddle vendido — venda de 1 CALL + 1 PUT no strike ATM (o mais próximo do spot; crédito duplo, lucro se o papel ficar parado)',
-    strangle_vendido: '🔗 Strangle vendido — venda de CALL OTM + PUT OTM, delta entre 15 e 35 em cada ponta (lucro se o papel ficar entre os strikes)'
+    strangle_vendido: '🔗 Strangle vendido — venda de CALL OTM + PUT OTM, delta entre 15 e 35 em cada ponta (lucro se o papel ficar entre os strikes)',
+    zebra: '🦓 ZEBRA — compra 2 CALLs ITM (Δ ≈ 0,70) + venda 1 CALL ATM (Δ ≈ 0,50); delta ≈ +1 com extrínseco líquido ≈ 0 (substitui a ação com fração do capital, Theta ~zero)'
   };
 
   // ── Utilitários ────────────────────────────────────────────────────────────
@@ -635,6 +637,30 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     return h + '</tbody></table></div>';
   }
 
+  function zebraTable(rows, expIdx) {
+    if (!rows.length) return '<div class="bo-empty">Nenhuma ZEBRA com extrínseco líquido ≈ 0 neste vencimento (precisa de CALLs ITM Δ 55–85 e ATM líquidas).</div>';
+    var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
+      '<th>Compra 2× (ask)</th><th>K</th><th>Ask</th><th>Δ</th>' +
+      '<th>Venda 1× (bid)</th><th>K</th><th>Bid</th><th>Δ</th>' +
+      '<th>Custo (débito)</th><th>% do spot</th><th>Extrínseco líq.</th>' +
+      '<th>Δ total</th><th>Breakeven</th><th>POP</th></tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += rowAttr(expIdx, j) +
+        '<td><span class="bo-badge call">2× ' + r.buy_symbol + '</span></td>' +
+        '<td>' + brl(r.buy_strike) + '</td><td>' + brl(r.buy_ask) + '</td><td>' + fmt(r.buy_delta, 1) + '</td>' +
+        '<td><span class="bo-badge put">−1× ' + r.sell_symbol + '</span></td>' +
+        '<td>' + brl(r.sell_strike) + '</td><td>' + brl(r.sell_bid) + srcTag(r.sell_src) + '</td><td>' + fmt(r.sell_delta, 1) + '</td>' +
+        '<td><strong>' + brl(r.cost) + '</strong></td>' +
+        '<td>' + fmt(r.cost_pct_spot, 1) + '%</td>' +
+        '<td class="' + (Math.abs(r.net_extr) <= 0.05 ? 'pos' : '') + '">' + brl(r.net_extr) + '</td>' +
+        '<td class="pos">' + fmt(r.net_delta / 100, 2) + '</td>' +
+        '<td>' + brl(r.breakeven) + ' (' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%)</td>' +
+        '<td class="' + (r.pop >= 50 ? 'pos' : '') + '">' + (r.pop != null ? fmt(r.pop, 1) + '%' : '—') + '</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
   var GEN_OPS = ['boi_coberto', 'vaca_tradicional', 'vaca_revertida', 'borboleta', 'condor'];
 
   function legStr(l) {
@@ -708,6 +734,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       case 'venda_put_itm': return vendaPutItmTable(rows, expIdx);
       case 'straddle_vendido': return straddleTable(rows, expIdx);
       case 'strangle_vendido': return strangleTable(rows, expIdx);
+      case 'zebra':         return zebraTable(rows, expIdx);
       default:              return '';
     }
   }
@@ -846,6 +873,25 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         ct2: r.call_sell_symbol, ck2: r.call_sell_strike, cp2: r.call_sell_bid,
         dt: r.call_buy_symbol,  dk: r.call_buy_strike,  dp: r.call_buy_ask});
       return {title: title, boxes: boxes, href: '/venda_puts?' + spIC.toString() + '#estrutura'};
+    }
+
+    if (op === 'zebra') {
+      title = 'ZEBRA ' + d.ticker + ' — 2× ' + r.buy_symbol + ' / −1× ' + r.sell_symbol;
+      var costZ = r.cost * qty;
+      boxes = [
+        ['Compra 2× ' + r.buy_symbol + ' (K ' + brl(r.buy_strike) + ')', brl(r.buy_ask * 2 * qty), 'neg'],
+        ['Venda 1× ' + r.sell_symbol + ' (K ' + brl(r.sell_strike) + ')', brl(r.sell_bid * qty), 'pos'],
+        ['Custo (débito)', brl(costZ), 'neg'],
+        ['Capital vs comprar a ação', fmt(r.cost_pct_spot, 1) + '% (ação: ' + brl(d.spot * qty) + ')', 'pos'],
+        ['Extrínseco líquido', brl(r.net_extr * qty), Math.abs(r.net_extr) <= 0.05 ? 'pos' : ''],
+        ['Delta total', '≈ ' + fmt(r.net_delta / 100, 2) + ' por ação', ''],
+        ['Breakeven', brl(r.breakeven) + ' (' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%)', ''],
+        ['Perda máxima (abaixo de ' + brl(r.buy_strike) + ')', brl(costZ), 'neg'],
+        ['Acima do breakeven', 'Acompanha a ação ~1:1 🚀', 'pos'],
+        ['POP (prob. de lucro)', r.pop != null ? fmt(r.pop, 1) + '%' : '—', r.pop >= 50 ? 'pos' : ''],
+        ['Prazo (dias corridos)', dc + ' d.c.', '']
+      ];
+      return {title: title, boxes: boxes, href: cadeiaHref(d, e, r, qty)};
     }
 
     var stParams = {st: '1', ativo: d.ticker, spot: spot, qty: qty, exp: e.exp};
@@ -1054,7 +1100,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     vaca_travada:'Vaca Travada', boi_coberto:'Boi Coberto', vaca_tradicional:'Vaca Tradicional',
     vaca_revertida:'Vaca Revertida', borboleta:'Borboleta', condor:'Condor',
     iron_condor:'Iron Condor', boi_put:'Boi com PUT', vaca_put:'Vaca de Baixa (PUTs)',
-    venda_put_itm:'Venda de PUT', straddle_vendido:'Straddle vendido', strangle_vendido:'Strangle vendido'
+    venda_put_itm:'Venda de PUT', straddle_vendido:'Straddle vendido', strangle_vendido:'Strangle vendido',
+    zebra:'ZEBRA'
   };
 
   function cadeiaLegs(d, e, r) {
@@ -1111,6 +1158,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       leg(r.high_symbol, 'PUT', 'BUY', 1, r.high_ask, r.high_strike);
       leg(r.mid_symbol, 'PUT', 'SELL', 2, r.mid_bid, r.mid_strike);
       leg(r.low_symbol, 'PUT', 'BUY', 1, r.low_ask, r.low_strike);
+    } else if (op === 'zebra') {
+      leg(r.buy_symbol, 'CALL', 'BUY', 2, r.buy_ask, r.buy_strike);
+      leg(r.sell_symbol, 'CALL', 'SELL', 1, r.sell_bid, r.sell_strike);
     }
     return L;
   }

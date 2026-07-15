@@ -504,7 +504,7 @@ var OPS=[
  cenario:'Substitui a compra da ação com fração do capital e SEM pagar valor extrínseco — a venda ATM paga o extrínseco das compradas (Theta ~zero). Versão de PUTs espelha para baixa.',
  sel:['Vencimento: DTE 45–90d','Compradas: 2× ITM Δ ≈ 0,70 · Vendida: 1× ATM Δ ≈ 0,50','Extrínseco líquido ≈ 0 (ajustar strikes até praticamente zerar)'],
  man:['Gerenciar como posição comprada na ação (Δ ≈ 1)','Stop: abaixo do breakeven (≈ preço atual na montagem)','Rolar para manter a exposição'],
- busca:null},
+ busca:B(BO,'zebra')},
 {cat:'cat-sint',nome:'Fence (Cerca)',cen:'lateral',tipo:'zero',
  legs:[{t:'S',q:1},{t:'P',q:1,K:96,p:2.5},{t:'P',q:-1,K:88,p:1},{t:'C',q:-1,K:108,p:2}],
  mont:'Ação + PUT comprada + PUT mais OTM vendida + CALL OTM vendida (variação do collar).',

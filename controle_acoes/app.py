@@ -4488,6 +4488,59 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: -x['credit_pct'])
             rows = _diversify(rows, lambda x: x['call_symbol'], per_key=2)
 
+        elif op == 'zebra':
+            # ZEBRA (Zero Extrinsic Back Ratio): compra 2 CALLs ITM (Δ ≈ 0,70)
+            # + venda 1 CALL ATM (Δ ≈ 0,50). Delta total ≈ +1,0 e extrínseco
+            # líquido ≈ 0 — a venda ATM paga o extrínseco das compradas.
+            # Substitui a compra da ação com fração do capital e Theta ~zero.
+            T = dc / 365.0
+            itm_cands, atm_cands = [], []
+            for c in calls_ok:
+                d_c = _leg_delta_pct(c, True, T)
+                if d_c is None:
+                    continue
+                if c['strike'] < spot and 55 <= d_c <= 85 and c['ask'] > 0:
+                    itm_cands.append((c, d_c))
+                elif abs(c['strike'] - spot) / spot <= 0.05 and 38 <= d_c <= 62:
+                    prem, src = _sell_prem(c)
+                    if prem:
+                        atm_cands.append((c, d_c, prem, src))
+            for ci, d_i in itm_cands:
+                for ca, d_a, a_prem, a_src in atm_cands:
+                    if ca['strike'] <= ci['strike']:
+                        continue
+                    cost = 2 * ci['ask'] - a_prem          # débito por ação
+                    if cost <= 0:
+                        continue
+                    intr_i = max(0.0, spot - ci['strike'])
+                    intr_a = max(0.0, spot - ca['strike'])
+                    net_extr = 2 * (ci['ask'] - intr_i) - (a_prem - intr_a)
+                    # extrínseco líquido precisa ser ~zero (tolerância 2% do spot)
+                    if net_extr > 0.02 * spot:
+                        continue
+                    net_delta = round(2 * d_i - d_a, 1)     # escala 0-100
+                    k_i, k_a = ci['strike'], ca['strike']
+                    be_mid = k_i + cost / 2                 # BE entre os strikes
+                    be = be_mid if be_mid <= k_a else (2 * k_i - k_a + cost)
+                    iv = _iv_est(ca, True, T) or _iv_est(ci, True, T)
+                    pop = _pop_above(be, T, iv)
+                    rows.append({
+                        'buy_symbol':  ci['symbol'], 'buy_strike':  k_i,
+                        'buy_ask':     ci['ask'],    'buy_delta':   d_i,
+                        'sell_symbol': ca['symbol'], 'sell_strike': k_a,
+                        'sell_bid':    round(a_prem, 2), 'sell_src': a_src,
+                        'sell_delta':  d_a,
+                        'cost':        round(cost, 2),
+                        'cost_pct_spot': round(cost / spot * 100, 1),
+                        'net_extr':    round(net_extr, 2),
+                        'net_delta':   net_delta,
+                        'breakeven':   round(be, 2),
+                        'be_dist':     round((be - spot) / spot * 100, 2),
+                        'pop':         round(pop, 1) if pop is not None else None,
+                    })
+            rows.sort(key=lambda x: abs(x['net_extr']))
+            rows = _diversify(rows, lambda x: x['buy_symbol'], per_key=2)
+
         expirations.append({
             'exp':          exp,
             'dc':           dc,

@@ -2,13 +2,21 @@
 {% block content %}
 <div class="card" style="max-width: 860px; margin: 0 auto; padding: 2rem;">
 
-    <h2>{% if edit %}Editar{% else %}Nova{% endif %} Operação Estruturada</h2>
+    <h2>{% if edit %}Editar{% else %}Nova{% endif %} {% if intl %}Operação Tastytrade 🇺🇸{% else %}Operação Estruturada{% endif %}</h2>
+    {% if intl %}
+    <p style="color:var(--text-secondary);font-size:.85rem;margin:.3rem 0 .6rem;">
+        Opções internacionais: informe os valores em <strong>US$</strong>. Os prêmios das opções são
+        atualizados <strong>manualmente</strong> (edite a operação e ajuste a "Cotação atual" de cada perna);
+        apenas a cotação do ativo subjacente é buscada no Yahoo (use o ticker internacional, ex.: AAPL, SPY).
+    </p>
+    {% endif %}
     <p style="color: var(--text-secondary); margin-bottom: 1.5rem; font-size: .9rem;">
         Monte uma operação com quantas pernas precisar — compra e venda de calls, puts e ações. O sistema calculará
         automaticamente o crédito/débito de montagem, lucro máximo, prejuízo máximo e breakeven(s).
     </p>
 
     <form method="POST" action="{{ url_for('edit_estruturada', id=op.id) if edit else url_for('add_estruturada') }}">
+        {% if intl and not edit %}<input type="hidden" name="intl" value="1">{% endif %}
 
         {# ── Dados gerais ── #}
         <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem;">

@@ -397,6 +397,12 @@ def run_migrations():
             print("[MIGRATION] Added structured_op.pop")
         except Exception:
             pass
+    if 'intl' not in sop_cols:
+        try:
+            cursor.execute("ALTER TABLE structured_op ADD COLUMN intl BOOLEAN DEFAULT 0")
+            print("[MIGRATION] Added structured_op.intl")
+        except Exception:
+            pass
 
     # Add underlying and notes columns to trade_history if missing
     cursor.execute("PRAGMA table_info(trade_history)")
@@ -1330,12 +1336,13 @@ def opcoes():
         else:
             spreads_baixa_call.append(item)
 
-    # Process operações estruturadas
+    # Process operações estruturadas (nacionais) e Tastytrade (internacionais)
     raw_ops = StructuredOp.query.filter_by(user_id=current_user.id, status='OPEN').all()
-    structured_ops = []
+    structured_ops, tastytrade_ops = [], []
     for op in raw_ops:
         metrics = _calc_structured_metrics_safe(op)
-        structured_ops.append({'op': op, **metrics})
+        item = {'op': op, **metrics}
+        (tastytrade_ops if getattr(op, 'intl', False) else structured_ops).append(item)
 
     oplab_token_ok = bool(Settings.get_value('oplab_token', user_id=current_user.id))
     return render_template('opcoes.html', options=processed_options,
@@ -1346,6 +1353,7 @@ def opcoes():
                            spreads_baixa_put=spreads_baixa_put,
                            spreads_baixa_call=spreads_baixa_call,
                            structured_ops=structured_ops,
+                           tastytrade_ops=tastytrade_ops,
                            oplab_token_ok=oplab_token_ok,
                            today=date.today())
 
@@ -1606,6 +1614,7 @@ def add_estruturada():
                 name=name,
                 underlying_asset=underlying_asset,
                 uses_stock_collateral=uses_collateral,
+                intl=request.form.get('intl') == '1',   # Tastytrade (internacional)
                 status='OPEN',
                 created_at=datetime.now(),
             )
@@ -1641,7 +1650,8 @@ def add_estruturada():
             flash(f'Erro ao salvar: {e}', 'danger')
         return redirect(url_for('opcoes'))
 
-    return render_template('estruturada_form.html', op=None, edit=False)
+    return render_template('estruturada_form.html', op=None, edit=False,
+                           intl=request.args.get('intl') == '1')
 
 
 @app.route('/estruturada/<int:id>/edit', methods=['GET', 'POST'])
@@ -1701,7 +1711,8 @@ def edit_estruturada(id):
             flash(f'Erro: {e}', 'danger')
         return redirect(url_for('opcoes'))
 
-    return render_template('estruturada_form.html', op=op, edit=True)
+    return render_template('estruturada_form.html', op=op, edit=True,
+                           intl=bool(getattr(op, 'intl', False)))
 
 
 @app.route('/estruturada/<int:id>/close', methods=['POST'])
@@ -5382,7 +5393,22 @@ def payoff_estruturada(id):
     ]
     exp_dates = [leg.expiration_date for leg in op.legs if leg.expiration_date]
     expiration = max(exp_dates).strftime('%d/%m/%Y') if exp_dates else ''
-    und_price, und_change = _get_underlying_quote(op.underlying_asset, current_user.id)
+    if getattr(op, 'intl', False):
+        # Tastytrade: subjacente internacional — Yahoo sem sufixo .SA;
+        # fallback no valor salvo pelo último Atualizar Cotações.
+        und_price, und_change = None, None
+        try:
+            from services import _yf_fast_info
+            d = _yf_fast_info(op.underlying_asset.strip().upper(),
+                              op.underlying_asset) if op.underlying_asset else None
+            if d and d.get('price'):
+                und_price, und_change = d['price'], d.get('change_percent')
+        except Exception:
+            pass
+        if not und_price:
+            und_price, und_change = op.underlying_price, op.underlying_change
+    else:
+        und_price, und_change = _get_underlying_quote(op.underlying_asset, current_user.id)
     t_days = max((max(exp_dates) - date.today()).days, 1) if exp_dates else 30
     days_nearest = max((min(exp_dates) - date.today()).days, 0) if exp_dates else None
     import json as _json
@@ -12351,10 +12377,15 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
         StructuredOp.user_id == uid, StructuredOp.status == 'OPEN'
     ).all()
     for leg in struct_legs_bulk:
+        # Tastytrade (intl): pernas são atualizadas MANUALMENTE — não vão à OpLab
+        if getattr(leg.operation, 'intl', False):
+            continue
         if leg.ticker:
             option_tickers.add(leg.ticker.upper())
     struct_ops_bulk = StructuredOp.query.filter_by(user_id=uid, status='OPEN').all()
     for sop in struct_ops_bulk:
+        if getattr(sop, 'intl', False):
+            continue   # subjacente intl vai ao Yahoo (sem .SA) mais abaixo
         if sop.underlying_asset:
             asset_tickers.add(sop.underlying_asset.upper())
 
@@ -12605,6 +12636,8 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
 
     # ── Atualiza pernas de OperaçõesEstruturadas ──────────────────
     for leg in struct_legs_bulk:
+        if getattr(leg.operation, 'intl', False):
+            continue   # Tastytrade: prêmios mantidos manualmente
         k = (leg.ticker or '').upper()
         if k in prices and prices[k] > 0:
             leg.current_price = prices[k]
@@ -12613,12 +12646,32 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
 
     # ── Atualiza underlying de OperaçõesEstruturadas ──────────────
     for sop in struct_ops_bulk:
+        if getattr(sop, 'intl', False):
+            continue
         if sop.underlying_asset:
             uk = sop.underlying_asset.upper()
             if uk in prices and prices[uk] > 0:
                 sop.underlying_price = prices[uk]
             if uk in variations:
                 sop.underlying_change = variations[uk]
+
+    # ── Tastytrade (intl): somente o SUBJACENTE, via Yahoo sem .SA ─
+    # (AAPL, SPY, TSLA…). As pernas de opção não são tocadas.
+    try:
+        from services import _yf_fast_info as _yfi_intl
+        _intl_cache = {}
+        for sop in struct_ops_bulk:
+            if not getattr(sop, 'intl', False) or not sop.underlying_asset:
+                continue
+            t = sop.underlying_asset.strip().upper()
+            if t not in _intl_cache:
+                _intl_cache[t] = _yfi_intl(t, t)   # ticker internacional puro
+            d = _intl_cache[t]
+            if d and d.get('price'):
+                sop.underlying_price  = d['price']
+                sop.underlying_change = d.get('change_percent')
+    except Exception:
+        pass
 
     # ── Atualiza PutSales ─────────────────────────────────────────
     for ps in put_sales:

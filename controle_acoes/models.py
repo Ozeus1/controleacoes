@@ -367,6 +367,7 @@ class StructuredOp(db.Model):
     uses_stock_collateral = db.Column(db.Boolean, default=False)  # ação em carteira como garantia
     status                = db.Column(db.String(10), default='OPEN')   # OPEN | CLOSED
     pop                   = db.Column(db.Float, nullable=True)  # POP salvo ao abrir o payoff
+    intl                  = db.Column(db.Boolean, default=False)  # Tastytrade: opções internacionais (atualização manual)
     created_at    = db.Column(db.DateTime, default=datetime.now)
     roll_history  = db.Column(db.Text, nullable=True)  # JSON array de rolagens
     legs = db.relationship('StructuredLeg', backref='operation', lazy=True,

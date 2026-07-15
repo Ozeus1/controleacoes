@@ -107,9 +107,12 @@
                             style="display:block; width:100%; background:rgba(0,0,0,.18); border-radius:8px;"></canvas>
                 </div>
 
-                <div style="display:flex; gap:.5rem; justify-content:flex-end; margin-top:1rem;">
+                <div style="display:flex; gap:.5rem; justify-content:flex-end; margin-top:1rem; flex-wrap:wrap;">
                     <button type="button" class="btn btn-sm" style="background:#0ea5e9;color:white;"
                             onclick="mjSimular()" title="Prévia: quanto sai/entra com o manejo e o novo gráfico de payoff, sem gravar nada">🔮 Simular manejo</button>
+                    <button type="button" class="btn btn-sm" style="background:#0d9488;color:white;"
+                            onclick="mjAbrirSimulador()"
+                            title="Abre o simulador de Rolagem no modo Manejo com estas pernas — lá é possível varrer a cadeia (10/20 strikes, semanais, prazo) e SALVAR a simulação">📆 Simular/salvar na Rolagem</button>
                     <button type="button" class="btn btn-secondary btn-sm" onclick="closeManejo()">Cancelar</button>
                     <button type="submit" class="btn btn-warning btn-sm">🔧 Confirmar Manejo</button>
                 </div>
@@ -133,6 +136,22 @@
 
     /* ── Simulação de manejo: fluxos + novo payoff (autossuficiente) ────────── */
     var MJ_LEGS = {{ legs_json | safe }};
+    var MJ_TITLE = {{ title|default('')|tojson }};
+    var MJ_UND = {{ underlying|default('')|tojson }};
+    var MJ_OPID = {{ manage_op_id|tojson }};
+
+    // Abre o simulador de Rolagem já no modo MANEJO com as pernas atuais
+    window.mjAbrirSimulador = function () {
+        var legsStr = MJ_LEGS.filter(function (l) { return l.opt_type !== 'STOCK'; })
+            .map(function (l) {
+                return [l.ticker, l.opt_type, l.side, l.quantity,
+                        (l.entry_price || 0), (l.strike || 0),
+                        (l.expiration_date || '')].join(',');
+            }).join('|');
+        var q = new URLSearchParams({roll: '1', mode: 'MANEJO', ativo: MJ_UND,
+            nome: ('Manejo ' + MJ_TITLE).slice(0, 60), src: 'est:' + MJ_OPID, legs: legsStr});
+        window.open('/rolagem-opcoes?' + q.toString(), '_blank');
+    };
     var MJ_ROLL_ADJ = {{ roll_adjustment|default(0)|tojson }};
     // SELIC_RATE é definida num <script> posterior — resolve na hora do uso
     function MJ_R() { return Math.log(1 + (typeof SELIC_RATE !== 'undefined' ? SELIC_RATE : 14.5) / 100); }

@@ -20,7 +20,7 @@
     <div id="saved-list" class="saved-list" style="margin-bottom:1rem;"></div>
     <div class="roll-grid">
       <div class="roll-field span-4"><label>Nome da simulacao</label><input id="roll-name" placeholder="Ex: Rolagem BOVA11 junho"></div>
-      <div class="roll-field span-4"><label>Tipo de rolagem</label><div class="roll-tabs"><button class="roll-tab active" data-roll-type="TIME" type="button">Tempo</button><button class="roll-tab" data-roll-type="STRIKE" type="button">Strike</button><button class="roll-tab" data-roll-type="TIME_STRIKE" type="button">Tempo+Strike</button></div></div>
+      <div class="roll-field span-4"><label>Tipo de rolagem</label><div class="roll-tabs"><button class="roll-tab active" data-roll-type="TIME" type="button">Tempo</button><button class="roll-tab" data-roll-type="STRIKE" type="button">Strike</button><button class="roll-tab" data-roll-type="TIME_STRIKE" type="button">Tempo+Strike</button><button class="roll-tab" data-roll-type="MANEJO" type="button" title="Manejo livre: escolha a perna que sai (com preço de saída) e QUALQUER opção da cadeia como perna de entrada">Manejo</button></div></div>
       <div class="roll-field span-2"><label>Acao opcional</label><input id="underlying" placeholder="auto" list="underlying-list" style="text-transform:uppercase;"><datalist id="underlying-list"><option value="BOVA11"></option>{% for rv in ranking_vol %}<option value="{{ rv.ticker }}"></option>{% endfor %}</datalist></div>
       <div class="roll-field span-2"><label>Ticker opcao atual</label><input id="current-symbol" placeholder="BOVAF158" style="text-transform:uppercase;"></div>
       <div class="roll-field span-2"><label>Tipo</label><select id="option-kind"><option value="CALL">CALL</option><option value="PUT">PUT</option></select></div>
@@ -43,6 +43,25 @@
   <div class="card roll-card">
     <div style="display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center;">
       <h3 style="margin:0;font-size:1.1rem;">Escolha da nova opcao</h3><div id="pick-status" style="color:var(--text-secondary);font-size:.82rem;"></div>
+    </div>
+    <div id="manejo-controls" style="display:none;gap:1.2rem;flex-wrap:wrap;align-items:center;margin-top:.65rem;
+         font-size:.82rem;color:var(--text-secondary);border:1px solid var(--border-color);border-radius:8px;padding:.5rem .8rem;">
+      <span>Strikes por lado do spot:
+        <label style="margin-left:.3rem;cursor:pointer;"><input type="radio" name="mj-depth" value="10" checked> 10</label>
+        <label style="margin-left:.5rem;cursor:pointer;"><input type="radio" name="mj-depth" value="20"> 20</label>
+      </span>
+      <label style="display:inline-flex;align-items:center;gap:.3rem;cursor:pointer;">
+        <input type="checkbox" id="mj-weekly"> Incluir vencimentos <strong>semanais</strong>
+      </label>
+      <span>Prazo máx. de busca:
+        <select id="mj-days" style="margin-left:.3rem;background:var(--hover-bg);color:var(--text-primary);
+                border:1px solid var(--border-color);border-radius:5px;padding:.15rem .4rem;">
+          <option value="60" selected>60 dias</option>
+          <option value="90">90 dias</option>
+          <option value="120">120 dias</option>
+          <option value="180">180 dias</option>
+        </select>
+      </span>
     </div>
     <div id="exp-filters" style="display:flex;gap:.55rem;flex-wrap:wrap;margin-top:.65rem;font-size:.82rem;color:var(--text-secondary);"></div>
     <div id="pick-list" class="pick-list"></div>
@@ -97,6 +116,7 @@
             <option value="TEMPO">Tempo (vencimento)</option>
             <option value="STRIKE">Strike</option>
             <option value="AMBOS">Tempo + Strike</option>
+            <option value="MANEJO">Manejo (ajuste de pernas)</option>
           </select></div>
         <div><label style="font-size:.8rem;color:var(--text-secondary);">Data da Rolagem</label>
           <input type="date" name="roll_date" id="rr-date" class="form-control form-control-sm"></div>
@@ -136,6 +156,7 @@
             <option value="TEMPO">Tempo (vencimento)</option>
             <option value="STRIKE">Strike</option>
             <option value="AMBOS">Tempo + Strike</option>
+            <option value="MANEJO">Manejo (ajuste de pernas)</option>
           </select></div>
         <div><label style="font-size:.8rem;color:var(--text-secondary);">Data da Rolagem</label>
           <input type="date" name="roll_date" id="rs-date" class="form-control form-control-sm"></div>
@@ -188,7 +209,10 @@ function brl(v){return 'R$ '+(Number(v||0)).toFixed(2).replace('.',',');}
 function dt(v){if(!v)return '-';var p=String(v).split('-');return p.length===3?p[2]+'/'+p[1]+'/'+p[0]:v;}
 function price(o,mode){if(!o)return 0;return Number((mode==='BUYBACK'?o.ask:o.bid)||o.close||o.mid||0);}
 function tone(v){return v>=0?'positive':'negative';}
-document.querySelectorAll('.roll-tab').forEach(function(b){b.addEventListener('click',function(){document.querySelectorAll('.roll-tab').forEach(function(x){x.classList.remove('active');});b.classList.add('active');state.roll_type=b.dataset.rollType;renderPicks();});});
+function updateManejoControls(){var mc=$('manejo-controls');if(mc)mc.style.display=state.roll_type==='MANEJO'?'flex':'none';}
+document.querySelectorAll('.roll-tab').forEach(function(b){b.addEventListener('click',function(){document.querySelectorAll('.roll-tab').forEach(function(x){x.classList.remove('active');});b.classList.add('active');state.roll_type=b.dataset.rollType;updateManejoControls();renderPicks();});});
+['mj-weekly','mj-days'].forEach(function(id){var el=$(id);if(el)el.addEventListener('change',renderPicks);});
+document.querySelectorAll('input[name=mj-depth]').forEach(function(r){r.addEventListener('change',renderPicks);});
 $('load-chain-btn').addEventListener('click',loadChain);$('insert-current-line-btn').addEventListener('click',insertCurrentLine);$('payoff-btn').addEventListener('click',function(){drawRollPayoff(false);});$('underlying-chart-btn').addEventListener('click',openUnderlyingChart);$('underlying-chart-top-btn').addEventListener('click',openUnderlyingChart);$('current-symbol').addEventListener('keydown',function(e){if(e.key==='Enter')loadChain();});$('new-roll-btn').addEventListener('click',resetAll);$('save-roll-btn').addEventListener('click',saveRoll);['avg-price','quantity','position-side','option-kind'].forEach(function(id){$(id).addEventListener('input',function(){renderCurrent();renderPicks();});});
 function flatten(){if(state.chain&&state.chain.options)return state.chain.options;var out=[];(state.chain&&state.chain.expirations||[]).forEach(function(exp){(exp.rows||[]).forEach(function(r){if(r.call)out.push(Object.assign({exp:exp.exp,kind:'CALL'},r.call));if(r.put)out.push(Object.assign({exp:exp.exp,kind:'PUT'},r.put));});});return out;}
 function findOpt(sym){sym=String(sym||'').toUpperCase();return flatten().find(function(o){return String(o.symbol).toUpperCase()===sym;})||null;}
@@ -205,6 +229,16 @@ function expTime(v){var t=Date.parse(String(v||'')+'T00:00:00');return isNaN(t)?
 function currentRollType(){var active=document.querySelector('.roll-tab.active');state.roll_type=active?active.dataset.rollType:state.roll_type;return state.roll_type;}
 function sameExp(a,b){return expTime(a)===expTime(b);}
 function renderExpFilters(opts){var exps=Array.from(new Set(opts.map(function(o){return o.exp;}))).sort(function(a,b){return expTime(a)-expTime(b);});if(!exps.length){$('exp-filters').innerHTML='';return;}$('exp-filters').innerHTML='<button type="button" class="filter-btn" data-filter-all="1">Selecionar todos</button><button type="button" class="filter-btn" data-filter-none="1">Limpar selecao</button>'+exps.map(function(e){var checked=state.exp_filters[e]!==false?'checked':'';return '<label style="display:inline-flex;align-items:center;gap:.25rem;"><input type="checkbox" data-exp="'+e+'" '+checked+'> '+dt(e)+'</label>';}).join('');$('exp-filters').querySelectorAll('input').forEach(function(cb){cb.addEventListener('change',function(){state.exp_filters[cb.dataset.exp]=cb.checked;renderPicks();});});var all=$('exp-filters').querySelector('[data-filter-all]'), none=$('exp-filters').querySelector('[data-filter-none]');all.addEventListener('click',function(){exps.forEach(function(e){state.exp_filters[e]=true;});renderPicks();});none.addEventListener('click',function(){exps.forEach(function(e){state.exp_filters[e]=false;});renderPicks();});}
+// 3ª sexta-feira do mês (±2d p/ feriado) = vencimento mensal
+function isMonthlyExp(expStr){
+  var d=new Date(String(expStr)+'T00:00:00');if(isNaN(d))return true;
+  var count=0,day=new Date(d.getFullYear(),d.getMonth(),1);
+  while(day.getMonth()===d.getMonth()){
+    if(day.getDay()===5){count++;if(count===3)break;}
+    day.setDate(day.getDate()+1);
+  }
+  return Math.abs((d-day)/864e5)<=2;
+}
 function nearestByExpiration(opts,currentStrike,limitEachSide){
   var grouped={};
   opts.forEach(function(o){(grouped[o.exp]=grouped[o.exp]||[]).push(o);});
@@ -220,7 +254,25 @@ function renderPicks(){
   if(!state.chain||!c){$('pick-list').innerHTML='';$('exp-filters').innerHTML='';return;}
   var curExp=expTime(c.exp);
   var opts=flatten().filter(function(o){return o.kind===kind&&o.symbol!==c.symbol;});
-  if(rollType==='STRIKE'){
+  if(rollType==='MANEJO'){
+    // Manejo livre: QUALQUER opção da cadeia pode entrar — sem busca de
+    // correspondência. Filtra por prazo, semanais e profundidade de strikes
+    // ao redor do SPOT (como na Cadeia de Opções).
+    var mjDays=Number(($('mj-days')&&$('mj-days').value)||60);
+    var mjWeekly=$('mj-weekly')&&$('mj-weekly').checked;
+    var mjDepthEl=document.querySelector('input[name=mj-depth]:checked');
+    var mjDepth=Number((mjDepthEl&&mjDepthEl.value)||10);
+    var todayT=new Date();todayT.setHours(0,0,0,0);todayT=todayT.getTime();
+    var spotRef=Number(state.chain&&state.chain.spot||0)||Number(c.strike||0);
+    opts=opts.filter(function(o){
+      var t=expTime(o.exp);if(!t||t<todayT)return false;
+      if((t-todayT)/864e5>mjDays)return false;
+      if(!mjWeekly&&!isMonthlyExp(o.exp))return false;
+      return true;
+    });
+    opts=nearestByExpiration(opts,spotRef,mjDepth);
+    opts.sort(function(a,b){return expTime(a.exp)-expTime(b.exp)||a.strike-b.strike;});
+  }else if(rollType==='STRIKE'){
     opts=opts.filter(function(o){return sameExp(o.exp,c.exp)&&Math.abs(o.strike-c.strike)<=5.001;});
     opts.sort(function(a,b){return a.strike-b.strike;});
   }else if(rollType==='TIME_STRIKE'){
@@ -265,12 +317,12 @@ function setText(id,text,cls){var el=$(id);el.textContent=text;if(cls)el.classNa
 function drawRollPayoff(silent){var legs=state.lines.filter(function(l){return l.new_symbol&&pfnum(l.new_strike)>0&&pfnum(l.qty)>0;});if(!legs.length){if(!silent)alert('Informe ao menos uma opcao de destino na tabela.');return;}var und=$('underlying').value.trim().toUpperCase();if((!state.chain||!pfnum(state.chain.spot))&&und&&!silent&&!state._spotFetching){state._spotFetching=true;fetch('/api/quote_hint/'+encodeURIComponent(und)).then(function(r){return r.json();}).then(function(d){state.chain=state.chain||{};state.chain.spot=pfnum(d.price);state.chain.spot_change=pfnum(d.change_percent!=null?d.change_percent:d.change);state._spotFetching=false;drawRollPayoff(true);}).catch(function(){state._spotFetching=false;drawRollPayoff(true);});return;}$('payoff-wrap').style.display='block';var netPrem=legs.reduce(function(a,l){return a+openCash(l);},0),carry=payoffCarry(legs),loaded=carry+netPrem;$('payoff-legs-body').innerHTML=legs.map(function(l){var side=l.side||'SELL',tot=openCash(l);return '<tr><td><span class="side-badge" style="background:'+(side==='SELL'?'rgba(239,68,68,.15);color:var(--danger-color)':'rgba(16,185,129,.15);color:var(--success-color)')+'">'+(side==='SELL'?'V':'C')+'</span></td><td>'+pfnum(l.qty)+'</td><td><span class="ticker-badge">'+l.new_symbol+'</span></td><td>'+(l.opt_type||'CALL')+'</td><td style="text-align:right;">'+brl(pfnum(l.new_strike))+'</td><td style="text-align:right;">'+brl(pfnum(l.open_price))+'</td><td style="text-align:right;" class="'+tone(tot)+'">'+brl(tot)+'</td></tr>';}).join('');setText('payoff-net',brl(netPrem),tone(netPrem));setText('payoff-carry',brl(carry),tone(carry));setText('payoff-total-carry',brl(loaded),tone(loaded));var strikes=legs.map(function(l){return pfnum(l.new_strike);}),minK=Math.min.apply(null,strikes),maxK=Math.max.apply(null,strikes),padRange=Math.max((maxK-minK)*.55,maxK*.25,2),spot=pfnum(state.chain&&state.chain.spot),chg=state.chain&&state.chain.spot_change,Smin=Math.max(.01,Math.min(minK-padRange,spot>0?spot-padRange*.25:minK-padRange)),Smax=Math.max(maxK+padRange,spot>0?spot+padRange*.25:maxK+padRange),N=400,pts=[],minY=Infinity,maxY=-Infinity;for(var i=0;i<=N;i++){var s=Smin+(Smax-Smin)*i/N,yv=payoffTotalAt(legs,s);pts.push([s,yv]);minY=Math.min(minY,yv);maxY=Math.max(maxY,yv);}var be=[];for(i=0;i<pts.length-1;i++){var p1=pts[i][1],p2=pts[i+1][1];if(Math.abs(p1)<.01)be.push(Math.round(pts[i][0]*100)/100);else if(p1*p2<0)be.push(Math.round((pts[i][0]+(-p1)*(pts[i+1][0]-pts[i][0])/(p2-p1))*100)/100);}var maxGain=Math.max.apply(null,pts.map(function(p){return p[1];})),maxLoss=Math.min.apply(null,pts.map(function(p){return p[1];}));setText('pf-max-gain',fmtAbs(maxGain),'positive');setText('pf-max-loss',fmtAbs(maxLoss),'negative');setText('pf-be',be.length?be.map(brl).join(' / '):'-');setText('pf-pnl',spot>0?brl(payoffTotalAt(legs,spot)):'-');$('pf-pnl').className=spot>0?tone(payoffTotalAt(legs,spot)):'positive';var nearExp=legs.map(function(l){return l.new_exp;}).filter(Boolean).sort()[0];if(spot>0){$('pf-spot-box').style.display='block';$('pf-underlying-label').textContent=(und||'Ativo')+' agora';$('pf-spot').textContent=brl(spot);$('pf-change').textContent=(chg>=0?'+':'')+(Number(chg||0)).toFixed(2).replace('.',',')+'%';$('pf-change').style.color=chg>=0?'var(--success-color)':'var(--danger-color)';if(be.length){var sigma=.30,T=Math.max(((nearExp?new Date(nearExp+'T00:00:00'):new Date())-new Date())/(252*86400000),1/252),pop=be.length===1?normCDF((Math.log(spot/be[0])-.5*sigma*sigma*T)/(sigma*Math.sqrt(T)))*100:(normCDF((Math.log(spot/be[be.length-1])-.5*sigma*sigma*T)/(sigma*Math.sqrt(T)))-normCDF((Math.log(spot/be[0])-.5*sigma*sigma*T)/(sigma*Math.sqrt(T))))*100;setText('pf-pop',isFinite(pop)?pop.toFixed(1).replace('.',',')+'%':'-',pop>=50?'positive':'negative');}}else{$('pf-spot-box').style.display='none';setText('pf-pop','-');}if(nearExp){var days=Math.ceil((new Date(nearExp+'T00:00:00')-new Date())/86400000);$('pf-days-box').style.display='block';$('pf-days').textContent=days+'d';$('pf-days').style.color=days<=7?'var(--danger-color)':(days<=21?'#f59e0b':'var(--text-primary)');$('pf-exp').textContent='('+dt(nearExp)+')';}var canvas=$('payoff-canvas-roll'),tip=$('payoff-tooltip-roll'),W=canvas.parentElement.clientWidth,H=Math.max(320,Math.round(W*.42));canvas.width=W;canvas.height=H;var ctx=canvas.getContext('2d'),PAD={top:28,right:24,bottom:54,left:92},cw=W-PAD.left-PAD.right,ch=H-PAD.top-PAD.bottom,yMax=Math.max(Math.abs(maxGain),Math.abs(maxLoss),1)*1.12,yMin=-yMax;function x(S){return PAD.left+(S-Smin)/(Smax-Smin)*cw;}function y(P){return PAD.top+(1-(P-yMin)/(yMax-yMin))*ch;}ctx.clearRect(0,0,W,H);ctx.strokeStyle='rgba(100,116,139,.18)';for(i=0;i<=6;i++){var gy=PAD.top+ch*i/6;ctx.beginPath();ctx.moveTo(PAD.left,gy);ctx.lineTo(W-PAD.right,gy);ctx.stroke();ctx.fillStyle='rgba(148,163,184,.9)';ctx.font='11px sans-serif';ctx.textAlign='right';var val=yMin+(6-i)*(yMax-yMin)/6;ctx.fillText((val<0?'-':'')+fmtAbs(val),PAD.left-6,gy+4);}var y0=y(0);ctx.strokeStyle='rgba(100,116,139,.55)';ctx.beginPath();ctx.moveTo(PAD.left,y0);ctx.lineTo(W-PAD.right,y0);ctx.stroke();strikes.forEach(function(k){ctx.setLineDash([5,4]);ctx.strokeStyle='rgba(148,163,184,.55)';ctx.beginPath();ctx.moveTo(x(k),PAD.top);ctx.lineTo(x(k),H-PAD.bottom);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='rgba(148,163,184,.85)';ctx.textAlign='center';ctx.fillText('K='+k.toLocaleString('pt-BR',{minimumFractionDigits:2}),x(k),PAD.top-6);});be.forEach(function(b){ctx.setLineDash([6,3]);ctx.strokeStyle='rgba(234,179,8,.9)';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x(b),PAD.top);ctx.lineTo(x(b),H-PAD.bottom);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#ca8a04';ctx.font='bold 11px sans-serif';ctx.fillText('BE '+b.toLocaleString('pt-BR',{minimumFractionDigits:2}),x(b),H-PAD.bottom+14);});function fillArea(above){ctx.save();ctx.beginPath();ctx.moveTo(x(pts[0][0]),y0);pts.forEach(function(p){ctx.lineTo(x(p[0]),y(p[1]));});ctx.lineTo(x(pts[pts.length-1][0]),y0);ctx.closePath();ctx.rect(PAD.left,above?PAD.top:y0,cw,above?y0-PAD.top:H-PAD.bottom-y0);ctx.clip();ctx.fillStyle=above?'rgba(16,185,129,.18)':'rgba(239,68,68,.18)';ctx.fill();ctx.restore();}fillArea(true);fillArea(false);for(i=0;i<pts.length-1;i++){ctx.strokeStyle=(pts[i][1]+pts[i+1][1])/2>=0?'#10b981':'#ef4444';ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(x(pts[i][0]),y(pts[i][1]));ctx.lineTo(x(pts[i+1][0]),y(pts[i+1][1]));ctx.stroke();}ctx.strokeStyle='rgba(100,116,139,.25)';ctx.strokeRect(PAD.left,PAD.top,cw,ch);ctx.fillStyle='rgba(148,163,184,.9)';ctx.textAlign='center';for(i=0;i<=8;i++){var sv=Smin+i*(Smax-Smin)/8;ctx.fillText(sv.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),x(sv),H-PAD.bottom+28);}ctx.fillStyle='rgba(148,163,184,.7)';ctx.fillText('Preco do Ativo no Vencimento (R$)',PAD.left+cw/2,H-6);if(spot>0){var xs=x(spot),ps=payoffTotalAt(legs,spot);ctx.setLineDash([4,3]);ctx.strokeStyle='rgba(99,179,237,.95)';ctx.beginPath();ctx.moveTo(xs,PAD.top);ctx.lineTo(xs,H-PAD.bottom);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle=ps>=0?'#10b981':'#ef4444';ctx.beginPath();ctx.arc(xs,y(ps),5,0,Math.PI*2);ctx.fill();ctx.strokeStyle='white';ctx.stroke();ctx.fillStyle='rgba(99,179,237,1)';ctx.font='bold 11px sans-serif';ctx.fillText('S='+spot.toLocaleString('pt-BR',{minimumFractionDigits:2}),xs,H-PAD.bottom+42);}canvas.onmousemove=function(e){var r=canvas.getBoundingClientRect(),mx=e.clientX-r.left;if(mx<PAD.left||mx>W-PAD.right){tip.style.display='none';return;}var S=Smin+(mx-PAD.left)/cw*(Smax-Smin),P=payoffTotalAt(legs,S),color=P>=0?'#10b981':'#ef4444';tip.innerHTML='<span style="color:rgba(148,163,184,.8)">Preco: </span><strong>'+S.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</strong><br><span style="color:'+color+';">'+(P>=0?'Lucro: +':'Prejuizo: ')+fmtAbs(P)+'</span>';tip.style.display='block';tip.style.left=(e.clientX-r.left+14)+'px';tip.style.top=(e.clientY-r.top-10)+'px';};canvas.onmouseleave=function(){tip.style.display='none';};}
 function payload(){return{roll_type:currentRollType(),underlying:$('underlying').value.trim().toUpperCase(),current_symbol:$('current-symbol').value.trim().toUpperCase(),option_kind:$('option-kind').value,position_side:$('position-side').value,quantity:num($('quantity').value),avg_price:num($('avg-price').value),current:state.current,lines:state.lines};}
 function saveRoll(){var name=$('roll-name').value.trim();if(!name){alert('Informe o nome da simulacao.');return;}fetch('/api/rolagem-opcoes/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:state.id,name:name,payload:payload()})}).then(function(r){return r.json();}).then(function(d){if(d.error)throw new Error(d.error);state.id=d.id;loadSaved();alert('Rolagem salva.');}).catch(function(e){alert('Erro ao salvar: '+e.message);});}
-function rollTypeLabel(t){return t==='STRIKE'?'Strike':(t==='TIME_STRIKE'?'Tempo+Strike':'Tempo');}
+function rollTypeLabel(t){return t==='STRIKE'?'Strike':(t==='TIME_STRIKE'?'Tempo+Strike':(t==='MANEJO'?'Manejo':'Tempo'));}
 function loadSaved(){fetch('/api/rolagem-opcoes/list').then(function(r){return r.json();}).then(function(list){$('saved-list').innerHTML=list.length?list.map(function(s){return '<div class="saved-item '+(s.id===state.id?'active':'')+'" data-id="'+s.id+'"><strong>'+s.name+'</strong><span>'+(s.underlying||'-')+' - '+rollTypeLabel(s.roll_type)+'</span><button class="icon-btn" data-x="'+s.id+'" type="button">Excluir</button></div>';}).join(''):'<span style="color:var(--text-secondary);font-size:.82rem;">Nenhuma rolagem salva.</span>';$('saved-list').querySelectorAll('.saved-item').forEach(function(el){el.addEventListener('click',function(e){if(e.target.dataset.x)return;openSaved(list.find(function(s){return s.id===Number(el.dataset.id);}));});});$('saved-list').querySelectorAll('[data-x]').forEach(function(b){b.addEventListener('click',function(e){e.stopPropagation();if(!confirm('Excluir rolagem?'))return;fetch('/api/rolagem-opcoes/'+b.dataset.x+'/delete',{method:'POST'}).then(loadSaved);});});});}
-function openSaved(s){var p=s.payload||{};state.id=s.id;state.roll_type=p.roll_type||s.roll_type||'TIME';state.current=p.current||null;state.chain=null;state.lines=p.lines||[];state.selected_line=null;$('roll-name').value=s.name||'';$('underlying').value=p.underlying||s.underlying||'';$('current-symbol').value=p.current_symbol||'';$('option-kind').value=p.option_kind||'CALL';$('position-side').value=p.position_side||'SELL';$('quantity').value=p.quantity||100;$('avg-price').value=String(p.avg_price||'').replace('.',',');document.querySelectorAll('.roll-tab').forEach(function(b){b.classList.toggle('active',b.dataset.rollType===state.roll_type);});updateChartButton();updateUnderlyingSummary(true);renderCurrent();renderLines();loadSaved();}
-function resetAll(){state={id:null,roll_type:'TIME',chain:null,current:null,lines:[],selected_line:null,exp_filters:{}};$('roll-name').value='';$('underlying').value='';$('current-symbol').value='';$('avg-price').value='';$('quantity').value='100';$('current-quote').innerHTML='';$('exp-filters').innerHTML='';$('pick-list').innerHTML='';$('underlying-roll-summary').style.display='none';document.querySelectorAll('.roll-tab').forEach(function(b){b.classList.toggle('active',b.dataset.rollType==='TIME');});updateChartButton();renderLines();loadSaved();}
+function openSaved(s){var p=s.payload||{};state.id=s.id;state.roll_type=p.roll_type||s.roll_type||'TIME';state.current=p.current||null;state.chain=null;state.lines=p.lines||[];state.selected_line=null;$('roll-name').value=s.name||'';$('underlying').value=p.underlying||s.underlying||'';$('current-symbol').value=p.current_symbol||'';$('option-kind').value=p.option_kind||'CALL';$('position-side').value=p.position_side||'SELL';$('quantity').value=p.quantity||100;$('avg-price').value=String(p.avg_price||'').replace('.',',');document.querySelectorAll('.roll-tab').forEach(function(b){b.classList.toggle('active',b.dataset.rollType===state.roll_type);});updateManejoControls();updateChartButton();updateUnderlyingSummary(true);renderCurrent();renderLines();loadSaved();}
+function resetAll(){state={id:null,roll_type:'TIME',chain:null,current:null,lines:[],selected_line:null,exp_filters:{}};$('roll-name').value='';$('underlying').value='';$('current-symbol').value='';$('avg-price').value='';$('quantity').value='100';$('current-quote').innerHTML='';$('exp-filters').innerHTML='';$('pick-list').innerHTML='';$('underlying-roll-summary').style.display='none';document.querySelectorAll('.roll-tab').forEach(function(b){b.classList.toggle('active',b.dataset.rollType==='TIME');});updateManejoControls();updateChartButton();renderLines();loadSaved();}
 // ── Gravar rolagem na operação registrada (modal de ajustes) ────────────────
-function rollTypeMap(){var m={TIME:'TEMPO',STRIKE:'STRIKE',TIME_STRIKE:'AMBOS'};return m[currentRollType()]||'TEMPO';}
+function rollTypeMap(){var m={TIME:'TEMPO',STRIKE:'STRIKE',TIME_STRIKE:'AMBOS',MANEJO:'MANEJO'};return m[currentRollType()]||'TEMPO';}
 
 function openOptionCommitModal(l,optId,kFallback,expFallback){
   var kOld=Number(l.current_strike||kFallback||0);
@@ -346,8 +398,10 @@ loadSaved();renderMetrics();
   var legsRaw=q.get('legs')||'';
   if(!legsRaw)return;
   state.src=q.get('src')||null;   // origem: option:ID | spread:ID | est:ID
-  state.roll_type='TIME';   // padrão: rolagem no tempo
-  document.querySelectorAll('.roll-tab').forEach(function(b){b.classList.toggle('active',b.dataset.rollType==='TIME');});
+  // ?mode=MANEJO abre direto no modo manejo (perna de entrada livre da cadeia)
+  state.roll_type=(q.get('mode')||'').toUpperCase()==='MANEJO'?'MANEJO':'TIME';
+  document.querySelectorAll('.roll-tab').forEach(function(b){b.classList.toggle('active',b.dataset.rollType===state.roll_type);});
+  updateManejoControls();
   var ativo=(q.get('ativo')||'').toUpperCase();
   if(ativo)$('underlying').value=ativo;
   if(q.get('nome'))$('roll-name').value=q.get('nome');

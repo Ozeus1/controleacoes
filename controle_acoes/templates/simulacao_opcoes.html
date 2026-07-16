@@ -199,7 +199,7 @@
             <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('STOCK')">+ Ação</button>
             <button type="button" class="btn btn-sm" id="btn-atualizar-sim" style="background:#10b981;color:white;"
                     onclick="atualizarCotacoesSim()"
-                    title="Atualiza os prêmios das opções desta simulação via OpLab e estima POP e gregas">⟳ Atualizar</button>
+                    title="Atualiza os prêmios via OpLab e estima POP e gregas. Pregão aberto: preços executáveis do book (venda pelo BID, compra pelo ASK); fechado: último negócio">⟳ Atualizar</button>
             <button type="button" class="btn btn-sm" style="background:#7c3aed;color:white;"
                     onclick="abrirEmCalculos()"
                     title="Abre esta estrutura pré-preenchida na página Cálculos de Opções para editar">🧮 Abrir em Cálculos</button>
@@ -749,11 +749,26 @@ function fetchChainSim(cands, idx) {
         .catch(function() { return fetchChainSim(cands, idx + 1); });
 }
 
+// Pregão B3 aberto? (dia útil, 10:00–16:30, fuso America/Sao_Paulo)
+function marketOpenSim() {
+    try {
+        var parts = new Intl.DateTimeFormat('pt-BR', {timeZone: 'America/Sao_Paulo',
+            hour12: false, weekday: 'short', hour: '2-digit', minute: '2-digit'})
+            .formatToParts(new Date());
+        var map = {}; parts.forEach(function(p) { map[p.type] = p.value; });
+        var wd = (map.weekday || '').toLowerCase();
+        if (wd.indexOf('sáb') === 0 || wd.indexOf('sab') === 0 || wd.indexOf('dom') === 0) return false;
+        var hm = parseInt(map.hour, 10) * 60 + parseInt(map.minute, 10);
+        return hm >= 600 && hm < 990;
+    } catch (e) { return false; }
+}
+
 window.atualizarCotacoesSim = function() {
     var btn = document.getElementById('btn-atualizar-sim');
     btn.disabled = true;
     var orig = '⟳ Atualizar';
     btn.textContent = '⟳ Buscando cadeia…';
+    var mktOpen = marketOpenSim();
     fetchChainSim(underlyingCandidatesSim(), 0)
         .then(function(d) {
             var byTicker = {};
@@ -773,8 +788,16 @@ window.atualizarCotacoesSim = function() {
                 if (!tk) return;
                 var o = byTicker[tk];
                 if (!o) { nMiss++; missT.push(tk); return; }
-                // Prêmio atualizado: último negócio; senão mid do book
-                var prem = o.close > 0 ? o.close : (o.mid > 0 ? o.mid : (o.bid || o.ask || 0));
+                // Prêmio atualizado — pregão ABERTO: preço executável do book
+                // (venda pelo BID, compra pelo ASK); fechado ou sem book: último/mid
+                var prem;
+                if (mktOpen) {
+                    var lado = sign < 0 ? o.bid : o.ask;   // SELL→bid, BUY→ask
+                    prem = lado > 0 ? lado
+                         : (o.close > 0 ? o.close : (o.mid > 0 ? o.mid : (o.bid || o.ask || 0)));
+                } else {
+                    prem = o.close > 0 ? o.close : (o.mid > 0 ? o.mid : (o.bid || o.ask || 0));
+                }
                 if (prem > 0) {
                     row.querySelector('[name=leg_premium]').value = prem.toFixed(2).replace('.', ',');
                     nOk++;
@@ -836,7 +859,8 @@ window.atualizarCotacoesSim = function() {
             updateIVVisibility();
             drawChart(readLegs());   // redesenha → recalcula lucro/perda/BE/POP com VIs novas
             btn.disabled = false;
-            btn.textContent = '✓ ' + nOk + ' atualizada(s)' + (nMiss ? ' · ' + nMiss + ' não encontrada(s)' : '');
+            btn.textContent = '✓ ' + nOk + ' atualizada(s)' + (mktOpen ? ' (bid/ask)' : ' (último)') +
+                              (nMiss ? ' · ' + nMiss + ' não encontrada(s)' : '');
             if (nMiss && window.console) console.warn('Opções não encontradas na cadeia:', missT.join(', '));
             setTimeout(function() { btn.textContent = orig; }, 4000);
         })

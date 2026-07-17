@@ -12,7 +12,9 @@
     .kpi-card { padding: 1.5rem; text-align: center; }
     .kpi-label { color: var(--text-secondary); font-size: .9rem; }
     .kpi-value { font-size: 1.5rem; font-weight: bold; margin-top: .5rem; overflow-wrap: anywhere; }
-    .kpi-card.kpi-main .kpi-value { font-size: 1.8rem; color: var(--accent-color); }
+    /* Fonte adaptativa + sem quebra: "R$ 332.730,07" cabe em 1 linha em qualquer largura */
+    .kpi-card.kpi-main .kpi-value { font-size: clamp(1.15rem, 1.7vw, 1.8rem);
+        color: var(--accent-color); white-space: nowrap; }
     .kpi-sub { font-size: .8rem; color: var(--text-secondary); }
 
     /* ── Pizzas em grade ──────────────────────────────── */

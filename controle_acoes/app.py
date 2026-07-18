@@ -6658,15 +6658,24 @@ def dividendos_recalc_qtd_b3():
     data-com de cada dividendo. Total = per_share × qtd da época."""
     f = request.files.get('file')
     if not f or not f.filename:
-        flash('Envie o CSV de negociação da B3.', 'danger')
+        flash('Envie o extrato da B3 (CSV de negociação ou Excel de movimentação).', 'danger')
         return redirect(url_for('dividendos'))
+    raw = f.read()
+    fname = (f.filename or '').lower()
     try:
-        trades = parse_b3_trades(f.read())
+        # Excel de MOVIMENTAÇÃO (.xlsx, magic 'PK') ou CSV de NEGOCIAÇÃO
+        if fname.endswith(('.xlsx', '.xls')) or raw[:2] == b'PK':
+            trades = parse_b3_movimentacao_xlsx(raw)
+        else:
+            trades = parse_b3_trades(raw)
+    except RuntimeError as e:
+        flash(str(e), 'danger')
+        return redirect(url_for('dividendos'))
     except Exception as e:
-        flash(f'Falha ao ler o CSV: {e}', 'danger')
+        flash(f'Falha ao ler o arquivo: {e}', 'danger')
         return redirect(url_for('dividendos'))
     if not trades:
-        flash('Nenhuma operação à vista encontrada no CSV.', 'warning')
+        flash('Nenhuma compra/venda de ações/FII/ETF encontrada no arquivo.', 'warning')
         return redirect(url_for('dividendos'))
 
     # Aproveita o upload para popular o LIVRO de transações (com dedupe)
@@ -7501,6 +7510,83 @@ def _b3_norm_ticker(code):
     if len(code) > 5 and code.endswith('F') and code[-2].isdigit():
         code = code[:-1]
     return code
+
+
+def parse_b3_movimentacao_xlsx(raw_bytes):
+    """Lê o Excel de MOVIMENTAÇÃO da B3 (área do investidor, .xlsx) e devolve
+    as compras/vendas liquidadas no MESMO formato de parse_b3_trades:
+        {date, side 'C'|'V', ticker, qty, price}
+    Considera apenas linhas 'Transferência - Liquidação' de ações/FII/ETF
+    (Entrada=Crédito → compra; Saída=Débito → venda). Opções e demais eventos
+    (dividendos, bonificações, empréstimos) são ignorados."""
+    try:
+        import openpyxl
+    except ImportError:
+        raise RuntimeError('Leitura de .xlsx indisponível: instale o pacote '
+                           '"openpyxl" no servidor (pip install openpyxl).')
+    import io as _io
+    from datetime import datetime as _dtt, date as _date
+
+    wb = openpyxl.load_workbook(_io.BytesIO(raw_bytes), read_only=True, data_only=True)
+    trades = []
+    for ws in wb.worksheets:
+        idx = None
+        for r in ws.iter_rows(values_only=True):
+            if r is None:
+                continue
+            vals = [str(c).strip() if c is not None else '' for c in r]
+            low = [v.lower() for v in vals]
+            if idx is None:
+                # localiza o cabeçalho
+                if 'data' in low and 'produto' in low and any('movimenta' in v for v in low):
+                    idx = {
+                        'es':   next((i for i, v in enumerate(low) if 'entrada' in v and 'sa' in v), 0),
+                        'data': low.index('data'),
+                        'mov':  next(i for i, v in enumerate(low) if 'movimenta' in v),
+                        'prod': low.index('produto'),
+                        'qty':  next((i for i, v in enumerate(low) if 'quantidade' in v), None),
+                        'pu':   next((i for i, v in enumerate(low)
+                                      if 'unit' in v and 'pre' in v), None),
+                    }
+                continue
+            try:
+                mov = vals[idx['mov']].lower()
+                if 'transfer' not in mov or 'liquida' not in mov:
+                    continue
+                es = vals[idx['es']].lower()
+                side = 'C' if es.startswith('cr') else ('V' if es.startswith('d') else None)
+                if not side:
+                    continue
+                ticker = _b3_norm_ticker(vals[idx['prod']].split('-')[0])
+                # ações/FII/ETF têm 5-6 caracteres; descarta opções e outros
+                if not (4 < len(ticker) <= 6) or not any(ch.isdigit() for ch in ticker):
+                    continue
+                raw_d = r[idx['data']]
+                if isinstance(raw_d, _dtt):
+                    d = raw_d.date()
+                elif isinstance(raw_d, _date):
+                    d = raw_d
+                else:
+                    d = _dtt.strptime(str(raw_d).strip()[:10], '%d/%m/%Y').date()
+                raw_q = r[idx['qty']]
+                qty = int(raw_q) if isinstance(raw_q, (int, float)) else \
+                    int(float(str(raw_q).replace('.', '').replace(',', '.')))
+                raw_p = r[idx['pu']] if idx['pu'] is not None else None
+                if raw_p in (None, '', '-'):
+                    price = 0.0
+                elif isinstance(raw_p, (int, float)):
+                    price = float(raw_p)
+                else:
+                    s = str(raw_p).replace('R$', '').strip().replace('.', '').replace(',', '.')
+                    price = float(s) if s and s != '-' else 0.0
+                if qty <= 0:
+                    continue
+                trades.append({'date': d, 'side': side, 'ticker': ticker,
+                               'qty': qty, 'price': price})
+            except Exception:
+                continue
+    trades.sort(key=lambda t: t['date'])
+    return trades
 
 
 def _b3_classify(ticker):

@@ -389,9 +389,9 @@
                 <span style="display:inline-flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
                     <form method="POST" action="{{ url_for('dividendos_recalc_qtd_b3') }}" enctype="multipart/form-data"
                           style="display:inline-flex;align-items:center;gap:.35rem;margin:0;"
-                          title="Envie o CSV de negociação da B3 (o mesmo da curva de patrimônio): o sistema reconstrói a posição dia a dia e recalcula a Qtd de cada provento pela quantidade detida na data-com. Qtd editadas à mão (✋) são preservadas, salvo se marcar a caixa."
+                          title="Envie o extrato da B3: CSV de negociação OU Excel (.xlsx) de movimentação da área do investidor. O sistema reconstrói a posição dia a dia e recalcula a Qtd de cada provento pela quantidade detida na data-com. Qtd editadas à mão (✋) são preservadas, salvo se marcar a caixa."
                           onsubmit="return confirm('Recalcular a Qtd dos proventos pela movimentação do CSV?\n\nSó a janela coberta pelo arquivo é alterada; proventos anteriores ficam como estão.\nQtd editadas à mão (✋) são preservadas'+(this.force_manual.checked?' — ATENÇÃO: você marcou sobrescrever manuais!':'.'));">
-                        <input type="file" name="file" accept=".csv" required
+                        <input type="file" name="file" accept=".csv,.xlsx" required
                                style="max-width:190px;font-size:.72rem;color:var(--text-secondary);">
                         <label style="display:inline-flex;align-items:center;gap:.2rem;font-size:.68rem;color:var(--text-secondary);cursor:pointer;margin:0;white-space:nowrap;">
                             <input type="checkbox" name="force_manual" value="1" style="margin:0;"> sobrescrever ✋

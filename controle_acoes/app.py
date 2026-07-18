@@ -6469,6 +6469,67 @@ def pm_manual():
     return redirect(url_for('preco_medio'))
 
 
+def _pm_rebuild_chain(user_id, ticker):
+    """Reconstrói a trilha didática pm_before/pm_after após edição/exclusão,
+    reaplicando os eventos em ordem sobre o custo oficial ATUAL (aproximação:
+    quantidades históricas intermediárias não são conhecidas)."""
+    a = Asset.query.filter(Asset.user_id == user_id, Asset.ticker == ticker).first()
+    if not a or not a.quantity:
+        return
+    evs = (PMEvent.query.filter_by(user_id=user_id, ticker=ticker)
+           .order_by(PMEvent.created_at, PMEvent.id).all())
+    custo = a.quantity * (a.avg_price or 0)
+    for e in evs:
+        e.pm_before = round(custo / a.quantity, 4)
+        custo -= (e.valor or 0)
+        e.pm_after = round(custo / a.quantity, 4)
+
+
+@app.route('/api/pm/evento/<int:id>/edit', methods=['POST'])
+@login_required
+def pm_evento_edit(id):
+    """Edição pontual de uma linha do histórico do PM (valor/data/descrição)."""
+    e = PMEvent.query.get_or_404(id)
+    if e.user_id != current_user.id:
+        return jsonify({'error': 'sem permissão'}), 403
+    data = request.get_json(silent=True) or {}
+    try:
+        v_raw = data.get('valor', e.valor)
+        if isinstance(v_raw, str):
+            s = v_raw.strip()
+            valor = float(s.replace('.', '').replace(',', '.')) if ',' in s else float(s)
+        else:
+            valor = float(v_raw)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'valor inválido'}), 400
+    e.valor = round(valor, 2)
+    if data.get('date'):
+        try:
+            e.event_date = date.fromisoformat(data['date'])
+        except ValueError:
+            pass
+    if 'ref' in data:
+        e.ref = (data.get('ref') or '').strip()[:200]
+    _pm_rebuild_chain(current_user.id, e.ticker)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/pm/evento/<int:id>/delete', methods=['POST'])
+@login_required
+def pm_evento_delete(id):
+    """Exclui uma linha do histórico do PM (o crédito volta a ficar pendente
+    na varredura, se veio dela)."""
+    e = PMEvent.query.get_or_404(id)
+    if e.user_id != current_user.id:
+        return jsonify({'error': 'sem permissão'}), 403
+    tk = e.ticker
+    db.session.delete(e)
+    _pm_rebuild_chain(current_user.id, tk)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
 @app.route('/api/pm/historico/<ticker>')
 @login_required
 def pm_historico(ticker):
@@ -6481,6 +6542,7 @@ def pm_historico(ticker):
     return jsonify([{
         'id': e.id, 'kind': e.kind, 'kind_label': labels.get(e.kind, e.kind),
         'date': e.event_date.strftime('%d/%m/%Y') if e.event_date else '',
+        'date_iso': e.event_date.isoformat() if e.event_date else '',
         'valor': round(e.valor or 0, 2),
         'buy_qty': e.buy_qty, 'buy_price': e.buy_price,
         'ref': e.ref or '',

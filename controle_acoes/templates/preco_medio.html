@@ -90,6 +90,34 @@
             </tr>
             {% endfor %}
         </tbody>
+        <tfoot>
+            {% set t_custo = items|sum(attribute='custo_oficial') %}
+            {% set t_div   = items|sum(attribute='earned_div') %}
+            {% set t_opc   = items|sum(attribute='earned_opc') %}
+            {% set t_apl   = items|sum(attribute='aplicado') %}
+            {% set t_pool  = items|sum(attribute='pool') %}
+            {% set t_caj   = items|sum(attribute='custo_aj') %}
+            {% set t_lucro = items|sum(attribute='lucro_rs') %}
+            <tr class="total-row" style="font-weight:bold;background-color:var(--total-row-bg);">
+                <td>TOTAL</td>
+                <td></td><td></td>
+                <td>{{ t_custo | brl }}</td>
+                <td class="{{ 'positive' if t_div > 0 else '' }}">{{ t_div | brl }}</td>
+                <td class="{{ 'positive' if t_opc > 0 else ('negative' if t_opc < 0 else '') }}">{{ t_opc | brl }}</td>
+                <td>{{ t_apl | brl }}</td>
+                <td>{{ t_pool | brl }}</td>
+                <td title="Custo ajustado total">{{ t_caj | brl }}</td>
+                <td class="{{ 'positive' if (t_custo - t_caj) > 0 else '' }}">
+                    {% if t_custo > 0 %}{{ "%.1f"|format((t_custo - t_caj) / t_custo * 100)|replace('.', ',') }}%{% endif %}
+                </td>
+                <td></td>
+                <td class="{{ 'positive' if t_lucro >= 0 else 'negative' }}">{{ t_lucro | brl }}</td>
+                <td class="{{ 'positive' if t_lucro >= 0 else 'negative' }}">
+                    {% if t_caj > 0 %}{{ "%.1f"|format(t_lucro / t_caj * 100)|replace('.', ',') }}%{% endif %}
+                </td>
+                <td></td>
+            </tr>
+        </tfoot>
     </table>
     </div>
     {% else %}
@@ -184,10 +212,18 @@
 <div id="pm-hist-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);
      align-items:center;justify-content:center;padding:1rem;">
   <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.3rem;width:min(96vw,780px);max-height:90vh;overflow-y:auto;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem;gap:.6rem;">
       <h5 style="margin:0;">📜 Histórico do PM — <span id="pm-hist-ticker"></span></h5>
-      <button onclick="pmCloseHist()" style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;">&times;</button>
+      <div style="display:flex;gap:.5rem;align-items:center;">
+        <button type="button" class="btn btn-primary btn-sm" onclick="pmHistNova()"
+                title="Incluir um lançamento avulso neste ativo">➕ Nova linha</button>
+        <button onclick="pmCloseHist()" style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;">&times;</button>
+      </div>
     </div>
+    <p style="font-size:.76rem;color:var(--text-secondary);margin:0 0 .6rem;">
+      ✏️ edita valor/data/descrição da linha · 🗑️ exclui (crédito de varredura volta a ficar pendente).
+      A trilha PM antes → depois é recalculada após cada ajuste.
+    </p>
     <div id="pm-hist-body" style="font-size:.85rem;">Carregando…</div>
   </div>
 </div>
@@ -209,33 +245,83 @@ function pmOpenManual(tk){
   document.getElementById('pm-manual-modal').style.display='flex';
 }
 function pmCloseManual(){document.getElementById('pm-manual-modal').style.display='none';}
+var pmHistTk='', pmHistDirty=false;
+function escH(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function pmOpenHist(tk){
+  pmHistTk=tk;
   document.getElementById('pm-hist-ticker').textContent=tk;
   var body=document.getElementById('pm-hist-body');
   body.textContent='Carregando…';
   document.getElementById('pm-hist-modal').style.display='flex';
   fetch('/api/pm/historico/'+encodeURIComponent(tk)).then(function(r){return r.json();}).then(function(list){
-    if(!list.length){body.innerHTML='<p style="color:var(--text-secondary);">Nenhum evento registrado ainda. Use 💰 para aplicar os créditos sugeridos.</p>';return;}
+    if(!list.length){body.innerHTML='<p style="color:var(--text-secondary);">Nenhum evento registrado ainda. Use 💰 para aplicar os créditos sugeridos ou ➕ Nova linha.</p>';return;}
     var icons={DIVIDENDO:'💵',OPCOES:'🎯',COMPRA_LUCRO:'🛒',MANUAL:'✏️'};
     body.innerHTML='<table style="width:100%;border-collapse:collapse;">'+
       '<thead><tr><th style="text-align:left;padding:.3rem;">Evento</th><th style="text-align:right;padding:.3rem;">Valor</th>'+
       '<th style="text-align:right;padding:.3rem;">PM antes</th><th style="text-align:right;padding:.3rem;">PM depois</th>'+
-      '<th style="text-align:right;padding:.3rem;">Registrado</th></tr></thead><tbody>'+
+      '<th style="text-align:right;padding:.3rem;">Registrado</th><th style="padding:.3rem;"></th></tr></thead><tbody>'+
       list.map(function(e){
         var neg=e.kind!=='COMPRA_LUCRO'&&e.valor<0;
-        return '<tr style="border-top:1px solid var(--border-color);">'+
+        return '<tr style="border-top:1px solid var(--border-color);" data-ev="'+e.id+'">'+
           '<td style="padding:.35rem .3rem;">'+(icons[e.kind]||'')+' <strong>'+e.kind_label+'</strong>'+
-          (e.date?' · '+e.date:'')+'<br><small style="color:var(--text-secondary);">'+e.ref+'</small></td>'+
+          (e.date?' · '+e.date:'')+'<br><small style="color:var(--text-secondary);">'+escH(e.ref)+'</small></td>'+
           '<td style="text-align:right;padding:.35rem .3rem;" class="'+(neg?'negative':'positive')+'">'+brlJS(e.valor)+'</td>'+
           '<td style="text-align:right;padding:.35rem .3rem;">'+(e.pm_before!=null?brlJS(e.pm_before):'—')+'</td>'+
           '<td style="text-align:right;padding:.35rem .3rem;font-weight:700;">'+(e.pm_after!=null?brlJS(e.pm_after):'—')+'</td>'+
-          '<td style="text-align:right;padding:.35rem .3rem;color:var(--text-secondary);">'+e.created+'</td></tr>';
+          '<td style="text-align:right;padding:.35rem .3rem;color:var(--text-secondary);">'+e.created+'</td>'+
+          '<td style="text-align:right;padding:.35rem .3rem;white-space:nowrap;">'+
+            '<button type="button" class="pm-btn" style="background:#0ea5e9;" title="Editar linha" '+
+              'onclick=\'pmHistEdit('+e.id+','+JSON.stringify(String(e.valor))+','+JSON.stringify(e.date_iso||'')+','+JSON.stringify(e.ref||'')+')\'>✏️</button>'+
+            '<button type="button" class="pm-btn" style="background:#ef4444;" title="Excluir linha" onclick="pmHistDel('+e.id+')">🗑️</button>'+
+          '</td></tr>';
       }).join('')+'</tbody></table>';
   }).catch(function(){body.textContent='Erro ao carregar o histórico.';});
 }
-function pmCloseHist(){document.getElementById('pm-hist-modal').style.display='none';}
+function pmHistEdit(id,valor,dateIso,ref){
+  var tr=document.querySelector('#pm-hist-body tr[data-ev="'+id+'"]');
+  if(!tr)return;
+  var vBR=Number(valor).toFixed(2).replace('.',',');
+  tr.innerHTML='<td colspan="6" style="padding:.5rem .3rem;">'+
+    '<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:end;">'+
+      '<div><label style="font-size:.7rem;color:var(--text-secondary);display:block;">Valor (R$)</label>'+
+        '<input id="pm-ed-v" class="form-control form-control-sm" style="width:110px;" value="'+escH(vBR)+'"></div>'+
+      '<div><label style="font-size:.7rem;color:var(--text-secondary);display:block;">Data</label>'+
+        '<input id="pm-ed-d" type="date" class="form-control form-control-sm" value="'+escH(dateIso)+'"></div>'+
+      '<div style="flex:1;min-width:180px;"><label style="font-size:.7rem;color:var(--text-secondary);display:block;">Descrição</label>'+
+        '<input id="pm-ed-r" class="form-control form-control-sm" style="width:100%;" value="'+escH(ref)+'"></div>'+
+      '<button type="button" class="btn btn-primary btn-sm" onclick="pmHistSave('+id+')">💾 Salvar</button>'+
+      '<button type="button" class="btn btn-secondary btn-sm" onclick="pmOpenHist(pmHistTk)">✕</button>'+
+    '</div></td>';
+}
+function pmHistSave(id){
+  fetch('/api/pm/evento/'+id+'/edit',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({valor:document.getElementById('pm-ed-v').value,
+                         date:document.getElementById('pm-ed-d').value,
+                         ref:document.getElementById('pm-ed-r').value})})
+    .then(function(r){return r.json();})
+    .then(function(d){if(d.error)throw new Error(d.error);pmHistDirty=true;pmOpenHist(pmHistTk);})
+    .catch(function(e){alert('Erro ao salvar: '+(e.message||e));});
+}
+function pmHistDel(id){
+  if(!confirm('Excluir esta linha do histórico? Se veio da varredura, o crédito volta a ficar pendente.'))return;
+  fetch('/api/pm/evento/'+id+'/delete',{method:'POST'})
+    .then(function(r){return r.json();})
+    .then(function(d){if(d.error)throw new Error(d.error);pmHistDirty=true;pmOpenHist(pmHistTk);})
+    .catch(function(e){alert('Erro ao excluir: '+(e.message||e));});
+}
+function pmHistNova(){
+  pmCloseHist();
+  pmOpenManual(pmHistTk);
+}
+function pmCloseHist(){
+  document.getElementById('pm-hist-modal').style.display='none';
+  if(pmHistDirty){pmHistDirty=false;location.reload();}
+}
 ['pm-buy-modal','pm-hist-modal','pm-manual-modal'].forEach(function(id){
-  document.getElementById(id).addEventListener('click',function(ev){if(ev.target===this)this.style.display='none';});
+  document.getElementById(id).addEventListener('click',function(ev){
+    if(ev.target!==this)return;
+    if(id==='pm-hist-modal')pmCloseHist();else this.style.display='none';
+  });
 });
 </script>
 {% endblock %}

@@ -6662,10 +6662,11 @@ def dividendos_recalc_qtd_b3():
         return redirect(url_for('dividendos'))
     raw = f.read()
     fname = (f.filename or '').lower()
+    diag = None
     try:
         # Excel de MOVIMENTAÇÃO (.xlsx, magic 'PK') ou CSV de NEGOCIAÇÃO
         if fname.endswith(('.xlsx', '.xls')) or raw[:2] == b'PK':
-            trades = parse_b3_movimentacao_xlsx(raw)
+            trades, diag = parse_b3_movimentacao_xlsx(raw, debug=True)
         else:
             trades = parse_b3_trades(raw)
     except RuntimeError as e:
@@ -6675,7 +6676,20 @@ def dividendos_recalc_qtd_b3():
         flash(f'Falha ao ler o arquivo: {e}', 'danger')
         return redirect(url_for('dividendos'))
     if not trades:
-        flash('Nenhuma compra/venda de ações/FII/ETF encontrada no arquivo.', 'warning')
+        if diag is not None:
+            if not diag['header_found']:
+                msg = ('Não encontrei o cabeçalho (Movimentação/Produto) no Excel. '
+                       'Baixe em Extratos → Movimentação (área do investidor B3) sem editar o arquivo.')
+            elif diag['liquidacoes'] == 0:
+                msg = ('O Excel não tem linhas "Transferência - Liquidação" (compras/vendas à vista '
+                       'liquidadas) no período. Dividendos/opções não contam.')
+            else:
+                msg = (f'{diag["liquidacoes"]} liquidação(ões) encontrada(s), mas nenhuma virou '
+                       f'compra/venda de ação/FII/ETF (ignoradas: {diag["skip_ticker"]} por ticker, '
+                       f'{diag["skip_data_qty"]} por data/qtd, {diag["skip_no_side"]} por lado).')
+            flash(msg, 'warning')
+        else:
+            flash('Nenhuma compra/venda de ações/FII/ETF encontrada no arquivo.', 'warning')
         return redirect(url_for('dividendos'))
 
     # Aproveita o upload para popular o LIVRO de transações (com dedupe)
@@ -6792,8 +6806,10 @@ def _persist_b3_txns(user_id, trades):
         if key in seen:
             continue
         seen.add(key)
+        nota = ('Transferência B3 (sem preço)' if t.get('no_price')
+                else 'Importação extrato B3')
         _txn_add(user_id, t['ticker'], t['side'], t['qty'], t['price'],
-                 txn_date=t['date'], source='B3', notes='Importação CSV B3')
+                 txn_date=t['date'], source='B3', notes=nota)
         added += 1
     return added
 
@@ -7512,13 +7528,13 @@ def _b3_norm_ticker(code):
     return code
 
 
-def parse_b3_movimentacao_xlsx(raw_bytes):
+def parse_b3_movimentacao_xlsx(raw_bytes, debug=False):
     """Lê o Excel de MOVIMENTAÇÃO da B3 (área do investidor, .xlsx) e devolve
     as compras/vendas liquidadas no MESMO formato de parse_b3_trades:
         {date, side 'C'|'V', ticker, qty, price}
-    Considera apenas linhas 'Transferência - Liquidação' de ações/FII/ETF
-    (Entrada=Crédito → compra; Saída=Débito → venda). Opções e demais eventos
-    (dividendos, bonificações, empréstimos) são ignorados."""
+    À vista = 'Transferência - Liquidação' (Crédito → compra, Débito → venda).
+    Opções e demais eventos (dividendos, empréstimos etc.) são ignorados.
+    debug=True devolve (trades, diag) com contadores p/ diagnóstico."""
     try:
         import openpyxl
     except ImportError:
@@ -7527,9 +7543,50 @@ def parse_b3_movimentacao_xlsx(raw_bytes):
     import io as _io
     from datetime import datetime as _dtt, date as _date
 
-    wb = openpyxl.load_workbook(_io.BytesIO(raw_bytes), read_only=True, data_only=True)
+    def _pick(low, *needles):
+        """1º índice cuja célula contém TODAS as needles."""
+        for i, v in enumerate(low):
+            if all(n in v for n in needles):
+                return i
+        return None
+
+    def _to_date(raw):
+        if isinstance(raw, _dtt):
+            return raw.date()
+        if isinstance(raw, _date):
+            return raw
+        s = str(raw).strip()
+        for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%d/%m/%y', '%d-%m-%Y'):
+            try:
+                return _dtt.strptime(s[:10], fmt).date()
+            except ValueError:
+                continue
+        return None
+
+    def _to_num(raw):
+        if raw is None:
+            return None
+        if isinstance(raw, (int, float)):
+            return float(raw)
+        s = str(raw).replace('R$', '').strip()
+        if s in ('', '-', '--'):
+            return None
+        # pt-BR: milhar '.', decimal ','  |  também aceita ponto decimal simples
+        if ',' in s:
+            s = s.replace('.', '').replace(',', '.')
+        try:
+            return float(s)
+        except ValueError:
+            return None
+
+    # NÃO usar read_only: os XLSX da B3/BTG declaram dimensões erradas
+    # (dimension "A1:A1"), o que faz o modo read_only truncar tudo para 1 célula.
+    wb = openpyxl.load_workbook(_io.BytesIO(raw_bytes), read_only=False, data_only=True)
     trades = []
+    diag = {'sheets': 0, 'header_found': False, 'liquidacoes': 0, 'kept': 0,
+            'skip_no_side': 0, 'skip_ticker': 0, 'skip_data_qty': 0}
     for ws in wb.worksheets:
+        diag['sheets'] += 1
         idx = None
         for r in ws.iter_rows(values_only=True):
             if r is None:
@@ -7537,56 +7594,56 @@ def parse_b3_movimentacao_xlsx(raw_bytes):
             vals = [str(c).strip() if c is not None else '' for c in r]
             low = [v.lower() for v in vals]
             if idx is None:
-                # localiza o cabeçalho
-                if 'data' in low and 'produto' in low and any('movimenta' in v for v in low):
+                # cabeçalho: precisa ter Movimentação e Produto na mesma linha
+                if _pick(low, 'movimenta') is not None and _pick(low, 'produto') is not None:
                     idx = {
-                        'es':   next((i for i, v in enumerate(low) if 'entrada' in v and 'sa' in v), 0),
-                        'data': low.index('data'),
-                        'mov':  next(i for i, v in enumerate(low) if 'movimenta' in v),
-                        'prod': low.index('produto'),
-                        'qty':  next((i for i, v in enumerate(low) if 'quantidade' in v), None),
-                        'pu':   next((i for i, v in enumerate(low)
-                                      if 'unit' in v and 'pre' in v), None),
+                        'es':   _pick(low, 'entrada') if _pick(low, 'entrada') is not None else _pick(low, 'sa', 'da'),
+                        'mov':  _pick(low, 'movimenta'),
+                        'prod': _pick(low, 'produto'),
+                        'data': _pick(low, 'data'),
+                        'qty':  _pick(low, 'quantidade'),
+                        'pu':   _pick(low, 'pre', 'unit') if _pick(low, 'pre', 'unit') is not None else _pick(low, 'unit'),
                     }
+                    diag['header_found'] = True
                 continue
-            try:
-                mov = vals[idx['mov']].lower()
-                if 'transfer' not in mov or 'liquida' not in mov:
-                    continue
-                es = vals[idx['es']].lower()
-                side = 'C' if es.startswith('cr') else ('V' if es.startswith('d') else None)
-                if not side:
-                    continue
-                ticker = _b3_norm_ticker(vals[idx['prod']].split('-')[0])
-                # ações/FII/ETF têm 5-6 caracteres; descarta opções e outros
-                if not (4 < len(ticker) <= 6) or not any(ch.isdigit() for ch in ticker):
-                    continue
-                raw_d = r[idx['data']]
-                if isinstance(raw_d, _dtt):
-                    d = raw_d.date()
-                elif isinstance(raw_d, _date):
-                    d = raw_d
-                else:
-                    d = _dtt.strptime(str(raw_d).strip()[:10], '%d/%m/%Y').date()
-                raw_q = r[idx['qty']]
-                qty = int(raw_q) if isinstance(raw_q, (int, float)) else \
-                    int(float(str(raw_q).replace('.', '').replace(',', '.')))
-                raw_p = r[idx['pu']] if idx['pu'] is not None else None
-                if raw_p in (None, '', '-'):
-                    price = 0.0
-                elif isinstance(raw_p, (int, float)):
-                    price = float(raw_p)
-                else:
-                    s = str(raw_p).replace('R$', '').strip().replace('.', '').replace(',', '.')
-                    price = float(s) if s and s != '-' else 0.0
-                if qty <= 0:
-                    continue
-                trades.append({'date': d, 'side': side, 'ticker': ticker,
-                               'qty': qty, 'price': price})
-            except Exception:
+
+            def cell(k):
+                j = idx.get(k)
+                return vals[j] if (j is not None and j < len(vals)) else ''
+            def raw(k):
+                j = idx.get(k)
+                return r[j] if (j is not None and j < len(r)) else None
+
+            mov = cell('mov').lower()
+            if 'transfer' not in mov or 'liquida' not in mov:
                 continue
+            diag['liquidacoes'] += 1
+
+            es = cell('es').lower()
+            side = ('C' if es.startswith(('cr', 'entrada'))
+                    else 'V' if es.startswith(('d', 'sa')) else None)
+            if not side:
+                diag['skip_no_side'] += 1
+                continue
+
+            ticker = _b3_norm_ticker(cell('prod').split('-')[0])
+            if not (4 < len(ticker) <= 6) or not any(ch.isdigit() for ch in ticker):
+                diag['skip_ticker'] += 1
+                continue
+
+            d = _to_date(raw('data'))
+            qn = _to_num(raw('qty'))
+            if d is None or qn is None or qn <= 0:
+                diag['skip_data_qty'] += 1
+                continue
+            price = _to_num(raw('pu')) or 0.0
+            trades.append({'date': d, 'side': side, 'ticker': ticker,
+                           'qty': int(qn), 'price': round(price, 4),
+                           'no_price': price <= 0})   # transferência sem preço
+            diag['kept'] += 1
+
     trades.sort(key=lambda t: t['date'])
-    return trades
+    return (trades, diag) if debug else trades
 
 
 def _b3_classify(ticker):

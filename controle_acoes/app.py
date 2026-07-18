@@ -6287,7 +6287,11 @@ def _pm_state(user_id, ticker):
     # Pool = créditos varridos (dividendos/opções) − usos; lançamentos MANUAIS
     # (lucro avulso) abatem o custo mas NÃO consomem o pool de créditos.
     used_pool  = round(sum(e.valor or 0 for e in evs if e.kind != 'MANUAL'), 2)
-    earned  = _pm_earned_items(user_id, ticker)
+    # Créditos marcados IGNORADO (ex.: evento anterior à posição atual) saem
+    # completamente da varredura: não contam como ganhos, pool nem pendência.
+    ignored_keys = {e.source_key for e in evs if e.kind == 'IGNORADO' and e.source_key}
+    earned  = [i for i in _pm_earned_items(user_id, ticker)
+               if i['key'] not in ignored_keys]
     pending = [i for i in earned if i['key'] not in used_keys]
     pool = round(sum(i['valor'] for i in earned) - used_pool, 2)
     custo_of = (a.quantity * (a.avg_price or 0)) if a else 0.0
@@ -6518,13 +6522,22 @@ def pm_evento_edit(id):
 @app.route('/api/pm/evento/<int:id>/delete', methods=['POST'])
 @login_required
 def pm_evento_delete(id):
-    """Exclui uma linha do histórico do PM (o crédito volta a ficar pendente
-    na varredura, se veio dela)."""
+    """Exclui uma linha do histórico do PM.
+    mode='pendente' (padrão): apaga — crédito de varredura volta a ficar pendente.
+    mode='ignorar': converte em marcador IGNORADO (valor 0, mantém a origem) —
+    o crédito some da varredura em definitivo (ex.: evento anterior à compra da
+    posição atual). Excluir um IGNORADO reativa o crédito."""
     e = PMEvent.query.get_or_404(id)
     if e.user_id != current_user.id:
         return jsonify({'error': 'sem permissão'}), 403
+    mode = ((request.get_json(silent=True) or {}).get('mode') or 'pendente').lower()
     tk = e.ticker
-    db.session.delete(e)
+    if mode == 'ignorar' and e.source_key and e.kind != 'IGNORADO':
+        e.kind = 'IGNORADO'
+        e.valor = 0.0
+        e.ref = ('Ignorado (fora da posição atual): ' + (e.ref or ''))[:200]
+    else:
+        db.session.delete(e)
     _pm_rebuild_chain(current_user.id, tk)
     db.session.commit()
     return jsonify({'ok': True})
@@ -6538,9 +6551,11 @@ def pm_historico(ticker):
     evs = (PMEvent.query.filter_by(user_id=current_user.id, ticker=ticker)
            .order_by(PMEvent.created_at, PMEvent.id).all())
     labels = {'DIVIDENDO': 'Dividendo aplicado', 'OPCOES': 'Resultado de opções',
-              'COMPRA_LUCRO': 'Compra com lucro', 'MANUAL': 'Ajuste manual'}
+              'COMPRA_LUCRO': 'Compra com lucro', 'MANUAL': 'Ajuste manual',
+              'IGNORADO': 'Crédito ignorado (fora da varredura)'}
     return jsonify([{
         'id': e.id, 'kind': e.kind, 'kind_label': labels.get(e.kind, e.kind),
+        'has_source': bool(e.source_key),
         'date': e.event_date.strftime('%d/%m/%Y') if e.event_date else '',
         'date_iso': e.event_date.isoformat() if e.event_date else '',
         'valor': round(e.valor or 0, 2),

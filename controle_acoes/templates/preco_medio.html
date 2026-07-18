@@ -255,14 +255,15 @@ function pmOpenHist(tk){
   document.getElementById('pm-hist-modal').style.display='flex';
   fetch('/api/pm/historico/'+encodeURIComponent(tk)).then(function(r){return r.json();}).then(function(list){
     if(!list.length){body.innerHTML='<p style="color:var(--text-secondary);">Nenhum evento registrado ainda. Use 💰 para aplicar os créditos sugeridos ou ➕ Nova linha.</p>';return;}
-    var icons={DIVIDENDO:'💵',OPCOES:'🎯',COMPRA_LUCRO:'🛒',MANUAL:'✏️'};
+    var icons={DIVIDENDO:'💵',OPCOES:'🎯',COMPRA_LUCRO:'🛒',MANUAL:'✏️',IGNORADO:'🚫'};
     body.innerHTML='<table style="width:100%;border-collapse:collapse;">'+
       '<thead><tr><th style="text-align:left;padding:.3rem;">Evento</th><th style="text-align:right;padding:.3rem;">Valor</th>'+
       '<th style="text-align:right;padding:.3rem;">PM antes</th><th style="text-align:right;padding:.3rem;">PM depois</th>'+
       '<th style="text-align:right;padding:.3rem;">Registrado</th><th style="padding:.3rem;"></th></tr></thead><tbody>'+
       list.map(function(e){
         var neg=e.kind!=='COMPRA_LUCRO'&&e.valor<0;
-        return '<tr style="border-top:1px solid var(--border-color);" data-ev="'+e.id+'">'+
+        var dim=e.kind==='IGNORADO'?'opacity:.55;':'';
+        return '<tr style="border-top:1px solid var(--border-color);'+dim+'" data-ev="'+e.id+'">'+
           '<td style="padding:.35rem .3rem;">'+(icons[e.kind]||'')+' <strong>'+e.kind_label+'</strong>'+
           (e.date?' · '+e.date:'')+'<br><small style="color:var(--text-secondary);">'+escH(e.ref)+'</small></td>'+
           '<td style="text-align:right;padding:.35rem .3rem;" class="'+(neg?'negative':'positive')+'">'+brlJS(e.valor)+'</td>'+
@@ -270,9 +271,9 @@ function pmOpenHist(tk){
           '<td style="text-align:right;padding:.35rem .3rem;font-weight:700;">'+(e.pm_after!=null?brlJS(e.pm_after):'—')+'</td>'+
           '<td style="text-align:right;padding:.35rem .3rem;color:var(--text-secondary);">'+e.created+'</td>'+
           '<td style="text-align:right;padding:.35rem .3rem;white-space:nowrap;">'+
-            '<button type="button" class="pm-btn" style="background:#0ea5e9;" title="Editar linha" '+
-              'onclick=\'pmHistEdit('+e.id+','+JSON.stringify(String(e.valor))+','+JSON.stringify(e.date_iso||'')+','+JSON.stringify(e.ref||'')+')\'>✏️</button>'+
-            '<button type="button" class="pm-btn" style="background:#ef4444;" title="Excluir linha" onclick="pmHistDel('+e.id+')">🗑️</button>'+
+            (e.kind==='IGNORADO'?'':'<button type="button" class="pm-btn" style="background:#0ea5e9;" title="Editar linha" '+
+              'onclick=\'pmHistEdit('+e.id+','+JSON.stringify(String(e.valor))+','+JSON.stringify(e.date_iso||'')+','+JSON.stringify(e.ref||'')+')\'>✏️</button>')+
+            '<button type="button" class="pm-btn" style="background:#ef4444;" title="'+(e.kind==='IGNORADO'?'Reativar o crédito (volta a ficar pendente)':'Excluir linha')+'" onclick="pmHistDel('+e.id+','+(e.has_source?1:0)+','+(e.kind==='IGNORADO'?1:0)+')">🗑️</button>'+
           '</td></tr>';
       }).join('')+'</tbody></table>';
   }).catch(function(){body.textContent='Erro ao carregar o histórico.';});
@@ -302,9 +303,22 @@ function pmHistSave(id){
     .then(function(d){if(d.error)throw new Error(d.error);pmHistDirty=true;pmOpenHist(pmHistTk);})
     .catch(function(e){alert('Erro ao salvar: '+(e.message||e));});
 }
-function pmHistDel(id){
-  if(!confirm('Excluir esta linha do histórico? Se veio da varredura, o crédito volta a ficar pendente.'))return;
-  fetch('/api/pm/evento/'+id+'/delete',{method:'POST'})
+function pmHistDel(id,hasSource,isIgnored){
+  var mode='pendente';
+  if(isIgnored){
+    if(!confirm('Reativar este crédito? Ele volta a aparecer como pendente na varredura.'))return;
+  }else if(hasSource){
+    if(!confirm('Excluir esta linha do histórico?'))return;
+    // Crédito de varredura: escolher o destino dele
+    mode=confirm('Este crédito veio da varredura (dividendo/opções).\n\n'+
+      'OK = IGNORAR em definitivo — não volta a ficar pendente\n'+
+      '(ex.: evento ANTERIOR à compra da posição atual)\n\n'+
+      'Cancelar = excluir e deixar o crédito PENDENTE de novo')?'ignorar':'pendente';
+  }else{
+    if(!confirm('Excluir esta linha do histórico?'))return;
+  }
+  fetch('/api/pm/evento/'+id+'/delete',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({mode:mode})})
     .then(function(r){return r.json();})
     .then(function(d){if(d.error)throw new Error(d.error);pmHistDirty=true;pmOpenHist(pmHistTk);})
     .catch(function(e){alert('Erro ao excluir: '+(e.message||e));});

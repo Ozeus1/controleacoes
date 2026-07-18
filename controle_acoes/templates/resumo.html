@@ -23,10 +23,12 @@
         grid-template-columns: repeat(2, 1fr);
         gap: 1rem;
         margin-bottom: 1.5rem;
+        align-items: start;   /* cards com legendas de tamanhos diferentes */
     }
     .pie-card { padding: 1.2rem; display: flex; flex-direction: column; align-items: center; }
     .pie-card h3 { font-size: 1.05rem; margin-bottom: .8rem; text-align: center; }
-    .pie-box { position: relative; width: 100%; max-width: 460px; height: 280px; }
+    .pie-box { position: relative; width: 100%; max-width: 460px; height: 235px; }
+    .pie-card .donut-legend { width: 100%; max-width: 460px; }
 
     /* ── Seletor de período dos gráficos ── */
     .periodo-btn {
@@ -112,23 +114,27 @@
         </a>
     </div>
 
-    <!-- Pizzas 2x2 -->
+    <!-- Pizzas 2x2 — donut com total no centro + legenda em lista (valor + %) -->
     <div class="pies-grid">
         <div class="card pie-card">
             <h3>Alocação (Ações vs FIIs vs ETFs)</h3>
             <div class="pie-box"><canvas id="allocationChart"></canvas></div>
+            <div class="donut-legend" id="allocationLegend"></div>
         </div>
         <div class="card pie-card">
             <h3>Setores de Ações</h3>
             <div class="pie-box"><canvas id="stockChart"></canvas></div>
+            <div class="donut-legend" id="stockLegend"></div>
         </div>
         <div class="card pie-card">
             <h3>Tipos de FIIs</h3>
             <div class="pie-box"><canvas id="fiiChart"></canvas></div>
+            <div class="donut-legend" id="fiiLegend"></div>
         </div>
         <div class="card pie-card">
             <h3>Divisão (Tijolo x Papel)</h3>
             <div class="pie-box"><canvas id="broadChart"></canvas></div>
+            <div class="donut-legend" id="broadLegend"></div>
         </div>
     </div>
 
@@ -270,130 +276,40 @@
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+<script src="{{ url_for('static', filename='js/donut.js') }}?v=1"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         // Register DataLabels
         Chart.register(ChartDataLabels);
 
-        // Common Option for Doughnut Charts
         const isMobile = window.innerWidth < 900;
-        const commonOptions = {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '60%',
-            plugins: {
-                legend: {
-                    position: isMobile ? 'bottom' : 'right',
-                    labels: {
-                        color: themeColors.text,
-                        font: { size: isMobile ? 9 : 12 },
-                        padding: isMobile ? 4 : 12,
-                        boxWidth: isMobile ? 9 : 16,
-                        generateLabels: function(chart) {
-                            const data = chart.data;
-                            if (data.labels.length && data.datasets.length) {
-                                const sum = data.datasets[0].data.reduce((a, b) => a + b, 0);
-                                return data.labels.map(function(label, i) {
-                                    const value = data.datasets[0].data[i];
-                                    const pct = sum > 0 ? (value / sum * 100).toFixed(1) : '0.0';
-                                    return {
-                                        text: label + '  ' + pct + '%',
-                                        fillStyle: data.datasets[0].backgroundColor[i],
-                                        strokeStyle: data.datasets[0].backgroundColor[i],
-                                        fontColor: themeColors.text,
-                                        lineWidth: 0,
-                                        hidden: false,
-                                        index: i
-                                    };
-                                });
-                            }
-                            return [];
-                        }
-                    }
-                },
-                datalabels: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.label || '';
-                            if (context.parsed !== null) {
-                                label += ': ' + new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed);
-                            }
-                            return label;
-                        }
-                    }
-                }
-            },
-            layout: { padding: isMobile ? 5 : 20 }
-        };
 
-        // 1. Broad Allocation Chart
-        const ctxBroad = document.getElementById('broadChart').getContext('2d');
-        new Chart(ctxBroad, {
-            type: 'doughnut',
-            data: {
-                labels: ['Tijolo', 'Papel'],
-                datasets: [{
-                    data: [{{ broad_allocation['Tijolo'] }}, {{ broad_allocation['Papel'] }}],
-                    backgroundColor: ['#3b82f6', '#f97316'],
-                    borderWidth: 0
-                }]
-            },
-            options: commonOptions
-        });
+        // ── Pizzas 2×2 — donut padronizado (total no centro + legenda-lista) ──
+        // 1. Divisão Tijolo × Papel
+        donutChart('broadChart', ['Tijolo', 'Papel'],
+            [{{ broad_allocation['Tijolo'] }}, {{ broad_allocation['Papel'] }}],
+            ['#3b82f6', '#f97316'],
+            { legendId: 'broadLegend', centerLabel: 'Total FIIs' });
 
-    // 2. Allocation Chart
-    const ctxAlloc = document.getElementById('allocationChart').getContext('2d');
-    new Chart(ctxAlloc, {
-        type: 'doughnut',
-        data: {
-            labels: ['Ações', 'FIIs', 'ETFs'],
-            datasets: [{
-                data: [{{ total_acoes }}, {{ total_fiis }}, {{ total_etfs }}],
-                backgroundColor: ['#6366f1', '#10b981', '#8b5cf6'],
-                borderWidth: 0
-            }]
-        },
-        options: commonOptions
-    });
+        // 2. Alocação Ações × FIIs × ETFs
+        donutChart('allocationChart', ['Ações', 'FIIs', 'ETFs'],
+            [{{ total_acoes }}, {{ total_fiis }}, {{ total_etfs }}],
+            ['#6366f1', '#10b981', '#8b5cf6'],
+            { legendId: 'allocationLegend', centerLabel: 'Total' });
 
-    // 3. FII Chart
-    const fiiLabels = {{ fii_types.keys() | list | tojson }};
-    const fiiValues = {{ fii_types.values() | list | tojson }};
-    const ctxFii = document.getElementById('fiiChart').getContext('2d');
-    new Chart(ctxFii, {
-        type: 'doughnut',
-        data: {
-            labels: fiiLabels,
-            datasets: [{
-                data: fiiValues,
-                backgroundColor: [
-                    '#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#64748b', '#06b6d4'
-                ],
-                borderWidth: 0
-            }]
-        },
-        options: commonOptions
-    });
+        // 3. Tipos de FIIs
+        donutChart('fiiChart',
+            {{ fii_types.keys() | list | tojson }},
+            {{ fii_types.values() | list | tojson }},
+            ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#64748b', '#06b6d4'],
+            { legendId: 'fiiLegend', centerLabel: 'Total FIIs' });
 
-    // 4. Stock Sector Chart
-    const stockLabels = {{ stock_sectors.keys() | list | tojson }};
-    const stockValues = {{ stock_sectors.values() | list | tojson }};
-    const ctxStock = document.getElementById('stockChart').getContext('2d');
-    new Chart(ctxStock, {
-        type: 'doughnut',
-        data: {
-            labels: stockLabels,
-            datasets: [{
-                data: stockValues,
-                backgroundColor: [
-                    '#8b5cf6', '#ec4899', '#f97316', '#14b8a6', '#f43f5e', '#6366f1', '#84cc16', '#a855f7', '#0ea5e9', '#eab308', '#64748b'
-                ],
-                borderWidth: 0
-            }]
-        },
-        options: commonOptions
-    });
+        // 4. Setores de Ações
+        donutChart('stockChart',
+            {{ stock_sectors.keys() | list | tojson }},
+            {{ stock_sectors.values() | list | tojson }},
+            ['#8b5cf6', '#ec4899', '#f97316', '#14b8a6', '#f43f5e', '#6366f1', '#84cc16', '#a855f7', '#0ea5e9', '#eab308', '#64748b'],
+            { legendId: 'stockLegend', centerLabel: 'Total Ações' });
 
     // 5. Resultado Mensal (Lucro + Dividendos Ações + Dividendos FIIs)
     const monthLabels   = {{ months | tojson }};

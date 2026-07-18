@@ -684,11 +684,10 @@
                 </tbody>
             </table>
         </div><!-- /bal-table-wrap -->
-        <!-- Class Chart — altura maior para caber todas as legendas numa linha -->
-        <div class="card chart-single" style="margin-top:.75rem; max-width:900px;">
-            <div style="height:360px;">
-                <canvas id="classChart"></canvas>
-            </div>
+        <!-- Class Chart — donut com total no centro + legenda em lista -->
+        <div class="card chart-single" style="margin-top:.75rem; max-width:640px; padding:1rem;">
+            <div style="height:260px;"><canvas id="classChart"></canvas></div>
+            <div class="donut-legend" id="classLegend"></div>
         </div>
     </div>
 
@@ -742,17 +741,20 @@
 
         <!-- RF CHARTS: empilhados verticalmente -->
         <h5 style="margin-top:1.5rem;">Gráficos Renda Fixa</h5>
-        <div class="card chart-single" style="padding:1rem;">
+        <div class="card chart-single" style="padding:1rem; max-width:640px;">
             <h6 style="font-size:.82rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Prazo</h6>
-            <div style="height:320px;"><canvas id="rfTermChart"></canvas></div>
+            <div style="height:230px;"><canvas id="rfTermChart"></canvas></div>
+            <div class="donut-legend" id="rfTermLegend"></div>
         </div>
-        <div class="card chart-single" style="padding:1rem;">
+        <div class="card chart-single" style="padding:1rem; max-width:640px;">
             <h6 style="font-size:.82rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Tipo (Categoria)</h6>
-            <div style="height:320px;"><canvas id="rfTypeChart"></canvas></div>
+            <div style="height:230px;"><canvas id="rfTypeChart"></canvas></div>
+            <div class="donut-legend" id="rfTypeLegend"></div>
         </div>
-        <div class="card chart-single" style="padding:1rem;">
+        <div class="card chart-single" style="padding:1rem; max-width:640px;">
             <h6 style="font-size:.82rem; font-weight:600; margin-bottom:.5rem; color:var(--text-secondary);">Por Subtipo (Detalhado)</h6>
-            <div style="height:320px;"><canvas id="rfSubtypeChart"></canvas></div>
+            <div style="height:230px;"><canvas id="rfSubtypeChart"></canvas></div>
+            <div class="donut-legend" id="rfSubtypeLegend"></div>
         </div>
     </div>
 
@@ -795,195 +797,82 @@
             </table>
         </div><!-- /bal-table-wrap -->
         <!-- Type Chart -->
-        <div class="card chart-single" style="margin-top:.75rem;">
-            <div style="height:300px;"><canvas id="typeChart"></canvas></div>
+        <div class="card chart-single" style="margin-top:.75rem; max-width:640px; padding:1rem;">
+            <div style="height:220px;"><canvas id="typeChart"></canvas></div>
+            <div class="donut-legend" id="typeLegend"></div>
         </div>
     </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+<script src="{{ url_for('static', filename='js/donut.js') }}?v=1"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function () {
         // Register DataLabels
         Chart.register(ChartDataLabels);
 
-        const isSmallScreen = window.innerWidth < 900;
-        const commonOptions = {
-            responsive: true,
-            maintainAspectRatio: false,
-            cutout: '60%',
-            plugins: {
-                legend: {
-                    position: isSmallScreen ? 'bottom' : 'right',
-                    labels: {
-                        color: themeColors.text,
-                        font: { size: isSmallScreen ? 11 : 12 },
-                        padding: isSmallScreen ? 6 : 12,
-                        boxWidth: isSmallScreen ? 12 : 16,
-                        generateLabels: function(chart) {
-                            const data = chart.data;
-                            if (data.labels.length && data.datasets.length) {
-                                const sum = data.datasets[0].data.reduce((a, b) => a + b, 0);
-                                return data.labels.map(function(label, i) {
-                                    const value = data.datasets[0].data[i];
-                                    const pct = sum > 0 ? (value / sum * 100).toFixed(1) : '0.0';
-                                    return {
-                                        text: label + '  ' + pct + '%',
-                                        fillStyle: data.datasets[0].backgroundColor[i],
-                                        strokeStyle: data.datasets[0].backgroundColor[i],
-                                        fontColor: themeColors.text,
-                                        lineWidth: 0,
-                                        hidden: false,
-                                        index: i
-                                    };
-                                });
-                            }
-                            return [];
-                        }
-                    }
-                },
-                datalabels: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            let label = context.label || '';
-                            if (context.parsed !== null) {
-                                label += ': ' + new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed);
-                            }
-                            return label;
-                        }
-                    }
-                }
-            },
-            layout: { padding: isSmallScreen ? 5 : 20 }
-        };
+        // ── Donuts padronizados: total no centro + legenda-lista (valor + %) ──
 
         // --- TYPE CHART ---
-        const ctxType = document.getElementById('typeChart').getContext('2d');
-        new Chart(ctxType, {
-            type: 'doughnut',
-            data: {
-                labels: ['Renda Fixa', 'Renda Variável'],
-                datasets: [{
-                    data: [{{ summary['Renda Fixa'] }}, {{ summary['Renda Variável'] }}],
-                    backgroundColor: ['#3b82f6', '#10b981'],
-                    borderWidth: 0
-                }]
-            },
-            options: commonOptions
-        });
+        donutChart('typeChart', ['Renda Fixa', 'Renda Variável'],
+            [{{ summary['Renda Fixa'] }}, {{ summary['Renda Variável'] }}],
+            ['#3b82f6', '#10b981'],
+            { legendId: 'typeLegend', centerLabel: 'Total' });
 
-    // --- CLASS CHART ---
-    const ctxClass = document.getElementById('classChart').getContext('2d');
+        // --- CLASS CHART ---
+        const classLabels = [];
+        const classData = [];
+        {% for k, v in pie_chart_data.items() %}
+        classLabels.push('{{ k }}');
+        classData.push({{ v }});
+        {% endfor %}
+        donutChart('classChart', classLabels, classData,
+            ['#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981',
+             '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef', '#f43f5e'],
+            { legendId: 'classLegend', centerLabel: 'Total' });
 
-    // Prepare data from Jinja loop
-    const classLabels = [];
-    const classData = [];
-    {% for k, v in pie_chart_data.items() %}
-    classLabels.push('{{ k }}');
-    classData.push({{ v }});
-    {% endfor %}
+        // --- RF TERM CHART ---
+        const rfTermLabels = [];
+        const rfTermData = [];
+        {% for k, v in rf_chart_term.items() %}
+        {% if v > 0 %}
+        rfTermLabels.push('{{ k }}');
+        rfTermData.push({{ v }});
+        {% endif %}
+        {% endfor %}
+        donutChart('rfTermChart', rfTermLabels, rfTermData,
+            ['#ef4444', '#f59e0b', '#10b981', '#6366f1'],
+            { legendId: 'rfTermLegend', centerLabel: 'Renda Fixa' });
 
-    // Colors for classes
-    const classColors = [
-        '#ef4444', '#f97316', '#f59e0b', '#84cc16', '#10b981',
-        '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#d946ef', '#f43f5e'
-    ];
+        // --- RF TYPE CHART ---
+        const rfTypeLabels = [];
+        const rfTypeData = [];
+        {% for k, v in rf_chart_type.items() %}
+        {% if v > 0 %}
+        rfTypeLabels.push('{{ k }}');
+        rfTypeData.push({{ v }});
+        {% endif %}
+        {% endfor %}
+        donutChart('rfTypeChart', rfTypeLabels, rfTypeData,
+            ['#3b82f6', '#f43f5e', '#8b5cf6', '#06b6d4'],
+            { legendId: 'rfTypeLegend', centerLabel: 'Renda Fixa' });
 
-    new Chart(ctxClass, {
-        type: 'doughnut',
-        data: {
-            labels: classLabels,
-            datasets: [{
-                data: classData,
-                backgroundColor: classColors,
-                borderWidth: 0
-            }]
-        },
-        options: commonOptions
-    });
-
-    // --- RF TERM CHART ---
-    const ctxRfTerm = document.getElementById('rfTermChart').getContext('2d');
-    const rfTermLabels = [];
-    const rfTermData = [];
-    {% for k, v in rf_chart_term.items() %}
-    {% if v > 0 %}
-    rfTermLabels.push('{{ k }}');
-    rfTermData.push({{ v }});
-    {% endif %}
-    {% endfor %}
-
-    new Chart(ctxRfTerm, {
-        type: 'doughnut',
-        data: {
-            labels: rfTermLabels,
-            datasets: [{
-                data: rfTermData,
-                backgroundColor: ['#ef4444', '#f59e0b', '#10b981', '#6366f1'],
-                borderWidth: 0
-            }]
-        },
-        options: commonOptions
-    });
-
-    // --- RF TYPE CHART ---
-    const ctxRfType = document.getElementById('rfTypeChart').getContext('2d');
-    const rfTypeLabels = [];
-    const rfTypeData = [];
-    {% for k, v in rf_chart_type.items() %}
-    {% if v > 0 %}
-    rfTypeLabels.push('{{ k }}');
-    rfTypeData.push({{ v }});
-    {% endif %}
-    {% endfor %}
-
-    new Chart(ctxRfType, {
-        type: 'doughnut',
-        data: {
-            labels: rfTypeLabels,
-            datasets: [{
-                data: rfTypeData,
-                backgroundColor: ['#3b82f6', '#f43f5e', '#8b5cf6', '#06b6d4'],
-                borderWidth: 0
-            }]
-        },
-        options: commonOptions
-    });
-
-    // --- RF SUBTYPE CHART (NEW) ---
-    const subCanvas = document.getElementById('rfSubtypeChart');
-    if (subCanvas) {
-        const ctxRfSubtype = subCanvas.getContext('2d');
+        // --- RF SUBTYPE CHART ---
         const rfSubtypeLabels = [];
         const rfSubtypeData = [];
-
         {% if rf_subtypes %}
         {% for k, v in rf_subtypes.items() %}
         {% if v > 0 %}
         rfSubtypeLabels.push('{{ k }}');
         rfSubtypeData.push({{ v }});
-    {% endif %}
-    {% endfor %}
-    {% endif %}
-
-    new Chart(ctxRfSubtype, {
-        type: 'doughnut',
-        data: {
-            labels: rfSubtypeLabels,
-            datasets: [{
-                data: rfSubtypeData,
-                backgroundColor: [
-                    '#3b82f6', '#10b981', '#f59e0b', '#ef4444',
-                    '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#14b8a6'
-                ],
-                borderWidth: 0
-            }]
-        },
-        options: commonOptions
-    });
-    }
+        {% endif %}
+        {% endfor %}
+        {% endif %}
+        donutChart('rfSubtypeChart', rfSubtypeLabels, rfSubtypeData,
+            ['#3b82f6', '#10b981', '#f59e0b', '#ef4444',
+             '#8b5cf6', '#ec4899', '#06b6d4', '#6366f1', '#14b8a6'],
+            { legendId: 'rfSubtypeLegend', centerLabel: 'Renda Fixa' });
 
     });
 </script>

@@ -363,31 +363,30 @@
                 data:  winSlice(s.data),
                 _pct:  winSlice(s.pct),
                 backgroundColor: s.bg,
-                borderRadius: 4,
-                barPercentage: 0.7,
+                borderRadius: 5,
+                borderSkipped: false,
+                barPercentage: 0.72,
+                categoryPercentage: 0.78,
                 yAxisID: 'y',
-                datalabels: {
-                    display: !isMobile,           // no celular os rótulos poluem as barras
-                    color: themeColors.text,
-                    anchor: ctx => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'end' : 'start',
-                    align:  ctx => ctx.dataset.data[ctx.dataIndex] >= 0 ? 'top'  : 'bottom',
-                    font: { size: 9, weight: 'bold' },
-                    formatter: v => v !== 0 ? fmtBRL(v) : ''
-                }
+                // Sem rótulo por barra: os valores sobrepostos poluíam o gráfico.
+                // O hover no mês mostra todas as séries + Total num tooltip só.
+                datalabels: { display: false }
             }));
 
         bars.push({
             type: 'line',
             label: 'Total',
             data: totalLine(),
-            borderColor: '#facc15',
-            backgroundColor: 'rgba(250,204,21,0.1)',
-            pointBackgroundColor: '#facc15',
-            pointRadius: isMobile ? 2.5 : 4,
+            borderColor: themeColors.accentLine,
+            backgroundColor: 'transparent',
+            pointBackgroundColor: themeColors.accentLine,
+            pointBorderColor: 'rgba(255,255,255,.6)',
+            pointBorderWidth: 1,
+            pointRadius: isMobile ? 2.5 : 3.5,
             pointHoverRadius: 6,
             borderWidth: 2.5,
             fill: false,
-            tension: 0.3,
+            tension: 0.35,
             yAxisID: 'yLine',
             datalabels: { display: false }
         });
@@ -402,11 +401,14 @@
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },   // hover no mês = todas as séries
             plugins: {
                 legend: { labels: { color: themeColors.text,
+                                    usePointStyle: true,
+                                    pointStyle: 'rectRounded',
                                     font: { size: isMobile ? 10 : 12 },
-                                    boxWidth: isMobile ? 12 : 40,
-                                    padding: isMobile ? 6 : 10 } },
+                                    boxWidth: isMobile ? 10 : 14,
+                                    padding: isMobile ? 6 : 12 } },
                 datalabels: { display: false },   // controlado por dataset
                 tooltip: {
                     callbacks: {
@@ -431,7 +433,7 @@
                 x: { ticks: { color: themeColors.textSecondary,
                               font: { size: isMobile ? 9 : 11 },
                               maxRotation: isMobile ? 60 : 50 },
-                     grid: { color: 'var(--total-row-bg)' } },
+                     grid: { display: false } },
                 y: {
                     position: 'left',
                     ticks: { color: themeColors.textSecondary,
@@ -439,12 +441,14 @@
                              callback: v => isMobile
                                  ? 'R$' + (Math.abs(v) >= 1000 ? (v/1000).toLocaleString('pt-BR', {maximumFractionDigits:1}) + 'k' : v)
                                  : 'R$ ' + v.toLocaleString('pt-BR') },
-                    grid: { color: 'var(--total-row-bg)' }
+                    grid: { color: themeColors.grid },
+                    border: { display: false }
                 },
                 yLine: {
                     position: 'right',
                     grid: { drawOnChartArea: false },
-                    ticks: { color: '#facc15',
+                    border: { display: false },
+                    ticks: { color: themeColors.accentLine,
                              font: { size: isMobile ? 9 : 11 },
                              callback: v => isMobile
                                  ? 'R$' + (Math.abs(v) >= 1000 ? (v/1000).toLocaleString('pt-BR', {maximumFractionDigits:1}) + 'k' : v)
@@ -480,9 +484,12 @@
                         label: 'Carteira (acumulado)',
                         data: cartData,
                         borderColor: '#10b981',
-                        backgroundColor: 'rgba(16,185,129,0.1)',
+                        backgroundColor: 'rgba(16,185,129,0.14)',
                         pointBackgroundColor: '#10b981',
-                        pointRadius: isMobile ? 2.5 : 4,
+                        pointBorderColor: 'rgba(255,255,255,.6)',
+                        pointBorderWidth: 1,
+                        pointRadius: isMobile ? 2 : 3,
+                        pointHoverRadius: 6,
                         borderWidth: 2.5,
                         fill: true,
                         tension: 0.3,
@@ -492,10 +499,14 @@
                         label: 'Selic (acumulado)',
                         data: selicData,
                         borderColor: '#f59e0b',
-                        backgroundColor: 'rgba(245,158,11,0.07)',
+                        backgroundColor: 'transparent',
                         pointBackgroundColor: '#f59e0b',
-                        pointRadius: isMobile ? 2.5 : 4,
+                        pointBorderColor: 'rgba(255,255,255,.6)',
+                        pointBorderWidth: 1,
+                        pointRadius: isMobile ? 2 : 3,
+                        pointHoverRadius: 6,
                         borderWidth: 2.5,
+                        borderDash: [6, 3],
                         fill: false,
                         tension: 0.3,
                         datalabels: { display: false }
@@ -506,11 +517,14 @@
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
                 plugins: {
                     legend: { labels: { color: themeColors.text,
+                                        usePointStyle: true,
+                                        pointStyle: 'line',
                                         font: { size: isMobile ? 10 : 12 },
-                                        boxWidth: isMobile ? 12 : 40,
-                                        padding: isMobile ? 6 : 10 } },
+                                        boxWidth: isMobile ? 12 : 24,
+                                        padding: isMobile ? 6 : 12 } },
                     datalabels: { display: false },
                     tooltip: {
                         callbacks: {
@@ -545,12 +559,13 @@
                     x: { ticks: { color: themeColors.textSecondary,
                                   font: { size: isMobile ? 9 : 11 },
                                   maxRotation: isMobile ? 60 : 50 },
-                         grid: { color: 'var(--total-row-bg)' } },
+                         grid: { display: false } },
                     y: {
                         ticks: { color: themeColors.textSecondary,
                                  font: { size: isMobile ? 9 : 11 },
                                  callback: v => v.toFixed(1).replace('.', ',') + '%' },
-                        grid: { color: 'var(--total-row-bg)' }
+                        grid: { color: themeColors.grid },
+                        border: { display: false }
                     }
                 }
             }
@@ -592,27 +607,33 @@
                 {   // trecho REAL (verde, contínuo)
                     label: 'Patrimônio (real)',
                     data: [], borderColor: '#10b981',
-                    backgroundColor: 'rgba(16,185,129,0.12)',
+                    backgroundColor: 'rgba(16,185,129,0.16)',
                     pointBackgroundColor: '#10b981',
-                    pointRadius: isMobile ? 2.5 : 4, borderWidth: 2.5, fill: true, tension: 0.25,
+                    pointBorderColor: 'rgba(255,255,255,.6)',
+                    pointBorderWidth: 1,
+                    pointRadius: isMobile ? 2 : 3, pointHoverRadius: 6,
+                    borderWidth: 2.5, fill: true, tension: 0.25,
                     spanGaps: false, datalabels: { display: false }
                 },
                 {   // trecho ESTIMADO (cinza, tracejado)
                     label: 'Patrimônio (estimado)',
                     data: [], borderColor: '#94a3b8', borderDash: [5,4],
-                    backgroundColor: 'rgba(148,163,184,0.08)',
+                    backgroundColor: 'rgba(148,163,184,0.10)',
                     pointBackgroundColor: '#94a3b8',
-                    pointRadius: isMobile ? 2 : 3, borderWidth: 2, fill: true, tension: 0.25,
+                    pointRadius: isMobile ? 2 : 2.5, pointHoverRadius: 5,
+                    borderWidth: 2, fill: true, tension: 0.25,
                     spanGaps: false, datalabels: { display: false }
                 }
             ]},
             plugins: [ChartDataLabels],
             options: {
                 responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
                 plugins: {
                     legend: { labels: { color: themeColors.text,
+                              usePointStyle: true, pointStyle: 'line',
                               font: { size: isMobile ? 10 : 12 },
-                              boxWidth: isMobile ? 12 : 40, padding: isMobile ? 6 : 10 } },
+                              boxWidth: isMobile ? 12 : 24, padding: isMobile ? 6 : 12 } },
                     datalabels: { display: false },
                     tooltip: { callbacks: { label: function(ctx) {
                         if (ctx.parsed.y == null) return null;
@@ -622,12 +643,13 @@
                 scales: {
                     x: { ticks: { color: themeColors.textSecondary,
                                   font: { size: isMobile ? 9 : 11 }, maxRotation: isMobile ? 60 : 50 },
-                         grid: { color: 'var(--total-row-bg)' } },
+                         grid: { display: false } },
                     y: { ticks: { color: themeColors.textSecondary, font: { size: isMobile ? 9 : 11 },
                                   callback: v => isMobile
                                       ? 'R$' + (Math.abs(v) >= 1000 ? (v/1000).toLocaleString('pt-BR', {maximumFractionDigits:0}) + 'k' : v)
                                       : 'R$ ' + v.toLocaleString('pt-BR', {maximumFractionDigits:0}) },
-                         grid: { color: 'var(--total-row-bg)' } }
+                         grid: { color: themeColors.grid },
+                         border: { display: false } }
                 }
             }
         });

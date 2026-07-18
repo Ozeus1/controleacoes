@@ -341,13 +341,16 @@
                 if (c) c.innerHTML = '<p style="color:#aaa;padding:1rem">Carregando gráfico…</p>';
             }
             // Theme-aware chart colors helper (must be before content block)
+            // Canvas NÃO resolve var(--x): as cores precisam vir resolvidas daqui.
             function getThemeColors() {
                 var s = getComputedStyle(document.documentElement);
+                var light = (document.documentElement.getAttribute('data-theme') || 'dark') === 'light';
                 return {
                     text: s.getPropertyValue('--text-primary').trim(),
                     textSecondary: s.getPropertyValue('--text-secondary').trim(),
                     border: s.getPropertyValue('--border-color').trim(),
-                    grid: s.getPropertyValue('--hover-bg').trim()
+                    grid: light ? 'rgba(15,23,42,.08)' : 'rgba(148,163,184,.13)',
+                    accentLine: light ? '#b45309' : '#facc15'   // linha "Total" (âmbar legível nos 2 temas)
                 };
             }
             var themeColors = getThemeColors();
@@ -534,13 +537,25 @@
                         opts.plugins.title.color = themeColors.text;
                     }
                     if (opts.scales) {
-                        Object.values(opts.scales).forEach(function (scale) {
-                            if (scale.ticks) scale.ticks.color = themeColors.text;
+                        Object.entries(opts.scales).forEach(function (entry) {
+                            var key = entry[0], scale = entry[1];
+                            if (scale.ticks) {
+                                scale.ticks.color = key === 'yLine'
+                                    ? themeColors.accentLine : themeColors.textSecondary;
+                            }
+                            if (scale.grid && scale.grid.drawOnChartArea !== false) {
+                                scale.grid.color = themeColors.grid;
+                            }
                         });
                     }
+                    // NÃO sobrescrever borderColor dos datasets: são as CORES das
+                    // séries (Selic/Patrimônio) — trocá-las pela cor de borda do
+                    // tema apagava os gráficos no tema claro. Exceção: a linha
+                    // "Total" usa o âmbar do tema e acompanha a troca.
                     chart.data.datasets.forEach(function (ds) {
-                        if (ds.borderColor) {
-                            ds.borderColor = themeColors.border;
+                        if (ds.label === 'Total') {
+                            ds.borderColor = themeColors.accentLine;
+                            ds.pointBackgroundColor = themeColors.accentLine;
                         }
                     });
                     // Update fontColor in custom legend labels for doughnut charts

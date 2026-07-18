@@ -1824,7 +1824,24 @@ def close_estruturada(id):
             net_close -= cur             * leg.quantity
             total_risk += leg.entry_price * leg.quantity
 
-    pnl_total = net_open - net_close
+    # Resultado JÁ REALIZADO nos manejos anteriores (trechos de pernas fechadas
+    # e substituídas). Cada trecho foi medido do seu entry ao seu close; somá-lo
+    # ao resultado das pernas atuais dá o P&L da operação inteira, sem dupla
+    # contagem — o manejo NÃO gera lucro isolado; só o encerramento apura.
+    import json as _json
+    realized_prev = 0.0
+    if op.roll_history:
+        try:
+            for _rh in _json.loads(op.roll_history):
+                # Só manejos do novo modelo (defer_pnl) entram aqui; os antigos
+                # já foram para o Histórico como MANEJO e não podem contar 2×.
+                if _rh.get('defer_pnl') and _rh.get('realized_pnl') is not None:
+                    realized_prev += float(_rh['realized_pnl'])
+        except Exception:
+            realized_prev = 0.0
+
+    pnl_pernas = net_open - net_close
+    pnl_total  = pnl_pernas + realized_prev
     # % sobre o risco total engajado (prêmios pagos nas compras, ou crédito líquido se tudo vendas)
     risk_ref = total_risk if total_risk > 0 else abs(net_open)
     pct = (pnl_total / risk_ref * 100) if risk_ref != 0 else 0
@@ -1841,7 +1858,9 @@ def close_estruturada(id):
         f" entrada@{l.entry_price:.2f} saída@{l.current_price or l.entry_price:.2f}"
         for l in op.legs
     )
-    notes = f"{op.underlying_asset} | {legs_detail}"
+    realized_note = (f" | inclui R$ {realized_prev:.2f} realizados em manejos anteriores"
+                     if abs(realized_prev) > 0.005 else '')
+    notes = f"{op.underlying_asset} | {legs_detail}{realized_note}"
 
     history = TradeHistory(
         user_id      = current_user.id,
@@ -5999,32 +6018,16 @@ def roll_estruturada(id):
                        or abs(np_ - (leg.entry_price or 0)) > 0.001
                        or (ne or '') != old_exp_iso)
 
-            # Resultado REALIZADO no fechamento da perna antiga → Histórico
+            # Resultado da perna fechada — apenas REGISTRADO (roll_history), NÃO
+            # vira TradeHistory. Num manejo, fechar/abrir pernas é ajuste de
+            # composição, não lucro realizado: o P&L da operação só é apurado
+            # no ENCERRAMENTO, com o cômputo geral de entradas e saídas.
             if changed:
                 if leg.side == 'SELL':
                     pnl = ((leg.entry_price or 0) - cp) * qty   # vendeu, recomprou
                 else:
                     pnl = (cp - (leg.entry_price or 0)) * qty   # comprou, vendeu
                 realized += pnl
-                base = (leg.entry_price or 0) * qty
-                db.session.add(TradeHistory(
-                    user_id      = current_user.id,
-                    ticker       = leg.ticker,
-                    strategy     = 'Opções',
-                    entry_date   = entry_d,
-                    exit_date    = exit_d,
-                    buy_price    = round(cp if leg.side == 'SELL' else (leg.entry_price or 0), 4),
-                    sell_price   = round((leg.entry_price or 0) if leg.side == 'SELL' else cp, 4),
-                    quantity     = qty,
-                    profit_value = round(pnl, 2),
-                    profit_pct   = round(pnl / base * 100, 2) if base > 0 else 0,
-                    days_held    = (exit_d - entry_d).days if entry_d else 0,
-                    reason       = 'MANEJO',
-                    underlying   = op.underlying_asset,
-                    notes        = (f"Manejo estruturada '{op.name}' | {leg.side} {leg.opt_type} "
-                                    f"K={leg.strike or 0:.2f} @ {leg.entry_price or 0:.2f} → fechada a {cp:.2f}"
-                                    + (f" | nova: {nt} K={nk:.2f} @ {np_:.2f}" if nt != leg.ticker else '')),
-                ))
 
             roll_entry['legs'].append({
                 'old_ticker':    leg.ticker,
@@ -6055,12 +6058,17 @@ def roll_estruturada(id):
 
         roll_entry['net_roll'] = round(net_roll, 4)
         roll_entry['realized_pnl'] = round(realized, 2)
+        # Marca: manejo do NOVO modelo (não gerou TradeHistory) — o encerramento
+        # soma este realized_pnl. Manejos antigos (sem a flag) já viraram
+        # TradeHistory e NÃO são somados de novo, evitando dupla contagem.
+        roll_entry['defer_pnl'] = True
         _append_roll(op, roll_entry)
         op.created_at = datetime.strptime(roll_date, '%Y-%m-%d')
 
         db.session.commit()
-        flash(f'Manejo registrado! Resultado realizado: R$ {realized:.2f} · '
-              f'Crédito/Débito da rolagem: R$ {net_roll:.2f}', 'success')
+        flash(f'Manejo registrado! Caixa do ajuste: R$ {net_roll:.2f} · '
+              f'Parcial acumulado nas pernas fechadas: R$ {realized:.2f} '
+              f'(o lucro/prejuízo só é apurado no ENCERRAMENTO da operação).', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Erro na rolagem: {e}', 'danger')

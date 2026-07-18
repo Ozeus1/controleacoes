@@ -6284,9 +6284,12 @@ def _pm_state(user_id, ticker):
            .order_by(PMEvent.created_at, PMEvent.id).all())
     used_keys  = {e.source_key for e in evs if e.source_key}
     used_total = round(sum(e.valor or 0 for e in evs), 2)
+    # Pool = créditos varridos (dividendos/opções) − usos; lançamentos MANUAIS
+    # (lucro avulso) abatem o custo mas NÃO consomem o pool de créditos.
+    used_pool  = round(sum(e.valor or 0 for e in evs if e.kind != 'MANUAL'), 2)
     earned  = _pm_earned_items(user_id, ticker)
     pending = [i for i in earned if i['key'] not in used_keys]
-    pool = round(sum(i['valor'] for i in earned) - used_total, 2)
+    pool = round(sum(i['valor'] for i in earned) - used_pool, 2)
     custo_of = (a.quantity * (a.avg_price or 0)) if a else 0.0
     custo_aj = custo_of - used_total
     return a, evs, earned, pending, pool, custo_of, custo_aj
@@ -6301,7 +6304,12 @@ def _pm_rows(user_id):
     for a in assets:
         _a, evs, earned, pending, pool, custo_of, custo_aj = _pm_state(user_id, a.ticker)
         pm_aj = custo_aj / a.quantity if a.quantity else 0
+        cot = a.current_price or 0
+        lucro_rs = (cot - pm_aj) * a.quantity if cot else 0
         rows['ACAO' if a.type == 'ACAO' else 'FII'].append({
+            'cotacao': cot,
+            'lucro_rs': lucro_rs,
+            'lucro_pct': ((cot - pm_aj) / pm_aj * 100) if (cot and pm_aj > 0) else 0,
             'asset': a,
             'custo_oficial': custo_of,
             'earned_div': sum(i['valor'] for i in earned if i['kind'] == 'DIVIDENDO'),
@@ -6420,6 +6428,44 @@ def pm_comprar():
     flash(f'{ticker}: compra de {qty} unid. registrada na carteira oficial. '
           f'R$ {financiado:.2f} financiados com lucro; PM ajustado: '
           f'R$ {custo_aj_new / new_qty:.2f}.'.replace('.', ','), 'success')
+    return redirect(url_for('preco_medio'))
+
+
+@app.route('/preco-medio/manual', methods=['POST'])
+@login_required
+def pm_manual():
+    """Lucro avulso não capturado pela varredura (ex.: aluguel de ações,
+    bonificação, ajuste). Valor positivo abate o PM; negativo aumenta.
+    Não consome o pool de créditos — é um lançamento independente."""
+    def _num(name):
+        try:
+            return float((request.form.get(name) or '0').replace('.', '').replace(',', '.'))
+        except ValueError:
+            return 0.0
+    ticker = (request.form.get('ticker') or '').strip().upper()
+    valor  = round(_num('valor'), 2)
+    ref    = (request.form.get('ref') or '').strip()[:200] or 'Lucro avulso'
+    try:
+        ev_date = date.fromisoformat(request.form.get('data') or '')
+    except ValueError:
+        ev_date = date.today()
+    a, evs, earned, pending, pool, custo_of, custo_aj = _pm_state(current_user.id, ticker)
+    if not a or a.quantity <= 0:
+        flash(f'{ticker}: ativo não encontrado na carteira.', 'danger')
+        return redirect(url_for('preco_medio'))
+    if abs(valor) < 0.005:
+        flash('Informe um valor diferente de zero.', 'danger')
+        return redirect(url_for('preco_medio'))
+    pm_before = custo_aj / a.quantity
+    custo_aj -= valor
+    db.session.add(PMEvent(
+        user_id=current_user.id, ticker=ticker, kind='MANUAL',
+        event_date=ev_date, valor=valor, ref=ref,
+        pm_before=round(pm_before, 4), pm_after=round(custo_aj / a.quantity, 4),
+        created_at=datetime.now()))
+    db.session.commit()
+    flash(f'{ticker}: lançamento avulso de R$ {valor:.2f} registrado. '
+          f'Novo PM ajustado: R$ {custo_aj / a.quantity:.2f}.'.replace('.', ','), 'success')
     return redirect(url_for('preco_medio'))
 
 

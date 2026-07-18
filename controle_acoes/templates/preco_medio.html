@@ -29,6 +29,9 @@
                 <th title="Créditos ganhos ainda não usados (aplicar ao PM ou financiar compra)">Disponível</th>
                 <th title="Custo ajustado ÷ quantidade">PM Ajustado</th>
                 <th>Redução</th>
+                <th>Cotação</th>
+                <th title="(Cotação − PM ajustado) × quantidade">Lucro R$</th>
+                <th title="Variação da cotação sobre o PM ajustado">Lucro %</th>
                 <th>Ações</th>
             </tr>
         </thead>
@@ -59,6 +62,13 @@
                 <td class="{{ 'positive' if it.reducao_pct > 0 else ('negative' if it.reducao_pct < 0 else '') }}">
                     {{ "%.1f"|format(it.reducao_pct)|replace('.', ',') }}%
                 </td>
+                <td>{{ it.cotacao | brl if it.cotacao else '—' }}</td>
+                <td class="{{ 'positive' if it.lucro_rs >= 0 else 'negative' }}" style="white-space:nowrap;">
+                    {{ it.lucro_rs | brl if it.cotacao else '—' }}
+                </td>
+                <td class="{{ 'positive' if it.lucro_pct >= 0 else 'negative' }}" style="font-weight:700;">
+                    {% if it.cotacao %}{{ "%.1f"|format(it.lucro_pct)|replace('.', ',') }}%{% else %}—{% endif %}
+                </td>
                 <td style="white-space:nowrap;">
                     <form method="POST" action="{{ url_for('pm_aplicar', ticker=a.ticker) }}" style="display:inline;">
                         <button type="submit" class="pm-btn"
@@ -70,6 +80,9 @@
                     <button type="button" class="pm-btn" style="background:#0ea5e9;"
                             title="Comprar mais unidades usando lucro/dividendo (ações entram a PM zero; reflete na carteira oficial)"
                             onclick="pmOpenBuy('{{ a.ticker }}', {{ it.pool }}, {{ a.current_price or 0 }})">🛒</button>
+                    <button type="button" class="pm-btn" style="background:#f59e0b;"
+                            title="Lançar lucro avulso não capturado pela varredura (aluguel, bonificação, ajuste…) — positivo abate o PM, negativo aumenta"
+                            onclick="pmOpenManual('{{ a.ticker }}')">➕</button>
                     <button type="button" class="pm-btn" style="background:#8b5cf6;"
                             title="Histórico didático das mudanças do PM"
                             onclick="pmOpenHist('{{ a.ticker }}')">📜</button>
@@ -135,6 +148,38 @@
   </div>
 </div>
 
+{# ── Modal: lucro avulso (manual) ── #}
+<div id="pm-manual-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);
+     align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.3rem;width:min(96vw,480px);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem;">
+      <h5 style="margin:0;">➕ Lucro avulso — <span id="pm-manual-ticker"></span></h5>
+      <button onclick="pmCloseManual()" style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;">&times;</button>
+    </div>
+    <p style="font-size:.8rem;color:var(--text-secondary);margin:0 0 .8rem;">
+      Lançamento que a varredura não enxerga (aluguel de ações, bonificação, cashback de corretagem, ajuste…).
+      Valor <strong>positivo abate</strong> o PM ajustado; <strong>negativo aumenta</strong>.
+      Não consome o pool de dividendos/opções.
+    </p>
+    <form method="POST" action="{{ url_for('pm_manual') }}">
+      <input type="hidden" name="ticker" id="pm-manual-tk">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem;">
+        <div><label style="font-size:.78rem;color:var(--text-secondary);">Valor (R$)</label>
+          <input type="text" name="valor" class="form-control form-control-sm" placeholder="ex: 150,00 ou -80,00" required></div>
+        <div><label style="font-size:.78rem;color:var(--text-secondary);">Data</label>
+          <input type="date" name="data" class="form-control form-control-sm" value="{{ today.isoformat() }}"></div>
+        <div style="grid-column:span 2;">
+          <label style="font-size:.78rem;color:var(--text-secondary);">Descrição (origem do lucro)</label>
+          <input type="text" name="ref" class="form-control form-control-sm" placeholder="ex: Aluguel de ações jun/26"></div>
+      </div>
+      <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="pmCloseManual()">Cancelar</button>
+        <button type="submit" class="btn btn-primary btn-sm">➕ Lançar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 {# ── Modal: histórico didático ── #}
 <div id="pm-hist-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);
      align-items:center;justify-content:center;padding:1rem;">
@@ -158,6 +203,12 @@ function pmOpenBuy(tk,pool,price){
   document.getElementById('pm-buy-modal').style.display='flex';
 }
 function pmCloseBuy(){document.getElementById('pm-buy-modal').style.display='none';}
+function pmOpenManual(tk){
+  document.getElementById('pm-manual-ticker').textContent=tk;
+  document.getElementById('pm-manual-tk').value=tk;
+  document.getElementById('pm-manual-modal').style.display='flex';
+}
+function pmCloseManual(){document.getElementById('pm-manual-modal').style.display='none';}
 function pmOpenHist(tk){
   document.getElementById('pm-hist-ticker').textContent=tk;
   var body=document.getElementById('pm-hist-body');
@@ -183,7 +234,7 @@ function pmOpenHist(tk){
   }).catch(function(){body.textContent='Erro ao carregar o histórico.';});
 }
 function pmCloseHist(){document.getElementById('pm-hist-modal').style.display='none';}
-['pm-buy-modal','pm-hist-modal'].forEach(function(id){
+['pm-buy-modal','pm-hist-modal','pm-manual-modal'].forEach(function(id){
   document.getElementById(id).addEventListener('click',function(ev){if(ev.target===this)this.style.display='none';});
 });
 </script>

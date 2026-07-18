@@ -391,16 +391,20 @@
             <div class="card-body p-0 dividends-table-wrap">
                 <table class="table table-dark table-striped mb-0 no-datatable dividends-table" id="dividendsTable">
                     <colgroup>
-                        <col style="width: 22%;">
-                        <col style="width: 24%;">
-                        <col style="width: 27%;">
-                        <col style="width: 27%;">
+                        <col style="width: 16%;">
+                        <col style="width: 16%;">
+                        <col style="width: 16%;">
+                        <col style="width: 16%;">
+                        <col style="width: 16%;">
+                        <col style="width: 20%;">
                     </colgroup>
                     <thead>
                         <tr>
                             <th>Data</th>
                             <th>Ticker</th>
                             <th>Tipo</th>
+                            <th title="Quantidade de ações usada no cálculo — edite se a posição era diferente na data do provento">Qtd</th>
+                            <th title="Valor do provento por ação">R$/ação</th>
                             <th>Valor Total</th>
                         </tr>
                     </thead>
@@ -411,12 +415,24 @@
                             <td data-label="Data" data-order="{{ div.ex_date.strftime('%Y-%m-%d') if div.ex_date else '' }}" class="date-cell">{{ div.ex_date.strftime('%d/%m/%Y') if div.ex_date else '-' }}</td>
                             <td data-label="Ticker" class="ticker-cell">{{ div.ticker }}</td>
                             <td data-label="Tipo"><span class="type-pill">{{ div.type }}</span></td>
+                            <td data-label="Qtd">
+                                <form method="POST" action="{{ url_for('dividendo_qtd', id=div.id) }}"
+                                      style="display:inline-flex;align-items:center;gap:.25rem;"
+                                      title="Qtd de ações na data do provento — altere e Enter (ou 💾) para recalcular o total">
+                                    <input type="text" name="qty" value="{{ div.qty_used or '' }}" inputmode="numeric"
+                                           style="width:64px;text-align:center;background:var(--hover-bg);color:var(--text-primary);
+                                                  border:1px solid var(--border-color);border-radius:5px;padding:.15rem .3rem;font-size:.85rem;">
+                                    <button type="submit" style="background:none;border:none;cursor:pointer;font-size:.85rem;"
+                                            title="Recalcular total com esta quantidade">💾</button>
+                                </form>
+                            </td>
+                            <td data-label="R$/ação">{{ ('R$ ' + '%.4f'|format(div.per_share)|replace('.', ',')) if div.per_share else '—' }}</td>
                             <td data-label="Valor total" class="amount-cell">{{ div.amount | brl }}</td>
                         </tr>
                         {% endfor %}
                         {% else %}
                         <tr>
-                            <td colspan="4" class="dividends-empty">Nenhum provento recebido cadastrado.</td>
+                            <td colspan="6" class="dividends-empty">Nenhum provento recebido cadastrado.</td>
                         </tr>
                         {% endif %}
                     </tbody>

@@ -404,6 +404,36 @@ def run_migrations():
         except Exception:
             pass
 
+    # Dividend: valor por ação + quantidade usada no cálculo (auditável/editável)
+    cursor.execute("PRAGMA table_info(dividend)")
+    div_cols = {row[1] for row in cursor.fetchall()}
+    if 'per_share' not in div_cols:
+        try:
+            cursor.execute("ALTER TABLE dividend ADD COLUMN per_share FLOAT")
+            print("[MIGRATION] Added dividend.per_share")
+        except Exception:
+            pass
+    if 'qty_used' not in div_cols:
+        try:
+            cursor.execute("ALTER TABLE dividend ADD COLUMN qty_used INTEGER")
+            print("[MIGRATION] Added dividend.qty_used")
+        except Exception:
+            pass
+    # Backfill: registros antigos foram calculados como per_share × qtd ATUAL
+    # do ativo — reconstrói os dois campos a partir disso (idempotente)
+    try:
+        cursor.execute("""
+            UPDATE dividend SET
+              qty_used = (SELECT quantity FROM asset WHERE asset.id = dividend.asset_id),
+              per_share = CASE
+                WHEN (SELECT quantity FROM asset WHERE asset.id = dividend.asset_id) > 0
+                THEN amount * 1.0 / (SELECT quantity FROM asset WHERE asset.id = dividend.asset_id)
+              END
+            WHERE per_share IS NULL
+        """)
+    except Exception:
+        pass
+
     # Tabela de eventos do Preço Médio didático (página Preço Médio)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS pm_event (
@@ -6255,11 +6285,13 @@ def _pm_earned_items(user_id, ticker):
         if not d.amount or d.amount <= 0:
             continue
         dt = d.payment_date or d.ex_date
+        qtd_info = (f' ({d.qty_used}× R$ {d.per_share:.4f}/ação)'
+                    if d.qty_used and d.per_share else '')
         items.append({'key': f'div:{d.id}', 'kind': 'DIVIDENDO',
                       'valor': round(float(d.amount), 2), 'date': dt,
-                      'ref': f'{d.type or "Dividendo"} '
-                             f'{dt.strftime("%d/%m/%Y") if dt else ""} — '
-                             f'R$ {d.amount:.2f}'.replace('.', ',')})
+                      'ref': (f'{d.type or "Dividendo"} '
+                              f'{dt.strftime("%d/%m/%Y") if dt else ""} — '
+                              f'R$ {d.amount:.2f}{qtd_info}').replace('.', ',')})
     # Trades de opções: casa pelo underlying preenchido; para registros ANTIGOS
     # sem underlying, casa pela raiz B3 do ticker da opção (ABEVA148 → ABEV →
     # ABEV3) — somente se a raiz for inequívoca na carteira (PETR3 × PETR4 não).
@@ -6555,6 +6587,36 @@ def pm_evento_delete(id):
     _pm_rebuild_chain(current_user.id, tk)
     db.session.commit()
     return jsonify({'ok': True})
+
+
+@app.route('/dividendos/<int:id>/qtd', methods=['POST'])
+@login_required
+def dividendo_qtd(id):
+    """Corrige a QTD de ações sobre a qual o dividendo foi calculado
+    (posições que mudaram de tamanho ao longo do tempo). Recalcula o total
+    = per_share × qtd; a correção sobrevive às atualizações de proventos."""
+    d = Dividend.query.get_or_404(id)
+    if d.asset.user_id != current_user.id:
+        flash('Sem permissão.', 'danger')
+        return redirect(url_for('dividendos'))
+    try:
+        qty = int((request.form.get('qty') or '0').replace('.', '').strip())
+    except ValueError:
+        qty = 0
+    if qty <= 0:
+        flash('Quantidade inválida.', 'danger')
+        return redirect(url_for('dividendos'))
+    per = d.per_share if d.per_share else ((d.amount / d.qty_used) if d.qty_used else None)
+    if not per:
+        flash(f'{d.ticker}: sem valor por ação registrado — atualize os proventos primeiro.', 'warning')
+        return redirect(url_for('dividendos'))
+    d.per_share = per
+    d.qty_used = qty
+    d.amount = round(per * qty, 2)
+    db.session.commit()
+    flash(f'{d.ticker} {d.ex_date.strftime("%d/%m/%Y") if d.ex_date else ""}: '
+          f'recalculado para {qty}× R$ {per:.4f} = R$ {d.amount:.2f}.'.replace('.', ','), 'success')
+    return redirect(url_for('dividendos'))
 
 
 @app.route('/api/pm/historico/<ticker>')
@@ -11479,27 +11541,41 @@ def update_dividends():
             # YFinance expects string or datetime
             history = yf_ticker.dividends
             
-            # Clear existing dividends for this asset to avoid duplicates/stale data
-            Dividend.query.filter_by(asset_id=asset.id).delete()
-            
+            # Atualiza SEM apagar tudo: casa por data e PRESERVA a qty_used
+            # (qtd de ações do cálculo, editável na página Dividendos) — os
+            # dividendos antigos não são recalculados com a quantidade atual.
+            existing = {d.ex_date: d for d in
+                        Dividend.query.filter_by(asset_id=asset.id).all()
+                        if d.ex_date}
+
             for dt, amount in history.items():
                 # dt is Timestamp, convert to date
                 div_date = dt.date()
-                
+
                 if div_date >= start_date:
                     div_type = 'Dividendo'
                     if asset.ticker.endswith('11') or asset.ticker.endswith('11B'):
                         div_type = 'Rendimento'
-                        
-                    new_div = Dividend(
-                        asset_id=asset.id,
-                        ticker=asset.ticker,
-                        type=div_type,
-                        amount=float(amount) * asset.quantity,
-                        payment_date=div_date,
-                        ex_date=div_date
-                    )
-                    db.session.add(new_div)
+
+                    per = float(amount)
+                    old = existing.get(div_date)
+                    if old:
+                        old.per_share = per
+                        if not old.qty_used:
+                            old.qty_used = asset.quantity
+                        old.amount = round(per * old.qty_used, 2)
+                        old.type = div_type
+                    else:
+                        db.session.add(Dividend(
+                            asset_id=asset.id,
+                            ticker=asset.ticker,
+                            type=div_type,
+                            amount=round(per * asset.quantity, 2),
+                            per_share=per,
+                            qty_used=asset.quantity,
+                            payment_date=div_date,
+                            ex_date=div_date
+                        ))
             
             updated_count += 1
             

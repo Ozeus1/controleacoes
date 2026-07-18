@@ -486,8 +486,10 @@ class Dividend(db.Model):
     type = db.Column(db.String(20), nullable=False) # 'DIVIDENDO' or 'JCP'
     payment_date = db.Column(db.Date, nullable=True)
     ex_date = db.Column(db.Date, nullable=True) # Data Com
-    amount = db.Column(db.Float, nullable=False)
-    
+    amount = db.Column(db.Float, nullable=False)          # total = per_share × qty_used
+    per_share = db.Column(db.Float, nullable=True)        # valor por ação (do provento)
+    qty_used  = db.Column(db.Integer, nullable=True)      # qtd de ações usada no cálculo (editável)
+
     asset = db.relationship('Asset', backref=db.backref('dividends', lazy=True, cascade="all, delete-orphan"))
 
 class PMEvent(db.Model):

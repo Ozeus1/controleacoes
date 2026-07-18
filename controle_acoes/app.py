@@ -6260,8 +6260,22 @@ def _pm_earned_items(user_id, ticker):
                       'ref': f'{d.type or "Dividendo"} '
                              f'{dt.strftime("%d/%m/%Y") if dt else ""} — '
                              f'R$ {d.amount:.2f}'.replace('.', ',')})
-    for th in (TradeHistory.query.filter_by(user_id=user_id, strategy='Opções')
-               .filter(TradeHistory.underlying == ticker).all()):
+    # Trades de opções: casa pelo underlying preenchido; para registros ANTIGOS
+    # sem underlying, casa pela raiz B3 do ticker da opção (ABEVA148 → ABEV →
+    # ABEV3) — somente se a raiz for inequívoca na carteira (PETR3 × PETR4 não).
+    root = ticker[:4].upper()
+    same_root = Asset.query.filter(Asset.user_id == user_id,
+                                   Asset.type.in_(('ACAO', 'FII')),
+                                   Asset.strategy != 'SWING',
+                                   Asset.quantity > 0,
+                                   Asset.ticker.like(root + '%')).count()
+    for th in TradeHistory.query.filter_by(user_id=user_id, strategy='Opções').all():
+        und   = (th.underlying or '').strip().upper()
+        tk_th = (th.ticker or '').strip().upper()
+        match = (und == ticker) or (
+            not und and (tk_th == ticker or (same_root == 1 and tk_th[:4] == root)))
+        if not match:
+            continue
         pv = round(float(th.profit_value or 0), 2)
         if abs(pv) < 0.005:
             continue

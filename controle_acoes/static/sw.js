@@ -2,7 +2,7 @@
    Estratégia: app financeiro = dados sempre frescos.
    - Navegações e /api/: rede primeiro; sem rede, cai no cache (páginas) ou offline.html.
    - /static/ e CDNs: stale-while-revalidate (responde do cache e atualiza por trás). */
-var CACHE = 'myinvest-v36';
+var CACHE = 'myinvest-v37';
 var OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', function (e) {

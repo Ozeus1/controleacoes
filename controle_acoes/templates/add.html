@@ -45,12 +45,34 @@
 
             <div class="form-group" id="sector-group" style="display: none;">
                 <label for="sector">Setor (Ações)</label>
+                {% set sector_groups = {
+                    'Financeiro': ['Bancos', 'Seguros e Previdência', 'Serviços Financeiros', 'Bolsa e Câmbio', 'Holding'],
+                    'Materiais Básicos': ['Mineração', 'Siderurgia e Metalurgia', 'Papel e Celulose', 'Química e Petroquímica', 'Materiais de Construção'],
+                    'Petróleo, Gás e Energia': ['Petróleo e Gás', 'Energia Elétrica', 'Saneamento e Água', 'Energias Renováveis'],
+                    'Consumo': ['Bebidas', 'Alimentos', 'Varejo e Comércio', 'Vestuário e Calçados', 'Higiene e Cuidados Pessoais', 'Eletrodomésticos e Bens Duráveis'],
+                    'Saúde': ['Saúde e Hospitais', 'Farmacêutica e Laboratórios', 'Equipamentos Médicos'],
+                    'Indústria e Bens de Capital': ['Bens Industriais e Máquinas', 'Aeroespacial e Defesa', 'Construção Civil e Incorporação', 'Transporte e Logística'],
+                    'Tecnologia e Comunicação': ['Tecnologia e Software', 'Telecomunicações', 'Mídia e Educação'],
+                    'Agro e Imobiliário': ['Agronegócio', 'Imobiliário', 'Shoppings e Propriedades'],
+                    'Utilidades e Serviços': ['Concessões e Infraestrutura', 'Serviços Diversos', 'Turismo e Lazer']
+                } %}
+                {% set known = sector_groups.values() | sum(start=[]) %}
                 <select id="sector" name="sector">
                     <option value="">Selecione...</option>
-                    {% for s in ['Bebidas', 'Comércio', 'Energia Elétrica', 'Holding', 'Financeiro', 'Bancos',
-                    'Mineração', 'Petróleo', 'Siderurgia', 'Transporte', 'Outros'] %}
-                    <option value="{{ s }}" {% if asset and asset.sector==s %}selected{% endif %}>{{ s }}</option>
+                    {% for grupo, setores in sector_groups.items() %}
+                    <optgroup label="{{ grupo }}">
+                        {% for s in setores %}
+                        <option value="{{ s }}" {% if asset and asset.sector==s %}selected{% endif %}>{{ s }}</option>
+                        {% endfor %}
+                    </optgroup>
                     {% endfor %}
+                    {# Preserva setor antigo/personalizado que não esteja na nova lista #}
+                    {% if asset and asset.sector and asset.sector not in known %}
+                    <optgroup label="Personalizado">
+                        <option value="{{ asset.sector }}" selected>{{ asset.sector }}</option>
+                    </optgroup>
+                    {% endif %}
+                    <option value="Outros" {% if asset and asset.sector=='Outros' %}selected{% endif %}>Outros</option>
                 </select>
             </div>
         </div>

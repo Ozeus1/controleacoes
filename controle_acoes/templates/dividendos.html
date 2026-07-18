@@ -389,16 +389,23 @@
                 <span style="display:inline-flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
                     <form method="POST" action="{{ url_for('dividendos_recalc_qtd_b3') }}" enctype="multipart/form-data"
                           style="display:inline-flex;align-items:center;gap:.35rem;margin:0;"
-                          title="Envie o CSV de negociação da B3 (o mesmo da curva de patrimônio): o sistema reconstrói a posição dia a dia e recalcula a Qtd de cada provento pela quantidade detida na data-com"
-                          onsubmit="return confirm('Recalcular a Qtd de todos os proventos pela movimentação do CSV? As quantidades editadas manualmente dentro da janela do CSV serão sobrescritas.');">
+                          title="Envie o CSV de negociação da B3 (o mesmo da curva de patrimônio): o sistema reconstrói a posição dia a dia e recalcula a Qtd de cada provento pela quantidade detida na data-com. Qtd editadas à mão (✋) são preservadas, salvo se marcar a caixa."
+                          onsubmit="return confirm('Recalcular a Qtd dos proventos pela movimentação do CSV?\n\nSó a janela coberta pelo arquivo é alterada; proventos anteriores ficam como estão.\nQtd editadas à mão (✋) são preservadas'+(this.force_manual.checked?' — ATENÇÃO: você marcou sobrescrever manuais!':'.'));">
                         <input type="file" name="file" accept=".csv" required
                                style="max-width:190px;font-size:.72rem;color:var(--text-secondary);">
+                        <label style="display:inline-flex;align-items:center;gap:.2rem;font-size:.68rem;color:var(--text-secondary);cursor:pointer;margin:0;white-space:nowrap;">
+                            <input type="checkbox" name="force_manual" value="1" style="margin:0;"> sobrescrever ✋
+                        </label>
                         <button type="submit" class="btn btn-sm btn-secondary" style="font-size:.72rem;padding:.15rem .5rem;">
                             📥 Qtd pela B3</button>
                     </form>
-                    <form method="POST" action="{{ url_for('dividendos_recalc_qtd_livro') }}" style="display:inline;margin:0;"
-                          title="Recalcula a Qtd de cada provento pela posição reconstruída do Livro de Transações (menu Ações → 📒 Transações), sem precisar do CSV"
-                          onsubmit="return confirm('Recalcular a Qtd dos proventos pelo Livro de Transações? A precisão depende do livro conter as mudanças de posição após cada data-com.');">
+                    <form method="POST" action="{{ url_for('dividendos_recalc_qtd_livro') }}"
+                          style="display:inline-flex;align-items:center;gap:.35rem;margin:0;"
+                          title="Recalcula a Qtd pela posição reconstruída do Livro de Transações (menu Ações → 📒 Transações). Só atua a partir da 1ª transação de cada ticker no livro; Qtd manuais (✋) preservadas, salvo se marcar a caixa."
+                          onsubmit="return confirm('Recalcular a Qtd dos proventos pelo Livro de Transações?\n\nSó proventos a partir da 1ª transação de cada ticker no livro são alterados.\nQtd editadas à mão (✋) são preservadas'+(this.force_manual.checked?' — ATENÇÃO: você marcou sobrescrever manuais!':'.'));">
+                        <label style="display:inline-flex;align-items:center;gap:.2rem;font-size:.68rem;color:var(--text-secondary);cursor:pointer;margin:0;white-space:nowrap;">
+                            <input type="checkbox" name="force_manual" value="1" style="margin:0;"> sobrescrever ✋
+                        </label>
                         <button type="submit" class="btn btn-sm btn-secondary" style="font-size:.72rem;padding:.15rem .5rem;">
                             📒 Qtd pelo livro</button>
                     </form>
@@ -438,9 +445,10 @@
                                       title="Qtd de ações na data do provento — altere e Enter (ou 💾) para recalcular o total">
                                     <input type="text" name="qty" value="{{ div.qty_used or '' }}" inputmode="numeric"
                                            style="width:64px;text-align:center;background:var(--hover-bg);color:var(--text-primary);
-                                                  border:1px solid var(--border-color);border-radius:5px;padding:.15rem .3rem;font-size:.85rem;">
+                                                  border:1px solid {{ '#f59e0b' if div.qty_manual else 'var(--border-color)' }};border-radius:5px;padding:.15rem .3rem;font-size:.85rem;">
                                     <button type="submit" style="background:none;border:none;cursor:pointer;font-size:.85rem;"
                                             title="Recalcular total com esta quantidade">💾</button>
+                                    {% if div.qty_manual %}<span title="Quantidade editada à mão — preservada nos recálculos automáticos" style="font-size:.8rem;">✋</span>{% endif %}
                                 </form>
                             </td>
                             <td data-label="R$/ação">{{ ('R$ ' + '%.4f'|format(div.per_share)|replace('.', ',')) if div.per_share else '—' }}</td>

@@ -489,6 +489,7 @@ class Dividend(db.Model):
     amount = db.Column(db.Float, nullable=False)          # total = per_share × qty_used
     per_share = db.Column(db.Float, nullable=True)        # valor por ação (do provento)
     qty_used  = db.Column(db.Integer, nullable=True)      # qtd de ações usada no cálculo (editável)
+    qty_manual = db.Column(db.Boolean, default=False)     # qtd editada à mão — recálculos preservam
 
     asset = db.relationship('Asset', backref=db.backref('dividends', lazy=True, cascade="all, delete-orphan"))
 

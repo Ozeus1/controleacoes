@@ -419,6 +419,12 @@ def run_migrations():
             print("[MIGRATION] Added dividend.qty_used")
         except Exception:
             pass
+    if 'qty_manual' not in div_cols:
+        try:
+            cursor.execute("ALTER TABLE dividend ADD COLUMN qty_manual BOOLEAN DEFAULT 0")
+            print("[MIGRATION] Added dividend.qty_manual")
+        except Exception:
+            pass
     # Backfill: registros antigos foram calculados como per_share × qtd ATUAL
     # do ativo — reconstrói os dois campos a partir disso (idempotente)
     try:
@@ -6635,9 +6641,11 @@ def dividendo_qtd(id):
     d.per_share = per
     d.qty_used = qty
     d.amount = round(per * qty, 2)
+    d.qty_manual = True   # protegido contra recálculos automáticos
     db.session.commit()
     flash(f'{d.ticker} {d.ex_date.strftime("%d/%m/%Y") if d.ex_date else ""}: '
-          f'recalculado para {qty}× R$ {per:.4f} = R$ {d.amount:.2f}.'.replace('.', ','), 'success')
+          f'recalculado para {qty}× R$ {per:.4f} = R$ {d.amount:.2f} '
+          f'(marcado como manual — recálculos automáticos preservam).'.replace('.', ','), 'success')
     return redirect(url_for('dividendos'))
 
 
@@ -6680,13 +6688,17 @@ def dividendos_recalc_qtd_b3():
             q = snap.get(ticker, 0)
         return max(q, 0)
 
-    updated = skipped = zeroed = 0
+    force_manual = request.form.get('force_manual') == '1'
+    updated = skipped = zeroed = manuais = 0
     for d in Dividend.query.join(Asset).filter(Asset.user_id == current_user.id).all():
         exd = d.ex_date or d.payment_date
         tk  = (d.ticker or '').upper()
         if not exd or exd < init_date or exd > last_day:
             skipped += 1
             continue                      # fora da janela coberta pelo CSV
+        if d.qty_manual and not force_manual:
+            manuais += 1
+            continue                      # editado à mão — preservado
         if tk not in tickers_mov and tk not in _B3_INITIAL_POSITION:
             skipped += 1
             continue                      # sem dados de posição p/ o ticker
@@ -6698,12 +6710,15 @@ def dividendos_recalc_qtd_b3():
         d.per_share = per
         d.qty_used  = q
         d.amount    = round(per * q, 2)
+        if force_manual:
+            d.qty_manual = False
         updated += 1
         if q == 0:
             zeroed += 1
     db.session.commit()
     flash(f'Movimentação B3 aplicada: {updated} provento(s) recalculados pela posição da época'
           + (f' — {zeroed} zerados (sem posição na data-com)' if zeroed else '')
+          + (f'; {manuais} manuais preservados' if manuais else '')
           + (f'; {skipped} fora da janela do CSV/sem dados' if skipped else '')
           + f'. {novas_txn} operação(ões) adicionadas ao livro de transações.',
           'success')
@@ -6799,23 +6814,43 @@ def transacao_delete(id):
 @login_required
 def dividendos_recalc_qtd_livro():
     """Recalcula a Qtd dos proventos pela posição reconstruída do LIVRO de
-    transações (retroativa a partir da posição atual)."""
-    updated = skipped = 0
+    transações (retroativa a partir da posição atual). Proteções:
+    - proventos com Qtd MANUAL são preservados (salvo checkbox de força);
+    - só recalcula a partir da 1ª transação registrada do ticker no livro
+      (antes disso o livro não tem cobertura — não toca)."""
+    force_manual = request.form.get('force_manual') == '1'
+    # Data da primeira transação de cada ticker (limite de cobertura do livro)
+    first_txn = {}
+    for t in AssetTxn.query.filter_by(user_id=current_user.id).all():
+        if t.ticker not in first_txn or t.txn_date < first_txn[t.ticker]:
+            first_txn[t.ticker] = t.txn_date
+    updated = skipped = manuais = fora = 0
     for d in Dividend.query.join(Asset).filter(Asset.user_id == current_user.id).all():
         exd = d.ex_date or d.payment_date
         per = d.per_share or ((d.amount / d.qty_used) if d.qty_used else None)
         if not exd or not per:
             skipped += 1
             continue
-        q = _qty_on_date_ledger(current_user.id, d.ticker, exd, d.asset.quantity)
+        tk = (d.ticker or '').upper()
+        if tk not in first_txn or exd < first_txn[tk]:
+            fora += 1
+            continue                      # antes da cobertura do livro
+        if d.qty_manual and not force_manual:
+            manuais += 1
+            continue                      # editado à mão — preservado
+        q = _qty_on_date_ledger(current_user.id, tk, exd, d.asset.quantity)
         d.per_share = per
         d.qty_used = q
         d.amount = round(per * q, 2)
+        if force_manual:
+            d.qty_manual = False
         updated += 1
     db.session.commit()
     flash(f'Livro de transações aplicado: {updated} provento(s) recalculados'
-          + (f'; {skipped} sem dados.' if skipped else '.')
-          + ' Obs.: a precisão depende do livro conter todas as mudanças de posição após cada data-com.',
+          + (f'; {manuais} manuais preservados' if manuais else '')
+          + (f'; {fora} anteriores à cobertura do livro (não tocados)' if fora else '')
+          + (f'; {skipped} sem dados' if skipped else '')
+          + '. A precisão depende do livro conter as mudanças de posição após cada data-com.',
           'success')
     return redirect(url_for('dividendos'))
 

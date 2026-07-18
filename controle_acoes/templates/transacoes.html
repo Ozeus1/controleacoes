@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Transações{% endblock %}
+
+{% block content %}
+<div class="card" style="padding:1rem 1.2rem;margin-bottom:1.2rem;">
+    <h2 style="margin:0 0 .4rem;">📒 Livro de Transações</h2>
+    <p style="color:var(--text-secondary);font-size:.85rem;margin:0;">
+        Cada compra/venda da carteira com data, quantidade e preço. Alimentado pelos botões
+        <strong>C/V</strong> das carteiras, pelo <strong>Adicionar Ativo</strong>, pela
+        <strong>compra com lucro</strong> (Preço Médio) e pela <strong>importação do CSV da B3</strong>.
+        É a base para reconstruir a posição em qualquer data (ex.: Qtd dos dividendos na data-com).
+        Excluir uma linha NÃO altera a posição oficial — só o livro.
+    </p>
+</div>
+
+<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:1rem;flex-wrap:wrap;gap:.5rem;">
+        <h3 style="margin:0;">Transações registradas</h3>
+        <span style="color:var(--text-secondary);font-size:.85rem;">{{ txns|length }} registro(s)</span>
+    </div>
+    {% if txns %}
+    <div style="overflow-x:auto;">
+    <table>
+        <thead>
+            <tr>
+                <th>Data</th>
+                <th>Ticker</th>
+                <th>C/V</th>
+                <th>Qtd</th>
+                <th>Preço</th>
+                <th>Total</th>
+                <th>Origem</th>
+                <th>Obs.</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in txns %}
+            <tr>
+                <td>{{ t.txn_date.strftime('%d/%m/%Y') }}</td>
+                <td><span class="ticker-badge">{{ t.ticker }}</span></td>
+                <td>
+                    <span style="display:inline-block;padding:.08rem .5rem;border-radius:4px;font-weight:700;
+                          background:{{ 'rgba(16,185,129,.15)' if t.side=='C' else 'rgba(239,68,68,.15)' }};
+                          color:{{ 'var(--success-color)' if t.side=='C' else 'var(--danger-color)' }};">
+                        {{ 'C' if t.side=='C' else 'V' }}</span>
+                </td>
+                <td>{{ t.quantity }}</td>
+                <td>{{ t.price | brl }}</td>
+                <td>{{ (t.quantity * t.price) | brl }}</td>
+                <td><small style="color:var(--text-secondary);">{{ t.source }}</small></td>
+                <td><small style="color:var(--text-secondary);">{{ t.notes or '' }}</small></td>
+                <td>
+                    <form method="POST" action="{{ url_for('transacao_delete', id=t.id) }}" style="display:inline;">
+                        <button type="submit" class="btn btn-sm btn-danger"
+                                onclick="return confirm('Remover esta transação do livro? A posição oficial não muda.');">🗑️</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p style="text-align:center;padding:2rem;color:var(--text-secondary);">
+        Nenhuma transação registrada ainda. Use os botões C/V nas carteiras,
+        o Adicionar Ativo ou importe o CSV da B3 na página Dividendos.
+    </p>
+    {% endif %}
+</div>
+{% endblock %}

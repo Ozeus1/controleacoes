@@ -396,6 +396,12 @@
                         <button type="submit" class="btn btn-sm btn-secondary" style="font-size:.72rem;padding:.15rem .5rem;">
                             📥 Qtd pela B3</button>
                     </form>
+                    <form method="POST" action="{{ url_for('dividendos_recalc_qtd_livro') }}" style="display:inline;margin:0;"
+                          title="Recalcula a Qtd de cada provento pela posição reconstruída do Livro de Transações (menu Ações → 📒 Transações), sem precisar do CSV"
+                          onsubmit="return confirm('Recalcular a Qtd dos proventos pelo Livro de Transações? A precisão depende do livro conter as mudanças de posição após cada data-com.');">
+                        <button type="submit" class="btn btn-sm btn-secondary" style="font-size:.72rem;padding:.15rem .5rem;">
+                            📒 Qtd pelo livro</button>
+                    </form>
                     <span class="dividends-count">{{ dividends_received|length }} Pagamentos</span>
                 </span>
             </div>

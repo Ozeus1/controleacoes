@@ -5,7 +5,7 @@ import sqlite3
 import math
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, SearchedOption, RtdOptionData, PortfolioSnapshot, PMEvent
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, SearchedOption, RtdOptionData, PortfolioSnapshot, PMEvent, AssetTxn
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -431,6 +431,26 @@ def run_migrations():
               END
             WHERE per_share IS NULL
         """)
+    except Exception:
+        pass
+
+    # Livro de transações da carteira (compras/vendas com data)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS asset_txn (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            ticker VARCHAR(10) NOT NULL,
+            txn_date DATE NOT NULL,
+            side VARCHAR(1) NOT NULL DEFAULT 'C',
+            quantity INTEGER NOT NULL,
+            price FLOAT NOT NULL DEFAULT 0.0,
+            source VARCHAR(12) DEFAULT 'MANUAL',
+            notes VARCHAR(200),
+            created_at DATETIME
+        )
+    """)
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_asset_txn_user_ticker ON asset_txn (user_id, ticker, txn_date)")
     except Exception:
         pass
 
@@ -6461,6 +6481,8 @@ def pm_comprar():
     new_qty = a.quantity + qty
     a.avg_price = round(((a.quantity * (a.avg_price or 0)) + total) / new_qty, 4)
     a.quantity = new_qty
+    _txn_add(current_user.id, ticker, 'C', qty, price, date.today(),
+             source='PM_LUCRO', notes='Compra com lucro (Preço Médio)')
 
     # ── Evento didático: financiado entra a PM zero; resto é dinheiro novo ──
     custo_aj_new = custo_aj + (total - financiado)
@@ -6639,6 +6661,9 @@ def dividendos_recalc_qtd_b3():
         flash('Nenhuma operação à vista encontrada no CSV.', 'warning')
         return redirect(url_for('dividendos'))
 
+    # Aproveita o upload para popular o LIVRO de transações (com dedupe)
+    novas_txn = _persist_b3_txns(current_user.id, trades)
+
     init_date = date.fromisoformat(_B3_INITIAL_POSITION_DATE)
     # descarta operações anteriores à âncora (já incluídas na posição inicial)
     trades = [t for t in trades if t['date'] >= init_date]
@@ -6679,7 +6704,8 @@ def dividendos_recalc_qtd_b3():
     db.session.commit()
     flash(f'Movimentação B3 aplicada: {updated} provento(s) recalculados pela posição da época'
           + (f' — {zeroed} zerados (sem posição na data-com)' if zeroed else '')
-          + (f'; {skipped} fora da janela do CSV/sem dados.' if skipped else '.'),
+          + (f'; {skipped} fora da janela do CSV/sem dados' if skipped else '')
+          + f'. {novas_txn} operação(ões) adicionadas ao livro de transações.',
           'success')
     return redirect(url_for('dividendos'))
 
@@ -6706,6 +6732,93 @@ def pm_historico(ticker):
         'pm_after': round(e.pm_after, 2) if e.pm_after is not None else None,
         'created': e.created_at.strftime('%d/%m/%Y %H:%M') if e.created_at else '',
     } for e in evs])
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Livro de transações da carteira (AssetTxn)
+# ─────────────────────────────────────────────────────────────────────────────
+def _txn_add(user_id, ticker, side, qty, price, txn_date=None, source='MANUAL', notes=None):
+    """Registra uma transação no livro (não faz commit)."""
+    db.session.add(AssetTxn(
+        user_id=user_id, ticker=(ticker or '').upper(), side=side,
+        quantity=int(qty), price=round(float(price or 0), 4),
+        txn_date=txn_date or date.today(), source=source,
+        notes=(notes or '')[:200] or None, created_at=datetime.now()))
+
+
+def _qty_on_date_ledger(user_id, ticker, ref_date, current_qty):
+    """Qtd detida na VÉSPERA de ref_date, reconstruída DE TRÁS PRA FRENTE:
+    posição atual − deltas das transações com data >= ref_date. Funciona mesmo
+    com livro incompleto no passado, desde que as mudanças APÓS ref estejam
+    registradas."""
+    q = int(current_qty or 0)
+    for t in AssetTxn.query.filter(AssetTxn.user_id == user_id,
+                                   AssetTxn.ticker == (ticker or '').upper(),
+                                   AssetTxn.txn_date >= ref_date).all():
+        q -= t.quantity if t.side == 'C' else -t.quantity
+    return max(q, 0)
+
+
+def _persist_b3_txns(user_id, trades):
+    """Grava no livro as operações do CSV da B3, com dedupe. Retorna nº de novas."""
+    seen = {(t.ticker, t.txn_date, t.side, t.quantity, round(t.price, 2))
+            for t in AssetTxn.query.filter_by(user_id=user_id, source='B3').all()}
+    added = 0
+    for t in trades:
+        key = (t['ticker'], t['date'], t['side'], int(t['qty']), round(float(t['price']), 2))
+        if key in seen:
+            continue
+        seen.add(key)
+        _txn_add(user_id, t['ticker'], t['side'], t['qty'], t['price'],
+                 txn_date=t['date'], source='B3', notes='Importação CSV B3')
+        added += 1
+    return added
+
+
+@app.route('/transacoes')
+@login_required
+def transacoes():
+    txns = (AssetTxn.query.filter_by(user_id=current_user.id)
+            .order_by(AssetTxn.txn_date.desc(), AssetTxn.id.desc()).all())
+    return render_template('transacoes.html', txns=txns)
+
+
+@app.route('/transacoes/<int:id>/delete', methods=['POST'])
+@login_required
+def transacao_delete(id):
+    t = AssetTxn.query.get_or_404(id)
+    if t.user_id != current_user.id:
+        flash('Sem permissão.', 'danger')
+        return redirect(url_for('transacoes'))
+    db.session.delete(t)
+    db.session.commit()
+    flash('Transação removida do livro (a posição oficial NÃO foi alterada).', 'success')
+    return redirect(url_for('transacoes'))
+
+
+@app.route('/dividendos/recalcular-qtd-livro', methods=['POST'])
+@login_required
+def dividendos_recalc_qtd_livro():
+    """Recalcula a Qtd dos proventos pela posição reconstruída do LIVRO de
+    transações (retroativa a partir da posição atual)."""
+    updated = skipped = 0
+    for d in Dividend.query.join(Asset).filter(Asset.user_id == current_user.id).all():
+        exd = d.ex_date or d.payment_date
+        per = d.per_share or ((d.amount / d.qty_used) if d.qty_used else None)
+        if not exd or not per:
+            skipped += 1
+            continue
+        q = _qty_on_date_ledger(current_user.id, d.ticker, exd, d.asset.quantity)
+        d.per_share = per
+        d.qty_used = q
+        d.amount = round(per * q, 2)
+        updated += 1
+    db.session.commit()
+    flash(f'Livro de transações aplicado: {updated} provento(s) recalculados'
+          + (f'; {skipped} sem dados.' if skipped else '.')
+          + ' Obs.: a precisão depende do livro conter todas as mudanças de posição após cada data-com.',
+          'success')
+    return redirect(url_for('dividendos'))
+
 
 def process_assets(assets):
     if not assets:
@@ -6790,6 +6903,10 @@ def add_asset():
             new_qty = asset.quantity + qty
             asset.avg_price = total_val / new_qty
             asset.quantity = new_qty
+            if strategy != 'SWING' and qty > 0:
+                _dt = datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else date.today()
+                _txn_add(current_user.id, ticker, 'C', qty, avg_price,
+                         txn_date=_dt, notes='Compra via Adicionar Ativo')
             flash(f'Ativo {ticker} atualizado! Nova quantidade: {new_qty}')
         else:
             entry_date = datetime.strptime(date_str, '%Y-%m-%d').date() if date_str else date.today()
@@ -6841,8 +6958,11 @@ def add_asset():
                 recommendation=recommendation
             )
             db.session.add(asset)
+            if strategy != 'SWING' and qty > 0:
+                _txn_add(current_user.id, ticker, 'C', qty, avg_price,
+                         txn_date=entry_date, source='INICIAL', notes='Posição inicial')
             flash(f'Ativo {ticker} adicionado!')
-        
+
         db.session.commit()
         if type_ == 'FII':
             return redirect(url_for('fiis'))
@@ -6932,6 +7052,16 @@ def buy_asset(id):
                         pass
                 asset.exit_date = None
 
+            # Livro de transações: compra com data (swing fica fora)
+            if asset.strategy != 'SWING':
+                _bd = request.form.get('date')
+                try:
+                    _bdt = datetime.strptime(_bd, '%Y-%m-%d').date() if _bd else date.today()
+                except ValueError:
+                    _bdt = date.today()
+                _txn_add(current_user.id, asset.ticker, 'C', qty_buy, price_buy,
+                         txn_date=_bdt, notes='Registrar Nova Compra')
+
             db.session.commit()
             flash(f'Compra registrada! Novo PM: R$ {new_avg_price:.2f}')
         
@@ -7008,7 +7138,12 @@ def exit_trade(id):
                 # Partial Exit
                 asset.quantity -= qty_sell
                 flash("Saída PARCIAL registrada com sucesso!", "success")
-                
+
+            # Livro de transações: venda com data (swing fica fora)
+            if asset.strategy != 'SWING':
+                _txn_add(current_user.id, asset.ticker, 'V', qty_sell, price_sell,
+                         txn_date=date_sell, notes=f'Venda/Saída ({reason or "-"})')
+
             db.session.commit()
             
             # Redirect back to origin
@@ -11631,13 +11766,17 @@ def update_dividends():
                         old.amount = round(per * old.qty_used, 2)
                         old.type = div_type
                     else:
+                        # Qtd na data-com reconstruída pelo LIVRO de transações
+                        # (sem livro após a data = quantidade atual, como antes)
+                        q_hist = _qty_on_date_ledger(asset.user_id, asset.ticker,
+                                                     div_date, asset.quantity)
                         db.session.add(Dividend(
                             asset_id=asset.id,
                             ticker=asset.ticker,
                             type=div_type,
-                            amount=round(per * asset.quantity, 2),
+                            amount=round(per * q_hist, 2),
                             per_share=per,
-                            qty_used=asset.quantity,
+                            qty_used=q_hist,
                             payment_date=div_date,
                             ex_date=div_date
                         ))

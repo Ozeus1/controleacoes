@@ -492,6 +492,25 @@ class Dividend(db.Model):
 
     asset = db.relationship('Asset', backref=db.backref('dividends', lazy=True, cascade="all, delete-orphan"))
 
+class AssetTxn(db.Model):
+    """Livro de transações da carteira: cada compra/venda com data, qtd e
+    preço. Fontes: MANUAL (botões Comprar/Vender), INICIAL (Adicionar Ativo),
+    B3 (importação do CSV de negociação), PM_LUCRO (compra com lucro).
+    Permite reconstruir a posição em qualquer data (ex.: qtd na data-com de
+    um dividendo). Swing trade fica fora do livro."""
+    __tablename__ = 'asset_txn'
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ticker     = db.Column(db.String(10), nullable=False)
+    txn_date   = db.Column(db.Date, nullable=False)
+    side       = db.Column(db.String(1), nullable=False, default='C')   # C | V
+    quantity   = db.Column(db.Integer, nullable=False)
+    price      = db.Column(db.Float, nullable=False, default=0.0)
+    source     = db.Column(db.String(12), default='MANUAL')  # MANUAL | INICIAL | B3 | PM_LUCRO
+    notes      = db.Column(db.String(200), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+
 class PMEvent(db.Model):
     """Evento do Preço Médio didático (página Preço Médio).
     Cada crédito (dividendo recebido ou lucro de opções do ativo) é usado UMA

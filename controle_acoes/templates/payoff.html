@@ -108,11 +108,12 @@
                 </div>
 
                 <div style="display:flex; gap:.5rem; justify-content:flex-end; margin-top:1rem; flex-wrap:wrap;">
-                    <button type="button" class="btn btn-sm" style="background:#0ea5e9;color:white;"
-                            onclick="mjSimular()" title="Prévia: quanto sai/entra com o manejo e o novo gráfico de payoff, sem gravar nada">🔮 Simular manejo</button>
+                    <button type="button" class="btn btn-sm" id="mj-sim-btn" style="background:#0ea5e9;color:white;"
+                            onclick="mjSimBtnClick()"
+                            title="1º clique: prévia dos fluxos e do novo payoff (recalcula sozinha ao editar). Depois: salva a simulação na tela Manejo">🔮 Simular manejo</button>
                     <button type="button" class="btn btn-sm" style="background:#0d9488;color:white;"
                             onclick="mjAbrirSimulador()"
-                            title="Abre o simulador de Rolagem no modo Manejo com estas pernas — lá é possível varrer a cadeia (10/20 strikes, semanais, prazo) e SALVAR a simulação">📆 Simular/salvar na Rolagem</button>
+                            title="Abre a tela Manejo com estas pernas — lá é possível varrer a cadeia (10/20 strikes, semanais, prazo), simular e salvar">📆 Abrir no Manejo</button>
                     <button type="button" class="btn btn-secondary btn-sm" onclick="closeManejo()">Cancelar</button>
                     <button type="submit" class="btn btn-warning btn-sm">🔧 Confirmar Manejo</button>
                 </div>
@@ -140,7 +141,7 @@
     var MJ_UND = {{ underlying|default('')|tojson }};
     var MJ_OPID = {{ manage_op_id|tojson }};
 
-    // Abre o simulador de Rolagem já no modo MANEJO com as pernas atuais
+    // Abre a tela MANEJO com as pernas atuais pré-carregadas
     window.mjAbrirSimulador = function () {
         var legsStr = MJ_LEGS.filter(function (l) { return l.opt_type !== 'STOCK'; })
             .map(function (l) {
@@ -150,8 +151,86 @@
             }).join('|');
         var q = new URLSearchParams({roll: '1', mode: 'MANEJO', ativo: MJ_UND,
             nome: ('Manejo ' + MJ_TITLE).slice(0, 60), src: 'est:' + MJ_OPID, legs: legsStr});
-        window.open('/rolagem-opcoes?' + q.toString(), '_blank');
+        window.open('/manejo-opcoes?' + q.toString(), '_blank');
     };
+
+    // ── Botão duplo: 1º clique simula; depois SALVA a simulação (tela Manejo) ──
+    var mjSimulado = false, mjSavedId = null;
+    window.mjSimBtnClick = function () {
+        var btn = document.getElementById('mj-sim-btn');
+        if (!mjSimulado) {
+            mjSimular();
+            // só converte o botão se a prévia realmente abriu com pernas marcadas
+            var c = mjCollect();
+            if (c.algum) {
+                mjSimulado = true;
+                btn.textContent = '💾 Salvar Simulação';
+                btn.style.background = '#7c3aed';
+            }
+            return;
+        }
+        mjSalvarSimulacao(btn);
+    };
+
+    function mjSalvarSimulacao(btn) {
+        // Monta as linhas no formato da tela Manejo (mesma engrenagem da Rolagem)
+        var byId = {};
+        MJ_LEGS.forEach(function (l) { byId[l.id] = l; });
+        var lines = [];
+        document.querySelectorAll('#manejo-modal .mj-leg').forEach(function (fs) {
+            var idEl = fs.querySelector('[name=leg_id]');
+            var l = idEl ? byId[parseInt(idEl.value)] : null;
+            if (!l) return;
+            var line = {
+                current_symbol: l.ticker, side: l.side, opt_type: l.opt_type,
+                avg: l.entry_price || 0, qty: l.quantity,
+                current_strike: l.strike || 0, current_exp: l.expiration_date || '',
+                close_price: 0, new_symbol: '', new_strike: 0, new_exp: '', open_price: 0
+            };
+            if (fs.querySelector('.mj-chk').checked) {
+                line.close_price = mjNum(fs.querySelector('[name=leg_close_price]').value);
+                line.new_symbol  = (fs.querySelector('[name=leg_new_ticker]').value || '').toUpperCase();
+                line.new_strike  = mjNum(fs.querySelector('[name=leg_new_strike]').value);
+                line.open_price  = mjNum(fs.querySelector('[name=leg_new_premium]').value);
+                line.new_exp     = fs.querySelector('[name=leg_new_exp]').value || '';
+            }
+            lines.push(line);
+        });
+        var hoje = new Date();
+        var nome = ('Manejo ' + MJ_TITLE + ' ' +
+                    String(hoje.getDate()).padStart(2, '0') + '/' +
+                    String(hoje.getMonth() + 1).padStart(2, '0')).slice(0, 80);
+        btn.disabled = true;
+        fetch('/api/rolagem-opcoes/save', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: mjSavedId, name: nome,
+                payload: {
+                    roll_type: 'MANEJO', underlying: MJ_UND, current_symbol: '',
+                    option_kind: 'CALL', position_side: 'SELL',
+                    quantity: (MJ_LEGS[0] && MJ_LEGS[0].quantity) || 100,
+                    avg_price: 0, current: null, lines: lines
+                }
+            })
+        }).then(function (r) { return r.json(); })
+          .then(function (d) {
+              if (d.error) throw new Error(d.error);
+              mjSavedId = d.id;
+              btn.disabled = false;
+              btn.textContent = '✓ Salva na tela Manejo';
+              btn.style.background = '#10b981';
+              setTimeout(function () {
+                  btn.textContent = '💾 Salvar Simulação';
+                  btn.style.background = '#7c3aed';
+              }, 3000);
+          })
+          .catch(function (e) {
+              btn.disabled = false;
+              btn.textContent = '💾 Salvar Simulação';
+              alert('Erro ao salvar: ' + (e.message || e));
+          });
+    }
     var MJ_ROLL_ADJ = {{ roll_adjustment|default(0)|tojson }};
     // SELIC_RATE é definida num <script> posterior — resolve na hora do uso
     function MJ_R() { return Math.log(1 + (typeof SELIC_RATE !== 'undefined' ? SELIC_RATE : 14.5) / 100); }

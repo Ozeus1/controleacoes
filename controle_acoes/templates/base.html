@@ -251,9 +251,9 @@
                     class="{{ 'active' if request.endpoint == 'fiis' else '' }}">FIIs</a>
 
                 {# ── Opções (dropdown com Estudos e Simulação) ── #}
-                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','lancamento_coberto','venda_put_longa','ajuda_operacoes'] else '' }}">
+                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','lancamento_coberto','venda_put_longa','ajuda_operacoes'] else '' }}">
                     <a href="{{ url_for('opcoes') }}"
-                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','lancamento_coberto','venda_put_longa','ajuda_operacoes'] else '' }}"
+                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','lancamento_coberto','venda_put_longa','ajuda_operacoes'] else '' }}"
                        onclick="toggleNavDrop(this,event)">
                         Opções <span class="nav-caret">▾</span>
                     </a>
@@ -268,6 +268,8 @@
                            class="{{ 'active' if request.endpoint == 'simulador_liquidez' else '' }}">📈 Simulação Gráfica</a>
                         <a href="{{ url_for('rolagem_opcoes') }}"
                            class="{{ 'active' if request.endpoint == 'rolagem_opcoes' else '' }}">🔁 Rolagem de Opções</a>
+                        <a href="{{ url_for('manejo_opcoes') }}"
+                           class="{{ 'active' if request.endpoint == 'manejo_opcoes' else '' }}">🔧 Manejo</a>
                         <a href="{{ url_for('venda_puts') }}"
                            class="{{ 'active' if request.endpoint in ['venda_puts','collar_edit'] else '' }}">🧮 Cálculos de Opções</a>
                         <a href="{{ url_for('ranking_volatilidade') }}"

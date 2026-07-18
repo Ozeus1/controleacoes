@@ -440,6 +440,20 @@ def run_migrations():
     except Exception:
         pass
 
+    # Simulações de MANEJO salvas antes do tipo ser aceito (normalizadas p/ TIME
+    # pelo save antigo) — restaura o tipo a partir do payload (idempotente)
+    try:
+        cursor.execute("""
+            UPDATE option_roll_simulation SET roll_type='MANEJO'
+            WHERE roll_type != 'MANEJO'
+              AND (payload LIKE '%"roll_type": "MANEJO"%'
+                   OR payload LIKE '%"roll_type":"MANEJO"%')
+        """)
+        if cursor.rowcount:
+            print(f"[MIGRATION] {cursor.rowcount} simulação(ões) de manejo re-tipadas p/ MANEJO")
+    except Exception:
+        pass
+
     # Livro de transações da carteira (compras/vendas com data)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS asset_txn (
@@ -2918,14 +2932,28 @@ def download_rtd_tsv():
 def rolagem_opcoes():
     """Simulador de rolagem de opcoes por tempo ou strike."""
     ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
-    return render_template('rolagem_opcoes.html', ranking_vol=ranking_vol)
+    return render_template('rolagem_opcoes.html', ranking_vol=ranking_vol, manejo_mode=False)
+
+
+@app.route('/manejo-opcoes')
+@login_required
+def manejo_opcoes():
+    """Simulador de MANEJO de opções: mesma engrenagem da Rolagem, com a aba
+    Manejo pré-selecionada e a lista de simulações filtrada por MANEJO."""
+    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    return render_template('rolagem_opcoes.html', ranking_vol=ranking_vol, manejo_mode=True)
 
 
 @app.route('/api/rolagem-opcoes/list')
 @login_required
 def api_rolagem_list():
-    sims = OptionRollSimulation.query.filter_by(user_id=current_user.id)\
-        .order_by(OptionRollSimulation.updated_at.desc(), OptionRollSimulation.created_at.desc()).all()
+    mode = (request.args.get('mode') or '').lower()
+    q = OptionRollSimulation.query.filter_by(user_id=current_user.id)
+    if mode == 'manejo':
+        q = q.filter(OptionRollSimulation.roll_type == 'MANEJO')
+    elif mode == 'rolagem':
+        q = q.filter(OptionRollSimulation.roll_type != 'MANEJO')
+    sims = q.order_by(OptionRollSimulation.updated_at.desc(), OptionRollSimulation.created_at.desc()).all()
     return jsonify([{
         'id': s.id,
         'name': s.name,
@@ -2951,7 +2979,7 @@ def api_rolagem_save():
 
     underlying = (payload.get('underlying') or data.get('underlying') or '').strip().upper()
     roll_type = (payload.get('roll_type') or data.get('roll_type') or 'TIME').strip().upper()
-    if roll_type not in ('TIME', 'STRIKE', 'TIME_STRIKE'):
+    if roll_type not in ('TIME', 'STRIKE', 'TIME_STRIKE', 'MANEJO'):
         roll_type = 'TIME'
 
     if sim_id:

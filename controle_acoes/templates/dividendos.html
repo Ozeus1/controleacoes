@@ -384,9 +384,20 @@
 <div class="row">
     <div class="col-12">
         <div class="card bg-dark text-white">
-            <div class="card-header font-weight-bold d-flex justify-content-between align-items-center dividends-card-header">
+            <div class="card-header font-weight-bold d-flex justify-content-between align-items-center dividends-card-header" style="flex-wrap:wrap;gap:.5rem;">
                 <span><i class="fas fa-history mr-2"></i>Histórico de Proventos (Recebidos)</span>
-                <span class="dividends-count">{{ dividends_received|length }} Pagamentos</span>
+                <span style="display:inline-flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
+                    <form method="POST" action="{{ url_for('dividendos_recalc_qtd_b3') }}" enctype="multipart/form-data"
+                          style="display:inline-flex;align-items:center;gap:.35rem;margin:0;"
+                          title="Envie o CSV de negociação da B3 (o mesmo da curva de patrimônio): o sistema reconstrói a posição dia a dia e recalcula a Qtd de cada provento pela quantidade detida na data-com"
+                          onsubmit="return confirm('Recalcular a Qtd de todos os proventos pela movimentação do CSV? As quantidades editadas manualmente dentro da janela do CSV serão sobrescritas.');">
+                        <input type="file" name="file" accept=".csv" required
+                               style="max-width:190px;font-size:.72rem;color:var(--text-secondary);">
+                        <button type="submit" class="btn btn-sm btn-secondary" style="font-size:.72rem;padding:.15rem .5rem;">
+                            📥 Qtd pela B3</button>
+                    </form>
+                    <span class="dividends-count">{{ dividends_received|length }} Pagamentos</span>
+                </span>
             </div>
             <div class="card-body p-0 dividends-table-wrap">
                 <table class="table table-dark table-striped mb-0 no-datatable dividends-table" id="dividendsTable">

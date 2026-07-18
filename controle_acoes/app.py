@@ -6619,6 +6619,71 @@ def dividendo_qtd(id):
     return redirect(url_for('dividendos'))
 
 
+@app.route('/dividendos/recalcular-qtd-b3', methods=['POST'])
+@login_required
+def dividendos_recalc_qtd_b3():
+    """Recalcula automaticamente a QTD de cada provento pela movimentação da
+    B3 (mesmo CSV de negociação usado na curva de patrimônio): reconstrói a
+    posição dia a dia a partir da âncora e usa a quantidade detida ANTES da
+    data-com de cada dividendo. Total = per_share × qtd da época."""
+    f = request.files.get('file')
+    if not f or not f.filename:
+        flash('Envie o CSV de negociação da B3.', 'danger')
+        return redirect(url_for('dividendos'))
+    try:
+        trades = parse_b3_trades(f.read())
+    except Exception as e:
+        flash(f'Falha ao ler o CSV: {e}', 'danger')
+        return redirect(url_for('dividendos'))
+    if not trades:
+        flash('Nenhuma operação à vista encontrada no CSV.', 'warning')
+        return redirect(url_for('dividendos'))
+
+    init_date = date.fromisoformat(_B3_INITIAL_POSITION_DATE)
+    # descarta operações anteriores à âncora (já incluídas na posição inicial)
+    trades = [t for t in trades if t['date'] >= init_date]
+    days, tickers_mov = _b3_daily_positions(trades, _B3_INITIAL_POSITION, init_date)
+    last_day = days[-1][0] if days else init_date
+
+    def qty_on(ticker, ref):
+        """Posição ao fim do último dia ANTERIOR à data-com (quem tem o papel
+        na véspera do ex-date recebe o provento)."""
+        q = _B3_INITIAL_POSITION.get(ticker, 0)
+        for dday, snap in days:
+            if dday >= ref:
+                break
+            q = snap.get(ticker, 0)
+        return max(q, 0)
+
+    updated = skipped = zeroed = 0
+    for d in Dividend.query.join(Asset).filter(Asset.user_id == current_user.id).all():
+        exd = d.ex_date or d.payment_date
+        tk  = (d.ticker or '').upper()
+        if not exd or exd < init_date or exd > last_day:
+            skipped += 1
+            continue                      # fora da janela coberta pelo CSV
+        if tk not in tickers_mov and tk not in _B3_INITIAL_POSITION:
+            skipped += 1
+            continue                      # sem dados de posição p/ o ticker
+        per = d.per_share or ((d.amount / d.qty_used) if d.qty_used else None)
+        if not per:
+            skipped += 1
+            continue
+        q = qty_on(tk, exd)
+        d.per_share = per
+        d.qty_used  = q
+        d.amount    = round(per * q, 2)
+        updated += 1
+        if q == 0:
+            zeroed += 1
+    db.session.commit()
+    flash(f'Movimentação B3 aplicada: {updated} provento(s) recalculados pela posição da época'
+          + (f' — {zeroed} zerados (sem posição na data-com)' if zeroed else '')
+          + (f'; {skipped} fora da janela do CSV/sem dados.' if skipped else '.'),
+          'success')
+    return redirect(url_for('dividendos'))
+
+
 @app.route('/api/pm/historico/<ticker>')
 @login_required
 def pm_historico(ticker):

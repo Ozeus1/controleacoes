@@ -409,6 +409,8 @@
                         <button type="submit" class="btn btn-sm btn-secondary" style="font-size:.72rem;padding:.15rem .5rem;">
                             📒 Qtd pelo livro</button>
                     </form>
+                    <a href="{{ url_for('transacoes') }}" style="font-size:.7rem;color:var(--text-secondary);text-decoration:underline;white-space:nowrap;"
+                       title="Ver/editar o Livro de Transações (compras e vendas que reconstroem a posição usada aqui)">ver livro →</a>
                     <span class="dividends-count">{{ dividends_received|length }} Pagamentos</span>
                 </span>
             </div>

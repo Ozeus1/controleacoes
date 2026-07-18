@@ -927,75 +927,18 @@
         </div><!-- /bal-table-wrap -->
 
     <!-- Chart -->
-    <div class="card chart-single" style="margin-top:.75rem;">
-        <div style="height:300px;"><canvas id="chartLocation"></canvas></div>
+    <div class="card chart-single" style="margin-top:.75rem; max-width:640px; padding:1rem;">
+        <div style="height:220px;"><canvas id="chartLocation"></canvas></div>
+        <div class="donut-legend" id="locationLegend"></div>
     </div>
 </div>
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        const isSmallLoc = window.innerWidth < 900;
-        const ctxLoc = document.getElementById('chartLocation').getContext('2d');
-        new Chart(ctxLoc, {
-            type: 'doughnut',
-            data: {
-                labels: ['Brasil', 'Internacional'],
-                datasets: [{
-                    data: [{{ location_chart['Brasil'] }}, {{ location_chart['Internacional'] }}],
-                    backgroundColor: ['#28a745', '#3b82f6'],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '60%',
-                plugins: {
-                    legend: {
-                        position: isSmallLoc ? 'bottom' : 'right',
-                        labels: {
-                            color: themeColors.text,
-                            font: { size: isSmallLoc ? 11 : 12 },
-                            padding: isSmallLoc ? 6 : 12,
-                            boxWidth: isSmallLoc ? 12 : 16,
-                            generateLabels: function(chart) {
-                                const data = chart.data;
-                                if (data.labels.length && data.datasets.length) {
-                                    const sum = data.datasets[0].data.reduce((a, b) => a + b, 0);
-                                    return data.labels.map(function(label, i) {
-                                        const value = data.datasets[0].data[i];
-                                        const pct = sum > 0 ? (value / sum * 100).toFixed(1) : '0.0';
-                                        return {
-                                            text: label + '  ' + pct + '%',
-                                            fillStyle: data.datasets[0].backgroundColor[i],
-                                            strokeStyle: data.datasets[0].backgroundColor[i],
-                                            fontColor: themeColors.text,
-                                            lineWidth: 0,
-                                            hidden: false,
-                                            index: i
-                                        };
-                                    });
-                                }
-                                return [];
-                            }
-                        }
-                    },
-                    datalabels: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                let label = context.label || '';
-                                if (context.parsed !== null) {
-                                    label += ': ' + new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed);
-                                }
-                                return label;
-                            }
-                        }
-                    }
-                },
-                layout: { padding: isSmallLoc ? 5 : 20 }
-            }
-        });
+        donutChart('chartLocation', ['Brasil', 'Internacional'],
+            [{{ location_chart['Brasil'] }}, {{ location_chart['Internacional'] }}],
+            ['#28a745', '#3b82f6'],
+            { legendId: 'locationLegend', centerLabel: 'Total' });
     });
 </script>
 
@@ -1056,9 +999,10 @@
         </div><!-- /bal-table-wrap -->
 
         <!-- Hierarchy Chart -->
-        <div class="card chart-single" style="margin-top:.75rem;">
+        <div class="card chart-single" style="margin-top:.75rem; max-width:640px; padding:1rem;">
             <h5 style="font-size:.9rem; margin-bottom:.75rem; color:var(--text-secondary);">Gráfico por Grandes Grupos</h5>
-            <div style="height:300px;"><canvas id="chartHierarchy"></canvas></div>
+            <div style="height:230px;"><canvas id="chartHierarchy"></canvas></div>
+            <div class="donut-legend" id="hierLegend"></div>
         </div>
     </div>
 
@@ -1080,8 +1024,9 @@
                 </tbody>
             </table>
         </div><!-- /bal-table-wrap -->
-        <div class="card chart-single" style="margin-top:.75rem;">
-            <div style="height:300px;"><canvas id="chartExploded"></canvas></div>
+        <div class="card chart-single" style="margin-top:.75rem; max-width:640px; padding:1rem;">
+            <div style="height:230px;"><canvas id="chartExploded"></canvas></div>
+            <div class="donut-legend" id="expLegend"></div>
         </div>
     </div>
 
@@ -1107,139 +1052,51 @@
                 </tbody>
             </table>
         </div><!-- /bal-table-wrap -->
-        <div class="card chart-single" style="margin-top:.75rem;">
-            <div style="height:300px;"><canvas id="chartGeneral"></canvas></div>
+        <div class="card chart-single" style="margin-top:.75rem; max-width:640px; padding:1rem;">
+            <div style="height:230px;"><canvas id="chartGeneral"></canvas></div>
+            <div class="donut-legend" id="genLegend"></div>
         </div>
     </div>
 </div>
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            const isSmallScreen2 = window.innerWidth < 900;
-            const commonOpt2 = {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '60%',
-                plugins: {
-                    legend: {
-                        position: isSmallScreen2 ? 'bottom' : 'right',
-                        labels: {
-                            color: themeColors.text,
-                            font: { size: isSmallScreen2 ? 11 : 12 },
-                            padding: isSmallScreen2 ? 6 : 12,
-                            boxWidth: isSmallScreen2 ? 12 : 16,
-                            generateLabels: function(chart) {
-                                const data = chart.data;
-                                if (data.labels.length && data.datasets.length) {
-                                    const sum = data.datasets[0].data.reduce((a, b) => a + b, 0);
-                                    return data.labels.map(function(label, i) {
-                                        const value = data.datasets[0].data[i];
-                                        const pct = sum > 0 ? (value / sum * 100).toFixed(1) : '0.0';
-                                        return {
-                                            text: label + '  ' + pct + '%',
-                                            fillStyle: data.datasets[0].backgroundColor[i],
-                                            strokeStyle: data.datasets[0].backgroundColor[i],
-                                            fontColor: themeColors.text,
-                                            lineWidth: 0,
-                                            hidden: false,
-                                            index: i
-                                        };
-                                    });
-                                }
-                                return [];
-                            }
-                        }
-                    },
-                    datalabels: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                let label = context.label || '';
-                                if (context.parsed !== null) {
-                                    label += ': ' + new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(context.parsed);
-                                }
-                                return label;
-                            }
-                        }
-                    }
-                },
-                layout: { padding: isSmallScreen2 ? 5 : 20 }
-            };
+            // ── Donuts padronizados: total no centro + legenda-lista ──
 
-            // --- HIERARCHY GROUP CHART (NEW) ---
-            const ctxHier = document.getElementById('chartHierarchy').getContext('2d');
+            // --- HIERARCHY GROUP CHART ---
             const hierLabels = [];
             const hierData = [];
-
-            // Loop Jinja to get groups and totals
             {% for group in summary_hierarchy %}
             hierLabels.push('{{ group.group }}');
             hierData.push({{ group.total }});
-        {% endfor %}
+            {% endfor %}
+            donutChart('chartHierarchy', hierLabels, hierData,
+                ['#3b82f6', '#10b981', '#8b5cf6'],
+                { legendId: 'hierLegend', centerLabel: 'Total' });
 
-        new Chart(ctxHier, {
-            type: 'doughnut',
-            data: {
-                labels: hierLabels,
-                datasets: [{
-                    data: hierData,
-                    backgroundColor: ['#3b82f6', '#10b981', '#8b5cf6'],
-                    borderWidth: 0
-                }]
-            },
-            options: commonOpt2
+            // --- EXPLODED CHART ---
+            const expLabels = [];
+            const expData = [];
+            {% for k, v in summary_exploded.items() %}
+            expLabels.push('{{ k }}');
+            expData.push({{ v }});
+            {% endfor %}
+            donutChart('chartExploded', expLabels, expData,
+                ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
+                 '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'],
+                { legendId: 'expLegend', centerLabel: 'Total' });
+
+            // --- GENERAL CHART ---
+            const genLabels = [];
+            const genData = [];
+            {% for k, v in summary_general.items() %}
+            genLabels.push('{{ k }}');
+            genData.push({{ v }});
+            {% endfor %}
+            donutChart('chartGeneral', genLabels, genData,
+                ['#0d47a1', '#e65100', '#1b5e20', '#00acc1', '#8e24aa'],
+                { legendId: 'genLegend', centerLabel: 'Total' });
         });
-
-        // --- EXPLODED CHART ---
-        const ctxExp = document.getElementById('chartExploded').getContext('2d');
-        const expLabels = [];
-        const expData = [];
-        // Loop Jinja items
-        {% for k, v in summary_exploded.items() %}
-        expLabels.push('{{ k }}');
-        expData.push({{ v }});
-        {% endfor %}
-
-        new Chart(ctxExp, {
-            type: 'doughnut',
-            data: {
-                labels: expLabels,
-                datasets: [{
-                    data: expData,
-                    backgroundColor: [
-                        '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
-                        '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf'
-                    ],
-                    borderWidth: 0
-                }]
-            },
-            options: commonOpt2
-        });
-
-        // --- GENERAL CHART ---
-        const ctxGen = document.getElementById('chartGeneral').getContext('2d');
-        const genLabels = [];
-        const genData = [];
-        {% for k, v in summary_general.items() %}
-        genLabels.push('{{ k }}');
-        genData.push({{ v }});
-        {% endfor %}
-
-        new Chart(ctxGen, {
-            type: 'doughnut',
-            data: {
-                labels: genLabels,
-                datasets: [{
-                    data: genData,
-                    backgroundColor: [
-                        '#0d47a1', '#e65100', '#1b5e20', '#00acc1', '#8e24aa'
-                    ],
-                    borderWidth: 0
-                }]
-            },
-            options: commonOpt2
-        });
-    });
     </script>
 
     <script>

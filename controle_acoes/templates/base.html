@@ -231,7 +231,7 @@
                     class="{{ 'active' if request.endpoint == 'resumo' else '' }}">Resumo</a>
 
                 {# ── Ações (dropdown com Swingtrade) ── #}
-                <div class="nav-dropdown {{ 'active' if request.endpoint in ['acoes','swingtrade'] else '' }}">
+                <div class="nav-dropdown {{ 'active' if request.endpoint in ['acoes','swingtrade','preco_medio'] else '' }}">
                     <a href="{{ url_for('acoes') }}"
                        class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['acoes','swingtrade'] else '' }}"
                        onclick="toggleNavDrop(this,event)">
@@ -242,6 +242,8 @@
                            class="{{ 'active' if request.endpoint == 'acoes' else '' }}">📋 Carteira</a>
                         <a href="{{ url_for('swingtrade') }}"
                            class="{{ 'active' if request.endpoint == 'swingtrade' else '' }}">📊 Swingtrade</a>
+                        <a href="{{ url_for('preco_medio') }}"
+                           class="{{ 'active' if request.endpoint == 'preco_medio' else '' }}">🧮 Preço Médio</a>
                     </div>
                 </div>
 

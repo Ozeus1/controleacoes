@@ -490,6 +490,28 @@ class Dividend(db.Model):
     
     asset = db.relationship('Asset', backref=db.backref('dividends', lazy=True, cascade="all, delete-orphan"))
 
+class PMEvent(db.Model):
+    """Evento do Preço Médio didático (página Preço Médio).
+    Cada crédito (dividendo recebido ou lucro de opções do ativo) é usado UMA
+    única vez: ou APLICADO ao PM (reduz o custo ajustado) ou FINANCIANDO uma
+    compra com lucro (as ações novas entram a PM zero). Guarda pm_before/after
+    para o histórico didático das mudanças."""
+    __tablename__ = 'pm_event'
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ticker     = db.Column(db.String(10), nullable=False)
+    kind       = db.Column(db.String(15), nullable=False)  # DIVIDENDO | OPCOES | COMPRA_LUCRO | MANUAL
+    event_date = db.Column(db.Date, nullable=True)
+    valor      = db.Column(db.Float, nullable=False, default=0.0)  # redução do custo ajustado (na compra = valor financiado)
+    buy_qty    = db.Column(db.Integer, nullable=True)   # COMPRA_LUCRO: unidades compradas
+    buy_price  = db.Column(db.Float, nullable=True)     # COMPRA_LUCRO: preço unitário pago
+    source_key = db.Column(db.String(30), nullable=True)  # 'div:<id>' | 'th:<id>' — dedupe da varredura
+    ref        = db.Column(db.String(200), nullable=True)
+    pm_before  = db.Column(db.Float, nullable=True)
+    pm_after   = db.Column(db.Float, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+
 class MarketIndex(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     ticker = db.Column(db.String(20), unique=True, nullable=False)

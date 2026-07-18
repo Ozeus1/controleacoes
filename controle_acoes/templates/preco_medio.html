@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Preço Médio{% endblock %}
+
+{% block content %}
+<style>
+.pm-badge{display:inline-block;padding:.1rem .5rem;border-radius:12px;font-size:.72rem;font-weight:700;}
+.pm-badge.sug{background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid rgba(245,158,11,.4);}
+.pm-badge.ok{background:rgba(16,185,129,.15);color:#34d399;}
+.pm-btn{padding:.15rem .45rem;font-size:.78rem;border-radius:5px;border:none;cursor:pointer;color:#fff;margin-right:.15rem;}
+</style>
+
+{% macro pm_table(items, titulo) %}
+<div class="card" style="margin-bottom:1.5rem;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:1rem;flex-wrap:wrap;gap:.5rem;">
+        <h3 style="margin:0;">{{ titulo }}</h3>
+    </div>
+    {% if items %}
+    <div style="overflow-x:auto;">
+    <table>
+        <thead>
+            <tr>
+                <th>Ativo</th>
+                <th>Qtd</th>
+                <th title="Preço médio oficial da carteira">PM Oficial</th>
+                <th>Custo Oficial</th>
+                <th title="Dividendos recebidos do ativo (histórico)">Dividendos</th>
+                <th title="Lucro/prejuízo realizado com opções do ativo (swing trade não conta)">Lucro Opções</th>
+                <th title="Total já abatido do custo ajustado (aplicações + compras financiadas)">Aplicado</th>
+                <th title="Créditos ganhos ainda não usados (aplicar ao PM ou financiar compra)">Disponível</th>
+                <th title="Custo ajustado ÷ quantidade">PM Ajustado</th>
+                <th>Redução</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for it in items %}
+            {% set a = it.asset %}
+            <tr>
+                <td><span class="ticker-badge">{{ a.ticker }}</span></td>
+                <td>{{ a.quantity }}</td>
+                <td>{{ a.avg_price | brl }}</td>
+                <td>{{ it.custo_oficial | brl }}</td>
+                <td class="{{ 'positive' if it.earned_div > 0 else '' }}">{{ it.earned_div | brl }}</td>
+                <td class="{{ 'positive' if it.earned_opc > 0 else ('negative' if it.earned_opc < 0 else '') }}">{{ it.earned_opc | brl }}</td>
+                <td>{{ it.aplicado | brl }}</td>
+                <td>
+                    {% if it.pending_n > 0 and it.pool > 0.005 %}
+                    <span class="pm-badge sug" title="{{ it.pending_n }} crédito(s) pendente(s) — clique em 💰 para aplicar ao PM">
+                        {{ it.pool | brl }} · sugerido</span>
+                    {% elif it.pool > 0.005 %}
+                    <span class="pm-badge ok">{{ it.pool | brl }}</span>
+                    {% else %}
+                    <span style="color:var(--text-secondary);">{{ it.pool | brl }}</span>
+                    {% endif %}
+                </td>
+                <td class="{{ 'positive' if it.pm_aj < a.avg_price else '' }}" style="font-weight:700;">
+                    {{ it.pm_aj | brl }}
+                </td>
+                <td class="{{ 'positive' if it.reducao_pct > 0 else ('negative' if it.reducao_pct < 0 else '') }}">
+                    {{ "%.1f"|format(it.reducao_pct)|replace('.', ',') }}%
+                </td>
+                <td style="white-space:nowrap;">
+                    <form method="POST" action="{{ url_for('pm_aplicar', ticker=a.ticker) }}" style="display:inline;">
+                        <button type="submit" class="pm-btn"
+                                style="background:{{ '#334155' if it.pending_n == 0 else '#10b981' }};{{ 'opacity:.5;' if it.pending_n == 0 else '' }}"
+                                title="Aplicar os créditos pendentes ao PM (dividendos + resultado de opções)"
+                                {% if it.pending_n == 0 %}disabled{% endif %}
+                                onclick="return confirm('Aplicar os créditos pendentes de {{ a.ticker }} ao Preço Médio?');">💰</button>
+                    </form>
+                    <button type="button" class="pm-btn" style="background:#0ea5e9;"
+                            title="Comprar mais unidades usando lucro/dividendo (ações entram a PM zero; reflete na carteira oficial)"
+                            onclick="pmOpenBuy('{{ a.ticker }}', {{ it.pool }}, {{ a.current_price or 0 }})">🛒</button>
+                    <button type="button" class="pm-btn" style="background:#8b5cf6;"
+                            title="Histórico didático das mudanças do PM"
+                            onclick="pmOpenHist('{{ a.ticker }}')">📜</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p style="text-align:center;padding:1.5rem;color:var(--text-secondary);">Nenhum ativo na carteira.</p>
+    {% endif %}
+</div>
+{% endmacro %}
+
+<div class="card" style="padding:1rem 1.2rem;margin-bottom:1.2rem;">
+    <h2 style="margin:0 0 .4rem;">🧮 Preço Médio</h2>
+    <p style="color:var(--text-secondary);font-size:.85rem;margin:0;">
+        PM <strong>ajustado</strong> da carteira: o custo é abatido por <strong>1)</strong> dividendos recebidos,
+        <strong>2)</strong> lucro/prejuízo realizado com <strong>opções do ativo</strong> e
+        <strong>3)</strong> compras financiadas com lucro (as unidades entram a <strong>PM zero</strong>;
+        excesso/falta fica no custo total — sem contagem em dobro: cada crédito é usado uma única vez).
+        Lucro de <strong>swing trade não conta</strong> (evento aleatório, não ligado ao papel).
+        Compras e vendas normais continuam pelas tabelas oficiais e refletem aqui automaticamente;
+        somente a <strong>compra com lucro (🛒)</strong> é registrada por esta tela — e reflete na carteira oficial.
+    </p>
+</div>
+
+{{ pm_table(acoes, '📈 Ações — Preço Médio Ajustado') }}
+{{ pm_table(fiis,  '🏢 FIIs — Preço Médio Ajustado') }}
+
+{# ── Modal: compra com lucro ── #}
+<div id="pm-buy-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);
+     align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.3rem;width:min(96vw,480px);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem;">
+      <h5 style="margin:0;">🛒 Comprar com lucro — <span id="pm-buy-ticker"></span></h5>
+      <button onclick="pmCloseBuy()" style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;">&times;</button>
+    </div>
+    <p style="font-size:.8rem;color:var(--text-secondary);margin:0 0 .8rem;">
+      A parte financiada com lucro entra a <strong>PM zero</strong>; o que passar do disponível é dinheiro novo
+      e fica no custo. A compra é registrada também na <strong>carteira oficial</strong> (qtd e PM oficial).
+    </p>
+    <form method="POST" action="{{ url_for('pm_comprar') }}">
+      <input type="hidden" name="ticker" id="pm-buy-tk">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.7rem;">
+        <div><label style="font-size:.78rem;color:var(--text-secondary);">Quantidade</label>
+          <input type="text" name="qty" class="form-control form-control-sm" inputmode="numeric" required></div>
+        <div><label style="font-size:.78rem;color:var(--text-secondary);">Preço unitário (R$)</label>
+          <input type="text" name="price" id="pm-buy-price" class="form-control form-control-sm" placeholder="0,00" required></div>
+        <div style="grid-column:span 2;">
+          <label style="font-size:.78rem;color:var(--text-secondary);">Valor financiado com lucro (R$) —
+            disponível: <strong id="pm-buy-pool"></strong></label>
+          <input type="text" name="financiado" class="form-control form-control-sm"
+                 placeholder="vazio = usa o máximo disponível">
+        </div>
+      </div>
+      <div style="margin-top:1rem;display:flex;gap:.5rem;justify-content:flex-end;">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="pmCloseBuy()">Cancelar</button>
+        <button type="submit" class="btn btn-primary btn-sm">🛒 Registrar compra</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# ── Modal: histórico didático ── #}
+<div id="pm-hist-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);
+     align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.3rem;width:min(96vw,780px);max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem;">
+      <h5 style="margin:0;">📜 Histórico do PM — <span id="pm-hist-ticker"></span></h5>
+      <button onclick="pmCloseHist()" style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;">&times;</button>
+    </div>
+    <div id="pm-hist-body" style="font-size:.85rem;">Carregando…</div>
+  </div>
+</div>
+
+<script>
+function brlJS(v){return 'R$ '+(Number(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function pmOpenBuy(tk,pool,price){
+  document.getElementById('pm-buy-ticker').textContent=tk;
+  document.getElementById('pm-buy-tk').value=tk;
+  document.getElementById('pm-buy-pool').textContent=brlJS(pool);
+  var p=document.getElementById('pm-buy-price');
+  if(price>0&&!p.value)p.value=Number(price).toFixed(2).replace('.',',');
+  document.getElementById('pm-buy-modal').style.display='flex';
+}
+function pmCloseBuy(){document.getElementById('pm-buy-modal').style.display='none';}
+function pmOpenHist(tk){
+  document.getElementById('pm-hist-ticker').textContent=tk;
+  var body=document.getElementById('pm-hist-body');
+  body.textContent='Carregando…';
+  document.getElementById('pm-hist-modal').style.display='flex';
+  fetch('/api/pm/historico/'+encodeURIComponent(tk)).then(function(r){return r.json();}).then(function(list){
+    if(!list.length){body.innerHTML='<p style="color:var(--text-secondary);">Nenhum evento registrado ainda. Use 💰 para aplicar os créditos sugeridos.</p>';return;}
+    var icons={DIVIDENDO:'💵',OPCOES:'🎯',COMPRA_LUCRO:'🛒',MANUAL:'✏️'};
+    body.innerHTML='<table style="width:100%;border-collapse:collapse;">'+
+      '<thead><tr><th style="text-align:left;padding:.3rem;">Evento</th><th style="text-align:right;padding:.3rem;">Valor</th>'+
+      '<th style="text-align:right;padding:.3rem;">PM antes</th><th style="text-align:right;padding:.3rem;">PM depois</th>'+
+      '<th style="text-align:right;padding:.3rem;">Registrado</th></tr></thead><tbody>'+
+      list.map(function(e){
+        var neg=e.kind!=='COMPRA_LUCRO'&&e.valor<0;
+        return '<tr style="border-top:1px solid var(--border-color);">'+
+          '<td style="padding:.35rem .3rem;">'+(icons[e.kind]||'')+' <strong>'+e.kind_label+'</strong>'+
+          (e.date?' · '+e.date:'')+'<br><small style="color:var(--text-secondary);">'+e.ref+'</small></td>'+
+          '<td style="text-align:right;padding:.35rem .3rem;" class="'+(neg?'negative':'positive')+'">'+brlJS(e.valor)+'</td>'+
+          '<td style="text-align:right;padding:.35rem .3rem;">'+(e.pm_before!=null?brlJS(e.pm_before):'—')+'</td>'+
+          '<td style="text-align:right;padding:.35rem .3rem;font-weight:700;">'+(e.pm_after!=null?brlJS(e.pm_after):'—')+'</td>'+
+          '<td style="text-align:right;padding:.35rem .3rem;color:var(--text-secondary);">'+e.created+'</td></tr>';
+      }).join('')+'</tbody></table>';
+  }).catch(function(){body.textContent='Erro ao carregar o histórico.';});
+}
+function pmCloseHist(){document.getElementById('pm-hist-modal').style.display='none';}
+['pm-buy-modal','pm-hist-modal'].forEach(function(id){
+  document.getElementById(id).addEventListener('click',function(ev){if(ev.target===this)this.style.display='none';});
+});
+</script>
+{% endblock %}

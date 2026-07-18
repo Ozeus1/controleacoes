@@ -5,7 +5,7 @@ import sqlite3
 import math
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, SearchedOption, RtdOptionData, PortfolioSnapshot
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, SearchedOption, RtdOptionData, PortfolioSnapshot, PMEvent
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -403,6 +403,29 @@ def run_migrations():
             print("[MIGRATION] Added structured_op.intl")
         except Exception:
             pass
+
+    # Tabela de eventos do Preço Médio didático (página Preço Médio)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pm_event (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            ticker VARCHAR(10) NOT NULL,
+            kind VARCHAR(15) NOT NULL,
+            event_date DATE,
+            valor FLOAT NOT NULL DEFAULT 0.0,
+            buy_qty INTEGER,
+            buy_price FLOAT,
+            source_key VARCHAR(30),
+            ref VARCHAR(200),
+            pm_before FLOAT,
+            pm_after FLOAT,
+            created_at DATETIME
+        )
+    """)
+    try:
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_pm_event_user_ticker ON pm_event (user_id, ticker)")
+    except Exception:
+        pass
 
     # Add underlying and notes columns to trade_history if missing
     cursor.execute("PRAGMA table_info(trade_history)")
@@ -6216,6 +6239,209 @@ def swingtrade():
     raw_assets = Asset.query.filter(Asset.strategy=='SWING', Asset.user_id==current_user.id, Asset.quantity > 0).all()
     assets = process_assets(raw_assets)
     return render_template('swingtrade.html', assets=assets)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Preço Médio didático — PM ajustado por dividendos, lucro de opções e
+# compras financiadas com lucro (ações a PM zero). Swing trade fica de fora.
+# ─────────────────────────────────────────────────────────────────────────────
+def _pm_earned_items(user_id, ticker):
+    """Créditos ganhos pelo ticker: dividendos recebidos + lucro/prejuízo de
+    opções realizadas do ativo (TradeHistory 'Opções' via underlying).
+    Swing trade NÃO entra — evento aleatório, não ligado ao papel."""
+    items = []
+    for d in Dividend.query.join(Asset).filter(
+            Asset.user_id == user_id, Dividend.ticker == ticker).all():
+        if not d.amount or d.amount <= 0:
+            continue
+        dt = d.payment_date or d.ex_date
+        items.append({'key': f'div:{d.id}', 'kind': 'DIVIDENDO',
+                      'valor': round(float(d.amount), 2), 'date': dt,
+                      'ref': f'{d.type or "Dividendo"} '
+                             f'{dt.strftime("%d/%m/%Y") if dt else ""} — '
+                             f'R$ {d.amount:.2f}'.replace('.', ',')})
+    for th in (TradeHistory.query.filter_by(user_id=user_id, strategy='Opções')
+               .filter(TradeHistory.underlying == ticker).all()):
+        pv = round(float(th.profit_value or 0), 2)
+        if abs(pv) < 0.005:
+            continue
+        dt = th.exit_date
+        items.append({'key': f'th:{th.id}', 'kind': 'OPCOES',
+                      'valor': pv, 'date': dt,
+                      'ref': f'Opções {th.ticker} '
+                             f'({dt.strftime("%d/%m/%Y") if dt else "-"}) — '
+                             f'resultado R$ {pv:.2f}'.replace('.', ',')})
+    items.sort(key=lambda i: (i['date'] or date.min))
+    return items
+
+
+def _pm_state(user_id, ticker):
+    """Estado do PM ajustado de um ticker: eventos, créditos, pool e custo."""
+    a = Asset.query.filter(Asset.user_id == user_id, Asset.ticker == ticker,
+                           Asset.type.in_(('ACAO', 'FII')),
+                           Asset.strategy != 'SWING').first()
+    evs = (PMEvent.query.filter_by(user_id=user_id, ticker=ticker)
+           .order_by(PMEvent.created_at, PMEvent.id).all())
+    used_keys  = {e.source_key for e in evs if e.source_key}
+    used_total = round(sum(e.valor or 0 for e in evs), 2)
+    earned  = _pm_earned_items(user_id, ticker)
+    pending = [i for i in earned if i['key'] not in used_keys]
+    pool = round(sum(i['valor'] for i in earned) - used_total, 2)
+    custo_of = (a.quantity * (a.avg_price or 0)) if a else 0.0
+    custo_aj = custo_of - used_total
+    return a, evs, earned, pending, pool, custo_of, custo_aj
+
+
+def _pm_rows(user_id):
+    assets = Asset.query.filter(Asset.user_id == user_id,
+                                Asset.type.in_(('ACAO', 'FII')),
+                                Asset.strategy != 'SWING',
+                                Asset.quantity > 0).order_by(Asset.ticker).all()
+    rows = {'ACAO': [], 'FII': []}
+    for a in assets:
+        _a, evs, earned, pending, pool, custo_of, custo_aj = _pm_state(user_id, a.ticker)
+        pm_aj = custo_aj / a.quantity if a.quantity else 0
+        rows['ACAO' if a.type == 'ACAO' else 'FII'].append({
+            'asset': a,
+            'custo_oficial': custo_of,
+            'earned_div': sum(i['valor'] for i in earned if i['kind'] == 'DIVIDENDO'),
+            'earned_opc': sum(i['valor'] for i in earned if i['kind'] == 'OPCOES'),
+            'aplicado': custo_of - custo_aj,
+            'pool': pool,
+            'pending_n': len(pending),
+            'pending_sum': round(sum(i['valor'] for i in pending), 2),
+            'custo_aj': custo_aj,
+            'pm_aj': pm_aj,
+            'reducao_pct': ((a.avg_price - pm_aj) / a.avg_price * 100) if a.avg_price else 0,
+            'events_n': len(evs),
+        })
+    return rows
+
+
+@app.route('/preco-medio')
+@login_required
+def preco_medio():
+    rows = _pm_rows(current_user.id)
+    return render_template('preco_medio.html', acoes=rows['ACAO'], fiis=rows['FII'],
+                           today=date.today())
+
+
+@app.route('/preco-medio/aplicar/<ticker>', methods=['POST'])
+@login_required
+def pm_aplicar(ticker):
+    """Varre os créditos pendentes (dividendos + opções) e aplica ao PM,
+    limitado ao pool disponível (créditos já consumidos em compras não
+    reduzem de novo — sem contagem em dobro)."""
+    ticker = ticker.strip().upper()
+    a, evs, earned, pending, pool, custo_of, custo_aj = _pm_state(current_user.id, ticker)
+    if not a or a.quantity <= 0:
+        flash(f'{ticker}: ativo não encontrado na carteira.', 'warning')
+        return redirect(url_for('preco_medio'))
+    if not pending:
+        flash(f'{ticker}: nenhum crédito pendente para aplicar.', 'warning')
+        return redirect(url_for('preco_medio'))
+
+    # Prejuízos primeiro (aumentam a folga do pool); ganhos depois, por data —
+    # senão o cap cortaria ganhos que os prejuízos posteriores compensariam.
+    pending = sorted(pending, key=lambda i: (i['valor'] >= 0, i['date'] or date.min))
+    remaining, n, aplicado = pool, 0, 0.0
+    for item in pending:
+        v = item['valor']
+        if v > 0:
+            if remaining <= 0.005:
+                continue
+            v = min(v, remaining)          # cap: não aplica além do pool
+        pm_before = custo_aj / a.quantity
+        custo_aj -= v
+        db.session.add(PMEvent(
+            user_id=current_user.id, ticker=ticker, kind=item['kind'],
+            event_date=item['date'], valor=round(v, 2),
+            source_key=item['key'], ref=item['ref'],
+            pm_before=round(pm_before, 4), pm_after=round(custo_aj / a.quantity, 4),
+            created_at=datetime.now()))
+        remaining -= v
+        aplicado += v
+        n += 1
+    if not n:
+        flash(f'{ticker}: pool disponível esgotado (créditos já usados em compras).', 'warning')
+        return redirect(url_for('preco_medio'))
+    db.session.commit()
+    flash(f'{ticker}: {n} crédito(s) aplicados — R$ {aplicado:.2f} abatidos do PM. '
+          f'Novo PM ajustado: R$ {custo_aj / a.quantity:.2f}.'.replace('.', ','), 'success')
+    return redirect(url_for('preco_medio'))
+
+
+@app.route('/preco-medio/comprar', methods=['POST'])
+@login_required
+def pm_comprar():
+    """Compra financiada com lucro: registra a compra OFICIAL (qtd/PM da
+    carteira, refletindo nas tabelas antigas) e o evento didático — a parte
+    financiada entra a PM zero; excesso/falta fica no custo ajustado."""
+    def _num(name):
+        try:
+            return float((request.form.get(name) or '0').replace('.', '').replace(',', '.'))
+        except ValueError:
+            return 0.0
+    ticker = (request.form.get('ticker') or '').strip().upper()
+    qty    = int(_num('qty'))
+    price  = _num('price')
+    a, evs, earned, pending, pool, custo_of, custo_aj = _pm_state(current_user.id, ticker)
+    if not a:
+        flash(f'{ticker}: ativo não encontrado na carteira (a compra com lucro é para MAIS unidades de um ativo existente).', 'danger')
+        return redirect(url_for('preco_medio'))
+    if qty <= 0 or price <= 0:
+        flash('Informe quantidade e preço válidos.', 'danger')
+        return redirect(url_for('preco_medio'))
+
+    total = round(qty * price, 2)
+    fin_req = _num('financiado')
+    financiado = round(min(fin_req if fin_req > 0 else total, total, max(pool, 0)), 2)
+
+    pm_before = (custo_aj / a.quantity) if a.quantity else 0.0
+
+    # ── Reflexo OFICIAL (tabelas antigas): qtd e PM ponderado ──
+    new_qty = a.quantity + qty
+    a.avg_price = round(((a.quantity * (a.avg_price or 0)) + total) / new_qty, 4)
+    a.quantity = new_qty
+
+    # ── Evento didático: financiado entra a PM zero; resto é dinheiro novo ──
+    custo_aj_new = custo_aj + (total - financiado)
+    diff = round(total - financiado, 2)
+    db.session.add(PMEvent(
+        user_id=current_user.id, ticker=ticker, kind='COMPRA_LUCRO',
+        event_date=date.today(), valor=financiado, buy_qty=qty, buy_price=price,
+        ref=(f'Compra {qty}× @ R$ {price:.2f} (total R$ {total:.2f}) — '
+             f'R$ {financiado:.2f} financiados com lucro (ações a PM zero)'
+             + (f'; R$ {diff:.2f} em dinheiro novo no custo' if diff > 0.005 else '')
+             ).replace('.', ','),
+        pm_before=round(pm_before, 4), pm_after=round(custo_aj_new / new_qty, 4),
+        created_at=datetime.now()))
+    db.session.commit()
+    flash(f'{ticker}: compra de {qty} unid. registrada na carteira oficial. '
+          f'R$ {financiado:.2f} financiados com lucro; PM ajustado: '
+          f'R$ {custo_aj_new / new_qty:.2f}.'.replace('.', ','), 'success')
+    return redirect(url_for('preco_medio'))
+
+
+@app.route('/api/pm/historico/<ticker>')
+@login_required
+def pm_historico(ticker):
+    """Histórico didático das mudanças do PM ajustado do ticker."""
+    ticker = ticker.strip().upper()
+    evs = (PMEvent.query.filter_by(user_id=current_user.id, ticker=ticker)
+           .order_by(PMEvent.created_at, PMEvent.id).all())
+    labels = {'DIVIDENDO': 'Dividendo aplicado', 'OPCOES': 'Resultado de opções',
+              'COMPRA_LUCRO': 'Compra com lucro', 'MANUAL': 'Ajuste manual'}
+    return jsonify([{
+        'id': e.id, 'kind': e.kind, 'kind_label': labels.get(e.kind, e.kind),
+        'date': e.event_date.strftime('%d/%m/%Y') if e.event_date else '',
+        'valor': round(e.valor or 0, 2),
+        'buy_qty': e.buy_qty, 'buy_price': e.buy_price,
+        'ref': e.ref or '',
+        'pm_before': round(e.pm_before, 2) if e.pm_before is not None else None,
+        'pm_after': round(e.pm_after, 2) if e.pm_after is not None else None,
+        'created': e.created_at.strftime('%d/%m/%Y %H:%M') if e.created_at else '',
+    } for e in evs])
 
 def process_assets(assets):
     if not assets:

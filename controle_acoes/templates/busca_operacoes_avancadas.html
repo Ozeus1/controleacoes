@@ -91,6 +91,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="covered_put">📉 Covered Put</button>
       <button class="ba-obtn" data-op="jade_lizard">🦎 Jade Lizard</button>
       <button class="ba-obtn" data-op="iron_butterfly">🦋💰 Iron Butterfly</button>
+      <button class="ba-obtn" data-op="stock_repair">🩹 Reparo (1×2)</button>
     </div>
     <div class="ba-cat">
       <div class="ba-cat-lbl">⚖️ Volatilidade e Neutras</div>
@@ -103,6 +104,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="strap">📈⚖️ Strap</button>
       <button class="ba-obtn" data-op="strip">📉⚖️ Strip</button>
       <button class="ba-obtn" data-op="box_spread">📦 Box Spread</button>
+      <button class="ba-obtn" data-op="ratio_spread">➗ Ratio Spread (1×2)</button>
     </div>
     <div class="ba-cat">
       <div class="ba-cat-lbl">🧬 Sintéticas e Avançadas</div>
@@ -218,6 +220,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     protective_put: '🛡 Protective Put — compra a ação + compra PUT Δ −0,40 a −0,50 (seguro contra quedas)',
     covered_put:    '📉 Covered Put — vende a ação (aluguel) + vende PUT OTM Δ −0,20 a −0,35 (renda em mercado de baixa)',
     jade_lizard:    '🦎 Jade Lizard — venda PUT OTM (Δ ≈ −0,20) + trava de baixa com CALL; crédito ≥ largura da trava → SEM risco na alta',
+    stock_repair:   '🩹 Reparo de Posição (Stock Repair 1×2) — compra 1 CALL ATM (Δ 0,45–0,60) + vende 2 CALLs OTM (Δ 0,20–0,35) a custo ~ZERO; dobra a recuperação até o strike vendido para ação NO PREJUÍZO em carteira (2ª venda coberta pela ação)',
+    ratio_spread:   '➗ Ratio Spread CALL 1×2 — compra 1 CALL ITM (Δ 0,55–0,72) + vende 2 CALLs OTM (Δ 0,20–0,35); débito baixo ou crédito, lucro máx. no strike vendido; risco ILIMITADO acima (front ratio — ponta nua)',
     iron_butterfly: '🦋💰 Iron Butterfly — venda straddle ATM + compra strangle OTM de proteção (Δ ≈ 0,05–0,10); crédito',
     straddle_comprado: '⚖️ Straddle Comprado — compra CALL + PUT ATM (mesmo strike; lucra com movimento forte em qualquer direção)',
     strangle_comprado: '🔗 Strangle Comprado — compra CALL OTM (Δ 0,20–0,30) + PUT OTM (Δ −0,20 a −0,30); mais barato que o straddle',

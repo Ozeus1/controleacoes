@@ -10,9 +10,18 @@
 .aj-navcat:hover{background:#0ea5e9;color:#fff;}
 .aj-cat-title{margin:1.4rem 0 .6rem;font-size:1.05rem;border-bottom:2px solid var(--accent-color,#7c3aed);
   padding-bottom:.25rem;display:flex;align-items:center;gap:.5rem;}
-.aj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:.9rem;}
-@media (max-width:768px){.aj-grid{grid-template-columns:1fr;}}
-.aj-card{background:var(--card-bg);border:1px solid var(--border-color);border-radius:10px;padding: .9rem 1rem;}
+.aj-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(430px,100%),1fr));gap:.9rem;}
+.aj-card{background:var(--card-bg);border:1px solid var(--border-color);border-radius:10px;padding: .9rem 1rem;min-width:0;}
+.aj-canvas-wrap canvas{max-width:100%;height:auto;display:block;margin:0 auto;}
+@media (max-width:768px){
+  .aj-grid{grid-template-columns:1fr;gap:.6rem;}
+  .aj-card{padding:.7rem .6rem;}
+  .aj-card h4{font-size:.85rem;gap:.3rem;}
+  .aj-badge{font-size:.6rem;padding:.06rem .35rem;}
+  .aj-toolbar input{width:100%;}
+  .aj-sec{font-size:.76rem;}
+  .aj-cat-title{font-size:.95rem;}
+}
 .aj-card h4{margin:0 0 .35rem;font-size:.95rem;display:flex;align-items:center;gap:.45rem;flex-wrap:wrap;}
 .aj-badge{display:inline-block;padding:.08rem .45rem;border-radius:4px;font-size:.68rem;font-weight:700;}
 .aj-badge.alta{background:rgba(16,185,129,.15);color:#6ee7b7;}
@@ -339,7 +348,7 @@ var OPS=[
  cenario:'Recuperar uma ação comprada mais cara SEM aporte extra: entre os strikes o ganho dobra (ação + trava), aproximando o breakeven do preço atual. Acima do strike vendido o lucro trava — sem risco adicional (a 2ª CALL vendida está coberta pela ação).',
  sel:['Vencimento: DTE 45–90d','CALL comprada ATM · 2 vendidas OTM ≈ a meio caminho do preço médio de compra','Montar com custo zero (a venda 2× financia a compra)'],
  man:['Alta até o strike vendido: recuperação acelerada (2× o movimento)','Acima do strike: entrega da ação + lucro máximo da trava','Queda: sem custo adicional — manter a ação ou rolar o reparo'],
- busca:null},
+ busca:B(BA,'stock_repair')},
 {cat:'cat-renda',nome:'Wheel (Giro: PUT → Ação → CALL)',cen:'lateral',tipo:'credito',vi:'alta',
  legs:[{t:'P',q:-1,K:96,p:2.5}],
  mont:'Ciclo contínuo: (1) venda PUT cash-secured até ser exercido → (2) recebe a ação → (3) venda coberta de CALL até ser exercido → volta ao passo 1.',
@@ -460,7 +469,7 @@ var OPS=[
  cenario:'Movimento limitado na direção da comprada; lucra com o Theta das vendidas. Risco ilimitado além da ponta vendida.',
  sel:['Vencimento: DTE 30–60d','Comprada: Δ 0,60–0,70 · Vendidas: 2× Δ 0,20–0,30','Débito baixo ou crédito'],
  man:['TP: lateral/direção esperada → realizar nas vendidas','Stop: movimento forte contra → fechar (risco da ponta nua)'],
- busca:null},
+ busca:B(BA,'ratio_spread')},
 
 /* ══ SINTÉTICAS E AVANÇADAS ══ */
 {cat:'cat-sint',nome:'Ação Sintética (Long Synthetic)',cen:'alta',tipo:'zero',

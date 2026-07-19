@@ -3316,6 +3316,11 @@ _ADV_SPECS = {
     'covered_put':    {'legs': [('S', -1, None), ('P', -1, (-0.35, -0.20))]},
     'jade_lizard':    {'legs': [('P', -1, (-0.25, -0.15)), ('C', -1, (0.20, 0.30)),
                                 ('C', 1, (0.05, 0.12))], 'asc': [1, 2], 'rule': 'jade'},
+    # Reparo de posição (Stock Repair 1×2): compra 1 CALL ATM + vende 2 OTM a
+    # custo ~zero — p/ ação NO PREJUÍZO em carteira (a 2ª venda fica coberta
+    # pela ação; dobra a recuperação até o strike vendido, sem aporte novo)
+    'stock_repair':   {'legs': [('C', 1, (0.45, 0.60)), ('C', -2, (0.20, 0.35))],
+                       'asc': [0, 1], 'rule': 'zero_cost'},
     'iron_butterfly': {'legs': [('P', 1, (-0.12, -0.04)), ('P', -1, (-0.58, -0.42)),
                                 ('C', -1, (0.42, 0.58)), ('C', 1, (0.04, 0.12))],
                        'same': [(1, 2)], 'rule': 'credit'},
@@ -3338,6 +3343,10 @@ _ADV_SPECS = {
     'box_spread':     {'legs': [('C', 1, (0.55, 0.90)), ('C', -1, (0.10, 0.45)),
                                 ('P', -1, (-0.45, -0.10)), ('P', 1, (-0.90, -0.55))],
                        'same': [(0, 2), (1, 3)], 'asc': [0, 1], 'rule': 'box'},
+    # Front Ratio CALL 1×2: compra 1 ITM + vende 2 OTM (débito baixo/crédito);
+    # lucro máximo no strike vendido, risco ILIMITADO acima (ponta nua)
+    'ratio_spread':   {'legs': [('C', 1, (0.55, 0.72)), ('C', -2, (0.20, 0.35))],
+                       'asc': [0, 1], 'rule': 'low_cost'},
     # ── Sintéticas e Avançadas ──
     'acao_sintetica': {'legs': [('C', 1, (0.40, 0.60)), ('P', -1, (-0.60, -0.40))],
                        'same': [(0, 1)]},

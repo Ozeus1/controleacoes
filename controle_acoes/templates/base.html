@@ -27,7 +27,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MyInvest">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/icon-192.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=43">
     <!-- Custom override for DataTables to match theme -->
     <style>
         .dataTables_wrapper .dataTables_length,
@@ -451,6 +451,17 @@
 
             // Inicializa toggle da coluna Ações após DataTables
             initAcoesCols();
+
+            // ── Catch-all mobile/PWA: TODA tabela sem wrapper de rolagem ganha
+            // um .table-scroll (cobre as .no-datatable e #historyTable, que o
+            // wrap acima exclui) — evita a tabela estourar o card no celular.
+            $('table').each(function () {
+                var $p = $(this).parent();
+                if ($p.hasClass('table-scroll') || $p.hasClass('dataTables_wrapper')) return;
+                var ov = $p.css('overflow-x');
+                if (ov === 'auto' || ov === 'scroll') return;
+                $(this).wrap('<div class="table-scroll"></div>');
+            });
         });
     </script>
     <script src="{{ url_for('static', filename='js/mychart.js') }}"></script>

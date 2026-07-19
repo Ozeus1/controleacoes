@@ -848,3 +848,65 @@ label {
         font-size: 0.75rem;
     }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Camada global MOBILE / PWA — tabelas e gráficos
+   Aplicada automaticamente quando o site/app é aberto pelo celular.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+    /* Tabelas: sem largura mínima forçada — pequenas cabem na tela;
+       largas assumem a largura natural do conteúdo e ROLAM no wrapper
+       .table-scroll (agora aplicado a todas pelo catch-all do base). */
+    table {
+        min-width: 0;
+    }
+    .table-scroll table,
+    .dataTables_wrapper table {
+        min-width: max-content;
+    }
+    .table-scroll {
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Nada pode estourar a página lateralmente */
+    body {
+        overflow-x: hidden;
+    }
+    .container {
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+
+    /* Grids de gráficos colapsam para 1 coluna */
+    .pies-grid,
+    .chart-grid {
+        grid-template-columns: 1fr !important;
+    }
+    .chart-single {
+        max-width: 100% !important;
+    }
+
+    /* Donuts: legenda-lista mais densa no celular */
+    .donut-legend {
+        font-size: .78rem;
+    }
+    .donut-legend .dl-row {
+        padding: .3rem .35rem;
+        gap: .4rem;
+    }
+    .donut-legend .dl-pct {
+        min-width: 42px;
+        font-size: .68rem;
+    }
+
+    /* Títulos e cards mais compactos */
+    h2 { font-size: 1.25rem; }
+    h3 { font-size: 1.02rem; }
+    .card { margin-bottom: .8rem; }
+
+    /* Toolbars/botões quebram linha sem estourar */
+    .aj-toolbar, .roll-actions, .metric-bar, .bal-section .d-flex {
+        flex-wrap: wrap;
+        gap: .4rem;
+    }
+}

@@ -3355,6 +3355,22 @@ _ADV_SPECS = {
     'risk_reversal':  {'legs': [('C', 1, (0.20, 0.30)), ('P', -1, (-0.30, -0.20))],
                        'rule': 'zero_cost'},
     'synthetic_straddle': {'legs': [('S', 1, None), ('P', 2, (-0.58, -0.42))]},
+    # ── Do livro (Cap. 16 — Figuras do Mercado de Opções) ──
+    # Adjusted Long Call Seagull (bullish, vol baixa): +PUT OTM(A) −PUT ATM(B)
+    # +CALL ATM(C) −CALL OTM(D); a PUT comprada limita a perda na queda.
+    'adj_call_seagull': {'legs': [('P', 1, (-0.35, -0.15)), ('P', -1, (-0.55, -0.40)),
+                                  ('C', 1, (0.40, 0.55)), ('C', -1, (0.15, 0.35))],
+                         'asc': [0, 1, 2, 3]},
+    # Adjusted Long Put Seagull (bearish, vol baixa): −PUT baixa(A) +PUT alta(B)
+    # −CALL ATM(C) +CALL alta(D); espelho da anterior.
+    'adj_put_seagull':  {'legs': [('P', -1, (-0.55, -0.40)), ('P', 1, (-0.35, -0.15)),
+                                  ('C', -1, (0.40, 0.55)), ('C', 1, (0.15, 0.35))],
+                         'asc': [0, 1, 2, 3]},
+    # Long Call Synthetic Strangle Riskless (vol alta): vende a ação (S) +
+    # compra 2 CALLs ITM (A<B<spot); zona de retorno mínimo sem perda.
+    'synth_strangle': {'legs': [('S', -1, None), ('C', 1, (0.55, 0.75)),
+                                 ('C', 1, (0.78, 0.92))], 'asc': [1, 2],
+                       'rule': 'synth_riskless'},
 }
 
 
@@ -3575,7 +3591,8 @@ def api_busca_operacoes(ticker):
     # mensal e o intervalo mínimo entre vencimentos cai para 7 dias.
     _CAL_V4 = ('neutral_calendar', 'double_calendar', 'pmcc', 'bull_calendar',
                'pmcp', 'bear_calendar')
-    if op in ('calendar_spread', 'diagonal_spread', 'double_diagonal') + _CAL_V4:
+    if op in ('calendar_spread', 'diagonal_spread', 'double_diagonal',
+              'short_call_calendar', 'straddle_strangle_swap') + _CAL_V4:
         def _enrich_cal(lst):
             out = []
             for rw in lst:
@@ -3750,6 +3767,37 @@ def api_busca_operacoes(ticker):
                                        (ps, dps, False, -1, exp_s, dc_s),
                                        (cl, _dl(cl, True, T_l) or dvs, True, 1, exp_l, dc_l),
                                        (pl, _dl(pl, False, T_l) or dps, False, 1, exp_l, dc_l)])
+            elif op == 'short_call_calendar':
+                # Do livro: COMPRA CALL curta ATM (Front) + VENDE CALL longa ATM
+                # (Back), mesmo strike. Invertido do calendar normal — lucra com
+                # movimento BRUSCO em qualquer direção (as duas viram pó/explodem).
+                for cs, dvs in _cands_cal(calls_s, True, T_s, (0.40, 0.60), 'buy'):
+                    for cl in calls_l:
+                        if abs(cl['strike'] - cs['strike']) > 0.011 or cl['bid'] < 0.02:
+                            continue
+                        dvl = _dl(cl, True, T_l)
+                        combos.append([(cs, dvs, True, 1, exp_s, dc_s),
+                                       (cl, dvl or dvs, True, -1, exp_l, dc_l)])
+            elif op == 'straddle_strangle_swap':
+                # Do livro: vende STRADDLE curto ATM (−CALL B, −PUT B) + compra
+                # STRANGLE longo (CALL OTM C acima, PUT OTM A abaixo). Neutra;
+                # lucro máximo se ficar no strike central no venc. curto.
+                for cb, dcb in _cands_cal(calls_s, True, T_s, (0.42, 0.58), 'sell')[:3]:
+                    pb = next((p for p in puts_s
+                               if abs(p['strike'] - cb['strike']) <= 0.011 and p['bid'] >= 0.02), None)
+                    if not pb:
+                        continue
+                    dpb = _dl(pb, False, T_s)
+                    for cl, dvl in _cands_cal(calls_l, True, T_l, (0.20, 0.35), 'buy')[:2]:
+                        if cl['strike'] <= cb['strike']:
+                            continue
+                        for pl, dpl in _cands_cal(puts_l, False, T_l, (-0.35, -0.20), 'buy')[:2]:
+                            if pl['strike'] >= cb['strike']:
+                                continue
+                            combos.append([(cb, dcb, True, -1, exp_s, dc_s),
+                                           (pb, dpb or -0.5, False, -1, exp_s, dc_s),
+                                           (cl, dvl, True, 1, exp_l, dc_l),
+                                           (pl, dpl, False, 1, exp_l, dc_l)])
             else:   # double_diagonal
                 for cs, dvs in _cands_cal(calls_s, True, T_s, (0.18, 0.32), 'sell')[:2]:
                     for ps, dps in _cands_cal(puts_s, False, T_s, (-0.32, -0.18), 'sell')[:2]:
@@ -3764,10 +3812,12 @@ def api_busca_operacoes(ticker):
                                                (cl, dvl, True, 1, exp_l, dc_l),
                                                (pl, dpl, False, 1, exp_l, dc_l)])
 
+            # Operações do livro montadas no CRÉDITO (não exigir débito)
+            _credit_cal = ('double_diagonal', 'short_call_calendar', 'straddle_strangle_swap')
             for sel in combos:
                 net, legs_out, max_gain, max_loss, bes = _eval_cal(sel)
                 cost = -net
-                if cost <= 0 and op != 'double_diagonal':
+                if cost <= 0 and op not in _credit_cal:
                     continue                                  # calendários/diagonais: débito
                 if max_gain <= 0:
                     continue
@@ -4499,6 +4549,11 @@ def api_busca_operacoes(ticker):
                         width = opt_ks[1] - opt_ks[0]
                         # débito menor que a largura descontada pela Selic do período
                         if cost <= 0 or cost >= width / (1 + selic_period / 100):
+                            continue
+                    if rule == 'synth_riskless':
+                        # ação vendida + 2 CALLs ITM: só aceita quando a perda
+                        # máxima é ~zero (a estrutura fica dentro da zona de ganho)
+                        if max_loss is not None and max_loss > 0.02 * spot:
                             continue
                     if max_gain is not None and max_loss is not None and max_gain <= 0:
                         continue

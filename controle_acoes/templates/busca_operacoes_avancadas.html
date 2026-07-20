@@ -80,6 +80,8 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="put_seco">🎯 Put a Seco</button>
       <button class="ba-obtn" data-op="seagull_alta">🕊 Seagull de Alta</button>
       <button class="ba-obtn" data-op="seagull_baixa">🕊 Seagull de Baixa</button>
+      <button class="ba-obtn" data-op="adj_call_seagull">🕊🔧 Seagull Alta Ajustada</button>
+      <button class="ba-obtn" data-op="adj_put_seagull">🕊🔧 Seagull Baixa Ajustada</button>
       <button class="ba-obtn" data-op="put_backspread">🚀📉 Put Backspread</button>
       <button class="ba-obtn" data-op="christmas_tree">🎄 Christmas Tree</button>
       <button class="ba-obtn" data-op="ladder_call">🪜 Ladder (CALLs)</button>
@@ -112,9 +114,12 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="short_sintetico">🧬📉 Short Sintético</button>
       <button class="ba-obtn" data-op="risk_reversal">🔄 Risk Reversal</button>
       <button class="ba-obtn" data-op="synthetic_straddle">🧬⚖️ Synthetic Straddle</button>
+      <button class="ba-obtn" data-op="synth_strangle">🧬🔒 Synthetic Strangle Riskless</button>
       <button class="ba-obtn" data-op="calendar_spread">📅 Calendar Spread</button>
       <button class="ba-obtn" data-op="diagonal_spread">📐 Diagonal Spread</button>
       <button class="ba-obtn" data-op="double_diagonal">📐📐 Double Diagonal</button>
+      <button class="ba-obtn" data-op="short_call_calendar">📅🔄 Short Call Calendar</button>
+      <button class="ba-obtn" data-op="straddle_strangle_swap">🔀 Straddle-Strangle Swap</button>
     </div>
     <div class="ba-cat">
       <div class="ba-cat-lbl">📅 Calendário — Lateral (semanal → mensal · marque "incluir semanais")</div>
@@ -244,7 +249,12 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     pmcc:            '🐂📅 Bull Diagonal (Poor Man\'s Covered Call) — compra CALL mensal deep ITM (Δ > 0,80, substitui a ação) + vende CALL semanal OTM (Δ 0,20–0,30) para renda · estimado por BS',
     bull_calendar:   '🐂🔁 Bull Calendar (OTM) — vende CALL semanal OTM + compra CALL mensal OTM no mesmo strike; alta moderada até o strike + Theta · estimado por BS',
     pmcp:            '🐻📅 Bear Diagonal (Poor Man\'s Covered Put) — compra PUT mensal deep ITM (Δ < −0,80) + vende PUT semanal OTM (Δ −0,20 a −0,30) para renda · estimado por BS',
-    bear_calendar:   '🐻🔁 Bear Calendar (OTM) — vende PUT semanal OTM + compra PUT mensal OTM no mesmo strike; queda moderada até o strike + Theta · estimado por BS'
+    bear_calendar:   '🐻🔁 Bear Calendar (OTM) — vende PUT semanal OTM + compra PUT mensal OTM no mesmo strike; queda moderada até o strike + Theta · estimado por BS',
+    adj_call_seagull: '🕊🔧 Adjusted Long Call Seagull (do livro) — gaivota de alta ajustada: +PUT OTM −PUT ATM +CALL ATM −CALL OTM; a PUT comprada limita a perda na queda (bullish, VI baixa)',
+    adj_put_seagull:  '🕊🔧 Adjusted Long Put Seagull (do livro) — gaivota de baixa ajustada: −PUT baixa +PUT alta −CALL ATM +CALL alta; a CALL comprada limita a perda na alta (bearish, VI baixa)',
+    synth_strangle:   '🧬🔒 Long Call Synthetic Strangle Riskless (do livro) — vende a ação + 2 CALLs ITM em strikes diferentes; strangle sintético SEM risco de perda, lucro nas duas pontas (VI alta)',
+    short_call_calendar: '📅🔄 Short Call Calendar (do livro) — compra CALL curta ATM + vende CALL longa ATM (mesmo strike), montado no crédito; lucra com movimento BRUSCO em qualquer direção · estimado por BS',
+    straddle_strangle_swap: '🔀 Long Straddle-Strangle Swap (do livro) — vende straddle curto ATM + compra strangle longo OTM (2 diagonais); neutra, lucra com o Theta das curtas · estimado por BS'
   };
   var OP_NAMES = {};
   Object.keys(OP_TITLES).forEach(function(k) {

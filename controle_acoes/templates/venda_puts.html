@@ -576,8 +576,8 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     {% else %}—{% endif %}
                 </td>
                 <td style="text-align:center; white-space:nowrap;">
-                    {% if item.pop is not none %}
-                    <span class="{{ 'positive' if item.pop >= 50 else 'negative' }}" style="font-weight:600;">{{ "%.1f"|format(item.pop)|replace('.', ',') }}%</span>
+                    {% if item['pop'] is not none %}
+                    <span class="{{ 'positive' if item['pop'] >= 50 else 'negative' }}" style="font-weight:600;">{{ "%.1f"|format(item['pop'])|replace('.', ',') }}%</span>
                     {% else %}<span style="color:var(--text-secondary);">—</span>{% endif %}
                 </td>
                 <td class="actions" style="white-space:nowrap;">

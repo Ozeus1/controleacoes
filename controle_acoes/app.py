@@ -5202,20 +5202,121 @@ def pwa_offline():
 # Venda de Puts — CRUD
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _calc_simulacao_metrics(sim):
+    """Payoff no vencimento de uma SimulacaoOpcoes (rascunho/estudo — NÃO é
+    posição real). Espelha a lógica de payoffAt() em simulacao_opcoes.html:
+    multi-vencimento reprecifica a perna mais longa por Black-Scholes na
+    data do vencimento mais curto (usa a IV informada na perna).
+    Retorna None se a simulação não tiver pernas com dado suficiente."""
+    legs = list(sim.legs or [])
+    opt_legs = [l for l in legs if l.leg_type != 'STOCK']
+    if not opt_legs or any((l.strike or 0) <= 0 for l in opt_legs):
+        return None
+
+    exp_dates = sorted({l.expiration for l in opt_legs if l.expiration})
+    multi_exp = len(exp_dates) > 1
+    ref_date = exp_dates[0] if multi_exp else None
+    selic = _selic()
+    r_cont = math.log(1 + selic / 100.0)
+
+    net_premium = sum((1 if l.side == 'SELL' else -1) * l.quantity * (l.premium or 0)
+                      for l in opt_legs)
+
+    def payoff_at(S):
+        total = net_premium
+        for l in legs:
+            sign = 1 if l.side == 'BUY' else -1
+            if l.leg_type == 'STOCK':
+                total += sign * l.quantity * (S - (l.premium or 0))
+                continue
+            K = l.strike or 0
+            if multi_exp and l.expiration and l.expiration > ref_date and (l.iv or 0) > 0:
+                T = max((l.expiration - ref_date).days / 365.25, 1 / 365.25)
+                total += sign * l.quantity * _bs_price(S, K, T, r_cont, (l.iv or 30) / 100,
+                                                       l.leg_type == 'CALL')
+            else:
+                intrinsic = max(0.0, S - K) if l.leg_type == 'CALL' else max(0.0, K - S)
+                total += sign * l.quantity * intrinsic
+        return total
+
+    strikes = [l.strike for l in opt_legs if l.strike]
+    stock_legs = [l for l in legs if l.leg_type == 'STOCK' and (l.premium or 0) > 0]
+    stock_ref = stock_legs[0].premium if stock_legs else 0
+    anchors = strikes + ([stock_ref] if stock_ref else [])
+    if not anchors:
+        return None
+    lo_k, hi_k = min(anchors), max(anchors)
+    pad = max((hi_k - lo_k) * 0.6, hi_k * 0.30)
+    lo, hi, N = max(0.01, lo_k - pad), hi_k + pad, 300
+    step = (hi - lo) / N
+    xs = [lo + i * step for i in range(N + 1)]
+    ys = [payoff_at(x) for x in xs]
+
+    max_gain, max_loss = max(ys), min(ys)
+    bes = []
+    p_range = max_gain - max_loss
+    if p_range > 0.01:
+        for j in range(len(ys) - 1):
+            p1, p2 = ys[j], ys[j + 1]
+            if p1 * p2 < 0:
+                bes.append(round(xs[j] + (-p1) * (xs[j + 1] - xs[j]) / (p2 - p1), 2))
+
+    # POP: P(S_T > BE) via log-normal, spot ancorado no meio dos strikes/ação
+    # (a simulação não tem cotação ao vivo própria — é só uma referência).
+    pop = None
+    spot_ref = stock_ref or (sum(strikes) / len(strikes) if strikes else 0)
+    if spot_ref > 0 and bes:
+        exp_far = max(exp_dates) if exp_dates else None
+        T_pop = max(((exp_far - date.today()).days / 365.25), 1 / 365.25) if exp_far else 30 / 365.25
+        sigma_avg = (sum((l.iv or 30) for l in opt_legs) / len(opt_legs)) / 100 or 0.30
+        bes_sorted = sorted(bes)
+        try:
+            if len(bes_sorted) == 1:
+                d2v = (math.log(spot_ref / bes_sorted[0]) + (r_cont - 0.5 * sigma_avg ** 2) * T_pop) \
+                      / (sigma_avg * math.sqrt(T_pop))
+                pop = _norm_cdf(d2v) * 100
+            elif len(bes_sorted) >= 2:
+                d2_lo = (math.log(spot_ref / bes_sorted[0]) + (r_cont - 0.5 * sigma_avg ** 2) * T_pop) \
+                        / (sigma_avg * math.sqrt(T_pop))
+                d2_hi = (math.log(spot_ref / bes_sorted[-1]) + (r_cont - 0.5 * sigma_avg ** 2) * T_pop) \
+                        / (sigma_avg * math.sqrt(T_pop))
+                pop = (_norm_cdf(d2_lo) - _norm_cdf(d2_hi)) * 100
+        except (ValueError, ZeroDivisionError):
+            pop = None
+
+    gain_unl = max_gain >= ys[-1] - 0.01 and ys[-1] > ys[-2] + 0.01
+    loss_unl = max_loss <= ys[0] + 0.01 and ys[0] < ys[1] - 0.01
+    return {
+        'net': round(net_premium, 2), 'is_credit': net_premium >= 0,
+        'max_gain': round(max_gain, 2), 'gain_unl': gain_unl,
+        'max_loss': round(max_loss, 2), 'loss_unl': loss_unl,
+        'bes': bes, 'pop': round(pop, 1) if pop is not None else None,
+        'nearest_exp': min(exp_dates) if exp_dates else None,
+    }
+
+
 @app.route('/venda_puts')
 @login_required
 def venda_puts():
     items   = PutSale.query.filter_by(user_id=current_user.id).order_by(PutSale.created_at.desc()).all()
     collars = CollarSimulation.query.filter_by(user_id=current_user.id).order_by(CollarSimulation.created_at.desc()).all()
-    # Estruturas salvas (aba Estruturas) — mesmas operações da página /opcoes,
-    # aqui listadas para consulta/edição a partir da tela de Cálculos.
-    raw_structs = StructuredOp.query.filter_by(user_id=current_user.id, status='OPEN')\
-        .order_by(StructuredOp.created_at.desc()).all()
-    structured_ops = [{'op': op, **_calc_structured_metrics_safe(op)} for op in raw_structs]
+    # Simulações de Opções SALVAS (rascunhos/estudos — tabela SimulacaoOpcoes,
+    # a mesma da tela "Simulação de Opções"), com estrutura (2+ pernas ou
+    # perna de opção). As operações REAIS (StructuredOp) continuam só em
+    # /opcoes — aqui é só consulta/edição das simulações.
+    raw_sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id)\
+        .order_by(SimulacaoOpcoes.created_at.desc()).all()
+    simulacoes_estrutura = []
+    for sim in raw_sims:
+        if len(sim.legs or []) < 2:
+            continue
+        metrics = _calc_simulacao_metrics(sim)
+        if metrics:
+            simulacoes_estrutura.append({'sim': sim, **metrics})
     selic   = _selic()
     today   = date.today()
     return render_template('venda_puts.html', items=items, collars=collars,
-                           structured_ops=structured_ops,
+                           simulacoes_estrutura=simulacoes_estrutura,
                            edit=None, edit_collar=None, selic=selic, today=today)
 
 

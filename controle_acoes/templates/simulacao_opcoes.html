@@ -763,6 +763,28 @@ function marketOpenSim() {
     } catch (e) { return false; }
 }
 
+// Cotação do ativo capturada — reaproveitada pelo "Abrir em Cálculos" para
+// levar o spot e permitir o cálculo do POP lá (sem isso a tela de Cálculos
+// abria com Cotação em branco e nenhum POP era calculado).
+window.__simSpot = 0;
+
+// Busca SÓ o spot (sem tocar em prêmios/strikes das pernas) — roda sozinha
+// ao carregar a página, para a "Cotação do Ativo" já aparecer preenchida.
+function fetchSpotOnlySim() {
+    var ativo = (document.querySelector('[name=underlying]').value || '').trim().toUpperCase();
+    if (!ativo) return;
+    fetch('/api/quote_hint/' + encodeURIComponent(ativo)).then(function(r) { return r.json(); })
+        .then(function(d) {
+            var p = Number(d.price || 0);
+            if (p > 0) {
+                window.__simSpot = p;
+                document.getElementById('m-spot-box').style.display = '';
+                document.getElementById('m-spot-lbl').textContent = ativo + ' agora';
+                document.getElementById('m-spot').textContent = 'R$ ' + fmtNum(p, 2);
+            }
+        }).catch(function() {});
+}
+
 window.atualizarCotacoesSim = function() {
     var btn = document.getElementById('btn-atualizar-sim');
     btn.disabled = true;
@@ -774,6 +796,7 @@ window.atualizarCotacoesSim = function() {
             var byTicker = {};
             d.options.forEach(function(o) { byTicker[o.symbol] = o; });
             var spot = Number(d.spot || 0);
+            if (spot > 0) window.__simSpot = spot;
             var r = Math.log(1 + SELIC_RATE / 100);
             var today = new Date(); today.setHours(0, 0, 0, 0);
             var nOk = 0, nMiss = 0, missT = [];
@@ -899,9 +922,15 @@ function abrirEmCalculos() {
     var qtyBase = Math.min.apply(null, legs.filter(function(l) { return l.type !== 'STOCK'; })
                                             .map(function(l) { return l.qty; }).concat([100]));
 
+    // Spot: perna de ação (se houver) tem prioridade; senão usa a cotação
+    // já buscada (window.__simSpot) — sem isso a tela de Cálculos abria com
+    // "Cotação do Ativo" em branco e nenhum POP era calculado.
+    var spotFallback = stocks.length === 1 ? stocks[0].premium : (window.__simSpot || 0);
+
     function go(op, A, B, C, spotVal) {
         var p = {st: '1', op: op, ativo: ativo, qty: qtyBase, exp: expS};
-        if (spotVal) p.spot = spotVal.toFixed(2);
+        var sv = spotVal || spotFallback;
+        if (sv) p.spot = sv.toFixed(2);
         p.at = A.ticker; p.ak = A.strike.toFixed(2); p.ap = A.premium.toFixed(2);
         p.bt = B.ticker; p.bk = B.strike.toFixed(2); p.bp = B.premium.toFixed(2);
         if (C) { p.ct2 = C.ticker; p.ck2 = C.strike.toFixed(2); p.cp2 = C.premium.toFixed(2); }
@@ -1013,6 +1042,7 @@ document.addEventListener('DOMContentLoaded',function(){
     });
 
     drawChart(readLegs());
+    fetchSpotOnlySim();
 });
 document.addEventListener('DOMContentLoaded', function() {
     if (window.initLegHelpers) initLegHelpers({

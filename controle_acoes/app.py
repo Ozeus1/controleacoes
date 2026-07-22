@@ -5207,9 +5207,16 @@ def pwa_offline():
 def venda_puts():
     items   = PutSale.query.filter_by(user_id=current_user.id).order_by(PutSale.created_at.desc()).all()
     collars = CollarSimulation.query.filter_by(user_id=current_user.id).order_by(CollarSimulation.created_at.desc()).all()
+    # Estruturas salvas (aba Estruturas) — mesmas operações da página /opcoes,
+    # aqui listadas para consulta/edição a partir da tela de Cálculos.
+    raw_structs = StructuredOp.query.filter_by(user_id=current_user.id, status='OPEN')\
+        .order_by(StructuredOp.created_at.desc()).all()
+    structured_ops = [{'op': op, **_calc_structured_metrics_safe(op)} for op in raw_structs]
     selic   = _selic()
     today   = date.today()
-    return render_template('venda_puts.html', items=items, collars=collars, edit=None, edit_collar=None, selic=selic, today=today)
+    return render_template('venda_puts.html', items=items, collars=collars,
+                           structured_ops=structured_ops,
+                           edit=None, edit_collar=None, selic=selic, today=today)
 
 
 @app.route('/venda_puts/new', methods=['POST'])

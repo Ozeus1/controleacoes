@@ -1333,17 +1333,36 @@ function editDeltaPut(optId, current) {
 
         if(cache[ticker]){ renderHint(cache[ticker]); return; }
 
-        fetch('/api/quote_hint/'+encodeURIComponent(ticker))
+        // Timeout de 10s no cliente: se o servidor demorar (opção ilíquida
+        // empilhando fallbacks), o hint some do "carregando…" e mostra erro
+        // em vez de travar pra sempre.
+        var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+        var to = ctrl ? setTimeout(function(){ ctrl.abort(); }, 10000) : null;
+        fetch('/api/quote_hint/'+encodeURIComponent(ticker), ctrl ? {signal: ctrl.signal} : {})
             .then(function(r){ return r.json(); })
             .then(function(d){
+                if(to) clearTimeout(to);
                 cache[ticker] = d;
                 if(active === ticker) renderHint(d);
             })
-            .catch(function(){ document.getElementById('qh-loading').textContent='erro'; });
+            .catch(function(){
+                if(to) clearTimeout(to);
+                if(active === ticker) document.getElementById('qh-loading').textContent='sem cotação';
+            });
     }
 
     function renderHint(d){
         document.getElementById('qh-loading').style.display = 'none';
+        if(d.no_quote){
+            document.getElementById('qh-name').textContent  = 'Sem cotação disponível';
+            document.getElementById('qh-price').textContent = '—';
+            document.getElementById('qh-change').textContent= '';
+            document.getElementById('qh-ask').textContent   = '—';
+            document.getElementById('qh-bid').textContent   = '—';
+            document.getElementById('qh-trades-label').style.display='none';
+            document.getElementById('qh-trades').style.display='none';
+            return;
+        }
         document.getElementById('qh-name').textContent   = d.name !== d.ticker ? d.name : '';
         document.getElementById('qh-price').textContent  = fmt(d.price);
         var cel = document.getElementById('qh-change');

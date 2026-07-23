@@ -13320,6 +13320,17 @@ def api_quote_hint(ticker):
             resp['trades'] = trades
         return jsonify(resp)
 
+    # Opção sem NENHUM preço (nem OpLab, nem banco): retorna já — brapi e
+    # yfinance abaixo são para ações/FIIs/ETFs e nunca resolvem um ticker de
+    # opção (ex.: PETRI437.SA não existe no Yahoo); empilhar essas duas
+    # chamadas só atrasava a resposta e, em ilíquidos, estourava o timeout
+    # do worker e travava o hint em "carregando…" para sempre.
+    if is_option:
+        return jsonify({
+            'ticker': ticker, 'name': name, 'price': 0, 'change': 0,
+            'ask': 0, 'bid': 0, 'is_option': True, 'no_quote': True,
+        })
+
     # ── 3. brapi (ativos, FIIs, ETFs) ────────────────────────────
     if token:
         try:
@@ -13606,50 +13617,48 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
                         asset_obj.daily_change = variations[uk]
                     oplab_covered_assets.add(uk)
 
-    # ── Fallback OpLab /market/instruments para opções não retornadas no bulk ──
-    # Pulado quando OpLab offline — cada request trava timeout=8s causando loop.
+    # ── Fallback individual p/ tickers de opção não retornados no bulk ──────
+    # OpLab /market/instruments/{ticker} e, se falhar, Yahoo. Retorna
+    # (price, change) ou (None, None). Pulado quando OpLab offline (evita
+    # empilhar timeouts de 8s por ticker).
+    def _fallback_option_quote(ticker_up):
+        try:
+            ri = requests.get(f'{BASE}/market/instruments/{ticker_up}',
+                              headers=headers, timeout=8)
+            if ri.status_code == 200:
+                d = ri.json()
+                p = d.get('close') or d.get('last') or d.get('price')
+                if p and float(p) > 0:
+                    var = d.get('variation') or d.get('change')
+                    return float(p), (float(var) if var is not None else None)
+        except Exception:
+            pass
+        try:
+            for host in ('query1.finance.yahoo.com', 'query2.finance.yahoo.com'):
+                r = requests.get(
+                    f'https://{host}/v8/finance/chart/{ticker_up}.SA',
+                    params={'interval': '1d', 'range': '2d'},
+                    headers=_YF_HEADERS, cookies=_YF_COOKIES, timeout=5,
+                )
+                if r.status_code == 200:
+                    meta = r.json()['chart']['result'][0]['meta']
+                    p = meta.get('regularMarketPrice') or meta.get('previousClose')
+                    if p and float(p) > 0:
+                        chg = meta.get('regularMarketChangePercent')
+                        return float(p), (float(chg) if chg is not None else None)
+        except Exception:
+            pass
+        return None, None
+
     if missing_option_tickers and oplab_online:
         for o in missing_option_tickers:
-            try:
-                ri = requests.get(
-                    f'{BASE}/market/instruments/{o.ticker.upper()}',
-                    headers=headers, timeout=8,
-                )
-                if ri.status_code == 200:
-                    d = ri.json()
-                    p = d.get('close') or d.get('last') or d.get('price')
-                    if p and float(p) > 0:
-                        o.current_option_price = float(p)
-                        o.last_update = now
-                        var = d.get('variation') or d.get('change')
-                        if var is not None:
-                            o.daily_change = float(var)
-                        options_ok += 1
-                        continue
-            except Exception:
-                pass
-            # Fallback Yahoo Finance se OpLab individual também falhar
-            try:
-                for host in ('query1.finance.yahoo.com', 'query2.finance.yahoo.com'):
-                    yf_t = o.ticker.upper() + '.SA'
-                    r = requests.get(
-                        f'https://{host}/v8/finance/chart/{yf_t}',
-                        params={'interval': '1d', 'range': '2d'},
-                        headers=_YF_HEADERS, cookies=_YF_COOKIES, timeout=5,
-                    )
-                    if r.status_code == 200:
-                        meta = r.json()['chart']['result'][0]['meta']
-                        p = meta.get('regularMarketPrice') or meta.get('previousClose')
-                        if p and float(p) > 0:
-                            o.current_option_price = float(p)
-                            o.last_update = now
-                            chg = meta.get('regularMarketChangePercent')
-                            if chg is not None:
-                                o.daily_change = float(chg)
-                            options_ok += 1
-                        break
-            except Exception:
-                pass
+            p, var = _fallback_option_quote(o.ticker.upper())
+            if p:
+                o.current_option_price = p
+                o.last_update = now
+                if var is not None:
+                    o.daily_change = var
+                options_ok += 1
 
     # ── Atualiza StudyOptions (/estudos) ──────────────────────────
     for so in study_options:
@@ -13665,18 +13674,28 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
                 so.underlying_price = prices[uk]
                 changed = True
 
-    # ── Atualiza OptionSpreads (/spreads) ─────────────────────────
+    # ── Atualiza OptionSpreads (/spreads) — com fallback individual ────────
     for sp in spreads:
         if sp.leg_long_ticker:
             k = sp.leg_long_ticker.upper()
             if k in prices and prices[k] > 0:
                 sp.leg_long_current = prices[k]
                 options_ok += 1
+            elif oplab_online:
+                p, _var = _fallback_option_quote(k)
+                if p:
+                    sp.leg_long_current = p
+                    options_ok += 1
         if sp.leg_short_ticker:
             k = sp.leg_short_ticker.upper()
             if k in prices and prices[k] > 0:
                 sp.leg_short_current = prices[k]
                 options_ok += 1
+            elif oplab_online:
+                p, _var = _fallback_option_quote(k)
+                if p:
+                    sp.leg_short_current = p
+                    options_ok += 1
         if sp.underlying_asset:
             uk = sp.underlying_asset.upper()
             if uk in prices and prices[uk] > 0:
@@ -13684,15 +13703,25 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
             if uk in variations:
                 sp.underlying_change = variations[uk]
 
-    # ── Atualiza pernas de OperaçõesEstruturadas ──────────────────
+    # ── Atualiza pernas de OperaçõesEstruturadas (com fallback individual) ──
+    # Sem isso, travas com pernas de vencimentos distantes/semanais (ex.:
+    # calendários) que o bulk /market/quote não retorna nunca atualizavam.
     for leg in struct_legs_bulk:
         if getattr(leg.operation, 'intl', False):
             continue   # Tastytrade: prêmios mantidos manualmente
         k = (leg.ticker or '').upper()
+        if not k:
+            continue
         if k in prices and prices[k] > 0:
             leg.current_price = prices[k]
             leg.last_update   = now
             options_ok += 1
+        elif oplab_online:
+            p, _var = _fallback_option_quote(k)
+            if p:
+                leg.current_price = p
+                leg.last_update   = now
+                options_ok += 1
 
     # ── Atualiza underlying de OperaçõesEstruturadas ──────────────
     for sop in struct_ops_bulk:

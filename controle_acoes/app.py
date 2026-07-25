@@ -5402,13 +5402,86 @@ def api_manejo_put(ticker):
                       'vira decaimento (theta negativo) e pode valer a pena fechar antes do vencimento.',
         }
 
+    # ── #25 Straddle no Strike da Put + Trava Total "no Pozinho" ─────────────
+    def _strat_25():
+        """Vende 1 CALL no MESMO strike da put já vendida (forma um straddle
+        vendido no strike da put) + compra 1 PUT e 1 CALL bem OTM ("no
+        pozinho") travando as duas pontas — maximiza o crédito recebido no
+        strike da put, mas com risco travado (e não ilimitado) para os dois
+        lados, diferente do straddle vendido nu."""
+        if not put_rows_main or not call_rows_main:
+            return {'id': 25, 'nome': 'Straddle no Strike da Put + Trava Total ("no Pozinho")', 'ok': False,
+                    'motivo': 'Sem PUTs e/ou CALLs suficientes neste vencimento.'}
+        same_call = next((r for r in call_rows_main if abs(r['strike'] - strike) < 0.01), None)
+        if not same_call:
+            same_call = _best_near(call_rows_main, strike)
+        if not same_call:
+            return {'id': 25, 'nome': 'Straddle no Strike da Put + Trava Total ("no Pozinho")', 'ok': False,
+                    'motivo': 'Nenhuma CALL no strike da put encontrada.'}
+        same_call_bid, same_call_src, _, _ = _eff(same_call)
+        if not same_call_bid:
+            return {'id': 25, 'nome': 'Straddle no Strike da Put + Trava Total ("no Pozinho")', 'ok': False,
+                    'motivo': 'CALL no strike sem preço executável (bid).'}
+        put_cands = [r for r in put_rows_main if r['strike'] < strike]
+        call_cands = [r for r in call_rows_main if r['strike'] > same_call['strike']]
+        prot_put, prot_put_delta = _best_delta(put_cands, False, T_main, 5, 15)
+        prot_call, prot_call_delta = _best_delta(call_cands, True, T_main, 5, 15)
+        if not prot_put or not prot_call:
+            return {'id': 25, 'nome': 'Straddle no Strike da Put + Trava Total ("no Pozinho")', 'ok': False,
+                    'motivo': 'Não há PUT e CALL baratas (delta 5–15) suficientemente OTM neste vencimento.'}
+        _, _, put_ask, put_src = _eff(prot_put)
+        _, _, call_ask, call_src = _eff(prot_call)
+        if not put_ask or not call_ask:
+            return {'id': 25, 'nome': 'Straddle no Strike da Put + Trava Total ("no Pozinho")', 'ok': False,
+                    'motivo': 'Pernas de proteção sem preço executável (ask).'}
+        credito_total = (premium + same_call_bid - put_ask - call_ask) * qty
+        largura_baixa = strike - prot_put['strike']
+        largura_alta = prot_call['strike'] - same_call['strike']
+        perda_max_baixa = largura_baixa * qty - credito_total
+        perda_max_alta = largura_alta * qty - credito_total
+        g_sc = _greeks(same_call, True, T_main) or {}
+        g_p = _greeks(prot_put, False, T_main) or {}
+        g_c = _greeks(prot_call, True, T_main) or {}
+        legs = [
+            {'acao': 'MANTÉM', 'tipo': 'PUT', 'symbol': put_original['symbol'] or f'{ticker}(put)',
+             'strike': strike, 'preco': premium, 'delta': cur_put_delta},
+            {'acao': 'VENDE', 'tipo': 'CALL', 'symbol': same_call['symbol'], 'strike': same_call['strike'],
+             'preco': same_call_bid, 'preco_src': same_call_src, 'delta': _delta_pct(same_call, True, T_main)},
+            {'acao': 'COMPRA', 'tipo': 'PUT', 'symbol': prot_put['symbol'], 'strike': prot_put['strike'],
+             'preco': put_ask, 'preco_src': put_src, 'delta': prot_put_delta},
+            {'acao': 'COMPRA', 'tipo': 'CALL', 'symbol': prot_call['symbol'], 'strike': prot_call['strike'],
+             'preco': call_ask, 'preco_src': call_src, 'delta': prot_call_delta},
+        ]
+        return {
+            'id': 25, 'nome': 'Straddle no Strike da Put + Trava Total ("no Pozinho")', 'ok': True,
+            'tags': ['DEFESA/REFORÇO DE PUT VENDIDA', 'CRÉDITO MÁXIMO', '🛡️ RISCO TRAVADO DOS DOIS LADOS'],
+            'legs': legs,
+            'resumo': {
+                'tipo': 'credito', 'valor': round(credito_total, 2),
+                'largura': round(max(largura_baixa, largura_alta), 2),
+                'perda_max': round(max(perda_max_baixa, perda_max_alta), 2),
+            },
+            'gregas': {'delta': round((cur_put_delta or 0) - (g_sc.get('delta') or 0)
+                                       - (g_p.get('delta') or 0) - (g_c.get('delta') or 0), 1),
+                       'gamma': round(-(g_sc.get('gamma') or 0) - (g_p.get('gamma') or 0) - (g_c.get('gamma') or 0), 5),
+                       'theta': round(-(g_sc.get('theta') or 0) - (g_p.get('theta') or 0) - (g_c.get('theta') or 0), 4),
+                       'vega': round(-(g_sc.get('vega') or 0) - (g_p.get('vega') or 0) - (g_c.get('vega') or 0), 4)},
+            'manejo': 'Vende-se uma CALL adicional exatamente no strike da put (straddle no strike) para '
+                      'maximizar o crédito recebido; as duas pontas "no pozinho" travam o risco em ambos os '
+                      'lados (nunca fica ilimitado). Lucro máximo se o ativo terminar perto do strike da put; '
+                      'TP ao capturar ≈50% do crédito total; fechar/rolar perto do vencimento (gama) se o '
+                      'preço estiver testando qualquer uma das pontas travadas.',
+        }
+
     _STRAT_META = {17: 'Conversão em Trava (Put de Proteção Abaixo)',
                    20: 'Jade Lizard (Put Vendida + Trava de Baixa com Calls)',
                    21: 'Conversão Sintética / Combo (Compra de CALL no mesmo strike)',
                    22: 'Strangle de Defesa (Reforço com Venda de CALL solta)',
                    23: 'Diagonal de Call em Paralelo (Reforço de Theta/Vega)',
-                   24: 'Trava de Proteção Total (Put + Call "no pozinho")'}
-    for sid, fn in ((17, _strat_17), (20, _strat_20), (21, _strat_21), (22, _strat_22), (23, _strat_23), (24, _strat_24)):
+                   24: 'Trava de Proteção Total (Put + Call "no pozinho")',
+                   25: 'Straddle no Strike da Put + Trava Total ("no Pozinho")'}
+    for sid, fn in ((17, _strat_17), (20, _strat_20), (21, _strat_21), (22, _strat_22), (23, _strat_23),
+                    (24, _strat_24), (25, _strat_25)):
         try:
             strategies.append(fn())
         except Exception as e:

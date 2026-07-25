@@ -57,10 +57,10 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
   </div>
   <p style="color:var(--text-secondary);font-size:.85rem;margin:.2rem 0 .9rem;">
     Preencha os dados da <strong>PUT vendida</strong>. O sistema busca a cadeia de opções e monta
-    automaticamente pernas concretas para 6 estratégias de defesa/manejo: <strong>#17 Conversão em Trava</strong>,
+    automaticamente pernas concretas para 7 estratégias de defesa/manejo: <strong>#17 Conversão em Trava</strong>,
     <strong>#20 Jade Lizard</strong>, <strong>#21 Conversão Sintética</strong>,
-    <strong>#22 Strangle de Defesa</strong>, <strong>#23 Diagonal de Call em Paralelo</strong> e
-    <strong>#24 Trava de Proteção Total</strong>.
+    <strong>#22 Strangle de Defesa</strong>, <strong>#23 Diagonal de Call em Paralelo</strong>,
+    <strong>#24 Trava de Proteção Total</strong> e <strong>#25 Straddle no Strike + Trava Total</strong>.
   </p>
 
   {% if saved %}
@@ -602,26 +602,26 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
       window.open('/venda_puts?' + new URLSearchParams(p).toString() + '#estrutura', '_blank');
     }
 
-    // Jade Lizard / Strangle de Defesa: 1 PUT vendida + trava de baixa com CALLs
-    // → não tem molde próprio; a parte de CALLs isolada é uma trava de baixa
-    if (puts.length === 1 && calls.length === 2 &&
-        calls[0].side === 'SELL' && calls[1].side === 'BUY') {
-      go('trava_credito_baixa', calls[0], calls[1]); return;
-    }
-    if (puts.length === 1 && calls.length === 1 && calls[0].side === 'SELL') {
-      // Strangle de Defesa (venda de call solta) — mais próximo do strangle vendido
-      go('strangle_vendido', calls[0], puts[0]); return;
-    }
+    // Só existe molde de 2 pernas na aba Estruturas quando as DUAS pernas do
+    // card formam toda a operação (#17: trava de baixa pura com 2 PUTs).
+    // Estratégias com 3 pernas (Jade Lizard, Strangle de Defesa, Conversão
+    // Sintética etc.) sempre incluem a perna MANTÉM/MANTÉM-VENDE da put
+    // original — forçá-las num molde de 2 pernas jogaria essa perna fora
+    // (era o bug: "Abrir em Cálculos" levava só as calls, perdendo a put já
+    // vendida). Nesses casos vai direto pro editor de Cadeia, que aceita
+    // qualquer número de pernas sem descartar nenhuma.
     if (puts.length === 2 && calls.length === 0) {
-      var pLo = puts[0], pHi = puts[1];
-      if (pHi.side === 'SELL' && pLo.side === 'BUY') { go('trava_baixa', pHi, pLo); return; }
-    }
-    if (puts.length === 1 && calls.length === 1 && calls[0].side === 'BUY') {
-      // Conversão Sintética: put vendida + call comprada no mesmo strike — sem molde
+      // trava_baixa espera A = PUT COMPRA (K maior) e B = PUT VENDA (K menor)
+      // — busca pelo LADO de cada perna, não pela ordem de strike (senão o
+      // "Abrir em Cálculos" inverte compra/venda quando a comprada tem strike
+      // menor que a vendida, como no #17 Conversão em Trava).
+      var buyLeg = puts.filter(function(l) { return l.side === 'BUY'; })[0];
+      var sellLeg = puts.filter(function(l) { return l.side === 'SELL'; })[0];
+      if (buyLeg && sellLeg) { go('trava_baixa', buyLeg, sellLeg); return; }
     }
 
     if (confirm('Esta combinação de pernas não corresponde a nenhum modelo da aba Estruturas ' +
-                '(travas, straddle, strangle, etc.).\n\nDeseja abri-la no editor da Cadeia de Opções?')) {
+                '(travas, straddle, strangle, etc.) sem perder pernas.\n\nDeseja abri-la no editor da Cadeia de Opções (mantém todas as pernas)?')) {
       mpEditarEmCadeia(stId);
     }
   };

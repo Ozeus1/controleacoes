@@ -5298,12 +5298,18 @@ def api_manejo_put(ticker):
                       'comprimir; acompanhar delta/vega/theta TOTAL da carteira, não só da diagonal.',
         }
 
-    for fn in (_strat_17, _strat_20, _strat_21, _strat_22, _strat_23):
+    _STRAT_META = {17: 'Conversão em Trava (Put de Proteção Abaixo)',
+                   20: 'Jade Lizard (Put Vendida + Trava de Baixa com Calls)',
+                   21: 'Conversão Sintética / Combo (Compra de CALL no mesmo strike)',
+                   22: 'Strangle de Defesa (Reforço com Venda de CALL solta)',
+                   23: 'Diagonal de Call em Paralelo (Reforço de Theta/Vega)'}
+    for sid, fn in ((17, _strat_17), (20, _strat_20), (21, _strat_21), (22, _strat_22), (23, _strat_23)):
         try:
             strategies.append(fn())
-        except Exception:
-            app.logger.exception('manejo_put strategy error')
-            strategies.append({'ok': False, 'motivo': 'Erro ao calcular esta estratégia.'})
+        except Exception as e:
+            app.logger.exception('manejo_put strategy %s error', sid)
+            strategies.append({'id': sid, 'nome': _STRAT_META[sid], 'ok': False,
+                                'motivo': f'Erro ao calcular esta estratégia: {e}'})
 
     # ── Payoff da posição original (só a PUT vendida) para referência no gráfico ──
     lo = spot * 0.7

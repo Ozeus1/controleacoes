@@ -50,10 +50,30 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
   </div>
   <p style="color:var(--text-secondary);font-size:.85rem;margin:.2rem 0 .9rem;">
     Preencha os dados da <strong>PUT vendida</strong>. O sistema busca a cadeia de opções e monta
-    automaticamente pernas concretas para 5 estratégias de defesa/manejo: <strong>#17 Conversão em Trava</strong>,
+    automaticamente pernas concretas para 6 estratégias de defesa/manejo: <strong>#17 Conversão em Trava</strong>,
     <strong>#20 Jade Lizard</strong>, <strong>#21 Conversão Sintética</strong>,
-    <strong>#22 Strangle de Defesa</strong> e <strong>#23 Diagonal de Call em Paralelo</strong>.
+    <strong>#22 Strangle de Defesa</strong>, <strong>#23 Diagonal de Call em Paralelo</strong> e
+    <strong>#24 Trava de Proteção Total</strong>.
   </p>
+
+  {% if saved %}
+  <div style="margin-bottom:1rem;">
+    <div style="font-size:.78rem;color:var(--text-secondary);margin-bottom:.35rem;">Manejos salvos</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.5rem;">
+      {% for s in saved %}
+      <div class="mp-tbtn" id="mp-saved-{{ s.id }}" style="display:inline-flex;align-items:center;gap:.5rem;padding:.3rem .6rem;
+           border:1px solid #475569;border-radius:6px;font-size:.8rem;color:#e2e8f0;background:var(--hover-bg,#334155);">
+        <a href="{{ url_for('simulacao_edit', id=s.id) }}" target="_blank" style="color:inherit;text-decoration:none;">
+          <strong>{{ s.name|replace('[Manejo Put] ', '') }}</strong>
+          <span style="color:var(--text-secondary);"> — {{ s.underlying }} · {{ s.created_at.strftime('%d/%m/%Y') }}</span>
+        </a>
+        <button type="button" onclick="mpDeleteSaved({{ s.id }})"
+                style="background:none;border:none;color:#f87171;cursor:pointer;font-size:.85rem;">✕</button>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 
   <form id="mp-form" onsubmit="return false;">
     <label>Ativo subjacente
@@ -231,13 +251,21 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
     var canvasId = 'mp-canvas-' + st.id;
     var canvasHtml = '<div class="mp-canvas-wrap"><canvas class="mp-payoff" id="' + canvasId + '"></canvas></div>';
 
+    var saveHtml = '<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem;">' +
+      '<button type="button" class="btn btn-sm btn-primary" onclick="mpSaveStrategy(' + st.id + ', false)">💾 Salvar</button>' +
+      '<button type="button" class="btn btn-sm" style="background:#f59e0b;color:white;" ' +
+      'onclick="mpSaveStrategy(' + st.id + ', true)" ' +
+      'title="Grava a operação nas tabelas de acompanhamento da página Opções. Se esta put veio de uma posição existente, ela sai de \'Venda a Seco de Puts\' e a estrutura toda passa a ser acompanhada como Operação Estruturada.">🚀 Salvar em Produção</button>' +
+      '<span id="mp-save-msg-' + st.id + '" style="font-size:.8rem;color:var(--text-secondary);align-self:center;"></span>' +
+      '</div>';
+
     return '<div class="mp-card"><div class="mp-head">' +
       '<h3>#' + st.id + ' ' + st.nome + '</h3>' +
       '<div class="mp-tags">' + tags + '</div>' +
       '</div><div class="mp-body">' +
       legsHtml + boxesHtml +
       '<div class="mp-manejo"><strong>Manejo:</strong> ' + st.manejo + '</div>' +
-      canvasHtml +
+      canvasHtml + saveHtml +
       '</div></div>';
   }
 
@@ -265,7 +293,10 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
     return pts;
   }
 
+  var mpLastData = null;
+
   function render(d) {
+    mpLastData = d;
     spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
       (d.spot_change != null
         ? ' <span style="color:' + (d.spot_change >= 0 ? '#34d399' : '#f87171') + ';font-size:.85rem;">' +
@@ -332,11 +363,13 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
   document.getElementById('mp-buscar').addEventListener('click', buscar);
 
   // Pré-preenchimento via querystring (link "🛟" na tela de Opções) — ex.:
-  // ?ticker=BBAS3&strike=20.12&premium=4.03&exp=2026-08-21&qty=1200&auto=1
+  // ?ticker=BBAS3&strike=20.12&premium=4.03&exp=2026-08-21&qty=1200&option_id=42&auto=1
+  var mpOptionId = null;
   (function() {
     var qp = new URLSearchParams(location.search);
     var t = qp.get('ticker'), s = qp.get('strike'), p = qp.get('premium'),
         e = qp.get('exp'), q = qp.get('qty');
+    mpOptionId = qp.get('option_id') || null;
     if (t) document.getElementById('mp-ticker').value = t.toUpperCase();
     if (s) document.getElementById('mp-strike').value = s;
     if (p) document.getElementById('mp-premium').value = p;
@@ -344,6 +377,61 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
     if (q) document.getElementById('mp-qty').value = q;
     if (qp.get('auto') === '1' && t && s && p && e) buscar();
   })();
+
+  window.mpSaveStrategy = function(stId, producao) {
+    if (!mpLastData) return;
+    var st = mpLastData.strategies.filter(function(s) { return s.id === stId; })[0];
+    if (!st || !st.ok) return;
+    var msgEl = document.getElementById('mp-save-msg-' + stId);
+    var nome = '#' + st.id + ' ' + st.nome + ' ' + mpLastData.ticker;
+    var payload = {
+      ticker: mpLastData.ticker,
+      nome: nome,
+      exp: mpLastData.exp,
+      qty: mpLastData._qty,
+      legs: st.legs,
+      option_id: producao ? mpOptionId : null,
+      producao: !!producao
+    };
+    if (producao && !confirm('Salvar esta operação nas tabelas de acompanhamento (página Opções)?\n\n' +
+        (mpOptionId ? 'A PUT vendida original sairá de "Venda a Seco de Puts" e toda a estrutura passará a ser acompanhada como Operação Estruturada.' :
+                      'A estrutura será gravada como Operação Estruturada.'))) {
+      return;
+    }
+    if (msgEl) msgEl.textContent = 'salvando…';
+    fetch('/api/manejo-put/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    })
+      .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+      .then(function(res) {
+        if (!res.ok || res.j.error) {
+          if (msgEl) msgEl.textContent = '⚠️ ' + (res.j.error || 'erro ao salvar');
+          return;
+        }
+        if (msgEl) {
+          msgEl.textContent = res.j.destino
+            ? ('✅ salvo em produção — ' + res.j.destino)
+            : (res.j.warning ? ('⚠️ salvo, mas não enviado à produção: ' + res.j.warning) : '✅ salvo');
+        }
+      })
+      .catch(function(e) {
+        if (msgEl) msgEl.textContent = '⚠️ falha na requisição: ' + e;
+      });
+  };
+
+  window.mpDeleteSaved = function(simId) {
+    if (!confirm('Excluir este manejo salvo?')) return;
+    fetch('/api/simulacao/' + simId + '/delete', {method: 'POST'})
+      .then(function(r) { return r.json(); })
+      .then(function(j) {
+        if (j.ok) {
+          var el = document.getElementById('mp-saved-' + simId);
+          if (el) el.remove();
+        }
+      });
+  };
 })();
 </script>
 {% endblock %}

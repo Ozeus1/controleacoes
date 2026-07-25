@@ -4857,12 +4857,19 @@ def api_busca_operacoes(ticker):
     })
 
 
+_MP_PREFIX = '[Manejo Put] '
+
+
 @app.route('/manejo-put')
 @login_required
 def manejo_put():
-    """Página: manejo/defesa de PUT vendida — sugere pernas concretas para 5 estratégias."""
+    """Página: manejo/defesa de PUT vendida — sugere pernas concretas para 6 estratégias."""
     ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
-    return render_template('manejo_put.html', ranking_vol=ranking_vol, selic=_selic())
+    saved = (SimulacaoOpcoes.query
+             .filter(SimulacaoOpcoes.user_id == current_user.id,
+                     SimulacaoOpcoes.name.like(_MP_PREFIX + '%'))
+             .order_by(SimulacaoOpcoes.created_at.desc()).all())
+    return render_template('manejo_put.html', ranking_vol=ranking_vol, selic=_selic(), saved=saved)
 
 
 @app.route('/api/manejo-put/<ticker>')
@@ -5298,12 +5305,63 @@ def api_manejo_put(ticker):
                       'comprimir; acompanhar delta/vega/theta TOTAL da carteira, não só da diagonal.',
         }
 
+    # ── #24 Trava de Proteção Total (PUT + CALL "no pozinho") ────────────────
+    def _strat_24():
+        """Mantém a put vendida + compra 1 PUT OTM distante e 1 CALL OTM distante,
+        ambas baratas (delta baixo), travando o risco dos dois lados por um custo
+        pequeno — como um 'seguro catastrófico' contra gap de alta ou de baixa."""
+        if not put_rows_main or not call_rows_main:
+            return {'id': 24, 'nome': 'Trava de Proteção Total (Put + Call "no pozinho")', 'ok': False,
+                    'motivo': 'Sem PUTs e/ou CALLs suficientes neste vencimento.'}
+        put_cands = [r for r in put_rows_main if r['strike'] < strike]
+        prot_put, prot_put_delta = _best_delta(put_cands, False, T_main, 5, 15)
+        prot_call, prot_call_delta = _best_delta(call_rows_main, True, T_main, 5, 15)
+        if not prot_put or not prot_call:
+            return {'id': 24, 'nome': 'Trava de Proteção Total (Put + Call "no pozinho")', 'ok': False,
+                    'motivo': 'Não há PUT e CALL baratas (delta 5–15) suficientemente OTM neste vencimento.'}
+        _, _, put_ask, put_src = _eff(prot_put)
+        _, _, call_ask, call_src = _eff(prot_call)
+        if not put_ask or not call_ask:
+            return {'id': 24, 'nome': 'Trava de Proteção Total (Put + Call "no pozinho")', 'ok': False,
+                    'motivo': 'Pernas de proteção sem preço executável (ask).'}
+        custo_total = (put_ask + call_ask) * qty
+        largura_baixa = strike - prot_put['strike']
+        perda_max_baixa = largura_baixa * qty - premium * qty + custo_total
+        g_p = _greeks(prot_put, False, T_main) or {}
+        g_c = _greeks(prot_call, True, T_main) or {}
+        legs = [
+            {'acao': 'MANTÉM', 'tipo': 'PUT', 'symbol': put_original['symbol'] or f'{ticker}(put)',
+             'strike': strike, 'preco': premium, 'delta': cur_put_delta},
+            {'acao': 'COMPRA', 'tipo': 'PUT', 'symbol': prot_put['symbol'], 'strike': prot_put['strike'],
+             'preco': put_ask, 'preco_src': put_src, 'delta': prot_put_delta},
+            {'acao': 'COMPRA', 'tipo': 'CALL', 'symbol': prot_call['symbol'], 'strike': prot_call['strike'],
+             'preco': call_ask, 'preco_src': call_src, 'delta': prot_call_delta},
+        ]
+        return {
+            'id': 24, 'nome': 'Trava de Proteção Total (Put + Call "no pozinho")', 'ok': True,
+            'tags': ['DEFESA DE PUT VENDIDA', 'DÉBITO BAIXO', '🛡️ TRAVA OS DOIS LADOS'],
+            'legs': legs,
+            'resumo': {
+                'tipo': 'debito', 'valor': round(custo_total, 2),
+                'largura': round(largura_baixa, 2),
+                'perda_max': round(perda_max_baixa, 2),
+            },
+            'gregas': {'delta': round((cur_put_delta or 0) - (g_p.get('delta') or 0) - (g_c.get('delta') or 0), 1),
+                       'gamma': round(-(g_p.get('gamma') or 0) - (g_c.get('gamma') or 0), 5),
+                       'theta': round(-(g_p.get('theta') or 0) - (g_c.get('theta') or 0), 4),
+                       'vega': round(-(g_p.get('vega') or 0) - (g_c.get('vega') or 0), 4)},
+            'manejo': 'Seguro barato contra gap forte em qualquer direção — perda máxima passa a ser travada '
+                      'nos dois lados pelo custo das duas pontas; se o mercado ficar parado, o prêmio pago '
+                      'vira decaimento (theta negativo) e pode valer a pena fechar antes do vencimento.',
+        }
+
     _STRAT_META = {17: 'Conversão em Trava (Put de Proteção Abaixo)',
                    20: 'Jade Lizard (Put Vendida + Trava de Baixa com Calls)',
                    21: 'Conversão Sintética / Combo (Compra de CALL no mesmo strike)',
                    22: 'Strangle de Defesa (Reforço com Venda de CALL solta)',
-                   23: 'Diagonal de Call em Paralelo (Reforço de Theta/Vega)'}
-    for sid, fn in ((17, _strat_17), (20, _strat_20), (21, _strat_21), (22, _strat_22), (23, _strat_23)):
+                   23: 'Diagonal de Call em Paralelo (Reforço de Theta/Vega)',
+                   24: 'Trava de Proteção Total (Put + Call "no pozinho")'}
+    for sid, fn in ((17, _strat_17), (20, _strat_20), (21, _strat_21), (22, _strat_22), (23, _strat_23), (24, _strat_24)):
         try:
             strategies.append(fn())
         except Exception as e:
@@ -5333,6 +5391,65 @@ def api_manejo_put(ticker):
         'range': {'lo': round(lo, 2), 'hi': round(hi, 2)},
         'strategies': strategies,
     })
+
+
+@app.route('/api/manejo-put/save', methods=['POST'])
+@login_required
+def api_manejo_put_save():
+    """Salva uma estratégia de Manejo de Put como SimulacaoOpcoes (mesma
+    infraestrutura da tela Simulação de Opções). Com producao=1, também grava
+    em produção via _sim_to_producao e, se a put teve origem em uma Option
+    existente (option_id), remove o registro original de Venda a Seco de Puts —
+    a posição passa a ser acompanhada como Operação Estruturada."""
+    payload = request.get_json(silent=True) or {}
+    ticker  = (payload.get('ticker') or '').strip().upper()
+    nome    = (payload.get('nome') or '').strip()
+    legs_in = payload.get('legs') or []
+    option_id = payload.get('option_id')
+    producao  = bool(payload.get('producao'))
+
+    if not ticker or not legs_in:
+        return jsonify({'error': 'Dados insuficientes para salvar (ticker/pernas).'}), 400
+
+    full_name = _MP_PREFIX + (nome or f'Manejo {ticker}')
+    sim = SimulacaoOpcoes(user_id=current_user.id, name=full_name[:120],
+                          underlying=ticker, created_at=datetime.now())
+    db.session.add(sim)
+    db.session.flush()
+
+    for l in legs_in:
+        acao = (l.get('acao') or '').upper()
+        side = 'BUY' if 'COMPRA' in acao else 'SELL'  # MANTÉM / MANTÉM-VENDE / VENDE → SELL
+        tipo = (l.get('tipo') or 'PUT').upper()
+        try:
+            exp_leg = date.fromisoformat(l['exp']) if l.get('exp') else (
+                date.fromisoformat(payload['exp']) if payload.get('exp') else None)
+        except (ValueError, KeyError):
+            exp_leg = None
+        leg = SimulacaoLeg(
+            sim_id=sim.id, leg_type=tipo if tipo in ('CALL', 'PUT') else 'PUT',
+            side=side, quantity=int(payload.get('qty') or 100),
+            strike=float(l.get('strike') or 0), premium=float(l.get('preco') or 0),
+            expiration=exp_leg, ticker=(l.get('symbol') or ticker).strip().upper(),
+        )
+        db.session.add(leg)
+
+    db.session.commit()
+
+    if not producao:
+        flash('Manejo salvo em Simulação de Opções.', 'success')
+        return jsonify({'ok': True, 'sim_id': sim.id})
+
+    destino, err = _sim_to_producao(sim)
+    if err:
+        db.session.commit()
+        return jsonify({'ok': True, 'sim_id': sim.id, 'warning': err})
+    if option_id:
+        opt = Option.query.get(int(option_id))
+        if opt and opt.user_id == current_user.id:
+            db.session.delete(opt)
+    db.session.commit()
+    return jsonify({'ok': True, 'sim_id': sim.id, 'destino': destino})
 
 
 @app.route('/lancamento-coberto')

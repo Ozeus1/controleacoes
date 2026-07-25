@@ -330,6 +330,20 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
   }
 
   document.getElementById('mp-buscar').addEventListener('click', buscar);
+
+  // Pré-preenchimento via querystring (link "🛟" na tela de Opções) — ex.:
+  // ?ticker=BBAS3&strike=20.12&premium=4.03&exp=2026-08-21&qty=1200&auto=1
+  (function() {
+    var qp = new URLSearchParams(location.search);
+    var t = qp.get('ticker'), s = qp.get('strike'), p = qp.get('premium'),
+        e = qp.get('exp'), q = qp.get('qty');
+    if (t) document.getElementById('mp-ticker').value = t.toUpperCase();
+    if (s) document.getElementById('mp-strike').value = s;
+    if (p) document.getElementById('mp-premium').value = p;
+    if (e) document.getElementById('mp-exp').value = e;
+    if (q) document.getElementById('mp-qty').value = q;
+    if (qp.get('auto') === '1' && t && s && p && e) buscar();
+  })();
 })();
 </script>
 {% endblock %}

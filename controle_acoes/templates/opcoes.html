@@ -257,6 +257,8 @@
                     {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
                 </td>
                 <td class="actions" style="white-space:nowrap;">
+                    <a href="{{ url_for('manejo_put') }}?ticker={{ item.option.underlying_asset }}&strike={{ '%.2f'|format(item.option.strike_price or 0) }}&premium={{ '%.2f'|format(item.option.sale_price or 0) }}&exp={{ item.option.expiration_date.strftime('%Y-%m-%d') }}&qty={{ item.option.quantity }}&auto=1"
+                       class="btn btn-sm btn-secondary" title="Manejo de Put — abre já preenchido" target="_blank">🛟</a>
                     <a href="{{ url_for('payoff_option', id=item.option.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
                     <button class="btn btn-sm" style="background:#f59e0b;color:white;" title="Rolar operação"
                             onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>

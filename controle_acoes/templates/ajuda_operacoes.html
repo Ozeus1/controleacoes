@@ -348,13 +348,31 @@ var OPS=[
  sel:['Vencimento: DTE 30–45d','Miolo: ATM Δ ±0,50 · Asas: Δ ±0,05–0,10','VI > 70%'],
  man:['TP: recompra com 50% do crédito','Movimento forte → rolar as pernas ameaçadas'],
  busca:B(BA,'iron_butterfly')},
-{cat:'cat-renda',nome:'Jade Lizard',cen:'lateral',tipo:'credito',
+{cat:'cat-renda',nome:'Jade Lizard (Put Vendida + Trava de Baixa com Calls)',cen:'lateral',tipo:'credito',
+ alias:['jade_lizard'],
+ tags:['DEFESA/REFORÇO DE PUT VENDIDA','CRÉDITO','⚖️ ZERA RISCO DE ALTA','🔥 VI ALTA (IV RANK)'],
+ origem:'🔎 Pesquisado — estratégia originada na comunidade tastytrade (criada por Liz & Jenny, popularizada como "Jade Lizard"). Fontes: Schaeffer\'s Research, tastytrade/Options Jive, Option Samurai, SlashTraders.',
  legs:[{t:'P',q:-1,K:92,p:2},{t:'C',q:-1,K:106,p:2},{t:'C',q:1,K:110,p:0.8}],
- mont:'Venda PUT OTM + trava de baixa com CALL (venda CALL OTM + compra CALL mais OTM).',
- cenario:'Alta/lateral. Se o crédito ≥ largura da trava de CALL, NÃO há risco na alta — o risco fica só na queda.',
- sel:['Vencimento: DTE 30–45d','PUT: Δ −0,15 a −0,25 · CALL vendida: Δ 0,20–0,30 · CALL comprada: Δ 0,05–0,10','Crédito significativo (≥ largura da trava)'],
- man:['TP: recompra com 50% do crédito','Queda ameaçando a PUT → rolar a PUT ou fechar'],
- busca:B(BA,'jade_lizard')},
+ mont:'Venda de 1 PUT OTM + trava de baixa com calls no mesmo vencimento (venda CALL OTM + compra CALL mais OTM, formando um call credit spread). Três pernas, um único vencimento.',
+ payoff:'Platô de lucro entre os strikes, sem risco de alta se a regra de crédito for respeitada — o único risco que sobra é para baixo (da put nua).',
+ regra:'📐 A regra que define tudo: o crédito total recebido (put + call spread) precisa ser MAIOR OU IGUAL à largura entre os strikes das calls. Cumprindo essa condição, mesmo que o ativo dispare para cima e o call spread vá a perda máxima, essa perda é totalmente absorvida pelo crédito já embolsado — o risco de alta vira literalmente zero. Não cumprindo, a estrutura continua útil, mas passa a ter risco definido dos dois lados (fica parecida com um Iron Condor mais gordo de um lado).',
+ cenario:'Neutro a levemente altista, com IV rank/IV percentile alto no ativo (prêmios inflados por medo/incerteza) — é o ambiente clássico recomendado pela tastytrade para montar. Muito usado após uma queda forte no papel, quando o put skew está elevado.',
+ sel:['Vencimento: ~45 DTE é o padrão mais citado (equilíbrio entre prêmio coletado e exposição a gama)','Put vendida: Δ ≈ 0,16–0,30 (a perna que carrega a maior parte do prêmio)','Call spread: vendida Δ ≈ 0,15–0,20 · comprada 1 strike acima (spread estreito, só o suficiente pra regra do crédito ≥ largura se cumprir)','Evitar ativos ilíquidos ou com strikes muito espaçados — dificulta cumprir a regra de crédito com folga'],
+ man:['TP: recomprar/fechar ao capturar ≈50% do crédito total recebido','Se o preço subir e testar o call spread: como não há risco de alta, dá pra rolar a put pra cima e coletar crédito extra sem adicionar risco — a estrutura melhora','Se o preço cair e testar a put: rolar o call spread pra baixo (mais perto do preço atual) pra coletar mais crédito e reforçar o colchão contra a perna vendida ameaçada — sem aumentar a exposição de alta','Gama perto do vencimento: fechar ou rolar antes de ~14–21 DTE, mesmo estando no lucro, porque o gama cresce rápido e pode desmontar o "no upside risk" na prática se faltar tempo pra ajustar'],
+ busca:B(BA,'jade_lizard'),busca2:'/manejo-put',busca2label:'Manejo de Put (defesa a partir de uma put vendida)'},
+
+{cat:'cat-renda',nome:'Slide Estrutural (Venda Coberta Turbinada)',cen:'lateral',tipo:'zero',vi:'baixa',
+ alias:['slide_estrutural'],
+ tags:['MELHORA A VENDA COBERTA','CUSTO ~ZERO','📐 AMPLIA O RANGE DE LUCRO'],
+ origem:'🔎 Adaptado de um formato popular em comunidades de operadores de BOVA11/ações — variação da venda coberta com uma trava de alta estreita ("asa") no lugar da ação comprada.',
+ legs:[{t:'C',q:1,K:97,p:6.2},{t:'C',q:-1,K:100,p:2.0},{t:'C',q:-1,K:105,p:0.55}],
+ mont:'Ao invés de ação + venda de CALL (venda coberta tradicional), monta-se só com opções: compra 1 CALL mais no dinheiro (strike A) + venda 1 CALL um pouco acima (strike B, a "asa") + venda 1 CALL no strike que seria usado na venda coberta simples (strike C). Três pernas, mesmo vencimento — A < B < C.',
+ payoff:'Lucro máximo constante no intervalo entre B e C (mais amplo que o platô único da venda coberta pura — no exemplo do vídeo, até 63% de lucro a mais). Risco de assunção começa acima de C, no mesmo ponto da venda coberta tradicional.',
+ regra:'📐 Montagem: o custo da CALL comprada (A) é financiado quase todo pelas duas vendidas (B e C) — o algoritmo busca crédito ou débito residual próximo de zero (até ~15 centavos no exemplo com BOVA11). Quanto mais estreita a "asa" (B − A), menor o custo, mas também menor a folga antes do platô de lucro máximo começar.',
+ cenario:'Mercado lateral a levemente altista, quando o operador já venderia CALL coberta em C mas quer capturar mais lucro no caminho até lá sem aportar capital extra em ações.',
+ sel:['Vencimento: DTE 30–45d (mesmo horizonte da venda coberta tradicional)','CALL comprada (A): Δ 0,55–0,70 (função parecida com a ação, delta alto)','CALL vendida — asa (B): Δ 0,35–0,50, formando trava de alta estreita com A','CALL vendida (C): Δ 0,15–0,30 — o mesmo strike que seria usado numa venda coberta comum'],
+ man:['Alta até B: lucro cresce como numa trava de alta comum','Entre B e C: lucro máximo travado — mesmo comportamento do platô da venda coberta, só que maior','Acima do "ponto de assunção" (perto de C, um pouco além): risco começa a aparecer — é essencial ter cobertura (ex.: ação em carteira) ou um stop de preço bem definido nesse ponto, igual à venda coberta tradicional','Variante "Pimentinha" (turbinada): adiciona venda de 1 PUT no strike A — eleva o lucro em até 179% frente à venda coberta simples, mas abre risco também para baixo (abaixo do BE inferior) além do risco de alta acima do novo ponto de assunção — usar só se aceitar risco dos dois lados','Ajuste de strike: se o operador tem receio de alta, pode mover a venda C para um strike mais alto (sacrifica parte do lucro máximo, mas afasta o ponto de assunção)'],
+ busca:B(BA,'slide_estrutural')},
 
 {cat:'cat-renda',nome:'Reparo de Posição (Stock Repair 1×2)',cen:'alta',tipo:'zero',vi:'neutra',
  legs:[{t:'S',q:1},{t:'C',q:1,K:100,p:4},{t:'C',q:-2,K:108,p:2}],
@@ -659,6 +677,7 @@ var VI_BY_OP={
   collar:'neutra', protective_put:'baixa', covered_put:'alta',
   strangle_vendido:'alta', straddle_vendido:'alta',
   iron_condor:'alta', iron_butterfly:'alta', jade_lizard:'alta',
+  slide_estrutural:'baixa',
   straddle_comprado:'baixa', strangle_comprado:'baixa',
   borboleta:'alta', condor:'alta', broken_wing:'alta',
   vaca_travada:'alta', vaca_tradicional:'alta', vaca_revertida:'neutra',
@@ -684,11 +703,16 @@ CATS.forEach(function(cat){
     // 1ª ocorrência de cada operação recebe a âncora id="ajuda-<op>"
     var anchorId = (code && !_seenOp[code]) ? (' id="ajuda-'+code+'"') : '';
     if(code) _seenOp[code]=true;
+    var extraTags=(op.tags||[]).map(function(t){return '<span class="aj-badge zero" style="background:rgba(124,58,237,.14);color:#c4b5fd;border:1px solid rgba(124,58,237,.4);">'+esc(t)+'</span>';}).join(' ');
     html+='<div class="aj-card"'+anchorId+' data-op="'+esc(code)+'" data-vi="'+esc(op.vi)+'"'+
       ' data-op-alias="'+esc((op.alias||[]).join(' '))+'" data-nome="'+esc(op.nome.toLowerCase())+'">'+
       '<h4>'+esc(op.nome)+' '+badgeCen(op.cen)+' '+badgeTipo(op.tipo)+' '+badgeVI(op.vi)+'</h4>'+
+      (extraTags?'<div class="aj-sec" style="margin:-.1rem 0 .5rem;">'+extraTags+'</div>':'')+
+      (op.origem?'<div class="aj-sec" style="font-style:italic;color:var(--text-secondary);">'+esc(op.origem)+'</div>':'')+
       '<div class="aj-canvas-wrap"><canvas id="aj-cv-'+idx+'" width="400" height="130"></canvas></div>'+
+      (op.payoff?'<div class="aj-sec"><b class="lbl">📊 Payoff</b>'+esc(op.payoff)+'</div>':'')+
       '<div class="aj-sec"><b class="lbl">🧩 Montagem</b>'+esc(op.mont)+'</div>'+
+      (op.regra?'<div class="aj-sec"><b class="lbl">📐 Regra crítica</b>'+esc(op.regra)+'</div>':'')+
       '<div class="aj-sec"><b class="lbl">💡 Cenário ideal</b>'+esc(op.cenario)+'</div>'+
       '<div class="aj-sec"><b class="lbl">🎯 Seleção algorítmica</b>'+ul(op.sel)+'</div>'+
       '<div class="aj-sec"><b class="lbl">🔧 Manejo</b>'+ul(op.man)+'</div>'+

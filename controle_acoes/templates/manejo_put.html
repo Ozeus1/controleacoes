@@ -326,14 +326,24 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
   function payoffPointsForStrategy(st, d) {
     // Aproxima o payoff no vencimento principal somando o payoff de cada perna (preço de entrada como custo).
     var qty = d._qty;
-    var lo = d.range.lo, hi = d.range.hi;
-    var n = 41, step = (hi - lo) / (n - 1);
     var srcLegs = mpLastData ? mpReadLegs(st.id) : (st.legs || []);
     var legs = srcLegs.map(function(l) {
       var sign = (l.acao === 'COMPRA') ? 1 : (l.acao === 'VENDE' ? -1 : 0);
       if (l.acao === 'MANTÉM' || l.acao === 'MANTÉM/VENDE') sign = -1; // put original vendida
       return {tipo: l.tipo, strike: l.strike, preco: l.preco || 0, sign: sign};
     });
+    // O range fixo (±30% do spot) da API não cobre pernas de proteção/travas
+    // com strikes bem distantes (ex.: CALL "no pozinho" do #24, ou o call
+    // spread do Jade Lizard) — sem isso o payoff parecia "empatar" num platô
+    // simplesmente porque o gráfico parava antes do strike relevante. Usa o
+    // maior entre o range padrão e os strikes reais das pernas, com folga.
+    var strikes = legs.map(function(l) { return l.strike; }).filter(function(k) { return k > 0; });
+    strikes.push(d.spot);
+    var kMin = Math.min.apply(null, strikes), kMax = Math.max.apply(null, strikes);
+    var span = kMax - kMin || d.spot * 0.2;
+    var lo = Math.min(d.range.lo, kMin - span * 0.25);
+    var hi = Math.max(d.range.hi, kMax + span * 0.25);
+    var n = 41, step = (hi - lo) / (n - 1);
     var pts = [];
     for (var i = 0; i < n; i++) {
       var s = lo + step * i;

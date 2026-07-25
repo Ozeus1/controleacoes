@@ -3316,6 +3316,15 @@ _ADV_SPECS = {
     'covered_put':    {'legs': [('S', -1, None), ('P', -1, (-0.35, -0.20))]},
     'jade_lizard':    {'legs': [('P', -1, (-0.25, -0.15)), ('C', -1, (0.20, 0.30)),
                                 ('C', 1, (0.05, 0.12))], 'asc': [1, 2], 'rule': 'jade'},
+    # Slide Estrutural: melhora a venda coberta tradicional trocando a "ação
+    # comprada" por uma CALL comprada mais no dinheiro (A) + trava de alta
+    # estreita até B ("asa") + venda de CALL em C (o strike que seria usado
+    # na venda coberta simples). Zona de lucro máximo entre B e C — mais
+    # ampla que o platô único da venda coberta pura. Risco de assunção só
+    # acima de C (mesmo ponto de assunção da venda coberta tradicional).
+    'slide_estrutural': {'legs': [('C', 1, (0.55, 0.70)), ('C', -1, (0.35, 0.50)),
+                                  ('C', -1, (0.15, 0.30))], 'asc': [0, 1, 2],
+                        'rule': 'low_cost'},
     # Reparo de posição (Stock Repair 1×2): compra 1 CALL ATM + vende 2 OTM a
     # custo ~zero — p/ ação NO PREJUÍZO em carteira (a 2ª venda fica coberta
     # pela ação; dobra a recuperação até o strike vendido, sem aporte novo)
@@ -5370,8 +5379,17 @@ def api_manejo_put(ticker):
                                 'motivo': f'Erro ao calcular esta estratégia: {e}'})
 
     # ── Payoff da posição original (só a PUT vendida) para referência no gráfico ──
-    lo = spot * 0.7
-    hi = spot * 1.3
+    # Range base ±30% do spot, mas alargado para cobrir os strikes de todas as
+    # estratégias calculadas (proteções/travas "no pozinho" costumam ficar bem
+    # fora dessa faixa e o payoff parecia truncado se o range ficasse curto).
+    all_strikes = [strike]
+    for s in strategies:
+        for leg in (s.get('legs') or []):
+            k = leg.get('strike')
+            if k:
+                all_strikes.append(k)
+    lo = min(spot * 0.7, min(all_strikes) * 0.9)
+    hi = max(spot * 1.3, max(all_strikes) * 1.1)
     n_pts = 41
     step = (hi - lo) / (n_pts - 1)
     payoff_original = []

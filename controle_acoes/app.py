@@ -5185,7 +5185,7 @@ def api_manejo_put(ticker):
         if not buy_call:
             return {'id': 20, 'nome': 'Jade Lizard (Put Vendida + Trava de Baixa com Calls)', 'ok': False,
                     'motivo': 'Sem CALL mais OTM disponível para travar o spread.'}
-        sc_bid, _, _, _ = _eff(sell_call)
+        sc_bid, sc_src, _, _ = _eff(sell_call)
         _, _, bc_ask, bc_src = _eff(buy_call)
         if not sc_bid or not bc_ask:
             return {'id': 20, 'nome': 'Jade Lizard (Put Vendida + Trava de Baixa com Calls)', 'ok': False,
@@ -5200,7 +5200,7 @@ def api_manejo_put(ticker):
             {'acao': 'MANTÉM/VENDE', 'tipo': 'PUT', 'symbol': put_original['symbol'] or f'{ticker}(put)',
              'strike': strike, 'preco': premium, 'delta': cur_put_delta},
             {'acao': 'VENDE', 'tipo': 'CALL', 'symbol': sell_call['symbol'], 'strike': sell_call['strike'],
-             'preco': sc_bid, 'delta': sell_delta},
+             'preco': sc_bid, 'preco_src': sc_src, 'delta': sell_delta},
             {'acao': 'COMPRA', 'tipo': 'CALL', 'symbol': buy_call['symbol'], 'strike': buy_call['strike'],
              'preco': bc_ask, 'preco_src': bc_src, 'delta': _delta_pct(buy_call, True, T_main)},
         ]

@@ -1,0 +1,335 @@
+{% extends "base.html" %}
+{% block title %}Manejo de Put{% endblock %}
+{% block extra_scripts %}
+<style>
+#mp-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.7rem;margin-bottom:.8rem;}
+#mp-form label{display:flex;flex-direction:column;gap:.25rem;font-size:.78rem;color:var(--text-secondary);}
+#mp-form input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
+  border-radius:5px;padding:.35rem .5rem;font-size:.85rem;}
+#mp-form input[type=text]{text-transform:uppercase;}
+#mp-spot{font-size:.9rem;color:var(--text-secondary);}
+#mp-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
+#mp-error{display:none;color:#f87171;padding:1rem;}
+.mp-badge{display:inline-block;padding:.08rem .4rem;border-radius:4px;font-size:.72rem;font-weight:700;}
+.mp-badge.put{background:rgba(248,113,113,.15);color:#fca5a5;}
+.mp-badge.call{background:rgba(59,130,246,.15);color:#93c5fd;}
+.mp-badge.credit{background:rgba(52,211,153,.18);color:#34d399;}
+.mp-badge.debit{background:rgba(245,158,11,.15);color:#fbbf24;}
+.mp-badge.warn{background:rgba(248,113,113,.18);color:#f87171;}
+.mp-badge.ok{background:rgba(52,211,153,.18);color:#34d399;}
+.mp-card{border:1px solid var(--border-color);border-radius:8px;margin-top:1.1rem;overflow:hidden;}
+.mp-head{display:flex;gap:.7rem;align-items:center;flex-wrap:wrap;padding:.6rem 1rem;background:var(--hover-bg);}
+.mp-head h3{margin:0;font-size:.98rem;}
+.mp-tags{display:flex;gap:.35rem;flex-wrap:wrap;}
+.mp-body{padding:.7rem 1rem 1rem;}
+.mp-legs{width:100%;border-collapse:collapse;font-size:.8rem;margin-bottom:.7rem;}
+.mp-legs th{padding:.3rem .5rem;text-align:left;background:var(--card-bg);color:var(--text-secondary);
+  font-weight:600;border-bottom:1px solid var(--border-color);}
+.mp-legs td{padding:.3rem .5rem;border-bottom:1px solid rgba(255,255,255,.04);color:var(--text-primary);}
+.mp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.6rem;margin-bottom:.7rem;}
+.metric-box{background:var(--hover-bg);border:1px solid var(--border-color);border-radius:6px;
+  padding:.55rem .8rem;display:flex;flex-direction:column;gap:.15rem;}
+.metric-label{font-size:.72rem;color:var(--text-secondary);}
+.metric-value{font-size:1rem;font-weight:600;color:var(--text-primary);}
+.metric-value.pos{color:#34d399;}
+.metric-value.neg{color:#f87171;}
+.mp-manejo{font-size:.8rem;color:var(--text-secondary);background:var(--hover-bg);border-radius:6px;
+  padding:.5rem .7rem;margin-bottom:.7rem;border-left:3px solid #7c3aed;}
+.mp-canvas-wrap{overflow-x:auto;}
+canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
+.mp-empty{color:var(--text-secondary);font-size:.85rem;padding:.6rem 0;}
+.mp-fail{border-color:rgba(248,113,113,.4);}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="padding:1.2rem 1.4rem;">
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.4rem;">
+    <h2 style="margin:0;">🛟 Manejo de Put</h2>
+    <div id="mp-spot"></div>
+  </div>
+  <p style="color:var(--text-secondary);font-size:.85rem;margin:.2rem 0 .9rem;">
+    Preencha os dados da <strong>PUT vendida</strong>. O sistema busca a cadeia de opções e monta
+    automaticamente pernas concretas para 5 estratégias de defesa/manejo: <strong>#17 Conversão em Trava</strong>,
+    <strong>#20 Jade Lizard</strong>, <strong>#21 Conversão Sintética</strong>,
+    <strong>#22 Strangle de Defesa</strong> e <strong>#23 Diagonal de Call em Paralelo</strong>.
+  </p>
+
+  <form id="mp-form" onsubmit="return false;">
+    <label>Ativo subjacente
+      <input type="text" id="mp-ticker" placeholder="PETR4" maxlength="10">
+    </label>
+    <label>Strike da PUT vendida
+      <input type="number" id="mp-strike" step="0.01" min="0">
+    </label>
+    <label>Prêmio recebido (venda)
+      <input type="number" id="mp-premium" step="0.01" min="0">
+    </label>
+    <label>Vencimento
+      <input type="date" id="mp-exp">
+    </label>
+    <label>Quantidade
+      <input type="number" id="mp-qty" step="100" min="100" value="100">
+    </label>
+    <label>&nbsp;
+      <button type="button" class="btn btn-primary btn-sm" id="mp-buscar">🔎 Buscar defesas</button>
+    </label>
+  </form>
+
+  <div id="mp-loading">⏳ Varrendo a cadeia de opções…</div>
+  <div id="mp-error"></div>
+  <div id="mp-results"></div>
+</div>
+
+<script>
+(function() {
+  var loading = document.getElementById('mp-loading');
+  var errBox  = document.getElementById('mp-error');
+  var results = document.getElementById('mp-results');
+  var spotEl  = document.getElementById('mp-spot');
+
+  function brl(v) {
+    if (v == null || isNaN(v)) return '—';
+    return v.toLocaleString('pt-BR', {style: 'currency', currency: 'BRL'});
+  }
+  function fmt(v, d) {
+    if (v == null || isNaN(v)) return '—';
+    return v.toLocaleString('pt-BR', {minimumFractionDigits: d == null ? 2 : d, maximumFractionDigits: d == null ? 2 : d});
+  }
+  function dateBR(s) {
+    if (!s) return '—';
+    var p = s.split('-');
+    return p[2] + '/' + p[1] + '/' + p[0];
+  }
+
+  function legRow(l) {
+    var acaoCls = (l.acao === 'COMPRA') ? 'debit' : (l.acao === 'VENDE' ? 'credit' : '');
+    return '<tr>' +
+      '<td><span class="mp-badge ' + (l.acao === 'COMPRA' ? 'debit' : (l.acao === 'VENDE' ? 'credit' : '')) +
+        '">' + l.acao + '</span></td>' +
+      '<td><span class="mp-badge ' + (l.tipo === 'CALL' ? 'call' : 'put') + '">' + l.tipo + '</span></td>' +
+      '<td>' + (l.symbol || '—') + '</td>' +
+      '<td>' + brl(l.strike) + '</td>' +
+      '<td>' + brl(l.preco) + (l.preco_src ? ' <span style="color:var(--text-secondary);font-size:.72rem;">(' + l.preco_src + ')</span>' : '') + '</td>' +
+      '<td>' + (l.delta != null ? fmt(l.delta, 1) : '—') + '</td>' +
+      '<td>' + (l.exp ? dateBR(l.exp) : '—') + '</td>' +
+      '</tr>';
+  }
+
+  function resumoBoxes(st) {
+    var r = st.resumo || {};
+    var boxes = [];
+    if (r.tipo === 'credito') {
+      boxes.push(['Crédito total', brl(r.valor), 'pos']);
+    } else if (r.tipo === 'debito') {
+      boxes.push(['Débito (custo)', brl(r.valor), 'neg']);
+    }
+    if (r.largura != null) boxes.push(['Largura entre strikes', brl(r.largura), '']);
+    if (r.perda_max != null) boxes.push(['Perda máxima', brl(r.perda_max), 'neg']);
+    if (r.ganho_max != null) boxes.push(['Ganho máximo', brl(r.ganho_max), 'pos']);
+    if (r.risco_alta_zero != null) {
+      boxes.push(['Risco de alta', r.risco_alta_zero ? 'ZERO ✅' : 'AINDA HÁ RISCO ⚠️', r.risco_alta_zero ? 'pos' : 'neg']);
+    }
+    if (r.regra) boxes.push(['Regra do crédito', r.regra, '']);
+    if (r.novo_breakeven_baixa != null) boxes.push(['Novo break-even (baixa)', brl(r.novo_breakeven_baixa), '']);
+    if (r.exp_curta) boxes.push(['Vencimento curto', dateBR(r.exp_curta), '']);
+    if (r.exp_longa) boxes.push(['Vencimento longo', dateBR(r.exp_longa), '']);
+    return boxes;
+  }
+
+  function gregasBoxes(g) {
+    if (!g) return [];
+    return [
+      ['Δ Delta', fmt(g.delta, 1), g.delta >= 0 ? 'pos' : 'neg'],
+      ['Γ Gamma', fmt(g.gamma, 5), ''],
+      ['Θ Theta (dia)', fmt(g.theta, 4), g.theta >= 0 ? 'pos' : 'neg'],
+      ['ν Vega', fmt(g.vega, 4), '']
+    ];
+  }
+
+  function drawPayoff(canvas, points, spot, strike) {
+    var ctx = canvas.getContext('2d');
+    var W = canvas.width = canvas.clientWidth || 600;
+    var H = canvas.height = 220;
+    ctx.clearRect(0, 0, W, H);
+    if (!points || !points.length) return;
+    var pad = {l: 55, r: 15, t: 12, b: 24};
+    var xs = points.map(function(p) { return p.s; });
+    var ys = points.map(function(p) { return p.pnl; });
+    var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+    var minY = Math.min.apply(null, ys.concat([0])), maxY = Math.max.apply(null, ys.concat([0]));
+    if (maxY === minY) { maxY += 1; minY -= 1; }
+    var padY = (maxY - minY) * 0.1;
+    minY -= padY; maxY += padY;
+    function px(x) { return pad.l + (x - minX) / (maxX - minX) * (W - pad.l - pad.r); }
+    function py(y) { return H - pad.b - (y - minY) / (maxY - minY) * (H - pad.t - pad.b); }
+
+    // eixo zero
+    ctx.strokeStyle = 'rgba(148,163,184,.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(pad.l, py(0)); ctx.lineTo(W - pad.r, py(0)); ctx.stroke();
+
+    // spot atual
+    ctx.strokeStyle = 'rgba(124,58,237,.6)';
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath(); ctx.moveTo(px(spot), pad.t); ctx.lineTo(px(spot), H - pad.b); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // curva de payoff
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    points.forEach(function(p, i) {
+      var x = px(p.s), y = py(p.pnl);
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // preenchimento lucro/prejuízo
+    ctx.fillStyle = 'rgba(56,189,248,.08)';
+    ctx.beginPath();
+    ctx.moveTo(px(points[0].s), py(0));
+    points.forEach(function(p) { ctx.lineTo(px(p.s), py(p.pnl)); });
+    ctx.lineTo(px(points[points.length - 1].s), py(0));
+    ctx.closePath();
+    ctx.fill();
+
+    // eixo Y labels
+    ctx.fillStyle = 'rgba(148,163,184,.9)';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'right';
+    [minY, 0, maxY].forEach(function(v) {
+      ctx.fillText(brl(v), pad.l - 6, py(v) + 3);
+    });
+    ctx.textAlign = 'center';
+    ctx.fillText('spot ' + brl(spot), px(spot), H - 6);
+  }
+
+  function strategyCard(st, ctx) {
+    if (!st.ok) {
+      return '<div class="mp-card mp-fail"><div class="mp-head"><h3>#' + (st.id || '?') + ' ' +
+        (st.nome || 'Estratégia') + '</h3></div><div class="mp-body">' +
+        '<div class="mp-empty">⚠️ ' + (st.motivo || 'Não foi possível montar esta estratégia.') + '</div>' +
+        '</div></div>';
+    }
+    var tags = (st.tags || []).map(function(t) {
+      var cls = /CRÉDITO/i.test(t) ? 'credit' : (/DÉBITO|DEBITO/i.test(t) ? 'debit' :
+                (/ZERA RISCO|✅/.test(t) ? 'ok' : (/⚠️|RISCO/.test(t) ? 'warn' : '')));
+      return '<span class="mp-badge ' + cls + '">' + t + '</span>';
+    }).join('');
+
+    var legsHtml = '<table class="mp-legs"><thead><tr>' +
+      '<th>Ação</th><th>Tipo</th><th>Série</th><th>Strike</th><th>Preço</th><th>Δ</th><th>Venc.</th>' +
+      '</tr></thead><tbody>' + (st.legs || []).map(legRow).join('') + '</tbody></table>';
+
+    var boxes = resumoBoxes(st).concat(gregasBoxes(st.gregas));
+    var boxesHtml = '<div class="mp-grid">' + boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
+        '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('') + '</div>';
+
+    var canvasId = 'mp-canvas-' + st.id;
+    var canvasHtml = '<div class="mp-canvas-wrap"><canvas class="mp-payoff" id="' + canvasId + '"></canvas></div>';
+
+    return '<div class="mp-card"><div class="mp-head">' +
+      '<h3>#' + st.id + ' ' + st.nome + '</h3>' +
+      '<div class="mp-tags">' + tags + '</div>' +
+      '</div><div class="mp-body">' +
+      legsHtml + boxesHtml +
+      '<div class="mp-manejo"><strong>Manejo:</strong> ' + st.manejo + '</div>' +
+      canvasHtml +
+      '</div></div>';
+  }
+
+  function payoffPointsForStrategy(st, d) {
+    // Aproxima o payoff no vencimento principal somando o payoff de cada perna (preço de entrada como custo).
+    var qty = d._qty;
+    var lo = d.range.lo, hi = d.range.hi;
+    var n = 41, step = (hi - lo) / (n - 1);
+    var legs = (st.legs || []).map(function(l) {
+      var sign = (l.acao === 'COMPRA') ? 1 : (l.acao === 'VENDE' ? -1 : 0);
+      if (l.acao === 'MANTÉM' || l.acao === 'MANTÉM/VENDE') sign = -1; // put original vendida
+      return {tipo: l.tipo, strike: l.strike, preco: l.preco || 0, sign: sign};
+    });
+    var pts = [];
+    for (var i = 0; i < n; i++) {
+      var s = lo + step * i;
+      var pnl = 0;
+      legs.forEach(function(l) {
+        var intrinsic = l.tipo === 'CALL' ? Math.max(0, s - l.strike) : Math.max(0, l.strike - s);
+        // perna comprada: -preço pago + intrínseco; perna vendida: +preço recebido - intrínseco
+        pnl += l.sign > 0 ? (intrinsic - l.preco) : (l.preco - intrinsic);
+      });
+      pts.push({s: s, pnl: pnl * qty});
+    }
+    return pts;
+  }
+
+  function render(d) {
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span style="color:' + (d.spot_change >= 0 ? '#34d399' : '#f87171') + ';font-size:.85rem;">' +
+          (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
+        : '') +
+      ' · vencimento ' + dateBR(d.exp) + ' (' + d.dc + ' d.c.)';
+
+    d._qty = parseFloat(document.getElementById('mp-qty').value) || 100;
+
+    var h = d.strategies.map(function(st) { return strategyCard(st, d); }).join('');
+    results.innerHTML = h || '<div class="mp-empty">Nenhuma estratégia calculada.</div>';
+
+    d.strategies.forEach(function(st) {
+      if (!st.ok) return;
+      var canvas = document.getElementById('mp-canvas-' + st.id);
+      if (!canvas) return;
+      var pts = payoffPointsForStrategy(st, d);
+      drawPayoff(canvas, pts, d.spot, d.put_original.strike);
+    });
+  }
+
+  function buscar() {
+    var ticker = document.getElementById('mp-ticker').value.trim().toUpperCase();
+    var strike = document.getElementById('mp-strike').value;
+    var premium = document.getElementById('mp-premium').value;
+    var exp = document.getElementById('mp-exp').value;
+    var qty = document.getElementById('mp-qty').value || 100;
+
+    errBox.style.display = 'none';
+    results.innerHTML = '';
+    if (!ticker || !strike || !premium || !exp) {
+      errBox.textContent = '⚠️ Preencha ativo, strike, prêmio e vencimento.';
+      errBox.style.display = 'block';
+      return;
+    }
+
+    loading.style.display = 'block';
+    var qs = new URLSearchParams({strike: strike, premium: premium, exp: exp, qty: qty});
+    fetch('/api/manejo-put/' + encodeURIComponent(ticker) + '?' + qs.toString())
+      .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+      .then(function(res) {
+        loading.style.display = 'none';
+        if (!res.ok || res.j.error) {
+          errBox.textContent = '⚠️ ' + (res.j.error || 'Erro ao buscar defesas.');
+          errBox.style.display = 'block';
+          return;
+        }
+        try {
+          render(res.j);
+        } catch (e) {
+          errBox.textContent = '⚠️ Erro ao montar os resultados: ' + e;
+          errBox.style.display = 'block';
+          if (window.console) console.error(e);
+        }
+      })
+      .catch(function(e) {
+        loading.style.display = 'none';
+        errBox.textContent = '⚠️ Falha na requisição: ' + e;
+        errBox.style.display = 'block';
+        if (window.console) console.error(e);
+      });
+  }
+
+  document.getElementById('mp-buscar').addEventListener('click', buscar);
+})();
+</script>
+{% endblock %}

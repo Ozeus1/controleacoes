@@ -4857,6 +4857,478 @@ def api_busca_operacoes(ticker):
     })
 
 
+@app.route('/manejo-put')
+@login_required
+def manejo_put():
+    """Página: manejo/defesa de PUT vendida — sugere pernas concretas para 5 estratégias."""
+    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    return render_template('manejo_put.html', ranking_vol=ranking_vol, selic=_selic())
+
+
+@app.route('/api/manejo-put/<ticker>')
+@login_required
+def api_manejo_put(ticker):
+    """Recebe os dados de uma PUT vendida (strike, prêmio, vencimento, qtd) e
+    sugere pernas concretas para 5 estratégias de defesa/manejo:
+    #17 Conversão em Trava · #20 Jade Lizard · #21 Conversão Sintética ·
+    #22 Strangle de Defesa · #23 Diagonal de Call em Paralelo."""
+    ticker = ticker.strip().upper()
+    token  = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    try:
+        strike = float(request.args.get('strike', 0))
+        premium = float(request.args.get('premium', 0))
+        qty = int(request.args.get('qty', 100))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Parâmetros inválidos (strike, premium, qty).'}), 400
+    exp = (request.args.get('exp') or '').strip()
+    if strike <= 0 or not exp:
+        return jsonify({'error': 'Informe strike e vencimento da PUT vendida.'}), 400
+
+    from datetime import date as _date
+    try:
+        exp_date = _date.fromisoformat(exp)
+    except ValueError:
+        return jsonify({'error': 'Vencimento inválido.'}), 400
+
+    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    if not spot:
+        return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
+
+    try:
+        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+    except OplabApiError as e:
+        return jsonify({'error': str(e), 'status': e.status_code}), 503
+    except Exception:
+        app.logger.exception('api_manejo_put error for %s', ticker)
+        return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+
+    opt_list = data if isinstance(data, list) else (
+        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+    )
+
+    today = _date.today()
+    calls_by_exp, puts_by_exp = {}, {}
+    for o in opt_list:
+        sym    = str(o.get('symbol') or o.get('ticker') or '').upper()
+        cat    = str(o.get('category') or o.get('type') or '').upper()
+        ostrike = float(o.get('strike') or 0)
+        bid    = float(o.get('bid') or 0)
+        ask    = float(o.get('ask') or 0)
+        close  = float(o.get('close') or 0)
+        vol    = float(o.get('financial_volume') or o.get('volume_financial') or 0)
+        due    = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due:
+            due = due.split('T')[0]
+        if not due or ostrike <= 0:
+            continue
+        try:
+            if _date.fromisoformat(due) < today:
+                continue
+        except ValueError:
+            continue
+        delta_raw = o.get('delta')
+        if delta_raw is None and isinstance(o.get('greeks'), dict):
+            delta_raw = o['greeks'].get('delta')
+        row = {'symbol': sym, 'strike': round(ostrike, 2), 'bid': round(bid, 2),
+               'ask': round(ask, 2), 'close': round(close, 2), 'vol_fin': round(vol, 2),
+               'delta': delta_raw}
+        bucket = puts_by_exp if ('PUT' in cat or cat == 'P') else calls_by_exp
+        bucket.setdefault(due, []).append(row)
+
+    if exp not in calls_by_exp and exp not in puts_by_exp:
+        return jsonify({'error': f'Nenhuma opção encontrada para {ticker} no vencimento {exp}.'}), 404
+
+    selic = _selic()
+    r_cont = math.log(1 + selic / 100.0)
+    T_main = max((exp_date - today).days, 0) / 365.0
+
+    _now_b = now_brt()
+    market_open = (_now_b.weekday() < 5
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+
+    def _eff(rw):
+        bid, ask, last = rw['bid'], rw['ask'], rw['close']
+        last_ok = last if last >= 0.05 else None
+        if not market_open:
+            return last_ok, 'último', last_ok, 'último'
+        b_eff, b_src = (bid, 'bid') if bid >= 0.05 else (last_ok, 'último')
+        a_eff, a_src = (ask, 'ask') if ask >= 0.05 else (last_ok, 'último')
+        if bid >= 0.05 and ask >= 0.05 and last_ok:
+            mid = (bid + ask) / 2
+            if (ask - bid) > max(0.10, 0.25 * mid):
+                b_eff, b_src = last_ok, 'último'
+                a_eff, a_src = last_ok, 'último'
+        return b_eff, b_src, a_eff, a_src
+
+    def _delta_pct(row, is_call, T):
+        """Delta com sinal (CALL positivo, PUT negativo), escala -100..100."""
+        d = row.get('delta')
+        if d is not None:
+            try:
+                d = float(d)
+                d = d * 100 if abs(d) <= 1.5 else d
+                return round(d, 1)
+            except (TypeError, ValueError):
+                pass
+        prem = row['close'] or ((row['bid'] + row['ask']) / 2 if (row['bid'] and row['ask']) else 0)
+        if not prem or T <= 0 or not spot or not row['strike']:
+            return None
+        intrinsic = max(0.0, (spot - row['strike']) if is_call else (row['strike'] - spot))
+        iv = None
+        if prem > intrinsic * 1.005:
+            iv = _implied_vol(spot, row['strike'], T, r_cont, prem, is_call)
+            if iv <= 0.006 or iv >= 4.9:
+                iv = None
+        if iv is None:
+            iv = 0.35
+        sq = math.sqrt(T) if T > 0 else 0.0001
+        d1 = (math.log(spot / row['strike']) + (r_cont + 0.5 * iv * iv) * T) / (iv * sq)
+        nd1 = 0.5 * (1 + math.erf(d1 / math.sqrt(2)))
+        return round((nd1 * 100) if is_call else (nd1 - 1) * 100, 1)
+
+    def _iv_est(rw, is_call, T):
+        prem = rw['close'] or ((rw['bid'] + rw['ask']) / 2 if (rw['bid'] and rw['ask']) else 0)
+        if not prem or T <= 0 or not rw['strike']:
+            return None
+        intr = max(0.0, (spot - rw['strike']) if is_call else (rw['strike'] - spot))
+        if prem <= intr * 1.005:
+            return None
+        iv = _implied_vol(spot, rw['strike'], T, r_cont, prem, is_call)
+        return iv if 0.005 < iv < 4.9 else None
+
+    def _greeks(row, is_call, T, iv_fallback=0.35):
+        """Gregas aproximadas via Black-Scholes: (delta%, gamma, theta_dia, vega)."""
+        if not spot or not row['strike'] or T <= 0:
+            return None
+        prem = row['close'] or ((row['bid'] + row['ask']) / 2 if (row['bid'] and row['ask']) else 0)
+        intrinsic = max(0.0, (spot - row['strike']) if is_call else (row['strike'] - spot))
+        iv = None
+        if prem and prem > intrinsic * 1.005:
+            iv = _implied_vol(spot, row['strike'], T, r_cont, prem, is_call)
+            if iv <= 0.006 or iv >= 4.9:
+                iv = None
+        if iv is None:
+            iv = iv_fallback
+        sq = math.sqrt(T)
+        d1 = (math.log(spot / row['strike']) + (r_cont + 0.5 * iv * iv) * T) / (iv * sq)
+        d2 = d1 - iv * sq
+        nd1 = 0.5 * (1 + math.erf(d1 / math.sqrt(2)))
+        pdf_d1 = math.exp(-0.5 * d1 * d1) / math.sqrt(2 * math.pi)
+        delta = (nd1 * 100) if is_call else (nd1 - 1) * 100
+        gamma = pdf_d1 / (spot * iv * sq)
+        vega = spot * pdf_d1 * sq / 100.0
+        nd2 = 0.5 * (1 + math.erf(d2 / math.sqrt(2)))
+        if is_call:
+            theta = (-(spot * pdf_d1 * iv) / (2 * sq) - r_cont * row['strike'] * math.exp(-r_cont * T) * nd2) / 365.0
+        else:
+            theta = (-(spot * pdf_d1 * iv) / (2 * sq) + r_cont * row['strike'] * math.exp(-r_cont * T) * (1 - nd2)) / 365.0
+        return {'delta': round(delta, 1), 'gamma': round(gamma, 5),
+                'theta': round(theta, 4), 'vega': round(vega, 4), 'iv': round(iv * 100, 1)}
+
+    def _pop_above(be, T, iv):
+        if be <= 0 or T <= 0 or not iv:
+            return None
+        d2v = (math.log(spot / be) + (r_cont - 0.5 * iv * iv) * T) / (iv * math.sqrt(T))
+        return _norm_cdf(d2v) * 100
+
+    def _best_near(rows, target_strike, prefer_below=None, prefer_above=None):
+        """Melhor linha por proximidade de strike, com filtro opcional de lado."""
+        cands = rows
+        if prefer_below is not None:
+            cands = [r for r in cands if r['strike'] <= prefer_below]
+        if prefer_above is not None:
+            cands = [r for r in cands if r['strike'] >= prefer_above]
+        if not cands:
+            return None
+        return min(cands, key=lambda r: abs(r['strike'] - target_strike))
+
+    def _best_delta(rows, is_call, T, target_lo, target_hi):
+        """Melhor linha cujo |delta| cai na faixa alvo (0-100); senão, mais próxima."""
+        scored = []
+        for r in rows:
+            dp = _delta_pct(r, is_call, T)
+            if dp is None:
+                continue
+            adp = abs(dp)
+            in_range = target_lo <= adp <= target_hi
+            dist = 0 if in_range else min(abs(adp - target_lo), abs(adp - target_hi))
+            scored.append((0 if in_range else 1, dist, r, dp))
+        if not scored:
+            return None, None
+        scored.sort(key=lambda t: (t[0], t[1]))
+        return scored[0][2], scored[0][3]
+
+    put_rows_main = sorted(puts_by_exp.get(exp, []), key=lambda r: r['strike'])
+    call_rows_main = sorted(calls_by_exp.get(exp, []), key=lambda r: r['strike'])
+
+    put_original = {
+        'symbol': None, 'strike': strike, 'premium': premium, 'exp': exp,
+        'qty': qty, 'delta': None,
+    }
+    # tenta achar o delta atual da put vendida na cadeia (mesmo strike)
+    cur_put_row = _best_near(put_rows_main, strike) if put_rows_main else None
+    cur_put_delta = _delta_pct(cur_put_row, False, T_main) if cur_put_row else None
+    if cur_put_row:
+        put_original['symbol'] = cur_put_row['symbol']
+        put_original['delta'] = cur_put_delta
+
+    strategies = []
+
+    # ── #17 Conversão em Trava (Put de Proteção Abaixo) ──────────────────────
+    def _strat_17():
+        target = strike * 0.925  # ~7.5% abaixo, dentro da faixa 5-10%
+        cands = [r for r in put_rows_main if r['strike'] < strike]
+        prot = _best_near(cands, target) if cands else None
+        if not prot:
+            return {'id': 17, 'nome': 'Conversão em Trava (Put de Proteção Abaixo)', 'ok': False,
+                    'motivo': 'Nenhuma PUT com strike abaixo disponível neste vencimento.'}
+        _, _, ask_eff, ask_src = _eff(prot)
+        if not ask_eff:
+            return {'id': 17, 'nome': 'Conversão em Trava (Put de Proteção Abaixo)', 'ok': False,
+                    'motivo': 'PUT de proteção sem preço executável (ask).'}
+        debito = ask_eff * qty
+        largura = (strike - prot['strike'])
+        max_loss = largura * qty - premium * qty + debito
+        max_gain = premium * qty - debito
+        g = _greeks(prot, False, T_main) or {}
+        legs = [
+            {'acao': 'MANTÉM', 'tipo': 'PUT', 'symbol': put_original['symbol'] or f'{ticker}(venda original)',
+             'strike': strike, 'preco': premium, 'delta': cur_put_delta},
+            {'acao': 'COMPRA', 'tipo': 'PUT', 'symbol': prot['symbol'], 'strike': prot['strike'],
+             'preco': ask_eff, 'preco_src': ask_src, 'delta': _delta_pct(prot, False, T_main)},
+        ]
+        return {
+            'id': 17, 'nome': 'Conversão em Trava (Put de Proteção Abaixo)', 'ok': True,
+            'tags': ['DEFESA DE PUT VENDIDA', 'DÉBITO PEQUENO', '🧊 FUNCIONA EM QQ VOL'],
+            'legs': legs,
+            'resumo': {
+                'tipo': 'debito', 'valor': round(debito, 2),
+                'largura': round(largura, 2),
+                'perda_max': round(max_loss, 2), 'ganho_max': round(max_gain, 2),
+            },
+            'gregas': {'delta': round((cur_put_delta or 0) - (g.get('delta') or 0), 1),
+                       'gamma': round(-(g.get('gamma') or 0), 5),
+                       'theta': round(-(g.get('theta') or 0), 4),
+                       'vega': round(-(g.get('vega') or 0), 4)},
+            'manejo': 'Vira trava de alta com put — TP em 70–80% do que restar de valor, ou aguardar '
+                      'vencimento; reavaliar desmontar tudo de uma vez.',
+        }
+
+    # ── #20 Jade Lizard (Put Vendida + Trava de Baixa com Calls) ─────────────
+    def _strat_20():
+        if not call_rows_main:
+            return {'id': 20, 'nome': 'Jade Lizard (Put Vendida + Trava de Baixa com Calls)', 'ok': False,
+                    'motivo': 'Sem CALLs disponíveis neste vencimento.'}
+        sell_call, sell_delta = _best_delta(call_rows_main, True, T_main, 15, 20)
+        if not sell_call:
+            return {'id': 20, 'nome': 'Jade Lizard (Put Vendida + Trava de Baixa com Calls)', 'ok': False,
+                    'motivo': 'Nenhuma CALL com delta na faixa 15–20 encontrada.'}
+        buy_cands = [r for r in call_rows_main if r['strike'] > sell_call['strike']]
+        buy_call = _best_near(buy_cands, sell_call['strike'] * 1.03) if buy_cands else None
+        if not buy_call:
+            return {'id': 20, 'nome': 'Jade Lizard (Put Vendida + Trava de Baixa com Calls)', 'ok': False,
+                    'motivo': 'Sem CALL mais OTM disponível para travar o spread.'}
+        _, sc_bid, _, _ = _eff(sell_call)
+        _, _, bc_ask, bc_src = _eff(buy_call)
+        if not sc_bid or not bc_ask:
+            return {'id': 20, 'nome': 'Jade Lizard (Put Vendida + Trava de Baixa com Calls)', 'ok': False,
+                    'motivo': 'Pernas de CALL sem preço executável.'}
+        credito_calls = sc_bid - bc_ask
+        credito_total = premium + credito_calls
+        largura = buy_call['strike'] - sell_call['strike']
+        risco_alta_zero = credito_total >= largura
+        g_c1 = _greeks(sell_call, True, T_main) or {}
+        g_c2 = _greeks(buy_call, True, T_main) or {}
+        legs = [
+            {'acao': 'MANTÉM/VENDE', 'tipo': 'PUT', 'symbol': put_original['symbol'] or f'{ticker}(put)',
+             'strike': strike, 'preco': premium, 'delta': cur_put_delta},
+            {'acao': 'VENDE', 'tipo': 'CALL', 'symbol': sell_call['symbol'], 'strike': sell_call['strike'],
+             'preco': sc_bid, 'delta': sell_delta},
+            {'acao': 'COMPRA', 'tipo': 'CALL', 'symbol': buy_call['symbol'], 'strike': buy_call['strike'],
+             'preco': bc_ask, 'preco_src': bc_src, 'delta': _delta_pct(buy_call, True, T_main)},
+        ]
+        return {
+            'id': 20, 'nome': 'Jade Lizard (Put Vendida + Trava de Baixa com Calls)', 'ok': True,
+            'tags': ['DEFESA/REFORÇO DE PUT VENDIDA', 'CRÉDITO',
+                     '⚖️ ZERA RISCO DE ALTA' if risco_alta_zero else '⚠️ AINDA HÁ RISCO DE ALTA', '🔥 VI ALTA'],
+            'legs': legs,
+            'resumo': {
+                'tipo': 'credito', 'valor': round(credito_total * qty, 2),
+                'largura': round(largura, 2),
+                'risco_alta_zero': risco_alta_zero,
+                'regra': f"Crédito total {credito_total:.2f} {'≥' if risco_alta_zero else '<'} largura {largura:.2f}",
+            },
+            'gregas': {'delta': round((cur_put_delta or 0) - (g_c1.get('delta') or 0) + (g_c2.get('delta') or 0), 1),
+                       'gamma': round(-(g_c1.get('gamma') or 0) + (g_c2.get('gamma') or 0), 5),
+                       'theta': round(-(g_c1.get('theta') or 0) + (g_c2.get('theta') or 0), 4),
+                       'vega': round(-(g_c1.get('vega') or 0) + (g_c2.get('vega') or 0), 4)},
+            'manejo': 'TP ao capturar ≈50% do crédito total; se subir e testar o call spread, rolar a put '
+                      'pra cima (sem risco de alta); se cair e testar a put, rolar o call spread pra baixo; '
+                      'fechar/rolar antes de ~14–21 DTE (gama).',
+        }
+
+    # ── #21 Conversão Sintética / Combo (Compra de CALL no mesmo strike) ─────
+    def _strat_21():
+        same_call = next((r for r in call_rows_main if abs(r['strike'] - strike) < 0.01), None)
+        if not same_call:
+            same_call = _best_near(call_rows_main, strike) if call_rows_main else None
+        if not same_call:
+            return {'id': 21, 'nome': 'Conversão Sintética / Combo (Compra de CALL no mesmo strike)', 'ok': False,
+                    'motivo': 'Nenhuma CALL no strike da put encontrada.'}
+        _, _, ask_eff, ask_src = _eff(same_call)
+        if not ask_eff:
+            return {'id': 21, 'nome': 'Conversão Sintética / Combo (Compra de CALL no mesmo strike)', 'ok': False,
+                    'motivo': 'CALL no strike sem preço executável (ask).'}
+        debito = ask_eff * qty
+        g = _greeks(same_call, True, T_main) or {}
+        legs = [
+            {'acao': 'MANTÉM', 'tipo': 'PUT', 'symbol': put_original['symbol'] or f'{ticker}(put)',
+             'strike': strike, 'preco': premium, 'delta': cur_put_delta},
+            {'acao': 'COMPRA', 'tipo': 'CALL', 'symbol': same_call['symbol'], 'strike': same_call['strike'],
+             'preco': ask_eff, 'preco_src': ask_src, 'delta': _delta_pct(same_call, True, T_main)},
+        ]
+        return {
+            'id': 21, 'nome': 'Conversão Sintética / Combo (Compra de CALL no mesmo strike)', 'ok': True,
+            'tags': ['DEFESA DE PUT VENDIDA', 'ZERA GAMA/VEGA/THETA', '🎯 VIRA POSIÇÃO LINEAR'],
+            'legs': legs,
+            'resumo': {'tipo': 'debito', 'valor': round(debito, 2)},
+            'gregas': {'delta': round((cur_put_delta or 0) + (g.get('delta') or 0), 1),
+                       'gamma': round(-(g.get('gamma') or 0) + (g.get('gamma') or 0), 5),
+                       'theta': round(-(g.get('theta') or 0) + (g.get('theta') or 0), 4),
+                       'vega': round(-(g.get('vega') or 0) + (g.get('vega') or 0), 4)},
+            'manejo': 'Gerenciar como ativo à vista (stop técnico, não de prêmio); comprar put adicional '
+                      'mais OTM pra voltar a ter proteção (collar sintético); desfazer vendendo a call se a vol cair.',
+        }
+
+    # ── #22 Strangle de Defesa (Reforço com Venda de CALL solta) ─────────────
+    def _strat_22():
+        if not call_rows_main:
+            return {'id': 22, 'nome': 'Strangle de Defesa (Reforço com Venda de CALL solta)', 'ok': False,
+                    'motivo': 'Sem CALLs disponíveis neste vencimento.'}
+        sell_call, sell_delta = _best_delta(call_rows_main, True, T_main, 15, 20)
+        if not sell_call:
+            return {'id': 22, 'nome': 'Strangle de Defesa (Reforço com Venda de CALL solta)', 'ok': False,
+                    'motivo': 'Nenhuma CALL com delta na faixa 15–20 encontrada.'}
+        _, sc_bid, _, sc_src = _eff(sell_call)
+        if not sc_bid:
+            return {'id': 22, 'nome': 'Strangle de Defesa (Reforço com Venda de CALL solta)', 'ok': False,
+                    'motivo': 'CALL sem preço executável (bid).'}
+        credito = sc_bid * qty
+        novo_be = strike - premium - sc_bid
+        g = _greeks(sell_call, True, T_main) or {}
+        legs = [
+            {'acao': 'MANTÉM', 'tipo': 'PUT', 'symbol': put_original['symbol'] or f'{ticker}(put)',
+             'strike': strike, 'preco': premium, 'delta': cur_put_delta},
+            {'acao': 'VENDE', 'tipo': 'CALL', 'symbol': sell_call['symbol'], 'strike': sell_call['strike'],
+             'preco': sc_bid, 'preco_src': sc_src, 'delta': sell_delta},
+        ]
+        return {
+            'id': 22, 'nome': 'Strangle de Defesa (Reforço com Venda de CALL solta)', 'ok': True,
+            'tags': ['DEFESA DE PUT VENDIDA', 'CRÉDITO EXTRA', '⚠️ ABRE RISCO NO OUTRO LADO'],
+            'legs': legs,
+            'resumo': {'tipo': 'credito', 'valor': round(credito, 2), 'novo_breakeven_baixa': round(novo_be, 2)},
+            'gregas': {'delta': round((cur_put_delta or 0) - (g.get('delta') or 0), 1),
+                       'gamma': round(-(g.get('gamma') or 0), 5),
+                       'theta': round(-(g.get('theta') or 0), 4),
+                       'vega': round(-(g.get('vega') or 0), 4)},
+            'manejo': 'A mais arriscada das defesas com call; definir stop de preço pra call vendida; '
+                      'preferir transformar em Jade Lizard (#20) comprando proteção acima.',
+        }
+
+    # ── #23 Diagonal de Call em Paralelo (Reforço de Theta/Vega) ─────────────
+    def _strat_23():
+        future_exps = sorted(e for e in calls_by_exp.keys()
+                              if today < _date.fromisoformat(e))
+        short_target = today + timedelta(days=17)
+        long_target = today + timedelta(days=52)
+        short_exp = min(future_exps, key=lambda e: abs((_date.fromisoformat(e) - short_target).days),
+                        default=None) if future_exps else None
+        long_cands = [e for e in future_exps if _date.fromisoformat(e) > (
+            _date.fromisoformat(short_exp) if short_exp else today)]
+        long_exp = min(long_cands, key=lambda e: abs((_date.fromisoformat(e) - long_target).days),
+                       default=None) if long_cands else None
+        if not short_exp or not long_exp:
+            return {'id': 23, 'nome': 'Diagonal de Call em Paralelo (Reforço de Theta/Vega)', 'ok': False,
+                    'motivo': 'Não há dois vencimentos de CALL suficientemente espaçados para montar a diagonal.'}
+        T_short = max((_date.fromisoformat(short_exp) - today).days, 1) / 365.0
+        T_long = max((_date.fromisoformat(long_exp) - today).days, 1) / 365.0
+        short_rows = sorted(calls_by_exp.get(short_exp, []), key=lambda r: r['strike'])
+        long_rows = sorted(calls_by_exp.get(long_exp, []), key=lambda r: r['strike'])
+        short_call, short_delta = _best_delta(short_rows, True, T_short, 40, 50)
+        long_call, long_delta = _best_delta(long_rows, True, T_long, 40, 50)
+        if not short_call or not long_call:
+            return {'id': 23, 'nome': 'Diagonal de Call em Paralelo (Reforço de Theta/Vega)', 'ok': False,
+                    'motivo': 'CALLs com delta 40–50 não encontradas nos vencimentos escolhidos.'}
+        if long_call['strike'] < short_call['strike']:
+            cands = [r for r in long_rows if r['strike'] >= short_call['strike']]
+            alt = _best_near(cands, short_call['strike']) if cands else None
+            if alt:
+                long_call, long_delta = alt, _delta_pct(alt, True, T_long)
+        _, sc_bid, _, sc_src = _eff(short_call)
+        _, _, lc_ask, lc_src = _eff(long_call)
+        if not sc_bid or not lc_ask:
+            return {'id': 23, 'nome': 'Diagonal de Call em Paralelo (Reforço de Theta/Vega)', 'ok': False,
+                    'motivo': 'Pernas da diagonal sem preço executável.'}
+        custo_liquido = (lc_ask - sc_bid) * qty
+        g_s = _greeks(short_call, True, T_short) or {}
+        g_l = _greeks(long_call, True, T_long) or {}
+        legs = [
+            {'acao': 'MANTÉM', 'tipo': 'PUT', 'symbol': put_original['symbol'] or f'{ticker}(put)',
+             'strike': strike, 'preco': premium, 'delta': cur_put_delta},
+            {'acao': 'VENDE', 'tipo': 'CALL', 'symbol': short_call['symbol'], 'strike': short_call['strike'],
+             'preco': sc_bid, 'preco_src': sc_src, 'delta': short_delta, 'exp': short_exp},
+            {'acao': 'COMPRA', 'tipo': 'CALL', 'symbol': long_call['symbol'], 'strike': long_call['strike'],
+             'preco': lc_ask, 'preco_src': lc_src, 'delta': long_delta, 'exp': long_exp},
+        ]
+        return {
+            'id': 23, 'nome': 'Diagonal de Call em Paralelo (Reforço de Theta/Vega)', 'ok': True,
+            'tags': ['DEFESA DE PUT VENDIDA', 'DÉBITO BAIXO OU CUSTO ZERO', '⚙️ COMPENSA THETA/VEGA'],
+            'legs': legs,
+            'resumo': {'tipo': 'debito' if custo_liquido >= 0 else 'credito',
+                       'valor': round(abs(custo_liquido), 2),
+                       'exp_curta': short_exp, 'exp_longa': long_exp},
+            'gregas': {'delta': round((cur_put_delta or 0) - (g_s.get('delta') or 0) + (g_l.get('delta') or 0), 1),
+                       'gamma': round(-(g_s.get('gamma') or 0) + (g_l.get('gamma') or 0), 5),
+                       'theta': round(-(g_s.get('theta') or 0) + (g_l.get('theta') or 0), 4),
+                       'vega': round(-(g_s.get('vega') or 0) + (g_l.get('vega') or 0), 4)},
+            'manejo': 'Rolar a perna curta a cada vencimento mantendo a longa como âncora; TP quando a vol '
+                      'comprimir; acompanhar delta/vega/theta TOTAL da carteira, não só da diagonal.',
+        }
+
+    for fn in (_strat_17, _strat_20, _strat_21, _strat_22, _strat_23):
+        try:
+            strategies.append(fn())
+        except Exception:
+            app.logger.exception('manejo_put strategy error')
+            strategies.append({'ok': False, 'motivo': 'Erro ao calcular esta estratégia.'})
+
+    # ── Payoff da posição original (só a PUT vendida) para referência no gráfico ──
+    lo = spot * 0.7
+    hi = spot * 1.3
+    n_pts = 41
+    step = (hi - lo) / (n_pts - 1)
+    payoff_original = []
+    for i in range(n_pts):
+        s = lo + step * i
+        pnl = (premium - max(0.0, strike - s)) * qty
+        payoff_original.append({'s': round(s, 2), 'pnl': round(pnl, 2)})
+
+    return jsonify({
+        'ticker': ticker,
+        'spot': spot,
+        'spot_change': spot_change,
+        'put_original': put_original,
+        'exp': exp,
+        'dc': (exp_date - today).days,
+        'payoff_original': payoff_original,
+        'range': {'lo': round(lo, 2), 'hi': round(hi, 2)},
+        'strategies': strategies,
+    })
+
+
 @app.route('/lancamento-coberto')
 @login_required
 def lancamento_coberto():

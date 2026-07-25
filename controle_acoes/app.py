@@ -3314,8 +3314,14 @@ _ADV_SPECS = {
     'venda_coberta':  {'legs': [('S', 1, None), ('C', -1, (0.20, 0.35))]},
     'protective_put': {'legs': [('S', 1, None), ('P', 1, (-0.50, -0.40))]},
     'covered_put':    {'legs': [('S', -1, None), ('P', -1, (-0.35, -0.20))]},
-    'jade_lizard':    {'legs': [('P', -1, (-0.25, -0.15)), ('C', -1, (0.20, 0.30)),
-                                ('C', 1, (0.05, 0.12))], 'asc': [1, 2], 'rule': 'jade'},
+    # Jade Lizard: venda 1 PUT OTM (Δ 0,16-0,30, carrega a maior parte do
+    # prêmio) + trava de baixa com calls (venda CALL OTM Δ 0,15-0,20 + compra
+    # CALL mais OTM ainda). A regra de crédito ≥ largura do call spread (ver
+    # rule='jade' abaixo) é quem realmente decide a montagem — a faixa de
+    # delta da call comprada fica ampla (0,03-0,15) para não descartar
+    # combinações válidas antes mesmo de testar a regra.
+    'jade_lizard':    {'legs': [('P', -1, (-0.30, -0.16)), ('C', -1, (0.15, 0.20)),
+                                ('C', 1, (0.03, 0.15))], 'asc': [1, 2], 'rule': 'jade'},
     # Slide Estrutural: melhora a venda coberta tradicional trocando a "ação
     # comprada" por uma CALL comprada mais no dinheiro (A) + trava de alta
     # estreita até B ("asa") + venda de CALL em C (o strike que seria usado

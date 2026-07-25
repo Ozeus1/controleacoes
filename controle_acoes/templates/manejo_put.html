@@ -70,7 +70,8 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
       {% for s in saved %}
       <div class="mp-tbtn" id="mp-saved-{{ s.id }}" style="display:inline-flex;align-items:center;gap:.5rem;padding:.3rem .6rem;
            border:1px solid #475569;border-radius:6px;font-size:.8rem;color:#e2e8f0;background:var(--hover-bg,#334155);">
-        <a href="{{ url_for('simulacao_edit', id=s.id) }}" target="_blank" style="color:inherit;text-decoration:none;">
+        <a href="{{ url_for('simulacao_edit', id=s.id) }}" target="_blank" style="color:inherit;text-decoration:none;"
+           onclick="this.href='{{ url_for('simulacao_edit', id=s.id) }}?back='+encodeURIComponent(encodeURIComponent(location.href));">
           <strong>{{ s.name|replace('[Manejo Put] ', '') }}</strong>
           <span style="color:var(--text-secondary);"> — {{ s.underlying }} · {{ s.created_at.strftime('%d/%m/%Y') }}</span>
         </a>
@@ -499,7 +500,11 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
     }
     var legs = mpReadLegs(stId);
     var net = 0;
+    // A perna MANTÉM/MANTÉM-VENDE é a put já vendida — o prêmio dela já
+    // entrou no caixa no passado, então o resumo financeiro do card mostra
+    // só a movimentação NOVA (as pernas que estão sendo adicionadas agora).
     legs.forEach(function(l) {
+      if (l.acao === 'MANTÉM' || l.acao === 'MANTÉM/VENDE') return;
       net += (l.acao === 'COMPRA') ? -(l.preco || 0) : (l.preco || 0);
     });
     var box = document.getElementById('mp-boxes-' + stId);
@@ -509,7 +514,7 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
       firstVal.textContent = brl(Math.abs(net) * qty);
       firstVal.className = 'metric-value ' + (net >= 0 ? 'pos' : 'neg');
       var lbl = box.querySelector('.metric-label');
-      if (lbl) lbl.textContent = net >= 0 ? 'Crédito total' : 'Débito (custo)';
+      if (lbl) lbl.textContent = net >= 0 ? 'Crédito da nova movimentação' : 'Débito da nova movimentação';
     }
   };
 
@@ -595,7 +600,8 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
                     .sort(function(a, b) { return a.strike - b.strike; });
 
     function go(op, A, B, C) {
-      var p = {st: '1', op: op, ativo: ativo, qty: qty, exp: mpLastData.exp, spot: spot.toFixed(2)};
+      var p = {st: '1', op: op, ativo: ativo, qty: qty, exp: mpLastData.exp, spot: spot.toFixed(2),
+               back: encodeURIComponent(location.href)};
       p.at = A.ticker; p.ak = A.strike.toFixed(2); p.ap = A.premium.toFixed(2);
       p.bt = B.ticker; p.bk = B.strike.toFixed(2); p.bp = B.premium.toFixed(2);
       if (C) { p.ct2 = C.ticker; p.ck2 = C.strike.toFixed(2); p.cp2 = C.premium.toFixed(2); }

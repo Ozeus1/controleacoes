@@ -38,7 +38,17 @@
 <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1.2rem;">
     <h2 style="margin:0;">📈 Simulação de Opções</h2>
     <a href="{{ url_for('simulacao_new') }}" class="btn btn-primary btn-sm">+ Nova Simulação</a>
+    <a href="#" id="sim-back-btn" class="btn btn-secondary btn-sm" style="display:none;">← Voltar para a estratégia</a>
 </div>
+<script>
+(function() {
+    var back = new URLSearchParams(location.search).get('back');
+    if (!back) return;
+    var btn = document.getElementById('sim-back-btn');
+    btn.href = decodeURIComponent(back);
+    btn.style.display = '';
+})();
+</script>
 
 {# ── 1. Lista de simulações salvas (topo, largura total) ── #}
 {% if sims %}

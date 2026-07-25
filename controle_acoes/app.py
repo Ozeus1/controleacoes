@@ -5210,10 +5210,15 @@ def api_manejo_put(ticker):
                      '⚖️ ZERA RISCO DE ALTA' if risco_alta_zero else '⚠️ AINDA HÁ RISCO DE ALTA', '🔥 VI ALTA'],
             'legs': legs,
             'resumo': {
-                'tipo': 'credito', 'valor': round(credito_total * qty, 2),
+                # 'valor' é só a movimentação NOVA (trava de calls) — o prêmio
+                # da put já foi recebido no passado e não entra aqui. A regra
+                # de risco-zero, porém, precisa do crédito TOTAL (put + calls),
+                # que é quem realmente decide se a alta fica sem risco.
+                'tipo': 'credito' if credito_calls >= 0 else 'debito',
+                'valor': round(abs(credito_calls) * qty, 2),
                 'largura': round(largura, 2),
                 'risco_alta_zero': risco_alta_zero,
-                'regra': f"Crédito total {credito_total:.2f} {'≥' if risco_alta_zero else '<'} largura {largura:.2f}",
+                'regra': f"Crédito total (put + calls) {credito_total:.2f} {'≥' if risco_alta_zero else '<'} largura {largura:.2f}",
             },
             'gregas': {'delta': round((cur_put_delta or 0) - (g_c1.get('delta') or 0) + (g_c2.get('delta') or 0), 1),
                        'gamma': round(-(g_c1.get('gamma') or 0) + (g_c2.get('gamma') or 0), 5),
@@ -5352,54 +5357,80 @@ def api_manejo_put(ticker):
                       'comprimir; acompanhar delta/vega/theta TOTAL da carteira, não só da diagonal.',
         }
 
-    # ── #24 Trava de Proteção Total (PUT + CALL "no pozinho") ────────────────
+    # ── #24 Trava de Proteção Total (Strangle Vendido + Calls "no pozinho") ──
     def _strat_24():
-        """Mantém a put vendida + compra 1 PUT OTM distante e 1 CALL OTM distante,
-        ambas baratas (delta baixo), travando o risco dos dois lados por um custo
-        pequeno — como um 'seguro catastrófico' contra gap de alta ou de baixa."""
+        """Mantém a put vendida + VENDE 1 CALL OTM (forma um strangle vendido
+        com a put) + compra 1 PUT e 1 CALL bem OTM ("no pozinho") travando as
+        duas pontas. A CALL vendida ajuda a pagar o custo das duas proteções
+        — o resultado costuma ficar em crédito ou custo bem baixo — mantendo
+        o risco travado (nunca ilimitado) dos dois lados."""
         if not put_rows_main or not call_rows_main:
-            return {'id': 24, 'nome': 'Trava de Proteção Total (Put + Call "no pozinho")', 'ok': False,
+            return {'id': 24, 'nome': 'Trava de Proteção Total (Strangle Vendido + Calls "no pozinho")', 'ok': False,
                     'motivo': 'Sem PUTs e/ou CALLs suficientes neste vencimento.'}
+        sell_call, sell_call_delta = _best_delta(call_rows_main, True, T_main, 15, 20)
+        if not sell_call:
+            return {'id': 24, 'nome': 'Trava de Proteção Total (Strangle Vendido + Calls "no pozinho")', 'ok': False,
+                    'motivo': 'Nenhuma CALL com delta na faixa 15–20 encontrada.'}
+        sc_bid, sc_src, _, _ = _eff(sell_call)
+        if not sc_bid:
+            return {'id': 24, 'nome': 'Trava de Proteção Total (Strangle Vendido + Calls "no pozinho")', 'ok': False,
+                    'motivo': 'CALL vendida sem preço executável (bid).'}
         put_cands = [r for r in put_rows_main if r['strike'] < strike]
-        prot_put, prot_put_delta = _best_delta(put_cands, False, T_main, 5, 15)
-        prot_call, prot_call_delta = _best_delta(call_rows_main, True, T_main, 5, 15)
+        call_cands = [r for r in call_rows_main if r['strike'] > sell_call['strike']]
+        # Traz a proteção mais OTM possível (delta bem baixo), mas sempre traz
+        # alguma — mesmo que só o strike mais distante disponível na cadeia
+        # (ao menos 1 strike acima/abaixo da perna vendida correspondente).
+        prot_put, prot_put_delta = _best_delta(put_cands, False, T_main, 2, 10)
+        prot_call, prot_call_delta = _best_delta(call_cands, True, T_main, 2, 10)
         if not prot_put or not prot_call:
-            return {'id': 24, 'nome': 'Trava de Proteção Total (Put + Call "no pozinho")', 'ok': False,
-                    'motivo': 'Não há PUT e CALL baratas (delta 5–15) suficientemente OTM neste vencimento.'}
+            return {'id': 24, 'nome': 'Trava de Proteção Total (Strangle Vendido + Calls "no pozinho")', 'ok': False,
+                    'motivo': 'Não há PUT e CALL suficientemente OTM disponíveis para travar as pontas neste vencimento.'}
         _, _, put_ask, put_src = _eff(prot_put)
         _, _, call_ask, call_src = _eff(prot_call)
         if not put_ask or not call_ask:
-            return {'id': 24, 'nome': 'Trava de Proteção Total (Put + Call "no pozinho")', 'ok': False,
+            return {'id': 24, 'nome': 'Trava de Proteção Total (Strangle Vendido + Calls "no pozinho")', 'ok': False,
                     'motivo': 'Pernas de proteção sem preço executável (ask).'}
-        custo_total = (put_ask + call_ask) * qty
+        credito_novo = (sc_bid - put_ask - call_ask) * qty
         largura_baixa = strike - prot_put['strike']
-        perda_max_baixa = largura_baixa * qty - premium * qty + custo_total
+        largura_alta = prot_call['strike'] - sell_call['strike']
+        credito_total = (premium + sc_bid - put_ask - call_ask) * qty
+        perda_max_baixa = largura_baixa * qty - credito_total
+        perda_max_alta = largura_alta * qty - credito_total
+        g_sc = _greeks(sell_call, True, T_main) or {}
         g_p = _greeks(prot_put, False, T_main) or {}
         g_c = _greeks(prot_call, True, T_main) or {}
         legs = [
             {'acao': 'MANTÉM', 'tipo': 'PUT', 'symbol': put_original['symbol'] or f'{ticker}(put)',
              'strike': strike, 'preco': premium, 'delta': cur_put_delta},
+            {'acao': 'VENDE', 'tipo': 'CALL', 'symbol': sell_call['symbol'], 'strike': sell_call['strike'],
+             'preco': sc_bid, 'preco_src': sc_src, 'delta': sell_call_delta},
             {'acao': 'COMPRA', 'tipo': 'PUT', 'symbol': prot_put['symbol'], 'strike': prot_put['strike'],
              'preco': put_ask, 'preco_src': put_src, 'delta': prot_put_delta},
             {'acao': 'COMPRA', 'tipo': 'CALL', 'symbol': prot_call['symbol'], 'strike': prot_call['strike'],
              'preco': call_ask, 'preco_src': call_src, 'delta': prot_call_delta},
         ]
         return {
-            'id': 24, 'nome': 'Trava de Proteção Total (Put + Call "no pozinho")', 'ok': True,
-            'tags': ['DEFESA DE PUT VENDIDA', 'DÉBITO BAIXO', '🛡️ TRAVA OS DOIS LADOS'],
+            'id': 24, 'nome': 'Trava de Proteção Total (Strangle Vendido + Calls "no pozinho")', 'ok': True,
+            'tags': ['DEFESA DE PUT VENDIDA', 'CRÉDITO EXTRA PARA PAGAR AS TRAVAS', '🛡️ TRAVA OS DOIS LADOS'],
             'legs': legs,
             'resumo': {
-                'tipo': 'debito', 'valor': round(custo_total, 2),
-                'largura': round(largura_baixa, 2),
-                'perda_max': round(perda_max_baixa, 2),
+                # 'valor' = só a movimentação NOVA (venda da call + as duas
+                # proteções); a put original já foi liquidada no passado.
+                'tipo': 'credito' if credito_novo >= 0 else 'debito',
+                'valor': round(abs(credito_novo), 2),
+                'largura': round(max(largura_baixa, largura_alta), 2),
+                'perda_max': round(max(perda_max_baixa, perda_max_alta), 2),
             },
-            'gregas': {'delta': round((cur_put_delta or 0) - (g_p.get('delta') or 0) - (g_c.get('delta') or 0), 1),
-                       'gamma': round(-(g_p.get('gamma') or 0) - (g_c.get('gamma') or 0), 5),
-                       'theta': round(-(g_p.get('theta') or 0) - (g_c.get('theta') or 0), 4),
-                       'vega': round(-(g_p.get('vega') or 0) - (g_c.get('vega') or 0), 4)},
-            'manejo': 'Seguro barato contra gap forte em qualquer direção — perda máxima passa a ser travada '
-                      'nos dois lados pelo custo das duas pontas; se o mercado ficar parado, o prêmio pago '
-                      'vira decaimento (theta negativo) e pode valer a pena fechar antes do vencimento.',
+            'gregas': {'delta': round((cur_put_delta or 0) - (g_sc.get('delta') or 0)
+                                       - (g_p.get('delta') or 0) - (g_c.get('delta') or 0), 1),
+                       'gamma': round(-(g_sc.get('gamma') or 0) - (g_p.get('gamma') or 0) - (g_c.get('gamma') or 0), 5),
+                       'theta': round(-(g_sc.get('theta') or 0) - (g_p.get('theta') or 0) - (g_c.get('theta') or 0), 4),
+                       'vega': round(-(g_sc.get('vega') or 0) - (g_p.get('vega') or 0) - (g_c.get('vega') or 0), 4)},
+            'manejo': 'A venda da CALL ajuda a pagar (ou até zerar/creditar) o custo das duas proteções — mas '
+                      'diferente do Strangle de Defesa (#22), aqui o risco nunca fica ilimitado, pois as duas '
+                      'pontas "no pozinho" travam o resultado nos dois lados. Perda máxima passa a ser travada; '
+                      'se o mercado ficar parado, o prêmio líquido vira ganho/decaimento (theta); acompanhar a '
+                      'CALL vendida de perto (é a perna com mais risco de teste antes do vencimento).',
         }
 
     # ── #25 Straddle no Strike da Put + Trava Total "no Pozinho" ─────────────
@@ -5422,18 +5453,22 @@ def api_manejo_put(ticker):
         if not same_call_bid:
             return {'id': 25, 'nome': 'Straddle no Strike da Put + Trava Total ("no Pozinho")', 'ok': False,
                     'motivo': 'CALL no strike sem preço executável (bid).'}
+        # Traz a proteção mais OTM possível (delta bem baixo), mas sempre traz
+        # alguma — mesmo que só o strike mais distante disponível na cadeia
+        # (ao menos 1 strike de distância da perna vendida correspondente).
         put_cands = [r for r in put_rows_main if r['strike'] < strike]
         call_cands = [r for r in call_rows_main if r['strike'] > same_call['strike']]
-        prot_put, prot_put_delta = _best_delta(put_cands, False, T_main, 5, 15)
-        prot_call, prot_call_delta = _best_delta(call_cands, True, T_main, 5, 15)
+        prot_put, prot_put_delta = _best_delta(put_cands, False, T_main, 2, 10)
+        prot_call, prot_call_delta = _best_delta(call_cands, True, T_main, 2, 10)
         if not prot_put or not prot_call:
             return {'id': 25, 'nome': 'Straddle no Strike da Put + Trava Total ("no Pozinho")', 'ok': False,
-                    'motivo': 'Não há PUT e CALL baratas (delta 5–15) suficientemente OTM neste vencimento.'}
+                    'motivo': 'Não há PUT e CALL suficientemente OTM disponíveis para travar as pontas neste vencimento.'}
         _, _, put_ask, put_src = _eff(prot_put)
         _, _, call_ask, call_src = _eff(prot_call)
         if not put_ask or not call_ask:
             return {'id': 25, 'nome': 'Straddle no Strike da Put + Trava Total ("no Pozinho")', 'ok': False,
                     'motivo': 'Pernas de proteção sem preço executável (ask).'}
+        credito_novo = (same_call_bid - put_ask - call_ask) * qty
         credito_total = (premium + same_call_bid - put_ask - call_ask) * qty
         largura_baixa = strike - prot_put['strike']
         largura_alta = prot_call['strike'] - same_call['strike']
@@ -5457,7 +5492,12 @@ def api_manejo_put(ticker):
             'tags': ['DEFESA/REFORÇO DE PUT VENDIDA', 'CRÉDITO MÁXIMO', '🛡️ RISCO TRAVADO DOS DOIS LADOS'],
             'legs': legs,
             'resumo': {
-                'tipo': 'credito', 'valor': round(credito_total, 2),
+                # 'valor' = só a movimentação NOVA (venda da call + as duas
+                # proteções); o prêmio da put já foi recebido no passado.
+                # 'perda_max' já é a perda REAL da posição toda (por isso
+                # continua descontando o crédito total, incluindo a put).
+                'tipo': 'credito' if credito_novo >= 0 else 'debito',
+                'valor': round(abs(credito_novo), 2),
                 'largura': round(max(largura_baixa, largura_alta), 2),
                 'perda_max': round(max(perda_max_baixa, perda_max_alta), 2),
             },
@@ -5478,7 +5518,7 @@ def api_manejo_put(ticker):
                    21: 'Conversão Sintética / Combo (Compra de CALL no mesmo strike)',
                    22: 'Strangle de Defesa (Reforço com Venda de CALL solta)',
                    23: 'Diagonal de Call em Paralelo (Reforço de Theta/Vega)',
-                   24: 'Trava de Proteção Total (Put + Call "no pozinho")',
+                   24: 'Trava de Proteção Total (Strangle Vendido + Calls "no pozinho")',
                    25: 'Straddle no Strike da Put + Trava Total ("no Pozinho")'}
     for sid, fn in ((17, _strat_17), (20, _strat_20), (21, _strat_21), (22, _strat_22), (23, _strat_23),
                     (24, _strat_24), (25, _strat_25)):

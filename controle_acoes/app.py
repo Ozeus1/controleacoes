@@ -3322,6 +3322,13 @@ _ADV_SPECS = {
     # combinações válidas antes mesmo de testar a regra.
     'jade_lizard':    {'legs': [('P', -1, (-0.30, -0.16)), ('C', -1, (0.15, 0.20)),
                                 ('C', 1, (0.03, 0.15))], 'asc': [1, 2], 'rule': 'jade'},
+    # Jade Lizard Turbinada: mesma montagem, mas com o DOBRO de travas de
+    # call por put vendida (proporção 1 put : 2 travas) — aumenta bastante
+    # o crédito recebido. A regra de crédito ≥ custo máx. da trava continua
+    # valendo (agora sobre o dobro de contratos de call), então mesmo numa
+    # explosão de alta o resultado fica perto de zero, nunca em prejuízo.
+    'jade_lizard_turbo': {'legs': [('P', -1, (-0.30, -0.16)), ('C', -2, (0.15, 0.20)),
+                                   ('C', 2, (0.03, 0.15))], 'asc': [1, 2], 'rule': 'jade'},
     # Slide Estrutural: melhora a venda coberta tradicional trocando a "ação
     # comprada" por uma CALL comprada mais no dinheiro (A) + trava de alta
     # estreita até B ("asa") + venda de CALL em C (o strike que seria usado
@@ -4465,16 +4472,26 @@ def api_busca_operacoes(ticker):
                     return [None]
                 pool = calls_ok if tp == 'C' else puts_ok
                 need = 'ask' if q > 0 else 'bid'
-                out = []
+                out, out_near = [], []
                 for rw in pool:
                     if rw[need] < 0.02:
                         continue
                     dl = _leg_delta(rw, tp == 'C')
-                    if dl is None or not (win[0] <= dl <= win[1]):
+                    if dl is None:
                         continue
-                    out.append((abs(dl - (win[0] + win[1]) / 2), rw, dl))
+                    dist = abs(dl - (win[0] + win[1]) / 2)
+                    if win[0] <= dl <= win[1]:
+                        out.append((dist, rw, dl))
+                    else:
+                        out_near.append((dist, rw, dl))
                 out.sort(key=lambda x: x[0])
-                return [(rw, dl) for _, rw, dl in out[:4]]
+                if out:
+                    return [(rw, dl) for _, rw, dl in out[:4]]
+                # Nenhum strike caiu exatamente na janela recomendada (comum em
+                # ativos com poucos strikes/vencimentos) — usa os mais próximos
+                # dela em vez de descartar o vencimento inteiro sem oportunidade.
+                out_near.sort(key=lambda x: x[0])
+                return [(rw, dl) for _, rw, dl in out_near[:4]]
 
             import itertools as _it
             cand_lists = [_leg_cands(tp, q, win) for tp, q, win in legs]
@@ -4549,11 +4566,20 @@ def api_busca_operacoes(ticker):
                         continue
                     if rule == 'low_cost' and cost > 0.05 * spot:
                         continue
+                    jade_zero_risk = None
                     if rule == 'jade':
-                        # crédito >= largura da trava de CALL → sem risco na alta
-                        wc = opt_ks[2] - opt_ks[1]
-                        if net <= 0 or net < wc:
+                        # crédito >= custo máximo da trava de CALL na alta → sem
+                        # risco na alta. Custo máx. = largura × qtd. de contratos
+                        # da perna vendida (a versão "turbinada" usa 2 travas por
+                        # put, então o custo dobra). Não descarta mais quando não
+                        # zera: mostra a montagem mesmo assim (risco residual
+                        # pequeno na alta pode valer a pena) — só exige crédito
+                        # líquido positivo na operação toda.
+                        call_sell_qty = abs(legs[1][1])
+                        wc = (opt_ks[2] - opt_ks[1]) * call_sell_qty
+                        if net <= 0:
                             continue
+                        jade_zero_risk = net >= wc
                     if rule == 'bwb':
                         # broken wing: asa superior mais espaçada que a inferior
                         if opt_ks[2] - opt_ks[1] <= opt_ks[1] - opt_ks[0]:
@@ -4587,8 +4613,14 @@ def api_busca_operacoes(ticker):
                         'ratio':     ratio,
                         'bes':       [round(b, 2) for b in bes],
                         'center_dist': round((opt_ks[0] - spot) / spot * 100, 1),
+                        'jade_zero_risk': jade_zero_risk,
                     })
-            rows.sort(key=lambda x: (not x['is_credit'], -(x['ratio'] or 0), -x['net']))
+            if rule == 'jade':
+                # Prioriza quem realmente zera o risco de alta (crédito ≥ largura);
+                # entre os que não zeram, o maior crédito líquido primeiro.
+                rows.sort(key=lambda x: (not (x['jade_zero_risk'] or False), -x['net']))
+            else:
+                rows.sort(key=lambda x: (not x['is_credit'], -(x['ratio'] or 0), -x['net']))
             rows = _diversify(rows, lambda x: x['legs'][0]['sym'], per_key=2, limit=10)
 
         elif op == 'boi_put':

@@ -92,6 +92,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="protective_put">🛡 Protective Put</button>
       <button class="ba-obtn" data-op="covered_put">📉 Covered Put</button>
       <button class="ba-obtn" data-op="jade_lizard">🦎 Jade Lizard</button>
+      <button class="ba-obtn" data-op="jade_lizard_turbo">🦎🔥 Jade Lizard Turbinada (1 put : 2 travas)</button>
       <button class="ba-obtn" data-op="slide_estrutural">🛝 Slide Estrutural</button>
       <button class="ba-obtn" data-op="iron_butterfly">🦋💰 Iron Butterfly</button>
       <button class="ba-obtn" data-op="stock_repair">🩹 Reparo (1×2)</button>
@@ -226,6 +227,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     protective_put: '🛡 Protective Put — compra a ação + compra PUT Δ −0,40 a −0,50 (seguro contra quedas)',
     covered_put:    '📉 Covered Put — vende a ação (aluguel) + vende PUT OTM Δ −0,20 a −0,35 (renda em mercado de baixa)',
     jade_lizard:    '🦎 Jade Lizard — venda PUT OTM (Δ ≈ −0,20) + trava de baixa com CALL; crédito ≥ largura da trava → SEM risco na alta',
+    jade_lizard_turbo: '🦎🔥 Jade Lizard Turbinada — mesma montagem, mas com o DOBRO de travas de CALL por PUT vendida (1:2); crédito bem maior, mas exige crédito ≥ custo máx. da trava (agora em dobro) pra continuar sem risco na alta',
     slide_estrutural: '🛝 Slide Estrutural — compra CALL Δ 0,55–0,70 + venda CALL Δ 0,35–0,50 ("asa") + venda CALL Δ 0,15–0,30 (strike da venda coberta tradicional); custo ~zero, amplia o range de lucro da venda coberta',
     stock_repair:   '🩹 Reparo de Posição (Stock Repair 1×2) — compra 1 CALL ATM (Δ 0,45–0,60) + vende 2 CALLs OTM (Δ 0,20–0,35) a custo ~ZERO; dobra a recuperação até o strike vendido para ação NO PREJUÍZO em carteira (2ª venda coberta pela ação)',
     ratio_spread:   '➗ Ratio Spread CALL 1×2 — compra 1 CALL ITM (Δ 0,55–0,72) + vende 2 CALLs OTM (Δ 0,20–0,35); débito baixo ou crédito, lucro máx. no strike vendido; risco ILIMITADO acima (front ratio — ponta nua)',
@@ -344,7 +346,10 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         '<td>' + r.legs.map(function(l) { return l.k != null ? fmt(l.k) : 'ação'; }).join(' / ') + '</td>' +
         '<td>' + r.legs.map(function(l) { return l.delta != null ? fmt(l.delta, 0) : '—'; }).join(' / ') + '</td>' +
         '<td><span class="ba-badge ' + (r.is_credit ? 'credit' : 'debit') + '">' + r.montagem +
-             ' ' + brl(Math.abs(r.net)) + '</span></td>' +
+             ' ' + brl(Math.abs(r.net)) + '</span>' +
+             (r.jade_zero_risk === true ? ' <span class="ba-badge credit" title="Crédito ≥ custo máx. da trava">⚖️ risco alta ZERO</span>' :
+              r.jade_zero_risk === false ? ' <span class="ba-badge debit" title="Crédito menor que o custo máx. da trava">⚠️ risco residual na alta</span>' : '') +
+             '</td>' +
         '<td class="pos"><strong>' + (r.gain_unl ? 'ILIMITADO 🚀' : (r.est ? '≈ ' : '') + brl(r.max_gain)) + '</strong></td>' +
         '<td class="neg">' + (r.loss_unl ? 'ILIMITADA ⚠️' : (r.est ? '≈ ' : '') + brl(r.max_loss)) + '</td>' +
         '<td>' + (r.ratio != null ? fmt(r.ratio) : (r.gain_unl ? '∞' : '—')) + '</td>' +

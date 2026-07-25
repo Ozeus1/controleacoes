@@ -5131,7 +5131,7 @@ def api_manejo_put(ticker):
         if not buy_call:
             return {'id': 20, 'nome': 'Jade Lizard (Put Vendida + Trava de Baixa com Calls)', 'ok': False,
                     'motivo': 'Sem CALL mais OTM disponível para travar o spread.'}
-        _, sc_bid, _, _ = _eff(sell_call)
+        sc_bid, _, _, _ = _eff(sell_call)
         _, _, bc_ask, bc_src = _eff(buy_call)
         if not sc_bid or not bc_ask:
             return {'id': 20, 'nome': 'Jade Lizard (Put Vendida + Trava de Baixa com Calls)', 'ok': False,
@@ -5212,7 +5212,7 @@ def api_manejo_put(ticker):
         if not sell_call:
             return {'id': 22, 'nome': 'Strangle de Defesa (Reforço com Venda de CALL solta)', 'ok': False,
                     'motivo': 'Nenhuma CALL com delta na faixa 15–20 encontrada.'}
-        _, sc_bid, _, sc_src = _eff(sell_call)
+        sc_bid, sc_src, _, _ = _eff(sell_call)
         if not sc_bid:
             return {'id': 22, 'nome': 'Strangle de Defesa (Reforço com Venda de CALL solta)', 'ok': False,
                     'motivo': 'CALL sem preço executável (bid).'}
@@ -5267,7 +5267,7 @@ def api_manejo_put(ticker):
             alt = _best_near(cands, short_call['strike']) if cands else None
             if alt:
                 long_call, long_delta = alt, _delta_pct(alt, True, T_long)
-        _, sc_bid, _, sc_src = _eff(short_call)
+        sc_bid, sc_src, _, _ = _eff(short_call)
         _, _, lc_ask, lc_src = _eff(long_call)
         if not sc_bid or not lc_ask:
             return {'id': 23, 'nome': 'Diagonal de Call em Paralelo (Reforço de Theta/Vega)', 'ok': False,

@@ -39,6 +39,13 @@
 canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
 .mp-empty{color:var(--text-secondary);font-size:.85rem;padding:.6rem 0;}
 .mp-fail{border-color:rgba(248,113,113,.4);}
+.mp-legs input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
+  border-radius:4px;padding:.2rem .35rem;font-size:.78rem;}
+.mp-legs input.mp-in-strike,.mp-legs input.mp-in-preco{width:75px;text-align:right;}
+.mp-legs input.mp-in-symbol{width:105px;text-transform:uppercase;}
+.mp-legs input.mp-in-exp{width:130px;}
+.mp-toolbar{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.7rem;}
+.mp-toolbar button{white-space:nowrap;}
 </style>
 {% endblock %}
 
@@ -122,17 +129,18 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
     return p[2] + '/' + p[1] + '/' + p[0];
   }
 
-  function legRow(l) {
-    var acaoCls = (l.acao === 'COMPRA') ? 'debit' : (l.acao === 'VENDE' ? 'credit' : '');
-    return '<tr>' +
+  function legRow(l, stId, idx, defaultExp) {
+    var expVal = l.exp || defaultExp || '';
+    return '<tr class="mp-leg-row" data-idx="' + idx + '">' +
       '<td><span class="mp-badge ' + (l.acao === 'COMPRA' ? 'debit' : (l.acao === 'VENDE' ? 'credit' : '')) +
         '">' + l.acao + '</span></td>' +
       '<td><span class="mp-badge ' + (l.tipo === 'CALL' ? 'call' : 'put') + '">' + l.tipo + '</span></td>' +
-      '<td>' + (l.symbol || '—') + '</td>' +
-      '<td>' + brl(l.strike) + '</td>' +
-      '<td>' + brl(l.preco) + (l.preco_src ? ' <span style="color:var(--text-secondary);font-size:.72rem;">(' + l.preco_src + ')</span>' : '') + '</td>' +
+      '<td><input class="mp-in-symbol" data-f="symbol" value="' + (l.symbol || '') + '"></td>' +
+      '<td><input class="mp-in-strike" data-f="strike" value="' + fmt(l.strike) + '" onchange="mpRecalcCard(' + stId + ')"></td>' +
+      '<td><input class="mp-in-preco" data-f="preco" value="' + fmt(l.preco) + '" onchange="mpRecalcCard(' + stId + ')">' +
+        (l.preco_src ? ' <span style="color:var(--text-secondary);font-size:.72rem;">(' + l.preco_src + ')</span>' : '') + '</td>' +
       '<td>' + (l.delta != null ? fmt(l.delta, 1) : '—') + '</td>' +
-      '<td>' + (l.exp ? dateBR(l.exp) : '—') + '</td>' +
+      '<td><input type="date" class="mp-in-exp" data-f="exp" value="' + expVal + '"></td>' +
       '</tr>';
   }
 
@@ -238,18 +246,32 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
       return '<span class="mp-badge ' + cls + '">' + t + '</span>';
     }).join('');
 
-    var legsHtml = '<table class="mp-legs"><thead><tr>' +
+    var defaultExp = (ctx && ctx.exp) || '';
+    var legsHtml = '<table class="mp-legs" id="mp-legs-' + st.id + '"><thead><tr>' +
       '<th>Ação</th><th>Tipo</th><th>Série</th><th>Strike</th><th>Preço</th><th>Δ</th><th>Venc.</th>' +
-      '</tr></thead><tbody>' + (st.legs || []).map(legRow).join('') + '</tbody></table>';
+      '</tr></thead><tbody>' + (st.legs || []).map(function(l, i) { return legRow(l, st.id, i, defaultExp); }).join('') +
+      '</tbody></table>';
 
     var boxes = resumoBoxes(st).concat(gregasBoxes(st.gregas));
-    var boxesHtml = '<div class="mp-grid">' + boxes.map(function(b) {
+    var boxesHtml = '<div class="mp-grid" id="mp-boxes-' + st.id + '">' + boxes.map(function(b) {
       return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
         '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
     }).join('') + '</div>';
 
     var canvasId = 'mp-canvas-' + st.id;
     var canvasHtml = '<div class="mp-canvas-wrap"><canvas class="mp-payoff" id="' + canvasId + '"></canvas></div>';
+
+    var toolbarHtml = '<div class="mp-toolbar">' +
+      '<button type="button" class="btn btn-sm" style="background:#10b981;color:white;" ' +
+      'onclick="mpAtualizarCard(' + st.id + ')" id="mp-atualiza-' + st.id + '" ' +
+      'title="Atualiza os prêmios via OpLab (pregão aberto: bid/ask executável; fechado: último negócio)">⟳ Atualizar</button>' +
+      '<button type="button" class="btn btn-sm" style="background:#7c3aed;color:white;" ' +
+      'onclick="mpAbrirEmCalculos(' + st.id + ')" ' +
+      'title="Abre esta estrutura pré-preenchida na página Cálculos de Opções">🧮 Abrir em Cálculos</button>' +
+      '<button type="button" class="btn btn-sm" style="background:#0ea5e9;color:white;" ' +
+      'onclick="mpEditarEmCadeia(' + st.id + ')" ' +
+      'title="Abre o editor da Cadeia de Opções com estas pernas">🔗 Editar em Cadeia de Opções</button>' +
+      '</div>';
 
     var saveHtml = '<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem;">' +
       '<button type="button" class="btn btn-sm btn-primary" onclick="mpSaveStrategy(' + st.id + ', false)">💾 Salvar</button>' +
@@ -263,10 +285,42 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
       '<h3>#' + st.id + ' ' + st.nome + '</h3>' +
       '<div class="mp-tags">' + tags + '</div>' +
       '</div><div class="mp-body">' +
-      legsHtml + boxesHtml +
+      legsHtml + toolbarHtml + boxesHtml +
       '<div class="mp-manejo"><strong>Manejo:</strong> ' + st.manejo + '</div>' +
       canvasHtml + saveHtml +
       '</div></div>';
+  }
+
+  function parseVal(s) {
+    if (typeof s === 'number') return s;
+    return parseFloat(String(s || '0').replace(/\./g, '').replace(',', '.')) || 0;
+  }
+
+  // Lê o estado atual das pernas de um card: parte de st.legs (acao/tipo/delta
+  // fixos pela lógica da estratégia) e sobrepõe os valores editados nos inputs
+  // (symbol/strike/preco/exp) — assim "Salvar", "Atualizar" e o payoff sempre
+  // refletem o que está na tela, não só o que a API sugeriu originalmente.
+  function mpReadLegs(stId) {
+    var st = (mpLastData.strategies || []).filter(function(s) { return s.id === stId; })[0];
+    if (!st) return [];
+    var table = document.getElementById('mp-legs-' + stId);
+    var rows = table ? table.querySelectorAll('.mp-leg-row') : [];
+    return st.legs.map(function(l, i) {
+      var out = {acao: l.acao, tipo: l.tipo, symbol: l.symbol, strike: l.strike,
+                 preco: l.preco, preco_src: l.preco_src, delta: l.delta, exp: l.exp};
+      var row = rows[i];
+      if (row) {
+        var symEl = row.querySelector('[data-f=symbol]');
+        var skEl  = row.querySelector('[data-f=strike]');
+        var prEl  = row.querySelector('[data-f=preco]');
+        var expEl = row.querySelector('[data-f=exp]');
+        if (symEl && symEl.value) out.symbol = symEl.value.trim().toUpperCase();
+        if (skEl && skEl.value)   out.strike = parseVal(skEl.value);
+        if (prEl && prEl.value)   out.preco  = parseVal(prEl.value);
+        if (expEl && expEl.value) out.exp    = expEl.value;
+      }
+      return out;
+    });
   }
 
   function payoffPointsForStrategy(st, d) {
@@ -274,7 +328,8 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
     var qty = d._qty;
     var lo = d.range.lo, hi = d.range.hi;
     var n = 41, step = (hi - lo) / (n - 1);
-    var legs = (st.legs || []).map(function(l) {
+    var srcLegs = mpLastData ? mpReadLegs(st.id) : (st.legs || []);
+    var legs = srcLegs.map(function(l) {
       var sign = (l.acao === 'COMPRA') ? 1 : (l.acao === 'VENDE' ? -1 : 0);
       if (l.acao === 'MANTÉM' || l.acao === 'MANTÉM/VENDE') sign = -1; // put original vendida
       return {tipo: l.tipo, strike: l.strike, preco: l.preco || 0, sign: sign};
@@ -389,7 +444,7 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
       nome: nome,
       exp: mpLastData.exp,
       qty: mpLastData._qty,
-      legs: st.legs,
+      legs: mpReadLegs(stId),
       option_id: producao ? mpOptionId : null,
       producao: !!producao
     };
@@ -419,6 +474,162 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
       .catch(function(e) {
         if (msgEl) msgEl.textContent = '⚠️ falha na requisição: ' + e;
       });
+  };
+
+  // Recalcula o payoff (e o crédito/débito total mostrado no 1º box) a partir
+  // dos valores atuais dos inputs — chamado ao editar strike/preço na tabela.
+  window.mpRecalcCard = function(stId) {
+    if (!mpLastData) return;
+    var st = mpLastData.strategies.filter(function(s) { return s.id === stId; })[0];
+    if (!st || !st.ok) return;
+    var canvas = document.getElementById('mp-canvas-' + stId);
+    if (canvas) {
+      var pts = payoffPointsForStrategy(st, mpLastData);
+      drawPayoff(canvas, pts, mpLastData.spot, mpLastData.put_original.strike);
+    }
+    var legs = mpReadLegs(stId);
+    var net = 0;
+    legs.forEach(function(l) {
+      net += (l.acao === 'COMPRA') ? -(l.preco || 0) : (l.preco || 0);
+    });
+    var box = document.getElementById('mp-boxes-' + stId);
+    var firstVal = box ? box.querySelector('.metric-value') : null;
+    if (firstVal) {
+      var qty = mpLastData._qty;
+      firstVal.textContent = brl(Math.abs(net) * qty);
+      firstVal.className = 'metric-value ' + (net >= 0 ? 'pos' : 'neg');
+      var lbl = box.querySelector('.metric-label');
+      if (lbl) lbl.textContent = net >= 0 ? 'Crédito total' : 'Débito (custo)';
+    }
+  };
+
+  // ── Atualizar prêmios via OpLab (mesma cadeia usada na busca original) ────
+  window.mpAtualizarCard = function(stId) {
+    var btn = document.getElementById('mp-atualiza-' + stId);
+    var orig = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = '⟳ buscando…'; }
+    var ticker = mpLastData.ticker;
+    fetch('/api/rolagem-opcoes/cadeia/' + encodeURIComponent(ticker))
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        if (d.error || !d.options) throw new Error(d.error || 'cadeia vazia');
+        var byTicker = {};
+        d.options.forEach(function(o) { byTicker[o.symbol] = o; });
+        var mktOpen = (function() {
+          try {
+            var parts = new Intl.DateTimeFormat('pt-BR', {timeZone: 'America/Sao_Paulo',
+              hour12: false, weekday: 'short', hour: '2-digit', minute: '2-digit'}).formatToParts(new Date());
+            var map = {}; parts.forEach(function(p) { map[p.type] = p.value; });
+            var wd = (map.weekday || '').toLowerCase();
+            if (wd.indexOf('sáb') === 0 || wd.indexOf('sab') === 0 || wd.indexOf('dom') === 0) return false;
+            var hm = parseInt(map.hour, 10) * 60 + parseInt(map.minute, 10);
+            return hm >= 600 && hm < 990;
+          } catch (e) { return false; }
+        })();
+        var table = document.getElementById('mp-legs-' + stId);
+        var rows = table ? table.querySelectorAll('.mp-leg-row') : [];
+        var nOk = 0, nMiss = 0;
+        rows.forEach(function(row) {
+          var symEl = row.querySelector('[data-f=symbol]');
+          var tk = symEl ? symEl.value.trim().toUpperCase() : '';
+          if (!tk) return;
+          var o = byTicker[tk];
+          if (!o) { nMiss++; return; }
+          var isSell = row.cells[0].textContent.indexOf('VENDE') !== -1 ||
+                       row.cells[0].textContent.indexOf('MANTÉM') !== -1;
+          var prem;
+          if (mktOpen) {
+            var lado = isSell ? o.bid : o.ask;
+            prem = lado > 0 ? lado : (o.close > 0 ? o.close : (o.mid || o.bid || o.ask || 0));
+          } else {
+            prem = o.close > 0 ? o.close : (o.mid || o.bid || o.ask || 0);
+          }
+          if (prem > 0) {
+            var prEl = row.querySelector('[data-f=preco]');
+            if (prEl) prEl.value = fmt(prem);
+            nOk++;
+          }
+        });
+        mpRecalcCard(stId);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '✓ ' + nOk + ' atualizada(s)' + (nMiss ? ' · ' + nMiss + ' não encontrada(s)' : '');
+          setTimeout(function() { btn.textContent = orig; }, 4000);
+        }
+      })
+      .catch(function(e) {
+        if (btn) { btn.disabled = false; btn.textContent = orig; }
+        alert('Erro ao atualizar: ' + (e.message || e));
+      });
+  };
+
+  // ── Abrir em Cálculos de Opções ──────────────────────────────────────────
+  // A aba "Estruturas" de Cálculos só cobre um catálogo fixo de modelos de
+  // 2-4 pernas (fence, seagull, travas, vaca, boi, condor, straddle/strangle
+  // vendidos...). Detectamos aqui se as pernas do card batem com algum desses
+  // moldes; se não baterem (caso comum no Manejo de Put: 1 PUT vendida +
+  // 1-2 CALLs/PUTs de proteção, formato que não existe no catálogo), caímos
+  // para o editor genérico da Cadeia de Opções — igual ao comportamento de
+  // "Abrir em Cálculos" na tela Simulação de Opções.
+  window.mpAbrirEmCalculos = function(stId) {
+    var legs = mpReadLegs(stId);
+    if (!legs.length) return;
+    var ativo = mpLastData.ticker, qty = mpLastData._qty, spot = mpLastData.spot;
+    var calls = legs.filter(function(l) { return l.tipo === 'CALL'; })
+                     .map(function(l) { return {ticker: l.symbol, strike: l.strike, premium: l.preco,
+                                                 side: l.acao === 'COMPRA' ? 'BUY' : 'SELL'}; })
+                     .sort(function(a, b) { return a.strike - b.strike; });
+    var puts = legs.filter(function(l) { return l.tipo === 'PUT'; })
+                    .map(function(l) { return {ticker: l.symbol, strike: l.strike, premium: l.preco,
+                                                side: (l.acao === 'COMPRA') ? 'BUY' : 'SELL'}; })
+                    .sort(function(a, b) { return a.strike - b.strike; });
+
+    function go(op, A, B, C) {
+      var p = {st: '1', op: op, ativo: ativo, qty: qty, exp: mpLastData.exp, spot: spot.toFixed(2)};
+      p.at = A.ticker; p.ak = A.strike.toFixed(2); p.ap = A.premium.toFixed(2);
+      p.bt = B.ticker; p.bk = B.strike.toFixed(2); p.bp = B.premium.toFixed(2);
+      if (C) { p.ct2 = C.ticker; p.ck2 = C.strike.toFixed(2); p.cp2 = C.premium.toFixed(2); }
+      window.open('/venda_puts?' + new URLSearchParams(p).toString() + '#estrutura', '_blank');
+    }
+
+    // Jade Lizard / Strangle de Defesa: 1 PUT vendida + trava de baixa com CALLs
+    // → não tem molde próprio; a parte de CALLs isolada é uma trava de baixa
+    if (puts.length === 1 && calls.length === 2 &&
+        calls[0].side === 'SELL' && calls[1].side === 'BUY') {
+      go('trava_credito_baixa', calls[0], calls[1]); return;
+    }
+    if (puts.length === 1 && calls.length === 1 && calls[0].side === 'SELL') {
+      // Strangle de Defesa (venda de call solta) — mais próximo do strangle vendido
+      go('strangle_vendido', calls[0], puts[0]); return;
+    }
+    if (puts.length === 2 && calls.length === 0) {
+      var pLo = puts[0], pHi = puts[1];
+      if (pHi.side === 'SELL' && pLo.side === 'BUY') { go('trava_baixa', pHi, pLo); return; }
+    }
+    if (puts.length === 1 && calls.length === 1 && calls[0].side === 'BUY') {
+      // Conversão Sintética: put vendida + call comprada no mesmo strike — sem molde
+    }
+
+    if (confirm('Esta combinação de pernas não corresponde a nenhum modelo da aba Estruturas ' +
+                '(travas, straddle, strangle, etc.).\n\nDeseja abri-la no editor da Cadeia de Opções?')) {
+      mpEditarEmCadeia(stId);
+    }
+  };
+
+  // ── Editar no simulador da Cadeia de Opções (aceita qualquer estrutura) ──────
+  window.mpEditarEmCadeia = function(stId) {
+    var legs = mpReadLegs(stId);
+    if (!legs.length) return;
+    var qty = mpLastData._qty;
+    var parts = legs.map(function(l) {
+      var side = (l.acao === 'COMPRA') ? 'BUY' : 'SELL';
+      return [l.symbol || '', l.tipo, side, qty, (l.preco || 0).toFixed(2),
+              (l.strike || 0).toFixed(2), l.exp || mpLastData.exp].join(',');
+    });
+    var st = mpLastData.strategies.filter(function(s) { return s.id === stId; })[0];
+    var nome = '#' + stId + ' ' + (st ? st.nome : '') + ' ' + mpLastData.ticker;
+    var q = new URLSearchParams({sim: '1', ativo: mpLastData.ticker, nome: nome, legs: parts.join('|')});
+    window.open('/cadeia-opcoes?' + q.toString(), '_blank');
   };
 
   window.mpDeleteSaved = function(simId) {

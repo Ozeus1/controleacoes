@@ -277,6 +277,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     <option value="vaca_put">🐄 Vaca de Baixa com PUTs (+1 alta, −2 médias, +1 baixa)</option>
                     <option value="straddle_vendido">⚖️ Straddle vendido (venda CALL + PUT no mesmo strike)</option>
                     <option value="strangle_vendido">🔗 Strangle vendido (venda CALL OTM + PUT OTM)</option>
+                    <option value="manejo_put">🛟 Manejo de Put (defesa/reforço de put vendida)</option>
                 </select>
             </div>
             <div>
@@ -1059,7 +1060,13 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         boi_put:             { legs: ['PUT — VENDA 1× (ATM/ITM, financia)', 'PUT — COMPRA 2× (próx. OTM)', null], needSpot: false },
         straddle_vendido:    { legs: ['CALL — VENDA (strike central)', 'PUT — VENDA (mesmo strike)', null], needSpot: false },
         strangle_vendido:    { legs: ['CALL — VENDA (OTM, acima)', 'PUT — VENDA (OTM, abaixo)', null], needSpot: false },
-        vaca_put:            { legs: ['PUT — COMPRA 1× (K alta)', 'PUT — VENDA 2× (K média)', 'PUT — COMPRA 1× (K baixa)'], needSpot: false }
+        vaca_put:            { legs: ['PUT — COMPRA 1× (K alta)', 'PUT — VENDA 2× (K média)', 'PUT — COMPRA 1× (K baixa)'], needSpot: false },
+        // Manejo de Put: motor genérico (2-4 pernas, PUT/CALL livres) usado
+        // pelas 7 estratégias de defesa de put vendida (#17-#25). A perna A é
+        // sempre a PUT MANTIDA (já vendida no passado, sem custo novo); os
+        // rótulos e o número de pernas reais vêm da querystring (MP_LEGS),
+        // preenchidos por window.mpAbrirEmCalculos() no Manejo de Put.
+        manejo_put:          { legs: ['PUT — MANTIDA (já vendida)', 'Perna nova', 'Perna nova', 'Perna nova'], needSpot: false }
     };
 
     // Estruturas genéricas de CALLs em 3 ou 4 strikes: quantidades das pernas
@@ -1072,16 +1079,30 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         condor:           [1, -1, -1, 1]
     };
 
+    // Manejo de Put: pernas A-D com tipo (PUT/CALL) e sinal LIVRES por perna
+    // (diferente do GEN3, que é só CALLs). MP_LEGS é preenchido via
+    // querystring por window.mpAbrirEmCalculos() (?mp_legs=P:-1|C:-1|C:1) —
+    // um item por perna presente, na ordem A,B,C,D. A perna A (PUT mantida,
+    // sinal -1) não entra no custo/crédito novo, só no payoff.
+    var MP_LEGS = null;  // [{t:'P'|'C', s:-1|1}, ...] ou null se não veio da querystring
+
     window.estruturaOpChanged = function() {
         var op  = document.getElementById('e-op').value;
         var cfg = E_CFG[op];
+        // manejo_put tem número de pernas variável (2 a 4, conforme a
+        // estratégia de origem) — usa MP_LEGS pra decidir quantas mostrar,
+        // com rótulos dinâmicos (MP_LEG_LABELS) em vez dos fixos do E_CFG.
+        var isMP = op === 'manejo_put' && MP_LEGS;
         ['A', 'B', 'C', 'D'].forEach(function(l, i) {
             var fs  = document.getElementById('e-leg' + l);
             var lbl = document.getElementById('e-leg' + l + '-lbl');
-            if (cfg.legs[i]) {
+            var show = isMP ? (i < MP_LEGS.length) : !!cfg.legs[i];
+            if (show) {
                 fs.style.display = '';
-                lbl.textContent = cfg.legs[i];
-                lbl.style.color = cfg.legs[i].indexOf('PUT') === 0 ? 'var(--danger-color)' : 'var(--accent-color,#3b82f6)';
+                var text = isMP ? (window.MP_LEG_LABELS && window.MP_LEG_LABELS[i] || cfg.legs[i]) : cfg.legs[i];
+                lbl.textContent = text;
+                lbl.style.color = (isMP ? MP_LEGS[i].t === 'P' : cfg.legs[i].indexOf('PUT') === 0)
+                    ? 'var(--danger-color)' : 'var(--accent-color,#3b82f6)';
             } else {
                 fs.style.display = 'none';
             }
@@ -1103,8 +1124,9 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         var panel = document.getElementById('e-metrics');
         var grid  = document.getElementById('e-metrics-grid');
 
-        var needC = !!E_CFG[op].legs[2];
-        var needD = !!E_CFG[op].legs[3];
+        var isMPCalc = op === 'manejo_put' && MP_LEGS;
+        var needC = isMPCalc ? MP_LEGS.length > 2 : !!E_CFG[op].legs[2];
+        var needD = isMPCalc ? MP_LEGS.length > 3 : !!E_CFG[op].legs[3];
         var ok = aK && aP != null && bK && bP != null && expS &&
                  (!needC || (cK && cP != null)) &&
                  (!needD || (dK && dP != null)) &&
@@ -1301,6 +1323,43 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 ['Asa PUT / asa CALL', fmtBRL(wPutIC) + ' / ' + fmtBRL(wCallIC), ''],
                 ['Prazo (dias corridos)', dc + ' d.c.', '']
             ];
+        } else if (op === 'manejo_put' && MP_LEGS) {
+            // Motor genérico: pernas A-D com tipo (P/C) e sinal próprios,
+            // vindos de MP_LEGS. A perna A (put mantida) tem sinal -1 fixo
+            // e NÃO entra no custo/crédito "novo" — só no payoff, pois o
+            // prêmio dela já foi recebido no passado.
+            var ksMP = [aK, bK, cK, dK].slice(0, MP_LEGS.length);
+            var psMP = [aP, bP, cP, dP].slice(0, MP_LEGS.length);
+            var netNovoMP = 0;   // >0 crédito, <0 débito — só das pernas novas (B, C, D)
+            for (var mi = 1; mi < MP_LEGS.length; mi++) netNovoMP += (-MP_LEGS[mi].s) * psMP[mi];
+            function payMP(S) {
+                var v = 0;
+                for (var mj = 0; mj < MP_LEGS.length; mj++) {
+                    var intr = MP_LEGS[mj].t === 'C' ? Math.max(0, S - ksMP[mj]) : Math.max(0, ksMP[mj] - S);
+                    v += MP_LEGS[mj].s > 0 ? (intr - psMP[mj]) : (psMP[mj] - intr);
+                }
+                return v;
+            }
+            var ptsMP = [0].concat(ksMP).concat([Math.max.apply(null, ksMP) * 1.6]);
+            var valsMP = ptsMP.map(payMP);
+            var besMP = [];
+            for (var mk = 0; mk < ptsMP.length - 1; mk++) {
+                var mv0 = valsMP[mk], mv1 = valsMP[mk + 1];
+                if (((mv0 < 0 && mv1 >= 0) || (mv0 >= 0 && mv1 < 0)) && Math.abs(mv1 - mv0) > 1e-9) {
+                    besMP.push(ptsMP[mk] + (0 - mv0) * (ptsMP[mk + 1] - ptsMP[mk]) / (mv1 - mv0));
+                }
+            }
+            var slopeMP = MP_LEGS.reduce(function(a, l) { return a + (l.t === 'C' ? l.s : 0); }, 0);
+            var maxGMP = slopeMP > 0 ? null : Math.max.apply(null, valsMP);
+            var maxLMP = Math.max(0, -Math.min.apply(null, valsMP));
+            boxes = [
+                [netNovoMP >= 0 ? 'Crédito da nova movimentação' : 'Débito da nova movimentação',
+                    fmtBRL(Math.abs(netNovoMP) * qty), netNovoMP >= 0 ? 'positive' : 'negative'],
+                ['Lucro máximo', maxGMP == null ? 'ILIMITADO 🚀' : fmtBRL(maxGMP * qty), 'positive'],
+                ['Perda máxima', fmtBRL(maxLMP * qty), 'negative'],
+                ['Breakevens', besMP.length ? besMP.map(function(b) { return fmtBRL(b); }).join(' · ') : '—', ''],
+                ['Prazo (dias corridos)', dc + ' d.c.', '']
+            ];
         } else if (GEN3[op]) {
             // Estrutura genérica de CALLs em 3 ou 4 strikes (A=K baixa … última = K alta)
             var qsG = GEN3[op];
@@ -1480,6 +1539,23 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                        {t: 'PUT',  s: -1, q: 1, K: bK, prem: bP},
                        {t: 'CALL', s: -1, q: 1, K: cK, prem: cP},
                        {t: 'CALL', s: 1,  q: 1, K: dK, prem: dP}];
+        } else if (op === 'manejo_put' && MP_LEGS) {
+            var ksMP2 = [aK, bK, cK, dK].slice(0, MP_LEGS.length);
+            var psMP2 = [aP, bP, cP, dP].slice(0, MP_LEGS.length);
+            payoffFn = function(S) {
+                var v = 0;
+                for (var mj2 = 0; mj2 < MP_LEGS.length; mj2++) {
+                    var intr2 = MP_LEGS[mj2].t === 'C' ? Math.max(0, S - ksMP2[mj2]) : Math.max(0, ksMP2[mj2] - S);
+                    v += MP_LEGS[mj2].s > 0 ? (intr2 - psMP2[mj2]) : (psMP2[mj2] - intr2);
+                }
+                return qty * v;
+            };
+            legsArr = [];
+            for (var ml = 0; ml < MP_LEGS.length; ml++) {
+                var tipoLbl = MP_LEGS[ml].t === 'C' ? 'CALL' : 'PUT';
+                mk(ksMP2[ml], tipoLbl + ' ' + (MP_LEGS[ml].s > 0 ? 'c' : 'v') + (ml === 0 ? ' (mantida)' : ''));
+                legsArr.push({t: tipoLbl, s: MP_LEGS[ml].s, q: 1, K: ksMP2[ml], prem: psMP2[ml]});
+            }
         } else if (GEN3[op]) {
             var qsP  = GEN3[op];
             var ksP  = [aK, bK, cK, dK].slice(0, qsP.length);
@@ -1608,6 +1684,17 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         setV('e-b-t', (q.get('bt') || '').toUpperCase()); setV('e-b-k', q.get('bk')); setV('e-b-p', q.get('bp'));
         setV('e-c-t', (q.get('ct2') || '').toUpperCase()); setV('e-c-k', q.get('ck2')); setV('e-c-p', q.get('cp2'));
         setV('e-d-t', (q.get('dt') || '').toUpperCase());  setV('e-d-k', q.get('dk'));  setV('e-d-p', q.get('dp'));
+
+        // Manejo de Put: pernas com tipo/sinal livres, vindas de mp_legs
+        // (ex.: "P:-1|C:-1|C:1") e rótulos de mp_labels (separados por "|").
+        if (q.get('op') === 'manejo_put' && q.get('mp_legs')) {
+            MP_LEGS = q.get('mp_legs').split('|').map(function(s) {
+                var parts = s.split(':');
+                return {t: parts[0], s: parseInt(parts[1], 10) || -1};
+            });
+            var mpLabels = q.get('mp_labels');
+            window.MP_LEG_LABELS = mpLabels ? mpLabels.split('|') : null;
+        }
         estruturaOpChanged();
     })();
 

@@ -615,57 +615,36 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
   };
 
   // ── Abrir em Cálculos de Opções ──────────────────────────────────────────
-  // A aba "Estruturas" de Cálculos só cobre um catálogo fixo de modelos de
-  // 2-4 pernas (fence, seagull, travas, vaca, boi, condor, straddle/strangle
-  // vendidos...). Detectamos aqui se as pernas do card batem com algum desses
-  // moldes; se não baterem (caso comum no Manejo de Put: 1 PUT vendida +
-  // 1-2 CALLs/PUTs de proteção, formato que não existe no catálogo), caímos
-  // para o editor genérico da Cadeia de Opções — igual ao comportamento de
-  // "Abrir em Cálculos" na tela Simulação de Opções.
+  // Usa o modelo genérico "Manejo de Put" da aba Estruturas (op=manejo_put):
+  // aceita 2-4 pernas com tipo/sinal livres, incluindo a perna MANTÉM (put já
+  // vendida) sem custo novo — cobre fielmente as 7 estratégias sem perder
+  // pernas e sem inverter compra/venda (bugs do antigo pattern-matching
+  // contra os moldes fixos de 2 pernas da aba, que nunca acomodavam a put
+  // original junto de uma trava de calls).
   window.mpAbrirEmCalculos = function(stId) {
     var legs = mpReadLegs(stId);
     if (!legs.length) return;
     var ativo = mpLastData.ticker, qty = mpLastData._qty, spot = mpLastData.spot;
-    var calls = legs.filter(function(l) { return l.tipo === 'CALL'; })
-                     .map(function(l) { return {ticker: l.symbol, strike: l.strike, premium: l.preco,
-                                                 side: l.acao === 'COMPRA' ? 'BUY' : 'SELL'}; })
-                     .sort(function(a, b) { return a.strike - b.strike; });
-    var puts = legs.filter(function(l) { return l.tipo === 'PUT'; })
-                    .map(function(l) { return {ticker: l.symbol, strike: l.strike, premium: l.preco,
-                                                side: (l.acao === 'COMPRA') ? 'BUY' : 'SELL'}; })
-                    .sort(function(a, b) { return a.strike - b.strike; });
-
-    function go(op, A, B, C) {
-      var p = {st: '1', op: op, ativo: ativo, qty: qty, exp: mpLastData.exp, spot: spot.toFixed(2),
-               back: encodeURIComponent(location.href)};
-      p.at = A.ticker; p.ak = A.strike.toFixed(2); p.ap = A.premium.toFixed(2);
-      p.bt = B.ticker; p.bk = B.strike.toFixed(2); p.bp = B.premium.toFixed(2);
-      if (C) { p.ct2 = C.ticker; p.ck2 = C.strike.toFixed(2); p.cp2 = C.premium.toFixed(2); }
-      window.open('/venda_puts?' + new URLSearchParams(p).toString() + '#estrutura', '_blank');
-    }
-
-    // Só existe molde de 2 pernas na aba Estruturas quando as DUAS pernas do
-    // card formam toda a operação (#17: trava de baixa pura com 2 PUTs).
-    // Estratégias com 3 pernas (Jade Lizard, Strangle de Defesa, Conversão
-    // Sintética etc.) sempre incluem a perna MANTÉM/MANTÉM-VENDE da put
-    // original — forçá-las num molde de 2 pernas jogaria essa perna fora
-    // (era o bug: "Abrir em Cálculos" levava só as calls, perdendo a put já
-    // vendida). Nesses casos vai direto pro editor de Cadeia, que aceita
-    // qualquer número de pernas sem descartar nenhuma.
-    if (puts.length === 2 && calls.length === 0) {
-      // trava_baixa espera A = PUT COMPRA (K maior) e B = PUT VENDA (K menor)
-      // — busca pelo LADO de cada perna, não pela ordem de strike (senão o
-      // "Abrir em Cálculos" inverte compra/venda quando a comprada tem strike
-      // menor que a vendida, como no #17 Conversão em Trava).
-      var buyLeg = puts.filter(function(l) { return l.side === 'BUY'; })[0];
-      var sellLeg = puts.filter(function(l) { return l.side === 'SELL'; })[0];
-      if (buyLeg && sellLeg) { go('trava_baixa', buyLeg, sellLeg); return; }
-    }
-
-    if (confirm('Esta combinação de pernas não corresponde a nenhum modelo da aba Estruturas ' +
-                '(travas, straddle, strangle, etc.) sem perder pernas.\n\nDeseja abri-la no editor da Cadeia de Opções (mantém todas as pernas)?')) {
-      mpEditarEmCadeia(stId);
-    }
+    // slots seguem os nomes de querystring esperados por venda_puts.html:
+    // A e B usam sufixo direto (at/ak/ap, bt/bk/bp), C usa "2" (ct2/ck2/cp2)
+    // por uma convenção legada da tela, D usa dt/dk/dp.
+    var slotKeys = [['at', 'ak', 'ap'], ['bt', 'bk', 'bp'], ['ct2', 'ck2', 'cp2'], ['dt', 'dk', 'dp']];
+    var p = {st: '1', op: 'manejo_put', ativo: ativo, qty: qty, exp: mpLastData.exp,
+             spot: spot.toFixed(2), back: encodeURIComponent(location.href)};
+    var mpLegs = [], mpLabels = [];
+    legs.slice(0, 4).forEach(function(l, i) {
+      var keys = slotKeys[i];
+      p[keys[0]] = l.symbol;
+      p[keys[1]] = (l.strike || 0).toFixed(2);
+      p[keys[2]] = (l.preco || 0).toFixed(2);
+      var sign = (l.acao === 'COMPRA') ? 1 : -1;
+      mpLegs.push((l.tipo === 'CALL' ? 'C' : 'P') + ':' + sign);
+      mpLabels.push((l.tipo === 'CALL' ? 'CALL' : 'PUT') + ' — ' + (sign > 0 ? 'COMPRA' : 'VENDA') +
+                    (i === 0 ? ' (mantida, já vendida)' : ' (nova)') + ' K=' + l.strike);
+    });
+    p.mp_legs = mpLegs.join('|');
+    p.mp_labels = mpLabels.join('|');
+    window.open('/venda_puts?' + new URLSearchParams(p).toString() + '#estrutura', '_blank');
   };
 
   // ── Editar no simulador da Cadeia de Opções (aceita qualquer estrutura) ──────

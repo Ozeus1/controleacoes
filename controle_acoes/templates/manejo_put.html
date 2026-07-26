@@ -46,6 +46,42 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
 .mp-legs input.mp-in-exp{width:130px;}
 .mp-toolbar{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.7rem;}
 .mp-toolbar button{white-space:nowrap;}
+.mp-legs-wrap{overflow-x:auto;margin-bottom:.7rem;-webkit-overflow-scrolling:touch;}
+.mp-legs-wrap .mp-legs{margin-bottom:0;}
+
+/* ── Celular / PWA (telas estreitas) ─────────────────────────────────────── */
+@media (max-width:768px){
+  #mp-form{grid-template-columns:1fr 1fr;gap:.5rem;}
+  #mp-form input{font-size:16px;padding:.4rem .5rem;}
+  #mp-form label:last-child{grid-column:1/-1;}
+  #mp-buscar{width:100%;}
+  #mp-spot{font-size:.82rem;}
+  .card{padding:.8rem .7rem;}
+  .mp-card{margin-top:.8rem;}
+  .mp-head{padding:.5rem .6rem;gap:.4rem;}
+  .mp-head h3{font-size:.85rem;}
+  .mp-body{padding:.6rem .6rem .8rem;}
+  .mp-badge{font-size:.64rem;padding:.06rem .35rem;}
+  .mp-legs{font-size:.74rem;}
+  .mp-legs th,.mp-legs td{padding:.25rem .35rem;}
+  .mp-legs input{font-size:16px;padding:.2rem .3rem;}
+  .mp-legs input.mp-in-symbol{width:88px;}
+  .mp-legs input.mp-in-strike,.mp-legs input.mp-in-preco{width:62px;}
+  .mp-legs input.mp-in-exp{width:118px;}
+  .mp-grid{grid-template-columns:repeat(2,1fr);gap:.5rem;}
+  .metric-box{padding:.45rem .6rem;}
+  .metric-label{font-size:.68rem;}
+  .metric-value{font-size:.9rem;}
+  .mp-manejo{font-size:.76rem;padding:.45rem .6rem;}
+  .mp-toolbar,.mp-save-row{flex-direction:column;align-items:stretch;}
+  .mp-toolbar button,.mp-toolbar a,.mp-save-row button{width:100%;text-align:center;}
+  .mp-save-row span{text-align:center;}
+  canvas.mp-payoff{height:180px;}
+}
+@media (max-width:420px){
+  .mp-grid{grid-template-columns:1fr 1fr;}
+  #mp-form{grid-template-columns:1fr;}
+}
 </style>
 {% endblock %}
 
@@ -248,10 +284,10 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
     }).join('');
 
     var defaultExp = (ctx && ctx.exp) || '';
-    var legsHtml = '<table class="mp-legs" id="mp-legs-' + st.id + '"><thead><tr>' +
+    var legsHtml = '<div class="mp-legs-wrap"><table class="mp-legs" id="mp-legs-' + st.id + '"><thead><tr>' +
       '<th>Ação</th><th>Tipo</th><th>Série</th><th>Strike</th><th>Preço</th><th>Δ</th><th>Venc.</th>' +
       '</tr></thead><tbody>' + (st.legs || []).map(function(l, i) { return legRow(l, st.id, i, defaultExp); }).join('') +
-      '</tbody></table>';
+      '</tbody></table></div>';
 
     var boxes = resumoBoxes(st).concat(gregasBoxes(st.gregas));
     var boxesHtml = '<div class="mp-grid" id="mp-boxes-' + st.id + '">' + boxes.map(function(b) {
@@ -274,7 +310,7 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
       'title="Abre o editor da Cadeia de Opções com estas pernas">🔗 Editar em Cadeia de Opções</button>' +
       '</div>';
 
-    var saveHtml = '<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem;">' +
+    var saveHtml = '<div class="mp-save-row" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem;">' +
       '<button type="button" class="btn btn-sm btn-primary" onclick="mpSaveStrategy(' + st.id + ', false)">💾 Salvar</button>' +
       '<button type="button" class="btn btn-sm" style="background:#f59e0b;color:white;" ' +
       'onclick="mpSaveStrategy(' + st.id + ', true)" ' +

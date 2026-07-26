@@ -3390,8 +3390,9 @@ _ADV_SPECS = {
     'adj_put_seagull':  {'legs': [('P', -1, (-0.55, -0.40)), ('P', 1, (-0.35, -0.15)),
                                   ('C', -1, (0.40, 0.55)), ('C', 1, (0.15, 0.35))],
                          'asc': [0, 1, 2, 3]},
-    # Long Call Synthetic Strangle Riskless (vol alta): vende a ação (S) +
-    # compra 2 CALLs ITM (A<B<spot); zona de retorno mínimo sem perda.
+    # Long Call Synthetic Strangle Riskless (vol alta): ação a descoberto (S,
+    # ao preço médio de venda — ver stock_px 5% abaixo do spot no código) +
+    # compra de 2 CALLs ITM (A<B<spot); zona de retorno mínimo sem perda.
     'synth_strangle': {'legs': [('S', -1, None), ('C', 1, (0.55, 0.75)),
                                  ('C', 1, (0.78, 0.92))], 'asc': [1, 2],
                        'rule': 'synth_riskless'},
@@ -4496,6 +4497,7 @@ def api_busca_operacoes(ticker):
                 return [(rw, dl) for _, rw, dl in out_near[:4]]
 
             import itertools as _it
+            rule = spec.get('rule')
             cand_lists = [_leg_cands(tp, q, win) for tp, q, win in legs]
             if all(cand_lists):
                 for combo in _it.product(*cand_lists):
@@ -4519,12 +4521,19 @@ def api_busca_operacoes(ticker):
                     if not ok_c:
                         continue
 
+                    # Synthetic Strangle Riskless: a ação vendida (S, q<0) não é
+                    # vendida a mercado agora — modela o caso de já estar com a
+                    # posição a descoberto a um preço médio pior (5% abaixo do
+                    # spot atual), então o payoff/custo usa esse preço médio em
+                    # vez da cotação corrente.
+                    stock_px = spot * 0.95 if (rule == 'synth_riskless') else spot
+
                     net, row_legs = 0.0, []
                     for (tp, q, _win), c in zip(legs, combo):
                         if tp == 'S':
-                            net += (-q) * spot
+                            net += (-q) * stock_px
                             row_legs.append({'sym': ticker, 'tp': 'STOCK', 'k': None,
-                                             'q': q, 'px': round(spot, 2), 'delta': None})
+                                             'q': q, 'px': round(stock_px, 2), 'delta': None})
                         else:
                             rw, dl = c
                             px = rw['ask'] if q > 0 else rw['bid']
@@ -4561,7 +4570,6 @@ def api_busca_operacoes(ticker):
                     cost = -net
 
                     # Regras de montagem específicas
-                    rule = spec.get('rule')
                     if rule == 'credit' and net <= 0:
                         continue
                     if rule == 'zero_cost' and cost > 0.02 * spot:

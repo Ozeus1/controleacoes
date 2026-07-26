@@ -3144,13 +3144,13 @@ def api_cadeia(ticker):
         return abs((dd - tf).days) <= 2
 
     # Parâmetros de janela (iguais aos da Busca de Operações):
-    # weekly=1 inclui semanais; days = prazo máximo (60/90/120/180).
+    # weekly=1 inclui semanais; days = prazo máximo (60/90/120/180/210).
     include_weekly = request.args.get('weekly', '0') == '1'
     try:
         max_days = int(request.args.get('days', 60))
     except (TypeError, ValueError):
         max_days = 60
-    if max_days not in (60, 90, 120, 180):
+    if max_days not in (60, 90, 120, 180, 210):
         max_days = 60
 
     # Normaliza opções
@@ -3219,12 +3219,12 @@ def api_cadeia(ticker):
     if not selected_exps:
         selected_exps = within[:3] or all_exp_keys[:3]
 
-    # Quantidade de strikes exibidos abaixo/acima do spot (10 padrão, 20 opcional)
+    # Quantidade de strikes exibidos abaixo/acima do spot (10 padrão; 20/30/40 opcionais)
     try:
         n_strikes = int(request.args.get('n', 10))
     except (TypeError, ValueError):
         n_strikes = 10
-    if n_strikes not in (10, 20):
+    if n_strikes not in (10, 20, 30, 40):
         n_strikes = 10
 
     for exp in selected_exps:
@@ -3329,12 +3329,14 @@ _ADV_SPECS = {
     # explosão de alta o resultado fica perto de zero, nunca em prejuízo.
     'jade_lizard_turbo': {'legs': [('P', -1, (-0.30, -0.16)), ('C', -2, (0.15, 0.20)),
                                    ('C', 2, (0.03, 0.15))], 'asc': [1, 2], 'rule': 'jade'},
-    # Slide Estrutural: melhora a venda coberta tradicional trocando a "ação
-    # comprada" por uma CALL comprada mais no dinheiro (A) + trava de alta
-    # estreita até B ("asa") + venda de CALL em C (o strike que seria usado
-    # na venda coberta simples). Zona de lucro máximo entre B e C — mais
-    # ampla que o platô único da venda coberta pura. Risco de assunção só
-    # acima de C (mesmo ponto de assunção da venda coberta tradicional).
+    # Slide Estrutural: turbina a venda coberta tradicional. Pressupõe o
+    # ATIVO JÁ EM CARTEIRA (não é uma spec com perna 'S' — igual ao Reparo
+    # de Posição — porque o motor trataria 'S' como compra nova, distorcendo
+    # o custo). A operação soma DUAS fontes de ganho sobre a mesma ação já
+    # possuída: (1) a venda coberta de sempre (venda de CALL no strike C,
+    # igual à tradicional) e (2) uma trava de alta por cima (compra CALL A +
+    # venda CALL B, A < B < C), que amplia o lucro entre A e B sem exigir
+    # mais capital. Zona de lucro máximo entre B e C.
     'slide_estrutural': {'legs': [('C', 1, (0.55, 0.70)), ('C', -1, (0.35, 0.50)),
                                   ('C', -1, (0.15, 0.30))], 'asc': [0, 1, 2],
                         'rule': 'low_cost'},
@@ -4616,9 +4618,16 @@ def api_busca_operacoes(ticker):
                         'jade_zero_risk': jade_zero_risk,
                     })
             if rule == 'jade':
-                # Prioriza quem realmente zera o risco de alta (crédito ≥ largura);
-                # entre os que não zeram, o maior crédito líquido primeiro.
-                rows.sort(key=lambda x: (not (x['jade_zero_risk'] or False), -x['net']))
+                # Prioriza: 1) zera o risco de alta (crédito ≥ largura da trava);
+                # 2) o platô de ganho (crédito líquido) é MAIOR que o prejuízo
+                # que resta na queda, abaixo do 2º breakeven (a put nua) — ou
+                # seja, ratio ganho/risco de queda ≥ 1, não só net positivo;
+                # 3) maior crédito líquido como desempate final.
+                def _jade_key(x):
+                    plato_ok = (x['max_loss'] is not None and x['max_gain'] is not None
+                                and x['max_gain'] >= x['max_loss'])
+                    return (not (x['jade_zero_risk'] or False), not plato_ok, -x['net'])
+                rows.sort(key=_jade_key)
             else:
                 rows.sort(key=lambda x: (not x['is_credit'], -(x['ratio'] or 0), -x['net']))
             rows = _diversify(rows, lambda x: x['legs'][0]['sym'], per_key=2, limit=10)

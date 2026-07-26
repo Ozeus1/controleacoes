@@ -116,7 +116,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="short_sintetico">🧬📉 Short Sintético</button>
       <button class="ba-obtn" data-op="risk_reversal">🔄 Risk Reversal</button>
       <button class="ba-obtn" data-op="synthetic_straddle">🧬⚖️ Synthetic Straddle</button>
-      <button class="ba-obtn" data-op="synth_strangle">🧬🔒 Synthetic Strangle Riskless</button>
+      <button class="ba-obtn" data-op="synth_strangle">🧬📈 Short Call Synthetic Strangle</button>
       <button class="ba-obtn" data-op="calendar_spread">📅 Calendar Spread</button>
       <button class="ba-obtn" data-op="diagonal_spread">📐 Diagonal Spread</button>
       <button class="ba-obtn" data-op="double_diagonal">📐📐 Double Diagonal</button>
@@ -256,7 +256,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     bear_calendar:   '🐻🔁 Bear Calendar (OTM) — vende PUT semanal OTM + compra PUT mensal OTM no mesmo strike; queda moderada até o strike + Theta · estimado por BS',
     adj_call_seagull: '🕊🔧 Adjusted Long Call Seagull (do livro) — gaivota de alta ajustada: +PUT OTM −PUT ATM +CALL ATM −CALL OTM; a PUT comprada limita a perda na queda (bullish, VI baixa)',
     adj_put_seagull:  '🕊🔧 Adjusted Long Put Seagull (do livro) — gaivota de baixa ajustada: −PUT baixa +PUT alta −CALL ATM +CALL alta; a CALL comprada limita a perda na alta (bearish, VI baixa)',
-    synth_strangle:   '🧬🔒 Long Call Synthetic Strangle Riskless (do livro) — vende a ação + 2 CALLs ITM em strikes diferentes; strangle sintético SEM risco de perda, lucro nas duas pontas (VI alta)',
+    synth_strangle:   '🧬📈 Short Call Synthetic Strangle — ação comprada + venda de 2 CALLs em strikes diferentes; replica um strangle vendido, lucro máximo entre os strikes, risco na queda vem da ação (VI alta)',
     short_call_calendar: '📅🔄 Short Call Calendar (do livro) — compra CALL curta ATM + vende CALL longa ATM (mesmo strike), montado no crédito; lucra com movimento BRUSCO em qualquer direção · estimado por BS',
     straddle_strangle_swap: '🔀 Long Straddle-Strangle Swap (do livro) — vende straddle curto ATM + compra strangle longo OTM (2 diagonais); neutra, lucra com o Theta das curtas · estimado por BS'
   };

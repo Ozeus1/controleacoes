@@ -3390,12 +3390,15 @@ _ADV_SPECS = {
     'adj_put_seagull':  {'legs': [('P', -1, (-0.55, -0.40)), ('P', 1, (-0.35, -0.15)),
                                   ('C', -1, (0.40, 0.55)), ('C', 1, (0.15, 0.35))],
                          'asc': [0, 1, 2, 3]},
-    # Long Call Synthetic Strangle Riskless (vol alta): ação a descoberto (S,
-    # ao preço médio de venda — ver stock_px 5% abaixo do spot no código) +
-    # compra de 2 CALLs ITM (A<B<spot); zona de retorno mínimo sem perda.
-    'synth_strangle': {'legs': [('S', -1, None), ('C', 1, (0.55, 0.75)),
-                                 ('C', 1, (0.78, 0.92))], 'asc': [1, 2],
-                       'rule': 'synth_riskless'},
+    # Short Call Synthetic Strangle: ação COMPRADA (S, ao preço médio 5%
+    # abaixo do spot — ver stock_px no código, modela quem já está
+    # posicionado) + venda de 2 CALLs em strikes diferentes (A<B, uma mais
+    # perto do dinheiro e outra mais OTM). Replica um strangle vendido:
+    # crédito na montagem, lucro máximo se o ativo ficar entre os strikes,
+    # risco real na queda (a ação some de valor) — NÃO é riskless.
+    'synth_strangle': {'legs': [('S', 1, None), ('C', -1, (0.35, 0.50)),
+                                 ('C', -1, (0.15, 0.30))], 'asc': [1, 2],
+                       'rule': 'synth_strangle'},
 }
 
 
@@ -4521,12 +4524,11 @@ def api_busca_operacoes(ticker):
                     if not ok_c:
                         continue
 
-                    # Synthetic Strangle Riskless: a ação vendida (S, q<0) não é
-                    # vendida a mercado agora — modela o caso de já estar com a
-                    # posição a descoberto a um preço médio pior (5% abaixo do
-                    # spot atual), então o payoff/custo usa esse preço médio em
-                    # vez da cotação corrente.
-                    stock_px = spot * 0.95 if (rule == 'synth_riskless') else spot
+                    # Short Call Synthetic Strangle: a ação (S) não é comprada a
+                    # mercado agora — modela quem já está posicionado a um preço
+                    # médio pior (5% abaixo do spot atual), então o payoff/custo
+                    # usa esse preço médio em vez da cotação corrente.
+                    stock_px = spot * 0.95 if (rule == 'synth_strangle') else spot
 
                     net, row_legs = 0.0, []
                     for (tp, q, _win), c in zip(legs, combo):
@@ -4601,11 +4603,10 @@ def api_busca_operacoes(ticker):
                         # débito menor que a largura descontada pela Selic do período
                         if cost <= 0 or cost >= width / (1 + selic_period / 100):
                             continue
-                    if rule == 'synth_riskless':
-                        # ação vendida + 2 CALLs ITM: só aceita quando a perda
-                        # máxima é ~zero (a estrutura fica dentro da zona de ganho)
-                        if max_loss is not None and max_loss > 0.02 * spot:
-                            continue
+                    # (rule == 'synth_strangle': sem filtro extra — ação comprada
+                    # sempre domina o "net" frente ao prêmio de 2 calls vendidas,
+                    # então crédito líquido positivo nunca ocorre; a seleção por
+                    # delta das duas pernas já basta, igual ao Boi Coberto.)
                     if max_gain is not None and max_loss is not None and max_gain <= 0:
                         continue
 

@@ -1343,10 +1343,10 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             var ptsMP = [0].concat(ksMP).concat([Math.max.apply(null, ksMP) * 1.6]);
             var valsMP = ptsMP.map(payMP);
             var besMP = [];
-            for (var mk = 0; mk < ptsMP.length - 1; mk++) {
-                var mv0 = valsMP[mk], mv1 = valsMP[mk + 1];
+            for (var mbi = 0; mbi < ptsMP.length - 1; mbi++) {
+                var mv0 = valsMP[mbi], mv1 = valsMP[mbi + 1];
                 if (((mv0 < 0 && mv1 >= 0) || (mv0 >= 0 && mv1 < 0)) && Math.abs(mv1 - mv0) > 1e-9) {
-                    besMP.push(ptsMP[mk] + (0 - mv0) * (ptsMP[mk + 1] - ptsMP[mk]) / (mv1 - mv0));
+                    besMP.push(ptsMP[mbi] + (0 - mv0) * (ptsMP[mbi + 1] - ptsMP[mbi]) / (mv1 - mv0));
                 }
             }
             var slopeMP = MP_LEGS.reduce(function(a, l) { return a + (l.t === 'C' ? l.s : 0); }, 0);

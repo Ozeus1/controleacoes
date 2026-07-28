@@ -12195,16 +12195,40 @@ def _api_ranking_vol_update_impl():
             for t, d in ex.map(_fetch, tickers_list):
                 if d: price_map[t] = {'price': d['price'], 'change': d['change_percent']}
 
+    # Busca de IV via OpLab: uma chamada por ticker (até 15s cada). Sequencial,
+    # uma lista "Geral" com 100+ tickers passa muito além do timeout do
+    # gateway (504 relatado) — paraleliza com um teto de tempo total, e
+    # aplica os resultados ao modelo depois, sequencialmente (sem rede).
+    iv_results: dict = {}   # ticker → (ivr, ivp, vol, error)
+
+    def _fetch_iv(ticker):
+        try:
+            return ticker, (*_extract_iv(_oplab_get_json(f'/market/instruments/{ticker}', token, timeout=15)), None)
+        except OplabApiError as e:
+            return ticker, (None, None, None, str(e))
+        except Exception as e:
+            return ticker, (None, None, None, str(e))
+
+    from concurrent.futures import as_completed as _as_completed, TimeoutError as _CFTimeoutError
+    ex = ThreadPoolExecutor(max_workers=min(16, len(items)))
+    fut_map = {ex.submit(_fetch_iv, rv.ticker): rv.ticker for rv in items}
+    try:
+        for fut in _as_completed(fut_map, timeout=40):
+            ticker, res = fut.result()
+            iv_results[ticker] = res
+    except _CFTimeoutError:
+        pass  # aproveita o que já resolveu; o resto fica sem IV nesta rodada
+    finally:
+        ex.shutdown(wait=False, cancel_futures=True)
+
     results = []
     ok = 0
     for rv in items:
         row = {'ticker': rv.ticker, 'ok': False, 'error': None}
         try:
-            ivr = ivp = vol = None
-            try:
-                ivr, ivp, vol = _extract_iv(_oplab_get_json(f'/market/instruments/{rv.ticker}', token, timeout=15))
-            except OplabApiError as e:
-                row['error'] = str(e)
+            ivr, ivp, vol, err = iv_results.get(rv.ticker, (None, None, None, None))
+            if err:
+                row['error'] = err
 
             pd = price_map.get(rv.ticker, {})
             if pd.get('price', 0) > 0:

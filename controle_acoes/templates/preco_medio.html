@@ -52,9 +52,6 @@
                         {{ it.pool | brl }} · sugerido</span>
                     {% elif it.pool > 0.005 %}
                     <span class="pm-badge ok">{{ it.pool | brl }}</span>
-                    {% elif it.pool < -0.005 %}
-                    <span class="negative" title="Pool negativo: os créditos já aplicados/usados em compras financiadas somam mais do que os créditos hoje disponíveis. Acontece quando um trade de opção ou dividendo já aplicado é depois editado/reduzido/excluído — o evento de aplicação passado permanece, mas o crédito de origem some ou diminui. Não afeta o PM ajustado já lançado; só zera o que dá pra aplicar de novo.">
-                        {{ it.pool | brl }}</span>
                     {% else %}
                     <span style="color:var(--text-secondary);">{{ it.pool | brl }}</span>
                     {% endif %}
@@ -77,7 +74,7 @@
                     <form method="POST" action="{{ url_for('pm_aplicar', ticker=a.ticker) }}" style="display:inline;">
                         <button type="submit" class="pm-btn"
                                 style="background:{{ '#10b981' if pm_pode_aplicar else '#334155' }};{{ '' if pm_pode_aplicar else 'opacity:.5;' }}"
-                                title="{{ 'Aplicar os créditos pendentes ao PM (dividendos + resultado de opções)' if pm_pode_aplicar else 'Sem crédito disponível pra aplicar agora — pool zerado/negativo (créditos já usados, ou reduzidos por edição/exclusão de um trade/dividendo depois de já aplicados)' }}"
+                                title="{{ 'Aplicar os créditos pendentes ao PM (dividendos + resultado de opções)' if pm_pode_aplicar else 'Sem crédito disponível pra aplicar agora' }}"
                                 {% if not pm_pode_aplicar %}disabled{% endif %}
                                 onclick="return confirm('Aplicar os créditos pendentes de {{ a.ticker }} ao Preço Médio?');">💰</button>
                     </form>
@@ -140,10 +137,8 @@
         Lucro de <strong>swing trade não conta</strong> (evento aleatório, não ligado ao papel).
         Compras e vendas normais continuam pelas tabelas oficiais e refletem aqui automaticamente;
         somente a <strong>compra com lucro (🛒)</strong> é registrada por esta tela — e reflete na carteira oficial.
-        A coluna <strong>Disponível</strong> é o crédito ainda não usado (ganho − já aplicado). Se aparecer
-        <strong>negativa</strong>, significa que um crédito já aplicado no passado (dividendo ou trade de opção)
-        foi depois editado ou excluído e diminuiu — o abatimento no PM que já foi feito continua valendo, só não
-        sobra saldo novo pra aplicar até a situação se normalizar.
+        A coluna <strong>Disponível</strong> é o crédito ainda não usado (ganho − já aplicado); nunca aparece
+        abaixo de zero (o abatimento no PM já feito no passado continua valendo mesmo quando o saldo some).
     </p>
 </div>
 

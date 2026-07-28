@@ -7381,7 +7381,10 @@ def _pm_state(user_id, ticker):
     earned  = [i for i in _pm_earned_items(user_id, ticker)
                if i['key'] not in ignored_keys]
     pending = [i for i in earned if i['key'] not in used_keys]
-    pool = round(sum(i['valor'] for i in earned) - used_pool, 2)
+    # Nunca exibe/usa pool negativo (créditos já aplicados que depois tiveram
+    # a origem reduzida/excluída) — trata como zero: não há mais crédito
+    # disponível pra aplicar, mas o PM já abatido no passado continua válido.
+    pool = max(0.0, round(sum(i['valor'] for i in earned) - used_pool, 2))
     custo_of = (a.quantity * (a.avg_price or 0)) if a else 0.0
     custo_aj = custo_of - used_total
     return a, evs, earned, pending, pool, custo_of, custo_aj

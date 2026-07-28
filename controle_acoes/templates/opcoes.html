@@ -73,7 +73,7 @@
                 <td>R$ {{ "%.2f"|format(item.avg_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
-                <td>{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
+                <td data-order="{{ item.days_left if item.days_left is not none else -1 }}">{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.exercise_price)|replace('.', ',') }}</td>
                 {# Verde enquanto a cotação está abaixo do preço de exercício; vermelho se ultrapassar #}
@@ -213,7 +213,7 @@
                     {{ "%.2f"|format(item.lastrobk_pct)|replace('.', ',') }}%
                 </td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
-                <td>{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
+                <td data-order="{{ item.days_left if item.days_left is not none else -1 }}">{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.total_sold)|replace('.', ',') }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
@@ -345,7 +345,7 @@
                 <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
-                <td>{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
+                <td data-order="{{ item.days_left if item.days_left is not none else -1 }}">{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
@@ -446,7 +446,7 @@
                 <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
-                <td>{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
+                <td data-order="{{ item.days_left if item.days_left is not none else -1 }}">{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
                 <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>

@@ -7332,6 +7332,9 @@ def _pm_earned_items(user_id, ticker):
     # Trades de opções: casa pelo underlying preenchido; para registros ANTIGOS
     # sem underlying, casa pela raiz B3 do ticker da opção (ABEVA148 → ABEV →
     # ABEV3) — somente se a raiz for inequívoca na carteira (PETR3 × PETR4 não).
+    # Fallback extra: travas/estruturas registram "{subjacente} | ..." no
+    # início de notes (close_spread/close_estruturada) mesmo quando o campo
+    # underlying ficou vazio — extrai de lá antes de cair pro fallback de raiz.
     root = ticker[:4].upper()
     same_root = Asset.query.filter(Asset.user_id == user_id,
                                    Asset.type.in_(('ACAO', 'FII')),
@@ -7341,8 +7344,10 @@ def _pm_earned_items(user_id, ticker):
     for th in TradeHistory.query.filter_by(user_id=user_id, strategy='Opções').all():
         und   = (th.underlying or '').strip().upper()
         tk_th = (th.ticker or '').strip().upper()
+        notes_prefix = (th.notes or '').split('|')[0].strip().upper()
         match = (und == ticker) or (
-            not und and (tk_th == ticker or (same_root == 1 and tk_th[:4] == root)))
+            not und and (tk_th == ticker or notes_prefix == ticker
+                         or (same_root == 1 and tk_th[:4] == root)))
         if not match:
             continue
         pv = round(float(th.profit_value or 0), 2)
@@ -7765,7 +7770,7 @@ def pm_historico(ticker):
     """Histórico didático das mudanças do PM ajustado do ticker."""
     ticker = ticker.strip().upper()
     evs = (PMEvent.query.filter_by(user_id=current_user.id, ticker=ticker)
-           .order_by(PMEvent.created_at, PMEvent.id).all())
+           .order_by(PMEvent.event_date.desc(), PMEvent.id.desc()).all())
     labels = {'DIVIDENDO': 'Dividendo aplicado', 'OPCOES': 'Resultado de opções',
               'COMPRA_LUCRO': 'Compra com lucro', 'MANUAL': 'Ajuste manual',
               'IGNORADO': 'Crédito ignorado (fora da varredura)'}

@@ -27,7 +27,8 @@
             </div>
             <div class="form-group" style="flex:1; min-width:130px; margin-bottom:0;">
                 <label for="underlying_asset">Ativo Subjacente</label>
-                <input type="text" id="underlying_asset" name="underlying_asset"
+                <input type="text" id="underlying_asset" name="underlying_asset" required
+                       title="Necessário para o resultado da estrutura entrar no Preço Médio ajustado do ativo"
                        placeholder="Ex: PETR4" style="width:100%; text-transform:uppercase;"
                        value="{{ op.underlying_asset if op else '' }}">
             </div>

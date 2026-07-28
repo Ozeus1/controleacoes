@@ -14320,25 +14320,47 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
         return None, None
 
     # Fallback individual por opção — pulado quando OpLab está offline
-    # (evita loop de timeouts que trava o servidor)
+    # (evita loop de timeouts que trava o servidor). Rodado em paralelo: um
+    # loop sequencial (até 4s por ticker) facilmente passa de 25s quando o
+    # bulk /market/quote não cobre a maioria das opções (comum quando esse
+    # endpoint não retorna opções, só ações) — era a causa do timeout total
+    # do bulk update travar TODA a atualização OpLab, inclusive ativos que
+    # o bulk /market/quote já tinha resolvido com sucesso.
     if oplab_online:
-        for tk in list(option_tickers):
-            if tk not in prices or prices.get(tk, 0) <= 0:
-                p, var = _fetch_missing_option_quote(tk)
-                if p and p > 0:
-                    prices[tk] = p
-                    if var is not None:
-                        variations[tk] = var
+        missing_tks = [tk for tk in option_tickers if tk not in prices or prices.get(tk, 0) <= 0]
+        if missing_tks:
+            import concurrent.futures as _cf
+            ex = _cf.ThreadPoolExecutor(max_workers=min(16, len(missing_tks)))
+            fut_map = {ex.submit(_fetch_missing_option_quote, tk): tk for tk in missing_tks}
+            try:
+                for fut in _cf.as_completed(fut_map, timeout=18):
+                    tk = fut_map[fut]
+                    try:
+                        p, var = fut.result()
+                    except Exception:
+                        continue
+                    if p and p > 0:
+                        prices[tk] = p
+                        if var is not None:
+                            variations[tk] = var
+            except _cf.TimeoutError:
+                pass  # aproveita o que já resolveu; o resto fica sem preço nesta rodada
+            finally:
+                ex.shutdown(wait=False, cancel_futures=True)
 
     if not prices:
         return 0, 0, set()
 
     # ── Busca delta das opções via /v3/market/options/{underlying} ──
-    # Agrupa opções por underlying para minimizar chamadas à API
-    # Pulado quando OpLab está offline
+    # Agrupa opções por underlying para minimizar chamadas à API. Em paralelo
+    # pelo mesmo motivo do fallback acima: sequencial, com timeout de 15s por
+    # subjacente, uma carteira com 15-20 subjacentes já passa de 25s sozinha.
+    # Pulado quando OpLab está offline.
     deltas: dict = {}   # ticker_opcao → delta
     underlyings_com_opcoes = list({o.underlying_asset.upper() for o in options if o.underlying_asset})
-    for underlying in underlyings_com_opcoes if oplab_online else []:
+
+    def _fetch_underlying_options(underlying):
+        out = {}
         try:
             r = requests.get(
                 f'{BASE}/market/options/{underlying}',
@@ -14347,15 +14369,30 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
             )
             if r.status_code == 200:
                 data = r.json()
-                # Resposta pode ser lista de opções ou dict com chave 'options'
                 opt_list = data if isinstance(data, list) else data.get('options', data.get('calls', []) + data.get('puts', []))
                 for item in opt_list:
                     sym   = str(item.get('symbol', item.get('ticker', ''))).upper()
                     delta = item.get('delta') or item.get('greeks', {}).get('delta') if isinstance(item.get('greeks'), dict) else item.get('delta')
                     if sym and delta is not None:
-                        deltas[sym] = float(delta)
+                        out[sym] = float(delta)
         except Exception:
             pass
+        return out
+
+    if oplab_online and underlyings_com_opcoes:
+        import concurrent.futures as _cf2
+        ex2 = _cf2.ThreadPoolExecutor(max_workers=min(10, len(underlyings_com_opcoes)))
+        fut_map2 = {ex2.submit(_fetch_underlying_options, u): u for u in underlyings_com_opcoes}
+        try:
+            for fut in _cf2.as_completed(fut_map2, timeout=18):
+                try:
+                    deltas.update(fut.result())
+                except Exception:
+                    continue
+        except _cf2.TimeoutError:
+            pass
+        finally:
+            ex2.shutdown(wait=False, cancel_futures=True)
 
     now = now_brt()
 

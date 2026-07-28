@@ -53,6 +53,41 @@ function isB3Ticker(ticker) {
     return ticker.indexOf('.') < 0 && ticker.indexOf('-') < 0 && /^[A-Z0-9]{4,8}\d{1,2}$/.test(ticker);
 }
 
+// ETFs/BDRs da B3 que carregam tickers de 4 letras + "11" mas na TradingView
+// ficam sob BMFBOVESPA igual às ações — nenhum caso especial necessário aqui;
+// a exceção real são os poucos ETFs cujo símbolo na B3 diverge do da bolsa de
+// origem (nenhum conhecido no momento) — mantido como ponto de extensão.
+var TV_CRYPTO_EXCHANGE = 'BINANCE';
+
+// Monta a URL da página do ativo na TradingView (br.tradingview.com/symbols/EXCHANGE-SYMBOL/).
+// ticker: como usado internamente (B3 sem sufixo, cripto tipo "BTC-USD", internacional tipo "AAPL").
+// isIntl: true para cripto/internacional (mesma flag usada por MyChart.open).
+function tvSymbolUrl(ticker, isIntl) {
+    var tk = (ticker || '').toUpperCase().trim();
+    if (!tk) return null;
+    var exch, sym;
+    if (!isIntl && isB3Ticker(tk)) {
+        exch = 'BMFBOVESPA';
+        sym  = tk;
+    } else if (/-USD$/.test(tk)) {
+        // Cripto no formato interno "BTC-USD" → par BINANCE:BTCUSDT (par mais líquido/comum)
+        exch = TV_CRYPTO_EXCHANGE;
+        sym  = tk.replace(/-USD$/, '') + 'USDT';
+    } else if (isB3Ticker(tk)) {
+        // Ticker com "cara" de B3 mas explicitamente marcado isIntl (raro) — melhor esforço
+        exch = 'BMFBOVESPA';
+        sym  = tk;
+    } else {
+        // Internacional (ações/ETFs US) — não guardamos a bolsa exata (NASDAQ/
+        // NYSE/AMEX/BMV etc.). /symbols/{TICKER}/ sem prefixo de bolsa resolve
+        // pra listagem primária na prática (não é a forma documentada, mas
+        // funciona); sem isso teríamos que adivinhar a bolsa, o que erraria
+        // com frequência.
+        return 'https://br.tradingview.com/symbols/' + encodeURIComponent(tk) + '/';
+    }
+    return 'https://br.tradingview.com/symbols/' + exch + '-' + encodeURIComponent(sym) + '/';
+}
+
 function median(values) {
     if (!values || !values.length) return 0;
     var arr = values.slice().sort(function(a, b) { return a - b; });
@@ -118,14 +153,20 @@ var HIT_R      = 8;      // px CSS — raio de hit para extremidades
 function _setTool(t) {
     _tool    = t;
     _drawing = null;
+    _zoomBoxSt = null;
     var cur  = document.getElementById('mc-tool-cursor');
     var lin  = document.getElementById('mc-tool-line');
+    var zm   = document.getElementById('mc-tool-zoom');
     if (!cur || !lin) return;
     cur.style.background = t === 'cursor' ? '#3b82f6' : '#1e293b';
     cur.style.color      = t === 'cursor' ? '#fff'    : '#94a3b8';
     lin.style.background = t === 'line'   ? '#3b82f6' : '#1e293b';
     lin.style.color      = t === 'line'   ? '#fff'    : '#94a3b8';
-    _canvas.style.cursor = t === 'line' ? 'crosshair' : (t === 'pan' ? 'grab' : 'default');
+    if (zm) {
+        zm.style.background = t === 'zoom' ? '#3b82f6' : '#1e293b';
+        zm.style.color      = t === 'zoom' ? '#fff'    : '#94a3b8';
+    }
+    _canvas.style.cursor = t === 'line' ? 'crosshair' : (t === 'zoom' ? 'crosshair' : (t === 'pan' ? 'grab' : 'default'));
 }
 
 // ── Pan / Zoom — janela deslizante sobre allCandles ───────────────────────────
@@ -142,9 +183,9 @@ function _initView() {
 
 function _visCount() {
     // Baseado no período selecionado
-    var per  = _state ? (_state.period || '8mo') : '8mo';
-    var days = { '1mo': 22, '3mo': 63, '6mo': 130, '8mo': 174 };
-    return days[per] || 174;
+    var per  = _state ? (_state.period || '2w') : '2w';
+    var days = { '2w': 10, '1mo': 22, '3mo': 63, '6mo': 130, '8mo': 174 };
+    return days[per] || 10;
 }
 
 function _clampView() {
@@ -283,13 +324,19 @@ function _deleteLine(line) {
 }
 
 // ── Interação: pan, zoom, linhas ───────────────────────────────────────────────
-var _panStart = null;   // { clientX, startIndex }
+var _panStart  = null;   // { clientX, startIndex }
+var _zoomBoxSt = null;   // { x, y } início do retângulo de zoom por área
 
 function _onMouseDown(e) {
     if (!_state || !_view) return;
     var pt = _cssCoords(e);
     var d  = _css2data(pt.x, pt.y);
     if (!d) return;
+
+    if (_tool === 'zoom') {
+        _zoomBoxSt = { x: pt.x, y: pt.y };
+        return;
+    }
 
     if (_tool === 'line') {
         _drawing = { x1: d.date, y1: d.price, x2: d.date, y2: d.price };
@@ -349,6 +396,10 @@ function _onMouseMove(e) {
     if (_tool === 'line' && _drawing && d) {
         _drawing.x2 = d.date;
         _drawing.y2 = d.price;
+    }
+
+    if (_tool === 'zoom' && _zoomBoxSt) {
+        _state._zoomBoxEnd = { x: pt.x, y: pt.y };
     }
 
     // Edição de linha selecionada
@@ -424,6 +475,32 @@ function _onMouseMove(e) {
 }
 
 function _onMouseUp(e) {
+    // Fim do zoom por área — aplica o retângulo arrastado como novo range
+    // horizontal (candles) e vertical (preço), com um mínimo de arraste pra
+    // não disparar em cliques simples.
+    if (_zoomBoxSt) {
+        var pt2 = _cssCoords(e);
+        var box = { x1: _zoomBoxSt.x, y1: _zoomBoxSt.y, x2: pt2.x, y2: pt2.y };
+        _zoomBoxSt = null;
+        _state._zoomBoxEnd = null;
+        if (Math.abs(box.x2 - box.x1) >= 8 && Math.abs(box.y2 - box.y1) >= 8 && _state._layout) {
+            var d1 = _css2data(box.x1, box.y1);
+            var d2 = _css2data(box.x2, box.y2);
+            if (d1 && d2) {
+                var iLo = Math.min(d1.i, d2.i), iHi = Math.max(d1.i, d2.i);
+                var pLo = Math.min(d1.price, d2.price), pHi = Math.max(d1.price, d2.price);
+                _view.start = _view.start + iLo;
+                _view.count = Math.max(5, iHi - iLo + 1);
+                _view.priceMin = pLo;
+                _view.priceMax = pHi;
+                _clampView();
+                _applyView();
+            }
+        }
+        _draw();
+        return;
+    }
+
     // Fim do pan
     if (_panStart) {
         _panStart = null;
@@ -585,15 +662,24 @@ function ensureModal() {
         + '</div>'
         + '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">'
         + '<span style="font-size:.78rem;color:#64748b">Período:</span>'
+        + '<button class="mc-per-btn" data-per="2w"  style="' + btnStyle(true)   + '">2S</button>'
         + '<button class="mc-per-btn" data-per="1mo" style="' + btnStyle()       + '">1M</button>'
         + '<button class="mc-per-btn" data-per="3mo" style="' + btnStyle()       + '">3M</button>'
         + '<button class="mc-per-btn" data-per="6mo" style="' + btnStyle()       + '">6M</button>'
-        + '<button class="mc-per-btn" data-per="8mo" style="' + btnStyle(true)   + '">8M</button>'
+        + '<button class="mc-per-btn" data-per="8mo" style="' + btnStyle()       + '">8M</button>'
+        + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
+        + '<span style="font-size:.78rem;color:#64748b">Zoom:</span>'
+        + '<button id="mc-zoom-in"  title="Aumentar zoom (+)"           style="' + toolBtn(false) + '">🔍+</button>'
+        + '<button id="mc-zoom-out" title="Diminuir zoom (−)"           style="' + toolBtn(false) + '">🔍−</button>'
+        + '<button id="mc-zoom-reset" title="Resetar zoom"              style="' + toolBtn(false) + '">↺</button>'
         + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
         + '<span style="font-size:.78rem;color:#64748b">Ferramenta:</span>'
         + '<button id="mc-tool-cursor" title="Cursor (pan com Shift+drag)"  style="' + toolBtn(true)  + '">↖</button>'
         + '<button id="mc-tool-line"   title="Linha (L)"                    style="' + toolBtn(false) + '">╱</button>'
+        + '<button id="mc-tool-zoom"   title="Zoom por área (arraste um retângulo)" style="' + toolBtn(false) + '">▭</button>'
         + '<button id="mc-del-lines"   title="Apagar linhas"                style="' + toolBtn(false) + '" onclick="MyChart._delLines()">🗑</button>'
+        + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
+        + '<button id="mc-tv-btn" title="Abrir no TradingView" style="' + toolBtn(false) + '">📊 TradingView</button>'
         + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
         + '<button onclick="MyChart._close()" style="background:none;border:none;font-size:1.4rem;color:#94a3b8;cursor:pointer;line-height:1;">&times;</button>'
         + '</div>';
@@ -608,7 +694,7 @@ function ensureModal() {
         + '<label style="font-size:.75rem;cursor:pointer;color:#fbbf24"><input type="checkbox" id="mc-ma8"   checked style="margin-right:.3rem">MM8</label>'
         + '<label style="font-size:.75rem;cursor:pointer;color:#60a5fa"><input type="checkbox" id="mc-ma20"  checked style="margin-right:.3rem">MM20</label>'
         + '<label style="font-size:.75rem;cursor:pointer;color:#f87171"><input type="checkbox" id="mc-ma200" checked style="margin-right:.3rem">MM200</label>'
-        + '<span style="font-size:.72rem;color:#475569;margin-left:.5rem">🖱 scroll=zoom  Shift+drag=pan</span>'
+        + '<span style="font-size:.72rem;color:#475569;margin-left:.5rem">🖱 scroll=zoom horiz.  Ctrl+scroll=zoom vert.  Shift+drag=pan  ▭=zoom por área</span>'
         + '<span id="mc-crosshair-info" style="font-size:.75rem;color:#94a3b8;margin-left:auto"></span>';
     card.appendChild(maRow);
 
@@ -660,6 +746,7 @@ function ensureModal() {
         }
         if (e.key === 'l' || e.key === 'L') { _setTool('line'); return; }
         if (e.key === 'c' || e.key === 'C') { _setTool('cursor'); return; }
+        if (e.key === 'z' || e.key === 'Z') { _setTool('zoom'); return; }
         if ((e.key === 'Delete' || e.key === 'Backspace') && _selLine) {
             e.preventDefault();
             var ln  = _selLine.line;
@@ -687,6 +774,31 @@ function ensureModal() {
     // Botões ferramenta
     document.getElementById('mc-tool-cursor').onclick = function() { _setTool('cursor'); };
     document.getElementById('mc-tool-line').onclick   = function() { _setTool('line'); };
+    document.getElementById('mc-tool-zoom').onclick   = function() { _setTool('zoom'); };
+
+    // Botões de zoom explícitos — mesma lógica de _onWheel (âncora no centro
+    // do gráfico em vez do cursor, já que aqui não há posição de mouse).
+    function _zoomBy(factor) {
+        if (!_state || !_view) return;
+        var newCount = Math.max(10, Math.min(_state.allCandles.length, Math.round(_view.count * factor)));
+        var anchor   = Math.round(_view.count / 2);
+        var anchorAbs = _view.start + anchor;
+        var newAnchor = Math.round(anchor * newCount / _view.count);
+        _view.start = anchorAbs - newAnchor;
+        _view.count = newCount;
+        _clampView();
+        _applyView();
+        _draw();
+    }
+    document.getElementById('mc-zoom-in').onclick    = function() { _zoomBy(0.8); };
+    document.getElementById('mc-zoom-out').onclick   = function() { _zoomBy(1.25); };
+    document.getElementById('mc-zoom-reset').onclick = function() {
+        if (!_state) return;
+        _view.priceMin = null; _view.priceMax = null;
+        _initView();
+        _applyView();
+        _draw();
+    };
 
     // MA checkboxes
     ['mc-ma8','mc-ma20','mc-ma200'].forEach(function(id) {
@@ -744,11 +856,27 @@ MyChart.open = function(ticker, isIntl, quote) {
     document.getElementById('mc-change').textContent = '';
     document.getElementById('mc-status').textContent = '⏳ Carregando dados…';
 
-    _state = { ticker: ticker, yfticker: yfticker, period: '8mo', liveQuote: liveQuote,
+    _state = { ticker: ticker, yfticker: yfticker, isIntl: !!isIntl, period: '2w', liveQuote: liveQuote,
                _vis: [], _layout: null, _crossX: null, _crossY: null };
     _view  = null;
     _setTool('cursor');
     _resize();
+
+    // Reseta os botões de período visualmente pro padrão "2S"
+    _modal.querySelectorAll('.mc-per-btn').forEach(function(b) {
+        var on = b.dataset.per === '2w';
+        b.style.background = on ? '#3b82f6' : '#1e293b';
+        b.style.color      = on ? '#fff'    : '#94a3b8';
+        b.style.fontWeight = on ? '600'     : '400';
+    });
+
+    var tvBtn = document.getElementById('mc-tv-btn');
+    if (tvBtn) {
+        var tvUrl = tvSymbolUrl(ticker, isIntl);
+        tvBtn.onclick = tvUrl ? function() { window.open(tvUrl, '_blank', 'noopener'); } : null;
+        tvBtn.disabled = !tvUrl;
+        tvBtn.style.opacity = tvUrl ? '1' : '.4';
+    }
 
     // Linhas salvas
     if (!_lines[ticker]) {
@@ -955,6 +1083,17 @@ function _draw() {
         ctx.setLineDash([]);
     }
 
+    // Retângulo de zoom por área sendo arrastado
+    if (_zoomBoxSt && _state._zoomBoxEnd) {
+        var zx1 = _zoomBoxSt.x, zy1 = _zoomBoxSt.y;
+        var zx2 = _state._zoomBoxEnd.x, zy2 = _state._zoomBoxEnd.y;
+        ctx.fillStyle = 'rgba(59,130,246,.15)';
+        ctx.fillRect(Math.min(zx1,zx2), Math.min(zy1,zy2), Math.abs(zx2-zx1), Math.abs(zy2-zy1));
+        ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
+        ctx.strokeRect(Math.min(zx1,zx2), Math.min(zy1,zy2), Math.abs(zx2-zx1), Math.abs(zy2-zy1));
+        ctx.setLineDash([]);
+    }
+
     // Crosshair
     if (_state._crossX != null) {
         var cx = _state._crossX, cy = _state._crossY;
@@ -995,7 +1134,7 @@ function _draw() {
 
     document.getElementById('mc-status').textContent =
         vis.length + ' candles  |  ' + fmtDate(vis[0].t) + ' – ' + fmtDate(vis[vis.length-1].t)
-        + '  |  Scroll=zoom  Ctrl+Scroll=zoom↕  Shift+drag=pan  2×clique=reset↕  L=linha  C=cursor';
+        + '  |  Scroll=zoom  Ctrl+Scroll=zoom↕  Shift+drag=pan  2×clique=reset↕  L=linha  C=cursor  Z=zoom por área';
 
     _drawVolume(vis, W, cW);
 }

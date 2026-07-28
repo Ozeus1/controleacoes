@@ -13850,7 +13850,12 @@ def api_chart_data(ticker):
                 candles = _sanitize_chart_candles(_yahoo_fetch(yf_ticker))
             days_old = (_date.today() - _date.fromisoformat(db_entry.last_date)).days
 
-            if days_old <= 1:
+            # days_old == 0 (last_date é HOJE) NÃO é tratado como fresco: o
+            # candle do dia fica "em formação" enquanto o mercado está aberto
+            # (o Yahoo v8 atualiza esse candle ao vivo) — sem refetch aqui ele
+            # ficava congelado no valor da primeira busca do dia, mesmo horas
+            # depois. Só days_old == 1 (ontem) pula o refetch com segurança.
+            if days_old == 1:
                 if len(candles) != original_len:
                     gz = _gzip.compress(_json.dumps(candles).encode(), compresslevel=6)
                     db_entry.candles_gz = gz

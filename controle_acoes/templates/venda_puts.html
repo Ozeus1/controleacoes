@@ -95,7 +95,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 </div>
                 <div>
                     <label class="form-label">Quantidade</label>
-                    <input class="form-control" name="quantity" type="number" min="1" required
+                    <input class="form-control" name="quantity" type="number" min="1" step="100" required
                            id="inp-qty"
                            value="{{ edit.quantity if edit else 100 }}">
                 </div>
@@ -709,6 +709,22 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
     });
     recalcPut();
 
+    // ── Passo da Quantidade: unidade p/ BOVA11, centena p/ demais ─────────────
+    function updateQtyStep() {
+        var underlying = (document.querySelector('#put-form [name=underlying_asset]').value || '').trim().toUpperCase();
+        var qtyEl = document.getElementById('inp-qty');
+        var step = (underlying === 'BOVA11') ? 1 : 100;
+        qtyEl.step = step;
+        if (!edit_id_present) {
+            qtyEl.value = step;
+        } else {
+            var cur = toFloat(qtyEl.value);
+            if (cur != null) qtyEl.value = Math.max(step, Math.round(cur / step) * step);
+        }
+    }
+    var edit_id_present = {{ 'true' if edit else 'false' }};
+    document.querySelector('#put-form [name=underlying_asset]').addEventListener('input', updateQtyStep);
+
     // ── Pré-preenchimento da venda de put via URL (vindo de Busca de Operações) ─
     (function() {
         var q = new URLSearchParams(location.search);
@@ -747,7 +763,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                         return;
                     }
                     var d = res.j;
-                    if (d.underlying) document.querySelector('#put-form [name=underlying_asset]').value = d.underlying.toUpperCase();
+                    if (d.underlying) { document.querySelector('#put-form [name=underlying_asset]').value = d.underlying.toUpperCase(); updateQtyStep(); }
                     if (d.spot_price != null) document.getElementById('inp-spot').value = d.spot_price;
                     if (d.strike != null) document.getElementById('inp-strike').value = d.strike;
                     var premium = (d.last != null && d.last > 0) ? d.last

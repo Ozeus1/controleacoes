@@ -61,8 +61,13 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:.75rem; align-items:end;">
                 <div>
                     <label class="form-label">Ticker da Opção</label>
-                    <input class="form-control" name="ticker" required style="text-transform:uppercase"
-                           value="{{ edit.ticker if edit else '' }}" placeholder="ex: PETRB20">
+                    <div style="display:flex; gap:.35rem;">
+                        <input class="form-control" name="ticker" id="inp-ticker" required style="text-transform:uppercase"
+                               value="{{ edit.ticker if edit else '' }}" placeholder="ex: PETRB20">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btn-fetch-opt"
+                                style="white-space:nowrap;" title="Buscar dados da opção via OpLab">🔍 Buscar</button>
+                    </div>
+                    <small id="fetch-opt-status" style="color:var(--text-secondary);"></small>
                 </div>
                 <div>
                     <label class="form-label">Ativo Subjacente</label>
@@ -720,6 +725,46 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         setP('#inp-qty',     q.get('qty'));
         setP('#inp-exp',     q.get('exp'));
         recalcPut();
+    })();
+
+    // ── Buscar dados da opção via OpLab a partir do ticker ────────────────────
+    (function() {
+        var btn = document.getElementById('btn-fetch-opt');
+        var statusEl = document.getElementById('fetch-opt-status');
+        if (!btn) return;
+        btn.addEventListener('click', function() {
+            var ticker = (document.getElementById('inp-ticker').value || '').trim().toUpperCase();
+            if (!ticker) { statusEl.textContent = 'Informe o ticker da opção.'; statusEl.style.color = 'var(--danger-color)'; return; }
+            btn.disabled = true;
+            statusEl.style.color = 'var(--text-secondary)';
+            statusEl.textContent = 'Buscando…';
+            fetch('/api/busca-opcao/' + encodeURIComponent(ticker))
+                .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+                .then(function(res) {
+                    if (!res.ok || res.j.error) {
+                        statusEl.textContent = '⚠️ ' + (res.j.error || 'Erro ao buscar opção.');
+                        statusEl.style.color = 'var(--danger-color)';
+                        return;
+                    }
+                    var d = res.j;
+                    if (d.underlying) document.querySelector('#put-form [name=underlying_asset]').value = d.underlying.toUpperCase();
+                    if (d.spot_price != null) document.getElementById('inp-spot').value = d.spot_price;
+                    if (d.strike != null) document.getElementById('inp-strike').value = d.strike;
+                    var premium = (d.last != null && d.last > 0) ? d.last
+                                  : ((d.bid != null && d.ask != null) ? Math.round((d.bid + d.ask) / 2 * 100) / 100
+                                     : (d.bid != null ? d.bid : d.ask));
+                    if (premium != null) document.getElementById('inp-premium').value = premium;
+                    if (d.expiration) document.getElementById('inp-exp').value = String(d.expiration).slice(0, 10);
+                    recalcPut();
+                    statusEl.style.color = 'var(--positive-color, #4caf50)';
+                    statusEl.textContent = '✓ Dados preenchidos via OpLab.';
+                })
+                .catch(function(e) {
+                    statusEl.textContent = '⚠️ Falha na requisição: ' + e;
+                    statusEl.style.color = 'var(--danger-color)';
+                })
+                .finally(function() { btn.disabled = false; });
+        });
     })();
 
     // ── Black-Scholes p/ barra de métricas do gráfico ─────────────────────────

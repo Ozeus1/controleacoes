@@ -59,15 +59,14 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
               action="{{ url_for('venda_puts_edit', id=edit.id) if edit else url_for('venda_puts_new') }}"
               id="put-form">
             <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:.75rem; align-items:end;">
-                <div>
+                <div style="grid-column:span 2; min-width:260px;">
                     <label class="form-label">Ticker da Opção</label>
                     <div style="display:flex; gap:.35rem;">
-                        <input class="form-control" name="ticker" id="inp-ticker" required style="text-transform:uppercase"
+                        <input class="form-control" name="ticker" id="inp-ticker" required style="text-transform:uppercase; flex:1;"
                                value="{{ edit.ticker if edit else '' }}" placeholder="ex: PETRB20">
                         <button type="button" class="btn btn-secondary btn-sm" id="btn-fetch-opt"
-                                style="white-space:nowrap;" title="Buscar dados da opção via OpLab">🔍 Buscar</button>
+                                style="white-space:nowrap; padding:.375rem .6rem;" title="Buscar dados da opção via OpLab">🔍</button>
                     </div>
-                    <small id="fetch-opt-status" style="color:var(--text-secondary);"></small>
                 </div>
                 <div>
                     <label class="form-label">Ativo Subjacente</label>
@@ -710,19 +709,21 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
     recalcPut();
 
     // ── Passo da Quantidade: unidade p/ BOVA11, centena p/ demais ─────────────
+    var qtyUserTouched = {{ 'true' if edit else 'false' }};
     function updateQtyStep() {
         var underlying = (document.querySelector('#put-form [name=underlying_asset]').value || '').trim().toUpperCase();
         var qtyEl = document.getElementById('inp-qty');
         var step = (underlying === 'BOVA11') ? 1 : 100;
+        var prevStep = parseInt(qtyEl.step, 10) || 100;
         qtyEl.step = step;
-        if (!edit_id_present) {
+        if (!qtyUserTouched) {
             qtyEl.value = step;
-        } else {
+        } else if (step !== prevStep) {
             var cur = toFloat(qtyEl.value);
             if (cur != null) qtyEl.value = Math.max(step, Math.round(cur / step) * step);
         }
     }
-    var edit_id_present = {{ 'true' if edit else 'false' }};
+    document.getElementById('inp-qty').addEventListener('input', function() { qtyUserTouched = true; });
     document.querySelector('#put-form [name=underlying_asset]').addEventListener('input', updateQtyStep);
 
     // ── Pré-preenchimento da venda de put via URL (vindo de Busca de Operações) ─
@@ -746,20 +747,17 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
     // ── Buscar dados da opção via OpLab a partir do ticker ────────────────────
     (function() {
         var btn = document.getElementById('btn-fetch-opt');
-        var statusEl = document.getElementById('fetch-opt-status');
         if (!btn) return;
+        var btnDefault = btn.textContent;
         btn.addEventListener('click', function() {
             var ticker = (document.getElementById('inp-ticker').value || '').trim().toUpperCase();
-            if (!ticker) { statusEl.textContent = 'Informe o ticker da opção.'; statusEl.style.color = 'var(--danger-color)'; return; }
+            if (!ticker) return;
             btn.disabled = true;
-            statusEl.style.color = 'var(--text-secondary)';
-            statusEl.textContent = 'Buscando…';
             fetch('/api/busca-opcao/' + encodeURIComponent(ticker))
                 .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
                 .then(function(res) {
                     if (!res.ok || res.j.error) {
-                        statusEl.textContent = '⚠️ ' + (res.j.error || 'Erro ao buscar opção.');
-                        statusEl.style.color = 'var(--danger-color)';
+                        alert(res.j.error || 'Erro ao buscar opção.');
                         return;
                     }
                     var d = res.j;
@@ -772,14 +770,11 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     if (premium != null) document.getElementById('inp-premium').value = premium;
                     if (d.expiration) document.getElementById('inp-exp').value = String(d.expiration).slice(0, 10);
                     recalcPut();
-                    statusEl.style.color = 'var(--positive-color, #4caf50)';
-                    statusEl.textContent = '✓ Dados preenchidos via OpLab.';
                 })
                 .catch(function(e) {
-                    statusEl.textContent = '⚠️ Falha na requisição: ' + e;
-                    statusEl.style.color = 'var(--danger-color)';
+                    alert('Falha na requisição: ' + e);
                 })
-                .finally(function() { btn.disabled = false; });
+                .finally(function() { btn.disabled = false; btn.textContent = btnDefault; });
         });
     })();
 

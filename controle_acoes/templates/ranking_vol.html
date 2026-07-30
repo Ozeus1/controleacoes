@@ -156,6 +156,8 @@
         <th onclick="rvSort('iv_rank')"     style="cursor:pointer;user-select:none;white-space:nowrap">IV Rank <span class="rv-arrow" data-col="iv_rank"></span></th>
         <th onclick="rvSort('iv_percentil')" style="cursor:pointer;user-select:none;white-space:nowrap">Perc. <span class="rv-arrow" data-col="iv_percentil"></span></th>
         <th onclick="rvSort('vol_impl')"    style="cursor:pointer;user-select:none;white-space:nowrap">Vol. Impl. <span class="rv-arrow" data-col="vol_impl"></span></th>
+        <th onclick="rvSort('vol_min')"     style="cursor:pointer;user-select:none;white-space:nowrap">Vol. Mín. <span class="rv-arrow" data-col="vol_min"></span></th>
+        <th onclick="rvSort('vol_max')"     style="cursor:pointer;user-select:none;white-space:nowrap">Vol. Máx. <span class="rv-arrow" data-col="vol_max"></span></th>
         <th>Ações</th>
       </tr>
     </thead>
@@ -166,7 +168,9 @@
           data-price="{{ rv.last_price if rv.last_price is not none else '' }}"
           data-ivr="{{ rv.iv_rank if rv.iv_rank is not none else '' }}"
           data-ivp="{{ rv.iv_percentil if rv.iv_percentil is not none else '' }}"
-          data-vol="{{ rv.vol_impl if rv.vol_impl is not none else '' }}">
+          data-vol="{{ rv.vol_impl if rv.vol_impl is not none else '' }}"
+          data-volmin="{{ rv.vol_min if rv.vol_min is not none else '' }}"
+          data-volmax="{{ rv.vol_max if rv.vol_max is not none else '' }}">
         <td><span class="ticker-badge">{{ rv.ticker }}</span></td>
         <td class="rv-var {% if rv.var_pct is not none %}{{ 'positive' if rv.var_pct >= 0 else 'negative' }}{% endif %}">
           {% if rv.var_pct is not none %}{{ '%+.2f'|format(rv.var_pct) }}%{% else %}—{% endif %}
@@ -196,6 +200,12 @@
         <td class="rv-vol">
           {% if rv.vol_impl is not none %}{{ '%.1f'|format(rv.vol_impl) }}{% else %}—{% endif %}
         </td>
+        <td class="rv-volmin">
+          {% if rv.vol_min is not none %}{{ '%.1f'|format(rv.vol_min) }}{% else %}—{% endif %}
+        </td>
+        <td class="rv-volmax">
+          {% if rv.vol_max is not none %}{{ '%.1f'|format(rv.vol_max) }}{% else %}—{% endif %}
+        </td>
         <td class="actions" style="white-space:nowrap">
           <button class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#0ea5e9;color:#fff;margin-right:.2rem"
                   onclick="openTVChart('{{ rv.ticker }}')" title="Gráfico TradingView">📈</button>
@@ -205,8 +215,10 @@
                   onclick="openRadarFund('{{ rv.ticker }}')" title="Análise Fundamentalista (IA)">📊F</button>
           <a class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#10b981;color:#fff;margin-right:.2rem;text-decoration:none"
              href="{{ url_for('estudo_ir', ticker=rv.ticker) }}" title="Abrir/editar na tela Estudos">📋</a>
-          <button class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#7c3aed;color:#fff;margin-right:.2rem"
-                  onclick="openLiquidez('{{ rv.ticker }}')" title="Ver Liquidez de Opções">💧</button>
+          <a class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#f59e0b;color:#fff;margin-right:.2rem;text-decoration:none"
+             href="{{ url_for('busca_operacoes_avancadas') }}?ticker={{ rv.ticker }}" title="Busca de Operações Avançadas">🧭</a>
+          <a class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#ec4899;color:#fff;margin-right:.2rem;text-decoration:none"
+             href="{{ url_for('busca_operacoes') }}?ticker={{ rv.ticker }}" title="Busca de Operações">🔎</a>
           <form method="POST" action="{{ url_for('ranking_vol_delete', rid=rv.id) }}" style="display:inline"
                 onsubmit="return confirm('Remover {{ rv.ticker }} do ranking?')">
             <button class="btn btn-sm btn-danger" style="padding:.1rem .45rem;font-size:.75rem" title="Remover">🗑</button>
@@ -216,7 +228,7 @@
       {% endfor %}
       {% if not ranking_vol %}
       <tr id="rv-empty">
-        <td colspan="8" style="text-align:center;color:var(--text-secondary);padding:1.5rem">
+        <td colspan="10" style="text-align:center;color:var(--text-secondary);padding:1.5rem">
           Nenhuma ação no ranking. Clique em "+ Adicionar" para começar.
         </td>
       </tr>
@@ -424,7 +436,7 @@
 (function(){
   // ── Ordenação ──────────────────────────────────────────────────
   var _col = null, _asc = true;
-  var _map = {ticker:'ticker',var_pct:'var',last_price:'price',iv_rank:'ivr',iv_percentil:'ivp',vol_impl:'vol'};
+  var _map = {ticker:'ticker',var_pct:'var',last_price:'price',iv_rank:'ivr',iv_percentil:'ivp',vol_impl:'vol',vol_min:'volmin',vol_max:'volmax'};
 
   window.rvSort = function(col){
     if(_col===col) _asc=!_asc; else {_col=col; _asc=(col==='ticker');}
@@ -502,6 +514,8 @@
         tr.querySelector('.rv-ivr').innerHTML=badge(row.iv_rank);    tr.setAttribute('data-ivr',row.iv_rank??'');
         tr.querySelector('.rv-ivp').innerHTML=badge(row.iv_percentil); tr.setAttribute('data-ivp',row.iv_percentil??'');
         if(row.vol_impl!=null){tr.querySelector('.rv-vol').textContent=parseFloat(row.vol_impl).toFixed(1);tr.setAttribute('data-vol',row.vol_impl);}
+        if(row.vol_min!=null){tr.querySelector('.rv-volmin').textContent=parseFloat(row.vol_min).toFixed(1);tr.setAttribute('data-volmin',row.vol_min);}
+        if(row.vol_max!=null){tr.querySelector('.rv-volmax').textContent=parseFloat(row.vol_max).toFixed(1);tr.setAttribute('data-volmax',row.vol_max);}
         var empty=document.getElementById('rv-empty'); if(empty) empty.remove();
       });
       btn.disabled=false; btn.textContent='⟳ Atualizar';
@@ -872,7 +886,8 @@
     tr.dataset.ticker = ticker;
     tr.innerHTML = '<td><span class="ticker-badge">'+ticker+'</span></td>'
       + '<td class="rv-var">—</td><td class="rv-price">—</td><td class="rv-date">—</td>'
-      + '<td class="rv-ivr">—</td><td class="rv-ivp">—</td><td class="rv-vol">—</td><td></td>';
+      + '<td class="rv-ivr">—</td><td class="rv-ivp">—</td><td class="rv-vol">—</td>'
+      + '<td class="rv-volmin">—</td><td class="rv-volmax">—</td><td></td>';
     tbody.appendChild(tr);
     var empty = document.getElementById('rv-empty'); if(empty) empty.remove();
   }

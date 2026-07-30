@@ -267,6 +267,13 @@ def run_migrations():
     except Exception:
         pass  # coluna já existe
 
+    # RankingVol: Vol. Implícita mínima/máxima (52 semanas)
+    for _col, _def in [('vol_min', 'FLOAT'), ('vol_max', 'FLOAT')]:
+        try:
+            cursor.execute(f"ALTER TABLE ranking_vol ADD COLUMN {_col} {_def}")
+        except Exception:
+            pass  # coluna já existe
+
     # Check existing columns in 'option' table
     cursor.execute("PRAGMA table_info(option)")
     existing_columns = {row[1] for row in cursor.fetchall()}
@@ -12169,7 +12176,18 @@ def _api_ranking_vol_update_impl():
             if v is not None:
                 try: vol = round(float(v)*100,1) if float(v)<=1.0 else round(float(v),1); break
                 except: pass
-        return ivr, ivp, vol
+        vmin = vmax = None
+        for k in ('iv_1y_min', 'ewma_1y_min', 'iv_6m_min', 'iv_min', 'ivMin'):
+            v = d.get(k)
+            if v is not None:
+                try: vmin = round(float(v)*100,1) if float(v)<=1.0 else round(float(v),1); break
+                except: pass
+        for k in ('iv_1y_max', 'ewma_1y_max', 'iv_6m_max', 'iv_max', 'ivMax'):
+            v = d.get(k)
+            if v is not None:
+                try: vmax = round(float(v)*100,1) if float(v)<=1.0 else round(float(v),1); break
+                except: pass
+        return ivr, ivp, vol, vmin, vmax
 
     # Busca preços em lote via brapi (com token brapi se disponível)
     from services import _brapi_quotes, _yf_fast_info
@@ -12205,9 +12223,9 @@ def _api_ranking_vol_update_impl():
         try:
             return ticker, (*_extract_iv(_oplab_get_json(f'/market/instruments/{ticker}', token, timeout=15)), None)
         except OplabApiError as e:
-            return ticker, (None, None, None, str(e))
+            return ticker, (None, None, None, None, None, str(e))
         except Exception as e:
-            return ticker, (None, None, None, str(e))
+            return ticker, (None, None, None, None, None, str(e))
 
     from concurrent.futures import as_completed as _as_completed, TimeoutError as _CFTimeoutError
     ex = ThreadPoolExecutor(max_workers=min(16, len(items)))
@@ -12226,7 +12244,7 @@ def _api_ranking_vol_update_impl():
     for rv in items:
         row = {'ticker': rv.ticker, 'ok': False, 'error': None}
         try:
-            ivr, ivp, vol, err = iv_results.get(rv.ticker, (None, None, None, None))
+            ivr, ivp, vol, vmin, vmax, err = iv_results.get(rv.ticker, (None, None, None, None, None, None))
             if err:
                 row['error'] = err
 
@@ -12238,10 +12256,13 @@ def _api_ranking_vol_update_impl():
             if ivr is not None: rv.iv_rank = ivr
             if ivp is not None: rv.iv_percentil = ivp
             if vol is not None: rv.vol_impl = vol
+            if vmin is not None: rv.vol_min = vmin
+            if vmax is not None: rv.vol_max = vmax
             rv.updated_at = now
             ok += 1
             row['ok'] = True
             row['iv_rank'] = ivr; row['iv_percentil'] = ivp; row['vol_impl'] = vol
+            row['vol_min'] = vmin; row['vol_max'] = vmax
             row['price'] = rv.last_price; row['change'] = rv.var_pct
         except Exception as e:
             row['error'] = str(e)

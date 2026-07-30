@@ -1320,6 +1320,11 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   })();
 
   renderTickers();
+
+  // Pré-seleção de ativo via URL (?ticker=...) — usado pelo Ranking de
+  // Volatilidade e outras telas; insere o ticker na lista se ainda não estiver.
+  var qTicker = new URLSearchParams(location.search).get('ticker');
+  if (qTicker) load(qTicker);
 })();
 </script>
 {% endblock %}

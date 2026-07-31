@@ -52,13 +52,6 @@ table.cadeia td.empty{color:#334155;}
   border-radius:5px;padding:.25rem .5rem;font-size:.82rem;width:110px;}
 /* ── Simulador ── */
 #sim-section{margin-top:1.5rem;border-top:1px solid var(--border-color);padding-top:1.2rem;}
-#sim-saved-wrap{margin-bottom:1rem;}
-.sim-saved-item{display:inline-flex;align-items:center;gap:.5rem;padding:.3rem .7rem;
-  border-radius:6px;border:1px solid var(--border-color);cursor:pointer;font-size:.82rem;
-  background:var(--hover-bg);margin:.2rem .2rem;transition:background .12s;}
-.sim-saved-item:hover{background:rgba(124,58,237,.2);border-color:#7c3aed;}
-.sim-saved-item.active{background:rgba(124,58,237,.25);border-color:#7c3aed;}
-.sim-del-btn{background:none;border:none;color:#f87171;cursor:pointer;font-size:.9rem;padding:0 .2rem;}
 #legs-table-wrap{overflow-x:auto;margin-bottom:.7rem;}
 #legs-table{width:100%;border-collapse:collapse;font-size:.82rem;}
 #legs-table th{padding:.3rem .4rem;background:var(--card-bg);text-align:left;
@@ -162,12 +155,6 @@ table.cadeia td.empty{color:#334155;}
   <!-- ═══════════ SIMULADOR ═══════════ -->
   <div id="sim-section">
     <h3 style="margin:0 0 .8rem;">📈 Simulação</h3>
-
-    <!-- Simulações salvas -->
-    <div id="sim-saved-wrap">
-      <div style="font-size:.8rem;color:var(--text-secondary);margin-bottom:.4rem;">Simulações salvas:</div>
-      <div id="sim-saved-list"><span style="color:var(--text-secondary);font-size:.82rem">Carregando…</span></div>
-    </div>
 
     <!-- Nome + Ativo -->
     <div style="display:flex;gap:.8rem;flex-wrap:wrap;align-items:center;margin-bottom:.8rem;">
@@ -778,7 +765,7 @@ document.getElementById('sim-save-btn').addEventListener('click',function(){
     .then(function(d){
       if(d.error){alert(d.error);return;}
       document.getElementById('sim-current-id').value=d.id;
-      loadSavedSims();
+      alert('Simulação salva.');
     })
     .catch(function(e){alert('Erro: '+e);});
 });
@@ -786,61 +773,8 @@ document.getElementById('sim-save-btn').addEventListener('click',function(){
 document.getElementById('sim-new-btn').addEventListener('click',function(){
   document.getElementById('sim-current-id').value='';
   document.getElementById('sim-name-input').value='';
-  document.querySelectorAll('.sim-saved-item').forEach(function(i){i.classList.remove('active');});
   clearLegsC();
 });
-
-function loadSavedSims(){
-  fetch('/api/simulacao/list')
-    .then(function(r){return r.json();})
-    .then(function(sims){
-      var wrap=document.getElementById('sim-saved-list');
-      if(!sims.length){wrap.innerHTML='<span style="color:var(--text-secondary);font-size:.82rem">Nenhuma simulação salva.</span>';return;}
-      wrap.innerHTML='';
-      sims.forEach(function(s){
-        var div=document.createElement('div');
-        div.className='sim-saved-item';
-        div.dataset.id=s.id;
-        div.innerHTML='<span style="font-weight:600">'+s.name+'</span>'
-          +'<span style="font-size:.75rem;color:var(--text-secondary)">'+s.underlying+' · '+s.created_at+'</span>'
-          +'<button class="sim-del-btn" data-id="'+s.id+'" title="Excluir">🗑</button>';
-        div.addEventListener('click',function(e){
-          if(e.target.classList.contains('sim-del-btn')){
-            if(!confirm('Excluir "'+s.name+'"?')) return;
-            fetch('/api/simulacao/'+s.id+'/delete',{method:'POST'})
-              .then(function(){loadSavedSims();
-                if(document.getElementById('sim-current-id').value==s.id){clearLegsC();document.getElementById('sim-name-input').value='';}
-              });
-            return;
-          }
-          document.querySelectorAll('.sim-saved-item').forEach(function(i){i.classList.remove('active');});
-          div.classList.add('active');
-          loadSimIntoEditor(s);
-        });
-        wrap.appendChild(div);
-      });
-    });
-}
-
-function loadSimIntoEditor(s){
-  document.getElementById('sim-current-id').value=s.id;
-  document.getElementById('sim-name-input').value=s.name;
-  document.getElementById('sim-underlying-input').value=s.underlying;
-  document.getElementById('legs-body').innerHTML='';
-  (s.legs||[]).forEach(function(l){
-    addLegFilledC(l.type,l.side,l.qty,l.ticker,
-      l.premium?l.premium.toFixed(2).replace('.',','):'0,00',
-      l.exp,l.strike?l.strike.toFixed(2).replace('.',','):'0,00');
-    // VI
-    if(l.iv&&l.iv>0){
-      var rows=document.querySelectorAll('#legs-body .leg-row');
-      var row=rows[rows.length-1];
-      var ivEl=row.querySelector('[name=leg_iv]');
-      if(ivEl) ivEl.value=(l.iv*100).toFixed(1).replace('.',',');
-    }
-  });
-  scheduleRedrawC();
-}
 
 /* ════ Format helpers ════ */
 function brl(v){
@@ -921,7 +855,6 @@ document.addEventListener('DOMContentLoaded', function(){
     typeField: 'leg_type', after: function(){ scheduleRedrawC(); }
   });
 });
-loadSavedSims();
 var _prefilled=prefillFromUrl();
 if(!_prefilled) addLegC('CALL');
 var first=document.querySelector('.ct-btn');

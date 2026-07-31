@@ -7339,9 +7339,10 @@ def _pm_earned_items(user_id, ticker):
     # Trades de opções: casa pelo underlying preenchido; para registros ANTIGOS
     # sem underlying, casa pela raiz B3 do ticker da opção (ABEVA148 → ABEV →
     # ABEV3) — somente se a raiz for inequívoca na carteira (PETR3 × PETR4 não).
-    # Fallback extra: travas/estruturas registram "{subjacente} | ..." no
-    # início de notes (close_spread/close_estruturada) mesmo quando o campo
-    # underlying ficou vazio — extrai de lá antes de cair pro fallback de raiz.
+    # Fallback extra: travas/estruturas registram o subjacente em notes mesmo
+    # quando o campo underlying ficou vazio — close_estruturada usa
+    # "{subjacente} | ..." (1º segmento); close_spread usa
+    # "{spread_type} | {subjacente} | ..." (2º segmento). Casa pelos dois.
     root = ticker[:4].upper()
     same_root = Asset.query.filter(Asset.user_id == user_id,
                                    Asset.type.in_(('ACAO', 'FII')),
@@ -7351,9 +7352,11 @@ def _pm_earned_items(user_id, ticker):
     for th in TradeHistory.query.filter_by(user_id=user_id, strategy='Opções').all():
         und   = (th.underlying or '').strip().upper()
         tk_th = (th.ticker or '').strip().upper()
-        notes_prefix = (th.notes or '').split('|')[0].strip().upper()
+        notes_parts = (th.notes or '').split('|')
+        notes_seg1 = notes_parts[0].strip().upper() if len(notes_parts) > 0 else ''
+        notes_seg2 = notes_parts[1].strip().upper() if len(notes_parts) > 1 else ''
         match = (und == ticker) or (
-            not und and (tk_th == ticker or notes_prefix == ticker
+            not und and (tk_th == ticker or notes_seg1 == ticker or notes_seg2 == ticker
                          or (same_root == 1 and tk_th[:4] == root)))
         if not match:
             continue
@@ -9334,6 +9337,7 @@ def edit_history(id):
         trade.entry_date = datetime.strptime(entry_date, '%Y-%m-%d').date() if entry_date else None
         trade.exit_date = datetime.strptime(exit_date, '%Y-%m-%d').date() if exit_date else None
         trade.reason = request.form.get('reason')
+        trade.underlying = (request.form.get('underlying') or '').strip().upper() or None
         
         # Recalc
         total_buy = trade.quantity * trade.buy_price
@@ -9546,7 +9550,8 @@ def add_history():
             profit_value=profit_value,
             profit_pct=profit_pct,
             days_held=days_held,
-            reason=reason
+            reason=reason,
+            underlying=(request.form.get('underlying') or '').strip().upper() or None,
         )
         db.session.add(new_trade)
         db.session.commit()

@@ -219,6 +219,8 @@
              href="{{ url_for('busca_operacoes_avancadas') }}?ticker={{ rv.ticker }}" title="Busca de Operações Avançadas">🧭</a>
           <a class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#ec4899;color:#fff;margin-right:.2rem;text-decoration:none"
              href="{{ url_for('busca_operacoes') }}?ticker={{ rv.ticker }}" title="Busca de Operações">🔎</a>
+          <button class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#0ea5e9;color:#fff;margin-right:.2rem"
+                  onclick="openBuscaLiquidez('{{ rv.ticker }}')" title="Busca Liquidez">💧🔍</button>
           <form method="POST" action="{{ url_for('ranking_vol_delete', rid=rv.id) }}" style="display:inline"
                 onsubmit="return confirm('Remover {{ rv.ticker }} do ranking?')">
             <button class="btn btn-sm btn-danger" style="padding:.1rem .45rem;font-size:.75rem" title="Remover">🗑</button>

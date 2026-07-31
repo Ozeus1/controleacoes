@@ -454,13 +454,17 @@
                     <th style="padding:.45rem .6rem; text-align:left;">Tipo</th>
                     <th style="padding:.45rem .6rem; text-align:right;">Strike</th>
                     <th style="padding:.45rem .6rem; text-align:right;">Preço Entrada</th>
+                    <th style="padding:.45rem .6rem; text-align:right;">Cotação Atual</th>
                     <th style="padding:.45rem .6rem; text-align:right;">Total</th>
+                    <th style="padding:.45rem .6rem; text-align:right;">Lucro (R$)</th>
                 </tr>
             </thead>
             <tbody id="legs-tbody">
             {% for leg in legs %}
             {% set sign = 1 if leg.side == 'SELL' else -1 %}
             {% set total = sign * leg.quantity * leg.entry_price %}
+            {% set cur = leg.current_price if leg.current_price else leg.entry_price %}
+            {% set leg_pnl = ((leg.entry_price - cur) if leg.side == 'SELL' else (cur - leg.entry_price)) * leg.quantity %}
                 <tr style="border-bottom:1px solid var(--border-color);"
                     data-side="{{ leg.side }}"
                     data-opt-type="{{ leg.opt_type }}"
@@ -481,26 +485,31 @@
                     <td style="padding:.4rem .6rem;">{{ leg.opt_type }}</td>
                     <td style="padding:.4rem .6rem; text-align:right;">R$ {{ "%.2f"|format(leg.strike)|replace('.', ',') }}</td>
                     <td style="padding:.4rem .6rem; text-align:right;">R$ {{ "%.2f"|format(leg.entry_price)|replace('.', ',') }}</td>
+                    <td style="padding:.4rem .6rem; text-align:right;">R$ {{ "%.2f"|format(cur)|replace('.', ',') }}</td>
                     <td style="padding:.4rem .6rem; text-align:right;"
                         class="{{ 'positive' if total >= 0 else 'negative' }}">
                         R$ {{ "%.2f"|format(total|abs)|replace('.', ',') }}
                         <small>{{ '(cred.)' if total >= 0 else '(déb.)' }}</small>
+                    </td>
+                    <td style="padding:.4rem .6rem; text-align:right;"
+                        class="{{ 'positive' if leg_pnl >= 0 else 'negative' }}">
+                        {{ '+' if leg_pnl >= 0 else '-' }}R$ {{ "%.2f"|format(leg_pnl|abs)|replace('.', ',') }}
                     </td>
                 </tr>
             {% endfor %}
             </tbody>
             <tfoot>
                 <tr style="font-weight:bold; background:var(--total-row-bg);">
-                    <td colspan="6" style="padding:.5rem .6rem; text-align:right;">Saldo da montagem:</td>
+                    <td colspan="7" style="padding:.5rem .6rem; text-align:right;">Saldo da montagem:</td>
                     <td id="tfoot-net" style="padding:.5rem .6rem; text-align:right;"></td>
                 </tr>
                 {% if roll_adjustment is defined and roll_adjustment %}
                 <tr style="font-weight:bold; background:rgba(15,23,42,.35);">
-                    <td colspan="6" style="padding:.5rem .6rem; text-align:right;">Resultado carregado das rolagens:</td>
+                    <td colspan="7" style="padding:.5rem .6rem; text-align:right;">Resultado carregado das rolagens:</td>
                     <td id="tfoot-roll-adjustment" style="padding:.5rem .6rem; text-align:right;"></td>
                 </tr>
                 <tr style="font-weight:bold; background:var(--total-row-bg);">
-                    <td colspan="6" style="padding:.5rem .6rem; text-align:right;">Saldo total considerado no payoff:</td>
+                    <td colspan="7" style="padding:.5rem .6rem; text-align:right;">Saldo total considerado no payoff:</td>
                     <td id="tfoot-total-net" style="padding:.5rem .6rem; text-align:right;"></td>
                 </tr>
                 {% endif %}

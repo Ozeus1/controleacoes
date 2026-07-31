@@ -66,6 +66,11 @@
                 <div class="sim-item-name">{{ s.name }}</div>
                 <div class="sim-item-meta">{{ s.underlying or '—' }} · {{ s.created_at.strftime('%d/%m/%y') if s.created_at else '' }}</div>
             </div>
+            {% if s.underlying %}
+            <button type="button" class="btn btn-sm" title="Gráfico {{ s.underlying }}"
+                    style="padding:.1rem .4rem; font-size:.8rem; background:#0ea5e9; color:white;"
+                    onclick="event.stopPropagation(); MyChart.open('{{ s.underlying }}')">📈</button>
+            {% endif %}
             <form action="{{ url_for('simulacao_delete', id=s.id) }}" method="post" style="margin:0;"
                   onclick="event.stopPropagation()">
                 <button type="submit" class="btn btn-sm btn-danger"

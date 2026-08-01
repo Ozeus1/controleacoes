@@ -1437,7 +1437,7 @@ var STRAT_FIELDS = {
   'Venda Coberta de Longo Prazo':          ['qty','ticker','valor'],
   'Venda Coberta Mensal':                  ['qty','ticker','valor'],
   'Trava de Baixa de Venda Coberta Longa': ['qty','venc1'],
-  'Venda de Puts':                         ['qty','ticker'],
+  'Venda de Puts':                         ['qty','ticker','valor'],
   'Trava Calendário':                      ['qty','venc1','venc2'],
   'THS':                                   ['qty','venc1','venc2'],
   'Collar':                                ['qty','venc1'],
@@ -1485,6 +1485,54 @@ function fmtStBadge(s) {
   return parts.join(' · ');
 }
 
+// Tipos com posição vendida em opção — detalhamento via OpLab (venc/strike/
+// última cotação/lucro): o usuário informa só ticker e valor vendido.
+var DETAIL_TYPES = ['Venda Coberta de Longo Prazo', 'Venda Coberta Mensal', 'Venda de Puts'];
+
+function loadStratDetail(s, box) {
+  box.style.display = '';
+  box.innerHTML = '<span style="color:var(--text-secondary);">Buscando dados via OpLab…</span>';
+  fetch('/api/busca-opcao/' + encodeURIComponent(s.option_ticker))
+    .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+    .then(function(res) {
+      if (!res.ok || res.j.error) {
+        box.innerHTML = '<span style="color:#f87171;">⚠️ ' + (res.j.error || 'Erro ao buscar opção.') + '</span>';
+        return;
+      }
+      var d = res.j;
+      function brl(v) { return v != null ? 'R$ ' + Number(v).toFixed(2).replace('.', ',') : '—'; }
+      function dt(iso) {
+        if (!iso) return '—';
+        var p = String(iso).slice(0, 10).split('-');
+        return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : '—';
+      }
+      var last = (d.last != null && d.last > 0) ? d.last
+                 : ((d.bid != null && d.ask != null) ? Math.round((d.bid + d.ask) / 2 * 100) / 100
+                    : (d.bid != null ? d.bid : d.ask));
+      var pnl = null, pnlPct = null;
+      if (last != null && s.valor != null && s.valor !== '' && s.qty) {
+        // Posição vendida: recebeu s.valor, recompra custa "last"
+        pnl = (Number(s.valor) - last) * s.qty;
+        if (Number(s.valor) > 0) pnlPct = (Number(s.valor) - last) / Number(s.valor) * 100;
+      }
+      var pnlHtml = '—';
+      if (pnl != null) {
+        var cls = pnl >= 0 ? '#34d399' : '#f87171';
+        pnlHtml = '<span style="color:' + cls + ';font-weight:700;">' + (pnl >= 0 ? '+' : '−') + brl(Math.abs(pnl))
+          + (pnlPct != null ? ' (' + (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(1).replace('.', ',') + '%)' : '') + '</span>';
+      }
+      box.innerHTML =
+        '<span style="color:var(--text-secondary);">Venc:</span> <strong>' + dt(d.expiration) + '</strong>'
+        + ' · <span style="color:var(--text-secondary);">Strike:</span> <strong>' + brl(d.strike) + '</strong>'
+        + ' · <span style="color:var(--text-secondary);">Últ. cotação:</span> <strong>' + brl(last) + '</strong>'
+        + ' · <span style="color:var(--text-secondary);">Lucro/Prej.:</span> ' + pnlHtml
+        + (d.spot_price != null ? ' · <span style="color:var(--text-secondary);">' + _stratsTicker + ':</span> ' + brl(d.spot_price) : '');
+    })
+    .catch(function(e) {
+      box.innerHTML = '<span style="color:#f87171;">⚠️ Falha na requisição: ' + e + '</span>';
+    });
+}
+
 function renderStrats(list) {
   var wrap = document.getElementById('strats-list');
   if (!list.length) {
@@ -1494,16 +1542,33 @@ function renderStrats(list) {
   wrap.innerHTML = '';
   list.forEach(function(s) {
     var off = s.situacao === 'DESATIVADA';
-    var div = document.createElement('div');
-    div.style.cssText = 'display:flex;align-items:center;gap:.6rem;padding:.4rem .6rem;margin-bottom:.35rem;' +
+    var item = document.createElement('div');
+    item.style.cssText = 'padding:.4rem .6rem;margin-bottom:.35rem;' +
       'border-radius:6px;border:1px ' + (off ? 'dashed #ef4444' : 'solid var(--border-color)') + ';' +
       (off ? 'background:rgba(239,68,68,.08);' : 'background:var(--hover-bg);');
+    var div = document.createElement('div');
+    div.style.cssText = 'display:flex;align-items:center;gap:.6rem;';
     var info = document.createElement('div');
     info.style.cssText = 'flex:1;min-width:0;font-size:.84rem;';
     info.innerHTML = (off ? '⚠️ ' : '') + '<strong>' + fmtStBadge(s) + '</strong>'
       + (s.descricao ? '<br><span style="color:var(--text-secondary);font-size:.76rem;">' + s.descricao + '</span>' : '')
       + (off ? ' <span style="color:#f87171;font-size:.74rem;font-weight:700;">DESATIVADA</span>' : '');
     div.appendChild(info);
+
+    // Detalhamento OpLab (venc/strike/cotação/lucro) para posições vendidas em opção
+    var detailBox = null;
+    if (DETAIL_TYPES.indexOf(s.tipo) >= 0 && s.option_ticker) {
+      detailBox = document.createElement('div');
+      detailBox.style.cssText = 'display:none;font-size:.78rem;margin-top:.35rem;padding:.35rem .5rem;' +
+        'border-radius:5px;background:rgba(14,165,233,.08);border:1px solid rgba(14,165,233,.25);';
+      var btnI = document.createElement('button');
+      btnI.className = 'btn btn-sm';
+      btnI.style.cssText = 'background:#0ea5e9;color:white;padding:.1rem .45rem;font-size:.74rem;';
+      btnI.textContent = '🔍';
+      btnI.title = 'Detalhar via OpLab: vencimento, strike, última cotação e lucro/prejuízo (atualiza a cada clique)';
+      btnI.onclick = function() { loadStratDetail(s, detailBox); };
+      div.appendChild(btnI);
+    }
 
     var btnT = document.createElement('button');
     btnT.className = 'btn btn-sm';
@@ -1548,7 +1613,9 @@ function renderStrats(list) {
     };
     div.appendChild(btnD);
 
-    wrap.appendChild(div);
+    item.appendChild(div);
+    if (detailBox) item.appendChild(detailBox);
+    wrap.appendChild(item);
   });
 }
 

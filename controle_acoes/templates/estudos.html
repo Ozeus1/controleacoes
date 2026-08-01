@@ -1018,13 +1018,13 @@ function updateAllGreeks() {
 }
 
 // ── Botão "Atualizar" dos modais de edição ─────────────────────────────────
-// BR (ea): IV Rank/Percentil via OpLab + RSI/ATR%/tendência diária via Radar.
+// BR (ea): IV Rank/Percentil via OpLab + RSI/ATR%/tendência semanal via Radar.
 // EUA (eia): IV e volatilidade de opções + RSI/ATR%/tendência via Radar.
 // Nos dois casos a Data Estudo vira a data de hoje. Os valores só preenchem
 // os campos do modal — persistem quando o usuário clica em Salvar (o OpLab
 // também grava IV direto no banco quando o sid é enviado).
 function _trendFromRadar(d) {
-    var t = String(d.daily_trend || d.signal || '').toLowerCase();
+    var t = String(d.weekly_trend || '').toLowerCase();
     if (/alta|up|bull|compra|buy/.test(t)) return 'Alta';
     if (/baixa|down|bear|venda|sell/.test(t)) return 'Baixa';
     if (t) return 'Lateral';

@@ -131,14 +131,22 @@ function sanitizeCandles(candles) {
 }
 
 // ── Estilos de botão ──────────────────────────────────────────────────────────
+// Tela de toque (celular/tablet): botões maiores para facilitar o toque
+var COARSE = typeof window !== 'undefined' && window.matchMedia
+    && window.matchMedia('(pointer: coarse)').matches;
+
 function btnStyle(active) {
-    return 'padding:.2rem .55rem;border-radius:4px;font-size:.78rem;cursor:pointer;border:none;'
+    return 'padding:' + (COARSE ? '.5rem .8rem' : '.2rem .55rem') + ';border-radius:'
+        + (COARSE ? '6px' : '4px') + ';font-size:' + (COARSE ? '.95rem' : '.78rem')
+        + ';cursor:pointer;border:none;'
         + 'background:' + (active ? '#3b82f6' : '#1e293b') + ';'
         + 'color:'      + (active ? '#fff'    : '#94a3b8') + ';'
         + 'font-weight:'+ (active ? '600'     : '400')     + ';';
 }
 function toolBtn(active) {
-    return 'padding:.2rem .55rem;border-radius:4px;font-size:.88rem;cursor:pointer;border:none;'
+    return 'padding:' + (COARSE ? '.5rem .8rem' : '.2rem .55rem') + ';border-radius:'
+        + (COARSE ? '6px' : '4px') + ';font-size:' + (COARSE ? '1.05rem' : '.88rem')
+        + ';cursor:pointer;border:none;'
         + 'background:' + (active ? '#3b82f6' : '#1e293b') + ';'
         + 'color:'      + (active ? '#fff'    : '#94a3b8') + ';';
 }
@@ -694,7 +702,10 @@ function ensureModal() {
         + '<label style="font-size:.75rem;cursor:pointer;color:#fbbf24"><input type="checkbox" id="mc-ma8"   checked style="margin-right:.3rem">MM8</label>'
         + '<label style="font-size:.75rem;cursor:pointer;color:#60a5fa"><input type="checkbox" id="mc-ma20"  checked style="margin-right:.3rem">MM20</label>'
         + '<label style="font-size:.75rem;cursor:pointer;color:#f87171"><input type="checkbox" id="mc-ma200" checked style="margin-right:.3rem">MM200</label>'
-        + '<span style="font-size:.72rem;color:#475569;margin-left:.5rem">🖱 scroll=zoom horiz.  Ctrl+scroll=zoom vert.  Shift+drag=pan  ▭=zoom por área</span>'
+        + '<span style="font-size:.72rem;color:#475569;margin-left:.5rem">'
+        + (COARSE ? '👆 1 dedo=mover  ✌️ pinça=zoom  ╱=desenhar linha'
+                  : '🖱 scroll=zoom horiz.  Ctrl+scroll=zoom vert.  Shift+drag=pan  ▭=zoom por área')
+        + '</span>'
         + '<span id="mc-crosshair-info" style="font-size:.75rem;color:#94a3b8;margin-left:auto"></span>';
     card.appendChild(maRow);
 
@@ -704,7 +715,8 @@ function ensureModal() {
     cwrap.id = 'mc-canvas-wrap';
     _canvas = document.createElement('canvas');
     _canvas.id = 'mc-canvas';
-    _canvas.style.cssText = 'display:block;width:100%;cursor:default;';
+    // touch-action:none — gestos de toque no gráfico não rolam/ampliam a página
+    _canvas.style.cssText = 'display:block;width:100%;cursor:default;touch-action:none;';
     cwrap.appendChild(_canvas);
 
     var tooltip = document.createElement('div');
@@ -830,6 +842,93 @@ function ensureModal() {
         if (_state) { _state._crossX = null; _draw(); }
     });
     _canvas.addEventListener('contextmenu', function(e) { e.preventDefault(); });
+
+    // ── Toque (celular/tablet): 1 dedo = pan (ou linha/zoom-área conforme a
+    //    ferramenta ativa); 2 dedos = pinça pra zoom horizontal ──────────────
+    var _touch = null;   // { mode:'drag'|'pinch', dist, count, start, centerX }
+
+    function _fakeMouse(t) {
+        return { clientX: t.clientX, clientY: t.clientY, button: 0,
+                 shiftKey: false, preventDefault: function() {} };
+    }
+
+    _canvas.addEventListener('touchstart', function(e) {
+        if (!_state || !_view) return;
+        if (e.touches.length === 1) {
+            var t  = e.touches[0];
+            var pt = _cssCoords(t);
+            if (_tool === 'line' || _tool === 'zoom') {
+                _onMouseDown(_fakeMouse(t));      // inicia linha ou retângulo de zoom
+            } else {
+                // Pan direto com 1 dedo (sem exigir Shift como no mouse)
+                var l0 = _state._layout;
+                _panStart = { clientX: t.clientX, clientY: t.clientY,
+                              startIdx: _view.start,
+                              startPMin: _view.priceMin != null ? _view.priceMin : (l0 ? l0.priceMin : null),
+                              startPMax: _view.priceMax != null ? _view.priceMax : (l0 ? l0.priceMax : null) };
+                // Crosshair no ponto tocado (feedback do candle sob o dedo)
+                _state._crossX = pt.x; _state._crossY = pt.y;
+                _state._hoverD = _css2data(pt.x, pt.y);
+                _state._hoverE = { clientX: t.clientX, clientY: t.clientY };
+                _draw(); _updateHoverUI();
+            }
+            _touch = { mode: 'drag' };
+            e.preventDefault();
+        } else if (e.touches.length === 2) {
+            var t1 = e.touches[0], t2 = e.touches[1];
+            _panStart = null; _drawing = null; _zoomBoxSt = null;
+            _touch = { mode: 'pinch',
+                       dist:  Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY),
+                       count: _view.count, start: _view.start,
+                       centerX: (t1.clientX + t2.clientX) / 2 };
+            e.preventDefault();
+        }
+    }, { passive: false });
+
+    _canvas.addEventListener('touchmove', function(e) {
+        if (!_state || !_view || !_touch) return;
+        if (_touch.mode === 'pinch' && e.touches.length === 2) {
+            var t1 = e.touches[0], t2 = e.touches[1];
+            var nd = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+            var factor   = _touch.dist / Math.max(nd, 1);
+            var newCount = Math.max(10, Math.min(_state.allCandles.length,
+                                                 Math.round(_touch.count * factor)));
+            // Âncora no centro da pinça (fração horizontal da área do gráfico)
+            var rect = _canvas.getBoundingClientRect();
+            var l    = _state._layout;
+            var frac = l ? Math.max(0, Math.min(1, ((_touch.centerX - rect.left) - l.padL) / l.cW)) : 0.5;
+            _view.count = newCount;
+            _view.start = Math.round(_touch.start + _touch.count * frac - newCount * frac);
+            _clampView();
+            _applyView();
+            _draw();
+            e.preventDefault();
+            return;
+        }
+        if (e.touches.length === 1) {
+            _onMouseMove(_fakeMouse(e.touches[0]));   // pan/linha/zoom-área + crosshair
+            e.preventDefault();
+        }
+    }, { passive: false });
+
+    _canvas.addEventListener('touchend', function(e) {
+        if (!_touch) return;
+        if (e.touches.length === 0) {
+            if (_touch.mode === 'drag' && e.changedTouches.length) {
+                _onMouseUp(_fakeMouse(e.changedTouches[0]));   // conclui linha/zoom/pan
+            }
+            _panStart = null;
+            _touch = null;
+        } else if (_touch.mode === 'pinch' && e.touches.length === 1) {
+            // Pinça terminou com 1 dedo ainda na tela — não vira pan pra não pular
+            _touch = { mode: 'drag' };
+            _panStart = null;
+        }
+    });
+
+    _canvas.addEventListener('touchcancel', function() {
+        _panStart = null; _drawing = null; _zoomBoxSt = null; _touch = null;
+    });
 }
 
 // ── Abertura ──────────────────────────────────────────────────────────────────

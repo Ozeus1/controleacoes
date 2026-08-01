@@ -584,12 +584,10 @@
       <div class="modal-header" style="flex-wrap:wrap; gap:.5rem;">
         <h5 class="modal-title">Editar Ação de Estudo</h5>
         <div style="display:flex; gap:.4rem; margin-left:auto; margin-right:.5rem;">
-          <button type="button" class="btn btn-sm" id="ea-btn-iv"
-                  style="background:#10b981;color:white;" title="Buscar IV Rank e IV Percentil via OpLab"
-                  onclick="fetchIVOplab('ea')">📊 IV OpLab</button>
-          <button type="button" class="btn btn-sm" id="ea-btn-radar"
-                  style="background:#8b5cf6;color:white;" title="Análise Radar (atualiza RSI/ATR)"
-                  onclick="openRadarFromModal('ea')">🔍 Radar</button>
+          <button type="button" class="btn btn-sm" id="ea-btn-update"
+                  style="background:#10b981;color:white;"
+                  title="Atualiza IV Rank/Percentil (OpLab), RSI, ATR% e tendência diária (Radar) e a Data Estudo"
+                  onclick="updateStudyFromApis('ea')">⟳ Atualizar</button>
           <button type="button" class="btn btn-sm" id="ea-btn-tv"
                   style="background:#0ea5e9;color:white;" title="Gráfico TradingView"
                   onclick="openTVFromModal('ea')">📈 Gráfico</button>
@@ -767,12 +765,10 @@
       <div class="modal-header" style="flex-wrap:wrap; gap:.5rem;">
         <h5 class="modal-title">Editar Ação Internacional de Estudo</h5>
         <div style="display:flex; gap:.4rem; margin-left:auto; margin-right:.5rem;">
-          <button type="button" class="btn btn-sm" id="eia-btn-iv"
-                  style="background:#10b981;color:white;" title="Buscar IV Rank e IV Percentil via OpLab"
-                  onclick="fetchIVOplab('eia')">📊 IV OpLab</button>
-          <button type="button" class="btn btn-sm" id="eia-btn-radar"
-                  style="background:#8b5cf6;color:white;" title="Análise Radar (atualiza RSI/ATR)"
-                  onclick="openRadarFromModal('eia')">🔍 Radar</button>
+          <button type="button" class="btn btn-sm" id="eia-btn-update"
+                  style="background:#10b981;color:white;"
+                  title="Atualiza IV e volatilidade de opções, RSI, ATR% e tendência diária (Radar) e a Data Estudo"
+                  onclick="updateStudyFromApis('eia')">⟳ Atualizar</button>
           <button type="button" class="btn btn-sm" id="eia-btn-tv"
                   style="background:#0ea5e9;color:white;" title="Gráfico TradingView"
                   onclick="openTVFromModal('eia')">📈 Gráfico</button>
@@ -847,6 +843,9 @@
               <input type="date" name="entry_date" id="eia-entry-date" class="form-control">
             </div>
           </div>
+          <div id="eia-ov-info" style="display:none;font-size:.8rem;color:var(--text-secondary);
+               margin-top:.75rem;padding:.4rem .6rem;border-radius:5px;
+               background:rgba(14,165,233,.08);border:1px solid rgba(14,165,233,.25);"></div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -1018,115 +1017,95 @@ function updateAllGreeks() {
     next(0);
 }
 
-// Busca IV Rank e IV Percentil via OpLab e preenche os campos do modal
-function fetchIVOplab(prefix) {
-    var ticker = document.getElementById(prefix + '-ticker').value.trim().toUpperCase();
-    var sid    = document.getElementById(prefix + '-sid').value;
-    var table  = (prefix === 'ea') ? 'stock' : 'intl';
-    if (!ticker) { alert('Informe o ticker primeiro.'); return; }
-
-    var btn = document.getElementById(prefix + '-btn-iv');
-    var origHTML = btn.innerHTML;
-    btn.innerHTML = '⏳';
-    btn.disabled  = true;
-
-    var url = '/api/oplab_iv?ticker=' + encodeURIComponent(ticker) + '&table=' + table;
-    if (sid) url += '&sid=' + sid;
-
-    fetch(url)
-        .then(function(r) { return r.json(); })
-        .then(function(d) {
-            btn.innerHTML = origHTML;
-            btn.disabled  = false;
-            if (d.error) {
-                var msg = 'OpLab IV: ' + d.error;
-                if (d.debug) {
-                    msg += '\n\nEndpoints testados:\n' +
-                        Object.entries(d.debug).map(function(e) {
-                            return e[0] + ': status=' + (e[1].status||'erro') +
-                                (e[1].keys ? ' keys=[' + e[1].keys.join(',') + ']' : '') +
-                                (e[1].error ? ' ('+e[1].error+')' : '');
-                        }).join('\n');
-                }
-                alert(msg);
-                return;
-            }
-            // Preenche os campos no modal
-            var ivRankEl = document.getElementById(prefix + '-vol');
-            var ivPercEl = document.getElementById(prefix + '-ve');
-            if (ivRankEl && d.iv_rank != null)    ivRankEl.value = parseFloat(d.iv_rank).toFixed(1);
-            if (ivPercEl && d.iv_percentil != null) ivPercEl.value = parseFloat(d.iv_percentil).toFixed(1);
-
-            // Atualiza células na tabela em tempo real
-            if (sid) {
-                var rankCell = document.querySelector('#study-row-' + sid + ' td:nth-child(5)');
-                var percCell = document.querySelector('#study-row-' + sid + ' td:nth-child(6)');
-                if (rankCell && d.iv_rank != null)    rankCell.textContent = parseFloat(d.iv_rank).toFixed(1) + '%';
-                if (percCell && d.iv_percentil != null) percCell.textContent = parseFloat(d.iv_percentil).toFixed(1) + '%';
-            }
-            btn.title = 'IV Rank: ' + (d.iv_rank != null ? d.iv_rank.toFixed(1) + '%' : '—') +
-                        ' | IV Perc: ' + (d.iv_percentil != null ? d.iv_percentil.toFixed(1) + '%' : '—');
-        })
-        .catch(function(e) {
-            btn.innerHTML = origHTML;
-            btn.disabled  = false;
-            alert('Erro ao buscar IV via OpLab: ' + e.message);
-        });
+// ── Botão "Atualizar" dos modais de edição ─────────────────────────────────
+// BR (ea): IV Rank/Percentil via OpLab + RSI/ATR%/tendência diária via Radar.
+// EUA (eia): IV e volatilidade de opções + RSI/ATR%/tendência via Radar.
+// Nos dois casos a Data Estudo vira a data de hoje. Os valores só preenchem
+// os campos do modal — persistem quando o usuário clica em Salvar (o OpLab
+// também grava IV direto no banco quando o sid é enviado).
+function _trendFromRadar(d) {
+    var t = String(d.daily_trend || d.signal || '').toLowerCase();
+    if (/alta|up|bull|compra|buy/.test(t)) return 'Alta';
+    if (/baixa|down|bear|venda|sell/.test(t)) return 'Baixa';
+    if (t) return 'Lateral';
+    return null;
 }
 
-// Abre Radar de dentro do modal de edição
-function openRadarFromModal(prefix) {
+function updateStudyFromApis(prefix) {
     var ticker = document.getElementById(prefix + '-ticker').value.trim().toUpperCase();
     var sid    = document.getElementById(prefix + '-sid').value;
-    var table  = (prefix === 'ea') ? 'stock' : 'intl';
-    if (!ticker) return;
+    if (!ticker) { alert('Informe o ticker primeiro.'); return; }
 
-    // Mostra badge "Buscando..." no botão
-    var btn = document.getElementById(prefix + '-btn-radar');
-    var origText = btn.innerHTML;
-    btn.innerHTML = '⏳';
+    var btn  = document.getElementById(prefix + '-btn-update');
+    var orig = btn.innerHTML;
+    btn.innerHTML = '⏳ Atualizando…';
     btn.disabled  = true;
 
-    fetchRadar(ticker).then(function(res) {
-        btn.innerHTML = origText;
-        btn.disabled  = false;
-        var d = res.data;
+    var tasks = [];
 
-        // Atualiza campos do modal com os dados recebidos
-        if (d.rsi14 != null)   { document.getElementById(prefix + '-rsi').value     = parseFloat(d.rsi14).toFixed(2); }
+    // Radar: RSI, ATR%, tendência diária (+ volatilidade de opções p/ EUA)
+    tasks.push(fetchRadar(ticker).then(function(res) {
+        var d = res.data || {};
+        if (d.error) throw new Error('Radar: ' + d.error);
+        if (d.rsi14 != null) document.getElementById(prefix + '-rsi').value = parseFloat(d.rsi14).toFixed(2);
         if (d.atr14 != null && d.price) {
-            var atrPct = (d.atr14 / d.price * 100);
-            document.getElementById(prefix + '-atr-pct').value = atrPct.toFixed(2);
+            document.getElementById(prefix + '-atr-pct').value = (d.atr14 / d.price * 100).toFixed(2);
         }
+        var trend = _trendFromRadar(d);
+        if (trend) setSelect(prefix + '-trend', trend);
 
-        // Atualiza banco e células da tabela em background
-        if (sid) {
-            fetch('/api/radar_update_study', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ id: parseInt(sid), ticker: ticker, table: table })
-            }).then(function(r) { return r.json(); }).then(function(upd) {
-                var rsiCell = document.getElementById(studyCellId(table, 'rsi', sid));
-                var atrCell = document.getElementById(studyCellId(table, 'atr', sid));
-                var trendCell = document.getElementById(studyCellId(table, 'trend', sid));
-                if (rsiCell && upd.rsi != null) {
-                    var rsi = parseFloat(upd.rsi);
-                    var c   = rsi < 30 ? 'var(--success-color)' : (rsi > 70 ? 'var(--danger-color)' : '');
-                    rsiCell.innerHTML = c ? '<span style="color:' + c + '">' + rsi.toFixed(1) + '</span>' : rsi.toFixed(1);
+        if (prefix === 'eia') {
+            var ov = d.options_volatility || {};
+            function pick() {
+                for (var i = 0; i < arguments.length; i++) {
+                    var v = ov[arguments[i]];
+                    if (v != null && v !== '') { var n = parseFloat(v); if (!isNaN(n)) return n; }
                 }
-                if (atrCell && upd.atr_pct != null) atrCell.textContent = parseFloat(upd.atr_pct).toFixed(1) + '%';
-                if (trendCell && upd.trend) trendCell.innerHTML = renderStudyTrend(upd.trend);
-            }).catch(function(){});
+                return null;
+            }
+            var ivr = pick('iv_rank', 'ivRank', 'rank');
+            var ivp = pick('iv_percentile', 'iv_percentil', 'ivPercentile', 'percentile', 'percentil');
+            var ivc = pick('iv_current', 'iv', 'iv_atual', 'current');
+            var ivmin = pick('iv_min', 'iv_low', 'iv_minima', 'min');
+            var ivmax = pick('iv_max', 'iv_high', 'iv_maxima', 'max');
+            if (ivr != null) document.getElementById('eia-vol').value = ivr.toFixed(1);
+            if (ivp != null) document.getElementById('eia-ve').value = ivp.toFixed(1);
+            var info = document.getElementById('eia-ov-info');
+            if (info) {
+                if (ivc != null || ivmin != null || ivmax != null) {
+                    info.style.display = '';
+                    info.textContent = '📊 Volatilidade de opções (Radar): IV atual '
+                        + (ivc != null ? ivc.toFixed(1) + '%' : '—')
+                        + ' · mínima ' + (ivmin != null ? ivmin.toFixed(1) + '%' : '—')
+                        + ' · máxima ' + (ivmax != null ? ivmax.toFixed(1) + '%' : '—');
+                } else {
+                    info.style.display = 'none';
+                }
+            }
         }
+    }));
 
-        // Abre o modal visual Radar
-        openRadar(ticker);
-        var cacheMsg = res.fromCache ? ' (cache)' : '';
-        btn.title = 'RSI/ATR atualizados' + cacheMsg;
-    }).catch(function() {
-        btn.innerHTML = origText;
+    // OpLab: IV Rank / Percentil (só ações brasileiras; grava no banco via sid)
+    if (prefix === 'ea') {
+        var url = '/api/oplab_iv?ticker=' + encodeURIComponent(ticker) + '&table=stock'
+                + (sid ? '&sid=' + sid : '');
+        tasks.push(fetch(url).then(function(r) { return r.json(); }).then(function(d) {
+            if (d.error) throw new Error('OpLab: ' + d.error);
+            if (d.iv_rank != null) document.getElementById('ea-vol').value = parseFloat(d.iv_rank).toFixed(1);
+            if (d.iv_percentil != null) document.getElementById('ea-ve').value = parseFloat(d.iv_percentil).toFixed(1);
+        }));
+    }
+
+    Promise.allSettled(tasks).then(function(results) {
+        btn.innerHTML = orig;
         btn.disabled  = false;
-        alert('Erro ao buscar análise Radar.');
+        // Data Estudo = hoje
+        var t = new Date();
+        document.getElementById(prefix + '-study-date').value = t.getFullYear() + '-'
+            + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
+        var errs = results.filter(function(r) { return r.status === 'rejected'; })
+                          .map(function(r) { return (r.reason && r.reason.message) || String(r.reason); });
+        if (errs.length) alert('Alguns dados não puderam ser atualizados:\n' + errs.join('\n'));
     });
 }
 

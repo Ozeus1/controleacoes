@@ -13716,6 +13716,13 @@ def api_radar_analise():
                 'lines':     chart.get('automatic_lines') or [],
             },
         }
+        # Volatilidade de opções (ações americanas): IV atual/rank/percentil/
+        # mín/máx — repassa o bloco como vem da API
+        ov = d.get('options_volatility')
+        if not isinstance(ov, dict) or not ov:
+            ov = sd.get('volatilidade_opcoes') if isinstance(sd.get('volatilidade_opcoes'), dict) else None
+        if ov:
+            out['options_volatility'] = ov
         return jsonify(out)
     except Exception as e:
         return jsonify({'error': str(e)}), 500

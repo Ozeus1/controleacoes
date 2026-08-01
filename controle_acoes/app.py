@@ -5,7 +5,7 @@ import sqlite3
 import math
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, SearchedOption, RtdOptionData, PortfolioSnapshot, PMEvent, AssetTxn
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StudyStrategy, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, SearchedOption, RtdOptionData, PortfolioSnapshot, PMEvent, AssetTxn
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -11739,6 +11739,12 @@ def estudos():
     study_stocks = StudyStock.query.filter_by(user_id=uid).order_by(StudyStock.ticker).all()
     study_intl_stocks = StudyIntlStock.query.filter_by(user_id=uid).order_by(StudyIntlStock.ticker).all()
 
+    # Estratégias ativas por papel (várias por ticker — tabela study_strategy)
+    strategies_by_ticker = {}
+    for st in (StudyStrategy.query.filter_by(user_id=uid)
+               .order_by(StudyStrategy.ticker, StudyStrategy.id).all()):
+        strategies_by_ticker.setdefault(st.ticker.upper(), []).append(st)
+
     # ── Tabela 3: Ações Livres (sem venda coberta ativa nem garantia em estruturada) ──
     # Ações usadas como garantia em operações estruturadas abertas
     collateral_tickers = {
@@ -11760,10 +11766,100 @@ def estudos():
         study_calls_extra=study_calls_extra,
         study_stocks=study_stocks,
         study_intl_stocks=study_intl_stocks,
+        strategies_by_ticker=strategies_by_ticker,
         free_stocks=free_stocks,
         strategies=STUDY_STRATEGIES,
         strategy_groups=STUDY_STRATEGY_GROUPS,
     )
+
+
+# ── Estratégias ativas por papel (tela Estudos) — CRUD JSON ─────────────────
+def _study_strategy_json(st):
+    return {
+        'id': st.id, 'ticker': st.ticker, 'tipo': st.tipo,
+        'qty': st.qty, 'option_ticker': st.option_ticker or '',
+        'valor': st.valor,
+        'venc_curto': st.venc_curto.isoformat() if st.venc_curto else '',
+        'venc_longo': st.venc_longo.isoformat() if st.venc_longo else '',
+        'descricao': st.descricao or '', 'situacao': st.situacao or 'ATIVA',
+    }
+
+
+def _study_strategy_fill(st, data):
+    """Preenche um StudyStrategy a partir do JSON do modal (create/update)."""
+    def _d(k):
+        v = (data.get(k) or '').strip()
+        try:
+            return date.fromisoformat(v) if v else None
+        except ValueError:
+            return None
+    st.tipo = (data.get('tipo') or '').strip()[:60] or 'Outros'
+    try:
+        st.qty = int(data.get('qty')) if str(data.get('qty') or '').strip() else None
+    except (TypeError, ValueError):
+        st.qty = None
+    st.option_ticker = ((data.get('option_ticker') or '').strip().upper()[:20]) or None
+    try:
+        v = str(data.get('valor') or '').replace(',', '.').strip()
+        st.valor = float(v) if v else None
+    except (TypeError, ValueError):
+        st.valor = None
+    st.venc_curto = _d('venc_curto')
+    st.venc_longo = _d('venc_longo')
+    st.descricao = ((data.get('descricao') or '').strip()[:200]) or None
+    if (data.get('situacao') or '').upper() in ('ATIVA', 'DESATIVADA'):
+        st.situacao = data['situacao'].upper()
+
+
+@app.route('/api/estudo-strategies/<ticker>')
+@login_required
+def estudo_strategies_list(ticker):
+    sts = (StudyStrategy.query
+           .filter_by(user_id=current_user.id, ticker=ticker.strip().upper())
+           .order_by(StudyStrategy.id).all())
+    return jsonify([_study_strategy_json(s) for s in sts])
+
+
+@app.route('/api/estudo-strategies', methods=['POST'])
+@login_required
+def estudo_strategies_create():
+    data = request.get_json(silent=True) or {}
+    ticker = (data.get('ticker') or '').strip().upper()
+    if not ticker:
+        return jsonify({'error': 'Ticker obrigatório.'}), 400
+    st = StudyStrategy(user_id=current_user.id, ticker=ticker,
+                       situacao='ATIVA', created_at=datetime.now())
+    _study_strategy_fill(st, data)
+    db.session.add(st)
+    db.session.commit()
+    return jsonify(_study_strategy_json(st))
+
+
+@app.route('/api/estudo-strategies/<int:sid>/update', methods=['POST'])
+@login_required
+def estudo_strategies_update(sid):
+    st = StudyStrategy.query.filter_by(id=sid, user_id=current_user.id).first_or_404()
+    _study_strategy_fill(st, request.get_json(silent=True) or {})
+    db.session.commit()
+    return jsonify(_study_strategy_json(st))
+
+
+@app.route('/api/estudo-strategies/<int:sid>/toggle', methods=['POST'])
+@login_required
+def estudo_strategies_toggle(sid):
+    st = StudyStrategy.query.filter_by(id=sid, user_id=current_user.id).first_or_404()
+    st.situacao = 'DESATIVADA' if (st.situacao or 'ATIVA') == 'ATIVA' else 'ATIVA'
+    db.session.commit()
+    return jsonify(_study_strategy_json(st))
+
+
+@app.route('/api/estudo-strategies/<int:sid>/delete', methods=['POST'])
+@login_required
+def estudo_strategies_delete(sid):
+    st = StudyStrategy.query.filter_by(id=sid, user_id=current_user.id).first_or_404()
+    db.session.delete(st)
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 @app.route('/estudos/edit_vc_greeks/<int:opt_id>', methods=['POST'])

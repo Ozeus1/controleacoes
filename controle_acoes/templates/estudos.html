@@ -144,6 +144,23 @@
 {# ─────────────────────────────────────────────────────────────────
    TABELA 2 — Estudo Ações
 ───────────────────────────────────────────────────────────────── #}
+{% macro strat_cell(ticker, legacy) %}
+{% set sts = strategies_by_ticker.get(ticker.upper(), []) %}
+<td style="max-width:240px;">
+  {% for st in sts %}
+  <div style="margin-bottom:.15rem;white-space:nowrap;">
+    <span title="{{ st.descricao or st.tipo }}{% if st.situacao == 'DESATIVADA' %} — DESATIVADA{% endif %}"
+          style="display:inline-block;padding:.08rem .45rem;border-radius:10px;font-size:.74rem;font-weight:600;
+      {% if st.situacao == 'DESATIVADA' %}background:rgba(239,68,68,.15);color:#f87171;border:1px dashed #ef4444;{% else %}background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.35);{% endif %}">
+      {% if st.situacao == 'DESATIVADA' %}⚠️ {% endif %}{{ st.tipo }}{% if st.qty %} · {{ st.qty }}{% endif %}{% if st.option_ticker %} · {{ st.option_ticker }}{% endif %}
+    </span>
+  </div>
+  {% endfor %}
+  {% if not sts %}<span style="font-size:.8rem;color:var(--text-secondary);">{{ legacy or '-' }}</span>{% endif %}
+  <button class="btn btn-sm" onclick="openStrats('{{ ticker }}')" title="Gerenciar estratégias ativas deste papel"
+          style="padding:0 .4rem;font-size:.74rem;background:#334155;color:#e2e8f0;margin-top:.1rem;">✎</button>
+</td>
+{% endmacro %}
 <a id="estudo-acoes"></a>
 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.5rem;margin-top:2rem">
   <h3 style="margin:0">Estudo Ações</h3>
@@ -192,7 +209,7 @@
         <td style="font-size:.82rem;">{{ ('%.1f'|format(ss.iv_percentil) + '%') if ss.iv_percentil is not none else '-' }}</td>
         <td>{{ ss.strategy or '-' }}</td>
         <td>{{ ss.study_date.strftime('%d/%m/%Y') if ss.study_date else '-' }}</td>
-        <td>{{ ss.strategy_active or '-' }}</td>
+        {{ strat_cell(ss.ticker, ss.strategy_active) }}
         <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
         <td class="actions" style="white-space:nowrap;">
           <button class="btn btn-sm" onclick="openRadarAndUpdate({{ ss.id }}, '{{ ss.ticker }}', 'stock')" title="Análise Radar + atualizar RSI/ATR" style="background:#8b5cf6;color:white;">📊</button>
@@ -274,7 +291,7 @@
         <td style="font-size:.82rem;">{{ ('%.1f'|format(ss.iv_percentil) + '%') if ss.iv_percentil is not none else '-' }}</td>
         <td>{{ ss.strategy or '-' }}</td>
         <td>{{ ss.study_date.strftime('%d/%m/%Y') if ss.study_date else '-' }}</td>
-        <td>{{ ss.strategy_active or '-' }}</td>
+        {{ strat_cell(ss.ticker, ss.strategy_active) }}
         <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
         <td class="actions" style="white-space:nowrap;">
           <button class="btn btn-sm" onclick="openRadarAndUpdate({{ ss.id }}, '{{ ss.ticker }}', 'intl')" title="Análise Radar + atualizar RSI/ATR" style="background:#8b5cf6;color:white;">📊</button>
@@ -1336,5 +1353,253 @@ function setSelect(id, val) {
     }, 350);
   }
 })();
+</script>
+
+<!-- Modal: Estratégias Ativas do papel (várias por ticker) -->
+<div id="modal-strats" class="modal fade" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content bg-dark text-white">
+      <div class="modal-header">
+        <h5 class="modal-title">🧩 Estratégias Ativas — <span id="strats-ticker-label"></span></h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="strats-list" style="margin-bottom:1rem;">
+          <span style="color:var(--text-secondary);font-size:.85rem;">Carregando…</span>
+        </div>
+        <hr style="border-color:var(--border-color);">
+        <div style="font-size:.85rem;font-weight:700;margin-bottom:.5rem;" id="strats-form-title">Nova estratégia</div>
+        <input type="hidden" id="st-id" value="">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label>Estratégia</label>
+            <select id="st-tipo" class="form-control" onchange="stratTypeChanged()">
+              <option>Venda Coberta de Longo Prazo</option>
+              <option>Venda Coberta Mensal</option>
+              <option>Trava de Baixa de Venda Coberta Longa</option>
+              <option>Venda de Puts</option>
+              <option>Trava Calendário</option>
+              <option>THS</option>
+              <option>Collar</option>
+              <option>Seagull</option>
+              <option>Straddle Vendido</option>
+              <option>Straddle Comprado</option>
+              <option>Trava de Alta (débito)</option>
+              <option>Trava de Baixa (débito)</option>
+              <option>Outros</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label>Situação</label>
+            <select id="st-situacao" class="form-control">
+              <option value="ATIVA">Ativa</option>
+              <option value="DESATIVADA">Desativada</option>
+            </select>
+          </div>
+          <div class="col-md-3" id="st-f-qty">
+            <label>Quantidade</label>
+            <input type="number" id="st-qty" class="form-control" min="1">
+          </div>
+          <div class="col-md-3" id="st-f-ticker">
+            <label>Ticker da Opção</label>
+            <input type="text" id="st-opt-ticker" class="form-control" style="text-transform:uppercase" placeholder="ex: PETRB20">
+          </div>
+          <div class="col-md-3" id="st-f-valor">
+            <label>Valor Vendido (R$)</label>
+            <input type="text" id="st-valor" class="form-control" placeholder="0,00">
+          </div>
+          <div class="col-md-3" id="st-f-venc1">
+            <label id="st-venc1-label">Vencimento</label>
+            <input type="date" id="st-venc1" class="form-control">
+          </div>
+          <div class="col-md-3" id="st-f-venc2">
+            <label>Venc. Longo</label>
+            <input type="date" id="st-venc2" class="form-control">
+          </div>
+          <div class="col-md-12" id="st-f-desc">
+            <label>Descrição / Observações</label>
+            <input type="text" id="st-desc" class="form-control" maxlength="200">
+          </div>
+        </div>
+        <div style="display:flex;gap:.5rem;margin-top:1rem;">
+          <button type="button" class="btn btn-primary btn-sm" onclick="saveStrat()">💾 Salvar estratégia</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="st-cancel-edit" style="display:none;"
+                  onclick="resetStratForm()">✖ Cancelar edição</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── Estratégias Ativas por papel — gerenciador do modal ─────────────────── */
+var STRAT_FIELDS = {
+  'Venda Coberta de Longo Prazo':          ['qty','ticker','valor'],
+  'Venda Coberta Mensal':                  ['qty','ticker','valor'],
+  'Trava de Baixa de Venda Coberta Longa': ['qty','venc1'],
+  'Venda de Puts':                         ['qty','ticker'],
+  'Trava Calendário':                      ['qty','venc1','venc2'],
+  'THS':                                   ['qty','venc1','venc2'],
+  'Collar':                                ['qty','venc1'],
+  'Seagull':                               ['qty','venc1'],
+  'Straddle Vendido':                      ['qty','venc1'],
+  'Straddle Comprado':                     ['qty','venc1'],
+  'Trava de Alta (débito)':                ['qty','venc1'],
+  'Trava de Baixa (débito)':               ['qty','venc1'],
+  'Outros':                                []
+};
+var _stratsTicker = '', _stratsChanged = false;
+
+function stratTypeChanged() {
+  var tipo = document.getElementById('st-tipo').value;
+  var fields = STRAT_FIELDS[tipo] || [];
+  document.getElementById('st-f-qty').style.display    = fields.indexOf('qty')    >= 0 ? '' : 'none';
+  document.getElementById('st-f-ticker').style.display = fields.indexOf('ticker') >= 0 ? '' : 'none';
+  document.getElementById('st-f-valor').style.display  = fields.indexOf('valor')  >= 0 ? '' : 'none';
+  document.getElementById('st-f-venc1').style.display  = fields.indexOf('venc1')  >= 0 ? '' : 'none';
+  document.getElementById('st-f-venc2').style.display  = fields.indexOf('venc2')  >= 0 ? '' : 'none';
+  document.getElementById('st-venc1-label').textContent = fields.indexOf('venc2') >= 0 ? 'Venc. Curto' : 'Vencimento';
+  // Descrição é sempre visível: campo principal em "Outros", observação nos demais
+}
+
+function resetStratForm() {
+  document.getElementById('st-id').value = '';
+  document.getElementById('st-tipo').selectedIndex = 0;
+  document.getElementById('st-situacao').value = 'ATIVA';
+  ['st-qty','st-opt-ticker','st-valor','st-venc1','st-venc2','st-desc'].forEach(function(id) {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('strats-form-title').textContent = 'Nova estratégia';
+  document.getElementById('st-cancel-edit').style.display = 'none';
+  stratTypeChanged();
+}
+
+function fmtStBadge(s) {
+  var parts = [s.tipo];
+  if (s.qty) parts.push(s.qty + '×');
+  if (s.option_ticker) parts.push(s.option_ticker);
+  if (s.valor != null && s.valor !== '') parts.push('R$ ' + Number(s.valor).toFixed(2).replace('.', ','));
+  function d(iso) { if (!iso) return ''; var p = iso.split('-'); return p[2] + '/' + p[1] + '/' + p[0]; }
+  if (s.venc_curto && s.venc_longo) parts.push(d(s.venc_curto) + ' → ' + d(s.venc_longo));
+  else if (s.venc_curto) parts.push('venc ' + d(s.venc_curto));
+  return parts.join(' · ');
+}
+
+function renderStrats(list) {
+  var wrap = document.getElementById('strats-list');
+  if (!list.length) {
+    wrap.innerHTML = '<span style="color:var(--text-secondary);font-size:.85rem;">Nenhuma estratégia cadastrada para este papel.</span>';
+    return;
+  }
+  wrap.innerHTML = '';
+  list.forEach(function(s) {
+    var off = s.situacao === 'DESATIVADA';
+    var div = document.createElement('div');
+    div.style.cssText = 'display:flex;align-items:center;gap:.6rem;padding:.4rem .6rem;margin-bottom:.35rem;' +
+      'border-radius:6px;border:1px ' + (off ? 'dashed #ef4444' : 'solid var(--border-color)') + ';' +
+      (off ? 'background:rgba(239,68,68,.08);' : 'background:var(--hover-bg);');
+    var info = document.createElement('div');
+    info.style.cssText = 'flex:1;min-width:0;font-size:.84rem;';
+    info.innerHTML = (off ? '⚠️ ' : '') + '<strong>' + fmtStBadge(s) + '</strong>'
+      + (s.descricao ? '<br><span style="color:var(--text-secondary);font-size:.76rem;">' + s.descricao + '</span>' : '')
+      + (off ? ' <span style="color:#f87171;font-size:.74rem;font-weight:700;">DESATIVADA</span>' : '');
+    div.appendChild(info);
+
+    var btnT = document.createElement('button');
+    btnT.className = 'btn btn-sm';
+    btnT.style.cssText = 'background:' + (off ? '#10b981' : '#f59e0b') + ';color:white;padding:.1rem .45rem;font-size:.74rem;';
+    btnT.textContent = off ? '▶ Ativar' : '⏸ Desativar';
+    btnT.onclick = function() {
+      fetch('/api/estudo-strategies/' + s.id + '/toggle', {method: 'POST'})
+        .then(function(r) { return r.json(); })
+        .then(function() { _stratsChanged = true; loadStrats(); });
+    };
+    div.appendChild(btnT);
+
+    var btnE = document.createElement('button');
+    btnE.className = 'btn btn-primary btn-sm';
+    btnE.style.cssText = 'padding:.1rem .45rem;font-size:.74rem;';
+    btnE.textContent = '✏️';
+    btnE.onclick = function() {
+      document.getElementById('st-id').value = s.id;
+      document.getElementById('st-tipo').value = STRAT_FIELDS.hasOwnProperty(s.tipo) ? s.tipo : 'Outros';
+      document.getElementById('st-situacao').value = s.situacao;
+      document.getElementById('st-qty').value = s.qty || '';
+      document.getElementById('st-opt-ticker').value = s.option_ticker || '';
+      document.getElementById('st-valor').value = (s.valor != null && s.valor !== '') ? String(s.valor).replace('.', ',') : '';
+      document.getElementById('st-venc1').value = s.venc_curto || '';
+      document.getElementById('st-venc2').value = s.venc_longo || '';
+      document.getElementById('st-desc').value = s.descricao || '';
+      document.getElementById('strats-form-title').textContent = 'Editando: ' + s.tipo;
+      document.getElementById('st-cancel-edit').style.display = '';
+      stratTypeChanged();
+    };
+    div.appendChild(btnE);
+
+    var btnD = document.createElement('button');
+    btnD.className = 'btn btn-danger btn-sm';
+    btnD.style.cssText = 'padding:.1rem .45rem;font-size:.74rem;';
+    btnD.textContent = '🗑';
+    btnD.onclick = function() {
+      if (!confirm('Excluir a estratégia "' + s.tipo + '"?')) return;
+      fetch('/api/estudo-strategies/' + s.id + '/delete', {method: 'POST'})
+        .then(function(r) { return r.json(); })
+        .then(function() { _stratsChanged = true; loadStrats(); });
+    };
+    div.appendChild(btnD);
+
+    wrap.appendChild(div);
+  });
+}
+
+function loadStrats() {
+  fetch('/api/estudo-strategies/' + encodeURIComponent(_stratsTicker))
+    .then(function(r) { return r.json(); })
+    .then(renderStrats)
+    .catch(function() {
+      document.getElementById('strats-list').innerHTML =
+        '<span style="color:#f87171;font-size:.85rem;">Erro ao carregar estratégias.</span>';
+    });
+}
+
+function openStrats(ticker) {
+  _stratsTicker = ticker.toUpperCase();
+  _stratsChanged = false;
+  document.getElementById('strats-ticker-label').textContent = _stratsTicker;
+  resetStratForm();
+  loadStrats();
+  new bootstrap.Modal(document.getElementById('modal-strats')).show();
+}
+
+function saveStrat() {
+  var id = document.getElementById('st-id').value;
+  var body = {
+    ticker: _stratsTicker,
+    tipo: document.getElementById('st-tipo').value,
+    situacao: document.getElementById('st-situacao').value,
+    qty: document.getElementById('st-qty').value,
+    option_ticker: document.getElementById('st-opt-ticker').value,
+    valor: document.getElementById('st-valor').value,
+    venc_curto: document.getElementById('st-venc1').value,
+    venc_longo: document.getElementById('st-venc2').value,
+    descricao: document.getElementById('st-desc').value
+  };
+  var url = id ? '/api/estudo-strategies/' + id + '/update' : '/api/estudo-strategies';
+  fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.error) { alert(d.error); return; }
+      _stratsChanged = true;
+      resetStratForm();
+      loadStrats();
+    })
+    .catch(function(e) { alert('Erro: ' + e); });
+}
+
+// Ao fechar o modal, recarrega a página se algo mudou (atualiza os badges da tabela)
+document.getElementById('modal-strats').addEventListener('hidden.bs.modal', function() {
+  if (_stratsChanged) location.reload();
+});
+stratTypeChanged();
 </script>
 {% endblock %}

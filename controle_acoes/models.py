@@ -339,6 +339,25 @@ class StudyStock(db.Model):
     entry_date = db.Column(db.Date, nullable=True)
 
 
+class StudyStrategy(db.Model):
+    """Estratégias ativas de um papel na tela Estudos — várias por ticker.
+    Campos opcionais variam conforme o tipo (qty/ticker da opção/valor/
+    vencimentos); 'Outros' usa apenas a descrição livre."""
+    __tablename__ = 'study_strategy'
+    id            = db.Column(db.Integer, primary_key=True)
+    user_id       = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ticker        = db.Column(db.String(15), nullable=False)      # papel subjacente
+    tipo          = db.Column(db.String(60), nullable=False)      # tipo da estratégia
+    qty           = db.Column(db.Integer, nullable=True)
+    option_ticker = db.Column(db.String(20), nullable=True)       # ticker da opção
+    valor         = db.Column(db.Float, nullable=True)            # valor vendido (prêmio)
+    venc_curto    = db.Column(db.Date, nullable=True)             # vencimento (único ou curto)
+    venc_longo    = db.Column(db.Date, nullable=True)             # vencimento longo
+    descricao     = db.Column(db.String(200), nullable=True)      # texto livre / observações
+    situacao      = db.Column(db.String(10), nullable=False, default='ATIVA')  # ATIVA | DESATIVADA
+    created_at    = db.Column(db.DateTime, nullable=True)
+
+
 class RankingVol(db.Model):
     """Ranking de Volatilidade — lista de ações monitoradas com IV Rank, IV Percentil e Vol. Implícita."""
     __tablename__ = 'ranking_vol'

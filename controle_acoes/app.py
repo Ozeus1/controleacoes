@@ -10874,17 +10874,17 @@ def update_quotes():
         errs = []
 
         if oplab_token:
-            oplab_online = _oplab_is_available(oplab_token, timeout=4)
-            if not oplab_online:
-                final_msg += 'OpLab: indisponível (ignorado). '
+            # Sem probe prévio: a própria primeira chamada do bulk detecta se a
+            # OpLab está fora. O probe era uma ida à rede extra e um ponto único
+            # de falha — bastava ele falhar uma vez para a OpLab inteira ser
+            # pulada, mesmo com o servidor respondendo.
+            a_ok, o_ok, oplab_covered, op_err = _do_oplab_bulk_update_safe(
+                current_user.id, oplab_token, deadline_secs=25
+            )
+            if op_err:
+                final_msg += f'OpLab: {op_err}. '
             else:
-                a_ok, o_ok, oplab_covered, op_err = _do_oplab_bulk_update_safe(
-                    current_user.id, oplab_token, deadline_secs=25
-                )
-                if op_err:
-                    final_msg += f'OpLab: {op_err}. '
-                else:
-                    final_msg += f'OpLab: {a_ok} ativo(s), {o_ok} opção(ões)/perna(s). '
+                final_msg += f'OpLab: {a_ok} ativo(s), {o_ok} opção(ões)/perna(s). '
 
         # Yahoo/Internacional sempre executados
         if quote_mode == 'yahoo':
@@ -10937,19 +10937,15 @@ def update_quotes_async():
 
                 # ── 1. OpLab: ações B3 + opções ───────────────────────────────
                 if oplab_token:
-                    # Probe rápido (4s) antes de entrar nos loops de timeout
-                    oplab_online = _oplab_is_available(oplab_token, timeout=4)
-                    if not oplab_online:
-                        final_msg += 'OpLab: indisponível (ignorado). '
+                    # Sem probe: a 1ª chamada do bulk já detecta OpLab fora.
+                    # deadline total de 25s para toda a operação OpLab
+                    a_ok, o_ok, oplab_covered, op_err = _do_oplab_bulk_update_safe(
+                        user_id, oplab_token, deadline_secs=25
+                    )
+                    if op_err:
+                        final_msg += f'OpLab: {op_err}. '
                     else:
-                        # deadline total de 25s para toda a operação OpLab
-                        a_ok, o_ok, oplab_covered, op_err = _do_oplab_bulk_update_safe(
-                            user_id, oplab_token, deadline_secs=25
-                        )
-                        if op_err:
-                            final_msg += f'OpLab: {op_err}. '
-                        else:
-                            final_msg += f'OpLab: {a_ok} ativo(s), {o_ok} opção(ões). '
+                        final_msg += f'OpLab: {a_ok} ativo(s), {o_ok} opção(ões). '
 
                 # ── 2. Yahoo/Brapi e Internacional — sempre executados ─────────
                 if quote_mode == 'yahoo':
@@ -14451,6 +14447,12 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
     prices:     dict = {}   # ticker → close price
     variations: dict = {}   # ticker → variation % do dia
 
+    # O primeiro lote também serve de teste de disponibilidade: se ele falhar
+    # por rede/5xx, a OpLab está fora e pulamos os fallbacks individuais (que
+    # empilhariam timeouts). Evita o probe separado, que era uma ida à rede a
+    # mais e um ponto único de falha — um único blip marcava a OpLab como
+    # "indisponível" e descartava a atualização inteira, mesmo com o servidor
+    # respondendo normalmente.
     CHUNK = 150
     for i in range(0, len(all_tickers), CHUNK):
         chunk = all_tickers[i:i + CHUNK]
@@ -14461,6 +14463,8 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
                 headers=headers,
                 timeout=8,
             )
+            if i == 0 and r.status_code >= 500:
+                oplab_online = False   # servidor com problema: só o que der no lote
             if r.status_code == 200:
                 for item in r.json():
                     sym   = str(item.get('symbol', '')).upper()
@@ -14476,6 +14480,9 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
                         prices[sym] = float(close)
                     if sym and var is not None:
                         variations[sym] = float(var)
+        except requests.exceptions.RequestException:
+            if i == 0:
+                oplab_online = False   # sem rede/timeout no 1º lote: OpLab fora
         except Exception:
             pass
 
@@ -14646,34 +14653,46 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
     # OpLab /market/instruments/{ticker} e, se falhar, Yahoo. Retorna
     # (price, change) ou (None, None). Pulado quando OpLab offline (evita
     # empilhar timeouts de 8s por ticker).
+    # Memoiza por ticker: o mesmo papel aparece em várias tabelas (Options,
+    # spreads, pernas estruturadas), e antes cada ocorrência refazia as duas
+    # chamadas de rede. Guarda inclusive o (None, None) para não repetir a
+    # busca de um ticker que já falhou.
+    _fb_cache: dict = {}
+
     def _fallback_option_quote(ticker_up):
+        if ticker_up in _fb_cache:
+            return _fb_cache[ticker_up]
+        res = (None, None)
         try:
             ri = _oplab_session.get(f'{BASE}/market/instruments/{ticker_up}',
-                                    headers=headers, timeout=8)
+                                    headers=headers, timeout=6)
             if ri.status_code == 200:
                 d = ri.json()
                 p = d.get('close') or d.get('last') or d.get('price')
                 if p and float(p) > 0:
                     var = d.get('variation') or d.get('change')
-                    return float(p), (float(var) if var is not None else None)
+                    res = (float(p), (float(var) if var is not None else None))
         except Exception:
             pass
-        try:
-            for host in ('query1.finance.yahoo.com', 'query2.finance.yahoo.com'):
-                r = requests.get(
-                    f'https://{host}/v8/finance/chart/{ticker_up}.SA',
-                    params={'interval': '1d', 'range': '2d'},
-                    headers=_YF_HEADERS, cookies=_YF_COOKIES, timeout=5,
-                )
-                if r.status_code == 200:
-                    meta = r.json()['chart']['result'][0]['meta']
-                    p = meta.get('regularMarketPrice') or meta.get('previousClose')
-                    if p and float(p) > 0:
-                        chg = meta.get('regularMarketChangePercent')
-                        return float(p), (float(chg) if chg is not None else None)
-        except Exception:
-            pass
-        return None, None
+        if res[0] is None:
+            try:
+                for host in ('query1.finance.yahoo.com', 'query2.finance.yahoo.com'):
+                    r = requests.get(
+                        f'https://{host}/v8/finance/chart/{ticker_up}.SA',
+                        params={'interval': '1d', 'range': '2d'},
+                        headers=_YF_HEADERS, cookies=_YF_COOKIES, timeout=4,
+                    )
+                    if r.status_code == 200:
+                        meta = r.json()['chart']['result'][0]['meta']
+                        p = meta.get('regularMarketPrice') or meta.get('previousClose')
+                        if p and float(p) > 0:
+                            chg = meta.get('regularMarketChangePercent')
+                            res = (float(p), (float(chg) if chg is not None else None))
+                            break
+            except Exception:
+                pass
+        _fb_cache[ticker_up] = res
+        return res
 
     if missing_option_tickers and oplab_online:
         for o in missing_option_tickers:

@@ -211,7 +211,9 @@
             border: 1px solid var(--border-color);">
             <div style="margin-bottom: 0.5rem;">
                 Status: <span id="oplab-test-status" style="font-weight:bold;"></span>
+                <span id="oplab-test-total" style="color: var(--text-secondary); font-size: .85rem;"></span>
             </div>
+            <div id="oplab-test-summary" style="margin-bottom: .75rem; font-size: .85rem;"></div>
             <pre id="oplab-test-body"
                 style="color: var(--text-secondary); font-family: monospace; white-space: pre-wrap;
                        word-break: break-all; max-height: 400px; overflow-y: auto;"></pre>
@@ -225,6 +227,7 @@ document.getElementById('oplab-test-btn').addEventListener('click', function() {
     if (!ticker) { alert('Informe um ticker'); return; }
     var btn = this;
     btn.disabled = true; btn.textContent = 'Testando…';
+    var t0 = Date.now();
     fetch('/oplab_test?ticker=' + encodeURIComponent(ticker))
         .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
         .then(function(res) {
@@ -234,6 +237,22 @@ document.getElementById('oplab-test-btn').addEventListener('click', function() {
             var anyOk = !!(res.ok && res.data && res.data.ok);
             statusEl.textContent = anyOk ? 'SUCESSO' : 'ERRO';
             statusEl.style.color = anyOk ? 'var(--success-color)' : 'var(--danger-color)';
+            document.getElementById('oplab-test-total').textContent =
+                ' — total ' + ((Date.now() - t0) / 1000).toFixed(1) + 's';
+            // Resumo por endpoint com o tempo de cada um — mostra na hora qual
+            // está lento sem precisar ler o JSON inteiro.
+            var sum = document.getElementById('oplab-test-summary');
+            var r = (res.data && res.data.results) || {};
+            sum.innerHTML = Object.keys(r).map(function(ep) {
+                var v = r[ep] || {};
+                var cor = v.ok ? 'var(--success-color)' : 'var(--danger-color)';
+                return '<div><span style="color:' + cor + ';font-weight:700">'
+                    + (v.ok ? '✓' : '✗') + '</span> <code>' + ep + '</code> '
+                    + (v.ms != null ? '<strong>' + v.ms + ' ms</strong>' : '')
+                    + (v.ok ? '' : ' <span style="color:var(--text-secondary)">— '
+                        + (v.error || ('HTTP ' + v.status)) + '</span>')
+                    + '</div>';
+            }).join('');
             bodyEl.textContent = JSON.stringify(res.data, null, 2);
         })
         .catch(function(e) {

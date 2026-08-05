@@ -86,6 +86,16 @@ def _oplab_headers(token):
     }
 
 
+# Session compartilhada: reaproveita a conexão TCP/TLS entre chamadas. Sem isso
+# cada request refaz o handshake (~380ms vs ~50ms medidos) — o que multiplicava
+# por 7 o tempo do Ranking de Volatilidade, que faz 100+ chamadas.
+# pool_maxsize acompanha o max_workers usado nas varreduras paralelas (8) para
+# as threads não ficarem em fila esperando conexão livre.
+_oplab_session = requests.Session()
+_oplab_session.mount('https://', requests.adapters.HTTPAdapter(
+    pool_connections=8, pool_maxsize=8, max_retries=0))
+
+
 def _oplab_get_json(path_or_url, token, params=None, timeout=15):
     """GET OpLab com validacao de HTTP/conteudo antes de decodificar JSON."""
     url = path_or_url if str(path_or_url).startswith('http') else f'https://api.oplab.com.br/v3{path_or_url}'
@@ -96,12 +106,16 @@ def _oplab_get_json(path_or_url, token, params=None, timeout=15):
         req_params = dict(params)
         if use_query_token:
             req_params['access_token'] = token
-        return requests.get(url, params=req_params, headers=_oplab_headers(token), timeout=timeout)
+        return _oplab_session.get(url, params=req_params, headers=_oplab_headers(token),
+                                  timeout=timeout)
 
     try:
         resp = _request(False)
         body = (resp.text or '').strip()
-        retry_with_query = resp.status_code in (401, 403) or not body
+        # 401/403 com token no header não vira 200 ao repetir com token na query
+        # (é a mesma credencial) — repetir só dobra o tempo até o erro. O retry
+        # fica para o caso de resposta vazia/não-JSON, onde pode haver diferença.
+        retry_with_query = not body
         if not retry_with_query:
             if 200 <= resp.status_code < 300:
                 try:
@@ -12329,7 +12343,9 @@ def _api_ranking_vol_update_impl():
             return ticker, (None, None, None, None, None, str(e))
 
     from concurrent.futures import as_completed as _as_completed, TimeoutError as _CFTimeoutError
-    ex = ThreadPoolExecutor(max_workers=min(16, len(items)))
+    # 8 workers é o ponto ótimo medido contra a OpLab: acima disso o servidor
+    # degrada e o tempo TOTAL piora (60 reqs: 1,05s com 8 vs 1,36s com 16).
+    ex = ThreadPoolExecutor(max_workers=min(8, len(items)))
     fut_map = {ex.submit(_fetch_iv, rv.ticker): rv.ticker for rv in items}
     try:
         for fut in _as_completed(fut_map, timeout=40):
@@ -12468,48 +12484,32 @@ def oplab_test():
             (study_match.underlying_asset if study_match else '') or
             ticker
         ).upper()
-    results = {}
-    # Testa endpoint bulk /market/quote (usado no auto-update)
-    try:
-        results['/market/quote'] = {
-            'ok': True,
-            'body': _oplab_get_json('/market/quote', token, params={'tickers': ticker}, timeout=20)
-        }
-    except OplabApiError as e:
-        results['/market/quote'] = {
-            'ok': False,
-            'status': e.status_code,
-            'error': str(e),
-            'preview': e.body_preview,
-        }
-    # Testa endpoints individuais para diagnóstico
-    try:
-        results[f'/market/options/{underlying}'] = {
-            'ok': True,
-            'body': _oplab_get_json(f'/market/options/{underlying}', token, timeout=20)
-        }
-    except OplabApiError as e:
-        results[f'/market/options/{underlying}'] = {
-            'ok': False,
-            'status': e.status_code,
-            'error': str(e),
-            'preview': e.body_preview,
-        }
-    endpoints = [
-        f'/instruments/{ticker}',
-        f'/market/instruments/{ticker}',
-        f'/market/spot/{underlying}',
+    # Endpoints conforme a spec OpLab v3. /instruments/{t} e /market/spot/{u}
+    # não existem na API (davam 404 sempre) e saíram do diagnóstico.
+    # /market/status é o teste mais leve de credencial — vem primeiro na tela.
+    checks = [
+        ('/market/status',                    {}),
+        (f'/market/instruments/{ticker}',     {}),
+        ('/market/quote',                     {'tickers': ticker}),
+        (f'/market/options/{underlying}',     {}),
     ]
-    for ep in endpoints:
+
+    def _probe(item):
+        ep, prm = item
+        t0 = time.perf_counter()
         try:
-            results[ep] = {'ok': True, 'body': _oplab_get_json(ep, token, timeout=20)}
+            body = _oplab_get_json(ep, token, params=(prm or None), timeout=20)
+            return ep, {'ok': True, 'ms': int((time.perf_counter() - t0) * 1000), 'body': body}
         except OplabApiError as e:
-            results[ep] = {
-                'ok': False,
-                'status': e.status_code,
-                'error': str(e),
-                'preview': e.body_preview,
-            }
+            return ep, {'ok': False, 'ms': int((time.perf_counter() - t0) * 1000),
+                        'status': e.status_code, 'error': str(e), 'preview': e.body_preview}
+
+    # Em paralelo: o diagnóstico inteiro passa a custar o tempo do endpoint mais
+    # lento (a cadeia de opções), não a soma de todos.
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        results = dict(ex.map(_probe, checks))
+
     any_ok = any(v.get('ok') for v in results.values() if isinstance(v, dict))
     return jsonify({'ok': any_ok, 'ticker': ticker, 'underlying': underlying, 'results': results})
 
@@ -14185,7 +14185,7 @@ def api_quote_hint(ticker):
 
         # Chamada 1: /market/quote para preço ao vivo
         try:
-            r = _req.get(
+            r = _oplab_session.get(
                 f'{_oplab_base}/market/quote',
                 params={'tickers': ticker},
                 headers=_oplab_hdrs,
@@ -14226,7 +14226,7 @@ def api_quote_hint(ticker):
         # Chamada 2: /market/instruments/{ticker} para negócios do dia
         if trades is None:
             try:
-                r2 = _req.get(
+                r2 = _oplab_session.get(
                     f'{_oplab_base}/market/instruments/{ticker}',
                     headers=_oplab_hdrs,
                     timeout=8,
@@ -14417,7 +14417,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
     for i in range(0, len(all_tickers), CHUNK):
         chunk = all_tickers[i:i + CHUNK]
         try:
-            r = requests.get(
+            r = _oplab_session.get(
                 f'{BASE}/market/quote',
                 params={'tickers': ','.join(chunk)},
                 headers=headers,
@@ -14447,7 +14447,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
         if not tk:
             return None, None
         try:
-            ri = requests.get(
+            ri = _oplab_session.get(
                 f'{BASE}/market/instruments/{tk}',
                 headers=headers, timeout=4,
             )
@@ -14488,7 +14488,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
         missing_tks = [tk for tk in option_tickers if tk not in prices or prices.get(tk, 0) <= 0]
         if missing_tks:
             import concurrent.futures as _cf
-            ex = _cf.ThreadPoolExecutor(max_workers=min(16, len(missing_tks)))
+            ex = _cf.ThreadPoolExecutor(max_workers=min(8, len(missing_tks)))
             fut_map = {ex.submit(_fetch_missing_option_quote, tk): tk for tk in missing_tks}
             try:
                 for fut in _cf.as_completed(fut_map, timeout=18):
@@ -14520,7 +14520,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
     def _fetch_underlying_options(underlying):
         out = {}
         try:
-            r = requests.get(
+            r = _oplab_session.get(
                 f'{BASE}/market/options/{underlying}',
                 headers=headers,
                 timeout=15,
@@ -14608,8 +14608,8 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
     # empilhar timeouts de 8s por ticker).
     def _fallback_option_quote(ticker_up):
         try:
-            ri = requests.get(f'{BASE}/market/instruments/{ticker_up}',
-                              headers=headers, timeout=8)
+            ri = _oplab_session.get(f'{BASE}/market/instruments/{ticker_up}',
+                                    headers=headers, timeout=8)
             if ri.status_code == 200:
                 d = ri.json()
                 p = d.get('close') or d.get('last') or d.get('price')

@@ -147,13 +147,17 @@ def _oplab_get_json(path_or_url, token, params=None, timeout=15):
 
 def _oplab_is_available(token: str, timeout: int = 4) -> bool:
     """
-    Probe rápido: tenta GET /v3/user/me com timeout curto.
-    Retorna True se o OpLab responder com 2xx ou 4xx (token inválido mas servidor OK).
-    Retorna False se houver timeout, ConnectionError ou 5xx (servidor fora do ar).
+    Probe rápido de disponibilidade do servidor OpLab.
+    Retorna True se responder com 2xx ou 4xx (token inválido mas servidor OK).
+    Retorna False em timeout, ConnectionError ou 5xx (servidor fora do ar).
+
+    Usa /market/status (endpoint mais leve da spec v3). O antigo /user/me não
+    existe na v3 e devolvia 404 — como 404 < 500, o probe passava mesmo assim,
+    mas gastava uma ida à rede sem validar nada de útil.
     """
     try:
-        r = requests.get(
-            'https://api.oplab.com.br/v3/user/me',
+        r = _oplab_session.get(
+            'https://api.oplab.com.br/v3/market/status',
             headers=_oplab_headers(token),
             timeout=timeout,
         )
@@ -176,7 +180,12 @@ def _do_oplab_bulk_update_safe(uid: int, token: str, deadline_secs: int = 25):
     def _run():
         with app.app_context():
             try:
-                result['val'] = _do_oplab_bulk_update(uid, token, oplab_online=True)
+                # Orçamento interno menor que o deadline externo: a função se
+                # encerra sozinha e comita o que conseguiu, em vez de ser
+                # abandonada no meio (que gravava zero e reportava "timeout").
+                result['val'] = _do_oplab_bulk_update(
+                    uid, token, oplab_online=True,
+                    budget_secs=max(5.0, deadline_secs - 3))
             except Exception as e:
                 result['err'] = str(e)
 
@@ -14350,7 +14359,8 @@ def api_quote_hint(ticker):
 _oplab_last_update: dict = {}   # user_id → datetime of last successful update
 
 
-def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
+def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
+                          budget_secs: float = 22.0):
     """
     Busca cotações via GET /v3/market/quote?tickers=... e atualiza o DB para:
       - Todos os Assets do usuário (qty ≥ 0 — inclui swingtrade sem posição)
@@ -14361,9 +14371,22 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
     Quando oplab_online=False pula todos os fallbacks individuais por opção
     (que causam loop/timeout quando o servidor está fora do ar).
     Retorna (assets_ok, options_ok, oplab_covered_assets).
+
+    budget_secs limita o tempo TOTAL da função. Antes as etapas tinham tetos
+    independentes (18s + 18s) que somados já passavam do deadline de 25s do
+    _do_oplab_bulk_update_safe, e os fallbacks sequenciais no fim não tinham
+    teto nenhum (8s de OpLab + 5s de Yahoo por ticker). O resultado era o
+    "timeout após 25s": a thread era abandonada no meio e NADA era gravado.
+    Agora cada etapa consulta o tempo restante e para quando ele acaba,
+    preservando o que já foi atualizado.
     """
     BASE    = 'https://api.oplab.com.br/v3'
     headers = _oplab_headers(token)
+
+    _t_start = time.monotonic()
+    def _left(reserve=2.0):
+        """Segundos restantes do orçamento, com folga para o commit no fim."""
+        return max(0.0, budget_secs - (time.monotonic() - _t_start) - reserve)
 
     # ── Coleta todos os registros ─────────────────────────────────
     assets        = Asset.query.filter_by(user_id=uid).all()
@@ -14499,14 +14522,16 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
     # endpoint não retorna opções, só ações) — era a causa do timeout total
     # do bulk update travar TODA a atualização OpLab, inclusive ativos que
     # o bulk /market/quote já tinha resolvido com sucesso.
-    if oplab_online:
+    if oplab_online and _left() > 1:
         missing_tks = [tk for tk in option_tickers if tk not in prices or prices.get(tk, 0) <= 0]
         if missing_tks:
             import concurrent.futures as _cf
             ex = _cf.ThreadPoolExecutor(max_workers=min(8, len(missing_tks)))
             fut_map = {ex.submit(_fetch_missing_option_quote, tk): tk for tk in missing_tks}
             try:
-                for fut in _cf.as_completed(fut_map, timeout=18):
+                # Metade do que resta: a busca de deltas logo abaixo também
+                # precisa de tempo, e antes as duas somavam 36s (18+18).
+                for fut in _cf.as_completed(fut_map, timeout=max(1.0, _left() * 0.5)):
                     tk = fut_map[fut]
                     try:
                         p, var = fut.result()
@@ -14552,12 +14577,12 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
             pass
         return out
 
-    if oplab_online and underlyings_com_opcoes:
+    if oplab_online and underlyings_com_opcoes and _left() > 1:
         import concurrent.futures as _cf2
-        ex2 = _cf2.ThreadPoolExecutor(max_workers=min(10, len(underlyings_com_opcoes)))
+        ex2 = _cf2.ThreadPoolExecutor(max_workers=min(8, len(underlyings_com_opcoes)))
         fut_map2 = {ex2.submit(_fetch_underlying_options, u): u for u in underlyings_com_opcoes}
         try:
-            for fut in _cf2.as_completed(fut_map2, timeout=18):
+            for fut in _cf2.as_completed(fut_map2, timeout=max(1.0, _left())):
                 try:
                     deltas.update(fut.result())
                 except Exception:
@@ -14652,6 +14677,8 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
 
     if missing_option_tickers and oplab_online:
         for o in missing_option_tickers:
+            if _left() <= 0:
+                break   # orçamento esgotado: mantém o que já foi atualizado
             p, var = _fallback_option_quote(o.ticker.upper())
             if p:
                 o.current_option_price = p
@@ -14681,7 +14708,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
             if k in prices and prices[k] > 0:
                 sp.leg_long_current = prices[k]
                 options_ok += 1
-            elif oplab_online:
+            elif oplab_online and _left() > 0:
                 p, _var = _fallback_option_quote(k)
                 if p:
                     sp.leg_long_current = p
@@ -14691,7 +14718,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
             if k in prices and prices[k] > 0:
                 sp.leg_short_current = prices[k]
                 options_ok += 1
-            elif oplab_online:
+            elif oplab_online and _left() > 0:
                 p, _var = _fallback_option_quote(k)
                 if p:
                     sp.leg_short_current = p
@@ -14716,7 +14743,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True):
             leg.current_price = prices[k]
             leg.last_update   = now
             options_ok += 1
-        elif oplab_online:
+        elif oplab_online and _left() > 0:
             p, _var = _fallback_option_quote(k)
             if p:
                 leg.current_price = p

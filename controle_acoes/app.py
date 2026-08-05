@@ -12267,66 +12267,82 @@ def _api_ranking_vol_update_impl():
     today_str = now.strftime('%d/%m')
 
     def _extract_iv(d):
+        """Extrai (iv_rank, iv_percentil, vol_impl, vol_min, vol_max) do payload
+        de /market/instruments/{symbol}.
+
+        A OpLab devolve 0 (não null) para ativos sem opções líquidas — 0 aqui
+        significa "sem dado", não "volatilidade zero". Tratar 0 como válido
+        fazia o primeiro campo da lista vencer com 0 e nunca cair no fallback
+        EWMA, que é o que de fato tem valor para boa parte dos papéis."""
         if not isinstance(d, dict):
-            return None, None, None
+            return None, None, None, None, None
         for sub in ('data', 'spot', 'summary', 'iv', 'implied_volatility', 'greeks'):
             if isinstance(d.get(sub), dict):
                 d.update(d[sub])
-        ivr = ivp = vol = None
-        for k in ('iv_1y_rank', 'ewma_1y_rank', 'iv_6m_rank', 'iv_rank', 'ivRank'):
-            v = d.get(k)
-            if v is not None:
-                try: ivr = round(float(v)*100,1) if float(v)<=1.0 else round(float(v),1); break
-                except: pass
-        for k in ('iv_1y_percentile', 'ewma_1y_percentile', 'iv_6m_percentile',
-                  'iv_percentile', 'ivPercentile', 'iv_percentil'):
-            v = d.get(k)
-            if v is not None:
-                try: ivp = round(float(v)*100,1) if float(v)<=1.0 else round(float(v),1); break
-                except: pass
-        # Vol. Implícita anualizada (HV ou IV atual)
-        for k in ('hv_current', 'historical_volatility', 'iv_current', 'implied_volatility_current',
-                  'current_iv', 'close_iv', 'iv', 'vol_impl'):
-            v = d.get(k)
-            if v is not None:
-                try: vol = round(float(v)*100,1) if float(v)<=1.0 else round(float(v),1); break
-                except: pass
-        vmin = vmax = None
-        for k in ('iv_1y_min', 'ewma_1y_min', 'iv_6m_min', 'iv_min', 'ivMin'):
-            v = d.get(k)
-            if v is not None:
-                try: vmin = round(float(v)*100,1) if float(v)<=1.0 else round(float(v),1); break
-                except: pass
-        for k in ('iv_1y_max', 'ewma_1y_max', 'iv_6m_max', 'iv_max', 'ivMax'):
-            v = d.get(k)
-            if v is not None:
-                try: vmax = round(float(v)*100,1) if float(v)<=1.0 else round(float(v),1); break
-                except: pass
+
+        def _pick(*keys):
+            for k in keys:
+                v = d.get(k)
+                if v is None:
+                    continue
+                try:
+                    f = float(v)
+                except (TypeError, ValueError):
+                    continue
+                if f == 0:          # 0 = sem dado na OpLab; tenta a próxima chave
+                    continue
+                # Campos vêm em % (ex.: 41.79). Frações (<=1) viram percentual.
+                return round(f * 100, 1) if f <= 1.0 else round(f, 1)
+            return None
+
+        # iv_* primeiro (volatilidade implícita); ewma_* como fallback para
+        # papéis sem opções líquidas, onde a OpLab só preenche o histórico.
+        ivr  = _pick('iv_1y_rank', 'ewma_1y_rank', 'iv_6m_rank', 'ewma_6m_rank',
+                     'iv_rank', 'ivRank')
+        ivp  = _pick('iv_1y_percentile', 'ewma_1y_percentile', 'iv_6m_percentile',
+                     'ewma_6m_percentile', 'iv_percentile', 'ivPercentile', 'iv_percentil')
+        vol  = _pick('iv_current', 'ewma_current', 'hv_current', 'historical_volatility',
+                     'implied_volatility_current', 'current_iv', 'close_iv', 'iv', 'vol_impl')
+        vmin = _pick('iv_1y_min', 'ewma_1y_min', 'iv_6m_min', 'ewma_6m_min', 'iv_min', 'ivMin')
+        vmax = _pick('iv_1y_max', 'ewma_1y_max', 'iv_6m_max', 'ewma_6m_max', 'iv_max', 'ivMax')
         return ivr, ivp, vol, vmin, vmax
 
     # Busca preços em lote via brapi (com token brapi se disponível)
     from services import _brapi_quotes, _yf_fast_info
+    from concurrent.futures import as_completed as _as_completed, TimeoutError as _CFTimeoutError
     brapi_token = Settings.get_value('brapi_token', user_id=uid)
     tickers_list = [rv.ticker for rv in items]
     price_map = {}  # ticker → {price, change}
+
+    def _fetch_prices_yahoo(tks, budget):
+        """Yahoo ticker a ticker com teto de tempo. Sem esse teto, uma lista
+        'Geral' com 180+ tickers levava ~90s só aqui (≈500ms cada) e estourava
+        o gateway antes mesmo de chamar a OpLab. Quem não responder no orçamento
+        fica sem preço nesta rodada — o resto da tela continua atualizando."""
+        if not tks:
+            return
+        def _fetch(t):
+            return t, _yf_fast_info(f'{t}.SA' if '.' not in t else t, t)
+        ex = ThreadPoolExecutor(max_workers=8)
+        futs = {ex.submit(_fetch, t): t for t in tks}
+        try:
+            for fut in _as_completed(futs, timeout=budget):
+                t, d = fut.result()
+                if d:
+                    price_map[t] = {'price': d['price'], 'change': d['change_percent']}
+        except _CFTimeoutError:
+            pass
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)
 
     if brapi_token:
         brapi_res = _brapi_quotes(tickers_list, brapi_token)
         for t, d in brapi_res.items():
             price_map[t] = {'price': d['price'], 'change': d['change_percent']}
-        missing = [t for t in tickers_list if t not in price_map]
-        if missing:
-            def _fetch(t):
-                return t, _yf_fast_info(f'{t}.SA' if '.' not in t else t, t)
-            with ThreadPoolExecutor(max_workers=8) as ex:
-                for t, d in ex.map(_fetch, missing):
-                    if d: price_map[t] = {'price': d['price'], 'change': d['change_percent']}
+        # brapi resolve em lote; o Yahoo só cobre o que sobrou
+        _fetch_prices_yahoo([t for t in tickers_list if t not in price_map], 25)
     else:
-        def _fetch(t):
-            return t, _yf_fast_info(f'{t}.SA' if '.' not in t else t, t)
-        with ThreadPoolExecutor(max_workers=8) as ex:
-            for t, d in ex.map(_fetch, tickers_list):
-                if d: price_map[t] = {'price': d['price'], 'change': d['change_percent']}
+        _fetch_prices_yahoo(tickers_list, 25)
 
     # Busca de IV via OpLab: uma chamada por ticker (até 15s cada). Sequencial,
     # uma lista "Geral" com 100+ tickers passa muito além do timeout do
@@ -12342,7 +12358,6 @@ def _api_ranking_vol_update_impl():
         except Exception as e:
             return ticker, (None, None, None, None, None, str(e))
 
-    from concurrent.futures import as_completed as _as_completed, TimeoutError as _CFTimeoutError
     # 8 workers é o ponto ótimo medido contra a OpLab: acima disso o servidor
     # degrada e o tempo TOTAL piora (60 reqs: 1,05s com 8 vs 1,36s com 16).
     ex = ThreadPoolExecutor(max_workers=min(8, len(items)))

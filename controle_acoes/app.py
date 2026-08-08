@@ -14018,7 +14018,7 @@ def _sanitize_chart_candles(candles):
     return robust
 
 
-def _vol_hist_series(ticker, token, meses=6):
+def _vol_hist_series(ticker, token, meses=12):
     """Série diária de volatilidade implícita (ATM) e histórica de um papel.
 
     A OpLab devolve uma linha por opção por dia em
@@ -14119,7 +14119,12 @@ def _vol_hist_series(ticker, token, meses=6):
         closes = [(c.get('t'), float(c.get('c'))) for c in candles
                   if c.get('t') and c.get('c')]
         closes.sort()
-        JAN = 21   # janela de 21 pregões (~1 mês), padrão de mercado
+        # Janela de 25 pregões: calibrada contra 8 pontos de referência do
+        # Opções.Net (B3SA3, BBDC4, BBAS3, PETR4, VALE3, BPAC11, CPFE3 ×2).
+        # Erro médio de 1,17 p.p. contra 2,39 p.p. com 21 pregões, e melhor
+        # em 6 dos 8 casos. Volatilidade histórica não tem definição única —
+        # a janela é convenção, e esta é a que mais aproxima da referência.
+        JAN = 25
         hv_por_data = {}
         import statistics as _stats
         for i in range(JAN, len(closes)):
@@ -14153,6 +14158,37 @@ def _vol_hist_series(ticker, token, meses=6):
     return serie
 
 
+def _vol_hist_stats(serie):
+    """Onde a VI de hoje está em relação ao próprio histórico do papel.
+
+    É o que decide a estratégia: VI alta contra o histórico favorece montar
+    posições vendidas em volatilidade (condor, trava de crédito, straddle
+    vendido); VI baixa favorece as compradas.
+
+    - percentil: % dos dias em que a VI ficou ABAIXO da atual. 80% = a VI só
+      esteve mais alta em 20% dos pregões do período.
+    - iv_rank: posição no intervalo min–max (o "IV Rank" usual do mercado).
+      Difere do percentil: é sensível a extremos isolados, enquanto o
+      percentil conta dias. Os dois juntos evitam leitura enganosa.
+    """
+    ivs = [p['iv'] for p in serie if p.get('iv') is not None]
+    if len(ivs) < 20:
+        return None
+    atual = ivs[-1]
+    lo, hi = min(ivs), max(ivs)
+    abaixo = sum(1 for v in ivs if v < atual)
+    rank = ((atual - lo) / (hi - lo) * 100) if hi > lo else 50.0
+    return {
+        'iv_atual':  round(atual, 1),
+        'iv_min':    round(lo, 1),
+        'iv_max':    round(hi, 1),
+        'iv_media':  round(sum(ivs) / len(ivs), 1),
+        'percentil': round(abaixo / len(ivs) * 100, 1),
+        'iv_rank':   round(rank, 1),
+        'dias':      len(ivs),
+    }
+
+
 @app.route('/api/vol_hist/<ticker>')
 @login_required
 def api_vol_hist(ticker):
@@ -14168,7 +14204,7 @@ def api_vol_hist(ticker):
     # Versão do algoritmo: mudou o cálculo (janelas de busca, filtro de
     # outliers), o cache anterior fica inválido. Sem isso, o gráfico
     # continuaria servindo a série antiga — com o artefato — até o dia virar.
-    _ALGO = 'v2'
+    _ALGO = 'v3'   # v3: 12 meses de janela + HV de 25 pregões
 
     ticker = ticker.upper().strip()
     if not ticker.isalnum():
@@ -14177,20 +14213,22 @@ def api_vol_hist(ticker):
     hoje = f'{_date.today().isoformat()}|{_ALGO}'
     row = VolHistCache.query.get(ticker)
     if row and row.last_date == hoje and not request.args.get('refresh'):
-        return jsonify({'ticker': ticker, 'cached': True,
-                        'series': _json.loads(_gzip.decompress(row.series_gz))})
+        _s = _json.loads(_gzip.decompress(row.series_gz))
+        return jsonify({'ticker': ticker, 'cached': True, 'series': _s,
+                        'stats': _vol_hist_stats(_s)})
 
     token = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
         return jsonify({'error': 'Token OpLab não configurado.'}), 400
 
     try:
-        serie = _vol_hist_series(ticker, token, meses=6)
+        serie = _vol_hist_series(ticker, token, meses=12)
     except OplabApiError as e:
         # Cache velho é melhor que erro na tela
         if row:
+            _s = _json.loads(_gzip.decompress(row.series_gz))
             return jsonify({'ticker': ticker, 'cached': True, 'stale': True,
-                            'series': _json.loads(_gzip.decompress(row.series_gz))})
+                            'series': _s, 'stats': _vol_hist_stats(_s)})
         return jsonify({'error': f'OpLab: {e}'}), 502
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -14210,7 +14248,8 @@ def api_vol_hist(ticker):
     except Exception:
         db.session.rollback()
 
-    return jsonify({'ticker': ticker, 'cached': False, 'series': serie})
+    return jsonify({'ticker': ticker, 'cached': False, 'series': serie,
+                    'stats': _vol_hist_stats(serie)})
 
 
 @app.route('/api/chart_data/<ticker>')

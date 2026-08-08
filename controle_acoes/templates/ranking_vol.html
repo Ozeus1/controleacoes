@@ -984,6 +984,9 @@
       </div>
     </div>
     <div id="vh-status" style="font-size:.85rem;color:var(--text-secondary);padding:.5rem 0;"></div>
+    <div id="vh-stats" style="display:none;margin-bottom:.6rem;padding:.5rem .7rem;
+         border-radius:6px;background:rgba(148,163,184,.08);border:1px solid var(--border-color);
+         font-size:.85rem;"></div>
     <div style="position:relative;">
       <canvas id="vh-canvas" style="display:block;width:100%;height:380px;"></canvas>
       <div id="vh-tip" style="display:none;position:absolute;background:#1e293b;
@@ -1011,8 +1014,9 @@
   window.openVolHist = function(ticker){
     ticker = (ticker||'').toUpperCase();
     document.getElementById('vh-title').textContent = ticker;
-    document.getElementById('vh-status').textContent = 'Buscando histórico na OpLab…';
+    document.getElementById('vh-status').textContent = 'Buscando 12 meses de histórico na OpLab…';
     document.getElementById('vh-foot').textContent = '';
+    document.getElementById('vh-stats').style.display = 'none';
     serie = [];
     modal.style.display = 'flex';
     var ctx = cv.getContext('2d');
@@ -1035,12 +1039,38 @@
           (ult.iv!=null? ult.iv.toFixed(1)+'%':'—') +
           ' / histórica ' + (ult.hv!=null? ult.hv.toFixed(1)+'%':'—') +
           (res.j.cached ? ' · do cache' : '');
+        mostraStats(res.j.stats);
         draw();
       })
       .catch(function(e){
         document.getElementById('vh-status').textContent = '⚠️ Falha na requisição: ' + e;
       });
   };
+
+  // Onde a VI de hoje está no próprio histórico do papel — é o que decide se
+  // vale montar operação vendida ou comprada em volatilidade.
+  function mostraStats(s){
+    var box = document.getElementById('vh-stats');
+    if(!s){ box.style.display='none'; return; }
+    var p = s.percentil, cor, leitura;
+    if(p >= 80)      { cor='#ef4444'; leitura='VI ELEVADA — favorece montar posições VENDIDAS em volatilidade (condor, trava de crédito, straddle/strangle vendido)'; }
+    else if(p >= 60) { cor='#f59e0b'; leitura='VI acima da média do período'; }
+    else if(p <= 20) { cor='#3b82f6'; leitura='VI BAIXA — favorece posições COMPRADAS em volatilidade (straddle/strangle comprado, calendário)'; }
+    else if(p <= 40) { cor='#60a5fa'; leitura='VI abaixo da média do período'; }
+    else             { cor='#94a3b8'; leitura='VI em região neutra'; }
+    box.style.display='';
+    box.innerHTML =
+      '<div style="display:flex;gap:1.2rem;flex-wrap:wrap;align-items:baseline;">'
+      + '<span><strong style="color:' + cor + ';font-size:1.15rem;">' + p.toFixed(0) + '%</strong>'
+      + ' <span style="color:var(--text-secondary)">percentil</span></span>'
+      + '<span><strong>' + s.iv_rank.toFixed(0) + '%</strong>'
+      + ' <span style="color:var(--text-secondary)">IV Rank</span></span>'
+      + '<span style="color:var(--text-secondary)">atual <strong style="color:var(--text-primary)">'
+      + s.iv_atual.toFixed(1) + '%</strong> · mín ' + s.iv_min.toFixed(1)
+      + '% · méd ' + s.iv_media.toFixed(1) + '% · máx ' + s.iv_max.toFixed(1) + '%</span>'
+      + '</div>'
+      + '<div style="margin-top:.35rem;color:' + cor + ';font-size:.82rem;">' + leitura + '</div>';
+  }
 
   function draw(){
     if(!serie.length) return;

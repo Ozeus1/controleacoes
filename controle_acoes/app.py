@@ -13652,7 +13652,11 @@ def api_radar_analise():
         try:
             resp = _req.get(RADAR_URL, params={'ticker': ticker, 'analyzer': 'ai',
                                                'api_key': RADAR_KEY}, timeout=45)
-            raw = resp.json()
+            try:
+                raw = resp.json()
+            except ValueError:
+                return jsonify({'error': 'Serviço de análise fundamentalista indisponível '
+                                         '(resposta vazia/inválida). Tente novamente em instantes.'}), 502
             if not raw.get('ok', True) and raw.get('error'):
                 return jsonify({'error': raw.get('error')}), 502
             d = raw.get('data', raw)

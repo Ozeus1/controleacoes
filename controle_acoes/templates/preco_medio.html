@@ -127,21 +127,6 @@
 </div>
 {% endmacro %}
 
-<div class="card" style="padding:1rem 1.2rem;margin-bottom:1.2rem;">
-    <h2 style="margin:0 0 .4rem;">🧮 Preço Médio</h2>
-    <p style="color:var(--text-secondary);font-size:.85rem;margin:0;">
-        PM <strong>ajustado</strong> da carteira: o custo é abatido por <strong>1)</strong> dividendos recebidos,
-        <strong>2)</strong> lucro/prejuízo realizado com <strong>opções do ativo</strong> e
-        <strong>3)</strong> compras financiadas com lucro (as unidades entram a <strong>PM zero</strong>;
-        excesso/falta fica no custo total — sem contagem em dobro: cada crédito é usado uma única vez).
-        Lucro de <strong>swing trade não conta</strong> (evento aleatório, não ligado ao papel).
-        Compras e vendas normais continuam pelas tabelas oficiais e refletem aqui automaticamente;
-        somente a <strong>compra com lucro (🛒)</strong> é registrada por esta tela — e reflete na carteira oficial.
-        A coluna <strong>Disponível</strong> é o crédito ainda não usado (ganho − já aplicado); nunca aparece
-        abaixo de zero (o abatimento no PM já feito no passado continua valendo mesmo quando o saldo some).
-    </p>
-</div>
-
 {{ pm_table(acoes, '📈 Ações — Preço Médio Ajustado') }}
 {{ pm_table(fiis,  '🏢 FIIs — Preço Médio Ajustado') }}
 

@@ -565,6 +565,14 @@ var OPS=[
  man:['Gerenciar as pernas individualmente, rolando quando necessário'],
  busca:B(BO,'fence')},
 
+{cat:'cat-sint',nome:'Fence Alavancada (Ratio Fence)',cen:'baixa',tipo:'zero',
+ legs:[{t:'S',q:1},{t:'P',q:5,K:96,p:2.5},{t:'P',q:-5,K:88,p:1},{t:'C',q:-1,K:108,p:2}],
+ mont:'Mesma Fence, mas com N travas de PUT para cada CALL vendida. Como a trava OTM é barata, o prêmio de 1 CALL paga várias travas (N = prêmio da CALL ÷ custo da trava).',
+ cenario:'Queda moderada até o strike da PUT vendida é o cenário ideal: o ganho das travas é multiplicado por N e pode superar a perda das ações. Na alta você entrega o papel pela CALL; abaixo da trava a proteção cessa no máximo.',
+ sel:['Vencimento: DTE 30–60d','Travas estreitas e OTM barateiam o custo unitário','N até onde o crédito da CALL cobrir — acima disso a montagem vira débito'],
+ man:['Realizar as travas quando o ativo atinge o miolo','Rolar a CALL se o ativo disparar, para não entregar o papel'],
+ busca:B(BO,'fence')},
+
 /* ══ CALENDÁRIO (Vol. 4) ══ */
 {cat:'cat-cal',nome:'Neutral Calendar Spread (ATM) — Lateral',cen:'lateral',tipo:'debito',
  cal:true,dcS:7,dcL:35,iv:0.30,
@@ -689,7 +697,7 @@ var VI_BY_OP={
   strap:'baixa', strip:'baixa', guts_long:'baixa', guts_short:'alta',
   box_spread:'neutra',
   acao_sintetica:'neutra', short_sintetico:'neutra', risk_reversal:'neutra',
-  synthetic_straddle:'baixa', fence:'neutra',
+  synthetic_straddle:'baixa', fence:'neutra', fence_alavancada:'baixa',
   neutral_calendar:'baixa', double_calendar:'baixa',
   pmcc:'baixa', bull_calendar:'baixa', pmcp:'baixa', bear_calendar:'baixa',
   double_diagonal:'baixa'

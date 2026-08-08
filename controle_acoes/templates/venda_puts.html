@@ -263,6 +263,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 <label class="form-label" style="font-weight:700;">Operação</label>
                 <select class="form-control" id="e-op" onchange="estruturaOpChanged()">
                     <option value="fence">🚧 Fence (Cerca)</option>
+                    <option value="fence_alav">🚧🚀 Fence Alavancada (Ratio Fence)</option>
                     <option value="seagull">🕊 Seagull (Gaivota de alta)</option>
                     <option value="trava_alta">📈 Trava de Alta (débito, CALLs)</option>
                     <option value="trava_baixa">📉 Trava de Baixa (débito, PUTs)</option>
@@ -295,6 +296,14 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             <div>
                 <label class="form-label">Quantidade</label>
                 <input class="form-control" id="e-qty" type="number" min="1" value="100" oninput="estruturaCalc()">
+            </div>
+            <div id="e-ratio-wrap" style="display:none;">
+                <label class="form-label" title="Quantas travas de PUT para cada lote de CALL vendida">Travas de PUT (N×)</label>
+                <div style="display:flex; gap:.35rem;">
+                    <input class="form-control" id="e-ratio" type="number" min="1" step="1" value="1" oninput="estruturaCalc()">
+                    <button type="button" class="btn btn-secondary btn-sm" id="e-ratio-max" title="Maior N que o crédito da CALL ainda paga"
+                            onclick="fenceRatioMax()" style="white-space:nowrap;">máx</button>
+                </div>
             </div>
             <div>
                 <label class="form-label">Vencimento</label>
@@ -1092,9 +1101,18 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
 
     // ── Aba Estruturas: fence, seagull, travas ────────────────────────────────
     var E_CFG = {
+        // Fence: já possuo as ações. A CALL vendida (coberta) financia a trava
+        // de baixa com PUT. O custo/crédito é SÓ das opções — a ação já está na
+        // carteira, então não entra como desembolso novo.
         fence: {
-            legs: ['PUT — COMPRA (proteção, K maior)', 'PUT — VENDA (abaixo, K menor)', 'CALL — VENDA'],
+            legs: ['PUT — COMPRA (proteção, K maior)', 'PUT — VENDA (abaixo, K menor)', 'CALL — VENDA (coberta)'],
             needSpot: true
+        },
+        // Ratio Fence: mesmo crédito da CALL 1×, mas N travas de PUT. O ganho na
+        // queda é multiplicado por N; a CALL continua coberta pela custódia 1×.
+        fence_alav: {
+            legs: ['PUT — COMPRA N× (proteção, K maior)', 'PUT — VENDA N× (abaixo, K menor)', 'CALL — VENDA 1× (coberta)'],
+            needSpot: true, ratio: true
         },
         seagull: {
             legs: ['CALL — COMPRA (K menor)', 'CALL — VENDA (K maior)', 'PUT — VENDA (OTM abaixo)'],
@@ -1164,6 +1182,18 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             }
         });
         document.getElementById('e-spot-lbl').style.fontWeight = cfg.needSpot ? '700' : '';
+        document.getElementById('e-ratio-wrap').style.display = cfg.ratio ? '' : 'none';
+        estruturaCalc();
+    };
+
+    // Maior N cujo custo total das travas ainda cabe no crédito da CALL.
+    window.fenceRatioMax = function() {
+        var aP = toFloat(document.getElementById('e-a-p').value);
+        var bP = toFloat(document.getElementById('e-b-p').value);
+        var cP = toFloat(document.getElementById('e-c-p').value);
+        var custoTrava = aP - bP;
+        if (!(custoTrava > 0) || !(cP > 0)) return;
+        document.getElementById('e-ratio').value = Math.max(1, Math.floor(cP / custoTrava));
         estruturaCalc();
     };
 
@@ -1214,25 +1244,52 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
 
         var boxes = [];
 
-        if (op === 'fence') {
-            // A = PUT compra (K2), B = PUT venda (K1 < K2), C = CALL venda
-            var net     = spot + aP - bP - cP;
-            var maxGain = (cK - net) * qty;
-            var floorR  = (aK - net) * qty;                 // zona protegida [K1, K2]
-            var lossMax = (net - (aK - bK)) * qty;          // se S -> 0
-            var gainPct = net > 0 ? (cK - net) / net * 100 : 0;
+        if (op === 'fence' || op === 'fence_alav') {
+            // A = PUT compra (K2), B = PUT venda (K1 < K2), C = CALL venda.
+            // Premissa: as ações JÁ ESTÃO na carteira (proteção patrimonial), então
+            // o desembolso novo é só o das opções — a ação não entra como custo.
+            // A CALL é vendida 1× (coberta pela custódia); as travas de PUT vão N×.
+            var N = (op === 'fence_alav')
+                    ? Math.max(1, Math.round(toFloat(document.getElementById('e-ratio').value) || 1)) : 1;
+            var custoTrava = aP - bP;                       // custo unitário da trava
+            var credCall   = cP;                            // prêmio recebido na CALL
+            var credLiq    = credCall - custoTrava * N;     // >0 recebe, <0 paga
+            var larguraT   = aK - bK;                       // miolo da trava
+            // Resultados no vencimento, medidos a partir da cotação de hoje.
+            var ganhoTrava = larguraT * N * qty;            // trava no máximo (S <= bK)
+            var maxGain    = (cK - spot + credLiq) * qty;   // exercido na CALL
+            var noAlvo     = (bK - spot) * qty + ganhoTrava + credLiq * qty;  // S = bK
+            var parado     = credLiq * qty;                 // S = spot (travas viram pó)
+            // Break-even de queda: abaixo da trava a ação volta a cair sozinha.
+            var beBaixa    = bK - (larguraT * N + credLiq);
+            var invest     = credLiq < 0 ? -credLiq * qty : 0;
+            var retTrava   = invest > 0 ? (noAlvo - parado) / invest * 100 : 0;
             boxes = [
-                ['Custo total da ação', fmtBRL(spot * qty), ''],
-                ['Custo líquido/ação',  fmtBRL(net), ''],
-                ['Break-even (subida)', fmtBRL(net), ''],
-                ['Lucro máximo',        fmtBRL(maxGain), 'positive'],
-                ['Lucro máx. %',        fmtPct(gainPct), 'positive'],
-                ['Resultado zona protegida (' + fmtBRL(bK) + '–' + fmtBRL(aK) + ')',
-                    fmtBRL(floorR), floorR >= 0 ? 'positive' : 'negative'],
-                ['Protegido até (K PUT vendida)', fmtBRL(bK), ''],
-                ['Perda máx. (se S→0)', fmtBRL(Math.abs(lossMax)), lossMax > 0 ? 'negative' : 'positive'],
-                ['Relação lucro/perda', lossMax > 0.001 ? (maxGain / lossMax).toLocaleString('pt-BR', {maximumFractionDigits:2}) : '∞', '']
-            ].concat(pctBoxes(gainPct));
+                [credLiq >= 0 ? 'Crédito líquido recebido' : 'Custo líquido da montagem',
+                    fmtBRL(Math.abs(credLiq) * qty), credLiq >= 0 ? 'positive' : 'negative'],
+                ['Prêmio da CALL (1×)',  fmtBRL(credCall * qty), 'positive'],
+                ['Custo das travas (' + N + '×)', fmtBRL(custoTrava * N * qty), 'negative'],
+                ['Custo unit. da trava',  fmtBRL(custoTrava), ''],
+                ['Proteção nominal',      fmtBRL(larguraT * N * qty), 'positive'],
+                ['Alavancagem da proteção',
+                    N + '×' + (credLiq < 0 ? ' (acima do crédito)' : ''),
+                    credLiq < 0 ? 'negative' : (N > 1 ? 'positive' : '')],
+                ['Resultado se ficar parado', fmtBRL(parado), parado >= 0 ? 'positive' : 'negative'],
+                ['Resultado na alta (exercido em ' + fmtBRL(cK) + ')', fmtBRL(maxGain),
+                    maxGain >= 0 ? 'positive' : 'negative'],
+                ['Resultado no alvo da queda (' + fmtBRL(bK) + ')',
+                    fmtBRL(noAlvo), noAlvo >= 0 ? 'positive' : 'negative'],
+                ['Zona da proteção',      fmtBRL(bK) + '–' + fmtBRL(aK), ''],
+                ['Queda blindada',        fmtPct((spot - bK) / spot * 100), ''],
+                ['Break-even na queda',   fmtBRL(beBaixa), '']
+            ];
+            // O retorno da proteção é condicional (só ocorre SE o ativo cair até o
+            // alvo), então não se anualiza: compor um cenário que pode não
+            // acontecer geraria um "% a.a." fantasioso. Mostra só o prazo.
+            if (invest > 0) {
+                boxes.push(['Retorno da proteção no alvo', fmtPct(retTrava), 'positive']);
+            }
+            boxes.push(['Prazo (dias corridos)', dc + ' d.c.', '']);
         } else if (op === 'seagull') {
             // A = CALL compra (K1), B = CALL venda (K2 > K1), C = PUT venda (K0)
             var net2    = aP - bP - cP;                      // >0 débito, <=0 crédito
@@ -1487,17 +1544,23 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         var payoffFn = null, strikeMarks = [], legsArr = [];
         function mk(k, lbl) { strikeMarks.push({k: k, label: lbl + ' ' + k.toLocaleString('pt-BR')}); }
 
-        if (op === 'fence') {
-            // ação (spot) + PUT comprada aK + PUT vendida bK + CALL vendida cK
-            var netFence = spot + aP - bP - cP;
+        if (op === 'fence' || op === 'fence_alav') {
+            // Ação já em custódia: o payoff mede o resultado a partir da cotação de
+            // hoje (S - spot), não o custo de comprar o papel agora. Travas N×,
+            // CALL 1× (coberta pela custódia).
+            var nF = (op === 'fence_alav')
+                     ? Math.max(1, Math.round(toFloat(document.getElementById('e-ratio').value) || 1)) : 1;
+            var credF = cP - (aP - bP) * nF;
             payoffFn = function(S) {
-                return qty * (S + Math.max(0, aK - S) - Math.max(0, bK - S) - Math.max(0, S - cK) - netFence);
+                return qty * ((S - spot)
+                              + nF * (Math.max(0, aK - S) - Math.max(0, bK - S))
+                              - Math.max(0, S - cK) + credF);
             };
             mk(bK, 'PUT v'); mk(aK, 'PUT c'); mk(cK, 'CALL v');
             legsArr = [{t: 'STOCK', s: 1, q: 1},
-                       {t: 'PUT',  s: 1,  q: 1, K: aK, prem: aP},
-                       {t: 'PUT',  s: -1, q: 1, K: bK, prem: bP},
-                       {t: 'CALL', s: -1, q: 1, K: cK, prem: cP}];
+                       {t: 'PUT',  s: 1,  q: nF, K: aK, prem: aP},
+                       {t: 'PUT',  s: -1, q: nF, K: bK, prem: bP},
+                       {t: 'CALL', s: -1, q: 1,  K: cK, prem: cP}];
         } else if (op === 'seagull') {
             var netSg = aP - bP - cP;
             payoffFn = function(S) {

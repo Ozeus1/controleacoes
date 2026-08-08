@@ -602,7 +602,9 @@ class VolHistCache(db.Model):
     resultado já agregado: um ponto por dia."""
     __tablename__ = 'vol_hist_cache'
     ticker     = db.Column(db.String(20), primary_key=True)
-    last_date  = db.Column(db.String(12), nullable=False)   # último dia da série
+    # "YYYY-MM-DD|vN": a versão do algoritmo entra na chave para que mudanças
+    # no cálculo invalidem o cache sozinhas, sem precisar limpar a tabela.
+    last_date  = db.Column(db.String(24), nullable=False)
     fetched_at = db.Column(db.DateTime,   nullable=False, default=datetime.utcnow)
     series_gz  = db.Column(db.LargeBinary, nullable=False)  # JSON gzip: [{d, iv, hv}, ...]
 

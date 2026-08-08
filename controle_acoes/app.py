@@ -14121,12 +14121,27 @@ def _vol_hist_series(ticker, token, meses=6):
         closes.sort()
         JAN = 21   # janela de 21 pregões (~1 mês), padrão de mercado
         hv_por_data = {}
+        import statistics as _stats
         for i in range(JAN, len(closes)):
             janela = closes[i - JAN:i + 1]
             rets = [_math.log(janela[k][1] / janela[k - 1][1])
                     for k in range(1, len(janela)) if janela[k - 1][1] > 0]
             if len(rets) < 5:
                 continue
+            # Descarta saltos que não são volatilidade: na data-ex de um
+            # provento (ou num desdobramento) o preço cai de uma vez, e a série
+            # do Yahoo não vem ajustada. Sem isso, o salto entra como retorno
+            # real e infla a HV por exatamente 21 pregões — o platô retangular
+            # que aparecia no gráfico. Critério pela mediana da própria janela
+            # (não um limiar fixo), para se adaptar a papéis mais ou menos
+            # voláteis. Medido no BBSE3 (dividendo de -10,4% em 13/02): pico de
+            # 44,2% cai para 22%, enquanto a mediana da série mal se move
+            # (17,4% -> 17,2%), ou seja, corrige o artefato sem achatar os dias
+            # normais.
+            med_abs = _stats.median([abs(x) for x in rets]) or 1e-9
+            limpos = [x for x in rets if abs(x) <= 5 * med_abs]
+            if len(limpos) >= 5:
+                rets = limpos
             m = sum(rets) / len(rets)
             var = sum((x - m) ** 2 for x in rets) / (len(rets) - 1)
             hv_por_data[closes[i][0]] = round(_math.sqrt(var) * _math.sqrt(252) * 100, 2)
@@ -14150,13 +14165,18 @@ def api_vol_hist(ticker):
     from models import VolHistCache
     from datetime import date as _date
 
+    # Versão do algoritmo: mudou o cálculo (janelas de busca, filtro de
+    # outliers), o cache anterior fica inválido. Sem isso, o gráfico
+    # continuaria servindo a série antiga — com o artefato — até o dia virar.
+    _ALGO = 'v2'
+
     ticker = ticker.upper().strip()
     if not ticker.isalnum():
         return jsonify({'error': 'ticker inválido'}), 400
 
-    hoje = _date.today().isoformat()
+    hoje = f'{_date.today().isoformat()}|{_ALGO}'
     row = VolHistCache.query.get(ticker)
-    if row and row.last_date == hoje:
+    if row and row.last_date == hoje and not request.args.get('refresh'):
         return jsonify({'ticker': ticker, 'cached': True,
                         'series': _json.loads(_gzip.decompress(row.series_gz))})
 

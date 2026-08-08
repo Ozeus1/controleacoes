@@ -593,6 +593,20 @@ class ChartCache(db.Model):
     candles_gz = db.Column(db.LargeBinary, nullable=False)   # JSON gzip dos candles
 
 
+class VolHistCache(db.Model):
+    """Cache da série histórica de volatilidade (implícita + histórica) por ticker.
+
+    A VI de cada dia é a das opções mais próximas do dinheiro (ATM) — mesmo
+    critério do Opções.Net. A série bruta da OpLab traz uma linha por opção
+    por dia (16k+ registros para 1 ticker/mês), então o cache guarda apenas o
+    resultado já agregado: um ponto por dia."""
+    __tablename__ = 'vol_hist_cache'
+    ticker     = db.Column(db.String(20), primary_key=True)
+    last_date  = db.Column(db.String(12), nullable=False)   # último dia da série
+    fetched_at = db.Column(db.DateTime,   nullable=False, default=datetime.utcnow)
+    series_gz  = db.Column(db.LargeBinary, nullable=False)  # JSON gzip: [{d, iv, hv}, ...]
+
+
 class UserChartLine(db.Model):
     """Linhas de tendência desenhadas pelo usuário no gráfico de candlestick."""
     __tablename__ = 'user_chart_lines'

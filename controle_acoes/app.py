@@ -14008,6 +14008,148 @@ def _sanitize_chart_candles(candles):
     return robust
 
 
+def _vol_hist_series(ticker, token, meses=6):
+    """Série diária de volatilidade implícita (ATM) e histórica de um papel.
+
+    A OpLab devolve uma linha por opção por dia em
+    /market/historical/options/{spot}/{from}/{to} (16k+ registros para um
+    ticker em 30 dias). Para virar uma curva do PAPEL, agrega-se cada dia
+    pela volatilidade das opções mais próximas do dinheiro — mesmo critério
+    do Opções.Net. Usar a média de todas as opções distorceria a curva para
+    cima, porque as muito fora do dinheiro têm VI inflada.
+
+    Retorna [{'d': 'YYYY-MM-DD', 'iv': float|None, 'hv': float|None}, ...].
+    """
+    from datetime import date as _date, timedelta as _td
+    ini = (_date.today() - _td(days=int(meses * 30.5))).isoformat()
+    fim = _date.today().isoformat()
+
+    raw = _oplab_get_json(f'/market/historical/options/{ticker}/{ini}/{fim}',
+                          token, timeout=45)
+    if not isinstance(raw, list):
+        return []
+
+    # Agrupa por dia, guardando (distância relativa ao dinheiro, VI)
+    por_dia: dict = {}
+    for r in raw:
+        if not isinstance(r, dict):
+            continue
+        vol = r.get('volatility')
+        strike = r.get('strike')
+        spot = (r.get('spot') or {}).get('price') if isinstance(r.get('spot'), dict) else None
+        t = str(r.get('time') or '')[:10]
+        dtm = r.get('days_to_maturity')
+        if not (t and vol and strike and spot) or spot <= 0:
+            continue
+        try:
+            vol = float(vol); strike = float(strike); spot = float(spot)
+        except (TypeError, ValueError):
+            continue
+        # VI absurda = ruído de opção sem liquidez (prêmio de centavos)
+        if vol <= 0 or vol > 300:
+            continue
+        # Vencimentos muito curtos distorcem (VI explode perto do vencimento)
+        if dtm is not None and dtm < 7:
+            continue
+        por_dia.setdefault(t, []).append((abs(strike - spot) / spot, vol))
+
+    serie = []
+    for d in sorted(por_dia):
+        cands = sorted(por_dia[d])          # mais próximas do dinheiro primeiro
+        # Média das ~4 mais ATM: uma só ficaria ruidosa se tiver pouca liquidez
+        atm = [v for _dist, v in cands[:4]]
+        serie.append({'d': d, 'iv': round(sum(atm) / len(atm), 2), 'hv': None})
+
+    # Vol. histórica (a linha azul): desvio-padrão anualizado dos retornos,
+    # calculado dos candles — a OpLab não entrega essa série pronta por data.
+    # Reaproveita o mesmo cache OHLCV do gráfico de candles.
+    try:
+        import math as _math, gzip as _gzip2, json as _json2
+        from models import ChartCache
+        candles = []
+        _cc = ChartCache.query.get(ticker)
+        if _cc:
+            candles = _json2.loads(_gzip2.decompress(_cc.candles_gz).decode())
+        else:
+            yf_t = ticker + '.SA' if _is_b3_yahoo_ticker(ticker) else ticker
+            candles = _sanitize_chart_candles(_yahoo_fetch(yf_t)) or []
+        closes = [(c.get('t'), float(c.get('c'))) for c in candles
+                  if c.get('t') and c.get('c')]
+        closes.sort()
+        JAN = 21   # janela de 21 pregões (~1 mês), padrão de mercado
+        hv_por_data = {}
+        for i in range(JAN, len(closes)):
+            janela = closes[i - JAN:i + 1]
+            rets = [_math.log(janela[k][1] / janela[k - 1][1])
+                    for k in range(1, len(janela)) if janela[k - 1][1] > 0]
+            if len(rets) < 5:
+                continue
+            m = sum(rets) / len(rets)
+            var = sum((x - m) ** 2 for x in rets) / (len(rets) - 1)
+            hv_por_data[closes[i][0]] = round(_math.sqrt(var) * _math.sqrt(252) * 100, 2)
+        for p in serie:
+            p['hv'] = hv_por_data.get(p['d'])
+    except Exception:
+        app.logger.exception('vol_hist: falha ao calcular HV de %s', ticker)
+
+    return serie
+
+
+@app.route('/api/vol_hist/<ticker>')
+@login_required
+def api_vol_hist(ticker):
+    """Série histórica de volatilidade implícita (ATM) e histórica do papel.
+
+    Cache em SQLite por ticker, revalidado uma vez por dia — a série muda
+    só com o fechamento e a consulta bruta é cara (dezenas de milhares de
+    registros)."""
+    import gzip as _gzip, json as _json
+    from models import VolHistCache
+    from datetime import date as _date
+
+    ticker = ticker.upper().strip()
+    if not ticker.isalnum():
+        return jsonify({'error': 'ticker inválido'}), 400
+
+    hoje = _date.today().isoformat()
+    row = VolHistCache.query.get(ticker)
+    if row and row.last_date == hoje:
+        return jsonify({'ticker': ticker, 'cached': True,
+                        'series': _json.loads(_gzip.decompress(row.series_gz))})
+
+    token = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado.'}), 400
+
+    try:
+        serie = _vol_hist_series(ticker, token, meses=6)
+    except OplabApiError as e:
+        # Cache velho é melhor que erro na tela
+        if row:
+            return jsonify({'ticker': ticker, 'cached': True, 'stale': True,
+                            'series': _json.loads(_gzip.decompress(row.series_gz))})
+        return jsonify({'error': f'OpLab: {e}'}), 502
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+    if not serie:
+        return jsonify({'ticker': ticker, 'series': [],
+                        'error': 'Sem histórico de opções para este ativo na OpLab.'})
+
+    blob = _gzip.compress(_json.dumps(serie).encode())
+    if row:
+        row.last_date, row.series_gz, row.fetched_at = hoje, blob, datetime.now()
+    else:
+        db.session.add(VolHistCache(ticker=ticker, last_date=hoje,
+                                    series_gz=blob, fetched_at=datetime.now()))
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+    return jsonify({'ticker': ticker, 'cached': False, 'series': serie})
+
+
 @app.route('/api/chart_data/<ticker>')
 @login_required
 def api_chart_data(ticker):

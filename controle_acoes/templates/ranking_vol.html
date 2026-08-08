@@ -221,6 +221,8 @@
              href="{{ url_for('busca_operacoes') }}?ticker={{ rv.ticker }}" title="Busca de Operações">🔎</a>
           <button class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#0ea5e9;color:#fff;margin-right:.2rem"
                   onclick="openBuscaLiquidez('{{ rv.ticker }}')" title="Busca Liquidez">💧🔍</button>
+          <button class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#dc2626;color:#fff;margin-right:.2rem"
+                  onclick="openVolHist('{{ rv.ticker }}')" title="Histórico de Volatilidade (implícita × histórica)">〽️</button>
           <form method="POST" action="{{ url_for('ranking_vol_delete', rid=rv.id) }}" style="display:inline"
                 onsubmit="return confirm('Remover {{ rv.ticker }} do ranking?')">
             <button class="btn btn-sm btn-danger" style="padding:.1rem .45rem;font-size:.75rem" title="Remover">🗑</button>
@@ -962,6 +964,162 @@
   if(new URLSearchParams(window.location.search).get('busca_liquidez')){
     setTimeout(function(){ openBuscaLiquidez(); }, 80);
   }
+})();
+</script>
+
+<!-- Modal: Histórico de Volatilidade (implícita ATM × histórica) -->
+<div id="vh-modal" style="display:none;position:fixed;inset:0;z-index:19500;
+     background:rgba(0,0,0,.8);align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#0f172a);border-radius:10px;padding:1rem;
+              width:min(96vw,1000px);border:1px solid var(--border-color);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;flex-wrap:wrap;gap:.5rem;">
+      <span style="font-weight:700;font-size:1rem;">
+        〽️ Volatilidade — <span id="vh-title"></span>
+      </span>
+      <div style="display:flex;gap:1rem;align-items:center;font-size:.8rem;">
+        <span><span style="display:inline-block;width:14px;height:3px;background:#ef4444;vertical-align:middle;"></span> implícita (ATM)</span>
+        <span><span style="display:inline-block;width:14px;height:3px;background:#3b82f6;vertical-align:middle;"></span> histórica (21d)</span>
+        <button onclick="closeVolHist()" style="background:none;border:none;font-size:1.4rem;
+                color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+      </div>
+    </div>
+    <div id="vh-status" style="font-size:.85rem;color:var(--text-secondary);padding:.5rem 0;"></div>
+    <div style="position:relative;">
+      <canvas id="vh-canvas" style="display:block;width:100%;height:380px;"></canvas>
+      <div id="vh-tip" style="display:none;position:absolute;background:#1e293b;
+           border:1px solid #334155;border-radius:6px;padding:.35rem .6rem;font-size:.78rem;
+           pointer-events:none;white-space:nowrap;color:#e2e8f0;z-index:5;"></div>
+    </div>
+    <div id="vh-foot" style="font-size:.78rem;color:var(--text-secondary);margin-top:.5rem;"></div>
+  </div>
+</div>
+
+<script>
+/* ── Histórico de Volatilidade: implícita (ATM, via OpLab) × histórica ──── */
+(function(){
+  var modal = document.getElementById('vh-modal');
+  var cv    = document.getElementById('vh-canvas');
+  var tip   = document.getElementById('vh-tip');
+  var serie = [];
+
+  window.closeVolHist = function(){ modal.style.display='none'; };
+  modal.addEventListener('click', function(e){ if(e.target===modal) closeVolHist(); });
+  document.addEventListener('keydown', function(e){
+    if(e.key==='Escape' && modal.style.display==='flex') closeVolHist();
+  });
+
+  window.openVolHist = function(ticker){
+    ticker = (ticker||'').toUpperCase();
+    document.getElementById('vh-title').textContent = ticker;
+    document.getElementById('vh-status').textContent = 'Buscando histórico na OpLab…';
+    document.getElementById('vh-foot').textContent = '';
+    serie = [];
+    modal.style.display = 'flex';
+    var ctx = cv.getContext('2d');
+    ctx.clearRect(0,0,cv.width,cv.height);
+
+    fetch('/api/vol_hist/' + encodeURIComponent(ticker))
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
+      .then(function(res){
+        var st = document.getElementById('vh-status');
+        if(!res.ok || res.j.error){
+          st.textContent = '⚠️ ' + (res.j.error || 'Erro ao buscar histórico.');
+          return;
+        }
+        serie = res.j.series || [];
+        if(!serie.length){ st.textContent = 'Sem histórico de opções para este ativo.'; return; }
+        st.textContent = '';
+        var ult = serie[serie.length-1];
+        document.getElementById('vh-foot').textContent =
+          serie.length + ' pregões · última: implícita ' +
+          (ult.iv!=null? ult.iv.toFixed(1)+'%':'—') +
+          ' / histórica ' + (ult.hv!=null? ult.hv.toFixed(1)+'%':'—') +
+          (res.j.cached ? ' · do cache' : '');
+        draw();
+      })
+      .catch(function(e){
+        document.getElementById('vh-status').textContent = '⚠️ Falha na requisição: ' + e;
+      });
+  };
+
+  function draw(){
+    if(!serie.length) return;
+    var dpr = window.devicePixelRatio || 1;
+    var W = cv.clientWidth, H = 380;
+    cv.width = W*dpr; cv.height = H*dpr;
+    var ctx = cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0);
+    ctx.clearRect(0,0,W,H);
+
+    var padL=48, padR=12, padT=12, padB=28;
+    var cw = W-padL-padR, ch = H-padT-padB;
+
+    var vals = [];
+    serie.forEach(function(p){
+      if(p.iv!=null) vals.push(p.iv);
+      if(p.hv!=null) vals.push(p.hv);
+    });
+    var vmin = Math.min.apply(null, vals), vmax = Math.max.apply(null, vals);
+    var pad = (vmax-vmin)*0.1 || 5;
+    vmin = Math.max(0, vmin-pad); vmax = vmax+pad;
+
+    function X(i){ return padL + (serie.length<2?cw/2:(i/(serie.length-1))*cw); }
+    function Y(v){ return padT + ch - ((v-vmin)/(vmax-vmin))*ch; }
+
+    // Grade + eixo Y
+    ctx.strokeStyle='#1e293b'; ctx.fillStyle='#64748b';
+    ctx.font='11px system-ui,sans-serif'; ctx.textAlign='right';
+    for(var g=0; g<=4; g++){
+      var v = vmin + (vmax-vmin)*g/4, y = Y(v);
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+      ctx.fillText(v.toFixed(0)+'%', padL-6, y+4);
+    }
+    // Eixo X: ~6 datas
+    ctx.textAlign='center';
+    var step = Math.max(1, Math.floor(serie.length/6));
+    for(var i=0;i<serie.length;i+=step){
+      var p=serie[i].d.split('-');
+      ctx.fillText(p[2]+'/'+p[1], X(i), H-8);
+    }
+
+    function linha(campo, cor){
+      ctx.strokeStyle=cor; ctx.lineWidth=1.6; ctx.beginPath();
+      var iniciou=false;
+      serie.forEach(function(p,i){
+        if(p[campo]==null){ iniciou=false; return; }   // corta o traço em buracos
+        if(!iniciou){ ctx.moveTo(X(i),Y(p[campo])); iniciou=true; }
+        else ctx.lineTo(X(i),Y(p[campo]));
+      });
+      ctx.stroke();
+    }
+    linha('hv','#3b82f6');
+    linha('iv','#ef4444');
+
+    // Crosshair + tooltip
+    cv.onmousemove = function(ev){
+      var r = cv.getBoundingClientRect();
+      var mx = ev.clientX - r.left;
+      var i = Math.round(((mx-padL)/cw)*(serie.length-1));
+      if(i<0||i>=serie.length){ tip.style.display='none'; return; }
+      draw._skip = true; draw(); draw._skip = false;
+      var x = X(i);
+      ctx.strokeStyle='#475569'; ctx.setLineDash([3,3]); ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(x,padT); ctx.lineTo(x,padT+ch); ctx.stroke();
+      ctx.setLineDash([]);
+      var p = serie[i], d = p.d.split('-');
+      tip.innerHTML = '<strong>'+d[2]+'/'+d[1]+'/'+d[0]+'</strong>'
+        + '<br><span style="color:#ef4444">VI: '+(p.iv!=null?p.iv.toFixed(1)+'%':'—')+'</span>'
+        + '<br><span style="color:#3b82f6">VH: '+(p.hv!=null?p.hv.toFixed(1)+'%':'—')+'</span>';
+      tip.style.display='block';
+      var tw = tip.offsetWidth;
+      tip.style.left = Math.min(Math.max(0,x+10), cv.clientWidth-tw-4)+'px';
+      tip.style.top  = '12px';
+    };
+    cv.onmouseleave = function(){ tip.style.display='none'; draw(); };
+  }
+
+  window.addEventListener('resize', function(){
+    if(modal.style.display==='flex') draw();
+  });
 })();
 </script>
 {% endblock %}

@@ -14031,12 +14031,35 @@ def _vol_hist_series(ticker, token, meses=6):
     Retorna [{'d': 'YYYY-MM-DD', 'iv': float|None, 'hv': float|None}, ...].
     """
     from datetime import date as _date, timedelta as _td
-    ini = (_date.today() - _td(days=int(meses * 30.5))).isoformat()
-    fim = _date.today().isoformat()
+    from concurrent.futures import ThreadPoolExecutor
+    hoje = _date.today()
+    inicio = hoje - _td(days=int(meses * 30.5))
 
-    raw = _oplab_get_json(f'/market/historical/options/{ticker}/{ini}/{fim}',
-                          token, timeout=45)
-    if not isinstance(raw, list):
+    # Busca em blocos de ~30 dias em vez de um intervalo único: a resposta traz
+    # uma linha por opção por dia e, num intervalo longo, a API trunca — a série
+    # chegava a parar semanas antes de hoje. Cada bloco é pequeno o bastante
+    # para vir completo, e os blocos rodam em paralelo para não ficar lento.
+    blocos = []
+    cursor = inicio
+    while cursor < hoje:
+        fim_bloco = min(cursor + _td(days=30), hoje)
+        blocos.append((cursor.isoformat(), fim_bloco.isoformat()))
+        cursor = fim_bloco + _td(days=1)
+
+    def _bloco(par):
+        a, b = par
+        try:
+            d = _oplab_get_json(f'/market/historical/options/{ticker}/{a}/{b}',
+                                token, timeout=45)
+            return d if isinstance(d, list) else []
+        except OplabApiError:
+            return []
+
+    raw = []
+    with ThreadPoolExecutor(max_workers=4) as _ex:
+        for parte in _ex.map(_bloco, blocos):
+            raw.extend(parte)
+    if not raw:
         return []
 
     # Agrupa por dia, guardando (distância relativa ao dinheiro, VI)
@@ -14076,13 +14099,23 @@ def _vol_hist_series(ticker, token, meses=6):
     try:
         import math as _math, gzip as _gzip2, json as _json2
         from models import ChartCache
+        from datetime import date as _d2
         candles = []
         _cc = ChartCache.query.get(ticker)
         if _cc:
             candles = _json2.loads(_gzip2.decompress(_cc.candles_gz).decode())
-        else:
+        # Cache ausente OU desatualizado: busca do Yahoo. Sem esta checagem, um
+        # papel cujo gráfico de candles nunca foi aberto (ou foi há semanas)
+        # ficava com a HV faltando justamente nos dias mais recentes — a linha
+        # azul morria antes do fim do gráfico.
+        _ult = candles[-1]['t'] if candles else None
+        if (not _ult) or (_d2.today() - _d2.fromisoformat(_ult)).days > 4:
             yf_t = ticker + '.SA' if _is_b3_yahoo_ticker(ticker) else ticker
-            candles = _sanitize_chart_candles(_yahoo_fetch(yf_t)) or []
+            frescos = _sanitize_chart_candles(_yahoo_fetch(yf_t)) or []
+            if frescos:
+                vistos = {c['t'] for c in frescos}
+                candles = [c for c in candles if c.get('t') not in vistos] + frescos
+                candles.sort(key=lambda c: c.get('t') or '')
         closes = [(c.get('t'), float(c.get('c'))) for c in candles
                   if c.get('t') and c.get('c')]
         closes.sort()

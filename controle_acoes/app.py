@@ -13869,6 +13869,55 @@ def api_radar_analise():
             ov = sd.get('volatilidade_opcoes') if isinstance(sd.get('volatilidade_opcoes'), dict) else None
         if ov:
             out['options_volatility'] = ov
+
+        # ── screen_data: valuation, notícias e confiabilidade da busca ────────
+        # Blocos que a API monta prontos para exibição (mesmo caminho da tela
+        # "Gerar análise gráfica" do provedor) — repassa só o que a tela usa.
+        fr_sd = sd.get('fundamentos_resumidos') if isinstance(sd.get('fundamentos_resumidos'), dict) else {}
+        cards = fr_sd.get('cards') if isinstance(fr_sd.get('cards'), dict) else {}
+        resumo_exec = fr_sd.get('resumo_executivo') if isinstance(fr_sd.get('resumo_executivo'), dict) else {}
+        valuation = fr_sd.get('valuation') if isinstance(fr_sd.get('valuation'), dict) else {}
+        qualidade = fr_sd.get('qualidade') if isinstance(fr_sd.get('qualidade'), dict) else {}
+
+        def _fmt(bloco, chave):
+            v = bloco.get(chave) if isinstance(bloco, dict) else None
+            return v.get('formatado') if isinstance(v, dict) else None
+
+        out['valuation_cards'] = {
+            'valor_justo':      _fmt(cards, 'valor_justo'),
+            'desconto_premio':  _fmt(cards, 'desconto_premio'),
+            'pl':               _fmt(cards, 'pl'),
+            'dividend_yield':   _fmt(cards, 'dividend_yield'),
+        } if cards else None
+        out['executive_summary'] = resumo_exec.get('texto') if resumo_exec else None
+        out['valuation_detail'] = {
+            'graham':        _fmt(valuation, 'graham'),
+            'dcf':            _fmt(valuation, 'dcf_simplificado'),
+            'multiplo_setorial': _fmt(valuation, 'multiplo_setorial'),
+            'bazin':          _fmt(valuation, 'bazin'),
+            'sintese':        _fmt(valuation, 'valor_justo_sintese'),
+        } if valuation else None
+        if qualidade:
+            out['roe'] = out.get('roe') or _fmt(qualidade, 'roe')
+            out['net_margin'] = out.get('net_margin') or _fmt(qualidade, 'margem_liquida')
+
+        conf = sd.get('busca_e_confiabilidade') if isinstance(sd.get('busca_e_confiabilidade'), dict) else {}
+        if conf:
+            out['search_confidence'] = {
+                'nivel': conf.get('confianca_da_identidade'),
+                'fonte': conf.get('fonte'),
+                'notas': conf.get('notas') or [],
+            }
+
+        news = sd.get('noticias_recentes_relevantes') or d.get('recent_news')
+        if isinstance(news, list) and news:
+            out['recent_news'] = [
+                {'titulo': n.get('titulo') or n.get('title'),
+                 'url':    n.get('url') or n.get('link'),
+                 'fonte':  n.get('fonte') or n.get('source')}
+                for n in news[:6] if isinstance(n, dict) and (n.get('titulo') or n.get('title'))
+            ]
+
         return jsonify(out)
     except Exception as e:
         return jsonify({'error': str(e)}), 500

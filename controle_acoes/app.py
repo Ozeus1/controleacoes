@@ -899,7 +899,17 @@ _SELIC_HISTORICO = """01/2020,0.38
 
 with app.app_context():
     run_migrations()
-    db.create_all()
+    # Os workers do gunicorn sobem em paralelo e todos chamam create_all(): um
+    # cria a tabela e os demais recebem "table X already exists" do SQLite,
+    # derrubando o boot inteiro (502). Como create_all() é idempotente por
+    # natureza, engolir essa corrida é seguro — só não pode mascarar erro real,
+    # por isso o log.
+    try:
+        db.create_all()
+    except Exception as _e_create:
+        if 'already exists' not in str(_e_create).lower():
+            raise
+        app.logger.info('create_all: tabela já criada por outro worker (%s)', _e_create)
     # Seed Selic histórica (INSERT OR IGNORE para não sobrescrever edições manuais)
     for linha in _SELIC_HISTORICO.strip().splitlines():
         partes = linha.split(',')

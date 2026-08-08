@@ -174,9 +174,14 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 </div>
                 <div>
                     <label class="form-label" style="font-weight:700; color:var(--danger-color);">PUT — Strike (R$)</label>
-                    <input class="form-control" name="put_strike" type="number" step="0.01" min="0" required
-                           id="c-put-k" value="{{ '%.2f'|format(edit_collar.put_strike) if edit_collar else '' }}"
-                           placeholder="ex: 22,20" oninput="collarCalc()">
+                    <div style="display:flex; gap:.2rem;">
+                        <input class="form-control" name="put_strike" type="number" step="0.01" min="0" required
+                               id="c-put-k" value="{{ '%.2f'|format(edit_collar.put_strike) if edit_collar else '' }}"
+                               placeholder="ex: 22,20" oninput="collarCalc()">
+                        <button type="button" class="btn btn-secondary btn-sm" title="Escolher da cadeia de opções"
+                                onclick="abreCadeiaCampos('PUT', false, 'underlying_asset', 'put_ticker', 'c-put-k', 'c-put-p')"
+                                style="padding:.15rem .4rem;">🔎</button>
+                    </div>
                 </div>
                 <div>
                     <label class="form-label" style="font-weight:700; color:var(--danger-color);">PUT — Prêmio pago (R$)</label>
@@ -193,9 +198,14 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 </div>
                 <div>
                     <label class="form-label" style="font-weight:700; color:var(--accent-color,#3b82f6);">CALL — Strike (R$)</label>
-                    <input class="form-control" name="call_strike" type="number" step="0.01" min="0" required
-                           id="c-call-k" value="{{ '%.2f'|format(edit_collar.call_strike) if edit_collar else '' }}"
-                           placeholder="ex: 23,20" oninput="collarCalc()">
+                    <div style="display:flex; gap:.2rem;">
+                        <input class="form-control" name="call_strike" type="number" step="0.01" min="0" required
+                               id="c-call-k" value="{{ '%.2f'|format(edit_collar.call_strike) if edit_collar else '' }}"
+                               placeholder="ex: 23,20" oninput="collarCalc()">
+                        <button type="button" class="btn btn-secondary btn-sm" title="Escolher da cadeia de opções"
+                                onclick="abreCadeiaCampos('CALL', true, 'underlying_asset', 'call_ticker', 'c-call-k', 'c-call-p')"
+                                style="padding:.15rem .4rem;">🔎</button>
+                    </div>
                 </div>
                 <div>
                     <label class="form-label" style="font-weight:700; color:var(--accent-color,#3b82f6);">CALL — Prêmio receb. (R$)</label>
@@ -323,7 +333,11 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     <div><label class="form-label" style="font-size:.72rem;">Ticker</label>
                         <input class="form-control" id="e-a-t" style="text-transform:uppercase"></div>
                     <div><label class="form-label" style="font-size:.72rem;">Strike</label>
-                        <input class="form-control" id="e-a-k" type="number" step="0.01" oninput="estruturaCalc()"></div>
+                        <div style="display:flex; gap:.2rem;">
+                            <input class="form-control" id="e-a-k" type="number" step="0.01" oninput="estruturaCalc()">
+                            <button type="button" class="btn btn-secondary btn-sm" title="Escolher da cadeia de opções"
+                                    onclick="abreCadeiaPicker('a')" style="padding:.15rem .4rem;">🔎</button>
+                        </div></div>
                     <div><label class="form-label" style="font-size:.72rem;">Prêmio</label>
                         <input class="form-control" id="e-a-p" type="number" step="0.01" oninput="estruturaCalc()"></div>
                 </div>
@@ -334,7 +348,11 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     <div><label class="form-label" style="font-size:.72rem;">Ticker</label>
                         <input class="form-control" id="e-b-t" style="text-transform:uppercase"></div>
                     <div><label class="form-label" style="font-size:.72rem;">Strike</label>
-                        <input class="form-control" id="e-b-k" type="number" step="0.01" oninput="estruturaCalc()"></div>
+                        <div style="display:flex; gap:.2rem;">
+                            <input class="form-control" id="e-b-k" type="number" step="0.01" oninput="estruturaCalc()">
+                            <button type="button" class="btn btn-secondary btn-sm" title="Escolher da cadeia de opções"
+                                    onclick="abreCadeiaPicker('b')" style="padding:.15rem .4rem;">🔎</button>
+                        </div></div>
                     <div><label class="form-label" style="font-size:.72rem;">Prêmio</label>
                         <input class="form-control" id="e-b-p" type="number" step="0.01" oninput="estruturaCalc()"></div>
                 </div>
@@ -345,7 +363,11 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     <div><label class="form-label" style="font-size:.72rem;">Ticker</label>
                         <input class="form-control" id="e-c-t" style="text-transform:uppercase"></div>
                     <div><label class="form-label" style="font-size:.72rem;">Strike</label>
-                        <input class="form-control" id="e-c-k" type="number" step="0.01" oninput="estruturaCalc()"></div>
+                        <div style="display:flex; gap:.2rem;">
+                            <input class="form-control" id="e-c-k" type="number" step="0.01" oninput="estruturaCalc()">
+                            <button type="button" class="btn btn-secondary btn-sm" title="Escolher da cadeia de opções"
+                                    onclick="abreCadeiaPicker('c')" style="padding:.15rem .4rem;">🔎</button>
+                        </div></div>
                     <div><label class="form-label" style="font-size:.72rem;">Prêmio</label>
                         <input class="form-control" id="e-c-p" type="number" step="0.01" oninput="estruturaCalc()"></div>
                 </div>
@@ -356,7 +378,11 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     <div><label class="form-label" style="font-size:.72rem;">Ticker</label>
                         <input class="form-control" id="e-d-t" style="text-transform:uppercase"></div>
                     <div><label class="form-label" style="font-size:.72rem;">Strike</label>
-                        <input class="form-control" id="e-d-k" type="number" step="0.01" oninput="estruturaCalc()"></div>
+                        <div style="display:flex; gap:.2rem;">
+                            <input class="form-control" id="e-d-k" type="number" step="0.01" oninput="estruturaCalc()">
+                            <button type="button" class="btn btn-secondary btn-sm" title="Escolher da cadeia de opções"
+                                    onclick="abreCadeiaPicker('d')" style="padding:.15rem .4rem;">🔎</button>
+                        </div></div>
                     <div><label class="form-label" style="font-size:.72rem;">Prêmio</label>
                         <input class="form-control" id="e-d-p" type="number" step="0.01" oninput="estruturaCalc()"></div>
                 </div>
@@ -389,6 +415,29 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             </span>
         </div>
     </div>
+</div>
+
+{# ── Modal: escolher opção da cadeia (botão 🔎 de cada perna) ── #}
+<div id="ec-modal" style="display:none; position:fixed; inset:0; z-index:10002;
+     background:rgba(0,0,0,.78); align-items:flex-start; justify-content:center; padding:2rem 1rem; overflow-y:auto;">
+  <div style="background:var(--card-bg,#1e293b); border-radius:10px; width:min(96vw,880px);
+              margin:auto; padding:1.2rem; max-height:88vh; display:flex; flex-direction:column;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:.6rem; margin-bottom:.6rem;">
+      <h5 style="margin:0;">🔎 Cadeia de opções — <span id="ec-titulo"></span></h5>
+      <button onclick="fechaCadeiaPicker()" style="background:none;border:none;font-size:1.5rem;
+              color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-bottom:.6rem;">
+      <select class="form-control form-control-sm" id="ec-exp" style="width:auto;" onchange="ecRenderiza()"></select>
+      <label style="font-size:.8rem; color:var(--text-secondary); display:flex; align-items:center;
+                    gap:.3rem; white-space:nowrap;">
+        <input type="checkbox" id="ec-weekly" onchange="ecCarrega(true)"> incluir semanais
+      </label>
+      <span id="ec-spot" style="font-size:.82rem; color:var(--text-secondary);"></span>
+    </div>
+    <div id="ec-status" style="padding:1.2rem; text-align:center; color:var(--text-secondary);"></div>
+    <div id="ec-lista" style="overflow-y:auto; flex:1;"></div>
+  </div>
 </div>
 
 {# ══════════════════════════════════════════════════════ TABELA: PUTS SALVAS #}
@@ -1293,6 +1342,193 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         document.getElementById('e-ratio-wrap').style.display = cfg.ratio ? '' : 'none';
         estruturaCalc();
     };
+
+    // ── Seletor de opções da cadeia (botão 🔎 em cada perna) ──────────────────
+    // Preenche ticker, strike e prêmio de uma perna a partir da cadeia real, em
+    // vez de exigir digitação. O prêmio segue o lado da perna: quem compra paga
+    // o ask, quem vende recebe o bid (preços executáveis, não o último negócio).
+    // alvo = para onde os valores escolhidos vão (ids ou names dos campos).
+    var EC = {perna: null, dados: null, ticker: null, tipo: null, venda: false,
+              alvo: null, depois: null, titulo: ''};
+
+    // Aceita id ou name — a aba Colar usa campos com name, a de Estruturas usa id.
+    function ecCampo(ref) {
+        return document.getElementById(ref) ||
+               document.querySelector('[name="' + ref + '"]');
+    }
+
+    // Versão genérica usada pelas abas Colar/Venda de Puts, onde o tipo e o lado
+    // da opção são fixos (não vêm de um rótulo de perna).
+    window.abreCadeiaCampos = function(tipo, venda, refAtivo, refTicker, refStrike, refPremio) {
+        var elAtivo = ecCampo(refAtivo);
+        var tk = ((elAtivo && elAtivo.value) || '').trim().toUpperCase();
+        if (!tk) { alert('Informe o Ativo antes de buscar a cadeia.'); return; }
+        EC.perna = null;
+        EC.tipo = tipo;
+        EC.venda = !!venda;
+        EC.ticker = tk;
+        EC.alvo = {t: refTicker, k: refStrike, p: refPremio};
+        EC.titulo = tk + ' · ' + tipo + ' — ' + (venda ? 'VENDA' : 'COMPRA');
+        document.getElementById('ec-titulo').textContent = EC.titulo;
+        document.getElementById('ec-modal').style.display = 'flex';
+        if (EC.dados && EC.dados.__tk === tk) { ecRenderiza(); return; }
+        ecCarrega(false);
+    };
+
+    // Descobre tipo (CALL/PUT/AÇÃO) e lado (compra/venda) da perna pelo rótulo,
+    // que é a única fonte que vale para todos os motores (dedicado, universal e
+    // manejo de put, cada um com sua própria configuração).
+    function ecInfoPerna(letra) {
+        var lbl = (document.getElementById('e-leg' + letra.toUpperCase() + '-lbl') || {}).textContent || '';
+        var tipo = lbl.indexOf('PUT') === 0 ? 'PUT'
+                 : lbl.indexOf('CALL') === 0 ? 'CALL'
+                 : lbl.indexOf('AÇÃO') === 0 ? 'STOCK' : null;
+        // "COMPRA"/"VENDA" vêm do rótulo; na dúvida assume compra (paga o ask).
+        var venda = /VENDA|VENDIDA|MANTIDA/.test(lbl);
+        return {tipo: tipo, venda: venda, lbl: lbl};
+    }
+
+    window.abreCadeiaPicker = function(letra) {
+        var info = ecInfoPerna(letra);
+        if (info.tipo === 'STOCK') {
+            alert('Esta perna é a ação — o preço dela é a própria cotação do ativo.');
+            return;
+        }
+        var tk = (document.getElementById('e-ativo').value || '').trim().toUpperCase();
+        if (!tk) { alert('Informe o Ativo (ex: BOVA11) antes de buscar a cadeia.'); return; }
+        EC.perna = letra;
+        EC.ticker = tk;
+        EC.tipo = info.tipo;
+        EC.venda = info.venda;
+        EC.alvo = {t: 'e-' + letra.toLowerCase() + '-t',
+                   k: 'e-' + letra.toLowerCase() + '-k',
+                   p: 'e-' + letra.toLowerCase() + '-p'};
+        document.getElementById('ec-titulo').textContent =
+            tk + ' · ' + (info.lbl || ('Perna ' + letra.toUpperCase()));
+        document.getElementById('ec-modal').style.display = 'flex';
+        // Reaproveita a cadeia já carregada quando é o mesmo papel.
+        if (EC.dados && EC.dados.__tk === tk) { ecRenderiza(); return; }
+        ecCarrega(false);
+    };
+
+    window.fechaCadeiaPicker = function() {
+        document.getElementById('ec-modal').style.display = 'none';
+    };
+
+    window.ecCarrega = function(forcar) {
+        var st = document.getElementById('ec-status');
+        var lista = document.getElementById('ec-lista');
+        lista.innerHTML = '';
+        st.style.display = '';
+        st.textContent = 'Buscando cadeia de ' + EC.ticker + '…';
+        var wk = document.getElementById('ec-weekly').checked ? '1' : '0';
+        fetch('/api/cadeia/' + encodeURIComponent(EC.ticker) + '?weekly=' + wk + '&days=180&n=20')
+            .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+            .then(function(res) {
+                if (!res.ok || res.j.error) {
+                    st.textContent = '⚠️ ' + (res.j.error || 'Falha ao buscar a cadeia.');
+                    return;
+                }
+                res.j.__tk = EC.ticker;
+                EC.dados = res.j;
+                var sel = document.getElementById('ec-exp');
+                sel.innerHTML = (res.j.expirations || []).map(function(e) {
+                    return '<option value="' + e.exp + '">' + fmtData(e.exp) + '</option>';
+                }).join('');
+                // Já vem selecionado o vencimento da estrutura, se existir na lista.
+                var expAtual = document.getElementById('e-exp').value;
+                if (expAtual && sel.querySelector('option[value="' + expAtual + '"]')) sel.value = expAtual;
+                document.getElementById('ec-spot').textContent =
+                    res.j.spot ? 'cotação ' + fmtBRL(res.j.spot) : '';
+                ecRenderiza();
+            })
+            .catch(function(e) { st.textContent = '⚠️ ' + e; });
+    };
+
+    function fmtData(iso) {
+        var p = (iso || '').split('-');
+        return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+    }
+
+    window.ecRenderiza = function() {
+        var st = document.getElementById('ec-status');
+        var lista = document.getElementById('ec-lista');
+        if (!EC.dados) return;
+        var exp = document.getElementById('ec-exp').value;
+        var bloco = (EC.dados.expirations || []).find(function(e) { return e.exp === exp; });
+        if (!bloco) { st.textContent = 'Sem opções neste vencimento.'; lista.innerHTML = ''; return; }
+        var tipo = EC.tipo === 'PUT' ? 'put' : 'call';
+        var spot = EC.dados.spot || 0;
+        var linhas = bloco.rows.filter(function(r) { return r[tipo]; });
+        if (!linhas.length) {
+            st.style.display = '';
+            st.textContent = 'Nenhuma ' + (EC.tipo || 'opção') + ' neste vencimento.';
+            lista.innerHTML = ''; return;
+        }
+        st.style.display = 'none';
+        var lado = EC.venda ? 'bid' : 'ask';
+        // A coluna do lado usado (bid p/ venda, ask p/ compra) vem destacada —
+        // repetir o mesmo número numa coluna "Prêmio" só ocupava espaço.
+        var mkTh = function(col) {
+            return col === lado
+                ? '<th style="color:#60a5fa;" title="preço usado ao escolher">' +
+                  col.toUpperCase() + ' ◄</th>'
+                : '<th style="opacity:.6;">' + col.toUpperCase() + '</th>';
+        };
+        var h = '<div style="overflow-x:auto;">'
+              + '<table class="table table-sm" style="width:100%; font-size:.85rem; white-space:nowrap;">'
+              + '<thead><tr><th>Opção</th><th>Strike</th>' + mkTh('bid') + mkTh('ask')
+              + '<th title="Delta">Δ</th></tr></thead><tbody>';
+        linhas.forEach(function(r) {
+            var o = r[tipo];
+            var prem = o[lado] || o.close || o.mid || 0;
+            var atm = spot && Math.abs(o.strike - spot) / spot < 0.015;
+            var cel = function(col) {
+                return col === lado
+                    ? '<td style="color:#60a5fa;font-weight:700;">' + fmtBRL(o[col]) + '</td>'
+                    : '<td style="opacity:.6;">' + fmtBRL(o[col]) + '</td>';
+            };
+            h += '<tr class="ec-row" data-sym="' + o.symbol + '" data-k="' + o.strike + '"'
+               + ' data-p="' + prem + '" style="cursor:pointer;'
+               + (atm ? 'background:rgba(59,130,246,.12);' : '') + '">'
+               + '<td><strong>' + o.symbol + '</strong></td>'
+               + '<td>' + fmtBRL(o.strike) + (atm ? ' <span style="font-size:.7rem;color:#60a5fa;">ATM</span>' : '') + '</td>'
+               + cel('bid') + cel('ask')
+               + '<td>' + (o.delta == null ? '—' : o.delta.toFixed(2)) + '</td></tr>';
+        });
+        h += '</tbody></table></div>';
+        h = '<div style="font-size:.78rem;color:var(--text-secondary);margin-bottom:.4rem;">'
+          + 'Clique na linha para preencher. Prêmio = <strong>'
+          + (EC.venda ? 'bid (venda)' : 'ask (compra)') + '</strong>.</div>' + h;
+        lista.innerHTML = h;
+        lista.querySelectorAll('.ec-row').forEach(function(tr) {
+            tr.addEventListener('click', function() {
+                ecEscolhe(tr.dataset.sym, tr.dataset.k, tr.dataset.p);
+            });
+        });
+    };
+
+    function ecEscolhe(sym, strike, premio) {
+        var a = EC.alvo || {};
+        var t = ecCampo(a.t), k = ecCampo(a.k), p = ecCampo(a.p);
+        if (t) t.value = sym;
+        if (k) k.value = parseFloat(strike).toFixed(2);
+        if (p) p.value = parseFloat(premio).toFixed(2);
+        // Alinha o vencimento ao da opção escolhida, quando ainda estiver vazio.
+        var exp = document.getElementById('ec-exp').value;
+        ['e-exp', 'expiration_date', 'c-exp'].forEach(function(ref) {
+            var el = ecCampo(ref);
+            if (exp && el && !el.value) el.value = exp;
+        });
+        fechaCadeiaPicker();
+        // Recalcula a aba correspondente: perna → Estruturas, senão Colar.
+        if (EC.perna) estruturaCalc();
+        else if (typeof collarCalc === 'function') collarCalc();
+    }
+
+    document.getElementById('ec-modal').addEventListener('click', function(ev) {
+        if (ev.target === this) fechaCadeiaPicker();
+    });
 
     // Maior N cujo custo total das travas ainda cabe no crédito da CALL.
     window.fenceRatioMax = function() {

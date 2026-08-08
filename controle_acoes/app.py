@@ -96,8 +96,18 @@ _oplab_session.mount('https://', requests.adapters.HTTPAdapter(
     pool_connections=8, pool_maxsize=8, max_retries=0))
 
 
-def _oplab_get_json(path_or_url, token, params=None, timeout=15):
-    """GET OpLab com validacao de HTTP/conteudo antes de decodificar JSON."""
+# A OpLab faz rate-limiting: sob concorrência ela devolve 503 em parte das
+# chamadas (medido: 32% com 8 threads, 6% com 4, 0% com 2). Esses 503 são
+# transitórios — repetir depois de uma pausa curta resolve. Sem isso, o
+# Ranking marcava dezenas de tickers como "com falha" a cada atualização.
+_OPLAB_RETRY_STATUS = (429, 500, 502, 503, 504)
+
+
+def _oplab_get_json(path_or_url, token, params=None, timeout=15, retries=2):
+    """GET OpLab com validacao de HTTP/conteudo antes de decodificar JSON.
+
+    Repete até `retries` vezes em erros transitórios (429/5xx), com backoff
+    exponencial curto (0,25s, 0,5s)."""
     url = path_or_url if str(path_or_url).startswith('http') else f'https://api.oplab.com.br/v3{path_or_url}'
     token = (token or '').strip()
     params = dict(params or {})
@@ -106,8 +116,25 @@ def _oplab_get_json(path_or_url, token, params=None, timeout=15):
         req_params = dict(params)
         if use_query_token:
             req_params['access_token'] = token
-        return _oplab_session.get(url, params=req_params, headers=_oplab_headers(token),
-                                  timeout=timeout)
+        last_exc = None
+        for attempt in range(retries + 1):
+            try:
+                r = _oplab_session.get(url, params=req_params,
+                                       headers=_oplab_headers(token), timeout=timeout)
+                if r.status_code in _OPLAB_RETRY_STATUS and attempt < retries:
+                    time.sleep(0.25 * (2 ** attempt))
+                    continue
+                return r
+            except (requests.exceptions.Timeout,
+                    requests.exceptions.ConnectionError) as exc:
+                last_exc = exc
+                if attempt < retries:
+                    time.sleep(0.25 * (2 ** attempt))
+                    continue
+                raise
+        if last_exc:
+            raise last_exc
+        return r
 
     try:
         resp = _request(False)
@@ -12363,9 +12390,10 @@ def _api_ranking_vol_update_impl():
         except Exception as e:
             return ticker, (None, None, None, None, None, str(e))
 
-    # 8 workers é o ponto ótimo medido contra a OpLab: acima disso o servidor
-    # degrada e o tempo TOTAL piora (60 reqs: 1,05s com 8 vs 1,36s com 16).
-    ex = ThreadPoolExecutor(max_workers=min(8, len(items)))
+    # 6 workers + o retry de _oplab_get_json: medido com 80 tickers, 8 workers
+    # sem retry dava 32% de 503 (o "N com falha" da tela); 6 workers com 2
+    # retries zera as falhas em 1,64s. Mais workers só aumenta o rate-limiting.
+    ex = ThreadPoolExecutor(max_workers=min(6, len(items)))
     fut_map = {ex.submit(_fetch_iv, rv.ticker): rv.ticker for rv in items}
     try:
         for fut in _as_completed(fut_map, timeout=40):
@@ -12378,12 +12406,20 @@ def _api_ranking_vol_update_impl():
 
     results = []
     ok = 0
+    no_iv = 0          # consultados, mas a OpLab não tem IV para o papel
+    err_counts: dict = {}   # mensagem de erro → quantas vezes ocorreu
     for rv in items:
         row = {'ticker': rv.ticker, 'ok': False, 'error': None}
         try:
-            ivr, ivp, vol, vmin, vmax, err = iv_results.get(rv.ticker, (None, None, None, None, None, None))
+            # Ausente do dict = nunca chegou a rodar (estourou o teto de tempo)
+            if rv.ticker in iv_results:
+                ivr, ivp, vol, vmin, vmax, err = iv_results[rv.ticker]
+            else:
+                ivr = ivp = vol = vmin = vmax = None
+                err = 'sem resposta dentro do tempo limite'
             if err:
                 row['error'] = err
+                err_counts[err] = err_counts.get(err, 0) + 1
 
             pd = price_map.get(rv.ticker, {})
             if pd.get('price', 0) > 0:
@@ -12396,13 +12432,21 @@ def _api_ranking_vol_update_impl():
             if vmin is not None: rv.vol_min = vmin
             if vmax is not None: rv.vol_max = vmax
             rv.updated_at = now
-            ok += 1
-            row['ok'] = True
+            # "ok" = a consulta em si funcionou. Um papel sem IV na OpLab não é
+            # falha nossa; é contabilizado à parte para a tela poder distinguir
+            # "deu erro" de "a OpLab não tem esse dado".
+            if not err:
+                ok += 1
+                row['ok'] = True
+                if ivr is None and ivp is None:
+                    no_iv += 1
+                    row['no_iv'] = True
             row['iv_rank'] = ivr; row['iv_percentil'] = ivp; row['vol_impl'] = vol
             row['vol_min'] = vmin; row['vol_max'] = vmax
             row['price'] = rv.last_price; row['change'] = rv.var_pct
         except Exception as e:
             row['error'] = str(e)
+            err_counts[str(e)] = err_counts.get(str(e), 0) + 1
         results.append(row)
 
     try:
@@ -12412,7 +12456,11 @@ def _api_ranking_vol_update_impl():
         return jsonify({'error': str(e)}), 500
 
     failed = sum(1 for row in results if row.get('error'))
-    return jsonify({'updated': ok, 'failed': failed, 'total': len(items), 'results': results})
+    # Erro mais frequente: sem isso a tela só dizia "N com falha" sem dizer por quê
+    top_error = max(err_counts.items(), key=lambda kv: kv[1])[0] if err_counts else None
+    return jsonify({'updated': ok, 'failed': failed, 'no_iv': no_iv,
+                    'total': len(items), 'top_error': top_error,
+                    'results': results})
 
 
 @app.route('/profile', methods=['GET', 'POST'])

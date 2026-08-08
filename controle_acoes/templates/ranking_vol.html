@@ -485,7 +485,14 @@
     });})
     .then(function(d){
       var failed=parseInt(d.failed||0,10);
-      stat.textContent='✓ '+d.updated+'/'+d.total+' atualizados'+(failed?' | '+failed+' com falha':'');
+      var noIv=parseInt(d.no_iv||0,10);
+      // Distingue os três casos: atualizado com IV, atualizado mas a OpLab não
+      // tem IV para o papel (não é erro), e falha de fato — com o motivo.
+      var txt='✓ '+d.updated+'/'+d.total+' atualizados';
+      if(noIv) txt+=' ('+noIv+' sem IV na OpLab)';
+      if(failed) txt+=' | '+failed+' com falha'+(d.top_error?': '+d.top_error:'');
+      stat.textContent=txt;
+      stat.title=d.top_error||'';
       (d.results||[]).forEach(function(row){
         if(!row.ok) return;
         var tr=document.querySelector('#rv-tbody tr[data-ticker="'+row.ticker+'"]');

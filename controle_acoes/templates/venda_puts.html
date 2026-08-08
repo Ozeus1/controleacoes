@@ -1797,6 +1797,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             if (el && val != null && val !== '') el.value = val;
         }
         setV('e-op',    q.get('op'));
+        setV('e-ratio', q.get('ratio'));
         setV('e-ativo', (q.get('ativo') || '').toUpperCase());
         setV('e-spot',  q.get('spot'));
         setV('e-qty',   q.get('qty'));

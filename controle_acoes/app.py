@@ -4016,8 +4016,12 @@ def api_busca_operacoes(ticker):
             rows = _diversify(rows, lambda x: x['call_symbol'], per_key=2)
 
         elif op == 'fence':
-            # Cerca: compra ação + compra PUT K2 + venda PUT K1 (<K2) + venda CALL (>K2).
-            # Proteção total entre K1 e K2; abaixo de K1 o risco volta (como ter o papel de nível mais baixo).
+            # Cerca: a CALL vendida (coberta pela custódia) financia a trava de
+            # baixa com PUT. As ações já estão na carteira, então o que importa é
+            # a estrutura em si — crédito recebido e proteção obtida —, não o
+            # custo de comprar o papel. Também calcula o ratio (Fence Alavancada):
+            # quantas travas o prêmio de 1 CALL paga, explorando o fato de a trava
+            # OTM estreita ser barata.
             put_hi  = [p for p in puts_ok  if 0.90 * spot <= p['strike'] <= 1.08 * spot][:12]
             put_lo  = [p for p in puts_ok  if 0.70 * spot <= p['strike'] <  0.98 * spot][:12]
             call_c  = [c for c in calls_ok if 0.99 * spot <= c['strike'] <= 1.20 * spot][:12]
@@ -4025,41 +4029,51 @@ def api_busca_operacoes(ticker):
                 for p1 in put_lo:
                     if p1['strike'] >= p2['strike']:
                         continue
+                    largura = p2['strike'] - p1['strike']
                     for c in call_c:
                         if c['strike'] <= p2['strike']:
                             continue
-                        net = spot + p2['ask'] - p1['bid'] - c['bid']
-                        if net <= 0:
-                            continue
-                        max_gain = c['strike'] - net
-                        if max_gain <= 0:
-                            continue
-                        gain_pct = max_gain / net * 100
-                        if gain_pct <= selic_period:
-                            continue
-                        floor_res = p2['strike'] - net     # resultado garantido na zona [K1, K2]
-                        risk_free = floor_res >= 0
-                        ratio = None if floor_res >= -0.001 else max_gain / (-floor_res)
-                        if not risk_free and (ratio is None or ratio < min_ratio):
-                            continue
-                        gain_aa = ((1 + gain_pct / 100) ** (365.0 / dc) - 1) * 100
+                        custo_trava = p2['ask'] - p1['bid']
+                        if custo_trava <= 0:
+                            continue          # trava de crédito: não é uma cerca
+                        credito = c['bid'] - custo_trava
+                        if credito < 0:
+                            continue          # a CALL não paga a trava: fora do conceito
+                        # Quantas travas o prêmio da CALL financia (1 = cerca clássica).
+                        # Teto de 10×: acima disso a CALL vendida 1× fica pequena
+                        # demais perto do lote de PUTs, e a montagem deixa de ser
+                        # proteção de carteira para virar aposta direcional na queda.
+                        n_travas = min(int(c['bid'] // custo_trava), 10)
+                        # A proteção só serve se cobrir a queda até onde ela começa:
+                        # travas muito OTM protegem uma faixa que o papel talvez
+                        # nem alcance. Compara o tamanho da proteção com a distância
+                        # que o ativo precisa cair para a trava começar a valer.
+                        protecao   = largura * n_travas
+                        queda_ate  = spot - p2['strike']      # quanto cai até a trava agir
+                        if queda_ate > 0 and protecao < queda_ate:
+                            continue      # protege menos do que a queda até ela começar
+                        # Eficiência: quanto de proteção se obtém por real de prêmio.
+                        eficiencia = protecao / c['bid'] if c['bid'] > 0 else 0
                         rows.append({
                             'put_buy_symbol':  p2['symbol'], 'put_buy_strike':  p2['strike'], 'put_buy_ask':  p2['ask'],
                             'put_sell_symbol': p1['symbol'], 'put_sell_strike': p1['strike'], 'put_sell_bid': p1['bid'],
                             'call_symbol': c['symbol'], 'call_strike': c['strike'], 'call_bid': c['bid'],
-                            'net_cost':      round(net, 2),
-                            'breakeven':     round(net, 2),
-                            'max_gain':      round(max_gain, 2),
-                            'gain_pct':      round(gain_pct, 2),
-                            'gain_aa':       round(gain_aa, 1),
-                            'vs_selic':      round(gain_pct - selic_period, 2),
-                            'floor_result':  round(floor_res, 2),
+                            'trava_cost':    round(custo_trava, 2),
+                            'credit':        round(credito, 2),
+                            'largura':       round(largura, 2),
+                            'n_travas':      n_travas,
+                            'protecao':      round(protecao, 2),
+                            'protecao_pct':  round(protecao / spot * 100, 1),
+                            'eficiencia':    round(eficiencia, 2),
+                            'call_up_pct':   round((c['strike'] - spot) / spot * 100, 1),
                             'prot_until':    p1['strike'],
                             'prot_drop_pct': round((spot - p1['strike']) / spot * 100, 1),
-                            'risk_free':     risk_free,
-                            'ratio':         round(ratio, 2) if ratio is not None else None,
+                            'risk_free':     credito >= 0,
+                            'zero_cost':     abs(credito) < 0.01,
                         })
-            rows.sort(key=lambda x: (not x['risk_free'], -x['gain_pct']))
+            # Ordena pela proteção efetiva que a estrutura entrega por real de
+            # prêmio, e não por "ganho sobre a ação" — que era a métrica errada.
+            rows.sort(key=lambda x: (-x['n_travas'], -x['eficiencia'], -x['credit']))
             rows = _diversify(rows, lambda x: (x['put_buy_symbol'], x['call_symbol']), per_key=1)
 
         elif op == 'seagull':

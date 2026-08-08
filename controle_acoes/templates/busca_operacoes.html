@@ -184,7 +184,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
 
   var OP_TITLES = {
     collar:        '🛡 Collars risco zero/reduzido acima da Selic (compra ação + compra PUT + venda CALL)',
-    fence:         '🚧 Fence / Cerca (compra ação + compra PUT + venda PUT abaixo + venda CALL)',
+    fence:         '🚧 Fence / Cerca — a CALL vendida (coberta) financia a trava de baixa com PUT. Travas (N×) mostra quantas travas o prêmio da CALL paga: N>1 é a Fence Alavancada (Ratio Fence)',
     seagull:       '🕊 Seagull / Gaivota de alta (trava de alta com CALLs financiada por venda de PUT OTM)',
     trava_alta:    '📈 Trava de Alta no débito (CALLs) — compra ATM + venda OTM; EV > 0 (equação do trader), POP ≥ 35%, relação 0,8–3',
     trava_baixa:   '📉 Trava de Baixa no débito (PUTs) — compra ATM + venda OTM; EV > 0, POP ≥ 35%, relação 0,8–3 (puts: exige prêmios firmes)',
@@ -315,30 +315,36 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   }
 
   function fenceTable(rows, expIdx) {
-    if (!rows.length) return '<div class="bo-empty">Nenhuma cerca de risco zero/reduzido supera a Selic neste vencimento.</div>';
+    if (!rows.length) return '<div class="bo-empty">Nenhuma cerca financiada pela CALL neste vencimento (o prêmio da CALL não cobre o custo da trava).</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
-      '<th>Risco</th><th>PUT compra</th><th>K</th><th>Ask</th>' +
+      '<th>Montagem</th><th>PUT compra</th><th>K</th><th>Ask</th>' +
       '<th>PUT venda</th><th>K</th><th>Bid</th>' +
       '<th>CALL venda</th><th>K</th><th>Bid</th>' +
-      '<th>Custo líq.</th><th>Break-even</th>' +
-      '<th>Ganho máx.</th><th>Ganho %</th><th>vs Selic</th>' +
-      '<th>Result. zona prot.</th><th>Protegido até</th><th>Queda prot.</th></tr></thead><tbody>';
+      '<th title="Custo de montar 1 trava de baixa com PUT">Custo trava</th>' +
+      '<th title="Quantas travas o prêmio de 1 CALL financia">Travas (N×)</th>' +
+      '<th title="Crédito que sobra depois de pagar as travas">Crédito</th>' +
+      '<th title="Proteção total obtida: largura da trava × N">Proteção</th>' +
+      '<th>Protegido até</th><th>Queda prot.</th>' +
+      '<th title="Alta até o strike da CALL vendida">Alta até</th></tr></thead><tbody>';
     rows.forEach(function(r, j) {
       h += rowAttr(expIdx, j) +
-        '<td>' + riskBadge(r.risk_free) + '</td>' +
+        '<td>' + (r.n_travas > 1
+            ? '<span class="bo-badge credit">' + r.n_travas + '× ALAV.</span>'
+            : (r.zero_cost ? '<span class="bo-badge">custo zero</span>'
+                           : '<span class="bo-badge credit">CRÉDITO</span>')) + '</td>' +
         '<td><span class="bo-badge put">' + r.put_buy_symbol + '</span></td>' +
         '<td>' + brl(r.put_buy_strike) + '</td><td>' + brl(r.put_buy_ask) + '</td>' +
         '<td><span class="bo-badge put">' + r.put_sell_symbol + '</span></td>' +
         '<td>' + brl(r.put_sell_strike) + '</td><td>' + brl(r.put_sell_bid) + '</td>' +
         '<td><span class="bo-badge call">' + r.call_symbol + '</span></td>' +
         '<td>' + brl(r.call_strike) + '</td><td>' + brl(r.call_bid) + '</td>' +
-        '<td>' + brl(r.net_cost) + '</td><td>' + brl(r.breakeven) + '</td>' +
-        '<td class="pos">' + brl(r.max_gain) + '</td>' +
-        '<td class="pos">' + fmt(r.gain_pct) + '%</td>' +
-        '<td class="pos">+' + fmt(r.vs_selic) + ' p.p.</td>' +
-        '<td class="' + (r.floor_result >= 0 ? 'pos' : 'neg') + '">' + brl(r.floor_result) + '</td>' +
+        '<td>' + brl(r.trava_cost) + '</td>' +
+        '<td class="' + (r.n_travas > 1 ? 'pos' : '') + '"><strong>' + r.n_travas + '×</strong></td>' +
+        '<td class="pos">' + brl(r.credit) + '</td>' +
+        '<td class="pos"><strong>' + brl(r.protecao) + '</strong> <span style="opacity:.7">(' + fmt(r.protecao_pct, 1) + '%)</span></td>' +
         '<td>' + brl(r.prot_until) + '</td>' +
         '<td>−' + fmt(r.prot_drop_pct, 1) + '%</td>' +
+        '<td>' + (r.call_up_pct >= 0 ? '+' : '') + fmt(r.call_up_pct, 1) + '%</td>' +
         '</tr>';
     });
     return h + '</tbody></table></div>';
@@ -897,24 +903,30 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     var stParams = {st: '1', ativo: d.ticker, spot: spot, qty: qty, exp: e.exp};
 
     if (op === 'fence') {
-      var netF = spot + r.put_buy_ask - r.put_sell_bid - r.call_bid;
-      var maxGF = (r.call_strike - netF) * qty;
-      var floorF = (r.put_buy_strike - netF) * qty;
-      var lossF = (netF - (r.put_buy_strike - r.put_sell_strike)) * qty;
-      var gPctF = netF > 0 ? (r.call_strike - netF) / netF * 100 : 0;
-      title = 'Fence ' + d.ticker + ' — ' + r.put_buy_symbol + ' / ' + r.put_sell_symbol + ' / ' + r.call_symbol;
+      // Só as opções: a CALL vendida financia a trava. A variação da ação não
+      // entra — quem já tem o papel quer ver o que a estrutura rende sozinha.
+      var nF     = r.n_travas || 1;
+      var credF  = r.credit;
+      var protF  = r.protecao * qty;
+      var ganhoF = protF + credF * qty;            // S <= K da PUT vendida
+      var custoF = r.trava_cost * nF * qty;
+      title = (nF > 1 ? 'Fence Alavancada ' + nF + '× ' : 'Fence ') + d.ticker +
+              ' — ' + r.put_buy_symbol + ' / ' + r.put_sell_symbol + ' / ' + r.call_symbol;
       boxes = [
-        ['Custo total da ação', brl(spot * qty), ''],
-        ['Custo líquido/ação', brl(netF), ''],
-        ['Break-even (subida)', brl(netF), ''],
-        ['Lucro máximo', brl(maxGF), 'pos'],
-        ['Lucro máx. %', fmt(gPctF) + '%', 'pos'],
-        ['Result. zona protegida', brl(floorF), floorF >= 0 ? 'pos' : 'neg'],
+        ['Crédito líquido recebido', brl(credF * qty), 'pos'],
+        ['Prêmio da CALL (1×)', brl(r.call_bid * qty), 'pos'],
+        ['Custo das travas (' + nF + '×)', brl(custoF), 'neg'],
+        ['Custo unit. da trava', brl(r.trava_cost), ''],
+        ['Alavancagem', nF + '×', nF > 1 ? 'pos' : ''],
+        ['Ganho máx. das travas', brl(ganhoF), 'pos'],
+        ['Resultado se ficar parado', brl(credF * qty), 'pos'],
+        ['Zona da proteção', brl(r.put_sell_strike) + '–' + brl(r.put_buy_strike), ''],
         ['Protegido até', brl(r.put_sell_strike) + ' (−' + fmt(r.prot_drop_pct, 1) + '%)', ''],
-        ['Perda máx. (se S→0)', brl(Math.abs(lossF)), lossF > 0 ? 'neg' : 'pos'],
-        ['Relação lucro/perda', lossF > 0.001 ? fmt(maxGF / lossF) : '∞', '']
-      ].concat(pctBoxes(gPctF, dc));
-      Object.assign(stParams, {op: 'fence',
+        ['Prejuízo da CALL a partir de', brl(r.call_strike + credF), ''],
+        ['Perda acima de ' + brl(r.call_strike), 'ilimitada s/ ação', 'neg'],
+        ['Prazo', dc + ' d.c.', '']
+      ];
+      Object.assign(stParams, {op: nF > 1 ? 'fence_alav' : 'fence', ratio: nF,
         at: r.put_buy_symbol,  ak: r.put_buy_strike,  ap: r.put_buy_ask,
         bt: r.put_sell_symbol, bk: r.put_sell_strike, bp: r.put_sell_bid,
         ct2: r.call_symbol,    ck2: r.call_strike,    cp2: r.call_bid});
@@ -1122,9 +1134,11 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       leg(r.call_sell_symbol, 'CALL', 'SELL', 1, r.call_sell_bid, r.call_sell_strike);
       leg(r.call_buy_symbol, 'CALL', 'BUY', 1, r.call_buy_ask, r.call_buy_strike);
     } else if (op === 'fence') {
-      leg(d.ticker, 'STOCK', 'BUY', 1, spot, 0);
-      leg(r.put_buy_symbol, 'PUT', 'BUY', 1, r.put_buy_ask, r.put_buy_strike);
-      leg(r.put_sell_symbol, 'PUT', 'SELL', 1, r.put_sell_bid, r.put_sell_strike);
+      // Sem perna STOCK: a cerca é a estrutura de opções em si (as ações, quando
+      // existem, já estão na carteira). Travas N×, CALL 1×.
+      var nLeg = r.n_travas || 1;
+      leg(r.put_buy_symbol, 'PUT', 'BUY', nLeg, r.put_buy_ask, r.put_buy_strike);
+      leg(r.put_sell_symbol, 'PUT', 'SELL', nLeg, r.put_sell_bid, r.put_sell_strike);
       leg(r.call_symbol, 'CALL', 'SELL', 1, r.call_bid, r.call_strike);
     } else if (op === 'seagull') {
       leg(r.call_buy_symbol, 'CALL', 'BUY', 1, r.call_buy_ask, r.call_buy_strike);

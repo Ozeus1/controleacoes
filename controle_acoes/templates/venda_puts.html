@@ -1143,6 +1143,58 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         manejo_put:          { legs: ['PUT — MANTIDA (já vendida)', 'Perna nova', 'Perna nova', 'Perna nova'], needSpot: false }
     };
 
+    // ── Motor universal ───────────────────────────────────────────────────────
+    // Estruturas descritas por pernas (tipo, quantidade e vencimento), sem
+    // cálculo dedicado: o payoff, os breakevens e as métricas saem das próprias
+    // pernas. É o que permite simular as ~40 estruturas das telas de Busca sem
+    // escrever um bloco de conta para cada uma.
+    //   t  : 'C' CALL · 'P' PUT · 'S' ação
+    //   q  : quantidade por perna (negativo = venda)
+    //   lg : 1 = perna do vencimento LONGO (calendários/diagonais)
+    var UNI_CFG = window.UNI_CFG = {
+        acao_sintetica:          { nome: 'Ação Sintética (Long Synthetic)', legs: ['CALL — COMPRA', 'PUT — VENDA', null, null], q: [1, -1], t: ['C', 'P'], lg: [0, 0] },
+        adj_call_seagull:        { nome: 'Adjusted Long Call Seagull (do livro)', legs: ['PUT — COMPRA', 'PUT — VENDA', 'CALL — COMPRA', 'CALL — VENDA'], q: [1, -1, 1, -1], t: ['P', 'P', 'C', 'C'], lg: [0, 0, 0, 0] },
+        adj_put_seagull:         { nome: 'Adjusted Long Put Seagull (do livro)', legs: ['PUT — VENDA', 'PUT — COMPRA', 'CALL — VENDA', 'CALL — COMPRA'], q: [-1, 1, -1, 1], t: ['P', 'P', 'C', 'C'], lg: [0, 0, 0, 0] },
+        bear_calendar:           { nome: 'Bear Calendar Spread (OTM) — Baixa moderada', legs: ['PUT — VENDA', 'PUT — COMPRA — venc. LONGO', null, null], q: [-1, 1], t: ['P', 'P'], lg: [0, 1], cal: true },
+        box_spread:              { nome: 'Box Spread', legs: ['CALL — COMPRA', 'CALL — VENDA', 'PUT — VENDA', 'PUT — COMPRA'], q: [1, -1, -1, 1], t: ['C', 'C', 'P', 'P'], lg: [0, 0, 0, 0] },
+        broken_wing:             { nome: 'Broken Wing Butterfly', legs: ['CALL — COMPRA', 'CALL — VENDA 2×', 'CALL — COMPRA', null], q: [1, -2, 1], t: ['C', 'C', 'C'], lg: [0, 0, 0] },
+        bull_calendar:           { nome: 'Bull Calendar Spread (OTM) — Alta moderada', legs: ['CALL — VENDA', 'CALL — COMPRA — venc. LONGO', null, null], q: [-1, 1], t: ['C', 'C'], lg: [0, 1], cal: true },
+        call_seco:               { nome: 'Call a Seco (Long Call)', legs: ['CALL — COMPRA', null, null, null], q: [1], t: ['C'], lg: [0] },
+        christmas_tree:          { nome: 'Christmas Tree Spread', legs: ['CALL — VENDA', 'CALL — COMPRA', 'CALL — COMPRA', 'CALL — COMPRA'], q: [-1, 1, 1, 1], t: ['C', 'C', 'C', 'C'], lg: [0, 0, 0, 0] },
+        covered_put:             { nome: 'Covered Put', legs: ['AÇÃO — VENDA', 'PUT — VENDA', null, null], q: [-1, -1], t: ['S', 'P'], lg: [0, 0], stock: true },
+        double_calendar:         { nome: 'Double Calendar Spread — Lateral', legs: ['CALL — VENDA', 'PUT — VENDA', 'CALL — COMPRA — venc. LONGO', 'PUT — COMPRA — venc. LONGO'], q: [-1, -1, 1, 1], t: ['C', 'P', 'C', 'P'], lg: [0, 0, 1, 1], cal: true },
+        double_diagonal:         { nome: 'Diagonal / Double Diagonal', legs: ['CALL — VENDA', 'PUT — VENDA', 'CALL — COMPRA — venc. LONGO', 'PUT — COMPRA — venc. LONGO'], q: [-1, -1, 1, 1], t: ['C', 'P', 'C', 'P'], lg: [0, 0, 1, 1], cal: true },
+        guts_long:               { nome: 'Guts (Long)', legs: ['CALL — COMPRA', 'PUT — COMPRA', null, null], q: [1, 1], t: ['C', 'P'], lg: [0, 0] },
+        guts_short:              { nome: 'Guts (Short)', legs: ['CALL — VENDA', 'PUT — VENDA', null, null], q: [-1, -1], t: ['C', 'P'], lg: [0, 0] },
+        iron_butterfly:          { nome: 'Iron Butterfly', legs: ['PUT — COMPRA', 'PUT — VENDA', 'CALL — VENDA', 'CALL — COMPRA'], q: [1, -1, -1, 1], t: ['P', 'P', 'C', 'C'], lg: [0, 0, 0, 0] },
+        jade_lizard:             { nome: 'Jade Lizard (Put Vendida + Trava de Baixa com Calls)', legs: ['PUT — VENDA', 'CALL — VENDA', 'CALL — COMPRA', null], q: [-1, -1, 1], t: ['P', 'C', 'C'], lg: [0, 0, 0] },
+        jade_lizard_turbo:       { nome: 'Jade Lizard Turbinada (1 Put : 2 Travas de Call)', legs: ['PUT — VENDA', 'CALL — VENDA 2×', 'CALL — COMPRA 2×', null], q: [-1, -2, 2], t: ['P', 'C', 'C'], lg: [0, 0, 0] },
+        ladder_call:             { nome: 'Ladder de CALLs', legs: ['CALL — COMPRA', 'CALL — VENDA', 'CALL — VENDA', null], q: [1, -1, -1], t: ['C', 'C', 'C'], lg: [0, 0, 0] },
+        neutral_calendar:        { nome: 'Neutral Calendar Spread (ATM) — Lateral', legs: ['CALL — VENDA', 'CALL — COMPRA — venc. LONGO', null, null], q: [-1, 1], t: ['C', 'C'], lg: [0, 1], cal: true },
+        pmcc:                    { nome: 'Bull Diagonal — Poor Man’s Covered Call (Alta)', legs: ['CALL — VENDA', 'CALL — COMPRA — venc. LONGO', null, null], q: [-1, 1], t: ['C', 'C'], lg: [0, 1], cal: true },
+        pmcp:                    { nome: 'Bear Diagonal — Poor Man’s Covered Put (Baixa)', legs: ['PUT — VENDA', 'PUT — COMPRA — venc. LONGO', null, null], q: [-1, 1], t: ['P', 'P'], lg: [0, 1], cal: true },
+        protective_put:          { nome: 'Protective Put', legs: ['AÇÃO — COMPRA', 'PUT — COMPRA', null, null], q: [1, 1], t: ['S', 'P'], lg: [0, 0], stock: true },
+        put_backspread:          { nome: 'Put Backspread (Boi com PUT 1×2)', legs: ['PUT — VENDA', 'PUT — COMPRA 2×', null, null], q: [-1, 2], t: ['P', 'P'], lg: [0, 0] },
+        put_seco:                { nome: 'Put a Seco (Long Put)', legs: ['PUT — COMPRA', null, null, null], q: [1], t: ['P'], lg: [0] },
+        ratio_spread:            { nome: 'Ratio Spread (Call/Put)', legs: ['CALL — COMPRA', 'CALL — VENDA 2×', null, null], q: [1, -2], t: ['C', 'C'], lg: [0, 0] },
+        risk_reversal:           { nome: 'Risk Reversal / Combo / Split Strike', legs: ['CALL — COMPRA', 'PUT — VENDA', null, null], q: [1, -1], t: ['C', 'P'], lg: [0, 0] },
+        seagull_alta:            { nome: 'Seagull de Alta (Gaivota)', legs: ['PUT — VENDA', 'CALL — COMPRA', 'CALL — VENDA', null], q: [-1, 1, -1], t: ['P', 'C', 'C'], lg: [0, 0, 0] },
+        seagull_baixa:           { nome: 'Seagull de Baixa', legs: ['CALL — VENDA', 'PUT — COMPRA', 'PUT — VENDA', null], q: [-1, 1, -1], t: ['C', 'P', 'P'], lg: [0, 0, 0] },
+        short_call_calendar:     { nome: 'Short Call Calendar (do livro)', legs: ['CALL — COMPRA', 'CALL — VENDA — venc. LONGO', null, null], q: [1, -1], t: ['C', 'C'], lg: [0, 1], cal: true },
+        short_sintetico:         { nome: 'Short Sintético', legs: ['CALL — VENDA', 'PUT — COMPRA', null, null], q: [-1, 1], t: ['C', 'P'], lg: [0, 0] },
+        slide_estrutural:        { nome: 'Slide Estrutural (Venda Coberta Turbinada)', legs: ['CALL — COMPRA', 'CALL — VENDA', 'CALL — VENDA', null], q: [1, -1, -1], t: ['C', 'C', 'C'], lg: [0, 0, 0] },
+        stock_repair:            { nome: 'Reparo de Posição (Stock Repair 1×2)', legs: ['AÇÃO — COMPRA', 'CALL — COMPRA', 'CALL — VENDA 2×', null], q: [1, 1, -2], t: ['S', 'C', 'C'], lg: [0, 0, 0], stock: true },
+        straddle_comprado:       { nome: 'Straddle Comprado', legs: ['CALL — COMPRA', 'PUT — COMPRA', null, null], q: [1, 1], t: ['C', 'P'], lg: [0, 0] },
+        straddle_strangle_swap:  { nome: 'Long Straddle-Strangle Swap (do livro)', legs: ['PUT — VENDA', 'CALL — VENDA', 'PUT — COMPRA — venc. LONGO', 'CALL — COMPRA — venc. LONGO'], q: [-1, -1, 1, 1], t: ['P', 'C', 'P', 'C'], lg: [0, 0, 1, 1], cal: true },
+        strangle_comprado:       { nome: 'Strangle Comprado', legs: ['CALL — COMPRA', 'PUT — COMPRA', null, null], q: [1, 1], t: ['C', 'P'], lg: [0, 0] },
+        strap:                   { nome: 'Strap', legs: ['CALL — COMPRA 2×', 'PUT — COMPRA', null, null], q: [2, 1], t: ['C', 'P'], lg: [0, 0] },
+        strip:                   { nome: 'Strip', legs: ['CALL — COMPRA', 'PUT — COMPRA 2×', null, null], q: [1, 2], t: ['C', 'P'], lg: [0, 0] },
+        synth_strangle:          { nome: 'Short Call Synthetic Strangle', legs: ['AÇÃO — COMPRA', 'CALL — VENDA', 'CALL — VENDA', null], q: [1, -1, -1], t: ['S', 'C', 'C'], lg: [0, 0, 0], stock: true },
+        synthetic_straddle:      { nome: 'Synthetic Straddle', legs: ['AÇÃO — COMPRA', 'PUT — COMPRA 2×', null, null], q: [1, 2], t: ['S', 'P'], lg: [0, 0], stock: true },
+        venda_coberta:           { nome: 'Venda Coberta (Covered Call)', legs: ['AÇÃO — COMPRA', 'CALL — VENDA', null, null], q: [1, -1], t: ['S', 'C'], lg: [0, 0], stock: true },
+    };
+
+
     // Estruturas genéricas de CALLs em 3 ou 4 strikes: quantidades das pernas
     // A/B/C/(D) — positivo = compra, negativo = venda. Payoff linear por partes.
     var GEN3 = {
@@ -1160,6 +1212,50 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
     // sinal -1) não entra no custo/crédito novo, só no payoff.
     var MP_LEGS = null;  // [{t:'P'|'C', s:-1|1}, ...] ou null se não veio da querystring
 
+    // "Estrutura livre": pernas arbitrárias vindas de ?livre_legs=C:1|P:-2, usada
+    // quando a combinação não corresponde a nenhum modelo nomeado. Sem isso, a
+    // Simulação de Opções só sabia mandar essas montagens para a Cadeia.
+    (function montaLivre() {
+        var spec = new URLSearchParams(location.search).get('livre_legs');
+        if (!spec) return;
+        var TP = {C: 'CALL', P: 'PUT', S: 'AÇÃO'};
+        var q = [], t = [], legs = [];
+        spec.split('|').forEach(function(item) {
+            var pr = item.split(':');
+            var tipo = (pr[0] || 'C').toUpperCase();
+            var qn = parseFloat(pr[1] || '1') || 1;
+            t.push(tipo);
+            q.push(qn);
+            legs.push(TP[tipo] + ' — ' + (qn > 0 ? 'COMPRA' : 'VENDA') +
+                      (Math.abs(qn) === 1 ? '' : ' ' + Math.abs(qn) + '×'));
+        });
+        while (legs.length < 4) legs.push(null);
+        UNI_CFG.livre = {nome: 'Estrutura livre (pernas da simulação)',
+                         legs: legs, q: q, t: t, lg: q.map(function() { return 0; }),
+                         stock: t.indexOf('S') !== -1};
+    })();
+
+    // Publica as estruturas do motor universal no E_CFG (rótulos das pernas e
+    // se precisam da cotação) e no <select>, agrupadas para não virar uma lista
+    // de 60 itens soltos. As que já têm cálculo dedicado ficam como estão.
+    (function montaUniversais() {
+        var sel = document.getElementById('e-op');
+        if (!sel) return;
+        var grp = document.createElement('optgroup');
+        grp.label = '— Estruturas do guia técnico —';
+        Object.keys(UNI_CFG).sort(function(a, b) {
+            return UNI_CFG[a].nome.localeCompare(UNI_CFG[b].nome, 'pt-BR');
+        }).forEach(function(op) {
+            var u = UNI_CFG[op];
+            E_CFG[op] = {legs: u.legs, needSpot: !!u.stock, uni: true};
+            var o = document.createElement('option');
+            o.value = op;
+            o.textContent = u.nome + (u.cal ? ' 🗓' : '') + (u.stock ? ' 📦' : '');
+            grp.appendChild(o);
+        });
+        sel.appendChild(grp);
+    })();
+
     window.estruturaOpChanged = function() {
         var op  = document.getElementById('e-op').value;
         var cfg = E_CFG[op];
@@ -1175,8 +1271,20 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 fs.style.display = '';
                 var text = isMP ? (window.MP_LEG_LABELS && window.MP_LEG_LABELS[i] || cfg.legs[i]) : cfg.legs[i];
                 lbl.textContent = text;
-                lbl.style.color = (isMP ? MP_LEGS[i].t === 'P' : cfg.legs[i].indexOf('PUT') === 0)
-                    ? 'var(--danger-color)' : 'var(--accent-color,#3b82f6)';
+                var ehPut = isMP ? MP_LEGS[i].t === 'P' : cfg.legs[i].indexOf('PUT') === 0;
+                var ehAcao = !isMP && cfg.legs[i].indexOf('AÇÃO') === 0;
+                lbl.style.color = ehAcao ? 'var(--text-secondary)'
+                                : (ehPut ? 'var(--danger-color)' : 'var(--accent-color,#3b82f6)');
+                // Perna de ação não tem strike nem prêmio: o "preço" dela é a
+                // própria cotação. Trava os campos para não pedir do usuário um
+                // dado que o cálculo já tira do spot.
+                var kEl = document.getElementById('e-' + l.toLowerCase() + '-k');
+                var pEl = document.getElementById('e-' + l.toLowerCase() + '-p');
+                if (kEl && pEl) {
+                    kEl.disabled = pEl.disabled = ehAcao;
+                    kEl.style.opacity = pEl.style.opacity = ehAcao ? '.45' : '';
+                    if (ehAcao) { kEl.value = '0'; pEl.value = '0'; }
+                }
             } else {
                 fs.style.display = 'none';
             }
@@ -1213,9 +1321,19 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         var isMPCalc = op === 'manejo_put' && MP_LEGS;
         var needC = isMPCalc ? MP_LEGS.length > 2 : !!E_CFG[op].legs[2];
         var needD = isMPCalc ? MP_LEGS.length > 3 : !!E_CFG[op].legs[3];
-        var ok = aK && aP != null && bK && bP != null && expS &&
-                 (!needC || (cK && cP != null)) &&
-                 (!needD || (dK && dP != null)) &&
+        // Perna de ação não tem strike (o preço dela é o spot), e estruturas de
+        // 1 perna não têm perna B — exigir ambos deixaria o painel escondido.
+        var uT = UNI_CFG[op] ? UNI_CFG[op].t : null;
+        function pernaOk(i, K, P) {
+            if (uT && i >= uT.length) return true;      // perna inexistente
+            if (uT && uT[i] === 'S')   return true;      // ação: usa o spot
+            return !!K && P != null;
+        }
+        var needB = UNI_CFG[op] ? UNI_CFG[op].q.length > 1 : true;
+        var ok = pernaOk(0, aK, aP) && expS &&
+                 (!needB || pernaOk(1, bK, bP)) &&
+                 (!needC || pernaOk(2, cK, cP)) &&
+                 (!needD || pernaOk(3, dK, dP)) &&
                  (!E_CFG[op].needSpot || spot);
         if (!ok) {
             panel.style.display = 'none';
@@ -1439,6 +1557,91 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 ['Asa PUT / asa CALL', fmtBRL(wPutIC) + ' / ' + fmtBRL(wCallIC), ''],
                 ['Prazo (dias corridos)', dc + ' d.c.', '']
             ];
+        } else if (UNI_CFG[op]) {
+            // ── Motor universal ───────────────────────────────────────────────
+            // Monta as pernas presentes e deriva tudo delas: custo/crédito,
+            // payoff linear por partes, breakevens e extremos. Serve igualmente
+            // para 1 perna (call a seco) e 4 (iron butterfly, double calendar).
+            var U   = UNI_CFG[op];
+            var ksU = [aK, bK, cK, dK], psU = [aP, bP, cP, dP];
+            var pernasU = [];
+            for (var ui = 0; ui < U.q.length; ui++) {
+                pernasU.push({t: U.t[ui], q: U.q[ui], K: ksU[ui], p: psU[ui]});
+            }
+            // Saldo da montagem: ação entra pelo preço à vista, opções pelo prêmio.
+            var netU = 0;
+            pernasU.forEach(function(l) {
+                netU += -l.q * (l.t === 'S' ? spot : l.p);
+            });
+            function payU(S) {
+                var v = netU;
+                pernasU.forEach(function(l) {
+                    if (l.t === 'S')      v += l.q * S;
+                    else if (l.t === 'C') v += l.q * Math.max(0, S - l.K);
+                    else                  v += l.q * Math.max(0, l.K - S);
+                });
+                return v;
+            }
+            // Inclinação nas pontas (d(payoff)/dS) decide se ganho/perda é
+            // ilimitado. Abaixo de todos os strikes só a ação e as PUTs têm
+            // derivada; acima, só a ação e as CALLs.
+            var incBaixaU = 0, incAltaU = 0;
+            pernasU.forEach(function(l) {
+                if (l.t === 'S')      { incBaixaU += l.q;  incAltaU += l.q; }
+                else if (l.t === 'C') { incAltaU  += l.q; }
+                else                  { incBaixaU -= l.q; }   // PUT: -q abaixo do strike
+            });
+            // Só há perda ilimitada na queda se o payoff CAI quando S→0, isto é,
+            // se a inclinação à esquerda for positiva (sobe com S, cai sem ele).
+            var perdaBaixaInf = incBaixaU > 0.0001;
+            var ganhoBaixaInf = incBaixaU < -0.0001;
+            var ksOrdU = pernasU.filter(function(l) { return l.t !== 'S'; })
+                                .map(function(l) { return l.K; })
+                                .sort(function(a, b) { return a - b; });
+            var refU  = ksOrdU.length ? ksOrdU[ksOrdU.length - 1] : spot;
+            var ptsU  = [0].concat(ksOrdU).concat([Math.max(refU, spot || 0) * 1.8]);
+            var valsU = ptsU.map(payU);
+            var besU  = [];
+            for (var ub = 0; ub < ptsU.length - 1; ub++) {
+                var uv0 = valsU[ub], uv1 = valsU[ub + 1];
+                if (((uv0 < 0 && uv1 >= 0) || (uv0 >= 0 && uv1 < 0)) && Math.abs(uv1 - uv0) > 1e-9) {
+                    besU.push(ptsU[ub] + (0 - uv0) * (ptsU[ub + 1] - ptsU[ub]) / (uv1 - uv0));
+                }
+            }
+            // Ganho ilimitado: sobe indefinidamente na alta OU na queda.
+            var maxGU = (incAltaU > 0.0001 || ganhoBaixaInf)
+                        ? null : Math.max.apply(null, valsU);
+            // Perda ilimitada: cai indefinidamente na alta (CALL descoberta) OU
+            // na queda (ação/PUT vendida).
+            var maxLU = (incAltaU < -0.0001 || perdaBaixaInf)
+                        ? null : Math.max(0, -Math.min.apply(null, valsU));
+            var paradoU = payU(spot || refU);
+            boxes = [
+                [netU >= 0 ? 'Crédito recebido' : 'Custo da montagem',
+                    fmtBRL(Math.abs(netU) * qty), netU >= 0 ? 'positive' : 'negative'],
+                // "Melhor caso" pode ser negativo quando os strikes informados não
+                // formam a estrutura (ex.: asas invertidas): aí o verde mentiria.
+                [maxGU != null && maxGU < 0 ? 'Melhor caso (ainda negativo)' : 'Lucro máximo',
+                    maxGU == null ? 'ILIMITADO 🚀' : fmtBRL(maxGU * qty),
+                    (maxGU == null || maxGU >= 0) ? 'positive' : 'negative'],
+                ['Perda máxima', maxLU == null ? 'ILIMITADA ⚠️' : fmtBRL(maxLU * qty), 'negative'],
+                ['Breakevens', besU.length
+                    ? besU.map(function(x) { return fmtBRL(x); }).join(' · ') : '—', ''],
+                ['Resultado se ficar parado', fmtBRL(paradoU * qty),
+                    paradoU >= 0 ? 'positive' : 'negative'],
+                ['Prazo (dias corridos)', dc + ' d.c.', '']
+            ];
+            if (maxGU != null && maxLU != null && maxLU > 0.001) {
+                boxes.splice(3, 0, ['Relação lucro/perda',
+                    (maxGU / maxLU).toLocaleString('pt-BR', {maximumFractionDigits: 2}), '']);
+            }
+            if (U.cal) {
+                // No calendário as pernas vencem em datas diferentes: no vencimento
+                // da curta a longa ainda tem valor extrínseco, que este payoff (só
+                // valor intrínseco) não captura. Deixa o aviso explícito.
+                boxes.push(['⚠️ Calendário',
+                    'no venc. da curta a perna longa ainda tem valor extrínseco, não contabilizado aqui', '']);
+            }
         } else if (op === 'manejo_put' && MP_LEGS) {
             // Motor genérico: pernas A-D com tipo (P/C) e sinal próprios,
             // vindos de MP_LEGS. A perna A (put mantida) tem sinal -1 fixo
@@ -1659,6 +1862,35 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                        {t: 'PUT',  s: -1, q: 1, K: bK, prem: bP},
                        {t: 'CALL', s: -1, q: 1, K: cK, prem: cP},
                        {t: 'CALL', s: 1,  q: 1, K: dK, prem: dP}];
+        } else if (UNI_CFG[op]) {
+            var U2   = UNI_CFG[op];
+            var ksU2 = [aK, bK, cK, dK], psU2 = [aP, bP, cP, dP];
+            var pernasU2 = [];
+            for (var u2 = 0; u2 < U2.q.length; u2++) {
+                pernasU2.push({t: U2.t[u2], q: U2.q[u2], K: ksU2[u2], p: psU2[u2]});
+            }
+            var netU2 = 0;
+            pernasU2.forEach(function(l) { netU2 += -l.q * (l.t === 'S' ? spot : l.p); });
+            payoffFn = function(S) {
+                var v = netU2;
+                pernasU2.forEach(function(l) {
+                    if (l.t === 'S')      v += l.q * S;
+                    else if (l.t === 'C') v += l.q * Math.max(0, S - l.K);
+                    else                  v += l.q * Math.max(0, l.K - S);
+                });
+                return qty * v;
+            };
+            legsArr = [];
+            pernasU2.forEach(function(l) {
+                if (l.t === 'S') {
+                    legsArr.push({t: 'STOCK', s: l.q > 0 ? 1 : -1, q: Math.abs(l.q)});
+                    return;
+                }
+                var lbl = l.t === 'C' ? 'CALL' : 'PUT';
+                mk(l.K, lbl + ' ' + (l.q > 0 ? 'c' : 'v'));
+                legsArr.push({t: lbl, s: l.q > 0 ? 1 : -1, q: Math.abs(l.q),
+                              K: l.K, prem: l.p});
+            });
         } else if (op === 'manejo_put' && MP_LEGS) {
             var ksMP2 = [aK, bK, cK, dK].slice(0, MP_LEGS.length);
             var psMP2 = [aP, bP, cP, dP].slice(0, MP_LEGS.length);

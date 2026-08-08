@@ -1012,11 +1012,34 @@ function abrirEmCalculos() {
         go('seagull', calls[0], calls[1], puts[0]); return;
     }
 
-    if (confirm('Esta combinação de pernas não corresponde a nenhum modelo da aba Estruturas ' +
-                '(travas, straddle, strangle, ratio, vaca, boi, seagull, collar, fence).\n\n' +
-                'Deseja abri-la no editor da Cadeia de Opções?')) {
+    // Nenhum modelo nomeado bate com estas pernas — mas isso não impede a
+    // simulação: a aba Estruturas tem um motor genérico (op=livre) que monta o
+    // payoff a partir das pernas em si. O editor da Cadeia continua disponível
+    // pelo botão próprio, para quem quiser acrescentar ou remover pernas.
+    var ordem = legs.slice().sort(function(a, b) {
+        if (a.type !== b.type) return a.type === 'STOCK' ? -1 : (b.type === 'STOCK' ? 1 : (a.type < b.type ? -1 : 1));
+        return a.strike - b.strike;
+    }).slice(0, 4);
+    var pl = {st: '1', op: 'livre', ativo: ativo, qty: qtyBase, exp: expS};
+    if (spotFallback) pl.spot = spotFallback.toFixed(2);
+    var spec = [], campos = ['a', 'b', 'c', 'd'];
+    ordem.forEach(function(l, i) {
+        var f = campos[i];
+        var tp = l.type === 'STOCK' ? 'S' : (l.type === 'CALL' ? 'C' : 'P');
+        var qn = (l.side === 'SELL' ? -1 : 1) * (l.qty / qtyBase);
+        spec.push(tp + ':' + qn);
+        pl[f === 'c' ? 'ct2' : f + 't'] = l.ticker || '';
+        pl[f === 'c' ? 'ck2' : f + 'k'] = (l.strike || 0).toFixed(2);
+        pl[f === 'c' ? 'cp2' : f + 'p'] = (l.premium || 0).toFixed(2);
+    });
+    pl.livre_legs = spec.join('|');
+    if (legs.length > 4) {
+        alert('Esta simulação tem ' + legs.length + ' pernas; a aba Estruturas trabalha com até 4.\n\n' +
+              'Abrindo no editor da Cadeia de Opções, que aceita qualquer número de pernas.');
         editarEmCadeia();
+        return;
     }
+    window.location.href = '/venda_puts?' + new URLSearchParams(pl).toString() + '#estrutura';
 }
 
 // ── Editar no simulador da Cadeia de Opções (aceita qualquer estrutura) ──────

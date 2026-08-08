@@ -934,21 +934,27 @@ function abrirEmCalculos() {
     var puts   = legs.filter(function(l) { return l.type === 'PUT'; }).sort(function(a, b) { return a.strike - b.strike; });
     var stocks = legs.filter(function(l) { return l.type === 'STOCK'; });
     var expS   = (legs.find(function(l) { return l.exp; }) || {}).exp || '';
-    var qtyBase = Math.min.apply(null, legs.filter(function(l) { return l.type !== 'STOCK'; })
-                                            .map(function(l) { return l.qty; }).concat([100]));
+    // 100 só entra como fallback quando não há nenhuma perna de opção (só ação) —
+    // antes ele sempre disputava o mínimo, então uma Fence 3× salva com 200/600/600
+    // virava qtyBase=100 (o menor entre 200, 600, 600 E 100), quebrando a proporção
+    // N:1 entre as pernas na hora de reabrir a estrutura.
+    var qtysOpcoes = legs.filter(function(l) { return l.type !== 'STOCK'; })
+                          .map(function(l) { return l.qty; });
+    var qtyBase = qtysOpcoes.length ? Math.min.apply(null, qtysOpcoes) : 100;
 
     // Spot: perna de ação (se houver) tem prioridade; senão usa a cotação
     // já buscada (window.__simSpot) — sem isso a tela de Cálculos abria com
     // "Cotação do Ativo" em branco e nenhum POP era calculado.
     var spotFallback = stocks.length === 1 ? stocks[0].premium : (window.__simSpot || 0);
 
-    function go(op, A, B, C, spotVal) {
+    function go(op, A, B, C, spotVal, ratio) {
         var p = {st: '1', op: op, ativo: ativo, qty: qtyBase, exp: expS};
         var sv = spotVal || spotFallback;
         if (sv) p.spot = sv.toFixed(2);
         p.at = A.ticker; p.ak = A.strike.toFixed(2); p.ap = A.premium.toFixed(2);
         p.bt = B.ticker; p.bk = B.strike.toFixed(2); p.bp = B.premium.toFixed(2);
         if (C) { p.ct2 = C.ticker; p.ck2 = C.strike.toFixed(2); p.cp2 = C.premium.toFixed(2); }
+        if (ratio) p.ratio = ratio;
         window.location.href = '/venda_puts?' + new URLSearchParams(p).toString() + '#estrutura';
     }
 
@@ -1010,6 +1016,23 @@ function abrirEmCalculos() {
     if (legs.length === 3 && calls.length === 2 && puts.length === 1 &&
         calls[0].side === 'BUY' && calls[1].side === 'SELL' && puts[0].side === 'SELL') {
         go('seagull', calls[0], calls[1], puts[0]); return;
+    }
+    // Fence / Fence Alavancada sem perna de ação (a ação já está na custódia,
+    // então a simulação guarda só as 3 pernas de opção): trava de baixa com
+    // PUT (compra K maior + venda K menor, mesma quantidade N em ambas) +
+    // CALL vendida 1×. N=1 é a Fence clássica; N>1 é a Ratio Fence.
+    if (legs.length === 3 && puts.length === 2 && calls.length === 1 &&
+        calls[0].side === 'SELL' && calls[0].qty === qtyBase) {
+        var pBuyF = puts.find(function(l) { return l.side === 'BUY'; });
+        var pSellF = puts.find(function(l) { return l.side === 'SELL'; });
+        if (pBuyF && pSellF && pBuyF.strike > pSellF.strike &&
+            Math.abs(pBuyF.qty - pSellF.qty) < 0.01) {
+            var nRatio = Math.round(pBuyF.qty / qtyBase);
+            if (nRatio >= 1) {
+                go(nRatio > 1 ? 'fence_alav' : 'fence', pBuyF, pSellF, calls[0], null, nRatio);
+                return;
+            }
+        }
     }
 
     // Nenhum modelo nomeado bate com estas pernas — mas isso não impede a

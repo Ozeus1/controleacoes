@@ -150,7 +150,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 {# Ação #}
                 <div>
                     <label class="form-label" style="font-weight:700;">Ativo (Ação)</label>
-                    <input class="form-control" name="underlying_asset" required style="text-transform:uppercase"
+                    <input class="form-control" id="c-ativo" name="underlying_asset" required style="text-transform:uppercase"
                            value="{{ edit_collar.underlying_asset if edit_collar else '' }}" placeholder="ex: BRAP4">
                 </div>
                 <div>
@@ -179,7 +179,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                                id="c-put-k" value="{{ '%.2f'|format(edit_collar.put_strike) if edit_collar else '' }}"
                                placeholder="ex: 22,20" oninput="collarCalc()">
                         <button type="button" class="btn btn-secondary btn-sm" title="Escolher da cadeia de opções"
-                                onclick="abreCadeiaCampos('PUT', false, 'underlying_asset', 'put_ticker', 'c-put-k', 'c-put-p')"
+                                onclick="abreCadeiaCampos('PUT', false, 'c-ativo', 'put_ticker', 'c-put-k', 'c-put-p')"
                                 style="padding:.15rem .4rem;">🔎</button>
                     </div>
                 </div>
@@ -203,7 +203,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                                id="c-call-k" value="{{ '%.2f'|format(edit_collar.call_strike) if edit_collar else '' }}"
                                placeholder="ex: 23,20" oninput="collarCalc()">
                         <button type="button" class="btn btn-secondary btn-sm" title="Escolher da cadeia de opções"
-                                onclick="abreCadeiaCampos('CALL', true, 'underlying_asset', 'call_ticker', 'c-call-k', 'c-call-p')"
+                                onclick="abreCadeiaCampos('CALL', true, 'c-ativo', 'call_ticker', 'c-call-k', 'c-call-p')"
                                 style="padding:.15rem .4rem;">🔎</button>
                     </div>
                 </div>

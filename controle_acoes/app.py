@@ -14082,16 +14082,27 @@ def _vol_hist_series(ticker, token, meses=12):
         if vol <= 0 or vol > 300:
             continue
         # Vencimentos muito curtos distorcem (VI explode perto do vencimento)
-        if dtm is not None and dtm < 7:
+        if dtm is None or dtm < 7:
             continue
-        por_dia.setdefault(t, []).append((abs(strike - spot) / spot, vol))
+        por_dia.setdefault(t, []).append((int(dtm), abs(strike - spot) / spot, vol))
 
     serie = []
     for d in sorted(por_dia):
-        cands = sorted(por_dia[d])          # mais próximas do dinheiro primeiro
+        regs = por_dia[d]
+        # Ancora no vencimento mais próximo (>= 7 dias) ANTES de escolher os
+        # strikes. Sem isso, as "4 mais ATM" podiam cair todas num vencimento
+        # longo, cuja VI é estruturalmente menor — o que puxava a série toda
+        # para baixo de forma sistemática (medido: 4 a 18% abaixo da VI que a
+        # própria OpLab publica em iv_current). A referência de mercado para
+        # "a VI do papel" é sempre o vencimento corrente.
+        venc = min(r[0] for r in regs)
+        mesmo_venc = sorted((r[1], r[2]) for r in regs if r[0] == venc)
+        if len(mesmo_venc) < 2:   # vencimento com liquidez pobre: usa tudo
+            mesmo_venc = sorted((r[1], r[2]) for r in regs)
         # Média das ~4 mais ATM: uma só ficaria ruidosa se tiver pouca liquidez
-        atm = [v for _dist, v in cands[:4]]
-        serie.append({'d': d, 'iv': round(sum(atm) / len(atm), 2), 'hv': None})
+        atm = [v for _dist, v in mesmo_venc[:4]]
+        serie.append({'d': d, 'iv': round(sum(atm) / len(atm), 2), 'hv': None,
+                      'dtm': venc})
 
     # Vol. histórica (a linha azul): desvio-padrão anualizado dos retornos,
     # calculado dos candles — a OpLab não entrega essa série pronta por data.
@@ -14204,7 +14215,7 @@ def api_vol_hist(ticker):
     # Versão do algoritmo: mudou o cálculo (janelas de busca, filtro de
     # outliers), o cache anterior fica inválido. Sem isso, o gráfico
     # continuaria servindo a série antiga — com o artefato — até o dia virar.
-    _ALGO = 'v3'   # v3: 12 meses de janela + HV de 25 pregões
+    _ALGO = 'v4'   # v4: VI ancorada no vencimento mais próximo
 
     ticker = ticker.upper().strip()
     if not ticker.isalnum():

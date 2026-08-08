@@ -1138,7 +1138,9 @@
       var p = serie[i], d = p.d.split('-');
       tip.innerHTML = '<strong>'+d[2]+'/'+d[1]+'/'+d[0]+'</strong>'
         + '<br><span style="color:#ef4444">VI: '+(p.iv!=null?p.iv.toFixed(1)+'%':'—')+'</span>'
-        + '<br><span style="color:#3b82f6">VH: '+(p.hv!=null?p.hv.toFixed(1)+'%':'—')+'</span>';
+        + '<br><span style="color:#3b82f6">VH: '+(p.hv!=null?p.hv.toFixed(1)+'%':'—')+'</span>'
+        // Vencimento usado na VI daquele dia: permite auditar o número
+        + (p.dtm!=null ? '<br><span style="color:#94a3b8;font-size:.72rem">venc. em '+p.dtm+'d</span>' : '');
       tip.style.display='block';
       var tw = tip.offsetWidth;
       tip.style.left = Math.min(Math.max(0,x+10), cv.clientWidth-tw-4)+'px';

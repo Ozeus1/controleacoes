@@ -73,46 +73,28 @@
     Buscando dados via OpLab…
   </div>
   <div id="sl-liq-summary" style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:.5rem"></div>
-  <div id="sl-liq-tables" style="display:none;gap:1rem;flex-wrap:wrap">
-    <!-- CALL -->
-    <div style="flex:1;min-width:280px">
-      <h6 style="color:#3b82f6;margin-bottom:.4rem;font-size:.85rem">📈 CALL — por Volume</h6>
-      <div style="overflow-x:auto">
-        <table style="width:100%;font-size:.78rem;border-collapse:collapse">
-          <thead>
-            <tr style="color:var(--text-secondary);border-bottom:1px solid var(--border-color)">
-              <th style="text-align:left;padding:.25rem .4rem">Opção</th>
-              <th style="text-align:right;padding:.25rem .4rem">Strike</th>
-              <th style="text-align:right;padding:.25rem .4rem">% Spot</th>
-              <th style="text-align:right;padding:.25rem .4rem">Último</th>
-              <th style="text-align:right;padding:.25rem .4rem">Var%</th>
-              <th style="text-align:right;padding:.25rem .4rem">Vol. Fin.</th>
-              <th style="text-align:right;padding:.25rem .4rem">Venc.</th>
-            </tr>
-          </thead>
-          <tbody id="sl-call-tbody"></tbody>
-        </table>
-      </div>
-    </div>
-    <!-- PUT -->
-    <div style="flex:1;min-width:280px">
-      <h6 style="color:#f87171;margin-bottom:.4rem;font-size:.85rem">📉 PUT — por Volume</h6>
-      <div style="overflow-x:auto">
-        <table style="width:100%;font-size:.78rem;border-collapse:collapse">
-          <thead>
-            <tr style="color:var(--text-secondary);border-bottom:1px solid var(--border-color)">
-              <th style="text-align:left;padding:.25rem .4rem">Opção</th>
-              <th style="text-align:right;padding:.25rem .4rem">Strike</th>
-              <th style="text-align:right;padding:.25rem .4rem">% Spot</th>
-              <th style="text-align:right;padding:.25rem .4rem">Último</th>
-              <th style="text-align:right;padding:.25rem .4rem">Var%</th>
-              <th style="text-align:right;padding:.25rem .4rem">Vol. Fin.</th>
-              <th style="text-align:right;padding:.25rem .4rem">Venc.</th>
-            </tr>
-          </thead>
-          <tbody id="sl-put-tbody"></tbody>
-        </table>
-      </div>
+  {# Cadeia com o strike ao centro (mesmo formato da tela Cadeia de Opções):
+     CALL à esquerda, PUT à direita, e só o lado que tem liquidez preenchido. #}
+  <div id="sl-liq-tables" style="display:none">
+    <div style="overflow-x:auto">
+      <table id="sl-chain" style="width:100%;font-size:.78rem;border-collapse:collapse;white-space:nowrap">
+        <thead>
+          <tr style="color:var(--text-secondary);border-bottom:1px solid var(--border-color)">
+            <th style="text-align:left;padding:.25rem .4rem;color:#3b82f6">📈 Cód.Call</th>
+            <th style="text-align:right;padding:.25rem .4rem">Últ.</th>
+            <th style="text-align:right;padding:.25rem .4rem">Var%</th>
+            <th style="text-align:right;padding:.25rem .4rem">Bid&nbsp;/&nbsp;Ask</th>
+            <th style="text-align:right;padding:.25rem .4rem">Vol.Fin.</th>
+            <th style="text-align:center;padding:.25rem .5rem" title="Clique no strike para ver a distância % até o spot">⇅ Strike</th>
+            <th style="text-align:left;padding:.25rem .4rem">Vol.Fin.</th>
+            <th style="text-align:left;padding:.25rem .4rem">Bid&nbsp;/&nbsp;Ask</th>
+            <th style="text-align:left;padding:.25rem .4rem">Var%</th>
+            <th style="text-align:left;padding:.25rem .4rem">Últ.</th>
+            <th style="text-align:right;padding:.25rem .4rem;color:#f87171">Cód.Put 📉</th>
+          </tr>
+        </thead>
+        <tbody id="sl-chain-tbody"></tbody>
+      </table>
     </div>
   </div>
   <p style="font-size:.72rem;color:var(--text-secondary);margin:.5rem 0 0">
@@ -319,46 +301,102 @@ function fmtDate_sl(s){
   return s;
 }
 
-function _slRenderTable(tbodyId, rows, colorClass, spot, optType){
-  var tb = document.getElementById(tbodyId);
+// Monta a cadeia com o strike ao centro. Calls e puts são casadas por
+// (vencimento, strike); quando só um lado tem liquidez, o outro fica vazio —
+// é o que diferencia esta tela da cadeia completa: aqui só entra o que negocia.
+function _slRenderChain(calls, puts, spot){
+  var tb = document.getElementById('sl-chain-tbody');
   tb.innerHTML = '';
-  if(!rows || !rows.length){
-    tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:.75rem">Sem dados</td></tr>';
+  var mapa = {};
+  function poe(lista, lado){
+    (lista||[]).forEach(function(o){
+      var due = o.due_date || '';
+      if(_slActiveVenc && due !== _slActiveVenc) return;
+      var k = due + '|' + o.strike;
+      if(!mapa[k]) mapa[k] = {strike: o.strike, due: due};
+      mapa[k][lado] = o;
+    });
+  }
+  poe(calls, 'call');
+  poe(puts, 'put');
+
+  var linhas = Object.keys(mapa).map(function(k){ return mapa[k]; });
+  if(!linhas.length){
+    tb.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-secondary);padding:.75rem">Sem dados</td></tr>';
     return;
   }
-  rows.forEach(function(o){
-    var due = o.due_date || '';
-    if(_slActiveVenc && due !== _slActiveVenc){
-      var tr=document.createElement('tr'); tr.dataset.due=due; tr.style.display='none'; tb.appendChild(tr); return;
-    }
-    var varColor = parseFloat(o.var_pct)>=0 ? '#4ade80' : '#f87171';
-    var venc = fmtDate_sl(due);
-    var spotPctHtml = '—';
-    if(spot && o.strike){
-      var pct = (o.strike - spot) / spot * 100;
-      var pctColor = pct >= 0 ? '#93c5fd' : '#fca5a5';
-      spotPctHtml = '<span style="color:'+pctColor+'">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</span>';
+  // Vencimento mais próximo primeiro; dentro dele, strike crescente.
+  linhas.sort(function(a,b){
+    if(a.due !== b.due) return a.due < b.due ? -1 : 1;
+    return (a.strike||0) - (b.strike||0);
+  });
+
+  var vazio = '<td style="padding:.25rem .4rem;color:#475569">—</td>';
+  var dueAtual = null;
+  linhas.forEach(function(L){
+    // Cabeçalho de vencimento sempre que muda (a tela mistura vencimentos).
+    if(L.due !== dueAtual){
+      dueAtual = L.due;
+      var trH = document.createElement('tr');
+      trH.innerHTML = '<td colspan="11" style="padding:.3rem .4rem;background:rgba(148,163,184,.10);'
+        + 'color:#cbd5e1;font-weight:600;font-size:.76rem">Vencimento ' + fmtDate_sl(L.due) + '</td>';
+      tb.appendChild(trH);
     }
     var tr = document.createElement('tr');
     tr.style.borderBottom = '1px solid rgba(255,255,255,.05)';
-    tr.dataset.due = due;
-    tr.innerHTML =
-      '<td style="padding:.25rem .4rem"><span class="ticker-badge" data-sym="'+o.symbol+'" data-strike="'+o.strike+'" data-close="'+o.close+'" data-due="'+due+'" data-type="'+optType+'" style="font-weight:600;color:'+colorClass+';cursor:pointer">'+o.symbol+'</span></td>'+
-      '<td style="text-align:right;padding:.25rem .4rem">'+fmtN_sl(o.strike)+'</td>'+
-      '<td style="text-align:right;padding:.25rem .4rem">'+spotPctHtml+'</td>'+
-      '<td style="text-align:right;padding:.25rem .4rem">'+fmtN_sl(o.close)+'</td>'+
-      '<td style="text-align:right;padding:.25rem .4rem;color:'+varColor+'">'+
-        (parseFloat(o.var_pct)>=0?'+':'')+fmtN_sl(o.var_pct)+'%</td>'+
-      '<td style="text-align:right;padding:.25rem .4rem;font-weight:600">'+fmtBRL_sl(o.volume)+'</td>'+
-      '<td style="text-align:right;padding:.25rem .4rem;color:var(--text-secondary)">'+venc+'</td>';
+    tr.dataset.due = L.due;
+
+    function celVar(o){
+      var v = parseFloat(o.var_pct) || 0;
+      return '<td style="text-align:right;padding:.25rem .4rem;color:'
+        + (v>=0?'#4ade80':'#f87171') + '">' + (v>=0?'+':'') + fmtN_sl(v) + '%</td>';
+    }
+    function celBA(o){
+      var bid = o.bid != null ? fmtN_sl(o.bid) : '-';
+      var ask = o.ask != null ? fmtN_sl(o.ask) : '-';
+      return '<td style="text-align:right;padding:.25rem .4rem">'
+        + '<span style="color:#4ade80">' + bid + '</span>'
+        + '<span style="color:#64748b"> / </span>'
+        + '<span style="color:#f87171">' + ask + '</span></td>';
+    }
+    function celSym(o, cor, tipo){
+      return '<td style="padding:.25rem .4rem"><span class="ticker-badge" data-sym="'+o.symbol
+        + '" data-strike="'+o.strike+'" data-close="'+o.close+'" data-due="'+L.due
+        + '" data-type="'+tipo+'" style="font-weight:600;color:'+cor+';cursor:pointer">'+o.symbol+'</span></td>';
+    }
+
+    var html = '';
+    if(L.call){
+      html += celSym(L.call, '#93c5fd', 'CALL')
+           +  '<td style="text-align:right;padding:.25rem .4rem">'+fmtN_sl(L.call.close)+'</td>'
+           +  celVar(L.call) + celBA(L.call)
+           +  '<td style="text-align:right;padding:.25rem .4rem;font-weight:600">'+fmtBRL_sl(L.call.volume)+'</td>';
+    } else { html += vazio.repeat(5); }
+
+    // Strike ao centro: o % até o spot é o hint, para não poluir a linha.
+    var dPct = (spot && L.strike) ? ((L.strike - spot)/spot*100) : null;
+    var hint = dPct == null ? ''
+      : ' title="' + (dPct>=0?'+':'') + dPct.toFixed(2).replace('.',',')
+        + '% em relação ao spot (R$ ' + fmtN_sl(spot) + ')"';
+    var itm = spot ? (L.strike < spot ? 'rgba(59,130,246,.10)' : 'rgba(248,113,113,.08)') : '';
+    html += '<td' + hint + ' style="text-align:center;padding:.25rem .5rem;font-weight:700;cursor:help;'
+         +  'background:'+itm+'">R$ '+fmtN_sl(L.strike)+'</td>';
+
+    if(L.put){
+      html += '<td style="text-align:left;padding:.25rem .4rem;font-weight:600">'+fmtBRL_sl(L.put.volume)+'</td>'
+           +  celBA(L.put) + celVar(L.put)
+           +  '<td style="text-align:left;padding:.25rem .4rem">'+fmtN_sl(L.put.close)+'</td>'
+           +  celSym(L.put, '#fca5a5', 'PUT');
+    } else { html += vazio.repeat(5); }
+
+    tr.innerHTML = html;
     tb.appendChild(tr);
   });
 }
 
 function _slApplyVencFilter(venc, data){
   _slActiveVenc = (_slActiveVenc === venc) ? null : venc;
-  _slRenderTable('sl-call-tbody', data.calls, '#93c5fd', data.spot_price, 'CALL');
-  _slRenderTable('sl-put-tbody',  data.puts,  '#fca5a5', data.spot_price, 'PUT');
+  _slRenderChain(data.calls, data.puts, data.spot_price);
   document.querySelectorAll('.liq-venc-btn').forEach(function(b){
     var act = b.dataset.due === _slActiveVenc;
     b.style.background  = act ? '#7c3aed' : 'rgba(148,163,184,.15)';
@@ -421,8 +459,7 @@ function _slRenderLiq(d){
     sumEl.appendChild(vencRow);
   }
 
-  _slRenderTable('sl-call-tbody', d.calls, '#93c5fd', d.spot_price, 'CALL');
-  _slRenderTable('sl-put-tbody',  d.puts,  '#fca5a5', d.spot_price, 'PUT');
+  _slRenderChain(d.calls, d.puts, d.spot_price);
   document.getElementById('sl-liq-tables').style.display = 'flex';
 }
 

@@ -44,6 +44,15 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
 <div class="card" style="margin-bottom:1.5rem;">
     <div style="display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-bottom:1rem;">
         <h2 style="margin:0;">🧮 Cálculos de Opções</h2>
+        {# Cotação do ativo da aba ativa + atalho para o gráfico de preços. #}
+        <div id="vp-quote" style="display:none;align-items:center;gap:.5rem;flex-wrap:wrap;">
+            <span id="vp-quote-tk" style="font-weight:700;"></span>
+            <span id="vp-quote-px" style="font-weight:700;"></span>
+            <span id="vp-quote-var" style="font-size:.85rem;font-weight:600;"></span>
+            <button type="button" class="btn btn-sm" id="vp-quote-chart" title="Abrir gráfico de preços"
+                    style="background:#0ea5e9;color:#fff;padding:.15rem .5rem;">📈 Gráfico</button>
+            <span id="vp-quote-when" style="font-size:.72rem;color:var(--text-secondary);"></span>
+        </div>
         <a href="#" id="vp-back-btn" class="btn btn-secondary btn-sm" style="display:none;">← Voltar para a estratégia</a>
     </div>
 
@@ -709,7 +718,73 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         // Redesenha o gráfico com a largura real do painel agora visível
         if (tab === 'collar' && typeof collarCalc === 'function') collarCalc();
         if (tab === 'estrutura' && typeof estruturaCalc === 'function') estruturaCalc();
+        atualizaCotacaoAtiva();
     };
+
+    // ── Cotação do ativo da aba ativa ─────────────────────────────────────────
+    // Cada aba tem seu próprio campo de ativo; o painel do topo segue a aba
+    // visível para não mostrar a cotação de um papel que não está sendo editado.
+    var _vpQuoteTk = null;   // ticker já carregado (evita refazer a busca à toa)
+
+    function campoAtivoDaAba() {
+        var ativa = document.querySelector('.calc-pane.active');
+        if (!ativa) return null;
+        if (ativa.id === 'pane-put')       return document.querySelector('#put-form [name=underlying_asset]');
+        if (ativa.id === 'pane-collar')    return document.getElementById('c-ativo');
+        if (ativa.id === 'pane-estrutura') return document.getElementById('e-ativo');
+        return null;
+    }
+
+    window.atualizaCotacaoAtiva = function() {
+        var el = campoAtivoDaAba();
+        var tk = ((el && el.value) || '').trim().toUpperCase();
+        var box = document.getElementById('vp-quote');
+        if (!tk) { box.style.display = 'none'; _vpQuoteTk = null; return; }
+        if (tk === _vpQuoteTk) { box.style.display = 'flex'; return; }
+        _vpQuoteTk = tk;
+        document.getElementById('vp-quote-tk').textContent = tk;
+        document.getElementById('vp-quote-px').textContent = '…';
+        document.getElementById('vp-quote-var').textContent = '';
+        document.getElementById('vp-quote-when').textContent = '';
+        box.style.display = 'flex';
+        fetch('/api/quote_hint/' + encodeURIComponent(tk))
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (_vpQuoteTk !== tk) return;            // trocou de ativo enquanto buscava
+                if (!d || d.error || !d.price) {
+                    document.getElementById('vp-quote-px').textContent = '—';
+                    document.getElementById('vp-quote-when').textContent = 'cotação indisponível';
+                    return;
+                }
+                document.getElementById('vp-quote-px').textContent = fmtBRL(d.price);
+                // Preenche a cotação da aba se ainda estiver vazia — evita digitar
+                // à mão um número que acabamos de buscar. Valor já informado fica.
+                var campoSpot = {'pane-put': 'inp-spot', 'pane-collar': 'c-stock',
+                                 'pane-estrutura': 'e-spot'};
+                var ativa = document.querySelector('.calc-pane.active');
+                var spotEl = ativa ? document.getElementById(campoSpot[ativa.id]) : null;
+                if (spotEl && !toFloat(spotEl.value)) {
+                    spotEl.value = Number(d.price).toFixed(2);
+                    spotEl.dispatchEvent(new Event('input'));
+                }
+                var v = parseFloat(d.change);
+                var vEl = document.getElementById('vp-quote-var');
+                if (isNaN(v)) { vEl.textContent = ''; }
+                else {
+                    vEl.textContent = (v >= 0 ? '+' : '') + v.toFixed(2).replace('.', ',') + '%';
+                    vEl.style.color = v >= 0 ? 'var(--success-color,#10b981)' : 'var(--danger-color,#ef4444)';
+                }
+                document.getElementById('vp-quote-when').textContent = d.name && d.name !== tk ? d.name : '';
+            })
+            .catch(function() {
+                if (_vpQuoteTk !== tk) return;
+                document.getElementById('vp-quote-px').textContent = '—';
+            });
+    };
+
+    document.getElementById('vp-quote-chart').addEventListener('click', function() {
+        if (_vpQuoteTk) openTVChart(_vpQuoteTk);
+    });
 
     // ── Cálculo Venda de Put ──────────────────────────────────────────────────
     function recalcPut() {
@@ -2332,6 +2407,16 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         var tabBtn = document.getElementById('tab-collar');
         if (tabBtn) switchTab('collar', tabBtn);
     }
+
+    // ── Cotação: segue o campo de ativo de cada aba ───────────────────────────
+    ['#put-form [name=underlying_asset]', '#c-ativo', '#e-ativo'].forEach(function(sel) {
+        var el = document.querySelector(sel);
+        if (!el) return;
+        // 'change' (e não 'input') pra não disparar uma busca por letra digitada.
+        el.addEventListener('change', atualizaCotacaoAtiva);
+        el.addEventListener('blur', atualizaCotacaoAtiva);
+    });
+    atualizaCotacaoAtiva();
 
     // ── TradingView modal ─────────────────────────────────────────────────────
     var modal = document.getElementById('tv-modal');

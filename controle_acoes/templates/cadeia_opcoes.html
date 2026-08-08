@@ -356,15 +356,13 @@ function renderTable(expData,spot){
   var rows=expData.rows, exp=expData.exp;
   var html='<div class="cadeia-wrap"><table class="cadeia"><thead><tr>'
     +'<th class="call-side" style="text-align:left">Cód.Call</th>'
-    +'<th class="call-side">Último</th><th class="call-side">Teór.</th>'
-    +'<th class="call-side">Delta</th><th class="call-side">Liq.</th>'
+    +'<th class="call-side">Último</th>'
     +'<th class="call-side">Vol.Fin.</th><th class="call-side">Var.</th>'
     +'<th class="call-side">Mid</th><th class="call-side">Bid&nbsp;/&nbsp;Ask</th>'
-    +'<th class="strike-col">⇅ Strike</th>'
+    +'<th class="strike-col" title="Passe o mouse no strike para ver a distância % até o spot">⇅ Strike</th>'
     +'<th class="put-side">Bid&nbsp;/&nbsp;Ask</th><th class="put-side">Mid</th>'
     +'<th class="put-side">Var.</th><th class="put-side">Vol.Fin.</th>'
-    +'<th class="put-side">Liq.</th><th class="put-side">Delta</th>'
-    +'<th class="put-side">Teór.</th><th class="put-side">Último</th>'
+    +'<th class="put-side">Último</th>'
     +'<th class="put-side" style="text-align:left">Cód.Put</th>'
     +'</tr></thead><tbody>';
 
@@ -373,22 +371,26 @@ function renderTable(expData,spot){
     var isSpot=spot&&Math.abs(s-spot)<0.005;
     var itmCall=spot&&s<spot, itmPut=spot&&s>spot;
     var sClass='strike-col'+(isSpot?' spot-row':(itmCall?' itm-call':(itmPut?' itm-put':'')));
+    // Distância do strike até a cotação, em % — vira o hint do strike.
+    var dPct=spot?((s-spot)/spot*100):null;
+    var sTitle=dPct==null?'':(' title="'+(dPct>=0?'+':'')+dPct.toFixed(2).replace('.',',')
+      +'% em relação ao spot (R$ '+brl(spot)+')"');
     html+='<tr>';
     if(c){
       var cE=enc(c.symbol,'CALL','SELL',c.close,s,exp);
       html+='<td style="text-align:left"><span class="sym-link" data-opt="'+cE+'" title="VENDER">'+c.symbol+'</span></td>';
-      html+=fV(c.close)+fV(c.teorico||null)+fV(c.delta)+fV(c.liquidez||null);
+      html+=fV(c.close);
       html+='<td class="val">'+brlK(c.vol_fin)+'</td>'+fVar(c.var_pct)+fV(c.mid||null);
       html+=baCell(c.symbol,'CALL',c.bid,c.ask,s,exp,c.close);
-    } else { html+='<td class="empty">—</td>'.repeat(9); }
-    html+='<td class="'+sClass+'">R$ '+brl(s)+(isSpot?' ◀':'')+'</td>';
+    } else { html+='<td class="empty">—</td>'.repeat(6); }
+    html+='<td class="'+sClass+'"'+sTitle+'>R$ '+brl(s)+(isSpot?' ◀':'')+'</td>';
     if(p){
       html+=baCell(p.symbol,'PUT',p.bid,p.ask,s,exp,p.close);
       html+=fV(p.mid||null)+fVar(p.var_pct)+'<td class="val">'+brlK(p.vol_fin)+'</td>';
-      html+=fV(p.liquidez||null)+fV(p.delta)+fV(p.teorico||null)+fV(p.close);
+      html+=fV(p.close);
       var pE=enc(p.symbol,'PUT','SELL',p.close,s,exp);
       html+='<td style="text-align:left"><span class="sym-link" data-opt="'+pE+'" title="VENDER">'+p.symbol+'</span></td>';
-    } else { html+='<td class="empty">—</td>'.repeat(9); }
+    } else { html+='<td class="empty">—</td>'.repeat(6); }
     html+='</tr>';
   });
   html+='</tbody></table></div>';

@@ -3220,6 +3220,11 @@ def api_cadeia(ticker):
     if max_days not in (60, 90, 120, 180, 210):
         max_days = 60
 
+    # Opções na B3: seg–sex, 10h às 16h30 (Brasília).
+    _now_cad = now_brt()
+    _market_open_cadeia = (_now_cad.weekday() < 5
+                           and (10, 0) <= (_now_cad.hour, _now_cad.minute) < (16, 30))
+
     # Normaliza opções
     calls_by_exp = {}
     puts_by_exp  = {}
@@ -3242,6 +3247,23 @@ def api_cadeia(ticker):
         if not due_date:
             continue
 
+        # Preço executável conforme o horário (mesma regra da Busca de Operações):
+        # no pregão vale bid/ask; fora dele o book está vazio ou velho, então o
+        # último negócio é a referência honesta. Também cai para o último quando
+        # falta ponta ou o spread é abusivo.
+        _last_ok = close if close >= 0.05 else None
+        if not _market_open_cadeia:
+            _b_eff, _b_src = _last_ok, 'último'
+            _a_eff, _a_src = _last_ok, 'último'
+        else:
+            _b_eff, _b_src = (bid, 'bid') if bid >= 0.05 else (_last_ok, 'último')
+            _a_eff, _a_src = (ask, 'ask') if ask >= 0.05 else (_last_ok, 'último')
+            if bid >= 0.05 and ask >= 0.05 and _last_ok:
+                _mid = (bid + ask) / 2
+                if (ask - bid) > max(0.10, 0.25 * _mid):
+                    _b_eff, _b_src = _last_ok, 'último'
+                    _a_eff, _a_src = _last_ok, 'último'
+
         row = {
             'symbol':   sym,
             'strike':   round(strike, 2),
@@ -3254,6 +3276,12 @@ def api_cadeia(ticker):
             'teorico':  round(teorico, 2),
             'liquidez': round(liquidez, 2),
             'mid':      round((bid + ask) / 2, 2) if (bid or ask) else 0,
+            # Preços executáveis + a origem de cada um, para a tela poder dizer
+            # ao usuário se o número veio do book ou do último negócio.
+            'bid_eff':  round(_b_eff, 2) if _b_eff else 0,
+            'ask_eff':  round(_a_eff, 2) if _a_eff else 0,
+            'bid_src':  _b_src if _b_eff else None,
+            'ask_src':  _a_src if _a_eff else None,
         }
 
         is_put = 'PUT' in cat or cat == 'P'
@@ -3332,6 +3360,7 @@ def api_cadeia(ticker):
         'expirations': result_exps,
         'weekly':      include_weekly,
         'max_days':    max_days,
+        'market_open': _market_open_cadeia,
     })
 
 

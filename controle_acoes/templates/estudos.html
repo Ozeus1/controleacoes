@@ -1343,6 +1343,15 @@ function setSelect(id, val) {
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
+        <div style="margin-bottom:1rem;">
+          <label style="display:flex;align-items:center;gap:.4rem;font-size:.85rem;font-weight:700;">
+            📝 Observações gerais do papel
+            <span id="strats-notes-status" style="font-size:.72rem;font-weight:400;color:var(--text-secondary);"></span>
+          </label>
+          <textarea id="strats-notes" class="form-control" rows="3" maxlength="4000"
+                    placeholder="Anotações livres sobre este papel — teses, alertas, contexto… (salva automaticamente)"
+                    oninput="scheduleSaveStratsNotes()"></textarea>
+        </div>
         <div id="strats-list" style="margin-bottom:1rem;">
           <span style="color:var(--text-secondary);font-size:.85rem;">Carregando…</span>
         </div>
@@ -1614,7 +1623,46 @@ function openStrats(ticker) {
   document.getElementById('strats-ticker-label').textContent = _stratsTicker;
   resetStratForm();
   loadStrats();
+  loadStratsNotes();
   new bootstrap.Modal(document.getElementById('modal-strats')).show();
+}
+
+/* ── Observações gerais do papel (livre, por ticker) ─────────────────────── */
+var _stratsNotesTimer = null;
+
+function loadStratsNotes() {
+  var el = document.getElementById('strats-notes');
+  var st = document.getElementById('strats-notes-status');
+  el.value = '';
+  st.textContent = '';
+  fetch('/api/estudo-notas/' + encodeURIComponent(_stratsTicker))
+    .then(function(r) { return r.json(); })
+    .then(function(d) { el.value = (d && d.notes) || ''; })
+    .catch(function() { st.textContent = '⚠️ erro ao carregar'; });
+}
+
+// Debounce: salva 900ms após parar de digitar, em vez de a cada tecla.
+function scheduleSaveStratsNotes() {
+  var st = document.getElementById('strats-notes-status');
+  st.textContent = '…digitando';
+  clearTimeout(_stratsNotesTimer);
+  _stratsNotesTimer = setTimeout(saveStratsNotes, 900);
+}
+
+function saveStratsNotes() {
+  var st = document.getElementById('strats-notes-status');
+  var notes = document.getElementById('strats-notes').value;
+  st.textContent = 'salvando…';
+  fetch('/api/estudo-notas/' + encodeURIComponent(_stratsTicker), {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({notes: notes})
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      st.textContent = d && d.ok ? '✓ salvo' : '⚠️ erro ao salvar';
+      setTimeout(function() { if (st.textContent === '✓ salvo') st.textContent = ''; }, 2000);
+    })
+    .catch(function() { st.textContent = '⚠️ erro ao salvar'; });
 }
 
 function saveStrat() {

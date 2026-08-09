@@ -318,6 +318,7 @@ class StudyIntlStock(db.Model):
     study_date = db.Column(db.Date, nullable=True)
     strategy_active = db.Column(db.String(100), nullable=True)
     entry_date = db.Column(db.Date, nullable=True)
+    notes = db.Column(db.Text, nullable=True)   # observações gerais do papel (livre)
 
 
 class StudyStock(db.Model):
@@ -337,6 +338,7 @@ class StudyStock(db.Model):
     study_date = db.Column(db.Date, nullable=True)
     strategy_active = db.Column(db.String(100), nullable=True)
     entry_date = db.Column(db.Date, nullable=True)
+    notes = db.Column(db.Text, nullable=True)   # observações gerais do papel (livre)
 
 
 class StudyStrategy(db.Model):

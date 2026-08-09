@@ -330,6 +330,14 @@ def run_migrations():
         except Exception:
             pass  # coluna já existe
 
+    # StudyStock/StudyIntlStock: observações gerais do papel (livre, separado
+    # da descrição de cada estratégia individual)
+    for _table in ('study_stock', 'study_intl_stock'):
+        try:
+            cursor.execute(f"ALTER TABLE {_table} ADD COLUMN notes TEXT")
+        except Exception:
+            pass  # coluna já existe
+
     # Check existing columns in 'option' table
     cursor.execute("PRAGMA table_info(option)")
     existing_columns = {row[1] for row in cursor.fetchall()}
@@ -11988,6 +11996,36 @@ def _study_strategy_fill(st, data):
     st.descricao = ((data.get('descricao') or '').strip()[:200]) or None
     if (data.get('situacao') or '').upper() in ('ATIVA', 'DESATIVADA'):
         st.situacao = data['situacao'].upper()
+
+
+@app.route('/api/estudo-notas/<ticker>')
+@login_required
+def estudo_notas_get(ticker):
+    """Observações gerais do papel (não de uma estratégia específica) — uma
+    por ticker, compartilhada entre BR e internacional pelo mesmo modelo que
+    já guarda o estudo (StudyStock/StudyIntlStock)."""
+    ticker = ticker.strip().upper()
+    row = (StudyStock.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+           or StudyIntlStock.query.filter_by(user_id=current_user.id, ticker=ticker).first())
+    return jsonify({'notes': (row.notes if row else '') or ''})
+
+
+@app.route('/api/estudo-notas/<ticker>', methods=['POST'])
+@login_required
+def estudo_notas_save(ticker):
+    ticker = ticker.strip().upper()
+    notes = ((request.get_json(silent=True) or {}).get('notes') or '')[:4000]
+    row = (StudyStock.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+           or StudyIntlStock.query.filter_by(user_id=current_user.id, ticker=ticker).first())
+    if not row:
+        # Sem estudo ainda para este papel: não há onde guardar a nota — o
+        # registro de estudo só existe quando o usuário roda a análise da
+        # tela Estudos. Cria um StudyStock mínimo pra não perder a anotação.
+        row = StudyStock(user_id=current_user.id, ticker=ticker)
+        db.session.add(row)
+    row.notes = notes
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 @app.route('/api/estudo-strategies/<ticker>')

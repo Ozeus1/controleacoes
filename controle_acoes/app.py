@@ -1072,10 +1072,20 @@ def _calc_structured_metrics(op):
         for leg in legs
     )
 
+    # ── Resultado já realizado nos manejos ─────────────────────────
+    # Pernas fechadas/trocadas não estão mais em `legs`, então o payoff e o
+    # P&L das pernas atuais desconhecem esse ganho/perda. Sem somá-lo, uma
+    # perna zerada com lucro some da conta e o prejuízo máximo aparece pior
+    # do que é de fato.
+    try:
+        roll_adj, _ = _estruturada_roll_adjustment(op)
+    except Exception:
+        roll_adj = 0.0
+
     # ── P&L atual = quanto receberia/pagaria fechando tudo agora ───
     # Para VENDA: lucro = entry − current (ganha quando opção cai)
     # Para COMPRA: lucro = current − entry (ganha quando opção sobe)
-    current_pnl = sum(
+    current_pnl = roll_adj + sum(
         ((leg.entry_price - leg.current_price) if leg.side == 'SELL'
          else (leg.current_price - leg.entry_price)) * leg.quantity
         for leg in legs
@@ -1116,7 +1126,9 @@ def _calc_structured_metrics(op):
 
     # ── Payoff no vencimento ────────────────────────────────────────
     def payoff_at(S):
-        total = net
+        # roll_adj entra aqui para que lucro máx., prejuízo máx. e breakevens
+        # já saiam corrigidos — todos derivam desta função.
+        total = net + roll_adj
         for leg in legs:
             q     = leg.quantity
             K     = leg.strike or 0
@@ -1200,15 +1212,26 @@ def _calc_structured_metrics(op):
     put_strikes  = [l.strike for l in legs if l.opt_type == 'PUT'  and l.strike]
     call_strikes = [l.strike for l in legs if l.opt_type == 'CALL' and l.strike]
 
-    if net > 0 and sell_call_qty > 0:
+    # A fórmula simplificada pressupõe que `net` seja só prêmio de opções. Com
+    # perna de AÇÃO o net carrega o custo do papel (ex.: −R$ 6.660 num collar
+    # de 300 ações), e a conta devolvia um breakeven negativo — sem sentido.
+    # Nesses casos fica só o breakeven matemático, que já sai do payoff.
+    has_stock = any(l.opt_type == 'STOCK' for l in legs)
+    # net_be inclui o realizado nos manejos: o breakeven de mercado se desloca
+    # junto, senão a tabela mostraria um ponto de equilíbrio que ignora o
+    # ganho/perda já embolsado ao fechar pernas.
+    net_be = net + roll_adj
+    if has_stock:
+        pass                      # usa breakevens[] (matemáticos)
+    elif net_be > 0 and sell_call_qty > 0:
         if put_strikes:
-            be_low  = round(min(put_strikes)  - net / sell_call_qty, 2)
+            be_low  = round(min(put_strikes)  - net_be / sell_call_qty, 2)
         if call_strikes:
-            be_high = round(max(call_strikes) + net / sell_call_qty, 2)
-    elif net < 0 and buy_put_qty > 0:
+            be_high = round(max(call_strikes) + net_be / sell_call_qty, 2)
+    elif net_be < 0 and buy_put_qty > 0:
         # Estratégia de débito com puts compradas
         if put_strikes:
-            be_low = round(min(put_strikes) - abs(net) / buy_put_qty, 2)
+            be_low = round(min(put_strikes) - abs(net_be) / buy_put_qty, 2)
 
     # ── POP via BS log-normal ───────────────────────────────────────
     pop = None

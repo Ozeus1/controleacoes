@@ -864,7 +864,9 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
     document.getElementById('m-be').textContent =
         breakevens.length ? breakevens.map(fmtBRL).join(' / ') : '—';
     var pnlEl = document.getElementById('m-pnl');
-    pnlEl.textContent = fmtBRL(pnl);
+    // fmtBRL usa valor absoluto; sem o sinal explícito, "R$ 21,00" em vermelho
+    // era lido como lucro por quem não repara na cor.
+    pnlEl.textContent = (pnl < 0 ? '−' : '') + fmtBRL(pnl);
     pnlEl.className = pnl >= 0 ? 'positive' : 'negative';
 
     // ── POP via Black-Scholes (JS) ────────────────────────────────────────────

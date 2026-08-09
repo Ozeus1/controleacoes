@@ -219,6 +219,70 @@ header {
     }
 }
 
+/* ── Submenu aninhado (ex.: Manejo → Geral / Put) ── */
+.nav-subdropdown {
+    position: relative;
+    display: block;         /* ocupa a linha inteira do menu pai, como os <a> irmãos */
+    width: 100%;
+}
+
+.nav-subdropdown > .nav-dropdown-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .6rem 1.2rem;
+    color: var(--text-secondary);
+    font-size: .88rem;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+}
+
+.nav-subdropdown > .nav-dropdown-toggle:hover,
+.nav-subdropdown > .nav-dropdown-toggle.active {
+    background: var(--dropdown-hover);
+    color: var(--text-primary);
+}
+
+.nav-subdropdown .nav-caret {
+    font-size: .7rem;
+}
+
+/* A seta do submenu aponta para a direção em que ele realmente abre: para o
+   lado no desktop (flyout), para baixo no mobile (expande inline). A rotação
+   de 180° herdada de .nav-dropdown.open não fica correta pra "▸", então cada
+   breakpoint define seu próprio símbolo/estado em vez de rotacionar. */
+.nav-caret-sub { transform: none !important; }
+.nav-dropdown.open > .nav-dropdown-toggle .nav-caret-sub { transform: none !important; }
+@media (min-width: 769px) {
+    .nav-subdropdown.open > .nav-dropdown-toggle .nav-caret-sub { color: var(--text-primary); }
+}
+@media (max-width: 768px) {
+    /* font-size:0 esconde o "▸" do texto; o pseudo-elemento reintroduz o
+       tamanho e desenha "▾" — a seta some sem duplicar.
+       Especificidade igual à de `.nav-subdropdown .nav-caret` (247): reforça
+       com `.nav-subdropdown &` pra garantir que esta regra vença por ordem. */
+    .nav-subdropdown .nav-caret-sub { font-size: 0; }
+    .nav-subdropdown .nav-caret-sub::before { content: '▾'; font-size: .7rem; }
+}
+
+@media (min-width: 769px) {
+    /* Desktop: abre para o lado direito do item pai, como um flyout */
+    .nav-submenu {
+        top: -.4rem;
+        left: 100%;
+        transform: none;
+        margin-left: .3rem;
+    }
+    .nav-submenu::before {
+        top: 0;
+        left: -10px;
+        right: auto;
+        width: 10px;
+        height: 100%;
+    }
+}
+
 .nav-mobile-section-label {
     font-size: 0.75rem;
     color: var(--text-secondary);
@@ -699,6 +763,18 @@ label {
     .nav-dropdown-menu a.active {
         background: rgba(124, 58, 237, 0.15);
         color: var(--text-primary);
+    }
+
+    /* Submenu aninhado no mobile: recuo extra pra marcar a hierarquia */
+    .nav-subdropdown > .nav-dropdown-toggle {
+        padding-left: 1.6rem;
+        border-bottom: 1px solid var(--nav-mobile-border);
+    }
+    .nav-submenu {
+        padding-left: .8rem;
+    }
+    .nav-submenu a {
+        padding-left: 2rem !important;
     }
 
     .menu-toggle {

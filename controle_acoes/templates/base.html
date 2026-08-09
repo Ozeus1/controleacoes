@@ -265,13 +265,22 @@
                         <a href="{{ url_for('simulacao_opcoes') }}"
                            class="{{ 'active' if request.endpoint == 'simulacao_opcoes' else '' }}">📈 Simulação</a>
                         <a href="{{ url_for('simulador_liquidez') }}"
-                           class="{{ 'active' if request.endpoint == 'simulador_liquidez' else '' }}">📈 Simulação Gráfica</a>
+                           class="{{ 'active' if request.endpoint == 'simulador_liquidez' else '' }}">📈 Simulador com Liquidez</a>
                         <a href="{{ url_for('rolagem_opcoes') }}"
                            class="{{ 'active' if request.endpoint == 'rolagem_opcoes' else '' }}">🔁 Rolagem de Opções</a>
-                        <a href="{{ url_for('manejo_opcoes') }}"
-                           class="{{ 'active' if request.endpoint == 'manejo_opcoes' else '' }}">🔧 Manejo</a>
-                        <a href="{{ url_for('manejo_put') }}"
-                           class="{{ 'active' if request.endpoint == 'manejo_put' else '' }}">🛟 Manejo de Put</a>
+                        {# Manejo: item pai com submenu Geral (manejo_opcoes) / Put (manejo_put) #}
+                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['manejo_opcoes','manejo_put'] else '' }}">
+                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['manejo_opcoes','manejo_put'] else '' }}"
+                               onclick="toggleNavDrop(this,event)">
+                                🔧 Manejo <span class="nav-caret nav-caret-sub">▸</span>
+                            </a>
+                            <div class="nav-dropdown-menu nav-submenu">
+                                <a href="{{ url_for('manejo_opcoes') }}"
+                                   class="{{ 'active' if request.endpoint == 'manejo_opcoes' else '' }}">🔧 Geral</a>
+                                <a href="{{ url_for('manejo_put') }}"
+                                   class="{{ 'active' if request.endpoint == 'manejo_put' else '' }}">🛟 Put</a>
+                            </div>
+                        </div>
                         <a href="{{ url_for('venda_puts') }}"
                            class="{{ 'active' if request.endpoint in ['venda_puts','collar_edit'] else '' }}">🧮 Cálculos de Opções</a>
                         <a href="{{ url_for('ranking_volatilidade') }}"
@@ -394,11 +403,19 @@
             e.stopPropagation();
             var drop = el.closest('.nav-dropdown');
             var wasOpen = drop.classList.contains('open');
-            // Fecha todos os outros submenus
-            document.querySelectorAll('.nav-dropdown.open').forEach(function(d) {
-                d.classList.remove('open');
+            // Fecha os outros submenus do MESMO nível (irmãos), preservando
+            // ancestrais (o pai que contém este) e descendentes (submenu
+            // aninhado, ex.: Manejo → Geral/Put) para não fechar em cascata.
+            var siblingScope = drop.parentElement.closest('.nav-dropdown-menu') || document.querySelector('.main-nav');
+            siblingScope.querySelectorAll(':scope > .nav-dropdown.open, :scope > * > .nav-dropdown.open').forEach(function(d) {
+                if (d !== drop && !drop.contains(d) && !d.contains(drop)) d.classList.remove('open');
             });
-            if (!wasOpen) drop.classList.add('open');
+            if (wasOpen) {
+                drop.classList.remove('open');
+                drop.querySelectorAll('.nav-dropdown.open').forEach(function(d) { d.classList.remove('open'); });
+            } else {
+                drop.classList.add('open');
+            }
         }
 
         // Fecha submenus e menu Perfil ao clicar fora

@@ -166,10 +166,15 @@
                                style="width:135px;" {% if isSt %}readonly{% endif %}>
                     </td>
                     <td class="col-strike" {% if isSt %}style="display:none;"{% endif %}>
-                        <input type="text" name="leg_strike"
-                               value="{{ '%.2f'|format(leg.strike)|replace('.', ',') }}"
-                               placeholder="0,00" style="width:80px; text-align:right;" oninput="scheduleRedraw()"
-                               {% if isSt %}readonly{% endif %}>
+                        <div style="display:flex; gap:.2rem; align-items:center;">
+                            <input type="text" name="leg_strike"
+                                   value="{{ '%.2f'|format(leg.strike)|replace('.', ',') }}"
+                                   placeholder="0,00" style="width:80px; text-align:right;" oninput="scheduleRedraw()"
+                                   {% if isSt %}readonly{% endif %}>
+                            <button type="button" class="btn btn-secondary btn-sm sc-btn"
+                                    title="Escolher da cadeia de opções" onclick="abreCadeiaLinha(this)"
+                                    style="padding:.1rem .35rem;">🔎</button>
+                        </div>
                     </td>
                     <td class="col-iv" style="display:none;">
                         <input type="text" name="leg_iv"
@@ -199,7 +204,14 @@
                     <td><input type="text" name="leg_qty" value="1" style="width:60px; text-align:center;" oninput="scheduleRedraw()"></td>
                     <td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px; text-align:right;" oninput="scheduleRedraw()"></td>
                     <td class="col-exp"><input type="date" name="leg_exp" style="width:135px;"></td>
-                    <td class="col-strike"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px; text-align:right;" oninput="scheduleRedraw()"></td>
+                    <td class="col-strike">
+                        <div style="display:flex; gap:.2rem; align-items:center;">
+                            <input type="text" name="leg_strike" placeholder="0,00" style="width:80px; text-align:right;" oninput="scheduleRedraw()">
+                            <button type="button" class="btn btn-secondary btn-sm sc-btn"
+                                    title="Escolher da cadeia de opções" onclick="abreCadeiaLinha(this)"
+                                    style="padding:.1rem .35rem;">🔎</button>
+                        </div>
+                    </td>
                     <td class="col-iv" style="display:none;"><input type="text" name="leg_iv" placeholder="0,0" style="width:60px; text-align:right;" oninput="scheduleRedraw()"></td>
                     <td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
                 </tr>
@@ -266,7 +278,184 @@
 
 </div>
 
+{# ── Modal: escolher opção da cadeia (botão 🔎 de cada perna) ── #}
+<div id="sc-modal" style="display:none; position:fixed; inset:0; z-index:10002;
+     background:rgba(0,0,0,.78); align-items:flex-start; justify-content:center; padding:2rem 1rem; overflow-y:auto;">
+  <div style="background:var(--card-bg,#1e293b); border-radius:10px; width:min(96vw,880px);
+              margin:auto; padding:1.2rem; max-height:88vh; display:flex; flex-direction:column;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:.6rem; margin-bottom:.6rem;">
+      <h5 style="margin:0;">🔎 Cadeia de opções — <span id="sc-titulo"></span></h5>
+      <button onclick="fechaCadeiaLinha()" style="background:none;border:none;font-size:1.5rem;
+              color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; margin-bottom:.6rem;">
+      <select class="form-control form-control-sm" id="sc-exp" style="width:auto;" onchange="scRenderiza()"></select>
+      <label style="font-size:.8rem; color:var(--text-secondary); display:flex; align-items:center;
+                    gap:.3rem; white-space:nowrap;">
+        <input type="checkbox" id="sc-weekly" onchange="scCarrega(true)"> incluir semanais
+      </label>
+      <span id="sc-spot" style="font-size:.82rem; color:var(--text-secondary);"></span>
+    </div>
+    <div id="sc-status" style="padding:1.2rem; text-align:center; color:var(--text-secondary);"></div>
+    <div id="sc-lista" style="overflow-y:auto; flex:1;"></div>
+  </div>
+</div>
+
 <script>
+// ── Seletor de opções da cadeia (botão 🔎 em cada perna) ─────────────────────
+// Mesma regra da tela Cálculos de Opções: lista só o tipo da perna (CALL/PUT),
+// e o prêmio segue o lado — compra paga o ask, venda recebe o bid. Fora do
+// pregão o book não vale, então usa o último negócio (bid_eff/ask_eff já vêm
+// com essa decisão tomada no servidor).
+var SC = {row: null, dados: null, ticker: null, tipo: null, venda: false};
+
+function scNum(v) {
+    if (v == null) return 0;
+    return parseFloat(String(v).replace(/\./g, '').replace(',', '.')) || 0;
+}
+function scBRL(v) {
+    if (v == null || v === '') return '-';
+    return 'R$ ' + Number(v).toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+function scData(iso) {
+    var p = (iso || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+}
+
+window.abreCadeiaLinha = function(btn) {
+    var row = btn.closest('.leg-row');
+    var tipo = (row.querySelector('[name=leg_type]') || {}).value;
+    if (tipo === 'STOCK') {
+        alert('Esta perna é a ação — o preço dela é a própria cotação do ativo.');
+        return;
+    }
+    var tk = ((document.querySelector('[name=underlying]') || {}).value || '').trim().toUpperCase();
+    if (!tk) { alert('Informe o Ativo Subjacente antes de buscar a cadeia.'); return; }
+    SC.row   = row;
+    SC.tipo  = tipo;
+    SC.venda = (row.querySelector('[name=leg_side]') || {}).value === 'SELL';
+    SC.ticker = tk;
+    document.getElementById('sc-titulo').textContent =
+        tk + ' · ' + tipo + ' — ' + (SC.venda ? 'VENDA' : 'COMPRA');
+    document.getElementById('sc-modal').style.display = 'flex';
+    if (SC.dados && SC.dados.__tk === tk) { scRenderiza(); return; }
+    scCarrega(false);
+};
+
+window.fechaCadeiaLinha = function() {
+    document.getElementById('sc-modal').style.display = 'none';
+};
+
+window.scCarrega = function() {
+    var st = document.getElementById('sc-status');
+    var lista = document.getElementById('sc-lista');
+    lista.innerHTML = '';
+    st.style.display = '';
+    st.textContent = 'Buscando cadeia de ' + SC.ticker + '…';
+    var wk = document.getElementById('sc-weekly').checked ? '1' : '0';
+    fetch('/api/cadeia/' + encodeURIComponent(SC.ticker) + '?weekly=' + wk + '&days=180&n=20')
+        .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+        .then(function(res) {
+            if (!res.ok || res.j.error) {
+                st.textContent = '⚠️ ' + (res.j.error || 'Falha ao buscar a cadeia.');
+                return;
+            }
+            res.j.__tk = SC.ticker;
+            SC.dados = res.j;
+            var sel = document.getElementById('sc-exp');
+            sel.innerHTML = (res.j.expirations || []).map(function(e) {
+                return '<option value="' + e.exp + '">' + scData(e.exp) + '</option>';
+            }).join('');
+            // Já seleciona o vencimento da própria perna, se estiver na lista.
+            var expLinha = (SC.row.querySelector('[name=leg_exp]') || {}).value;
+            if (expLinha && sel.querySelector('option[value="' + expLinha + '"]')) sel.value = expLinha;
+            document.getElementById('sc-spot').textContent =
+                res.j.spot ? 'cotação ' + scBRL(res.j.spot) : '';
+            scRenderiza();
+        })
+        .catch(function(e) { st.textContent = '⚠️ ' + e; });
+};
+
+window.scRenderiza = function() {
+    var st = document.getElementById('sc-status');
+    var lista = document.getElementById('sc-lista');
+    if (!SC.dados) return;
+    var exp = document.getElementById('sc-exp').value;
+    var bloco = (SC.dados.expirations || []).find(function(e) { return e.exp === exp; });
+    if (!bloco) { st.style.display = ''; st.textContent = 'Sem opções neste vencimento.'; lista.innerHTML = ''; return; }
+    var tipo = SC.tipo === 'PUT' ? 'put' : 'call';
+    var spot = SC.dados.spot || 0;
+    var aberto = !!SC.dados.market_open;
+    var linhas = bloco.rows.filter(function(r) { return r[tipo]; });
+    if (!linhas.length) {
+        st.style.display = '';
+        st.textContent = 'Nenhuma ' + SC.tipo + ' neste vencimento.';
+        lista.innerHTML = ''; return;
+    }
+    st.style.display = 'none';
+    var lado = SC.venda ? 'bid' : 'ask';
+    var colPreco = aberto
+        ? '<th style="color:#60a5fa;" title="preço usado ao escolher">' + lado.toUpperCase() + ' ◄</th>' +
+          '<th style="opacity:.6;">' + (lado === 'bid' ? 'ASK' : 'BID') + '</th>'
+        : '<th style="color:#60a5fa;" title="preço usado: pregão fechado">ÚLTIMO ◄</th>' +
+          '<th style="opacity:.6;">bid/ask</th>';
+    var h = '<div style="font-size:.78rem;color:var(--text-secondary);margin-bottom:.4rem;">'
+          + 'Clique na linha para preencher a perna. Prêmio = <strong>'
+          + (aberto ? (SC.venda ? 'bid (venda)' : 'ask (compra)') : 'último negócio') + '</strong> · '
+          + (aberto ? '<span style="color:#34d399;">🟢 pregão aberto</span>'
+                    : '<span style="color:#fbbf24;">🌙 pregão fechado — o book não vale</span>')
+          + '</div>'
+          + '<div style="overflow-x:auto;"><table class="table table-sm" style="width:100%;font-size:.85rem;white-space:nowrap;">'
+          + '<thead><tr><th>Opção</th><th>Strike</th>' + colPreco + '<th title="Delta">Δ</th></tr></thead><tbody>';
+    linhas.forEach(function(r) {
+        var o = r[tipo];
+        var prem = (SC.venda ? o.bid_eff : o.ask_eff);
+        if (prem == null) prem = (aberto ? o[lado] : o.close) || o.close || 0;
+        var src = (SC.venda ? o.bid_src : o.ask_src) || (aberto ? lado : 'último');
+        var atm = spot && Math.abs(o.strike - spot) / spot < 0.015;
+        var outro = aberto ? scBRL(lado === 'bid' ? o.ask : o.bid)
+                           : (o.bid || o.ask ? scBRL(o.bid) + ' / ' + scBRL(o.ask) : '—');
+        h += '<tr class="sc-row" data-sym="' + o.symbol + '" data-k="' + o.strike + '"'
+           + ' data-p="' + prem + '" style="cursor:pointer;'
+           + (atm ? 'background:rgba(59,130,246,.12);' : '') + '">'
+           + '<td><strong>' + o.symbol + '</strong></td>'
+           + '<td>' + scBRL(o.strike) + (atm ? ' <span style="font-size:.7rem;color:#60a5fa;">ATM</span>' : '') + '</td>'
+           + '<td style="color:#60a5fa;font-weight:700;">' + (prem ? scBRL(prem) : '—')
+           + (src === 'último' && aberto ? ' <span style="font-size:.68rem;opacity:.7;">últ.</span>' : '') + '</td>'
+           + '<td style="opacity:.6;">' + outro + '</td>'
+           + '<td>' + (o.delta == null ? '—' : o.delta.toFixed(2)) + '</td></tr>';
+    });
+    h += '</tbody></table></div>';
+    lista.innerHTML = h;
+    lista.querySelectorAll('.sc-row').forEach(function(tr) {
+        tr.addEventListener('click', function() {
+            scEscolhe(tr.dataset.sym, tr.dataset.k, tr.dataset.p);
+        });
+    });
+};
+
+function scEscolhe(sym, strike, premio) {
+    var row = SC.row;
+    if (!row) return;
+    var t = row.querySelector('[name=leg_ticker]');
+    var k = row.querySelector('[name=leg_strike]');
+    var p = row.querySelector('[name=leg_premium]');
+    var e = row.querySelector('[name=leg_exp]');
+    if (t) t.value = sym;
+    if (k) k.value = parseFloat(strike).toFixed(2).replace('.', ',');
+    if (p) p.value = parseFloat(premio).toFixed(2).replace('.', ',');
+    // O vencimento da opção escolhida manda: sem isso a perna ficaria com
+    // strike/prêmio de um vencimento e a data de outro.
+    var exp = document.getElementById('sc-exp').value;
+    if (e && exp) e.value = exp;
+    fechaCadeiaLinha();
+    scheduleRedraw();
+}
+
+document.getElementById('sc-modal').addEventListener('click', function(ev) {
+    if (ev.target === this) fechaCadeiaLinha();
+});
+
 // ── Gestão de pernas ──────────────────────────────────────────────────────────
 function rowTemplate(type) {
     var isSt = type === 'STOCK';
@@ -286,7 +475,12 @@ function rowTemplate(type) {
         '<td><input type="text" name="leg_qty" value="1" style="width:60px;text-align:center;" oninput="scheduleRedraw()"></td>' +
         '<td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px;text-align:right;" oninput="scheduleRedraw()"></td>' +
         '<td class="col-exp" style="' + hide + '"><input type="date" name="leg_exp" style="width:135px;"' + ro + '></td>' +
-        '<td class="col-strike" style="' + hide + '"><input type="text" name="leg_strike" value="0,00" style="width:80px;text-align:right;" oninput="scheduleRedraw()"' + ro + '></td>' +
+        '<td class="col-strike" style="' + hide + '">' +
+            '<div style="display:flex;gap:.2rem;align-items:center;">' +
+            '<input type="text" name="leg_strike" value="0,00" style="width:80px;text-align:right;" oninput="scheduleRedraw()"' + ro + '>' +
+            '<button type="button" class="btn btn-secondary btn-sm sc-btn" title="Escolher da cadeia de opções"' +
+            ' onclick="abreCadeiaLinha(this)" style="padding:.1rem .35rem;">🔎</button>' +
+        '</div></td>' +
         '<td class="col-iv" style="display:none;"><input type="text" name="leg_iv" value="0,0" style="width:60px;text-align:right;" oninput="scheduleRedraw()"' + ro + '></td>' +
         '<td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>' +
     '</tr>';

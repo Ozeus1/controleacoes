@@ -262,10 +262,21 @@
                            class="{{ 'active' if request.endpoint == 'opcoes' else '' }}">📋 Operações</a>
                         <a href="{{ url_for('estudos') }}"
                            class="{{ 'active' if request.endpoint == 'estudos' else '' }}">📚 Estudos</a>
-                        <a href="{{ url_for('simulacao_opcoes') }}"
-                           class="{{ 'active' if request.endpoint == 'simulacao_opcoes' else '' }}">📈 Simulação</a>
-                        <a href="{{ url_for('simulador_liquidez') }}"
-                           class="{{ 'active' if request.endpoint == 'simulador_liquidez' else '' }}">📈 Simulador com Liquidez</a>
+                        {# Simulador: item pai com submenu Gráfico (simulacao_opcoes) / Com Liquidez (simulador_liquidez) / Com Cadeia de Opções (cadeia_opcoes) #}
+                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['simulacao_opcoes','simulador_liquidez','cadeia_opcoes'] else '' }}">
+                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['simulacao_opcoes','simulador_liquidez','cadeia_opcoes'] else '' }}"
+                               onclick="toggleNavDrop(this,event)">
+                                📈 Simulador <span class="nav-caret nav-caret-sub">▸</span>
+                            </a>
+                            <div class="nav-dropdown-menu nav-submenu">
+                                <a href="{{ url_for('simulacao_opcoes') }}"
+                                   class="{{ 'active' if request.endpoint == 'simulacao_opcoes' else '' }}">📈 Gráfico</a>
+                                <a href="{{ url_for('simulador_liquidez') }}"
+                                   class="{{ 'active' if request.endpoint == 'simulador_liquidez' else '' }}">📈 Com Liquidez</a>
+                                <a href="{{ url_for('cadeia_opcoes') }}"
+                                   class="{{ 'active' if request.endpoint == 'cadeia_opcoes' else '' }}">🔗 Com Cadeia de Opções</a>
+                            </div>
+                        </div>
                         <a href="{{ url_for('rolagem_opcoes') }}"
                            class="{{ 'active' if request.endpoint == 'rolagem_opcoes' else '' }}">🔁 Rolagem de Opções</a>
                         {# Manejo: item pai com submenu Geral (manejo_opcoes) / Put (manejo_put) #}
@@ -287,8 +298,6 @@
                            class="{{ 'active' if request.endpoint == 'ranking_volatilidade' and not request.args.get('busca_liquidez') else '' }}">📊 Ranking de Volatilidade</a>
                         <a href="{{ url_for('ranking_volatilidade', busca_liquidez=1) }}"
                            class="{{ 'active' if request.endpoint == 'ranking_volatilidade' and request.args.get('busca_liquidez') else '' }}">💧 Busca Liquidez</a>
-                        <a href="{{ url_for('cadeia_opcoes') }}"
-                           class="{{ 'active' if request.endpoint == 'cadeia_opcoes' else '' }}">🔗 Simulador de Estruturas</a>
                         <a href="{{ url_for('busca_opcao') }}"
                            class="{{ 'active' if request.endpoint == 'busca_opcao' else '' }}">🔍 Busca de Opção</a>
                         {# Busca de Estruturas: item pai com submenu Comuns (busca_operacoes) / Avançadas (busca_operacoes_avancadas) #}

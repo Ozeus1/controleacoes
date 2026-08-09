@@ -7110,6 +7110,10 @@ def roll_estruturada(id):
     new_strikes     = request.form.getlist('leg_new_strike')
     new_premiums    = request.form.getlist('leg_new_premium')
     new_exps        = request.form.getlist('leg_new_exp')
+    # Pernas a ENCERRAR (zerar o braço): saem da estrutura em vez de trocar de
+    # contrato. Vem como lista de leg_id — os campos da nova perna ficam
+    # desabilitados no formulário, então não deslocam as listas paralelas acima.
+    drop_ids        = {int(x) for x in request.form.getlist('leg_drop') if str(x).strip().isdigit()}
 
     try:
         roll_entry = {
@@ -7126,20 +7130,58 @@ def roll_estruturada(id):
 
         net_roll = 0.0
         realized = 0.0
+        legs_encerradas = []
+        # Os campos da nova perna só são enviados para pernas NÃO encerradas
+        # (ficam disabled no formulário), então essas listas andam num índice
+        # próprio — usar `i` de leg_ids deslocaria os valores das pernas
+        # seguintes assim que um braço fosse zerado.
+        j = 0
         for i, lid in enumerate(leg_ids):
             leg = StructuredLeg.query.get(int(lid))
             if not leg or leg.operation.user_id != current_user.id:
                 continue
 
             cp  = float(close_prices[i].replace(',','.'))  if i < len(close_prices)  and close_prices[i]  else leg.current_price or leg.entry_price
-            nt  = new_tickers[i].upper().strip()            if i < len(new_tickers)   and new_tickers[i]   else leg.ticker
-            nk  = float(new_strikes[i].replace(',','.'))   if i < len(new_strikes)   and new_strikes[i]   else leg.strike
-            np_ = float(new_premiums[i].replace(',','.'))  if i < len(new_premiums)  and new_premiums[i]  else leg.entry_price
-            ne  = new_exps[i]                               if i < len(new_exps)      and new_exps[i]      else (leg.expiration_date.isoformat() if leg.expiration_date else '')
+            qty = leg.quantity or 1
+
+            # ── Encerrar a perna: zera o braço e ele sai da estrutura ─────────
+            if leg.id in drop_ids:
+                # Só o fluxo de fechamento entra no caixa: SELL recompra (paga),
+                # BUY vende (recebe). Não há prêmio novo porque não há nova perna.
+                if leg.side == 'SELL':
+                    net_roll -= cp * qty
+                    pnl = ((leg.entry_price or 0) - cp) * qty
+                else:
+                    net_roll += cp * qty
+                    pnl = (cp - (leg.entry_price or 0)) * qty
+                realized += pnl
+                roll_entry['legs'].append({
+                    'old_ticker':   leg.ticker,
+                    'old_strike':   leg.strike,
+                    'old_exp':      leg.expiration_date.isoformat() if leg.expiration_date else None,
+                    'old_premium':  leg.entry_price,
+                    'close_price':  cp,
+                    'new_ticker':   None,
+                    'new_strike':   None,
+                    'new_premium':  None,
+                    'new_exp':      None,
+                    'side':         leg.side,
+                    'quantity':     qty,
+                    'closed_leg':   True,          # marca a saída definitiva do braço
+                    'realized_pnl': round(pnl, 2),
+                })
+                legs_encerradas.append(f'{leg.ticker} ({qty}×)')
+                db.session.delete(leg)
+                continue
+
+            nt  = new_tickers[j].upper().strip()            if j < len(new_tickers)   and new_tickers[j]   else leg.ticker
+            nk  = float(new_strikes[j].replace(',','.'))   if j < len(new_strikes)   and new_strikes[j]   else leg.strike
+            np_ = float(new_premiums[j].replace(',','.'))  if j < len(new_premiums)  and new_premiums[j]  else leg.entry_price
+            ne  = new_exps[j]                               if j < len(new_exps)      and new_exps[j]      else (leg.expiration_date.isoformat() if leg.expiration_date else '')
+            j += 1
 
             # SELL: recebe novo prêmio, paga para fechar → crédito = np_ - cp
             # BUY:  paga novo prêmio, recebe para fechar → custo  = cp - np_
-            qty = leg.quantity or 1
             if leg.side == 'SELL':
                 net_roll += (np_ - cp) * qty
             else:
@@ -7192,6 +7234,8 @@ def roll_estruturada(id):
 
         roll_entry['net_roll'] = round(net_roll, 4)
         roll_entry['realized_pnl'] = round(realized, 2)
+        if legs_encerradas:
+            roll_entry['closed_legs'] = legs_encerradas
         # Marca: manejo do NOVO modelo (não gerou TradeHistory) — o encerramento
         # soma este realized_pnl. Manejos antigos (sem a flag) já viraram
         # TradeHistory e NÃO são somados de novo, evitando dupla contagem.
@@ -7200,9 +7244,18 @@ def roll_estruturada(id):
         op.created_at = datetime.strptime(roll_date, '%Y-%m-%d')
 
         db.session.commit()
-        flash(f'Manejo registrado! Caixa do ajuste: R$ {net_roll:.2f} · '
-              f'Parcial acumulado nas pernas fechadas: R$ {realized:.2f} '
-              f'(o lucro/prejuízo só é apurado no ENCERRAMENTO da operação).', 'success')
+        msg = (f'Manejo registrado! Caixa do ajuste: R$ {net_roll:.2f} · '
+               f'Parcial acumulado nas pernas fechadas: R$ {realized:.2f} '
+               f'(o lucro/prejuízo só é apurado no ENCERRAMENTO da operação).')
+        if legs_encerradas:
+            msg += f" Braço(s) zerado(s): {', '.join(legs_encerradas)}."
+            # Sem pernas de opção restantes, a estrutura deixou de existir de
+            # fato — avisa para o usuário encerrá-la e apurar o resultado.
+            restantes = [l for l in op.legs if l.opt_type != 'STOCK']
+            if not restantes:
+                msg += (' Não restam pernas de opção: use ENCERRAR para apurar o '
+                        'resultado e mover a operação para o Histórico.')
+        flash(msg, 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Erro na rolagem: {e}', 'danger')

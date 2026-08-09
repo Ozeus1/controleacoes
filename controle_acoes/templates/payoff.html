@@ -73,23 +73,39 @@
                                 @ {{ '%.2f'|format(leg.entry_price or 0)|replace('.', ',') }} × {{ leg.quantity }}</span>
                         </label>
                     </legend>
-                    <div class="mj-fields" style="display:none; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:.6rem;">
+                    <div class="mj-fields" style="display:none;">
                         <input type="hidden" name="leg_id" value="{{ leg.id }}" disabled>
-                        <div><label style="font-size:.72rem;color:var(--text-secondary);">Fechamento (R$) — {{ 'recompra' if leg.side=='SELL' else 'venda' }}</label>
-                            <input type="text" name="leg_close_price" class="form-control form-control-sm"
-                                   value="{{ '%.2f'|format(leg.current_price or 0)|replace('.', ',') }}" disabled></div>
-                        <div><label style="font-size:.72rem;color:var(--text-secondary);">Novo ticker</label>
-                            <input type="text" name="leg_new_ticker" class="form-control form-control-sm"
-                                   style="text-transform:uppercase;" value="{{ leg.ticker }}" disabled></div>
-                        <div><label style="font-size:.72rem;color:var(--text-secondary);">Novo strike</label>
-                            <input type="text" name="leg_new_strike" class="form-control form-control-sm"
-                                   value="{{ '%.2f'|format(leg.strike or 0)|replace('.', ',') }}" disabled></div>
-                        <div><label style="font-size:.72rem;color:var(--text-secondary);">Novo prêmio</label>
-                            <input type="text" name="leg_new_premium" class="form-control form-control-sm"
-                                   value="{{ '%.2f'|format(leg.entry_price or 0)|replace('.', ',') }}" disabled></div>
-                        <div><label style="font-size:.72rem;color:var(--text-secondary);">Novo vencimento</label>
-                            <input type="date" name="leg_new_exp" class="form-control form-control-sm"
-                                   value="{{ leg.expiration_date }}" disabled></div>
+                        {# Zerar o braço: fecha a perna e ela sai da estrutura, em vez
+                           de ser substituída por outra. O caixa da saída e o resultado
+                           realizado ficam registrados no manejo. #}
+                        <div style="margin:0 0 .6rem;">
+                          <label class="mj-drop-lbl" style="display:inline-flex; align-items:center; gap:.45rem;
+                                 cursor:pointer; font-size:.78rem; padding:.35rem .6rem; border-radius:6px;
+                                 background:rgba(239,68,68,.10); border:1px solid rgba(239,68,68,.35);">
+                            <input type="checkbox" class="mj-drop" name="leg_drop" value="{{ leg.id }}"
+                                   onchange="mjToggleDrop(this)"
+                                   style="margin:0;cursor:pointer;width:auto;flex:0 0 auto;" disabled>
+                            <span>🗑️ <strong>Encerrar esta perna</strong>
+                                <span style="color:var(--text-secondary);">(zerar o braço — sai da estrutura)</span></span>
+                          </label>
+                        </div>
+                        <div class="mj-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:.6rem;">
+                            <div><label style="font-size:.72rem;color:var(--text-secondary);">Fechamento (R$) — {{ 'recompra' if leg.side=='SELL' else 'venda' }}</label>
+                                <input type="text" name="leg_close_price" class="form-control form-control-sm"
+                                       value="{{ '%.2f'|format(leg.current_price or 0)|replace('.', ',') }}" disabled></div>
+                            <div class="mj-new"><label style="font-size:.72rem;color:var(--text-secondary);">Novo ticker</label>
+                                <input type="text" name="leg_new_ticker" class="form-control form-control-sm"
+                                       style="text-transform:uppercase;" value="{{ leg.ticker }}" disabled></div>
+                            <div class="mj-new"><label style="font-size:.72rem;color:var(--text-secondary);">Novo strike</label>
+                                <input type="text" name="leg_new_strike" class="form-control form-control-sm"
+                                       value="{{ '%.2f'|format(leg.strike or 0)|replace('.', ',') }}" disabled></div>
+                            <div class="mj-new"><label style="font-size:.72rem;color:var(--text-secondary);">Novo prêmio</label>
+                                <input type="text" name="leg_new_premium" class="form-control form-control-sm"
+                                       value="{{ '%.2f'|format(leg.entry_price or 0)|replace('.', ',') }}" disabled></div>
+                            <div class="mj-new"><label style="font-size:.72rem;color:var(--text-secondary);">Novo vencimento</label>
+                                <input type="date" name="leg_new_exp" class="form-control form-control-sm"
+                                       value="{{ leg.expiration_date }}" disabled></div>
+                        </div>
                     </div>
                 </fieldset>
                 {% endif %}
@@ -127,8 +143,33 @@
     function mjToggle(chk) {
         var fs = chk.closest('.mj-leg');
         var fields = fs.querySelector('.mj-fields');
-        fields.style.display = chk.checked ? 'grid' : 'none';
+        fields.style.display = chk.checked ? 'block' : 'none';
         fields.querySelectorAll('input').forEach(function (i) { i.disabled = !chk.checked; });
+        if (!chk.checked) {
+            // Ao desmarcar a perna, desfaz também o "encerrar" para não deixar
+            // um leg_drop pendente de uma perna que voltou a ficar intocada.
+            var d = fs.querySelector('.mj-drop');
+            if (d) { d.checked = false; mjAplicaDrop(fs, false); }
+        }
+        mjSimRefresh();
+    }
+
+    // Encerrar a perna: os campos da "nova perna" não fazem sentido — o braço
+    // está saindo da estrutura, então só o preço de fechamento importa.
+    function mjAplicaDrop(fs, encerrando) {
+        fs.querySelectorAll('.mj-new').forEach(function (d) {
+            d.style.display = encerrando ? 'none' : '';
+            d.querySelectorAll('input').forEach(function (i) { i.disabled = encerrando; });
+        });
+        var lbl = fs.querySelector('.mj-drop-lbl');
+        if (lbl) {
+            lbl.style.background  = encerrando ? 'rgba(239,68,68,.22)' : 'rgba(239,68,68,.10)';
+            lbl.style.borderColor = encerrando ? 'rgba(239,68,68,.75)' : 'rgba(239,68,68,.35)';
+        }
+        fs.style.opacity = encerrando ? '.85' : '';
+    }
+    function mjToggleDrop(chk) {
+        mjAplicaDrop(chk.closest('.mj-leg'), chk.checked);
         mjSimRefresh();
     }
     document.getElementById('manejo-modal').addEventListener('click', function (ev) {
@@ -272,7 +313,7 @@
         // Constrói pernas simuladas + fluxos de caixa do manejo
         var byId = {};
         MJ_LEGS.forEach(function (l) { byId[l.id] = l; });
-        var sim = [], saiu = 0, entrou = 0, realizado = 0, algum = false;
+        var sim = [], saiu = 0, entrou = 0, realizado = 0, algum = false, nEncerradas = 0;
         MJ_LEGS.filter(function (l) { return l.opt_type === 'STOCK'; }).forEach(function (l) {
             sim.push({side: l.side, type: 'STOCK', qty: l.quantity, strike: 0,
                       entry: l.entry_price || 0, exp: ''});
@@ -286,11 +327,20 @@
                         exp: l.expiration_date || ''};
             if (!fs.querySelector('.mj-chk').checked) { sim.push(base); return; }
             algum = true;
+            var dropEl = fs.querySelector('.mj-drop');
+            var encerra = dropEl && dropEl.checked;
             var close = mjNum(fs.querySelector('[name=leg_close_price]').value);
+            var q     = l.quantity;
+            if (encerra) {
+                // Braço zerado: só o fluxo de fechamento; a perna some do payoff.
+                if (l.side === 'SELL') { saiu   += close * q; realizado += (base.entry - close) * q; }
+                else                   { entrou += close * q; realizado += (close - base.entry) * q; }
+                nEncerradas++;
+                return;                          // não entra em `sim`
+            }
             var nk    = mjNum(fs.querySelector('[name=leg_new_strike]').value) || base.strike;
             var np    = mjNum(fs.querySelector('[name=leg_new_premium]').value);
             var ne    = fs.querySelector('[name=leg_new_exp]').value || base.exp;
-            var q     = l.quantity;
             if (l.side === 'SELL') {           // recompra a antiga, vende a nova
                 saiu += close * q;  realizado += (base.entry - close) * q;  entrou += np * q;
             } else {                            // vende a antiga, compra a nova
@@ -298,7 +348,8 @@
             }
             sim.push({side: l.side, type: l.opt_type, qty: q, strike: nk, entry: np, exp: ne});
         });
-        return {legs: sim, saiu: saiu, entrou: entrou, realizado: realizado, algum: algum};
+        return {legs: sim, saiu: saiu, entrou: entrou, realizado: realizado,
+                algum: algum, encerradas: nEncerradas};
     }
 
     function mjPayoffFn(simLegs, adj) {
@@ -379,7 +430,11 @@
             mjBox('Nova perda máx.', (lossUnl || lossDn) ? 'ILIMITADA ⚠️' : mjFmt(yMin), 'negative') +
             mjBox('Novo(s) breakeven(s)', bes.length ? bes.map(function (x) {
                 return x.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-            }).join(' / ') : '—', '');
+            }).join(' / ') : '—', '') +
+            (c.encerradas ? mjBox('🗑️ Pernas encerradas',
+                c.encerradas + (c.encerradas > 1 ? ' braços zerados' : ' braço zerado'), 'negative') : '') +
+            (c.legs.filter(function (l) { return l.type !== 'STOCK'; }).length === 0
+                ? mjBox('⚠️ Atenção', 'sem pernas restantes — encerre a operação', 'negative') : '');
 
         // Desenha o novo payoff
         var cv = document.getElementById('mj-sim-cv');

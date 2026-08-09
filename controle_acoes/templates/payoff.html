@@ -572,6 +572,73 @@
         </table>
     </div>
 
+    {# ── Histórico dos manejos: pernas substituídas ou encerradas ── #}
+    {% if roll_extrato %}
+    <div style="margin-bottom:1.5rem;">
+        <div style="font-size:.9rem; font-weight:700; margin-bottom:.5rem;">
+            🔧 Histórico de manejos
+            <span style="font-weight:400; font-size:.78rem; color:var(--text-secondary);">
+                — pernas fechadas ao longo da operação; o resultado entra no payoff acima
+            </span>
+        </div>
+        <div style="overflow-x:auto;">
+        <table style="width:100%; border-collapse:collapse; font-size:.82rem; white-space:nowrap;">
+            <thead>
+                <tr style="background:var(--hover-bg); color:var(--text-secondary);">
+                    <th style="padding:.4rem .6rem; text-align:left;">Data</th>
+                    <th style="padding:.4rem .6rem; text-align:left;">Ticker</th>
+                    <th style="padding:.4rem .6rem; text-align:left;">Movimento</th>
+                    <th style="padding:.4rem .6rem; text-align:right;">Qtd</th>
+                    <th style="padding:.4rem .6rem; text-align:right;">Entrada</th>
+                    <th style="padding:.4rem .6rem; text-align:right;">Saída</th>
+                    <th style="padding:.4rem .6rem; text-align:left;">Substituída por</th>
+                    <th style="padding:.4rem .6rem; text-align:right;">Lucro</th>
+                    <th style="padding:.4rem .6rem; text-align:right;">Saldo acum.</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for m in roll_extrato %}
+                <tr style="border-bottom:1px solid var(--border-color);">
+                    <td style="padding:.35rem .6rem;">{{ m.data | date_fmt if m.data else '—' }}</td>
+                    <td style="padding:.35rem .6rem;">
+                        <span style="padding:.05rem .4rem; border-radius:4px; font-weight:600;
+                              background:{{ 'rgba(239,68,68,.15)' if m.side=='SELL' else 'rgba(16,185,129,.15)' }};
+                              color:{{ 'var(--danger-color)' if m.side=='SELL' else 'var(--success-color)' }};">
+                            {{ 'V' if m.side=='SELL' else 'C' }}</span>
+                        {{ m.ticker }}
+                    </td>
+                    <td style="padding:.35rem .6rem;
+                        color:{{ 'var(--danger-color)' if m.tipo=='Encerrada' else 'var(--text-secondary)' }};">
+                        {{ '🗑️' if m.tipo=='Encerrada' else '🔄' }} {{ m.tipo }}
+                    </td>
+                    <td style="padding:.35rem .6rem; text-align:right;">{{ m.quantity }}</td>
+                    <td style="padding:.35rem .6rem; text-align:right;">
+                        {{ 'R$ %.2f'|format(m.entrada)|replace('.', ',') if m.entrada is not none else '—' }}</td>
+                    <td style="padding:.35rem .6rem; text-align:right;">
+                        {{ 'R$ %.2f'|format(m.saida)|replace('.', ',') if m.saida is not none else '—' }}</td>
+                    <td style="padding:.35rem .6rem;">
+                        {% if m.novo %}{{ m.novo }}
+                            {% if m.novo_premio is not none %}
+                            <span style="color:var(--text-secondary);">@ {{ '%.2f'|format(m.novo_premio)|replace('.', ',') }}</span>
+                            {% endif %}
+                        {% else %}<span style="color:var(--text-secondary);">—</span>{% endif %}
+                    </td>
+                    <td style="padding:.35rem .6rem; text-align:right;"
+                        class="{{ 'positive' if m.pnl >= 0 else 'negative' }}">
+                        {{ '+' if m.pnl >= 0 else '-' }}R$ {{ '%.2f'|format(m.pnl|abs)|replace('.', ',') }}
+                    </td>
+                    <td style="padding:.35rem .6rem; text-align:right; font-weight:700;"
+                        class="{{ 'positive' if m.saldo >= 0 else 'negative' }}">
+                        {{ '+' if m.saldo >= 0 else '-' }}R$ {{ '%.2f'|format(m.saldo|abs)|replace('.', ',') }}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% endif %}
+
     {# ── Métricas ── #}
     <div style="display:flex; gap:1.5rem; flex-wrap:wrap; margin-bottom:1.5rem;
                 background:var(--hover-bg); border-radius:8px; padding:.9rem 1.2rem;

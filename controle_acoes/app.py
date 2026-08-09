@@ -6555,6 +6555,65 @@ def _spread_roll_adjustment(sp):
     return round(adjustment, 2), history
 
 
+def _estruturada_roll_adjustment(op):
+    """Resultado já realizado nos manejos, e o extrato de cada movimento.
+
+    O payoff das pernas atuais desconhece o que foi ganho/perdido ao fechar
+    pernas antigas — sem somar isso, uma perna zerada com lucro some do
+    gráfico e a perda máxima aparece pior do que é de fato.
+
+    Devolve (ajuste, extrato) onde extrato é a lista achatada de movimentos
+    para a tabela de histórico da tela.
+    """
+    import json as _json
+    try:
+        history = _json.loads(op.roll_history) if op.roll_history else []
+    except Exception:
+        return 0.0, []
+
+    ajuste, extrato = 0.0, []
+    for ev in history:
+        if not isinstance(ev, dict):
+            continue
+        # Só manejos do modelo novo (defer_pnl) entram no ajuste: os antigos já
+        # viraram TradeHistory e contá-los aqui duplicaria o resultado.
+        conta = bool(ev.get('defer_pnl'))
+        data  = ev.get('roll_date') or ''
+        for leg in (ev.get('legs') or []):
+            if not isinstance(leg, dict):
+                continue
+            pnl = leg.get('realized_pnl')
+            if pnl is None:
+                continue          # perna marcada mas não alterada
+            try:
+                pnl = float(pnl)
+            except (TypeError, ValueError):
+                continue
+            if conta:
+                ajuste += pnl
+            fechada = bool(leg.get('closed_leg'))
+            extrato.append({
+                'data':       data,
+                'ticker':     leg.get('old_ticker') or '',
+                'tipo':       'Encerrada' if fechada else 'Substituída',
+                'side':       leg.get('side') or '',
+                'quantity':   leg.get('quantity') or 0,
+                'entrada':    leg.get('old_premium'),
+                'saida':      leg.get('close_price'),
+                'novo':       leg.get('new_ticker') or '',
+                'novo_premio': leg.get('new_premium'),
+                'pnl':        round(pnl, 2),
+                'contabiliza': conta,
+            })
+    # Saldo acumulado da operação em cada ponto do extrato
+    acc = 0.0
+    for mov in extrato:
+        if mov['contabiliza']:
+            acc += mov['pnl']
+        mov['saldo'] = round(acc, 2)
+    return round(ajuste, 2), extrato
+
+
 @app.route('/payoff/spread/<int:id>')
 @login_required
 def payoff_spread(id):
@@ -6657,6 +6716,7 @@ def payoff_estruturada(id):
         und_price, und_change = _get_underlying_quote(op.underlying_asset, current_user.id)
     t_days = max((max(exp_dates) - date.today()).days, 1) if exp_dates else 30
     days_nearest = max((min(exp_dates) - date.today()).days, 0) if exp_dates else None
+    roll_adjustment, roll_extrato = _estruturada_roll_adjustment(op)
     import json as _json
     return render_template('payoff.html',
                            pop_save_url=url_for('save_payoff_pop', kind='estruturada', id=op.id),
@@ -6671,6 +6731,8 @@ def payoff_estruturada(id):
                            days_nearest=days_nearest,
                            manage_op_id=op.id,
                            today=date.today(),
+                           roll_adjustment=roll_adjustment,
+                           roll_extrato=roll_extrato,
                            legs_json=_json.dumps(legs))
 
 

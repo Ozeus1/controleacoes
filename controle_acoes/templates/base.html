@@ -125,8 +125,8 @@
             {% for idx in market_indices %}
             <div class="indicator-item">
                 <span class="indicator-name">{{ idx.name }}</span>
-                <span class="indicator-price">{{ idx.price | brl if idx.name not in ['IBOV', 'Nasdaq', 'S&P 500', 'Dow
-                    Jones'] else idx.price | int }}</span>
+                <span class="indicator-price">{{ idx.price | usd if idx.name == 'Bitcoin' else (idx.price | brl if idx.name not in ['IBOV', 'Nasdaq', 'S&P 500', 'Dow
+                    Jones'] else idx.price | int) }}</span>
                 <span class="indicator-change {{ 'positive' if idx.change_percent >= 0 else 'negative' }}">
                     {{ "%.2f"|format(idx.change_percent)|replace('.', ',') }}%
                 </span>
@@ -136,8 +136,8 @@
             {% for idx in market_indices %}
             <div class="indicator-item">
                 <span class="indicator-name">{{ idx.name }}</span>
-                <span class="indicator-price">{{ idx.price | brl if idx.name not in ['IBOV', 'Nasdaq', 'S&P 500', 'Dow
-                    Jones'] else idx.price | int }}</span>
+                <span class="indicator-price">{{ idx.price | usd if idx.name == 'Bitcoin' else (idx.price | brl if idx.name not in ['IBOV', 'Nasdaq', 'S&P 500', 'Dow
+                    Jones'] else idx.price | int) }}</span>
                 <span class="indicator-change {{ 'positive' if idx.change_percent >= 0 else 'negative' }}">
                     {{ "%.2f"|format(idx.change_percent)|replace('.', ',') }}%
                 </span>

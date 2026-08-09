@@ -47,6 +47,12 @@ def format_pct(value):
         return '0,00%'
     return f"{value:,.2f}%".replace('.', ',')
 
+@app.template_filter('usd')
+def format_usd(value):
+    if value is None:
+        return '$ 0,00'
+    return f"$ {value:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+
 
 basedir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.abspath(os.path.dirname(__file__))
 instance_path = os.path.join(basedir, 'instance')
@@ -13456,8 +13462,7 @@ def update_market_indices():
             {'ticker': 'IFIX.SA', 'name': 'IFIX'},
             {'ticker': 'BRL=X', 'name': 'Dólar'},
             {'ticker': 'EURBRL=X', 'name': 'Euro'},
-            {'ticker': 'BTC-BRL', 'name': 'Bitcoin'},
-            {'ticker': 'ETH-BRL', 'name': 'Ethereum'},
+            {'ticker': 'BTC-USD', 'name': 'Bitcoin'},
             {'ticker': '^IXIC', 'name': 'Nasdaq'},
             {'ticker': '^GSPC', 'name': 'S&P 500'},
             {'ticker': '^DJI', 'name': 'Dow Jones'}

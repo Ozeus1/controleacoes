@@ -162,7 +162,10 @@ header {
     display: inline-block;
 }
 
-.nav-dropdown.open .nav-caret {
+/* Filho direto: mesma razão da regra de display acima — descendente qualquer
+   rotacionaria também a caret de um submenu-irmão fechado, via o .open do
+   ancestral comum (ex.: "Opções"). */
+.nav-dropdown.open > .nav-dropdown-toggle > .nav-caret {
     transform: rotate(180deg);
 }
 
@@ -212,9 +215,13 @@ header {
     border-bottom: none !important;
 }
 
-/* Desktop: abre via classe .open controlada por JS (click) */
+/* Desktop: abre via classe .open controlada por JS (click).
+   Filho DIRETO (>), não descendente qualquer: com submenus aninhados
+   (.nav-subdropdown dentro do menu do pai), um seletor descendente casava
+   o .nav-dropdown-menu do filho através do .open do avô (ex.: "Opções"),
+   deixando um submenu-irmão visível mesmo sem sua própria classe .open. */
 @media (min-width: 769px) {
-    .nav-dropdown.open .nav-dropdown-menu {
+    .nav-dropdown.open > .nav-dropdown-menu {
         display: block;
     }
 }
@@ -744,7 +751,9 @@ label {
         margin: 0.15rem 0 0.3rem;
     }
 
-    .nav-dropdown.open .nav-dropdown-menu {
+    /* Filho direto (mesma razão da regra desktop): evita que o submenu de um
+       item-irmão fechado apareça só por estar dentro do menu pai já aberto. */
+    .nav-dropdown.open > .nav-dropdown-menu {
         display: block;
     }
 

@@ -288,17 +288,35 @@
                         <a href="{{ url_for('ranking_volatilidade', busca_liquidez=1) }}"
                            class="{{ 'active' if request.endpoint == 'ranking_volatilidade' and request.args.get('busca_liquidez') else '' }}">💧 Busca Liquidez</a>
                         <a href="{{ url_for('cadeia_opcoes') }}"
-                           class="{{ 'active' if request.endpoint == 'cadeia_opcoes' else '' }}">🔗 Cadeia de Opções</a>
+                           class="{{ 'active' if request.endpoint == 'cadeia_opcoes' else '' }}">🔗 Simulador de Estruturas</a>
                         <a href="{{ url_for('busca_opcao') }}"
                            class="{{ 'active' if request.endpoint == 'busca_opcao' else '' }}">🔍 Busca de Opção</a>
-                        <a href="{{ url_for('busca_operacoes') }}"
-                           class="{{ 'active' if request.endpoint == 'busca_operacoes' else '' }}">🎯 Busca de Operações</a>
-                        <a href="{{ url_for('busca_operacoes_avancadas') }}"
-                           class="{{ 'active' if request.endpoint == 'busca_operacoes_avancadas' else '' }}">🚀 Busca Avançada</a>
-                        <a href="{{ url_for('lancamento_coberto') }}"
-                           class="{{ 'active' if request.endpoint == 'lancamento_coberto' else '' }}">📋 Lançamento Coberto</a>
-                        <a href="{{ url_for('venda_put_longa') }}"
-                           class="{{ 'active' if request.endpoint == 'venda_put_longa' else '' }}">🛡️ Venda de PUT Longa</a>
+                        {# Busca de Estruturas: item pai com submenu Comuns (busca_operacoes) / Avançadas (busca_operacoes_avancadas) #}
+                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['busca_operacoes','busca_operacoes_avancadas'] else '' }}">
+                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['busca_operacoes','busca_operacoes_avancadas'] else '' }}"
+                               onclick="toggleNavDrop(this,event)">
+                                🎯 Busca de Estruturas <span class="nav-caret nav-caret-sub">▸</span>
+                            </a>
+                            <div class="nav-dropdown-menu nav-submenu">
+                                <a href="{{ url_for('busca_operacoes') }}"
+                                   class="{{ 'active' if request.endpoint == 'busca_operacoes' else '' }}">🎯 Comuns</a>
+                                <a href="{{ url_for('busca_operacoes_avancadas') }}"
+                                   class="{{ 'active' if request.endpoint == 'busca_operacoes_avancadas' else '' }}">🚀 Avançadas</a>
+                            </div>
+                        </div>
+                        {# Busca de Longas: item pai com submenu Lançamento Coberto / Venda de Put #}
+                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['lancamento_coberto','venda_put_longa'] else '' }}">
+                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['lancamento_coberto','venda_put_longa'] else '' }}"
+                               onclick="toggleNavDrop(this,event)">
+                                🛡️ Busca de Longas <span class="nav-caret nav-caret-sub">▸</span>
+                            </a>
+                            <div class="nav-dropdown-menu nav-submenu">
+                                <a href="{{ url_for('lancamento_coberto') }}"
+                                   class="{{ 'active' if request.endpoint == 'lancamento_coberto' else '' }}">📋 Lançamento Coberto</a>
+                                <a href="{{ url_for('venda_put_longa') }}"
+                                   class="{{ 'active' if request.endpoint == 'venda_put_longa' else '' }}">🛡️ Venda de Put</a>
+                            </div>
+                        </div>
                         <a href="{{ url_for('ajuda_operacoes') }}"
                            class="{{ 'active' if request.endpoint == 'ajuda_operacoes' else '' }}">📖 Ajuda de Operações</a>
                     </div>

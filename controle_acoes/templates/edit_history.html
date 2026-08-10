@@ -16,6 +16,34 @@
             border-radius: 1rem;
             border: 1px solid var(--border-color);
         }
+        .form-card.wide { max-width: 1100px; }
+        /* Abas simples/avançada */
+        .eh-tabs { display:flex; gap:.4rem; max-width:1100px; margin:0 auto 0; }
+        .eh-tab {
+            padding:.5rem 1rem; border:1px solid var(--border-color); border-bottom:none;
+            border-radius:.5rem .5rem 0 0; background:var(--hover-bg); color:var(--text-secondary);
+            cursor:pointer; font-size:.9rem; font-weight:600;
+        }
+        .eh-tab.active { background:var(--card-bg); color:var(--text-primary); }
+        .eh-pane { display:none; }
+        .eh-pane.active { display:block; }
+        /* Tabelas editáveis */
+        .eh-table { width:100%; border-collapse:collapse; font-size:.82rem; white-space:nowrap; }
+        .eh-table th {
+            text-align:left; padding:.4rem .5rem; color:var(--text-secondary);
+            font-weight:600; border-bottom:1px solid var(--border-color);
+        }
+        .eh-table td { padding:.25rem .35rem; border-bottom:1px solid rgba(255,255,255,.05); }
+        .eh-table input, .eh-table select {
+            background:var(--input-bg); color:var(--input-color);
+            border:1px solid var(--border-color); border-radius:4px;
+            padding:.25rem .4rem; font-size:.82rem; width:100%;
+        }
+        .eh-table input[type=number] { text-align:right; }
+        .eh-del {
+            background:none; border:none; color:var(--danger-color);
+            cursor:pointer; font-size:1rem; padding:0 .3rem;
+        }
     </style>
 </head>
 
@@ -25,9 +53,18 @@
             <h1>Editar Registro Histórico</h1>
         </header>
 
-        <div class="form-card">
+        {% set det = trade.details | fromjson %}
+        <div class="eh-tabs">
+            <button type="button" class="eh-tab active" id="tab-simples"
+                    onclick="ehTab('simples')">Simples</button>
+            <button type="button" class="eh-tab" id="tab-avancada"
+                    onclick="ehTab('avancada')">Avançada — pernas e manejos</button>
+        </div>
+
+        <div class="form-card wide" style="border-radius:0 .5rem .5rem .5rem; margin-top:0;">
             <form method="POST">
 
+                <div class="eh-pane active" id="pane-simples">
                 <div class="form-row">
                     <div class="form-group">
                         <label for="ticker">Ticker</label>
@@ -88,6 +125,99 @@
                     </div>
                 </div>
 
+                </div>{# /pane-simples #}
+
+                {# ── Aba avançada: detalhamento por perna + rolagens/manejos ── #}
+                <div class="eh-pane" id="pane-avancada">
+                    <p style="font-size:.82rem; color:var(--text-secondary); margin:0 0 1rem;">
+                        Detalhamento da operação. Os totais acima (preço de compra/venda e resultado)
+                        continuam sendo os que valem para o histórico — o que se edita aqui é o
+                        <strong>rastro</strong> de como a operação foi montada e manejada.
+                    </p>
+
+                    <div style="font-size:.88rem; font-weight:700; margin-bottom:.5rem;">Pernas</div>
+                    <div style="overflow-x:auto;">
+                    <table class="eh-table" id="legs-table">
+                        <thead><tr>
+                            <th style="width:90px;">C/V</th>
+                            <th style="width:130px;">Ticker</th>
+                            <th style="width:100px;">Tipo</th>
+                            <th style="width:100px;">Strike</th>
+                            <th style="width:90px;">Qtd</th>
+                            <th style="width:110px;">Preço compra</th>
+                            <th style="width:110px;">Preço venda</th>
+                            <th style="width:40px;"></th>
+                        </tr></thead>
+                        <tbody id="legs-body">
+                        {% for l in det.legs or [] %}
+                            <tr>
+                                <td><select name="leg_side">
+                                    <option value="BUY"  {% if l.side=='BUY'  %}selected{% endif %}>COMPRA</option>
+                                    <option value="SELL" {% if l.side=='SELL' %}selected{% endif %}>VENDA</option>
+                                </select></td>
+                                <td><input type="text" name="leg_ticker" value="{{ l.ticker or '' }}" style="text-transform:uppercase;"></td>
+                                <td><select name="leg_opt_type">
+                                    {% for t in ['CALL','PUT','STOCK'] %}
+                                    <option value="{{ t }}" {% if l.opt_type==t %}selected{% endif %}>{{ t }}</option>
+                                    {% endfor %}
+                                </select></td>
+                                <td><input type="number" step="0.01" name="leg_strike" value="{{ '%.2f'|format(l.strike or 0) }}"></td>
+                                <td><input type="number" step="1" name="leg_qty" value="{{ l.qty or 0 }}"></td>
+                                <td><input type="number" step="0.01" name="leg_buy" value="{{ '%.2f'|format(l.buy or 0) }}"></td>
+                                <td><input type="number" step="0.01" name="leg_sell" value="{{ '%.2f'|format(l.sell or 0) }}"></td>
+                                <td><button type="button" class="eh-del" onclick="ehDel(this)" title="Remover perna">✕</button></td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    </div>
+                    <button type="button" class="btn btn-sm" style="margin-top:.5rem; background:#0ea5e9; color:#fff;"
+                            onclick="ehAddLeg()">+ Perna</button>
+
+                    <div style="font-size:.88rem; font-weight:700; margin:1.5rem 0 .5rem;">
+                        Rolagens e manejos
+                        <span style="font-weight:400; font-size:.78rem; color:var(--text-secondary);">
+                            — pernas fechadas ou trocadas durante a operação
+                        </span>
+                    </div>
+                    <div style="overflow-x:auto;">
+                    <table class="eh-table" id="events-table">
+                        <thead><tr>
+                            <th style="width:130px;">Data</th>
+                            <th style="width:130px;">Ticker</th>
+                            <th style="width:130px;">Movimento</th>
+                            <th style="width:90px;">Qtd</th>
+                            <th style="width:100px;">Entrada</th>
+                            <th style="width:100px;">Saída</th>
+                            <th style="width:130px;">Substituída por</th>
+                            <th style="width:110px;">Lucro</th>
+                            <th style="width:40px;"></th>
+                        </tr></thead>
+                        <tbody id="events-body">
+                        {% for e in det.events or [] %}
+                            <tr>
+                                <td><input type="date" name="ev_data" value="{{ e.data or '' }}"></td>
+                                <td><input type="text" name="ev_ticker" value="{{ e.ticker or '' }}" style="text-transform:uppercase;"></td>
+                                <td><select name="ev_tipo">
+                                    {% for t in ['Encerrada','Substituída'] %}
+                                    <option value="{{ t }}" {% if e.tipo==t %}selected{% endif %}>{{ t }}</option>
+                                    {% endfor %}
+                                </select></td>
+                                <td><input type="number" step="1" name="ev_qty" value="{{ e.quantity or 0 }}"></td>
+                                <td><input type="number" step="0.01" name="ev_entrada" value="{{ '%.2f'|format(e.entrada) if e.entrada is not none else '' }}"></td>
+                                <td><input type="number" step="0.01" name="ev_saida" value="{{ '%.2f'|format(e.saida) if e.saida is not none else '' }}"></td>
+                                <td><input type="text" name="ev_novo" value="{{ e.novo or '' }}" style="text-transform:uppercase;"></td>
+                                <td><input type="number" step="0.01" name="ev_pnl" value="{{ '%.2f'|format(e.pnl or 0) }}"></td>
+                                <td><button type="button" class="eh-del" onclick="ehDel(this)" title="Remover movimento">✕</button></td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                    </div>
+                    <button type="button" class="btn btn-sm" style="margin-top:.5rem; background:#0ea5e9; color:#fff;"
+                            onclick="ehAddEvent()">+ Movimento</button>
+                </div>{# /pane-avancada #}
+
                 <div style="margin-top: 2rem; display: flex; gap: 1rem;">
                     <button type="submit" class="btn btn-primary" style="flex: 1;">Salvar Alterações</button>
                     <a href="{{ url_for('history') }}" class="btn"
@@ -96,6 +226,48 @@
             </form>
         </div>
     </div>
+
+<script>
+function ehTab(nome) {
+    ['simples', 'avancada'].forEach(function (n) {
+        document.getElementById('tab-' + n).classList.toggle('active', n === nome);
+        document.getElementById('pane-' + n).classList.toggle('active', n === nome);
+    });
+}
+
+// Remove a linha inteira (perna ou movimento). Como as listas são lidas por
+// posição no servidor, apagar a linha basta — não há índice a renumerar.
+function ehDel(btn) { btn.closest('tr').remove(); }
+
+function ehAddLeg() {
+    document.getElementById('legs-body').insertAdjacentHTML('beforeend',
+        '<tr>' +
+        '<td><select name="leg_side"><option value="BUY">COMPRA</option><option value="SELL">VENDA</option></select></td>' +
+        '<td><input type="text" name="leg_ticker" style="text-transform:uppercase;"></td>' +
+        '<td><select name="leg_opt_type"><option value="CALL">CALL</option><option value="PUT">PUT</option><option value="STOCK">STOCK</option></select></td>' +
+        '<td><input type="number" step="0.01" name="leg_strike" value="0.00"></td>' +
+        '<td><input type="number" step="1" name="leg_qty" value="0"></td>' +
+        '<td><input type="number" step="0.01" name="leg_buy" value="0.00"></td>' +
+        '<td><input type="number" step="0.01" name="leg_sell" value="0.00"></td>' +
+        '<td><button type="button" class="eh-del" onclick="ehDel(this)" title="Remover perna">✕</button></td>' +
+        '</tr>');
+}
+
+function ehAddEvent() {
+    document.getElementById('events-body').insertAdjacentHTML('beforeend',
+        '<tr>' +
+        '<td><input type="date" name="ev_data"></td>' +
+        '<td><input type="text" name="ev_ticker" style="text-transform:uppercase;"></td>' +
+        '<td><select name="ev_tipo"><option value="Encerrada">Encerrada</option><option value="Substituída">Substituída</option></select></td>' +
+        '<td><input type="number" step="1" name="ev_qty" value="0"></td>' +
+        '<td><input type="number" step="0.01" name="ev_entrada"></td>' +
+        '<td><input type="number" step="0.01" name="ev_saida"></td>' +
+        '<td><input type="text" name="ev_novo" style="text-transform:uppercase;"></td>' +
+        '<td><input type="number" step="0.01" name="ev_pnl" value="0.00"></td>' +
+        '<td><button type="button" class="eh-del" onclick="ehDel(this)" title="Remover movimento">✕</button></td>' +
+        '</tr>');
+}
+</script>
 </body>
 
 </html>

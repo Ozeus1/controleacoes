@@ -103,6 +103,12 @@ class TradeHistory(db.Model):
     reason = db.Column(db.String(20)) # StopLoss, Gain, Partial, etc.
     underlying = db.Column(db.String(15), nullable=True)   # ativo base (PETR4, VALE3...)
     notes = db.Column(db.Text, nullable=True)              # tickers das pernas, detalhes
+    # Detalhamento estruturado (JSON). `notes` continua guardando o resumo em
+    # texto; este campo preserva os mesmos dados de forma consultável/editável:
+    #   {"legs":   [{ticker, side, opt_type, strike, qty, buy, sell, pnl}, ...],
+    #    "events": [{data, ticker, tipo, side, qty, entrada, saida, novo,
+    #                novo_premio, pnl, saldo}, ...]}   ← rolagens e manejos
+    details = db.Column(db.Text, nullable=True)
 
 class Option(db.Model):
     id = db.Column(db.Integer, primary_key=True)

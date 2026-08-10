@@ -53,6 +53,18 @@ def format_usd(value):
         return '$ 0,00'
     return f"$ {value:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
+@app.template_filter('fromjson')
+def parse_json(value):
+    """Converte o JSON de TradeHistory.details em dict; {} se vazio/inválido."""
+    if not value:
+        return {}
+    import json as _j
+    try:
+        d = _j.loads(value)
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
 
 basedir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.abspath(os.path.dirname(__file__))
 instance_path = os.path.join(basedir, 'instance')
@@ -337,6 +349,12 @@ def run_migrations():
             cursor.execute(f"ALTER TABLE {_table} ADD COLUMN notes TEXT")
         except Exception:
             pass  # coluna já existe
+
+    # TradeHistory: detalhamento estruturado (pernas + rolagens/manejos) em JSON
+    try:
+        cursor.execute("ALTER TABLE trade_history ADD COLUMN details TEXT")
+    except Exception:
+        pass  # coluna já existe
 
     # Check existing columns in 'option' table
     cursor.execute("PRAGMA table_info(option)")
@@ -1980,6 +1998,37 @@ def close_estruturada(id):
                      if abs(realized_prev) > 0.005 else '')
     notes = f"{op.underlying_asset} | {legs_detail}{realized_note}"
 
+    # Detalhamento estruturado: as mesmas pernas e o extrato de manejos, mas
+    # em JSON — o texto de `notes` não dá para consultar nem editar por perna.
+    # Convenção de compra/venda: quem VENDE recebe na entrada (buy = prêmio
+    # recebido) e paga para fechar; quem COMPRA faz o inverso.
+    _det_legs = []
+    for l in op.legs:
+        _cur = l.current_price if l.current_price is not None else l.entry_price
+        _q = l.quantity or 0
+        _pnl = ((l.entry_price - _cur) if l.side == 'SELL' else (_cur - l.entry_price)) * _q
+        _det_legs.append({
+            'ticker':   l.ticker,
+            'side':     l.side,
+            'opt_type': l.opt_type,
+            'strike':   round(l.strike or 0, 2),
+            'qty':      _q,
+            'buy':      round(l.entry_price or 0, 4),
+            'sell':     round(_cur or 0, 4),
+            'pnl':      round(_pnl, 2),
+        })
+    try:
+        _adj, _events = _estruturada_roll_adjustment(op)
+    except Exception:
+        _adj, _events = 0.0, []
+    details_json = _json.dumps({
+        'legs':            _det_legs,
+        'events':          _events,
+        'realized_manejos': round(realized_prev, 2),
+        'net_open':        round(net_open, 2),
+        'net_close':       round(net_close, 2),
+    }, ensure_ascii=False)
+
     history = TradeHistory(
         user_id      = current_user.id,
         ticker       = ticker_label,
@@ -1995,6 +2044,7 @@ def close_estruturada(id):
         reason       = 'Encerramento',
         underlying   = op.underlying_asset,
         notes        = notes,
+        details      = details_json,
     )
     db.session.add(history)
     op.status = 'CLOSED'
@@ -9614,7 +9664,85 @@ def edit_history(id):
         trade.exit_date = datetime.strptime(exit_date, '%Y-%m-%d').date() if exit_date else None
         trade.reason = request.form.get('reason')
         trade.underlying = (request.form.get('underlying') or '').strip().upper() or None
-        
+
+        # ── Aba avançada: pernas e movimentos (rolagens/manejos) ──────────
+        # As listas vêm paralelas (uma entrada por linha da tabela). Linhas sem
+        # ticker são descartadas — é o que sobra de uma linha adicionada e não
+        # preenchida.
+        import json as _j
+
+        def _f(v, default=None):
+            """'12,34' ou '12.34' → float; vazio → default."""
+            s = (v or '').strip().replace(',', '.')
+            if not s:
+                return default
+            try:
+                return float(s)
+            except ValueError:
+                return default
+
+        _legs = []
+        _lt = request.form.getlist('leg_ticker')
+        for i, tk in enumerate(_lt):
+            tk = (tk or '').strip().upper()
+            if not tk:
+                continue
+            def _g(name, idx=i):
+                lst = request.form.getlist(name)
+                return lst[idx] if idx < len(lst) else ''
+            qty = int(_f(_g('leg_qty'), 0) or 0)
+            buy = _f(_g('leg_buy'), 0.0) or 0.0
+            sell = _f(_g('leg_sell'), 0.0) or 0.0
+            side = (_g('leg_side') or 'BUY').upper()
+            pnl = ((buy - sell) if side == 'SELL' else (sell - buy)) * qty
+            _legs.append({
+                'ticker':   tk,
+                'side':     side,
+                'opt_type': (_g('leg_opt_type') or 'CALL').upper(),
+                'strike':   round(_f(_g('leg_strike'), 0.0) or 0.0, 2),
+                'qty':      qty,
+                'buy':      round(buy, 4),
+                'sell':     round(sell, 4),
+                'pnl':      round(pnl, 2),
+            })
+
+        _events, _saldo = [], 0.0
+        _et = request.form.getlist('ev_ticker')
+        for i, tk in enumerate(_et):
+            tk = (tk or '').strip().upper()
+            if not tk:
+                continue
+            def _ge(name, idx=i):
+                lst = request.form.getlist(name)
+                return lst[idx] if idx < len(lst) else ''
+            pnl = _f(_ge('ev_pnl'), 0.0) or 0.0
+            _saldo += pnl
+            _events.append({
+                'data':     (_ge('ev_data') or '').strip() or None,
+                'ticker':   tk,
+                'tipo':     _ge('ev_tipo') or 'Encerrada',
+                'quantity': int(_f(_ge('ev_qty'), 0) or 0),
+                'entrada':  _f(_ge('ev_entrada')),
+                'saida':    _f(_ge('ev_saida')),
+                'novo':     (_ge('ev_novo') or '').strip().upper() or '',
+                'pnl':      round(pnl, 2),
+                'saldo':    round(_saldo, 2),
+            })
+
+        if _legs or _events:
+            # Preserva as chaves que a aba avançada não edita (net_open etc.)
+            _prev = {}
+            if trade.details:
+                try:
+                    _prev = _j.loads(trade.details) or {}
+                except Exception:
+                    _prev = {}
+            _prev['legs'] = _legs
+            _prev['events'] = _events
+            trade.details = _j.dumps(_prev, ensure_ascii=False)
+        else:
+            trade.details = None
+
         # Recalc
         total_buy = trade.quantity * trade.buy_price
         total_sell = trade.quantity * trade.sell_price

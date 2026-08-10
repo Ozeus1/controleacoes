@@ -56,6 +56,7 @@
         <tbody>
             {% for trade in trades %}
             <tr data-strategy="{{ trade.strategy or 'Outros' }}"
+                data-trade-id="{{ trade.id }}"
                 data-search="{{ trade.ticker }} {{ trade.underlying or '' }} {{ trade.notes or '' }}">
                 <td>
                     <span class="ticker-badge">{{ trade.ticker }}</span>
@@ -90,6 +91,12 @@
                 </td>
                 <td>{{ trade.days_held }}</td>
                 <td class="actions" style="white-space:nowrap;">
+                    {% set det = trade.details | fromjson %}
+                    {% if det.legs or det.events %}
+                    <button type="button" class="btn btn-sm" style="background:#7c3aed;color:#fff;"
+                            title="Ver detalhamento por perna e manejos"
+                            onclick="toggleTradeDet({{ trade.id }})">🔍</button>
+                    {% endif %}
                     <a href="{{ url_for('edit_history', id=trade.id) }}" class="btn btn-sm btn-info" style="color: white;" title="Editar">✏️</a>
                     <a href="{{ url_for('delete_history', id=trade.id) }}" class="btn btn-sm btn-danger"
                         onclick="return confirm('Tem certeza que deseja excluir?')" title="Excluir">🗑️</a>
@@ -100,6 +107,107 @@
     </table>
     </div>
 </div>
+
+{# Detalhamento de cada trade (pernas + manejos). Fica FORA da tabela porque o
+   DataTables controla as linhas de #historyTable — o conteúdo é injetado como
+   child row pelo botão 🔍. #}
+{% for trade in trades %}
+        {% set det = trade.details | fromjson %}
+        {% if det.legs or det.events %}
+        {# O detalhe fica num <template> fora da tabela: como o DataTables
+           controla as linhas de #historyTable, um <tr> extra aqui quebraria
+           o modelo interno dele. O conteúdo é injetado como child row. #}
+        <template id="trade-det-{{ trade.id }}">
+            <div style="background:rgba(0,0,0,.18); padding:.8rem 1rem;">
+                {% if det.legs %}
+                <div style="font-size:.82rem; font-weight:700; margin-bottom:.4rem;">Pernas da operação</div>
+                <div style="overflow-x:auto; margin-bottom:.9rem;">
+                <table style="width:100%; border-collapse:collapse; font-size:.8rem; white-space:nowrap;">
+                    <thead><tr style="color:var(--text-secondary);">
+                        <th style="text-align:left; padding:.3rem .5rem;">C/V</th>
+                        <th style="text-align:left; padding:.3rem .5rem;">Ticker</th>
+                        <th style="text-align:left; padding:.3rem .5rem;">Tipo</th>
+                        <th style="text-align:right; padding:.3rem .5rem;">Strike</th>
+                        <th style="text-align:right; padding:.3rem .5rem;">Qtd</th>
+                        <th style="text-align:right; padding:.3rem .5rem;">Preço compra</th>
+                        <th style="text-align:right; padding:.3rem .5rem;">Preço venda</th>
+                        <th style="text-align:right; padding:.3rem .5rem;">Resultado</th>
+                    </tr></thead>
+                    <tbody>
+                    {% for l in det.legs %}
+                        <tr style="border-top:1px solid var(--border-color);">
+                            <td style="padding:.3rem .5rem;">
+                                <span style="padding:.05rem .4rem; border-radius:4px; font-weight:700;
+                                      background:{{ 'rgba(239,68,68,.15)' if l.side=='SELL' else 'rgba(16,185,129,.15)' }};
+                                      color:{{ 'var(--danger-color)' if l.side=='SELL' else 'var(--success-color)' }};">
+                                    {{ 'V' if l.side=='SELL' else 'C' }}</span>
+                            </td>
+                            <td style="padding:.3rem .5rem;">{{ l.ticker }}</td>
+                            <td style="padding:.3rem .5rem;">{{ l.opt_type }}</td>
+                            <td style="padding:.3rem .5rem; text-align:right;">
+                                {{ 'R$ %.2f'|format(l.strike)|replace('.', ',') if l.strike else '—' }}</td>
+                            <td style="padding:.3rem .5rem; text-align:right;">{{ l.qty }}</td>
+                            <td style="padding:.3rem .5rem; text-align:right;">R$ {{ '%.2f'|format(l.buy)|replace('.', ',') }}</td>
+                            <td style="padding:.3rem .5rem; text-align:right;">R$ {{ '%.2f'|format(l.sell)|replace('.', ',') }}</td>
+                            <td style="padding:.3rem .5rem; text-align:right;"
+                                class="{{ 'positive' if l.pnl >= 0 else 'negative' }}">
+                                {{ '+' if l.pnl >= 0 else '−' }}R$ {{ '%.2f'|format(l.pnl|abs)|replace('.', ',') }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+                {% endif %}
+
+                {% if det.events %}
+                <div style="font-size:.82rem; font-weight:700; margin-bottom:.4rem;">
+                    🔧 Rolagens e manejos
+                    <span style="font-weight:400; font-size:.75rem; color:var(--text-secondary);">
+                        — pernas fechadas ao longo da operação
+                    </span>
+                </div>
+                <div style="overflow-x:auto;">
+                <table style="width:100%; border-collapse:collapse; font-size:.8rem; white-space:nowrap;">
+                    <thead><tr style="color:var(--text-secondary);">
+                        <th style="text-align:left; padding:.3rem .5rem;">Data</th>
+                        <th style="text-align:left; padding:.3rem .5rem;">Ticker</th>
+                        <th style="text-align:left; padding:.3rem .5rem;">Movimento</th>
+                        <th style="text-align:right; padding:.3rem .5rem;">Qtd</th>
+                        <th style="text-align:right; padding:.3rem .5rem;">Entrada</th>
+                        <th style="text-align:right; padding:.3rem .5rem;">Saída</th>
+                        <th style="text-align:left; padding:.3rem .5rem;">Substituída por</th>
+                        <th style="text-align:right; padding:.3rem .5rem;">Lucro</th>
+                        <th style="text-align:right; padding:.3rem .5rem;">Saldo acum.</th>
+                    </tr></thead>
+                    <tbody>
+                    {% for e in det.events %}
+                        <tr style="border-top:1px solid var(--border-color);">
+                            <td style="padding:.3rem .5rem;">{{ e.data | date_fmt if e.data else '—' }}</td>
+                            <td style="padding:.3rem .5rem;">{{ e.ticker }}</td>
+                            <td style="padding:.3rem .5rem;
+                                color:{{ 'var(--danger-color)' if e.tipo=='Encerrada' else 'var(--text-secondary)' }};">
+                                {{ '🗑️' if e.tipo=='Encerrada' else '🔄' }} {{ e.tipo }}</td>
+                            <td style="padding:.3rem .5rem; text-align:right;">{{ e.quantity }}</td>
+                            <td style="padding:.3rem .5rem; text-align:right;">
+                                {{ 'R$ %.2f'|format(e.entrada)|replace('.', ',') if e.entrada is not none else '—' }}</td>
+                            <td style="padding:.3rem .5rem; text-align:right;">
+                                {{ 'R$ %.2f'|format(e.saida)|replace('.', ',') if e.saida is not none else '—' }}</td>
+                            <td style="padding:.3rem .5rem;">{{ e.novo or '—' }}</td>
+                            <td style="padding:.3rem .5rem; text-align:right;"
+                                class="{{ 'positive' if e.pnl >= 0 else 'negative' }}">
+                                {{ '+' if e.pnl >= 0 else '−' }}R$ {{ '%.2f'|format(e.pnl|abs)|replace('.', ',') }}</td>
+                            <td style="padding:.3rem .5rem; text-align:right; font-weight:700;"
+                                class="{{ 'positive' if e.saldo >= 0 else 'negative' }}">
+                                {{ '+' if e.saldo >= 0 else '−' }}R$ {{ '%.2f'|format(e.saldo|abs)|replace('.', ',') }}</td>
+                        </tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+                </div>
+                {% endif %}
+            </div>
+        </template>
+        {% endif %}{% endfor %}
 
 <!-- Summary by Strategy -->
 <div class="card mt-4">
@@ -210,10 +318,36 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <script>
+// Mostra/esconde o detalhamento (pernas + manejos) de um trade.
+// Usa a child row do DataTables: inserir um <tr> próprio na tabela quebraria
+// o modelo interno dele (erro _DT_CellIndex ao redesenhar/paginar).
+function toggleTradeDet(id) {
+    var tpl = document.getElementById('trade-det-' + id);
+    if (!tpl) return;
+    var tr = document.querySelector('#historyTable tbody tr[data-trade-id="' + id + '"]');
+    if (!tr) return;
+    if (window.jQuery && $.fn.dataTable && $.fn.dataTable.isDataTable('#historyTable')) {
+        var dt  = $('#historyTable').DataTable();
+        var row = dt.row(tr);
+        if (row.child.isShown()) { row.child.hide(); }
+        // O conteúdo precisa ir dentro de um <td>: passar uma <div> solta para
+        // row.child() não renderiza nada (o DT espera célula de tabela).
+        else { row.child('<td colspan="12">' + tpl.innerHTML + '</td>').show(); }
+    } else {
+        // Sem DataTables (fallback): insere/remove um <tr> logo abaixo.
+        var next = tr.nextElementSibling;
+        if (next && next.hasAttribute('data-detail-row')) { next.remove(); return; }
+        var novo = document.createElement('tr');
+        novo.setAttribute('data-detail-row', '1');
+        novo.innerHTML = '<td colspan="12">' + tpl.innerHTML + '</td>';
+        tr.parentNode.insertBefore(novo, tr.nextSibling);
+    }
+}
+
 function applyFilters() {
     const strat  = document.getElementById('strategyFilter').value;
     const q      = (document.getElementById('searchInput').value || '').trim().toUpperCase();
-    const rows   = document.querySelectorAll('#historyTable tbody tr');
+    const rows   = document.querySelectorAll('#historyTable tbody tr:not([data-detail-row])');
     let visible  = 0;
     rows.forEach(row => {
         const matchStrat  = !strat || row.dataset.strategy === strat;

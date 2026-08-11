@@ -74,7 +74,12 @@ class Asset(db.Model):
     fii_type = db.Column(db.String(50), nullable=True)
     
     # Optional fields for manual overrides or future use
-    sector = db.Column(db.String(50), nullable=True) 
+    sector = db.Column(db.String(50), nullable=True)
+
+    # ETF negociado na B3 em R$ mas que replica índice internacional (ex: IVVB11).
+    # Continua sendo type='ETF' (mesma cotação/lógica), só muda a classificação
+    # no Balanceamento, que soma como Renda Variável Internacional.
+    is_intl = db.Column(db.Boolean, nullable=False, default=False)
 
     def to_dict(self):
         return {
@@ -281,7 +286,7 @@ class International(db.Model):
     rate_usd = db.Column(db.Float, nullable=True) # BRL/USD Rate for conversion
     
     # New Fields for Refactor
-    category = db.Column(db.String(10), default='RV') # 'RV', 'RF' or 'ETF_INTL'
+    category = db.Column(db.String(10), default='RV') # 'RV' or 'RF'
     purchase_price = db.Column(db.Float) # Price in USD at purchase
     invested_value = db.Column(db.Float) # Total Invested in USD
     current_price = db.Column(db.Float) # Current Price (Quote) in USD

@@ -389,6 +389,13 @@ def run_migrations():
         except Exception:
             pass  # coluna já criada por outro worker
 
+    if 'is_intl' not in asset_columns:
+        try:
+            cursor.execute("ALTER TABLE asset ADD COLUMN is_intl BOOLEAN DEFAULT 0")
+            print("[MIGRATION] Added column 'is_intl' to 'asset' table.")
+        except Exception:
+            pass  # coluna já criada por outro worker
+
     # Check existing columns in 'international' table
     cursor.execute("PRAGMA table_info(international)")
     intl_columns = {row[1] for row in cursor.fetchall()}
@@ -7500,7 +7507,6 @@ def acoes():
     # Fetch International Assets for Migration
     intls_rv = International.query.filter_by(user_id=current_user.id, category='RV').all()
     intls_rf = International.query.filter_by(user_id=current_user.id, category='RF').all()
-    etfs_intl = International.query.filter_by(user_id=current_user.id, category='ETF_INTL').all()
 
     # Calculate Totals for Intl RV
     intl_rv_invested = sum((i.quantity or 0) * (i.avg_price or 0) for i in intls_rv)
@@ -7523,21 +7529,23 @@ def acoes():
     intl_rf_current = sum((i.quantity or 0) * (i.quote or 0) for i in intls_rf)
     intl_rf_day_gain = sum(calc_day_gain(i) for i in intls_rf)
 
-    # Calculate Totals for ETFs Internacionais
-    etfs_intl_invested = sum((i.quantity or 0) * (i.avg_price or 0) for i in etfs_intl)
-    etfs_intl_current = sum((i.quantity or 0) * (i.quote or 0) for i in etfs_intl)
-    etfs_intl_day_gain = sum(calc_day_gain(i) for i in etfs_intl)
-    
     total_invested = sum(a['total_invested'] for a in processed_assets)
     total_current = sum(a['current_total'] for a in processed_assets)
 
-    # ETFs
-    raw_etfs = Asset.query.filter(Asset.type=='ETF', Asset.user_id==current_user.id, Asset.quantity > 0).all()
+    # ETFs (nacionais: replicam índices B3, ex. BOVA11)
+    raw_etfs = Asset.query.filter(Asset.type=='ETF', Asset.is_intl==False, Asset.user_id==current_user.id, Asset.quantity > 0).all()
     processed_etfs = process_assets(raw_etfs)
-    
+
     total_etfs_invested = sum(a['total_invested'] for a in processed_etfs)
     total_etfs_current = sum(a['current_total'] for a in processed_etfs)
-    
+
+    # ETFs Internacionais (negociados na B3 em R$, mas replicam índice internacional, ex. IVVB11)
+    raw_etfs_intl = Asset.query.filter(Asset.type=='ETF', Asset.is_intl==True, Asset.user_id==current_user.id, Asset.quantity > 0).all()
+    processed_etfs_intl = process_assets(raw_etfs_intl)
+
+    total_etfs_intl_invested = sum(a['total_invested'] for a in processed_etfs_intl)
+    total_etfs_intl_current = sum(a['current_total'] for a in processed_etfs_intl)
+
     return render_template('acoes.html',
                            assets=processed_assets,
                            total_invested=total_invested,
@@ -7545,6 +7553,9 @@ def acoes():
                            etfs=processed_etfs,
                            total_etfs_invested=total_etfs_invested,
                            total_etfs_current=total_etfs_current,
+                           etfs_intl=processed_etfs_intl,
+                           total_etfs_intl_invested=total_etfs_intl_invested,
+                           total_etfs_intl_current=total_etfs_intl_current,
                            intls_rv=intls_rv,
                            intls_rf=intls_rf,
                            intl_rv_invested=intl_rv_invested,
@@ -7552,11 +7563,7 @@ def acoes():
                            intl_rf_invested=intl_rf_invested,
                            intl_rf_current=intl_rf_current,
                            intl_rv_day_gain=intl_rv_day_gain,
-                           intl_rf_day_gain=intl_rf_day_gain,
-                           etfs_intl=etfs_intl,
-                           etfs_intl_invested=etfs_intl_invested,
-                           etfs_intl_current=etfs_intl_current,
-                           etfs_intl_day_gain=etfs_intl_day_gain)
+                           intl_rf_day_gain=intl_rf_day_gain)
 
 @app.route('/fiis')
 @login_required
@@ -8306,7 +8313,8 @@ def add_asset():
     if request.method == 'POST':
         ticker = request.form.get('ticker').upper()
         type_ = request.form.get('type')
-        
+        is_intl = request.form.get('is_intl') == '1'
+
         try:
             qty = int(request.form.get('quantity'))
             avg_price_str = request.form.get('price', '').replace(',', '.')
@@ -8380,7 +8388,8 @@ def add_asset():
                 stop_loss=stop_loss,
                 gain1=gain1,
                 gain2=gain2,
-                recommendation=recommendation
+                recommendation=recommendation,
+                is_intl=is_intl
             )
             db.session.add(asset)
             if strategy != 'SWING' and qty > 0:
@@ -8419,6 +8428,7 @@ def edit_asset(id):
         asset.ticker = request.form.get('ticker').upper()
         asset.type = request.form.get('type')
         asset.strategy = request.form.get('strategy', 'HOLDER')
+        asset.is_intl = request.form.get('is_intl') == '1'
         asset.quantity = int(request.form.get('quantity'))
         asset.avg_price = float(request.form.get('price').replace(',', '.'))
         
@@ -10451,7 +10461,10 @@ def balanceamento():
         # 2. RV Data
         acoes_assets = Asset.query.filter(Asset.type=='ACAO', Asset.user_id==current_user.id, Asset.quantity > 0).all()
         fiis_assets = Asset.query.filter(Asset.type=='FII', Asset.user_id==current_user.id, Asset.quantity > 0).all()
-        etfs_assets = Asset.query.filter(Asset.type=='ETF', Asset.user_id==current_user.id, Asset.quantity > 0).all()
+        etfs_assets = Asset.query.filter(Asset.type=='ETF', Asset.is_intl==False, Asset.user_id==current_user.id, Asset.quantity > 0).all()
+        # ETFs negociados na B3 em R$ mas que replicam índice internacional (ex: IVVB11) —
+        # contam como Renda Variável Internacional no balanceamento, não como RV nacional.
+        etfs_intl_assets = Asset.query.filter(Asset.type=='ETF', Asset.is_intl==True, Asset.user_id==current_user.id, Asset.quantity > 0).all()
         cryptos = Crypto.query.filter_by(user_id=current_user.id).all()
         # Using same logic as models: strategy='SWING'
         assets_swing = Asset.query.filter_by(strategy='SWING', user_id=current_user.id).all()
@@ -10460,11 +10473,7 @@ def balanceamento():
         assets_holder = Asset.query.filter_by(strategy='HOLDER', type='ACAO', user_id=current_user.id).all()
         
         # Split Intls
-        # ETF_INTL (ETFs Internacionais) soma junto de RV Internacional nos totais/gráficos.
-        intls_rv = International.query.filter(
-            International.user_id == current_user.id,
-            International.category.in_(['RV', 'ETF_INTL'])
-        ).all()
+        intls_rv = International.query.filter_by(user_id=current_user.id, category='RV').all()
         intls_rf = International.query.filter_by(user_id=current_user.id, category='RF').all()
         
         # 3. Swing Trade (using Asset table)
@@ -10487,6 +10496,7 @@ def balanceamento():
         val_acoes = sum((a.quantity * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0))) for a in acoes_assets)
         val_fiis = sum((a.quantity * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0))) for a in fiis_assets)
         val_etfs = sum((a.quantity * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0))) for a in etfs_assets)
+        val_etfs_intl = sum((a.quantity * ((a.current_price or 0) if (a.current_price or 0) > 0 else (a.avg_price or 0))) for a in etfs_intl_assets)
         val_cryptos = sum((c.current_value or 0) for c in cryptos)
         val_intls_rv = sum(((i.value_usd or 0) * (i.rate_usd or 5.5)) for i in intls_rv)
         
@@ -10635,8 +10645,8 @@ def balanceamento():
 
         # International
         # International
-        # RV
-        t_intl_rv = sum([((i.value_usd or 0) * (i.rate_usd or 5.5)) for i in intls_rv])
+        # RV (inclui ETFs negociados na B3 em R$ que replicam índice internacional, ex: IVVB11)
+        t_intl_rv = sum([((i.value_usd or 0) * (i.rate_usd or 5.5)) for i in intls_rv]) + val_etfs_intl
         types_total['Internacional RV'] = t_intl_rv
         summary['Renda Variável'] += t_intl_rv
         summary['Indefinido'] += t_intl_rv
@@ -10708,9 +10718,8 @@ def balanceamento():
         crypto_profit = crypto_current - crypto_invested
 
         # 6. Location Breakdown (Brazil vs International)
-        # International = Crypto + Intl RV + Intl RF + Gold
-        # Note: t_intl_rf is calculated above. val_etfs is used as International per user request.
-        total_intl = t_intl_rv + t_intl_rf + t_crypto + val_etfs
+        # International = Crypto + Intl RV (já inclui ETFs internacionais) + Intl RF
+        total_intl = t_intl_rv + t_intl_rf + t_crypto
         total_br = total_portfolio - total_intl
         
         location_chart = {
@@ -10774,7 +10783,7 @@ def balanceamento():
         total_cripto = types_total.get('Cripto', 0)
         total_intl_rv = types_total.get('Internacional RV', 0)
         total_intl_rf = types_total.get('Internacional RF', 0)
-        total_etf_intl = val_etfs
+        total_etf_intl = val_etfs_intl
         
         total_rv_intl_general = total_cripto + total_intl_rv + total_intl_rf + total_etf_intl
         

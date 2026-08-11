@@ -15,10 +15,21 @@
             <div class="form-group">
                 <label for="type">Tipo</label>
                 <select id="type" name="type" onchange="toggleFiiFields()">
-                    <option value="ACAO" {% if asset and asset.type=='ACAO' %}selected{% endif %}>Ação</option>
-                    <option value="ETF" {% if asset and asset.type=='ETF' %}selected{% endif %}>ETF</option>
-                    <option value="FII" {% if asset and asset.type=='FII' %}selected{% endif %}>FII</option>
+                    <option value="ACAO" {% if (asset and asset.type=='ACAO' ) or (not asset and
+                        request.args.get('type')=='ACAO' ) %}selected{% endif %}>Ação</option>
+                    <option value="ETF" {% if (asset and asset.type=='ETF' ) or (not asset and
+                        request.args.get('type')=='ETF' ) %}selected{% endif %}>ETF</option>
+                    <option value="FII" {% if (asset and asset.type=='FII' ) or (not asset and
+                        request.args.get('type')=='FII' ) %}selected{% endif %}>FII</option>
                 </select>
+            </div>
+            <div class="form-group" id="etf-intl-group" style="display: none;">
+                <label for="is_intl" style="display:flex; align-items:center; gap:.4rem; cursor:pointer;">
+                    <input type="checkbox" id="is_intl" name="is_intl" value="1" style="width:auto;"
+                        {% if (asset and asset.is_intl) or (not asset and request.args.get('intl')=='1' )
+                        %}checked{% endif %}>
+                    ETF Internacional (ex: IVVB11)
+                </label>
             </div>
             <div class="form-group" id="fii-type-group" style="display: none;">
                 <label for="fii_type">Tipo de FII</label>
@@ -162,6 +173,7 @@
         const type = document.getElementById('type').value;
         const fiiGroup = document.getElementById('fii-type-group');
         const sectorGroup = document.getElementById('sector-group');
+        const etfIntlGroup = document.getElementById('etf-intl-group');
 
         if (type === 'FII') {
             fiiGroup.style.display = 'block';
@@ -172,6 +184,10 @@
         } else {
             fiiGroup.style.display = 'none';
             sectorGroup.style.display = 'none';
+        }
+        etfIntlGroup.style.display = (type === 'ETF') ? 'flex' : 'none';
+        if (type !== 'ETF') {
+            document.getElementById('is_intl').checked = false;
         }
     }
 

@@ -1402,4 +1402,162 @@ function editDeltaPut(optId, current) {
     });
 })();
 </script>
+
+<script>
+// ── Colunas ocultáveis por tabela ────────────────────────────────────────
+// Cada tabela da página ganha um botão "⚙️ Colunas" que abre um menu com um
+// checkbox por cabeçalho. A 1ª coluna (o ativo/opção) e a última ("Ações")
+// nunca aparecem na lista — são as únicas que o pedido exige manter fixas.
+// A preferência é por tabela (chave = texto dos cabeçalhos, estável mesmo
+// que a ordem das seções mude) e por usuário, guardada no localStorage.
+(function () {
+    var STORAGE_PREFIX = 'opcoes-cols::{{ current_user.id }}::';
+
+    function tableKey(table) {
+        var heads = [].slice.call(table.querySelectorAll('thead th'))
+            .map(function (th) { return th.textContent.trim(); });
+        // Hash simples e estável (não precisa ser criptográfico, só distinguir tabelas).
+        var s = heads.join('|'), h = 0;
+        for (var i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; }
+        return STORAGE_PREFIX + Math.abs(h);
+    }
+
+    function loadHidden(key) {
+        try { return JSON.parse(localStorage.getItem(key)) || []; }
+        catch (e) { return []; }
+    }
+    function saveHidden(key, idxs) {
+        localStorage.setItem(key, JSON.stringify(idxs));
+    }
+
+    function applyHidden(table, idxs) {
+        var ths = table.querySelectorAll('thead tr').length
+            ? table.querySelectorAll('thead th') : [];
+        var rows = table.querySelectorAll('tbody tr, tfoot tr');
+        idxs = idxs || [];
+        for (var i = 0; i < ths.length; i++) {
+            var hide = idxs.indexOf(i) !== -1;
+            ths[i].style.display = hide ? 'none' : '';
+        }
+        rows.forEach(function (tr) {
+            var cells = tr.children;
+            for (var i = 0; i < cells.length && i < ths.length; i++) {
+                cells[i].style.display = idxs.indexOf(i) !== -1 ? 'none' : '';
+            }
+        });
+    }
+
+    function buildMenu(table, key, btn) {
+        var ths = [].slice.call(table.querySelectorAll('thead th'));
+        if (ths.length < 3) return null;    // sem colunas "do meio" pra esconder
+        var hidden = loadHidden(key);
+
+        var menu = document.createElement('div');
+        menu.className = 'cols-menu';
+        menu.style.cssText = 'position:absolute; z-index:400; background:var(--card-bg);'
+            + 'border:1px solid var(--border-color); border-radius:8px; padding:.5rem;'
+            + 'box-shadow:0 8px 24px rgba(0,0,0,.3); font-size:.82rem; min-width:200px;'
+            + 'max-height:320px; overflow-y:auto; display:none;';
+
+        var title = document.createElement('div');
+        title.textContent = 'Colunas visíveis';
+        title.style.cssText = 'font-weight:700; margin-bottom:.4rem; color:var(--text-secondary);'
+            + 'text-transform:uppercase; font-size:.7rem;';
+        menu.appendChild(title);
+
+        // 1ª e última coluna ficam de fora da lista — não são ocultáveis.
+        for (var i = 1; i < ths.length - 1; i++) {
+            (function (idx) {
+                var label = document.createElement('label');
+                label.style.cssText = 'display:flex; align-items:center; gap:.4rem;'
+                    + 'padding:.25rem .3rem; cursor:pointer; white-space:nowrap;'
+                    + 'border-radius:4px;';
+                label.onmouseenter = function () { label.style.background = 'var(--hover-bg)'; };
+                label.onmouseleave = function () { label.style.background = ''; };
+                var cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = hidden.indexOf(idx) === -1;
+                cb.style.margin = '0';
+                cb.addEventListener('change', function () {
+                    var cur = loadHidden(key);
+                    var pos = cur.indexOf(idx);
+                    if (cb.checked && pos !== -1) cur.splice(pos, 1);
+                    if (!cb.checked && pos === -1) cur.push(idx);
+                    saveHidden(key, cur);
+                    applyHidden(table, cur);
+                });
+                var txt = document.createElement('span');
+                txt.textContent = ths[idx].textContent.trim() || '(coluna ' + (idx + 1) + ')';
+                label.appendChild(cb);
+                label.appendChild(txt);
+                menu.appendChild(label);
+            })(i);
+        }
+
+        var resetBtn = document.createElement('button');
+        resetBtn.type = 'button';
+        resetBtn.textContent = 'Mostrar todas';
+        resetBtn.className = 'btn btn-sm btn-secondary';
+        resetBtn.style.cssText = 'width:100%; margin-top:.5rem; font-size:.78rem;';
+        resetBtn.onclick = function () {
+            saveHidden(key, []);
+            applyHidden(table, []);
+            menu.querySelectorAll('input[type=checkbox]').forEach(function (cb) { cb.checked = true; });
+        };
+        menu.appendChild(resetBtn);
+
+        document.body.appendChild(menu);
+        return menu;
+    }
+
+    function setupTable(table) {
+        // Só tabelas de listagem principais têm cabeçalho com texto reconhecível
+        // e um cartão-pai com título — outras tabelinhas auxiliares (ex.: dentro
+        // de modais) ficam de fora por não terem thead com th's.
+        var thead = table.querySelector('thead');
+        if (!thead || !thead.querySelector('th')) return;
+        var card = table.closest('.card');
+        if (!card) return;
+        var headerBar = card.querySelector(':scope > div');   // barra com <h3> + botões
+        if (!headerBar) return;
+        var ths = thead.querySelectorAll('th');
+        if (ths.length < 3) return;
+
+        var key = tableKey(table);
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-sm btn-secondary';
+        btn.title = 'Escolher quais colunas aparecem nesta tabela';
+        btn.textContent = '⚙️ Colunas';
+        btn.style.marginLeft = '.4rem';
+
+        var menu = null;
+        btn.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            if (!menu) menu = buildMenu(table, key, btn);
+            if (!menu) return;
+            var open = menu.style.display === 'block';
+            document.querySelectorAll('.cols-menu').forEach(function (m) { m.style.display = 'none'; });
+            if (!open) {
+                var r = btn.getBoundingClientRect();
+                menu.style.left = (r.left + window.scrollX) + 'px';
+                menu.style.top = (r.bottom + window.scrollY + 4) + 'px';
+                menu.style.display = 'block';
+            }
+        });
+
+        // Insere o botão na barra de ações do card (ao lado de "Adicionar…").
+        var actionsWrap = headerBar.querySelector('div:last-child') || headerBar;
+        actionsWrap.appendChild(btn);
+
+        applyHidden(table, loadHidden(key));
+    }
+
+    document.querySelectorAll('.card table').forEach(setupTable);
+
+    document.addEventListener('click', function () {
+        document.querySelectorAll('.cols-menu').forEach(function (m) { m.style.display = 'none'; });
+    });
+})();
+</script>
 {% endblock %}

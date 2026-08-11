@@ -7500,11 +7500,12 @@ def acoes():
     # Fetch International Assets for Migration
     intls_rv = International.query.filter_by(user_id=current_user.id, category='RV').all()
     intls_rf = International.query.filter_by(user_id=current_user.id, category='RF').all()
+    etfs_intl = International.query.filter_by(user_id=current_user.id, category='ETF_INTL').all()
 
     # Calculate Totals for Intl RV
     intl_rv_invested = sum((i.quantity or 0) * (i.avg_price or 0) for i in intls_rv)
     intl_rv_current = sum((i.quantity or 0) * (i.quote or 0) for i in intls_rv)
-    
+
     # Calculate Day Gain Totals
     def calc_day_gain(item):
         quote = item.quote or 0
@@ -7516,11 +7517,16 @@ def acoes():
         return qty * (quote - prev)
 
     intl_rv_day_gain = sum(calc_day_gain(i) for i in intls_rv)
-    
+
     # Calculate Totals for Intl RF
     intl_rf_invested = sum((i.quantity or 0) * (i.avg_price or 0) for i in intls_rf)
     intl_rf_current = sum((i.quantity or 0) * (i.quote or 0) for i in intls_rf)
     intl_rf_day_gain = sum(calc_day_gain(i) for i in intls_rf)
+
+    # Calculate Totals for ETFs Internacionais
+    etfs_intl_invested = sum((i.quantity or 0) * (i.avg_price or 0) for i in etfs_intl)
+    etfs_intl_current = sum((i.quantity or 0) * (i.quote or 0) for i in etfs_intl)
+    etfs_intl_day_gain = sum(calc_day_gain(i) for i in etfs_intl)
     
     total_invested = sum(a['total_invested'] for a in processed_assets)
     total_current = sum(a['current_total'] for a in processed_assets)
@@ -7532,9 +7538,9 @@ def acoes():
     total_etfs_invested = sum(a['total_invested'] for a in processed_etfs)
     total_etfs_current = sum(a['current_total'] for a in processed_etfs)
     
-    return render_template('acoes.html', 
-                           assets=processed_assets, 
-                           total_invested=total_invested, 
+    return render_template('acoes.html',
+                           assets=processed_assets,
+                           total_invested=total_invested,
                            total_current=total_current,
                            etfs=processed_etfs,
                            total_etfs_invested=total_etfs_invested,
@@ -7546,7 +7552,11 @@ def acoes():
                            intl_rf_invested=intl_rf_invested,
                            intl_rf_current=intl_rf_current,
                            intl_rv_day_gain=intl_rv_day_gain,
-                           intl_rf_day_gain=intl_rf_day_gain)
+                           intl_rf_day_gain=intl_rf_day_gain,
+                           etfs_intl=etfs_intl,
+                           etfs_intl_invested=etfs_intl_invested,
+                           etfs_intl_current=etfs_intl_current,
+                           etfs_intl_day_gain=etfs_intl_day_gain)
 
 @app.route('/fiis')
 @login_required
@@ -10450,7 +10460,11 @@ def balanceamento():
         assets_holder = Asset.query.filter_by(strategy='HOLDER', type='ACAO', user_id=current_user.id).all()
         
         # Split Intls
-        intls_rv = International.query.filter_by(user_id=current_user.id, category='RV').all()
+        # ETF_INTL (ETFs Internacionais) soma junto de RV Internacional nos totais/gráficos.
+        intls_rv = International.query.filter(
+            International.user_id == current_user.id,
+            International.category.in_(['RV', 'ETF_INTL'])
+        ).all()
         intls_rf = International.query.filter_by(user_id=current_user.id, category='RF').all()
         
         # 3. Swing Trade (using Asset table)

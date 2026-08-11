@@ -281,7 +281,7 @@ class International(db.Model):
     rate_usd = db.Column(db.Float, nullable=True) # BRL/USD Rate for conversion
     
     # New Fields for Refactor
-    category = db.Column(db.String(10), default='RV') # 'RV' or 'RF'
+    category = db.Column(db.String(10), default='RV') # 'RV', 'RF' or 'ETF_INTL'
     purchase_price = db.Column(db.Float) # Price in USD at purchase
     invested_value = db.Column(db.Float) # Total Invested in USD
     current_price = db.Column(db.Float) # Current Price (Quote) in USD

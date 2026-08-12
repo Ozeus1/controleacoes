@@ -193,8 +193,8 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     </div>
     <div id="bam-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(185px,1fr)); gap:.75rem;"></div>
     <div style="margin-top:1.2rem; display:flex; gap:.6rem; flex-wrap:wrap;">
-      <a id="bam-calc" href="#" class="btn btn-secondary btn-sm" style="display:none;">🧮 Abrir em Cálculos de Opções</a>
-      <a id="bam-open" href="#" class="btn btn-primary btn-sm">🔗 Editar em Cadeia de Opções</a>
+      <a id="bam-calc" href="#" class="btn btn-primary btn-sm" style="display:none;">🧮 Abrir em Cálculos de Opções</a>
+      <a id="bam-open" href="#" class="btn btn-secondary btn-sm">🔗 Editar em Cadeia de Opções</a>
       <button class="btn btn-secondary btn-sm" onclick="baCloseModal()">Fechar</button>
     </div>
   </div>
@@ -438,24 +438,69 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   }
 
   // Presets da aba "Estruturas" (venda_puts) → assinatura fixa das pernas.
-  // Só mapeamos operações avançadas que casam exatamente com um preset.
+  // Quando a operação casa exatamente com um preset nomeado, vale a pena usá-lo:
+  // a tela mostra os rótulos e o cálculo dedicado daquela estrutura.
   var ESTRUTURA_PRESET = {
     borboleta_delta: 'borboleta'  // +1 CALL ITM / −2 CALL ATM / +1 CALL OTM
   };
+
+  // Monta o link para a aba "Estruturas" de Cálculos de Opções.
+  // Sem preset nomeado, usa o motor genérico (op=livre + livre_legs), que arma o
+  // payoff a partir das próprias pernas — assim toda operação avançada de até 4
+  // pernas e um vencimento abre em Cálculos, como já acontece na Busca simples.
   function estruturaHref(d, e, r, qty) {
+    var legs = r.legs || [];
+    if (!legs.length || legs.length > 4) return null;
+
+    // Calendários/diagonais têm pernas em vencimentos diferentes; a aba
+    // Estruturas trabalha com um vencimento só, então ficam fora.
+    var exps = legs.filter(function(l) { return l.tp !== 'STOCK' && l.exp; })
+                   .map(function(l) { return l.exp; });
+    if (exps.length && exps.some(function(x) { return x !== exps[0]; })) return null;
+
     var preset = ESTRUTURA_PRESET[d.op];
-    if (!preset) return null;
-    var legs = (r.legs || []).filter(function(l) { return l.tp !== 'STOCK'; });
-    // preset borboleta usa 3 pernas em strike crescente (A<B<C)
-    var sorted = legs.slice().sort(function(a, b) { return (a.k || 0) - (b.k || 0); });
-    if (sorted.length < 3) return null;
-    var A = sorted[0], B = sorted[1], C = sorted[2];
-    var p = new URLSearchParams({st: '1', ativo: d.ticker, spot: d.spot, qty: qty,
-      exp: e.exp, op: preset,
-      at: A.sym, ak: A.k, ap: A.px,
-      bt: B.sym, bk: B.k, bp: B.px,
-      ct2: C.sym, ck2: C.k, cp2: C.px});
-    return '/venda_puts?' + p.toString() + '#estrutura';
+    var campos = ['a', 'b', 'c', 'd'];
+    var p = {st: '1', ativo: d.ticker, spot: d.spot, qty: qty, exp: e.exp};
+
+    if (preset) {
+      // Preset borboleta: 3 pernas em strike crescente (A<B<C).
+      var opts = legs.filter(function(l) { return l.tp !== 'STOCK'; });
+      var sorted = opts.slice().sort(function(a, b) { return (a.k || 0) - (b.k || 0); });
+      if (sorted.length < 3) return null;
+      p.op = preset;
+      sorted.slice(0, 3).forEach(function(l, i) {
+        var f = campos[i];
+        p[f === 'c' ? 'ct2' : f + 't'] = l.sym || '';
+        p[f === 'c' ? 'ck2' : f + 'k'] = l.k;
+        p[f === 'c' ? 'cp2' : f + 'p'] = l.px;
+      });
+      return '/venda_puts?' + new URLSearchParams(p).toString() + '#estrutura';
+    }
+
+    // Motor genérico: ação primeiro, depois as opções por strike crescente —
+    // mesma ordenação usada pela Simulação de Opções, para os rótulos das
+    // pernas saírem na ordem que o usuário espera ler.
+    var ordem = legs.slice().sort(function(a, b) {
+      if (a.tp !== b.tp) {
+        if (a.tp === 'STOCK') return -1;
+        if (b.tp === 'STOCK') return 1;
+        return a.tp < b.tp ? -1 : 1;
+      }
+      return (a.k || 0) - (b.k || 0);
+    });
+
+    p.op = 'livre';
+    var spec = [];
+    ordem.forEach(function(l, i) {
+      var f = campos[i];
+      var tp = l.tp === 'STOCK' ? 'S' : (l.tp === 'CALL' ? 'C' : 'P');
+      spec.push(tp + ':' + l.q);
+      p[f === 'c' ? 'ct2' : f + 't'] = l.sym || '';
+      p[f === 'c' ? 'ck2' : f + 'k'] = l.k || 0;
+      p[f === 'c' ? 'cp2' : f + 'p'] = l.px || 0;
+    });
+    p.livre_legs = spec.join('|');
+    return '/venda_puts?' + new URLSearchParams(p).toString() + '#estrutura';
   }
 
   results.addEventListener('click', function(ev) {

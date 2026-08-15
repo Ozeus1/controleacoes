@@ -11431,8 +11431,11 @@ def update_quotes():
             count, tried, errs = update_all_assets_logic(skip_tickers=oplab_covered)
             final_msg += f'Yahoo/Brapi: {count}/{tried} ativo(s). '
         else:
-            etf_count, etf_tried, errs = update_all_assets_logic(only_types={'ETF'})
-            final_msg += f'ETFs via Yahoo: {etf_count}/{etf_tried}. '
+            # ETFs já vêm da OpLab; o Yahoo só completa o que ela não retornou.
+            etf_count, etf_tried, errs = update_all_assets_logic(
+                only_types={'ETF'}, skip_tickers=oplab_covered)
+            if etf_tried:
+                final_msg += f'ETFs via Yahoo: {etf_count}/{etf_tried}. '
             final_msg += 'Ações/FIIs via MT5 Feeder. '
 
         intl_success, intl_msgs = update_intl_quotes_logic(current_user.id)
@@ -11500,10 +11503,13 @@ def update_quotes_async():
                     else:
                         final_msg += 'Intl: falha. '
                 elif quote_mode == 'mt5':
+                    # ETFs já vêm da OpLab junto com o resto da B3; o Yahoo só
+                    # completa os que ela não retornou.
                     etf_count, etf_tried, errs = update_all_assets_logic(
-                        user_id=user_id, only_types={'ETF'}
+                        user_id=user_id, only_types={'ETF'}, skip_tickers=oplab_covered
                     )
-                    final_msg += f'ETFs via Yahoo: {etf_count}/{etf_tried}. '
+                    if etf_tried:
+                        final_msg += f'ETFs via Yahoo: {etf_count}/{etf_tried}. '
                     final_msg += 'Ações/FIIs via MT5 Feeder. '
                     intl_success, _ = update_intl_quotes_logic(user_id)
 
@@ -12882,12 +12888,43 @@ def _api_ranking_vol_update_impl():
         vmax = _pick('iv_1y_max', 'ewma_1y_max', 'iv_6m_max', 'ewma_6m_max', 'iv_max', 'ivMax')
         return ivr, ivp, vol, vmin, vmax
 
-    # Busca preços em lote via brapi (com token brapi se disponível)
+    def _extract_price(d):
+        """Preço e variação % do mesmo payload de /market/instruments/{symbol}.
+        A OpLab já devolve a cotação aqui, então usá-la evita uma segunda fonte
+        (brapi/Yahoo) e mantém preço e IV coerentes entre si — vindos do mesmo
+        instante e do mesmo provedor."""
+        if not isinstance(d, dict):
+            return None, None
+        for sub in ('data', 'spot'):
+            if isinstance(d.get(sub), dict):
+                d = {**d, **d[sub]}
+
+        def _num(*keys, skip_zero=False):
+            for k in keys:
+                v = d.get(k)
+                if v is None:
+                    continue
+                try:
+                    f = float(v)
+                except (TypeError, ValueError):
+                    continue
+                # Preço 0 = papel sem negócio no dia, não cotação zero: tenta a
+                # próxima chave (o spot_price costuma estar preenchido).
+                if skip_zero and f == 0:
+                    continue
+                return f
+            return None
+
+        px  = _num('close', 'spot_price', 'last', 'price', 'adjusted_close', skip_zero=True)
+        var = _num('variation', 'change_percent', 'var_pct')
+        return px, var
+
     from services import _brapi_quotes, _yf_fast_info
     from concurrent.futures import as_completed as _as_completed, TimeoutError as _CFTimeoutError
     brapi_token = Settings.get_value('brapi_token', user_id=uid)
     tickers_list = [rv.ticker for rv in items]
-    price_map = {}  # ticker → {price, change}
+    price_map = {}      # ticker → {price, change} (fonte final)
+    oplab_prices = {}   # preenchido por _fetch_iv, junto com a IV
 
     def _fetch_prices_yahoo(tks, budget):
         """Yahoo ticker a ticker com teto de tempo. Sem esse teto, uma lista
@@ -12910,15 +12947,6 @@ def _api_ranking_vol_update_impl():
         finally:
             ex.shutdown(wait=False, cancel_futures=True)
 
-    if brapi_token:
-        brapi_res = _brapi_quotes(tickers_list, brapi_token)
-        for t, d in brapi_res.items():
-            price_map[t] = {'price': d['price'], 'change': d['change_percent']}
-        # brapi resolve em lote; o Yahoo só cobre o que sobrou
-        _fetch_prices_yahoo([t for t in tickers_list if t not in price_map], 25)
-    else:
-        _fetch_prices_yahoo(tickers_list, 25)
-
     # Busca de IV via OpLab: uma chamada por ticker (até 15s cada). Sequencial,
     # uma lista "Geral" com 100+ tickers passa muito além do timeout do
     # gateway (504 relatado) — paraleliza com um teto de tempo total, e
@@ -12927,7 +12955,12 @@ def _api_ranking_vol_update_impl():
 
     def _fetch_iv(ticker):
         try:
-            return ticker, (*_extract_iv(_oplab_get_json(f'/market/instruments/{ticker}', token, timeout=15)), None)
+            d = _oplab_get_json(f'/market/instruments/{ticker}', token, timeout=15)
+            # Mesma resposta serve para IV e cotação — a OpLab é a fonte das duas.
+            px, var = _extract_price(d)
+            if px is not None:
+                oplab_prices[ticker] = {'price': px, 'change': var if var is not None else 0.0}
+            return ticker, (*_extract_iv(d), None)
         except OplabApiError as e:
             return ticker, (None, None, None, None, None, str(e))
         except Exception as e:
@@ -12946,6 +12979,19 @@ def _api_ranking_vol_update_impl():
         pass  # aproveita o que já resolveu; o resto fica sem IV nesta rodada
     finally:
         ex.shutdown(wait=False, cancel_futures=True)
+
+    # A cotação da OpLab é a fonte principal: veio na mesma resposta da IV, então
+    # preço e volatilidade ficam do mesmo instante. brapi/Yahoo entram só para os
+    # papéis que a OpLab não cobriu (sem instrumento ou falha na chamada).
+    price_map.update(oplab_prices)
+    faltando = [t for t in tickers_list if t not in price_map]
+    if faltando:
+        if brapi_token:
+            for t, d in _brapi_quotes(faltando, brapi_token).items():
+                price_map[t] = {'price': d['price'], 'change': d['change_percent']}
+            _fetch_prices_yahoo([t for t in faltando if t not in price_map], 25)
+        else:
+            _fetch_prices_yahoo(faltando, 25)
 
     results = []
     ok = 0
@@ -15306,7 +15352,11 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
     put_sales     = PutSale.query.filter_by(user_id=uid).all()
 
     # ── Monta conjunto de tickers a buscar ────────────────────────
-    asset_tickers  = {a.ticker.upper() for a in assets if a.type != 'ETF'}
+    # Inclui ETFs: são negociados na B3 como qualquer ação, e a OpLab é a fonte
+    # oficial do pregão. Antes ficavam de fora e caíam no Yahoo/brapi — a brapi
+    # devolve alguns ETFs brasileiros defasados, que era justamente o motivo do
+    # prefer_yahoo em get_quotes(). Vindo da OpLab, o problema some na origem.
+    asset_tickers  = {a.ticker.upper() for a in assets}
     option_tickers = {o.ticker.upper() for o in options}
 
     # Underlying das options registradas (para atualizar current_price do ativo)
@@ -15519,8 +15569,6 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
     assets_ok = 0
     oplab_covered_assets: set = set()   # tickers que o OpLab retornou → não precisam ir ao Yahoo
     for a in assets:
-        if a.type == 'ETF':
-            continue
         key = a.ticker.upper()
         if key in prices and prices[key] > 0:
             a.current_price = prices[key]
@@ -15557,7 +15605,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
                     o.underlying_change = variations[uk]
                 # Propaga para o Asset correspondente se existir
                 asset_obj = next((a for a in assets if a.ticker.upper() == uk), None)
-                if asset_obj and asset_obj.type != 'ETF':
+                if asset_obj:
                     asset_obj.current_price = prices[uk]
                     if uk in variations:
                         asset_obj.daily_change = variations[uk]

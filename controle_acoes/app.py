@@ -4952,19 +4952,45 @@ def api_busca_operacoes(ticker):
 
         elif op == 'vaca_alta_put':
             # Vaca de Alta com PUT (put ratio spread 1x2, montado no crédito):
-            # +1 PUT ATM/levemente OTM, -2 PUTs mais OTM (strike abaixo).
-            # Melhora o breakeven frente à venda de PUT simples: entre os dois
-            # strikes o resultado é o crédito + a valorização da trava de baixa.
-            # Abaixo do breakeven o risco volta a crescer (fica 1 PUT nua).
+            # +1 PUT colada no ATM, -2 PUTs mais OTM (strike abaixo).
+            #
+            # A ideia da estrutura é render mesmo com o papel parado ou subindo:
+            # acima do strike comprado sobra o crédito líquido (o "valor residual"),
+            # e entre os dois strikes o lucro ainda cresce com a queda, até o pico
+            # no strike vendido. Por isso a comprada tem de ficar junto do ATM — é
+            # ela que define a partir de onde o resultado vira o crédito puro.
+            # Abaixo do breakeven sobra 1 PUT nua e a perda volta a crescer.
+            #
+            # Referência (spot 50): comprada K=49 (~2% OTM), vendidas K=47 (~6% OTM),
+            # crédito = 2×0,30 − 0,45 = +0,15.
+
+            # Crédito mínimo para a montagem valer a pena: o residual acima do ATM
+            # precisa ser algo palpável, não R$ 0,01. Usa-se 0,15% do spot com um
+            # piso absoluto, para funcionar tanto em papel de R$ 5 quanto de R$ 100.
+            min_credit = max(0.02, round(0.0015 * spot, 2))
+
+            # Comprada colada no ATM: de 3% OTM até 1% ITM. Fora dessa faixa a
+            # estrutura deixa de ser "de alta" (a proteção começa longe demais).
             buy_cands = [p for p in puts_ok
-                         if 0.95 * spot <= p['strike'] <= 1.02 * spot and p['ask'] >= 0.05][:10]
+                         if 0.97 * spot <= p['strike'] <= 1.01 * spot and p['ask'] >= 0.05]
+            # Mais perto do ATM primeiro.
+            buy_cands.sort(key=lambda p: abs(p['strike'] - spot))
+            buy_cands = buy_cands[:6]
+
             for buy in buy_cands:
+                # Vendidas mais OTM, entre 2% e 12% abaixo do spot. O limite inferior
+                # evita travas largas demais, que empurram o breakeven para baixo mas
+                # exigem uma queda irreal para o pico de lucro.
                 sells = [p for p in puts_ok
-                         if 0.80 * spot <= p['strike'] < buy['strike'] and p['bid'] >= 0.03][:10]
-                for sell in sells:
-                    width = buy['strike'] - sell['strike']
-                    credit = 2 * sell['bid'] - buy['ask']      # >0 crédito, <0 débito
-                    if credit <= 0:                            # a montagem tem de ser no crédito
+                         if 0.88 * spot <= p['strike'] <= 0.98 * spot
+                         and p['strike'] < buy['strike'] and p['bid'] >= 0.02]
+                sells.sort(key=lambda p: -p['strike'])
+                for sell in sells[:10]:
+                    width  = buy['strike'] - sell['strike']
+                    credit = 2 * sell['bid'] - buy['ask']   # >0 crédito, <0 débito
+                    # Exige crédito de verdade: é ele o lucro se o papel subir e o
+                    # que paga o risco da ponta descoberta lá embaixo.
+                    if credit < min_credit:
                         continue
                     # Lucro máximo em S = K vendida: crédito + largura da trava.
                     max_gain = width + credit
@@ -4989,13 +5015,18 @@ def api_busca_operacoes(ticker):
                         'be_margin':   round((spot - be_low) / spot * 100, 2),
                         # Distância do spot até o pico de lucro (K vendida).
                         'peak_dist':   round((sell['strike'] - spot) / spot * 100, 1),
+                        # Onde começa o lucro residual (crédito puro) na alta.
+                        'buy_dist':    round((buy['strike'] - spot) / spot * 100, 1),
+                        # Crédito como % do spot — compara montagens de papéis diferentes.
+                        'credit_pct':  round(credit / spot * 100, 2),
                         # Take profit sugerido: 65% do crédito coletado.
                         'tp_65':       round(credit * 0.65, 2),
                         'stop_ref':    round(stop_ref, 2),
                         'stop_px':     round(stop_px, 2),
                     })
-            # Melhor primeiro: maior proteção até o BE, depois maior crédito.
-            rows.sort(key=lambda x: (-x['be_margin'], -x['credit']))
+            # Ordena pelo que a estratégia busca: maior crédito residual na alta;
+            # em caso de empate, o que ainda protege mais na queda.
+            rows.sort(key=lambda x: (-x['credit'], -x['be_margin']))
             rows = _diversify(rows, lambda x: x['sell_symbol'], per_key=2)
 
         elif op == 'venda_put_itm':

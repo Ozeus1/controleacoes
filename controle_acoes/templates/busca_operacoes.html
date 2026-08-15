@@ -201,7 +201,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     iron_condor:   '🦅💰 Iron Condor — trava de alta com PUT (vende K2 / compra K1, abaixo do spot) + trava de baixa com CALL (vende K3 / compra K4, acima); crédito ≥ 25% da asa; lucro se ficar entre K2 e K3',
     boi_put:       '🐂 Boi com PUT — compra 2 PUTs próximas do OTM financiadas (parcialmente) pela venda de 1 PUT ATM/ITM; custo até 40% da largura (lucro cresce na queda forte)',
     vaca_put:      '🐄 Vaca de Baixa (PUTs) — +1 PUT alta, −2 PUTs médias, +1 PUT baixa (lucro máximo se cair até o strike médio)',
-    vaca_alta_put: '🐄🔼 Vaca de Alta com PUT — +1 PUT ATM/OTM, −2 PUTs mais OTM, montada no crédito (renda mensal com breakeven melhor que a venda de PUT simples; abaixo do BE sobra 1 PUT nua)',
+    vaca_alta_put: '🐄🔼 Vaca de Alta com PUT — +1 PUT colada no ATM (3% OTM a 1% ITM), −2 PUTs mais OTM (2% a 12% abaixo); sempre no crédito, que é o lucro que fica se o papel subir. Pico de lucro no strike vendido; abaixo do BE sobra 1 PUT nua',
     venda_put_itm: '🔽 Venda de PUT — strike de 10% OTM até 20% ITM (mensais; prêmio pelo último negócio; remuneração sobre o strike)',
     straddle_vendido: '⚖️ Straddle vendido — venda de 1 CALL + 1 PUT no strike ATM (o mais próximo do spot; crédito duplo, lucro se o papel ficar parado)',
     strangle_vendido: '🔗 Strangle vendido — venda de CALL OTM + PUT OTM, delta entre 15 e 35 em cada ponta (lucro se o papel ficar entre os strikes)',
@@ -544,9 +544,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     if (!rows.length) return '<div class="bo-empty">Nenhuma vaca de alta com PUT viável neste vencimento (a montagem precisa ser no crédito).</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
       '<th>Montagem</th>' +
-      '<th>+1 PUT ATM/OTM</th><th>K</th><th>Ask</th>' +
+      '<th>+1 PUT ATM</th><th>K</th><th>Dist. spot</th><th>Ask</th>' +
       '<th>−2 PUTs OTM</th><th>K</th><th>Bid</th>' +
-      '<th>Crédito</th><th>Largura</th>' +
+      '<th>Crédito</th><th>Créd. % spot</th><th>Largura</th>' +
       '<th>Lucro máx. (em K vend.)</th><th>Queda até o pico</th>' +
       '<th>BE inferior</th><th>Proteção até BE</th>' +
       '<th>TP (65% do créd.)</th><th>Stop (2× créd.)</th><th>Preço do stop</th>' +
@@ -555,10 +555,13 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       h += rowAttr(expIdx, j) +
         '<td>' + montagemBadge(r) + '</td>' +
         '<td><span class="bo-badge put">' + r.buy_symbol + '</span></td>' +
-        '<td>' + brl(r.buy_strike) + '</td><td>' + brl(r.buy_ask) + '</td>' +
+        '<td>' + brl(r.buy_strike) + '</td>' +
+        '<td>' + fmt(r.buy_dist, 1) + '%</td>' +
+        '<td>' + brl(r.buy_ask) + '</td>' +
         '<td><span class="bo-badge put">2× ' + r.sell_symbol + '</span></td>' +
         '<td>' + brl(r.sell_strike) + '</td><td>' + brl(r.sell_bid) + '</td>' +
-        '<td class="pos">' + brl(r.credit) + '</td>' +
+        '<td class="pos"><strong>' + brl(r.credit) + '</strong></td>' +
+        '<td class="pos">' + fmt(r.credit_pct, 2) + '%</td>' +
         '<td>' + brl(r.width) + '</td>' +
         '<td class="pos"><strong>' + brl(r.max_gain) + '</strong></td>' +
         '<td>' + fmt(r.peak_dist, 1) + '%</td>' +
@@ -1116,13 +1119,14 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     } else if (op === 'vaca_alta_put') { // put ratio spread 1x2 no crédito
       title = 'Vaca de Alta com PUT ' + d.ticker + ' — ' + r.buy_symbol + ' / 2× ' + r.sell_symbol;
       boxes = [
-        ['Crédito recebido', brl(r.credit * qty), 'pos'],
+        ['Crédito recebido', brl(r.credit * qty) + ' (' + fmt(r.credit_pct, 2) + '% do spot)', 'pos'],
+        ['Lucro se subir (acima de ' + brl(r.buy_strike) + ')', brl(r.credit * qty), 'pos'],
         ['Lucro máximo (em ' + brl(r.sell_strike) + ')', brl(r.max_gain * qty), 'pos'],
         ['Queda até o pico', fmt(r.peak_dist, 1) + '%', ''],
+        ['PUT comprada vs spot', fmt(r.buy_dist, 1) + '%', ''],
         ['Largura da trava', brl(r.width), ''],
         ['BE inferior', brl(r.be_low), ''],
         ['Proteção até o BE', '−' + fmt(r.be_margin, 1) + '%', 'pos'],
-        ['Resultado acima de ' + brl(r.buy_strike), brl(r.credit * qty), 'pos'],
         ['Take profit (65% do crédito)', brl(r.tp_65 * qty), 'pos'],
         ['Stop sugerido (2× o crédito)', brl(r.stop_ref * qty), 'neg'],
         ['Preço do ativo no stop', brl(r.stop_px), 'neg'],

@@ -1356,7 +1356,11 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                       (Math.abs(qn) === 1 ? '' : ' ' + Math.abs(qn) + '×'));
         });
         while (legs.length < 4) legs.push(null);
-        UNI_CFG.livre = {nome: 'Estrutura livre (pernas da simulação)',
+        // Nome customizado vindo da tela de origem (ex.: "Jade Lizard ABEV3"),
+        // para não perder a identidade da operação ao abrir aqui. Sem isso,
+        // cai no rótulo genérico de sempre.
+        var nomeCustom = new URLSearchParams(location.search).get('livre_nome');
+        UNI_CFG.livre = {nome: nomeCustom || 'Estrutura livre (pernas da simulação)',
                          legs: legs, q: q, t: t, lg: q.map(function() { return 0; }),
                          stock: t.indexOf('S') !== -1};
     })();

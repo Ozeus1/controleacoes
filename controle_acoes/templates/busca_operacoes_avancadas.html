@@ -500,6 +500,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       p[f === 'c' ? 'cp2' : f + 'p'] = l.px || 0;
     });
     p.livre_legs = spec.join('|');
+    // Mesmo nome mostrado no modal (fig 1) — sem isso a aba Estruturas cai no
+    // rótulo genérico "Estrutura livre (pernas da simulação)".
+    p.livre_nome = (OP_NAMES[d.op] || d.op) + ' ' + d.ticker;
     return '/venda_puts?' + new URLSearchParams(p).toString() + '#estrutura';
   }
 

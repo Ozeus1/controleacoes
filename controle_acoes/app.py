@@ -12983,7 +12983,21 @@ def _api_ranking_vol_update_impl():
     # A cotação da OpLab é a fonte principal: veio na mesma resposta da IV, então
     # preço e volatilidade ficam do mesmo instante. brapi/Yahoo entram só para os
     # papéis que a OpLab não cobriu (sem instrumento ou falha na chamada).
-    price_map.update(oplab_prices)
+    #
+    # Papéis pouco líquidos às vezes voltam com um close antigo (visto no LFTS11:
+    # R$ 103,10 com variação 0,00% quando valia R$ 158,19). Quando o preço destoa
+    # do último conhecido sem variação que o explique, descarta e deixa o fallback
+    # buscar — é dado obsoleto, não movimento de mercado.
+    anteriores = {rv.ticker: rv.last_price for rv in items}
+    for tk, d in oplab_prices.items():
+        ant, novo = anteriores.get(tk), d.get('price')
+        if ant and ant > 0 and novo and novo > 0:
+            desvio = abs(novo - ant) / ant
+            if desvio > 0.20 and abs(float(d.get('change') or 0)) < desvio * 100 * 0.5:
+                app.logger.warning('OpLab: cotacao suspeita de %s descartada no ranking '
+                                   '(%.2f vs %.2f anterior)', tk, novo, ant)
+                continue
+        price_map[tk] = d
     faltando = [t for t in tickers_list if t not in price_map]
     if faltando:
         if brapi_token:
@@ -15565,12 +15579,42 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
 
     now = now_brt()
 
+    def _cotacao_confiavel(ticker, novo, anterior):
+        """Rejeita cotação que destoa demais do último preço conhecido.
+
+        Papéis de baixa liquidez às vezes voltam do /market/quote com um `close`
+        antigo — visto no LFTS11, que veio a R$ 103,10 com variação 0,00% quando
+        valia R$ 158,19 (dado anterior a um desdobramento). Aceitar isso troca
+        uma cotação boa por uma errada e distorce o lucro da carteira.
+
+        Só descarta quando há preço anterior para comparar; salto legítimo
+        acompanhado de variação coerente passa (o filtro é para dado obsoleto,
+        que vem justamente sem variação).
+        """
+        if not anterior or anterior <= 0 or not novo or novo <= 0:
+            return True
+        desvio = abs(novo - anterior) / anterior
+        if desvio <= 0.20:
+            return True
+        # Variação informada explica o salto? Então é movimento real, não dado velho.
+        var = variations.get(ticker)
+        if var is not None and abs(float(var)) >= desvio * 100 * 0.5:
+            return True
+        app.logger.warning(
+            'OpLab: cotacao suspeita de %s descartada (%.2f vs %.2f anterior, %.1f%% de desvio, variacao informada %s)',
+            ticker, novo, anterior, desvio * 100, var)
+        return False
+
     # ── Assets: atualiza current_price/daily_change via OpLab quando disponível ──
     assets_ok = 0
     oplab_covered_assets: set = set()   # tickers que o OpLab retornou → não precisam ir ao Yahoo
     for a in assets:
         key = a.ticker.upper()
         if key in prices and prices[key] > 0:
+            # Cotação destoante do último preço fica de fora: o ticker não entra
+            # em oplab_covered e o Yahoo assume no passo seguinte.
+            if not _cotacao_confiavel(key, prices[key], a.current_price):
+                continue
             a.current_price = prices[key]
             a.last_update   = now
             if key in variations:
@@ -15605,7 +15649,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
                     o.underlying_change = variations[uk]
                 # Propaga para o Asset correspondente se existir
                 asset_obj = next((a for a in assets if a.ticker.upper() == uk), None)
-                if asset_obj:
+                if asset_obj and _cotacao_confiavel(uk, prices[uk], asset_obj.current_price):
                     asset_obj.current_price = prices[uk]
                     if uk in variations:
                         asset_obj.daily_change = variations[uk]

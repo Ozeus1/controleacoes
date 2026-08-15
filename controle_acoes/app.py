@@ -11431,9 +11431,8 @@ def update_quotes():
             count, tried, errs = update_all_assets_logic(skip_tickers=oplab_covered)
             final_msg += f'Yahoo/Brapi: {count}/{tried} ativo(s). '
         else:
-            # ETFs já vêm da OpLab; o Yahoo só completa o que ela não retornou.
-            etf_count, etf_tried, errs = update_all_assets_logic(
-                only_types={'ETF'}, skip_tickers=oplab_covered)
+            # ETFs são sempre cotados pelo Yahoo (a OpLab não os cobre aqui).
+            etf_count, etf_tried, errs = update_all_assets_logic(only_types={'ETF'})
             if etf_tried:
                 final_msg += f'ETFs via Yahoo: {etf_count}/{etf_tried}. '
             final_msg += 'Ações/FIIs via MT5 Feeder. '
@@ -11503,10 +11502,9 @@ def update_quotes_async():
                     else:
                         final_msg += 'Intl: falha. '
                 elif quote_mode == 'mt5':
-                    # ETFs já vêm da OpLab junto com o resto da B3; o Yahoo só
-                    # completa os que ela não retornou.
+                    # ETFs são sempre cotados pelo Yahoo (a OpLab não os cobre aqui).
                     etf_count, etf_tried, errs = update_all_assets_logic(
-                        user_id=user_id, only_types={'ETF'}, skip_tickers=oplab_covered
+                        user_id=user_id, only_types={'ETF'}
                     )
                     if etf_tried:
                         final_msg += f'ETFs via Yahoo: {etf_count}/{etf_tried}. '
@@ -15366,11 +15364,10 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
     put_sales     = PutSale.query.filter_by(user_id=uid).all()
 
     # ── Monta conjunto de tickers a buscar ────────────────────────
-    # Inclui ETFs: são negociados na B3 como qualquer ação, e a OpLab é a fonte
-    # oficial do pregão. Antes ficavam de fora e caíam no Yahoo/brapi — a brapi
-    # devolve alguns ETFs brasileiros defasados, que era justamente o motivo do
-    # prefer_yahoo em get_quotes(). Vindo da OpLab, o problema some na origem.
-    asset_tickers  = {a.ticker.upper() for a in assets}
+    # ETFs ficam fora da OpLab: o /market/quote devolve close obsoleto para
+    # alguns deles (LFTS11 veio a R$ 103,10 quando valia R$ 158,19). O Yahoo
+    # cobre ETF de forma confiável, então essa classe usa Yahoo/brapi.
+    asset_tickers  = {a.ticker.upper() for a in assets if a.type != 'ETF'}
     option_tickers = {o.ticker.upper() for o in options}
 
     # Underlying das options registradas (para atualizar current_price do ativo)
@@ -15609,6 +15606,8 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
     assets_ok = 0
     oplab_covered_assets: set = set()   # tickers que o OpLab retornou → não precisam ir ao Yahoo
     for a in assets:
+        if a.type == 'ETF':
+            continue          # ETF é cotado pelo Yahoo/brapi (ver asset_tickers)
         key = a.ticker.upper()
         if key in prices and prices[key] > 0:
             # Cotação destoante do último preço fica de fora: o ticker não entra
@@ -15649,7 +15648,8 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
                     o.underlying_change = variations[uk]
                 # Propaga para o Asset correspondente se existir
                 asset_obj = next((a for a in assets if a.ticker.upper() == uk), None)
-                if asset_obj and _cotacao_confiavel(uk, prices[uk], asset_obj.current_price):
+                if (asset_obj and asset_obj.type != 'ETF'
+                        and _cotacao_confiavel(uk, prices[uk], asset_obj.current_price)):
                     asset_obj.current_price = prices[uk]
                     if uk in variations:
                         asset_obj.daily_change = variations[uk]

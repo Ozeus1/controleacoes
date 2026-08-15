@@ -1009,8 +1009,66 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         var beTxt = bes.length
             ? bes.slice(0, 2).map(function(b) { return num(b, 2); }).join(' / ')
             : (maxL >= 0 ? 'Sempre +' : '—');
+
+        // ── Custo de entrada / saída, margem e retorno vs CDI ────────────────
+        // Entrada: o que sai do bolso ao montar (débito) ou entra (crédito).
+        // Saída: o que se recebe ao desmontar no melhor cenário — entrada mais
+        // o ganho máximo. São os mesmos números da planilha do simulador.
+        var qty = cfg.qty || 1;
+        var custoEntrada = null, margem = null, cdiPct = null;
+        if (cfg.legs && cfg.legs.length) {
+            var fluxo = 0;        // >0 saiu dinheiro (débito), <0 entrou (crédito)
+            var callVend = 0, callComp = 0, putVend = 0, putComp = 0, acoes = 0;
+            cfg.legs.forEach(function(l) {
+                if (l.t === 'STOCK') {
+                    fluxo += l.s * l.q * (spot || 0);
+                    acoes += l.s * l.q;
+                    return;
+                }
+                fluxo += l.s * l.q * (l.prem || 0);
+                if (l.t === 'CALL') { l.s < 0 ? callVend += l.q : callComp += l.q; }
+                else                { l.s < 0 ? putVend  += l.q : putComp  += l.q; }
+            });
+            custoEntrada = fluxo * qty;
+            // Margem só do que fica descoberto: CALL coberta pela ação em custódia
+            // e ponta vendida travada por uma comprada não exigem depósito.
+            var callNua = Math.max(0, callVend - callComp - Math.max(0, acoes));
+            var putNua  = Math.max(0, putVend  - putComp);
+            var margemUnit = 0;
+            cfg.legs.forEach(function(l) {
+                if (l.t === 'CALL' && l.s < 0 && callNua > 0) {
+                    var u = Math.min(l.q, callNua); margemUnit += u * (l.K || 0); callNua -= u;
+                } else if (l.t === 'PUT' && l.s < 0 && putNua > 0) {
+                    var v = Math.min(l.q, putNua);  margemUnit += v * (l.K || 0); putNua  -= v;
+                }
+            });
+            margem = margemUnit * qty;
+        }
+        // Retorno sobre o capital imobilizado, anualizado, comparado ao CDI.
+        // Débito: o capital é o próprio custo de montagem. Crédito: não há
+        // desembolso, então o que fica preso é a margem exigida pelas vendidas.
+        var capital = null;
+        if (custoEntrada != null) {
+            capital = custoEntrada > 0.01 ? custoEntrada : (margem || 0);
+        }
+        var cdiTxt = '—';
+        if (capital && capital > 0.01 && maxG > 0 && T > 0 && SELIC > 0 && !unlimited) {
+            var retAA = (Math.pow(1 + maxG / capital, 1 / T) - 1) * 100;
+            cdiPct = retAA / SELIC * 100;
+            // Prazos muito curtos fazem a anualização explodir para milhões de %,
+            // um número que não informa nada. Acima de 10× o CDI já basta dizer isso.
+            cdiTxt = (!isFinite(cdiPct) || cdiPct > 1000) ? '> 1.000%' : num(cdiPct, 0) + '%';
+        }
+        var custoSaida = (custoEntrada != null && maxG > -1e14) ? custoEntrada + maxG : null;
+
         return cell('Ganho Máximo', unlimited ? 'Ilimitado 🚀' : fmtBRL(maxG), 'positive') +
                cell('Perda Máxima', fmtBRL(Math.abs(Math.min(maxL, 0))), 'negative') +
+               cell('% do CDI', cdiTxt, (cdiPct != null && cdiPct >= 100) ? 'positive' : '') +
+               cell('Margem est.', margem ? fmtBRL(margem) : '—') +
+               cell('Custo Entrada', custoEntrada != null ? fmtBRL(custoEntrada) : '—',
+                    custoEntrada != null && custoEntrada < 0 ? 'positive' : 'negative') +
+               cell('Custo Saída', custoSaida != null ? fmtBRL(custoSaida) : '—',
+                    custoSaida != null && custoSaida >= 0 ? 'positive' : 'negative') +
                cell('Delta',  haveGreeks ? num(delta, 2)  : '—') +
                cell('Gamma',  haveGreeks ? num(gamma, 4)  : '—') +
                cell('Theta',  haveGreeks ? num(theta, 4)  : '—') +
@@ -1214,7 +1272,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         drawPayoff('c-chart', 'c-chart-tip', 'c-chart-wrap', function(S) {
             return qty * (S + Math.max(0, putK - S) - Math.max(0, S - callK) - bePS);
         }, {
-            lo: rng.lo, hi: rng.hi, spot: stock, T: dc / 365,
+            lo: rng.lo, hi: rng.hi, spot: stock, T: dc / 365, qty: qty,
             legs: [{t: 'STOCK', s: 1, q: 1},
                    {t: 'PUT',  s: 1,  q: 1, K: putK,  prem: putP},
                    {t: 'CALL', s: -1, q: 1, K: callK, prem: callP}],
@@ -2290,7 +2348,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             var rngE = payoffRange(ks, spot);
             drawPayoff('e-chart', 'e-chart-tip', 'e-chart-wrap', payoffFn,
                        {lo: rngE.lo, hi: rngE.hi, spot: spot, T: dc / 365,
-                        legs: legsArr, strikes: strikeMarks});
+                        qty: qty, legs: legsArr, strikes: strikeMarks});
             // Guarda as pernas com ticker para o botão "Adicionar perna"
             var tks = {
                 a: (document.getElementById('e-a-t').value || '').toUpperCase(),

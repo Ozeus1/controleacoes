@@ -81,6 +81,7 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
   <!-- Operações -->
   <div id="bo-ops">
     <button class="bo-obtn active" data-op="collar">🛡 Collar (risco zero)</button>
+    <button class="bo-obtn" data-op="collar_baixa">🛡🔽 Collar de Baixa</button>
     <button class="bo-obtn" data-op="fence">🚧 Fence (Cerca)</button>
     <button class="bo-obtn" data-op="seagull">🕊 Seagull (Gaivota)</button>
     <button class="bo-obtn" data-op="trava_alta">📈 Trava de Alta déb.</button>
@@ -185,6 +186,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
 
   var OP_TITLES = {
     collar:        '🛡 Collars risco zero/reduzido acima da Selic (compra ação + compra PUT + venda CALL)',
+    collar_baixa:  '🛡🔽 Collar de Baixa — compra a ação + vende CALL na linha do dinheiro + compra PUT o mais dentro do dinheiro possível (PUT ACIMA da CALL). Ganha na queda: abaixo do strike da CALL o papel sai pela PUT pelo strike alto; acima do strike da PUT é entregue pela CALL (piso). Só aparecem montagens cujo ganho máximo supera o CDI',
     fence:         '🚧 Fence / Cerca — a CALL vendida (coberta) financia a trava de baixa com PUT. Travas (N×) mostra quantas travas o prêmio da CALL paga: N>1 é a Fence Alavancada (Ratio Fence)',
     seagull:       '🕊 Seagull / Gaivota de alta (trava de alta com CALLs financiada por venda de PUT OTM)',
     trava_alta:    '📈 Trava de Alta no débito (CALLs) — compra ATM + venda OTM; EV > 0 (equação do trader), POP ≥ 35%, relação 0,8–3',
@@ -310,6 +312,40 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         '<td class="pos">+' + fmt(r.vs_selic) + ' p.p.</td>' +
         '<td>' + fmt(r.gain_aa, 1) + '%</td>' +
         '<td class="' + (r.min_result >= 0 ? 'pos' : 'neg') + '">' + brl(r.min_result) + '</td>' +
+        '<td class="pos"><strong>' + (r.ratio == null ? '∞' : fmt(r.ratio)) + '</strong></td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  function collarBaixaTable(rows, expIdx) {
+    if (!rows.length) return '<div class="bo-empty">Nenhum collar de baixa supera a Selic neste vencimento (a PUT ITM precisa estar acima da CALL ATM e o ganho na queda superar o CDI).</div>';
+    var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
+      '<th>Risco</th>' +
+      '<th>PUT (compra, ITM)</th><th>K PUT</th><th title="Quanto a PUT está dentro do dinheiro">ITM</th><th>Ask</th>' +
+      '<th>CALL (venda, ATM)</th><th>K CALL</th><th>Bid</th>' +
+      '<th>Custo montagem</th>' +
+      '<th title="Melhor caso: com o papel abaixo do strike da CALL, sai pela PUT">Ganho máx. (na queda)</th>' +
+      '<th title="Queda até o strike da CALL, onde o ganho máximo já está travado">Queda p/ máx.</th>' +
+      '<th title="Pior caso: acima do strike da PUT o papel é entregue pela CALL">Result. mín. (na alta)</th>' +
+      '<th>Ganho %</th><th>vs Selic</th><th>% do CDI</th><th>Relação L/P</th></tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += rowAttr(expIdx, j) +
+        '<td>' + riskBadge(r.risk_free) + '</td>' +
+        '<td><span class="bo-badge put">' + r.put_symbol + '</span></td>' +
+        '<td>' + brl(r.put_strike) + '</td>' +
+        '<td class="pos">+' + fmt(r.put_itm, 1) + '%</td>' +
+        '<td>' + brl(r.put_ask) + '</td>' +
+        '<td><span class="bo-badge call">' + r.call_symbol + '</span></td>' +
+        '<td>' + brl(r.call_strike) + '</td>' +
+        '<td>' + brl(r.call_bid) + '</td>' +
+        '<td>' + brl(r.net_cost) + '</td>' +
+        '<td class="pos"><strong>' + brl(r.max_gain) + '</strong></td>' +
+        '<td>' + fmt(r.drop_to_max, 1) + '%</td>' +
+        '<td class="' + (r.min_result >= 0 ? 'pos' : 'neg') + '">' + brl(r.min_result) + '</td>' +
+        '<td class="pos">' + fmt(r.gain_pct) + '%</td>' +
+        '<td class="pos">+' + fmt(r.vs_selic) + ' p.p.</td>' +
+        '<td class="' + (r.pct_cdi >= 100 ? 'pos' : '') + '">' + fmt(r.pct_cdi, 0) + '%</td>' +
         '<td class="pos"><strong>' + (r.ratio == null ? '∞' : fmt(r.ratio)) + '</strong></td>' +
         '</tr>';
     });
@@ -764,6 +800,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     if (op === 'iron_condor') return ironCondorTable(rows, expIdx);
     switch (op) {
       case 'collar':        return collarTable(rows, expIdx);
+      case 'collar_baixa':  return collarBaixaTable(rows, expIdx);
       case 'fence':         return fenceTable(rows, expIdx);
       case 'seagull':       return seagullTable(rows, expIdx);
       case 'trava_alta':    return spreadTable(rows, true, expIdx);
@@ -855,6 +892,34 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         ['Lucro máx. %', fmt(gainPct) + '%', 'pos'],
         ['Relação lucro/prejuízo', maxLoss > 0.001 ? fmt(maxGain / maxLoss) : '∞', '']
       ].concat(pctBoxes(gainPct, dc));
+      link = new URLSearchParams({cp: '1', ativo: d.ticker, spot: spot, qty: qty,
+        pt: r.put_symbol, pk: r.put_strike, pp: r.put_ask,
+        ct: r.call_symbol, ck: r.call_strike, cprem: r.call_bid, exp: e.exp});
+      return {title: title, boxes: boxes, href: '/venda_puts?' + link.toString() + '#collar'};
+    }
+
+    if (op === 'collar_baixa') {
+      // PUT comprada ACIMA da CALL vendida: a estrutura ganha na queda.
+      //   S <= K_call: sai pela PUT (melhor) | S >= K_put: entregue pela CALL (pior)
+      var netB   = spot + r.put_ask - r.call_bid;
+      var naQueda = (r.put_strike - netB) * qty;    // S <= K_call
+      var naAlta  = (r.call_strike - netB) * qty;   // S >= K_put
+      title = 'Collar de Baixa ' + d.ticker + ' — ' + r.put_symbol + ' / ' + r.call_symbol;
+      boxes = [
+        ['Custo da ação', brl(spot * qty), ''],
+        ['+ PUT comprada (ITM)', brl(r.put_ask * qty), 'neg'],
+        ['− CALL vendida (ATM)', brl(r.call_bid * qty), 'pos'],
+        ['Custo de montagem', brl(netB * qty), ''],
+        ['Ganho máx. — abaixo de ' + brl(r.call_strike) + ' (sai pela PUT)', brl(naQueda), 'pos'],
+        ['Queda até o ganho máximo', fmt(r.drop_to_max, 1) + '%', ''],
+        ['Result. mín. — acima de ' + brl(r.put_strike) + ' (entregue pela CALL)',
+            brl(naAlta), naAlta >= 0 ? 'pos' : 'neg'],
+        ['PUT dentro do dinheiro', '+' + fmt(r.put_itm, 1) + '%', ''],
+        ['Ganho máx. %', fmt(r.gain_pct) + '%', 'pos'],
+        ['% do CDI (a.a.)', fmt(r.pct_cdi, 0) + '%', r.pct_cdi >= 100 ? 'pos' : ''],
+        ['Relação lucro/prejuízo', r.ratio == null ? '∞ (sem prejuízo)' : fmt(r.ratio), 'pos'],
+        ['Prazo (dias corridos)', dc + ' d.c.', '']
+      ];
       link = new URLSearchParams({cp: '1', ativo: d.ticker, spot: spot, qty: qty,
         pt: r.put_symbol, pk: r.put_strike, pp: r.put_ask,
         ct: r.call_symbol, ck: r.call_strike, cprem: r.call_bid, exp: e.exp});
@@ -1164,7 +1229,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   // ── Pernas normalizadas p/ abrir na Cadeia de Opções (tela 4) ───────────────
   // Cada perna: {sym, tp:'CALL'|'PUT'|'STOCK', side:'BUY'|'SELL', q, px, k, exp}
   var CADEIA_NAMES = {
-    collar:'Collar', fence:'Fence', seagull:'Seagull', trava_alta:'Trava de Alta (déb.)',
+    collar:'Collar', collar_baixa:'Collar de Baixa', fence:'Fence', seagull:'Seagull', trava_alta:'Trava de Alta (déb.)',
     trava_baixa:'Trava de Baixa (déb.)', trava_alta_credito:'Trava de Alta (créd.)',
     trava_baixa_credito:'Trava de Baixa (créd.)', trava_credito:'Ratio CALL',
     vaca_travada:'Vaca Travada', boi_coberto:'Boi Coberto', vaca_tradicional:'Vaca Tradicional',
@@ -1180,7 +1245,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     function leg(sym, tp, side, q, px, k) {
       if (!sym && tp !== 'STOCK') return; L.push({sym:sym||'', tp:tp, side:side, q:q, px:px||0, k:k||0}); }
 
-    if (op === 'collar') {
+    if (op === 'collar' || op === 'collar_baixa') {
       leg(d.ticker, 'STOCK', 'BUY', 1, spot, 0);
       leg(r.put_symbol, 'PUT', 'BUY', 1, r.put_ask, r.put_strike);
       leg(r.call_symbol, 'CALL', 'SELL', 1, r.call_bid, r.call_strike);

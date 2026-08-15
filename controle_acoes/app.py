@@ -4138,6 +4138,63 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: (not x['risk_free'], -x['gain_pct']))
             rows = _diversify(rows, lambda x: x['call_symbol'], per_key=2)
 
+        elif op == 'collar_baixa':
+            # Collar de baixa: compra a ação + vende CALL na linha do dinheiro
+            # + compra PUT o mais dentro do dinheiro possível (PUT ACIMA da CALL).
+            #
+            # No collar clássico a CALL fica acima da PUT e sobra espaço para o
+            # papel subir. Aqui é o inverso: as pontas se cruzam e a estrutura
+            # ganha na QUEDA. Abaixo do strike da CALL o papel é vendido pela PUT
+            # pelo strike alto — esse é o melhor resultado. Acima do strike da
+            # PUT a CALL entrega o papel pelo strike baixo — esse é o piso.
+            #
+            #   S ≤ K_call:  resultado = K_put  − custo   (máximo)
+            #   S ≥ K_put:   resultado = K_call − custo   (mínimo)
+            #
+            # O piso pode ser negativo: é o quanto se perde se o papel disparar.
+            # Só entram montagens em que o melhor caso supera o CDI do período.
+            put_cands  = [p for p in puts_ok  if spot <= p['strike'] <= 1.25 * spot][:20]
+            call_cands = [c for c in calls_ok if 0.90 * spot <= c['strike'] <= 1.02 * spot][:20]
+            for p in put_cands:
+                for c in call_cands:
+                    # A PUT precisa estar acima da CALL — é o que dá o viés de baixa.
+                    if p['strike'] <= c['strike']:
+                        continue
+                    net = spot + p['ask'] - c['bid']          # custo de montar
+                    if net <= 0:
+                        continue
+                    max_gain = p['strike'] - net              # S ≤ K_call (queda)
+                    min_res  = c['strike'] - net              # S ≥ K_put  (alta)
+                    if max_gain <= 0:
+                        continue
+                    gain_pct = max_gain / net * 100
+                    if gain_pct <= selic_period:
+                        continue                              # não bate o CDI
+                    gain_aa = ((1 + gain_pct / 100) ** (365.0 / dc) - 1) * 100
+                    pct_cdi = (gain_aa / selic * 100) if selic > 0 else 0
+                    loss = -min_res                           # >0 se o piso for negativo
+                    ratio = None if loss <= 0.001 else max_gain / loss
+                    rows.append({
+                        'put_symbol':  p['symbol'],  'put_strike':  p['strike'],  'put_ask':  p['ask'],
+                        'call_symbol': c['symbol'],  'call_strike': c['strike'],  'call_bid': c['bid'],
+                        'net_cost':    round(net, 2),
+                        'max_gain':    round(max_gain, 2),
+                        'min_result':  round(min_res, 2),
+                        'gain_pct':    round(gain_pct, 2),
+                        'gain_aa':     round(gain_aa, 1),
+                        'pct_cdi':     round(pct_cdi, 0),
+                        'vs_selic':    round(gain_pct - selic_period, 2),
+                        # Queda necessária para travar o ganho máximo (até a CALL).
+                        'drop_to_max': round((c['strike'] - spot) / spot * 100, 1),
+                        # Quanto a PUT está dentro do dinheiro.
+                        'put_itm':     round((p['strike'] - spot) / spot * 100, 1),
+                        # Piso >= 0 significa que não há cenário de prejuízo.
+                        'risk_free':   min_res >= 0,
+                        'ratio':       round(ratio, 2) if ratio is not None else None,
+                    })
+            rows.sort(key=lambda x: (not x['risk_free'], -x['gain_pct']))
+            rows = _diversify(rows, lambda x: x['call_symbol'], per_key=2)
+
         elif op == 'fence':
             # Cerca: a CALL vendida (coberta pela custódia) financia a trava de
             # baixa com PUT. As ações já estão na carteira, então o que importa é

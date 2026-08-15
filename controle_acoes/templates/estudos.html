@@ -205,8 +205,8 @@
         <td id="study-atr-stock-{{ ss.id }}" style="font-size:.82rem;">
           {{ ('%.1f'|format(ss.atr_pct) + '%') if ss.atr_pct is not none else '-' }}
         </td>
-        <td style="font-size:.82rem;">{{ ('%.1f'|format(ss.iv_rank) + '%') if ss.iv_rank is not none else '-' }}</td>
-        <td style="font-size:.82rem;">{{ ('%.1f'|format(ss.iv_percentil) + '%') if ss.iv_percentil is not none else '-' }}</td>
+        <td id="study-ivrank-stock-{{ ss.id }}" style="font-size:.82rem;">{{ ('%.1f'|format(ss.iv_rank) + '%') if ss.iv_rank is not none else '-' }}</td>
+        <td id="study-ivpct-stock-{{ ss.id }}" style="font-size:.82rem;">{{ ('%.1f'|format(ss.iv_percentil) + '%') if ss.iv_percentil is not none else '-' }}</td>
         <td>{{ ss.strategy or '-' }}</td>
         <td>{{ ss.study_date.strftime('%d/%m/%Y') if ss.study_date else '-' }}</td>
         {{ strat_cell(ss.ticker, ss.strategy_active) }}
@@ -286,8 +286,8 @@
         <td id="study-atr-intl-{{ ss.id }}" style="font-size:.82rem;">
           {{ ('%.1f'|format(ss.atr_pct) + '%') if ss.atr_pct is not none else '-' }}
         </td>
-        <td style="font-size:.82rem;">{{ ('%.1f'|format(ss.iv_rank) + '%') if ss.iv_rank is not none else '-' }}</td>
-        <td style="font-size:.82rem;">{{ ('%.1f'|format(ss.iv_percentil) + '%') if ss.iv_percentil is not none else '-' }}</td>
+        <td id="study-ivrank-intl-{{ ss.id }}" style="font-size:.82rem;">{{ ('%.1f'|format(ss.iv_rank) + '%') if ss.iv_rank is not none else '-' }}</td>
+        <td id="study-ivpct-intl-{{ ss.id }}" style="font-size:.82rem;">{{ ('%.1f'|format(ss.iv_percentil) + '%') if ss.iv_percentil is not none else '-' }}</td>
         <td>{{ ss.strategy or '-' }}</td>
         <td>{{ ss.study_date.strftime('%d/%m/%Y') if ss.study_date else '-' }}</td>
         {{ strat_cell(ss.ticker, ss.strategy_active) }}
@@ -1136,6 +1136,8 @@ function openRadarAndUpdate(sid, ticker, table) {
         var rsiCell = document.getElementById(studyCellId(table, 'rsi', sid));
         var atrCell = document.getElementById(studyCellId(table, 'atr', sid));
         var trendCell = document.getElementById(studyCellId(table, 'trend', sid));
+        var ivRankCell = document.getElementById(studyCellId(table, 'ivrank', sid));
+        var ivPctCell  = document.getElementById(studyCellId(table, 'ivpct', sid));
         if (rsiCell && d.rsi != null) {
             var rsi = parseFloat(d.rsi);
             var c   = rsi < 30 ? 'var(--success-color)' : (rsi > 70 ? 'var(--danger-color)' : '');
@@ -1143,6 +1145,8 @@ function openRadarAndUpdate(sid, ticker, table) {
         }
         if (atrCell && d.atr_pct != null) atrCell.textContent = parseFloat(d.atr_pct).toFixed(1) + '%';
         if (trendCell && d.trend) trendCell.innerHTML = renderStudyTrend(d.trend);
+        if (ivRankCell && d.iv_rank != null) ivRankCell.textContent = parseFloat(d.iv_rank).toFixed(1) + '%';
+        if (ivPctCell && d.iv_percentil != null) ivPctCell.textContent = parseFloat(d.iv_percentil).toFixed(1) + '%';
     }
 
     if (cached) {

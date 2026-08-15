@@ -14072,6 +14072,27 @@ def api_radar_update_study():
         atr14 = d.get('atr14')
         price = d.get('price')
         atr_pct = round(atr14 / price * 100, 2) if (atr14 and price and price > 0) else None
+
+        # Volatilidade de opções (ações americanas): a API traz IV rank/percentil
+        # prontos nesse bloco — mesmo dado que o modal de edição já usa em 'eia-vol'.
+        ov = d.get('options_volatility')
+        if not isinstance(ov, dict):
+            sd = d.get('screen_data', {}) if isinstance(d.get('screen_data'), dict) else {}
+            ov = sd.get('volatilidade_opcoes') if isinstance(sd.get('volatilidade_opcoes'), dict) else {}
+
+        def _pick(*keys):
+            for k in keys:
+                v = ov.get(k)
+                if v is not None and v != '':
+                    try:
+                        return float(v)
+                    except (TypeError, ValueError):
+                        continue
+            return None
+
+        iv_rank      = _pick('iv_rank', 'ivRank', 'rank')
+        iv_percentil = _pick('iv_percentile', 'iv_percentil', 'ivPercentile', 'percentile', 'percentil')
+
         sig = d.get('signal', {})
         sig_code = ''
         sig_label = ''
@@ -14101,8 +14122,13 @@ def api_radar_update_study():
             ss.atr_pct = atr_pct
         if trend is not None:
             ss.trend = trend
+        if iv_rank is not None:
+            ss.iv_rank = round(iv_rank, 1)
+        if iv_percentil is not None:
+            ss.iv_percentil = round(iv_percentil, 1)
         db.session.commit()
-        return jsonify({'rsi': ss.rsi, 'atr_pct': ss.atr_pct, 'trend': ss.trend, 'price': price, 'atr14': atr14})
+        return jsonify({'rsi': ss.rsi, 'atr_pct': ss.atr_pct, 'trend': ss.trend, 'price': price, 'atr14': atr14,
+                         'iv_rank': ss.iv_rank, 'iv_percentil': ss.iv_percentil})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

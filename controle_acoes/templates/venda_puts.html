@@ -299,6 +299,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                     <option value="iron_condor">🦅💰 Iron Condor (trava de alta PUT + trava de baixa CALL)</option>
                     <option value="boi_put">🐂 Boi com PUT (venda 1 PUT alta, compra 2 PUTs baixas)</option>
                     <option value="vaca_put">🐄 Vaca de Baixa com PUTs (+1 alta, −2 médias, +1 baixa)</option>
+                    <option value="vaca_alta_put">🐄🔼 Vaca de Alta com PUT (+1 ATM/OTM, −2 mais OTM)</option>
                     <option value="straddle_vendido">⚖️ Straddle vendido (venda CALL + PUT no mesmo strike)</option>
                     <option value="strangle_vendido">🔗 Strangle vendido (venda CALL OTM + PUT OTM)</option>
                     <option value="manejo_put">🛟 Manejo de Put (defesa/reforço de put vendida)</option>
@@ -1259,6 +1260,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         straddle_vendido:    { legs: ['CALL — VENDA (strike central)', 'PUT — VENDA (mesmo strike)', null], needSpot: false },
         strangle_vendido:    { legs: ['CALL — VENDA (OTM, acima)', 'PUT — VENDA (OTM, abaixo)', null], needSpot: false },
         vaca_put:            { legs: ['PUT — COMPRA 1× (K alta)', 'PUT — VENDA 2× (K média)', 'PUT — COMPRA 1× (K baixa)'], needSpot: false },
+        vaca_alta_put:       { legs: ['PUT — COMPRA 1× (ATM/OTM)', 'PUT — VENDA 2× (mais OTM)', null], needSpot: false },
         // Manejo de Put: motor genérico (2-4 pernas, PUT/CALL livres) usado
         // pelas 7 estratégias de defesa de put vendida (#17-#25). A perna A é
         // sempre a PUT MANTIDA (já vendida no passado, sem custo novo); os
@@ -1839,6 +1841,29 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 ['Abaixo do BE inferior', 'Lucro cresce até S→0 🔻', 'positive'],
                 ['Prazo (dias corridos)', dc + ' d.c.', '']
             ];
+        } else if (op === 'vaca_alta_put') {
+            // Put ratio spread 1×2 no crédito: A = compra 1× (ATM/OTM), B = venda 2× (mais OTM).
+            // Entre B e A o resultado é o crédito + a valorização da trava; abaixo do
+            // breakeven sobra 1 PUT vendida nua e a perda volta a crescer até S→0.
+            var credVA = 2 * bP - aP;                    // >0 crédito
+            var widthVA = aK - bK;
+            var maxGVA = (widthVA + credVA) * qty;       // em S = K vendida
+            var beLoVA = bK - (widthVA + credVA);
+            var tpVA = credVA * 0.65 * qty;              // realização sugerida
+            var stopVA = 2 * credVA * qty;               // limite de prejuízo sugerido
+            boxes = [
+                [credVA >= 0 ? 'Crédito recebido' : 'Custo (débito)',
+                    fmtBRL(Math.abs(credVA) * qty), credVA >= 0 ? 'positive' : 'negative'],
+                ['Lucro máximo (em ' + fmtBRL(bK) + ')', fmtBRL(maxGVA), 'positive'],
+                ['Largura da trava', fmtBRL(widthVA), ''],
+                ['BE inferior', fmtBRL(beLoVA), ''],
+                ['Resultado acima de ' + fmtBRL(aK), fmtBRL(credVA * qty),
+                    credVA >= 0 ? 'positive' : 'negative'],
+                ['Take profit (65% do crédito)', fmtBRL(tpVA), 'positive'],
+                ['Stop sugerido (2× o crédito)', fmtBRL(stopVA), 'negative'],
+                ['Abaixo do BE', '1 PUT vendida nua ⚠️', 'negative'],
+                ['Prazo (dias corridos)', dc + ' d.c.', '']
+            ];
         } else if (op === 'vaca_put') {
             // Borboleta de PUTs: A = compra 1× (K alta), B = venda 2× (K média), C = compra 1× (K baixa)
             var costVP = aP - 2 * bP + cP;
@@ -2163,6 +2188,14 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             mk(bK, '2× PUT c'); mk(aK, 'PUT v');
             legsArr = [{t: 'PUT', s: -1, q: 1, K: aK, prem: aP},
                        {t: 'PUT', s: 1,  q: 2, K: bK, prem: bP}];
+        } else if (op === 'vaca_alta_put') {
+            var credVA2 = 2 * bP - aP;
+            payoffFn = function(S) {
+                return qty * (credVA2 + Math.max(0, aK - S) - 2 * Math.max(0, bK - S));
+            };
+            mk(bK, '2× PUT v'); mk(aK, 'PUT c');
+            legsArr = [{t: 'PUT', s: 1,  q: 1, K: aK, prem: aP},
+                       {t: 'PUT', s: -1, q: 2, K: bK, prem: bP}];
         } else if (op === 'vaca_put') {
             var costVP2 = aP - 2 * bP + cP;
             payoffFn = function(S) {

@@ -4950,6 +4950,54 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: (x['max_loss'], -x['max_gain']))
             rows = _diversify(rows, lambda x: x['mid_symbol'], per_key=2)
 
+        elif op == 'vaca_alta_put':
+            # Vaca de Alta com PUT (put ratio spread 1x2, montado no crédito):
+            # +1 PUT ATM/levemente OTM, -2 PUTs mais OTM (strike abaixo).
+            # Melhora o breakeven frente à venda de PUT simples: entre os dois
+            # strikes o resultado é o crédito + a valorização da trava de baixa.
+            # Abaixo do breakeven o risco volta a crescer (fica 1 PUT nua).
+            buy_cands = [p for p in puts_ok
+                         if 0.95 * spot <= p['strike'] <= 1.02 * spot and p['ask'] >= 0.05][:10]
+            for buy in buy_cands:
+                sells = [p for p in puts_ok
+                         if 0.80 * spot <= p['strike'] < buy['strike'] and p['bid'] >= 0.03][:10]
+                for sell in sells:
+                    width = buy['strike'] - sell['strike']
+                    credit = 2 * sell['bid'] - buy['ask']      # >0 crédito, <0 débito
+                    if credit <= 0:                            # a montagem tem de ser no crédito
+                        continue
+                    # Lucro máximo em S = K vendida: crédito + largura da trava.
+                    max_gain = width + credit
+                    # Abaixo do BE inferior sobra 1 PUT vendida nua (risco até S=0).
+                    be_low = sell['strike'] - max_gain
+                    if be_low <= 0:
+                        continue
+                    # Referência de risco do vídeo: stop em 2× o crédito recebido.
+                    stop_ref = 2 * credit
+                    # Preço do ativo que dispara esse stop (1 PUT nua abaixo do BE).
+                    stop_px = be_low - stop_ref
+                    rows.append({
+                        'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
+                        'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
+                        'credit':      round(credit, 2),
+                        'is_credit':   True,
+                        'montagem':    'CRÉDITO',
+                        'width':       round(width, 2),
+                        'max_gain':    round(max_gain, 2),
+                        'be_low':      round(be_low, 2),
+                        # Queda que o papel suporta até o BE (proteção da estrutura).
+                        'be_margin':   round((spot - be_low) / spot * 100, 2),
+                        # Distância do spot até o pico de lucro (K vendida).
+                        'peak_dist':   round((sell['strike'] - spot) / spot * 100, 1),
+                        # Take profit sugerido: 65% do crédito coletado.
+                        'tp_65':       round(credit * 0.65, 2),
+                        'stop_ref':    round(stop_ref, 2),
+                        'stop_px':     round(stop_px, 2),
+                    })
+            # Melhor primeiro: maior proteção até o BE, depois maior crédito.
+            rows.sort(key=lambda x: (-x['be_margin'], -x['credit']))
+            rows = _diversify(rows, lambda x: x['sell_symbol'], per_key=2)
+
         elif op == 'venda_put_itm':
             # Venda a seco de PUT: strike de 10% OTM até 20% ITM.
             # Pouca liquidez nas ITMs → prêmio = último negócio (close); fallback bid.

@@ -7298,6 +7298,34 @@ def api_option_id(ticker):
     })
 
 
+@app.route('/api/estruturada/<int:id>/legs')
+@login_required
+def api_estruturada_legs(id):
+    """Pernas de uma operação estruturada, com o id de cada uma.
+
+    O simulador de rolagem trabalha com os símbolos das opções; para gravar o
+    manejo em /roll_estruturada/<id> ele precisa do leg_id correspondente.
+    """
+    op = StructuredOp.query.get_or_404(id)
+    if op.user_id != current_user.id:
+        return jsonify({'error': 'Sem permissão'}), 403
+    return jsonify({
+        'id':   op.id,
+        'name': op.name,
+        'underlying': op.underlying_asset,
+        'legs': [{
+            'leg_id':   l.id,
+            'ticker':   (l.ticker or '').upper(),
+            'opt_type': l.opt_type,
+            'side':     l.side,
+            'quantity': l.quantity,
+            'strike':   l.strike,
+            'premium':  l.entry_price,
+            'exp':      l.expiration_date.isoformat() if l.expiration_date else '',
+        } for l in op.legs],
+    })
+
+
 @app.route('/roll_spread/<int:id>', methods=['POST'])
 @login_required
 def roll_spread(id):

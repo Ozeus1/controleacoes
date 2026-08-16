@@ -384,10 +384,143 @@ function commitSpread(){
   $('modal-commit-spread').style.display='flex';
 }
 
+// Grava o manejo direto na operação estruturada. As pernas da tela são casadas
+// por ticker com as da operação (via /api/estruturada/<id>/legs, que traz o
+// leg_id) e enviadas ao mesmo endpoint usado pelo botão da página Opções:
+//   - linha com nova opção  → substituição (leg_new_*)
+//   - linha só com fechamento → encerra o braço (leg_drop)
+//   - linha intocada         → segue como está
+// Classifica a linha para efeito de gravação. Diferente de pfClass (que exige
+// new_strike > 0 para desenhar o payoff), aqui basta o ticker da nova opção:
+// quem digita o símbolo à mão costuma deixar o strike em branco, e tratar isso
+// como encerramento apagaria a perna em vez de substituí-la.
+function estClass(l){
+  if((l.new_symbol||'').trim())return 'rolled';
+  return pfnum(closeVal(l))>0?'closed':'kept';
+}
+
+function commitEstruturada(){
+  var id=(state.src||'').split(':')[1];
+  if(!id){alert('Operacao estruturada nao identificada.');return;}
+
+  var mexidas=state.lines.filter(function(l){return estClass(l)!=='kept';});
+  if(!mexidas.length){
+    alert('Nenhuma perna manejada. Informe o preco de fechamento da perna antiga\n'+
+          'e, se for substituicao, a nova opcao.');
+    return;
+  }
+
+  var btn=$('commit-roll-btn'),txt=btn.textContent;
+  btn.disabled=true;btn.textContent='Gravando...';
+
+  // Resolve o strike das novas opções cujo campo ficou em branco: sem ele o
+  // histórico e o payoff da operação ficariam com o strike da perna antiga.
+  var pendentes=mexidas.filter(function(l){
+    return estClass(l)==='rolled' && !pfnum(l.new_strike) &&
+           !(typeof findOpt==='function' && findOpt(l.new_symbol));
+  });
+  Promise.all(pendentes.map(function(l){
+    return fetch('/api/busca-opcao/'+encodeURIComponent((l.new_symbol||'').toUpperCase()))
+      .then(function(r){return r.json();})
+      .then(function(o){
+        if(o&&!o.error){
+          if(o.strike)l.new_strike=o.strike;
+          if(o.expiration&&!l.new_exp)l.new_exp=o.expiration;
+        }
+      })
+      .catch(function(){});
+  }))
+  .then(function(){
+    var semStrike=mexidas.filter(function(l){
+      return estClass(l)==='rolled' && !pfnum(l.new_strike) &&
+             !(typeof findOpt==='function' && findOpt(l.new_symbol));
+    }).map(function(l){return l.new_symbol;});
+    if(semStrike.length){
+      throw new Error('Nao foi possivel obter o strike de: '+semStrike.join(', ')+
+                      '.\nPreencha o strike na linha ou use o botao de busca da cadeia.');
+    }
+    return fetch('/api/estruturada/'+encodeURIComponent(id)+'/legs');
+  })
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.error)throw new Error(d.error);
+      var porTicker={};
+      (d.legs||[]).forEach(function(g){porTicker[(g.ticker||'').toUpperCase()]=g;});
+
+      var fd=new FormData();
+      fd.append('roll_type',rollTypeMap());
+      fd.append('roll_date',new Date().toISOString().slice(0,10));
+      fd.append('notes',$('roll-name').value.trim());
+      fd.append('next','/opcoes');
+
+      var naoEncontradas=[],trocas=0,fechadas=0;
+      // Percorre as pernas da operação (não as da tela) para manter as listas
+      // paralelas do endpoint alinhadas, inclusive as intocadas.
+      (d.legs||[]).forEach(function(g){
+        var l=state.lines.find(function(x){
+          return (x.current_symbol||'').toUpperCase()===(g.ticker||'').toUpperCase();
+        });
+        var cls=l?estClass(l):'kept';
+        fd.append('leg_id',g.leg_id);
+        fd.append('leg_close_price',l&&cls!=='kept'?String(closeVal(l)):'');
+        if(cls==='closed'){
+          fd.append('leg_drop',g.leg_id);   // zera o braço
+          fechadas++;
+        }else if(cls==='rolled'){
+          // Strike já resolvido acima (campo, cadeia carregada ou OpLab).
+          var k=pfnum(l.new_strike);
+          if(!k){
+            var opt=(typeof findOpt==='function')?findOpt(l.new_symbol):null;
+            k=opt?pfnum(opt.strike):0;
+          }
+          fd.append('leg_new_ticker',(l.new_symbol||'').toUpperCase());
+          fd.append('leg_new_strike',String(k));
+          fd.append('leg_new_premium',String(openVal(l)));
+          fd.append('leg_new_exp',l.new_exp||l.current_exp||g.exp||'');
+          trocas++;
+        }else{
+          // Perna mantida: repete os dados atuais para não alterá-la.
+          fd.append('leg_new_ticker',g.ticker||'');
+          fd.append('leg_new_strike',String(g.strike||0));
+          fd.append('leg_new_premium',String(g.premium||0));
+          fd.append('leg_new_exp',g.exp||'');
+        }
+      });
+      // Linha da tela que não corresponde a nenhuma perna da operação
+      state.lines.forEach(function(l){
+        if(estClass(l)==='kept')return;
+        if(!porTicker[(l.current_symbol||'').toUpperCase()])naoEncontradas.push(l.current_symbol);
+      });
+      if(naoEncontradas.length){
+        throw new Error('Estas pernas nao pertencem a operacao: '+naoEncontradas.join(', '));
+      }
+      if(!confirm('Gravar manejo em "'+(d.name||'operacao')+'"?\n\n'+
+                  trocas+' perna(s) substituida(s), '+fechadas+' encerrada(s).')){
+        throw new Error('__cancelado__');
+      }
+      // Submete como formulário (e não fetch) para o usuário cair em /opcoes já
+      // com a mensagem de confirmação que o endpoint devolve via flash.
+      var f=document.createElement('form');
+      f.method='POST';
+      f.action='/roll_estruturada/'+encodeURIComponent(id);
+      fd.forEach(function(v,k){
+        var inp=document.createElement('input');
+        inp.type='hidden';inp.name=k;inp.value=v;
+        f.appendChild(inp);
+      });
+      document.body.appendChild(f);
+      f.submit();
+    })
+    .catch(function(e){
+      if(e.message!=='__cancelado__')alert('Erro: '+e.message);
+      btn.disabled=false;btn.textContent=txt;
+    });
+}
+
 function commitRoll(i){
   var src=state.src||'';
   if(src.indexOf('spread:')===0){commitSpread();return;}
-  if(src.indexOf('est:')===0){alert('Para operacoes estruturadas, grave a rolagem pelo botao 🔄 na pagina Opcoes.');return;}
+  if(src.indexOf('est:')===0){commitEstruturada();return;}
   var l=state.lines[i];
   if(!l||!l.current_symbol){alert('Linha sem opcao atual.');return;}
   var m=src.match(/^option:(\d+)$/);
@@ -404,7 +537,8 @@ function commitRoll(i){
 $('commit-roll-btn').addEventListener('click',function(){
   var src=state.src||'';
   if(src.indexOf('spread:')===0){commitSpread();return;}
-  if(src.indexOf('est:')===0){alert('Para operacoes estruturadas, grave a rolagem pelo botao 🔄 na pagina Opcoes.');return;}
+  // Estruturada grava todas as pernas de uma vez, sem exigir seleção de linha.
+  if(src.indexOf('est:')===0){commitEstruturada();return;}
   if(!state.lines.length){alert('Insira ao menos uma linha na rolagem.');return;}
   var i=state.selected_line!=null?state.selected_line:(state.lines.length===1?0:null);
   if(i==null){alert('Selecione na tabela a linha que deseja gravar.');return;}

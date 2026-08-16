@@ -65,6 +65,30 @@ body {
     padding: 2rem;
 }
 
+/* Telas largas (desktop grande, 4K, ultrawide): usa mais da largura
+   disponível para as tabelas com muitas colunas caberem sem precisar de
+   scroll horizontal. O padding das células também encolhe um pouco a partir
+   de 1440px — sozinho o container não basta, uma tabela de ~20 colunas passa
+   fácil de 2000px de largura real. Acima de 1900px o container vai a 98vw,
+   com uma margem fixa pequena para nunca colar nas bordas da tela. */
+@media (min-width: 1440px) {
+    th, td {
+        padding: 0.6rem 0.5rem;
+    }
+}
+@media (min-width: 1600px) {
+    .container {
+        max-width: 1900px;
+    }
+}
+@media (min-width: 1900px) {
+    .container {
+        max-width: 98vw;
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+}
+
 header {
     margin-bottom: 2rem;
     display: flex;

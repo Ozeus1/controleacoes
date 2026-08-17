@@ -24,26 +24,6 @@
       <p id="radar-rationale" style="font-size:.9rem; color:#334155; margin:0 0 1rem; padding:.75rem 1rem;
          background:#fff; border-radius:8px; border-left:3px solid #3b82f6;"></p>
 
-      {# ── Resumo do ativo: cards de valuation (Valor justo / Desconto / P/L / DY) ── #}
-      <div id="r-val-cards" style="display:none; grid-template-columns:repeat(4,1fr); gap:.75rem; margin-bottom:1rem;">
-        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
-          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Valor justo</div>
-          <div style="font-size:1.15rem; font-weight:700; color:#0f172a;" id="r-vj"></div>
-        </div>
-        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
-          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Desconto/prêmio</div>
-          <div style="font-size:1.15rem; font-weight:700;" id="r-desc"></div>
-        </div>
-        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
-          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">P/L</div>
-          <div style="font-size:1.15rem; font-weight:700; color:#0f172a;" id="r-vc-pl"></div>
-        </div>
-        <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
-          <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Dividend Yield</div>
-          <div style="font-size:1.15rem; font-weight:700; color:#0f172a;" id="r-vc-dy"></div>
-        </div>
-      </div>
-
       <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:.75rem; margin-bottom:1rem;">
         <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
           <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Suporte</div>
@@ -137,14 +117,6 @@
           Resumo executivo</div>
         <p id="r-exec-texto" style="margin:0; font-size:.85rem; color:#334155; line-height:1.6;"></p>
         <div id="r-exec-fontes" style="margin-top:.5rem; font-size:.72rem; color:#94a3b8;"></div>
-      </div>
-
-      {# ── Valuation por método ── #}
-      <div id="r-vald-box" style="display:none; background:#fff; border-radius:8px; padding:.9rem 1rem;
-           margin-bottom:1rem; border:1px solid #e2e8f0;">
-        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.5rem;">
-          Valuation por Método</div>
-        <div id="r-vald-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:.5rem; font-size:.85rem; color:#334155;"></div>
       </div>
 
       <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.4rem;">Gráfico</div>
@@ -286,22 +258,6 @@
         optRow('r-row-dy', 'r-dy', d.dy != null ? num(d.dy, 2) + '%' : null);
         optRow('r-row-roe', 'r-roe', d.roe != null ? num(d.roe, 2) + '%' : null);
         optRow('r-row-nmargin', 'r-nmargin', d.net_margin != null ? num(d.net_margin, 2) + '%' : null);
-        // ── Resumo do ativo: cards de valuation ───────────────────────────────
-        var vc = d.valuation_cards;
-        var vcBox = document.getElementById('r-val-cards');
-        if (vc && (vc.valor_justo || vc.desconto_premio)) {
-            vcBox.style.display = 'grid';
-            set('r-vj', dash(vc.valor_justo));
-            var descEl = document.getElementById('r-desc');
-            descEl.textContent = dash(vc.desconto_premio);
-            var descNum = parseFloat((vc.desconto_premio || '').replace(/[^\d,\-]/g, '').replace(',', '.'));
-            descEl.style.color = isNaN(descNum) ? '#0f172a' : (descNum >= 0 ? '#dc2626' : '#16a34a');
-            set('r-vc-pl', dash(vc.pl));
-            set('r-vc-dy', dash(vc.dividend_yield));
-        } else {
-            vcBox.style.display = 'none';
-        }
-
         // ── Busca e confiabilidade ────────────────────────────────────────────
         var conf = d.search_confidence;
         var confBox = document.getElementById('r-conf-box');
@@ -343,23 +299,6 @@
             document.getElementById('r-exec-fontes').textContent = '';
         } else {
             execBox.style.display = 'none';
-        }
-
-        // ── Valuation por método ──────────────────────────────────────────────
-        var vald = d.valuation_detail;
-        var valdBox = document.getElementById('r-vald-box');
-        var valdLabels = {graham: 'Graham', dcf: 'DCF simplificado',
-            multiplo_setorial: 'Múltiplo setorial', bazin: 'Bazin', sintese: 'Valor justo síntese'};
-        if (vald && Object.keys(vald).some(function(k) { return vald[k]; })) {
-            valdBox.style.display = '';
-            document.getElementById('r-vald-grid').innerHTML = Object.keys(valdLabels).map(function(k) {
-                if (!vald[k]) return '';
-                return '<div style="background:#f8fafc;border-radius:6px;padding:.5rem .7rem;">' +
-                    '<div style="font-size:.7rem;color:#64748b;">' + valdLabels[k] + '</div>' +
-                    '<div style="font-weight:700;">' + vald[k] + '</div></div>';
-            }).join('');
-        } else {
-            valdBox.style.display = 'none';
         }
 
         // Pills de variação semana/mês no topo

@@ -14287,10 +14287,18 @@ def api_radar_update_study():
         return jsonify({'error': str(e)}), 500
 
 
+_radar_mem = {}       # cache em memória por processo: {(ticker, analyzer): {'ts': float, 'data': {...}}}
+_RADAR_MEM_TTL = 600  # 10 minutos — os dados (RSI, fundamentos, IV) não mudam nesse intervalo,
+                       # e evita bater na API externa a cada F5/reabertura do modal para o mesmo papel.
+
 @app.route('/api/radar_analise')
 @login_required
 def api_radar_analise():
-    """Proxy para a API de análise de ações — evita CORS e esconde a API key."""
+    """Proxy para a API de análise de ações — evita CORS e esconde a API key.
+
+    Cacheado em memória do processo por 10 min (ticker, analyzer): sem isso,
+    reabrir o modal ou dar F5 disparava uma chamada nova à API externa mesmo
+    para o mesmo papel consultado segundos antes."""
     import requests as _req
     from flask import jsonify
     ticker = request.args.get('ticker', '').strip().upper()
@@ -14299,6 +14307,12 @@ def api_radar_analise():
     analyzer = (request.args.get('analyzer') or 'technical').strip().lower()
     if analyzer not in ('technical', 'ai'):
         analyzer = 'technical'
+
+    cache_key = (ticker, analyzer)
+    cached = _radar_mem.get(cache_key)
+    if cached and (time.time() - cached['ts']) < _RADAR_MEM_TTL:
+        return jsonify(cached['data'])
+
     RADAR_URL = 'https://acoes.receberbemevinhos.com.br/api_res.php'
     RADAR_KEY  = 'radar_8acddd4976bc3c1e9b9c814c3b408f9dcbf1dfd0d75795f9'
 
@@ -14341,6 +14355,7 @@ def api_radar_analise():
                 'cache_date':     cache.get('date'),
                 'market_refreshed': cache.get('market_refreshed'),
             }
+            _radar_mem[cache_key] = {'ts': time.time(), 'data': out}
             return jsonify(out)
         except Exception as e:
             return jsonify({'error': str(e)}), 500
@@ -14509,6 +14524,7 @@ def api_radar_analise():
                 for n in news[:6] if isinstance(n, dict) and (n.get('titulo') or n.get('title'))
             ]
 
+        _radar_mem[cache_key] = {'ts': time.time(), 'data': out}
         return jsonify(out)
     except Exception as e:
         return jsonify({'error': str(e)}), 500

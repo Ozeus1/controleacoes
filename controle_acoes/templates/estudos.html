@@ -144,19 +144,39 @@
 {# ─────────────────────────────────────────────────────────────────
    TABELA 2 — Estudo Ações
 ───────────────────────────────────────────────────────────────── #}
+{% macro strat_badge(st) %}
+<span title="{{ st.descricao or st.tipo }}{% if st.situacao == 'DESATIVADA' %} — DESATIVADA{% endif %}"
+      style="display:inline-block;padding:.08rem .45rem;border-radius:10px;font-size:.74rem;font-weight:600;
+  {% if st.situacao == 'DESATIVADA' %}background:rgba(239,68,68,.15);color:#f87171;border:1px dashed #ef4444;{% else %}background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.35);{% endif %}">
+  {% if st.situacao == 'DESATIVADA' %}⚠️ {% endif %}{{ st.tipo }}{% if st.qty %} · {{ st.qty }}{% endif %}{% if st.option_ticker %} · {{ st.option_ticker }}{% endif %}
+</span>
+{% endmacro %}
+{# Célula "Estratégia Ativa": mostra só a 1ª estratégia por padrão, para a linha
+   da tabela não crescer com papéis que acumulam várias. As demais ficam num
+   bloco colapsado, expansível pelo ▾ ao lado — só aparece quando há mais de uma. #}
 {% macro strat_cell(ticker, legacy) %}
 {% set sts = strategies_by_ticker.get(ticker.upper(), []) %}
+{% set cell_id = 'strat-' ~ ticker|replace('.', '-') %}
 <td style="max-width:240px;">
-  {% for st in sts %}
-  <div style="margin-bottom:.15rem;white-space:nowrap;">
-    <span title="{{ st.descricao or st.tipo }}{% if st.situacao == 'DESATIVADA' %} — DESATIVADA{% endif %}"
-          style="display:inline-block;padding:.08rem .45rem;border-radius:10px;font-size:.74rem;font-weight:600;
-      {% if st.situacao == 'DESATIVADA' %}background:rgba(239,68,68,.15);color:#f87171;border:1px dashed #ef4444;{% else %}background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.35);{% endif %}">
-      {% if st.situacao == 'DESATIVADA' %}⚠️ {% endif %}{{ st.tipo }}{% if st.qty %} · {{ st.qty }}{% endif %}{% if st.option_ticker %} · {{ st.option_ticker }}{% endif %}
-    </span>
+  {% if sts %}
+  <div style="display:flex;align-items:flex-start;gap:.2rem;white-space:nowrap;">
+    {{ strat_badge(sts[0]) }}
+    {% if sts|length > 1 %}
+    <button class="btn btn-sm" type="button" onclick="toggleStratCell('{{ cell_id }}', this)"
+            title="Mostrar mais {{ sts|length - 1 }} estratégia(s)"
+            style="padding:0 .3rem;font-size:.7rem;background:transparent;color:var(--text-secondary);line-height:1.4;">▾ +{{ sts|length - 1 }}</button>
+    {% endif %}
   </div>
-  {% endfor %}
-  {% if not sts %}<span style="font-size:.8rem;color:var(--text-secondary);">{{ legacy or '-' }}</span>{% endif %}
+  {% if sts|length > 1 %}
+  <div id="{{ cell_id }}" style="display:none;margin-top:.15rem;">
+    {% for st in sts[1:] %}
+    <div style="margin-bottom:.15rem;white-space:nowrap;">{{ strat_badge(st) }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% else %}
+  <span style="font-size:.8rem;color:var(--text-secondary);">{{ legacy or '-' }}</span>
+  {% endif %}
   <button class="btn btn-sm" onclick="openStrats('{{ ticker }}')" title="Gerenciar estratégias ativas deste papel"
           style="padding:0 .4rem;font-size:.74rem;background:#334155;color:#e2e8f0;margin-top:.1rem;">✎</button>
 </td>
@@ -1616,6 +1636,17 @@ function loadStrats() {
       document.getElementById('strats-list').innerHTML =
         '<span style="color:#f87171;font-size:.85rem;">Erro ao carregar estratégias.</span>';
     });
+}
+
+// Expande/colapsa as estratégias extras na tabela de Estudo Ações (a 1ª fica
+// sempre visível; o resto só aparece ao clicar no botão ▾).
+function toggleStratCell(cellId, btn) {
+  var box = document.getElementById(cellId);
+  if (!box) return;
+  var open = box.style.display !== 'none';
+  box.style.display = open ? 'none' : '';
+  var extra = btn.title.match(/\d+/);
+  btn.textContent = (open ? '▾' : '▴') + (extra ? ' +' + extra[0] : '');
 }
 
 function openStrats(ticker) {

@@ -81,6 +81,17 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+@login_manager.unauthorized_handler
+def _unauthorized():
+    """Sessão expirada em chamada de API: devolve JSON 401 em vez do redirect
+    HTML padrão para /login. Sem isso, o fetch() segue o redirect e recebe a
+    página de login como corpo — o front então tenta JSON.parse() nesse HTML
+    e quebra com "Unexpected token '<'", escondendo a causa real (sessão
+    expirada) atrás de um erro de sintaxe sem sentido para quem usa o site."""
+    if request.path.startswith('/api/') or request.accept_mimetypes.best == 'application/json':
+        return jsonify({'error': 'Sessão expirada. Recarregue a página e faça login novamente.'}), 401
+    return redirect(url_for('login', next=request.url))
+
 def brl_fmt(value):
     if value is None:
         return ""

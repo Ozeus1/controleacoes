@@ -2416,14 +2416,19 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 })
             })
         })
-        .then(function(r) { return r.json(); })
+        .then(function(r) {
+            if (r.status === 401) {
+                throw new Error('Sua sessão expirou. Recarregue a página e faça login novamente.');
+            }
+            return r.json();
+        })
         .then(function(d) {
             btn.disabled = false;
             if (d.error) { alert('Erro ao salvar: ' + d.error); return; }
             btn.textContent = '✓ Salva!';
             setTimeout(function() { btn.textContent = '💾 Salvar simulação'; }, 3000);
         })
-        .catch(function(e) { btn.disabled = false; alert('Erro ao salvar: ' + e); });
+        .catch(function(e) { btn.disabled = false; alert('Erro ao salvar: ' + (e.message || e)); });
     };
 
     // ── Botão "Voltar" — presente quando a tela foi aberta a partir de outra

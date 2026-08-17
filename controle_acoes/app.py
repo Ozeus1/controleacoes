@@ -14206,11 +14206,41 @@ def api_update_quotes():
     }), 200
 
 
+_radar_mem = {}       # cache em memória por processo: {(ticker, analyzer): {'ts': float, 'data': {...}}}
+_RADAR_MEM_TTL = 600  # 10 minutos — os dados (RSI, fundamentos, IV) não mudam nesse intervalo,
+                       # e evita bater na API externa a cada F5/reabertura do modal para o mesmo papel.
+
+_radar_raw_mem = {}   # cache da resposta BRUTA (analyzer=technical) da API externa: {ticker: {'ts', 'data'}}
+
+def _radar_raw_get(ticker, analyzer, radar_url, radar_key, timeout=30):
+    """Resposta 'data' bruta da API Radar (sem a transformação de /api/radar_analise),
+    cacheada por 10 min. Compartilhada por /api/radar_analise (analyzer=technical) e
+    /api/radar_update_study — o botão 📊 dispara as duas no mesmo clique para o
+    mesmo ticker, e cada uma tinha sua própria chamada de rede: cachear só uma
+    das rotas não evitava a segunda ir à API externa de novo."""
+    key = (ticker, analyzer)
+    cached = _radar_raw_mem.get(key)
+    if cached and (time.time() - cached['ts']) < _RADAR_MEM_TTL:
+        return cached['data']
+    import requests as _req
+    resp = _req.get(radar_url, params={'ticker': ticker, 'analyzer': analyzer,
+                                       'api_key': radar_key}, timeout=timeout)
+    raw = resp.json()
+    d = raw.get('data', raw)
+    _radar_raw_mem[key] = {'ts': time.time(), 'data': d}
+    return d
+
+
 @app.route('/api/radar_update_study', methods=['POST'])
 @login_required
 def api_radar_update_study():
-    """Atualiza RSI, ATR% e tendência do estudo a partir dos dados da API Radar."""
-    import requests as _req
+    """Atualiza RSI, ATR% e tendência do estudo a partir dos dados da API Radar.
+
+    Usa o mesmo cache de 10 min de /api/radar_analise (ticker, analyzer='technical'):
+    o botão 📊 dispara as duas rotas no mesmo clique (uma abre o modal visual, esta
+    grava RSI/ATR/IV no registro do estudo), e sem cache compartilhado a segunda
+    sempre batia na API externa de novo mesmo quando a primeira já tinha acabado
+    de cachear o mesmo ticker."""
     from flask import jsonify
     data = request.get_json()
     sid      = data.get('id')
@@ -14219,9 +14249,7 @@ def api_radar_update_study():
     RADAR_URL = 'https://acoes.receberbemevinhos.com.br/api_res.php'
     RADAR_KEY  = 'radar_8acddd4976bc3c1e9b9c814c3b408f9dcbf1dfd0d75795f9'
     try:
-        resp = _req.get(RADAR_URL, params={'ticker': ticker, 'api_key': RADAR_KEY}, timeout=30)
-        raw  = resp.json()
-        d    = raw.get('data', raw)
+        d = _radar_raw_get(ticker, 'technical', RADAR_URL, RADAR_KEY)
         rsi14 = d.get('rsi14')
         atr14 = d.get('atr14')
         price = d.get('price')
@@ -14286,10 +14314,6 @@ def api_radar_update_study():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-
-_radar_mem = {}       # cache em memória por processo: {(ticker, analyzer): {'ts': float, 'data': {...}}}
-_RADAR_MEM_TTL = 600  # 10 minutos — os dados (RSI, fundamentos, IV) não mudam nesse intervalo,
-                       # e evita bater na API externa a cada F5/reabertura do modal para o mesmo papel.
 
 @app.route('/api/radar_analise')
 @login_required
@@ -14361,11 +14385,7 @@ def api_radar_analise():
             return jsonify({'error': str(e)}), 500
 
     try:
-        resp = _req.get(RADAR_URL, params={'ticker': ticker, 'analyzer': 'technical',
-                                           'api_key': RADAR_KEY}, timeout=30)
-        raw  = resp.json()
-        # A API retorna { ok, data: { ... } }
-        d = raw.get('data', raw)
+        d = _radar_raw_get(ticker, 'technical', RADAR_URL, RADAR_KEY)
         sig  = d.get('signal', {})
         mc   = d.get('market_context', {})
         tr   = d.get('technical_reading', {})

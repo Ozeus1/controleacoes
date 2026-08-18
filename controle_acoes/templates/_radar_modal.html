@@ -24,6 +24,31 @@
       <p id="radar-rationale" style="font-size:.9rem; color:#334155; margin:0 0 1rem; padding:.75rem 1rem;
          background:#fff; border-radius:8px; border-left:3px solid #3b82f6;"></p>
 
+      {# ── Resumo do ativo: valor justo, desconto/prêmio, P/L e DY, quando a API traz ── #}
+      <div id="r-val-box" style="display:none; background:#fff; border-radius:8px; padding:.9rem 1rem;
+           margin-bottom:1rem; border:1px solid #e2e8f0;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.5rem;">
+          Resumo do ativo</div>
+        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:.75rem;">
+          <div style="text-align:center;">
+            <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Valor justo</div>
+            <div style="font-size:1.1rem; font-weight:700; color:#0f172a;" id="r-vj"></div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Desconto/prêmio</div>
+            <div style="font-size:1.1rem; font-weight:700;" id="r-desc"></div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">P/L</div>
+            <div style="font-size:1.1rem; font-weight:700; color:#0f172a;" id="r-val-pl"></div>
+          </div>
+          <div style="text-align:center;">
+            <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Dividend Yield</div>
+            <div style="font-size:1.1rem; font-weight:700; color:#0f172a;" id="r-val-dy"></div>
+          </div>
+        </div>
+      </div>
+
       <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:.75rem; margin-bottom:1rem;">
         <div style="background:#fff; border-radius:8px; padding:.75rem; text-align:center; border:1px solid #e2e8f0;">
           <div style="font-size:.72rem; color:#64748b; text-transform:uppercase;">Suporte</div>
@@ -258,6 +283,21 @@
         optRow('r-row-dy', 'r-dy', d.dy != null ? num(d.dy, 2) + '%' : null);
         optRow('r-row-roe', 'r-roe', d.roe != null ? num(d.roe, 2) + '%' : null);
         optRow('r-row-nmargin', 'r-nmargin', d.net_margin != null ? num(d.net_margin, 2) + '%' : null);
+        // ── Resumo do ativo: valor justo / desconto / P-L / DY, quando a API traz ──
+        var vc = d.valuation_cards;
+        var valBox = document.getElementById('r-val-box');
+        if (vc && (vc.valor_justo || vc.desconto_premio || vc.pl || vc.dividend_yield)) {
+            valBox.style.display = '';
+            set('r-vj', dash(vc.valor_justo));
+            var descEl = document.getElementById('r-desc');
+            descEl.textContent = dash(vc.desconto_premio);
+            var descNum = parseFloat((vc.desconto_premio || '').replace(/[^\d,\-]/g, '').replace(',', '.'));
+            descEl.style.color = isNaN(descNum) ? '#0f172a' : (descNum >= 0 ? '#dc2626' : '#16a34a');
+            set('r-val-pl', dash(vc.pl));
+            set('r-val-dy', dash(vc.dividend_yield));
+        } else {
+            valBox.style.display = 'none';
+        }
         // ── Busca e confiabilidade ────────────────────────────────────────────
         var conf = d.search_confidence;
         var confBox = document.getElementById('r-conf-box');

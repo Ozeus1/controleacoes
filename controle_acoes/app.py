@@ -14212,12 +14212,16 @@ _RADAR_MEM_TTL = 600  # 10 minutos — os dados (RSI, fundamentos, IV) não muda
 
 _radar_raw_mem = {}   # cache da resposta BRUTA (analyzer=technical) da API externa: {ticker: {'ts', 'data'}}
 
-def _radar_raw_get(ticker, analyzer, radar_url, radar_key, timeout=30):
+def _radar_raw_get(ticker, analyzer, radar_url, radar_key, timeout=45):
     """Resposta 'data' bruta da API Radar (sem a transformação de /api/radar_analise),
     cacheada por 10 min. Compartilhada por /api/radar_analise (analyzer=technical) e
     /api/radar_update_study — o botão 📊 dispara as duas no mesmo clique para o
     mesmo ticker, e cada uma tinha sua própria chamada de rede: cachear só uma
-    das rotas não evitava a segunda ir à API externa de novo."""
+    das rotas não evitava a segunda ir à API externa de novo.
+
+    Timeout em 45s (igual ao modo IA): o serviço externo às vezes leva 30-40s
+    para responder, e 30s de timeout cortava a chamada no meio com um
+    ConnectionPool/ReadTimeout cru estourando até a tela do usuário."""
     key = (ticker, analyzer)
     cached = _radar_raw_mem.get(key)
     if cached and (time.time() - cached['ts']) < _RADAR_MEM_TTL:
@@ -14311,6 +14315,10 @@ def api_radar_update_study():
         db.session.commit()
         return jsonify({'rsi': ss.rsi, 'atr_pct': ss.atr_pct, 'trend': ss.trend, 'price': price, 'atr14': atr14,
                          'iv_rank': ss.iv_rank, 'iv_percentil': ss.iv_percentil})
+    except requests.exceptions.Timeout:
+        return jsonify({'error': 'O serviço de análise está demorando para responder. Tente novamente em instantes.'}), 504
+    except requests.exceptions.RequestException:
+        return jsonify({'error': 'Não foi possível conectar ao serviço de análise. Tente novamente em instantes.'}), 502
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -14381,6 +14389,10 @@ def api_radar_analise():
             }
             _radar_mem[cache_key] = {'ts': time.time(), 'data': out}
             return jsonify(out)
+        except requests.exceptions.Timeout:
+            return jsonify({'error': 'O serviço de análise fundamentalista está demorando para responder. Tente novamente em instantes.'}), 504
+        except requests.exceptions.RequestException:
+            return jsonify({'error': 'Não foi possível conectar ao serviço de análise. Tente novamente em instantes.'}), 502
         except Exception as e:
             return jsonify({'error': str(e)}), 500
 
@@ -14546,6 +14558,10 @@ def api_radar_analise():
 
         _radar_mem[cache_key] = {'ts': time.time(), 'data': out}
         return jsonify(out)
+    except requests.exceptions.Timeout:
+        return jsonify({'error': 'O serviço de análise está demorando para responder. Tente novamente em instantes.'}), 504
+    except requests.exceptions.RequestException:
+        return jsonify({'error': 'Não foi possível conectar ao serviço de análise. Tente novamente em instantes.'}), 502
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

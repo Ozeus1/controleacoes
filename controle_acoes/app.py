@@ -6869,6 +6869,7 @@ def payoff_spread(id):
             'entry_price':      sp.leg_long_price,
             'current_price':    sp.leg_long_current,
             'expiration_date':  exp_str,
+            'leg_ref':          f'spread_long:{sp.id}',
         },
         {
             'ticker':           sp.leg_short_ticker,
@@ -6879,6 +6880,7 @@ def payoff_spread(id):
             'entry_price':      sp.leg_short_price,
             'current_price':    sp.leg_short_current,
             'expiration_date':  exp_str,
+            'leg_ref':          f'spread_short:{sp.id}',
         },
     ]
     und_price, und_change = _get_underlying_quote(sp.underlying_asset, current_user.id)
@@ -6920,6 +6922,7 @@ def payoff_estruturada(id):
             'entry_price':      leg.entry_price,
             'current_price':    leg.current_price,
             'expiration_date':  leg.expiration_date.strftime('%Y-%m-%d') if leg.expiration_date else '',
+            'leg_ref':          f'structured:{leg.id}',
         }
         for leg in op.legs
     ]
@@ -7018,6 +7021,7 @@ def payoff_option(id):
                 'entry_price':     asset.avg_price,
                 'current_price':   asset.current_price or 0,
                 'expiration_date': '',
+                'leg_ref':         f'asset:{asset.id}',
             })
 
     legs.append({
@@ -7029,6 +7033,7 @@ def payoff_option(id):
         'entry_price':     opt.sale_price,
         'current_price':   opt.current_option_price or 0,
         'expiration_date': opt.expiration_date.strftime('%Y-%m-%d') if opt.expiration_date else '',
+        'leg_ref':         f'option:{opt.id}',
     })
 
     titles = {
@@ -7335,6 +7340,66 @@ def api_estruturada_legs(id):
             'exp':      l.expiration_date.isoformat() if l.expiration_date else '',
         } for l in op.legs],
     })
+
+
+@app.route('/api/payoff-leg/current_price', methods=['POST'])
+@login_required
+def api_payoff_leg_current_price():
+    """Atualiza manualmente a cotação atual de UMA perna, na tela de payoff
+    (edição inline da coluna 'Cotação Atual'). A tela é compartilhada por
+    3 fontes de dados diferentes (operação estruturada, trava/spread, opção
+    avulsa + ação de lastro), então o corpo indica qual via `leg_ref`
+    (montado no backend junto com cada perna): 'structured:<leg_id>',
+    'spread_long:<spread_id>', 'spread_short:<spread_id>', 'option:<id>',
+    'asset:<id>' (ação usada como lastro na venda coberta)."""
+    body = request.get_json(silent=True) or {}
+    leg_ref = str(body.get('leg_ref') or '')
+    raw = body.get('current_price')
+    try:
+        price = float(str(raw).replace(',', '.'))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Preço inválido'}), 400
+    if price < 0:
+        return jsonify({'error': 'Preço não pode ser negativo'}), 400
+    price = round(price, 4)
+
+    try:
+        kind, ref_id = leg_ref.split(':', 1)
+        ref_id = int(ref_id)
+    except (ValueError, AttributeError):
+        return jsonify({'error': 'Referência de perna inválida'}), 400
+
+    if kind == 'structured':
+        leg = StructuredLeg.query.get_or_404(ref_id)
+        if leg.operation.user_id != current_user.id:
+            return jsonify({'error': 'Sem permissão'}), 403
+        leg.current_price = price
+        leg.last_update = datetime.now()
+    elif kind in ('spread_long', 'spread_short'):
+        sp = OptionSpread.query.get_or_404(ref_id)
+        if sp.user_id != current_user.id:
+            return jsonify({'error': 'Sem permissão'}), 403
+        if kind == 'spread_long':
+            sp.leg_long_current = price
+        else:
+            sp.leg_short_current = price
+    elif kind == 'option':
+        opt = Option.query.get_or_404(ref_id)
+        if opt.user_id != current_user.id:
+            return jsonify({'error': 'Sem permissão'}), 403
+        opt.current_option_price = price
+        opt.last_update = datetime.now()
+    elif kind == 'asset':
+        asset = Asset.query.get_or_404(ref_id)
+        if asset.user_id != current_user.id:
+            return jsonify({'error': 'Sem permissão'}), 403
+        asset.current_price = price
+        asset.last_update = datetime.now()
+    else:
+        return jsonify({'error': 'Tipo de perna desconhecido'}), 400
+
+    db.session.commit()
+    return jsonify({'ok': True, 'current_price': price})
 
 
 @app.route('/roll_spread/<int:id>', methods=['POST'])

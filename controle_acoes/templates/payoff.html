@@ -527,6 +527,7 @@
                     data-strike="{{ leg.strike }}"
                     data-entry="{{ leg.entry_price }}"
                     data-current="{{ leg.current_price }}"
+                    data-leg-ref="{{ leg.leg_ref or '' }}"
                     data-exp="{{ leg.expiration_date if leg.expiration_date else '' }}">
                     <td style="padding:.4rem .6rem;">
                         <span style="display:inline-block; padding:.1rem .5rem; border-radius:4px; font-weight:700;
@@ -540,14 +541,27 @@
                     <td style="padding:.4rem .6rem;">{{ leg.opt_type }}</td>
                     <td style="padding:.4rem .6rem; text-align:right;">R$ {{ "%.2f"|format(leg.strike)|replace('.', ',') }}</td>
                     <td style="padding:.4rem .6rem; text-align:right;">R$ {{ "%.2f"|format(leg.entry_price)|replace('.', ',') }}</td>
-                    <td style="padding:.4rem .6rem; text-align:right;">R$ {{ "%.2f"|format(cur)|replace('.', ',') }}</td>
-                    <td style="padding:.4rem .6rem; text-align:right;"
-                        class="{{ 'positive' if total >= 0 else 'negative' }}">
+                    <td style="padding:.3rem .4rem; text-align:right;">
+                        {% if leg.leg_ref %}
+                        <div style="display:inline-flex; align-items:center; gap:.25rem; justify-content:flex-end;">
+                            <span style="color:var(--text-secondary);">R$</span>
+                            <input type="text" class="leg-current-input" inputmode="decimal"
+                                   value="{{ "%.2f"|format(cur)|replace('.', ',') }}"
+                                   style="width:70px; text-align:right; background:var(--input-bg,#0f172a);
+                                          color:var(--text-primary); border:1px solid var(--border-color);
+                                          border-radius:4px; padding:.2rem .35rem; font-size:.85rem;">
+                        </div>
+                        {% else %}
+                        R$ {{ "%.2f"|format(cur)|replace('.', ',') }}
+                        {% endif %}
+                    </td>
+                    <td class="leg-total-cell {{ 'positive' if total >= 0 else 'negative' }}"
+                        style="padding:.4rem .6rem; text-align:right;">
                         R$ {{ "%.2f"|format(total|abs)|replace('.', ',') }}
                         <small>{{ '(cred.)' if total >= 0 else '(déb.)' }}</small>
                     </td>
-                    <td style="padding:.4rem .6rem; text-align:right;"
-                        class="{{ 'positive' if leg_pnl >= 0 else 'negative' }}">
+                    <td class="leg-pnl-cell {{ 'positive' if leg_pnl >= 0 else 'negative' }}"
+                        style="padding:.4rem .6rem; text-align:right;">
                         {{ '+' if leg_pnl >= 0 else '-' }}R$ {{ "%.2f"|format(leg_pnl|abs)|replace('.', ',') }}
                     </td>
                 </tr>
@@ -1186,6 +1200,56 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
     // ── Init ─────────────────────────────────────────────────────────────────
     setSize();
     window.addEventListener('resize', setSize);
+})();
+</script>
+
+{# ── Edição inline da cotação atual de cada perna ──────────────────────────
+   Salva via fetch e recarrega a página: o gráfico, POP, rodapé (saldo da
+   montagem, ajuste de rolagem) e o extrato de manejo dependem uns dos outros
+   e já são todos recalculados no carregamento — recarregar evita duplicar
+   essa lógica em JS e garante que tudo fique consistente com o backend. #}
+<script>
+(function() {
+    document.querySelectorAll('.leg-current-input').forEach(function (input) {
+        var tr = input.closest('tr');
+        var legRef = tr ? tr.dataset.legRef : '';
+        if (!legRef) return;
+
+        function commit() {
+            var raw = input.value.trim().replace(',', '.');
+            var price = parseFloat(raw);
+            if (isNaN(price) || price < 0) {
+                input.style.borderColor = 'var(--danger-color)';
+                return;
+            }
+            input.disabled = true;
+            input.style.borderColor = 'var(--border-color)';
+            fetch('{{ url_for("api_payoff_leg_current_price") }}', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ leg_ref: legRef, current_price: price })
+            })
+            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+            .then(function (res) {
+                if (!res.ok || res.d.error) throw new Error(res.d.error || 'Erro ao salvar');
+                location.reload();
+            })
+            .catch(function (e) {
+                input.disabled = false;
+                input.style.borderColor = 'var(--danger-color)';
+                alert('Erro ao salvar a cotação: ' + e.message);
+            });
+        }
+
+        input.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        });
+        input.addEventListener('blur', function () {
+            var typed = parseFloat(input.value.trim().replace(',', '.'));
+            var original = parseFloat(tr.dataset.current || '0');
+            if (!isNaN(typed) && Math.abs(typed - original) > 0.0001) commit();
+        });
+    });
 })();
 </script>
 

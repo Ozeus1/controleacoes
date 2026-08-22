@@ -15868,19 +15868,39 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
                     o.daily_change = var
                 options_ok += 1
 
-    # ── Atualiza StudyOptions (/estudos) ──────────────────────────
-    for so in study_options:
-        changed = False
-        opt_key = (so.ticker or '').upper()
-        if opt_key in prices and prices[opt_key] > 0:
-            so.option_price = prices[opt_key]
-            changed = True
+    # ── Atualiza pernas de OperaçõesEstruturadas (com fallback individual) ──
+    # Vem ANTES de StudyOptions/OptionSpreads de propósito: são posições reais
+    # de risco aberto, não dados de estudo — se o orçamento de tempo acabar
+    # (carteiras grandes), é isso que precisa ficar atualizado, não o resto.
+    # Sem o fallback, travas com pernas de vencimentos distantes/semanais
+    # (ex.: calendários) que o bulk /market/quote não retorna nunca atualizavam.
+    for leg in struct_legs_bulk:
+        if getattr(leg.operation, 'intl', False):
+            continue   # Tastytrade: prêmios mantidos manualmente
+        k = (leg.ticker or '').upper()
+        if not k:
+            continue
+        if k in prices and prices[k] > 0:
+            leg.current_price = prices[k]
+            leg.last_update   = now
             options_ok += 1
-        if so.underlying_asset:
-            uk = so.underlying_asset.upper()
+        elif oplab_online and _left() > 0:
+            p, _var = _fallback_option_quote(k)
+            if p:
+                leg.current_price = p
+                leg.last_update   = now
+                options_ok += 1
+
+    # ── Atualiza underlying de OperaçõesEstruturadas ──────────────
+    for sop in struct_ops_bulk:
+        if getattr(sop, 'intl', False):
+            continue
+        if sop.underlying_asset:
+            uk = sop.underlying_asset.upper()
             if uk in prices and prices[uk] > 0:
-                so.underlying_price = prices[uk]
-                changed = True
+                sop.underlying_price = prices[uk]
+            if uk in variations:
+                sop.underlying_change = variations[uk]
 
     # ── Atualiza OptionSpreads (/spreads) — com fallback individual ────────
     for sp in spreads:
@@ -15911,36 +15931,19 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
             if uk in variations:
                 sp.underlying_change = variations[uk]
 
-    # ── Atualiza pernas de OperaçõesEstruturadas (com fallback individual) ──
-    # Sem isso, travas com pernas de vencimentos distantes/semanais (ex.:
-    # calendários) que o bulk /market/quote não retorna nunca atualizavam.
-    for leg in struct_legs_bulk:
-        if getattr(leg.operation, 'intl', False):
-            continue   # Tastytrade: prêmios mantidos manualmente
-        k = (leg.ticker or '').upper()
-        if not k:
-            continue
-        if k in prices and prices[k] > 0:
-            leg.current_price = prices[k]
-            leg.last_update   = now
+    # ── Atualiza StudyOptions (/estudos) ──────────────────────────
+    for so in study_options:
+        changed = False
+        opt_key = (so.ticker or '').upper()
+        if opt_key in prices and prices[opt_key] > 0:
+            so.option_price = prices[opt_key]
+            changed = True
             options_ok += 1
-        elif oplab_online and _left() > 0:
-            p, _var = _fallback_option_quote(k)
-            if p:
-                leg.current_price = p
-                leg.last_update   = now
-                options_ok += 1
-
-    # ── Atualiza underlying de OperaçõesEstruturadas ──────────────
-    for sop in struct_ops_bulk:
-        if getattr(sop, 'intl', False):
-            continue
-        if sop.underlying_asset:
-            uk = sop.underlying_asset.upper()
+        if so.underlying_asset:
+            uk = so.underlying_asset.upper()
             if uk in prices and prices[uk] > 0:
-                sop.underlying_price = prices[uk]
-            if uk in variations:
-                sop.underlying_change = variations[uk]
+                so.underlying_price = prices[uk]
+                changed = True
 
     # ── Tastytrade (intl): somente o SUBJACENTE, via Yahoo sem .SA ─
     # (AAPL, SPY, TSLA…). As pernas de opção não são tocadas.

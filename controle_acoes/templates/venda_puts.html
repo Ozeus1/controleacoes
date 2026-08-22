@@ -2377,6 +2377,17 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         }
     };
 
+    // O texto da operação selecionada às vezes já vem com o ticker embutido
+    // (ex.: preset "livre" pré-carregado via ?livre_nome=Jade+Lizard+EMBJ3 —
+    // ver montaLivre() acima). Sem essa checagem, concatenar o ativo de novo
+    // duplicava o ticker no nome salvo ("Jade Lizard EMBJ3 EMBJ3").
+    function nomeComAtivo(nomeBase, ativo) {
+        if (!ativo) return nomeBase;
+        var upper = nomeBase.toUpperCase();
+        if (upper === ativo || upper.slice(-(ativo.length + 1)) === (' ' + ativo)) return nomeBase;
+        return nomeBase + ' ' + ativo;
+    }
+
     // Abre a Cadeia de Opções com as pernas da estrutura para editar/adicionar/salvar
     window.estruturaAddLeg = function() {
         var legs = window.__estruturaLegs;
@@ -2388,7 +2399,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             return [l.ticker, l.type, l.side, l.qty,
                     (l.premium || 0).toFixed(2), (l.strike || 0).toFixed(2), l.exp || ''].join(',');
         });
-        var q = new URLSearchParams({sim: '1', ativo: ativo, nome: nome + ' ' + ativo, legs: parts.join('|')});
+        var q = new URLSearchParams({sim: '1', ativo: ativo, nome: nomeComAtivo(nome, ativo), legs: parts.join('|')});
         window.location.href = '/cadeia-opcoes?' + q.toString();
     };
 
@@ -2399,9 +2410,10 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         var ativo = (document.getElementById('e-ativo').value || '').toUpperCase();
         var opSel = document.getElementById('e-op');
         var nomeBase = (opSel.options[opSel.selectedIndex].text || 'Estrutura').replace(/[⚖️🔗🚧🕊📈📉💰🚀🐄🐂🦋🔄🦅]/g, '').trim();
-        var nome = prompt('Nome da simulação:', nomeBase + ' ' + ativo);
+        var nomeSugerido = nomeComAtivo(nomeBase, ativo);
+        var nome = prompt('Nome da simulação:', nomeSugerido);
         if (nome === null) return;                 // cancelou
-        nome = nome.trim() || (nomeBase + ' ' + ativo);
+        nome = nome.trim() || nomeSugerido;
         var btn = document.getElementById('e-save-btn');
         btn.disabled = true;
         fetch('/api/simulacao/save', {

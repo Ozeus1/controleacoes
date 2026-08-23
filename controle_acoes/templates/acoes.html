@@ -324,6 +324,14 @@
         </tfoot>
     </table>
 </div>
+{% else %}
+<div class="card mt-4" id="fiis-section">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem;">
+        <h3>Carteira de FIIs</h3>
+        <a href="{{ url_for('add_asset', type='FII', strategy='HOLDER') }}" class="btn btn-primary btn-sm">Adicionar FII</a>
+    </div>
+    <p style="text-align: center; padding: 2rem; color: var(--text-secondary);">Sem FIIs Cadastrados</p>
+</div>
 {% endif %}
 
 <!-- INTERNATIONAL RV -->

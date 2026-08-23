@@ -9617,6 +9617,95 @@ def _dividends_owned(user_id, today):
     return monthly_acoes, monthly_fiis
 
 
+@app.route('/api/mes-resultado/<mes>')
+@login_required
+def api_mes_resultado(mes):
+    """Detalhamento (trades + dividendos) de um mês do gráfico 'Resultado Mensal'."""
+    try:
+        ano, mm = mes.split('-')
+        int(ano); int(mm)
+    except (ValueError, AttributeError):
+        return jsonify({'error': 'Mês inválido'}), 400
+
+    trades = TradeHistory.query.filter_by(user_id=current_user.id).all()
+    trade_rows = []
+    for t in trades:
+        if t.exit_date and t.profit_value is not None and t.exit_date.strftime('%Y-%m') == mes:
+            trade_rows.append({
+                'ticker': t.ticker,
+                'strategy': t.strategy or 'Outros',
+                'exit_date': t.exit_date.isoformat(),
+                'quantity': t.quantity,
+                'profit_value': t.profit_value,
+                'profit_pct': t.profit_pct,
+                'reason': t.reason,
+            })
+    trade_rows.sort(key=lambda r: r['exit_date'])
+
+    today_d = date.today()
+    divs = Dividend.query.join(Asset).filter(
+        Asset.user_id == current_user.id, Dividend.payment_date != None
+    ).all()
+    div_rows = []
+    for d in divs:
+        if not d.payment_date or d.payment_date > today_d:
+            continue
+        if d.payment_date.strftime('%Y-%m') != mes:
+            continue
+        a = d.asset
+        own_date = d.ex_date or d.payment_date
+        if a.entry_date and own_date < a.entry_date:
+            continue
+        if a.exit_date and own_date > a.exit_date:
+            continue
+        div_rows.append({
+            'ticker': d.ticker,
+            'type': d.type,
+            'asset_type': a.type,
+            'payment_date': d.payment_date.isoformat(),
+            'amount': d.amount,
+            'per_share': d.per_share,
+            'qty_used': d.qty_used,
+        })
+    div_rows.sort(key=lambda r: r['payment_date'])
+
+    return jsonify({
+        'mes': mes,
+        'trades': trade_rows,
+        'dividends': div_rows,
+        'total_lucro': sum(r['profit_value'] for r in trade_rows),
+        'total_div': sum(r['amount'] for r in div_rows),
+    })
+
+
+@app.route('/api/setor-acoes/<path:setor>')
+@login_required
+def api_setor_acoes(setor):
+    """Ações atualmente em carteira de um setor (drill-down do card 'Setores de Ações')."""
+    if setor == 'Não Classificado':
+        raw = Asset.query.filter(Asset.type=='ACAO', Asset.user_id==current_user.id,
+                                  Asset.quantity > 0, (Asset.sector==None) | (Asset.sector=='')).all()
+    else:
+        raw = Asset.query.filter(Asset.type=='ACAO', Asset.user_id==current_user.id,
+                                  Asset.quantity > 0, Asset.sector==setor).all()
+    processed = process_assets(raw)
+    total = sum(a['current_total'] for a in processed)
+    rows = sorted(processed, key=lambda a: a['current_total'], reverse=True)
+    return jsonify({
+        'setor': setor,
+        'total': total,
+        'rows': [{
+            'ticker': a['asset'].ticker,
+            'quantity': a['asset'].quantity,
+            'current_price': a['current_price'],
+            'current_total': a['current_total'],
+            'pct': (a['current_total'] / total * 100) if total > 0 else 0,
+            'profit': a['profit'],
+            'profit_pct': a['profit_pct'],
+        } for a in rows]
+    })
+
+
 @app.route('/resumo')
 @login_required
 def resumo():
@@ -10228,6 +10317,43 @@ def add_history():
         return redirect(url_for('history'))
         
     return render_template('add_history.html')
+
+@app.route('/api/dia-resultado/<dia>')
+@login_required
+def api_dia_resultado(dia):
+    """Detalhamento (trades) de um dia do gráfico 'Ganho Diário'. Aceita ?cat= p/ filtrar categoria."""
+    try:
+        y, m, d = dia.split('-')
+        int(y); int(m); int(d)
+    except (ValueError, AttributeError):
+        return jsonify({'error': 'Data inválida'}), 400
+
+    cat = (request.args.get('cat') or '').strip()
+    trades = TradeHistory.query.filter_by(user_id=current_user.id).all()
+    rows = []
+    for t in trades:
+        if not t.exit_date or t.profit_value is None:
+            continue
+        if t.exit_date.isoformat() != dia:
+            continue
+        strat = t.strategy or 'Outros'
+        if cat and strat != cat:
+            continue
+        rows.append({
+            'ticker': t.ticker,
+            'strategy': strat,
+            'quantity': t.quantity,
+            'profit_value': t.profit_value,
+            'profit_pct': t.profit_pct,
+            'reason': t.reason,
+        })
+    rows.sort(key=lambda r: r['ticker'])
+    return jsonify({
+        'dia': dia,
+        'trades': rows,
+        'total': sum(r['profit_value'] for r in rows),
+    })
+
 
 @app.route('/history')
 @login_required

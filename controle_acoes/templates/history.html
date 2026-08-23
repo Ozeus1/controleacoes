@@ -4,6 +4,11 @@
 <style>
 /* Oculta campo de busca nativo do DataTables nesta página */
 #historyTable_filter { display: none !important; }
+.table-center-forced th,
+.table-center-forced td {
+    text-align: center !important;
+    vertical-align: middle !important;
+}
 </style>
 <div class="card">
     <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
@@ -315,6 +320,79 @@
     </div>
 </div>
 
+<!-- Modal: detalhamento de dia do Ganho Diário -->
+<div id="dia-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+     background:rgba(0,0,0,.75); align-items:center; justify-content:center; padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b); border-radius:10px; padding:1.2rem 1.4rem;
+              width:min(96vw,700px); max-height:88vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <h3 id="dia-title" style="margin:0; font-size:1rem;"></h3>
+      <button onclick="closeDiaModal()" style="background:none; border:none; font-size:1.4rem;
+              color:var(--text-secondary); cursor:pointer; line-height:1;">&times;</button>
+    </div>
+    <div id="dia-body">Carregando…</div>
+  </div>
+</div>
+<script>
+(function() {
+    function fmtBRLd2(v) {
+        var sign = v < 0 ? '-R$ ' : 'R$ ';
+        return sign + Math.abs(v || 0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+    function fmtPctd2(v) {
+        v = v || 0;
+        return (v >= 0 ? '+' : '') + v.toFixed(2).replace('.', ',') + '%';
+    }
+    function dateBRd2(iso) {
+        var p = (iso || '').split('-');
+        return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '—');
+    }
+    var diaModal = document.getElementById('dia-modal');
+    window.openDiaModal = function(dia, cat) {
+        document.getElementById('dia-title').textContent = 'Transações — ' + dateBRd2(dia);
+        document.getElementById('dia-body').innerHTML = 'Carregando…';
+        diaModal.style.display = 'flex';
+        var url = '/api/dia-resultado/' + encodeURIComponent(dia) + (cat ? '?cat=' + encodeURIComponent(cat) : '');
+        fetch(url)
+            .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+            .then(function(res) {
+                if (!res.ok || res.j.error) {
+                    document.getElementById('dia-body').innerHTML =
+                        '<p style="color:var(--danger-color);">Erro ao carregar: ' + (res.j.error || 'falha na requisição') + '</p>';
+                    return;
+                }
+                var d = res.j;
+                if (!d.trades.length) {
+                    document.getElementById('dia-body').innerHTML =
+                        '<p style="color:var(--text-secondary); text-align:center; padding:1rem;">Sem transações neste dia.</p>';
+                    return;
+                }
+                var h = '<div class="table-responsive"><table class="table table-dark table-striped table-center-forced" style="margin:0;">' +
+                    '<thead><tr><th>Ticker</th><th>Categoria</th><th>Qtd</th><th>Lucro R$</th><th>Lucro %</th><th>Motivo</th></tr></thead><tbody>';
+                d.trades.forEach(function(t) {
+                    h += '<tr>' +
+                        '<td><span class="ticker-badge">' + t.ticker + '</span></td>' +
+                        '<td>' + t.strategy + '</td>' +
+                        '<td>' + (t.quantity != null ? t.quantity : '—') + '</td>' +
+                        '<td class="' + (t.profit_value >= 0 ? 'positive' : 'negative') + '">' + fmtBRLd2(t.profit_value) + '</td>' +
+                        '<td class="' + (t.profit_pct >= 0 ? 'positive' : 'negative') + '">' + fmtPctd2(t.profit_pct) + '</td>' +
+                        '<td>' + (t.reason || '—') + '</td>' +
+                        '</tr>';
+                });
+                h += '</tbody><tfoot><tr style="font-weight:bold;"><td colspan="3">TOTAL</td>' +
+                    '<td class="' + (d.total >= 0 ? 'positive' : 'negative') + '">' + fmtBRLd2(d.total) + '</td><td></td><td></td></tr></tfoot></table></div>';
+                document.getElementById('dia-body').innerHTML = h;
+            })
+            .catch(function(e) {
+                document.getElementById('dia-body').innerHTML =
+                    '<p style="color:var(--danger-color);">Falha na requisição: ' + e + '</p>';
+            });
+    };
+    window.closeDiaModal = function() { diaModal.style.display = 'none'; };
+    diaModal.addEventListener('click', function(ev) { if (ev.target === diaModal) closeDiaModal(); });
+})();
+</script>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 <script>
@@ -572,6 +650,14 @@ function filterByStrategy() { applyFilters(); }
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                onClick: function(evt, elements) {
+                    if (!elements.length) return;
+                    var dataIdx = elements[0].index;
+                    if (window.openDiaModal) window.openDiaModal(days[dataIdx], cat);
+                },
+                onHover: function(evt, elements) {
+                    evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+                },
                 plugins: {
                     legend: { labels: { color: themeColors.text } },
                     tooltip: {

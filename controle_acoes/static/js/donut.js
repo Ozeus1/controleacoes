@@ -72,7 +72,7 @@
     };
 
     // ── legenda-lista interativa ──────────────────────────────────────────────
-    function renderDonutLegend(chart, el) {
+    function renderDonutLegend(chart, el, onSliceClick) {
         function build() {
             var ds = chart.data.datasets[0];
             var sum = 0;
@@ -88,7 +88,7 @@
                     ? ds.backgroundColor[i % ds.backgroundColor.length]
                     : ds.backgroundColor;
                 return '<div class="dl-row' + (off ? ' off' : '') + '" data-i="' + i + '" ' +
-                       'title="Clique para ocultar/mostrar a fatia">' +
+                       'title="' + (onSliceClick ? 'Clique para ver o detalhamento' : 'Clique para ocultar/mostrar a fatia') + '">' +
                        '<span class="dl-dot" style="background:' + color + '"></span>' +
                        '<span class="dl-name">' + lb + '</span>' +
                        '<span class="dl-val">' + fmtBRLd(v) + '</span>' +
@@ -97,6 +97,7 @@
             el.querySelectorAll('.dl-row').forEach(function (row) {
                 var i = +row.dataset.i;
                 row.addEventListener('click', function () {
+                    if (onSliceClick) { onSliceClick(chart.data.labels[i], ds.data[i]); return; }
                     chart.toggleDataVisibility(i);
                     chart.update();
                     build();
@@ -147,6 +148,14 @@
                 maintainAspectRatio: false,
                 cutout: opts.cutout || '68%',
                 layout: { padding: 10 },
+                onClick: opts.onSliceClick ? function (evt, elements) {
+                    if (!elements.length) return;
+                    var i = elements[0].index;
+                    opts.onSliceClick(chart.data.labels[i], chart.data.datasets[0].data[i]);
+                } : undefined,
+                onHover: opts.onSliceClick ? function (evt, elements) {
+                    evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+                } : undefined,
                 plugins: {
                     legend: { display: false },
                     datalabels: { display: false },
@@ -170,7 +179,7 @@
         });
         if (opts.legendId) {
             var lg = document.getElementById(opts.legendId);
-            if (lg) renderDonutLegend(chart, lg);
+            if (lg) renderDonutLegend(chart, lg, opts.onSliceClick);
         }
         return chart;
     };

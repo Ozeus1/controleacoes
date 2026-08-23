@@ -279,6 +279,162 @@
 
 </div>
 
+<!-- Modal: detalhamento de setor de ações -->
+<div id="setor-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+     background:rgba(0,0,0,.75); align-items:center; justify-content:center; padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b); border-radius:10px; padding:1.2rem 1.4rem;
+              width:min(96vw,700px); max-height:88vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <h3 id="setor-title" style="margin:0; font-size:1rem;"></h3>
+      <button onclick="closeSetorModal()" style="background:none; border:none; font-size:1.4rem;
+              color:var(--text-secondary); cursor:pointer; line-height:1;">&times;</button>
+    </div>
+    <div id="setor-body">Carregando…</div>
+  </div>
+</div>
+
+<!-- Modal: detalhamento de mês do Resultado Mensal -->
+<div id="mes-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+     background:rgba(0,0,0,.75); align-items:center; justify-content:center; padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b); border-radius:10px; padding:1.2rem 1.4rem;
+              width:min(96vw,760px); max-height:88vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <h3 id="mes-title" style="margin:0; font-size:1rem;"></h3>
+      <button onclick="closeMesModal()" style="background:none; border:none; font-size:1.4rem;
+              color:var(--text-secondary); cursor:pointer; line-height:1;">&times;</button>
+    </div>
+    <div id="mes-body">Carregando…</div>
+  </div>
+</div>
+
+<script>
+(function() {
+    function fmtBRLm(v) {
+        var sign = v < 0 ? '-R$ ' : 'R$ ';
+        return sign + Math.abs(v || 0).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
+    }
+    function fmtPctm(v) {
+        v = v || 0;
+        return (v >= 0 ? '+' : '') + v.toFixed(2).replace('.', ',') + '%';
+    }
+    function dateBRm(iso) {
+        var p = (iso || '').split('-');
+        return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '—');
+    }
+
+    // ── Modal de Setor ────────────────────────────────────────────────────────
+    var setorModal = document.getElementById('setor-modal');
+    window.openSetorModal = function(setor) {
+        document.getElementById('setor-title').textContent = 'Ações em carteira — ' + setor;
+        document.getElementById('setor-body').innerHTML = 'Carregando…';
+        setorModal.style.display = 'flex';
+        fetch('/api/setor-acoes/' + encodeURIComponent(setor))
+            .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+            .then(function(res) {
+                if (!res.ok || res.j.error) {
+                    document.getElementById('setor-body').innerHTML =
+                        '<p style="color:var(--danger-color);">Erro ao carregar: ' + (res.j.error || 'falha na requisição') + '</p>';
+                    return;
+                }
+                var d = res.j;
+                if (!d.rows.length) {
+                    document.getElementById('setor-body').innerHTML =
+                        '<p style="color:var(--text-secondary); text-align:center; padding:1rem;">Nenhuma ação em carteira neste setor.</p>';
+                    return;
+                }
+                var h = '<div class="table-responsive"><table class="table table-dark table-striped table-center-forced" style="margin:0;">' +
+                    '<thead><tr><th>Ticker</th><th>Qtd</th><th>Cotação</th><th>Valor Posição</th>' +
+                    '<th>% Setor</th><th>Lucro R$</th><th>Lucro %</th></tr></thead><tbody>';
+                d.rows.forEach(function(r) {
+                    h += '<tr>' +
+                        '<td><span class="ticker-badge">' + r.ticker + '</span></td>' +
+                        '<td>' + r.quantity + '</td>' +
+                        '<td>' + fmtBRLm(r.current_price) + '</td>' +
+                        '<td>' + fmtBRLm(r.current_total) + '</td>' +
+                        '<td>' + r.pct.toFixed(1).replace('.', ',') + '%</td>' +
+                        '<td class="' + (r.profit >= 0 ? 'positive' : 'negative') + '">' + fmtBRLm(r.profit) + '</td>' +
+                        '<td class="' + (r.profit_pct >= 0 ? 'positive' : 'negative') + '">' + fmtPctm(r.profit_pct) + '</td>' +
+                        '</tr>';
+                });
+                h += '</tbody><tfoot><tr style="font-weight:bold;"><td>TOTAL</td><td></td><td></td>' +
+                    '<td>' + fmtBRLm(d.total) + '</td><td>100,0%</td><td></td><td></td></tr></tfoot></table></div>';
+                document.getElementById('setor-body').innerHTML = h;
+            })
+            .catch(function(e) {
+                document.getElementById('setor-body').innerHTML =
+                    '<p style="color:var(--danger-color);">Falha na requisição: ' + e + '</p>';
+            });
+    };
+    window.closeSetorModal = function() { setorModal.style.display = 'none'; };
+    setorModal.addEventListener('click', function(ev) { if (ev.target === setorModal) closeSetorModal(); });
+
+    // ── Modal de Mês (Resultado Mensal) ─────────────────────────────────────────
+    var mesModal = document.getElementById('mes-modal');
+    window.openMesModal = function(mes) {
+        var parts = mes.split('-');
+        document.getElementById('mes-title').textContent = 'Detalhamento — ' + parts[1] + '/' + parts[0];
+        document.getElementById('mes-body').innerHTML = 'Carregando…';
+        mesModal.style.display = 'flex';
+        fetch('/api/mes-resultado/' + encodeURIComponent(mes))
+            .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+            .then(function(res) {
+                if (!res.ok || res.j.error) {
+                    document.getElementById('mes-body').innerHTML =
+                        '<p style="color:var(--danger-color);">Erro ao carregar: ' + (res.j.error || 'falha na requisição') + '</p>';
+                    return;
+                }
+                var d = res.j;
+                if (!d.trades.length && !d.dividends.length) {
+                    document.getElementById('mes-body').innerHTML =
+                        '<p style="color:var(--text-secondary); text-align:center; padding:1rem;">Sem transações neste mês.</p>';
+                    return;
+                }
+                var h = '';
+                if (d.trades.length) {
+                    h += '<h4 style="font-size:.9rem; margin:0 0 .5rem;">Operações encerradas (' + fmtBRLm(d.total_lucro) + ')</h4>';
+                    h += '<div class="table-responsive"><table class="table table-dark table-striped table-center-forced" style="margin:0 0 1.2rem;">' +
+                        '<thead><tr><th>Data</th><th>Ticker</th><th>Categoria</th><th>Qtd</th><th>Lucro R$</th><th>Lucro %</th><th>Motivo</th></tr></thead><tbody>';
+                    d.trades.forEach(function(t) {
+                        h += '<tr>' +
+                            '<td>' + dateBRm(t.exit_date) + '</td>' +
+                            '<td><span class="ticker-badge">' + t.ticker + '</span></td>' +
+                            '<td>' + t.strategy + '</td>' +
+                            '<td>' + (t.quantity != null ? t.quantity : '—') + '</td>' +
+                            '<td class="' + (t.profit_value >= 0 ? 'positive' : 'negative') + '">' + fmtBRLm(t.profit_value) + '</td>' +
+                            '<td class="' + (t.profit_pct >= 0 ? 'positive' : 'negative') + '">' + fmtPctm(t.profit_pct) + '</td>' +
+                            '<td>' + (t.reason || '—') + '</td>' +
+                            '</tr>';
+                    });
+                    h += '</tbody></table></div>';
+                }
+                if (d.dividends.length) {
+                    h += '<h4 style="font-size:.9rem; margin:0 0 .5rem;">Dividendos recebidos (' + fmtBRLm(d.total_div) + ')</h4>';
+                    h += '<div class="table-responsive"><table class="table table-dark table-striped table-center-forced" style="margin:0;">' +
+                        '<thead><tr><th>Data Pag.</th><th>Ticker</th><th>Tipo</th><th>Valor/Cota</th><th>Qtd</th><th>Total</th></tr></thead><tbody>';
+                    d.dividends.forEach(function(dv) {
+                        h += '<tr>' +
+                            '<td>' + dateBRm(dv.payment_date) + '</td>' +
+                            '<td><span class="ticker-badge">' + dv.ticker + '</span></td>' +
+                            '<td>' + dv.type + '</td>' +
+                            '<td>' + fmtBRLm(dv.per_share) + '</td>' +
+                            '<td>' + (dv.qty_used != null ? dv.qty_used : '—') + '</td>' +
+                            '<td class="positive">' + fmtBRLm(dv.amount) + '</td>' +
+                            '</tr>';
+                    });
+                    h += '</tbody></table></div>';
+                }
+                document.getElementById('mes-body').innerHTML = h;
+            })
+            .catch(function(e) {
+                document.getElementById('mes-body').innerHTML =
+                    '<p style="color:var(--danger-color);">Falha na requisição: ' + e + '</p>';
+            });
+    };
+    window.closeMesModal = function() { mesModal.style.display = 'none'; };
+    mesModal.addEventListener('click', function(ev) { if (ev.target === mesModal) closeMesModal(); });
+})();
+</script>
+
 <!-- Chart.js -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
@@ -315,7 +471,7 @@
             {{ stock_sectors.keys() | list | tojson }},
             {{ stock_sectors.values() | list | tojson }},
             ['#8b5cf6', '#ec4899', '#f97316', '#14b8a6', '#f43f5e', '#6366f1', '#84cc16', '#a855f7', '#0ea5e9', '#eab308', '#64748b'],
-            { legendId: 'stockLegend', centerLabel: 'Total Ações' });
+            { legendId: 'stockLegend', centerLabel: 'Total Ações', onSliceClick: window.openSetorModal });
 
     // 5. Resultado Mensal (Lucro + Dividendos Ações + Dividendos FIIs)
     const monthLabels   = {{ months | tojson }};
@@ -408,6 +564,15 @@
             responsive: true,
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },   // hover no mês = todas as séries
+            onClick: function(evt, elements) {
+                if (!elements.length) return;
+                const i = elements[0].index;
+                const mes = winSlice(monthLabels)[i];
+                if (mes && window.openMesModal) window.openMesModal(mes);
+            },
+            onHover: function(evt, elements) {
+                evt.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+            },
             plugins: {
                 legend: { labels: { color: themeColors.text,
                                     usePointStyle: true,

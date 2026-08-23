@@ -322,10 +322,10 @@
         return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '—');
     }
 
-    // ── Modal de Setor ────────────────────────────────────────────────────────
+    // ── Modal de Setor (2 níveis: macro-grupo → subsetores → ações) ────────────
     var setorModal = document.getElementById('setor-modal');
     window.openSetorModal = function(setor) {
-        document.getElementById('setor-title').textContent = 'Ações em carteira — ' + setor;
+        document.getElementById('setor-title').textContent = 'Carregando…';
         document.getElementById('setor-body').innerHTML = 'Carregando…';
         setorModal.style.display = 'flex';
         fetch('/api/setor-acoes/' + encodeURIComponent(setor))
@@ -337,16 +337,42 @@
                     return;
                 }
                 var d = res.j;
+                if (d.level === 'subsetores') {
+                    document.getElementById('setor-title').textContent = 'Subsetores — ' + setor;
+                    if (!d.rows.length) {
+                        document.getElementById('setor-body').innerHTML =
+                            '<p style="color:var(--text-secondary); text-align:center; padding:1rem;">Nenhuma ação em carteira neste grupo.</p>';
+                        return;
+                    }
+                    var h = '<div class="table-responsive"><table class="table table-dark table-striped table-center-forced" style="margin:0;">' +
+                        '<thead><tr><th>Subsetor</th><th>Valor Posição</th><th>% do Grupo</th></tr></thead><tbody>';
+                    d.rows.forEach(function(r) {
+                        h += '<tr class="setor-drill-row" data-sub="' + r.subsetor.replace(/"/g, '&quot;') + '" style="cursor:pointer;" title="Clique para ver as ações">' +
+                            '<td>' + r.subsetor + '</td>' +
+                            '<td>' + fmtBRLm(r.value) + '</td>' +
+                            '<td>' + r.pct.toFixed(1).replace('.', ',') + '%</td>' +
+                            '</tr>';
+                    });
+                    h += '</tbody><tfoot><tr style="font-weight:bold;"><td>TOTAL</td>' +
+                        '<td>' + fmtBRLm(d.total) + '</td><td>100,0%</td></tr></tfoot></table></div>';
+                    document.getElementById('setor-body').innerHTML = h;
+                    document.querySelectorAll('#setor-body .setor-drill-row').forEach(function(row) {
+                        row.addEventListener('click', function() { openSetorModal(row.dataset.sub); });
+                    });
+                    return;
+                }
+                // level === 'acoes'
+                document.getElementById('setor-title').textContent = 'Ações em carteira — ' + setor;
                 if (!d.rows.length) {
                     document.getElementById('setor-body').innerHTML =
                         '<p style="color:var(--text-secondary); text-align:center; padding:1rem;">Nenhuma ação em carteira neste setor.</p>';
                     return;
                 }
-                var h = '<div class="table-responsive"><table class="table table-dark table-striped table-center-forced" style="margin:0;">' +
+                var h2 = '<div class="table-responsive"><table class="table table-dark table-striped table-center-forced" style="margin:0;">' +
                     '<thead><tr><th>Ticker</th><th>Qtd</th><th>Cotação</th><th>Valor Posição</th>' +
                     '<th>% Setor</th><th>Lucro R$</th><th>Lucro %</th></tr></thead><tbody>';
                 d.rows.forEach(function(r) {
-                    h += '<tr>' +
+                    h2 += '<tr>' +
                         '<td><span class="ticker-badge">' + r.ticker + '</span></td>' +
                         '<td>' + r.quantity + '</td>' +
                         '<td>' + fmtBRLm(r.current_price) + '</td>' +
@@ -356,9 +382,9 @@
                         '<td class="' + (r.profit_pct >= 0 ? 'positive' : 'negative') + '">' + fmtPctm(r.profit_pct) + '</td>' +
                         '</tr>';
                 });
-                h += '</tbody><tfoot><tr style="font-weight:bold;"><td>TOTAL</td><td></td><td></td>' +
+                h2 += '</tbody><tfoot><tr style="font-weight:bold;"><td>TOTAL</td><td></td><td></td>' +
                     '<td>' + fmtBRLm(d.total) + '</td><td>100,0%</td><td></td><td></td></tr></tfoot></table></div>';
-                document.getElementById('setor-body').innerHTML = h;
+                document.getElementById('setor-body').innerHTML = h2;
             })
             .catch(function(e) {
                 document.getElementById('setor-body').innerHTML =

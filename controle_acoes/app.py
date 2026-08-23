@@ -34,6 +34,29 @@ else:
     app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('FLASK_SECRET_KEY', 'default_secret')
 
+# Taxonomia de setores de Ações: grupo-macro -> [subsetores]. Usada no
+# formulário de cadastro (add.html) e no drill-down do card "Setores de
+# Ações" no Resumo (agrupa pelo macro-setor; clicar nele revela os
+# subsetores; clicar num subsetor mostra as ações daquele subsetor).
+SECTOR_GROUPS = {
+    'Financeiro': ['Bancos', 'Seguros e Previdência', 'Serviços Financeiros', 'Bolsa e Câmbio', 'Holding'],
+    'Materiais Básicos': ['Mineração', 'Siderurgia e Metalurgia', 'Papel e Celulose', 'Química e Petroquímica', 'Materiais de Construção'],
+    'Petróleo, Gás e Energia': ['Petróleo e Gás', 'Energia Elétrica', 'Saneamento e Água', 'Energias Renováveis'],
+    'Consumo': ['Bebidas', 'Alimentos', 'Varejo e Comércio', 'Vestuário e Calçados', 'Higiene e Cuidados Pessoais', 'Eletrodomésticos e Bens Duráveis'],
+    'Saúde': ['Saúde e Hospitais', 'Farmacêutica e Laboratórios', 'Equipamentos Médicos'],
+    'Indústria e Bens de Capital': ['Bens Industriais e Máquinas', 'Aeroespacial e Defesa', 'Construção Civil e Incorporação', 'Transporte e Logística'],
+    'Tecnologia e Comunicação': ['Tecnologia e Software', 'Telecomunicações', 'Mídia e Educação'],
+    'Agro e Imobiliário': ['Agronegócio', 'Imobiliário', 'Shoppings e Propriedades'],
+    'Utilidades e Serviços': ['Concessões e Infraestrutura', 'Serviços Diversos', 'Turismo e Lazer'],
+}
+SECTOR_TO_GROUP = {s: g for g, subs in SECTOR_GROUPS.items() for s in subs}
+
+
+def sector_group_of(sector):
+    """Macro-setor de um subsetor de Ação; 'Outros' se não mapeado/vazio."""
+    return SECTOR_TO_GROUP.get(sector, 'Outros') if sector else 'Outros'
+
+
 # --- Custom Filters ---
 @app.template_filter('brl')
 def format_brl(value):
@@ -9681,17 +9704,43 @@ def api_mes_resultado(mes):
 @app.route('/api/setor-acoes/<path:setor>')
 @login_required
 def api_setor_acoes(setor):
-    """Ações atualmente em carteira de um setor (drill-down do card 'Setores de Ações')."""
+    """Drill-down do card 'Setores de Ações'.
+    Nível 1 (setor = macro-grupo, ex. 'Financeiro'): retorna os subsetores
+    daquele grupo com o valor de posição agregado de cada um (level=subsetores).
+    Nível 2 (setor = subsetor real, ex. 'Bancos', ou 'Não Classificado'):
+    retorna as ações em carteira daquele subsetor (level=acoes)."""
+    raw_all = Asset.query.filter(Asset.type=='ACAO', Asset.user_id==current_user.id,
+                                  Asset.quantity > 0).all()
+
+    if setor in SECTOR_GROUPS:
+        subs = SECTOR_GROUPS[setor]
+        by_sub = {}
+        for a in raw_all:
+            if a.sector not in subs:
+                continue
+            price = a.current_price if a.current_price and a.current_price > 0 else a.avg_price
+            by_sub[a.sector] = by_sub.get(a.sector, 0) + a.quantity * price
+        total = sum(by_sub.values())
+        rows = sorted(by_sub.items(), key=lambda kv: kv[1], reverse=True)
+        return jsonify({
+            'level': 'subsetores',
+            'setor': setor,
+            'total': total,
+            'rows': [{
+                'subsetor': sub, 'value': val,
+                'pct': (val / total * 100) if total > 0 else 0,
+            } for sub, val in rows]
+        })
+
     if setor == 'Não Classificado':
-        raw = Asset.query.filter(Asset.type=='ACAO', Asset.user_id==current_user.id,
-                                  Asset.quantity > 0, (Asset.sector==None) | (Asset.sector=='')).all()
+        raw = [a for a in raw_all if not a.sector]
     else:
-        raw = Asset.query.filter(Asset.type=='ACAO', Asset.user_id==current_user.id,
-                                  Asset.quantity > 0, Asset.sector==setor).all()
+        raw = [a for a in raw_all if a.sector == setor]
     processed = process_assets(raw)
     total = sum(a['current_total'] for a in processed)
     rows = sorted(processed, key=lambda a: a['current_total'], reverse=True)
     return jsonify({
+        'level': 'acoes',
         'setor': setor,
         'total': total,
         'rows': [{
@@ -9752,10 +9801,12 @@ def resumo():
         
         if a.type == 'ACAO':
             total_acoes += val
-            # Stock Sector:
-            s = a.sector or 'Não Classificado'
-            stock_sectors[s] = stock_sectors.get(s, 0) + val
-            
+            # Stock Sector: agrupado pelo macro-setor (o donut mostra os
+            # grupos; clicar num grupo revela os subsetores — ver
+            # /api/setor-acoes). 'Não Classificado' quando sem setor.
+            g = sector_group_of(a.sector) if a.sector else 'Não Classificado'
+            stock_sectors[g] = stock_sectors.get(g, 0) + val
+
         elif a.type == 'FII':
             total_fiis += val
             t = a.fii_type or 'OUTROS'
@@ -14107,7 +14158,7 @@ def api_asset_dates(id):
 @app.context_processor
 def inject_indices():
     indices = MarketIndex.query.all()
-    return dict(market_indices=indices)
+    return dict(market_indices=indices, SECTOR_GROUPS=SECTOR_GROUPS)
 
 @app.route('/config/debug_yahoo', methods=['GET', 'POST'])
 @login_required

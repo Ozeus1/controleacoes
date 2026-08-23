@@ -96,6 +96,7 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     <div id="plm-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(185px,1fr)); gap:.75rem;"></div>
     <div style="margin-top:1.2rem; display:flex; gap:.6rem; flex-wrap:wrap;">
       <a id="plm-open" href="#" class="btn btn-primary btn-sm">🔍 Abrir em Busca de Opção</a>
+      <a id="plm-open-calc" href="#" class="btn btn-primary btn-sm">🧮 Abrir em Cálculo de Opções</a>
       <button class="btn btn-secondary btn-sm" onclick="plCloseModal()">Fechar</button>
     </div>
   </div>
@@ -272,6 +273,11 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
              '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
     }).join('');
     document.getElementById('plm-open').href = '/busca-opcao?t=' + encodeURIComponent(r.symbol);
+    var qp = new URLSearchParams({
+      vp: '1', ticker: r.symbol, ativo: d.ticker, spot: d.spot,
+      k: r.strike, prem: r.premium, qty: qty, exp: r.exp
+    });
+    document.getElementById('plm-open-calc').href = '/venda_puts?' + qp.toString();
   }
 
   document.getElementById('pl-results').addEventListener('click', function(ev) {

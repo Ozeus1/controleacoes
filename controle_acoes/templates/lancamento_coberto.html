@@ -142,6 +142,7 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       return;
     }
     sortRows(d.rows);
+    var hasTrades = d.rows.some(function(r) { return r.trades > 0; });
     var cols = [
       ['symbol',   'CALL (venda)', ''],
       ['exp',      'Vencimento', ''],
@@ -159,6 +160,7 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       ['delta',    'Δ', ''],
       ['vol_fin',  'Vol. fin.', '']
     ];
+    if (hasTrades) cols.push(['trades', 'Negócios', 'Quantidade de negócios realizados na série (dado da OpLab)']);
     var h = '<div class="lc-wrap"><table class="lc-tab"><thead><tr><th>#</th>';
     cols.forEach(function(c) {
       var arrow = sortKey === c[0] ? (sortDir === -1 ? ' ▼' : ' ▲') : '';
@@ -186,6 +188,7 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         '<td>' + fmt(r.delta, 1) + '</td>' +
         '<td>' + (r.vol_fin ? fmt(r.vol_fin / 1000, 1) + 'k'
                 : (r.vol_qtd ? fmt(r.vol_qtd, 0) + ' un.' : '—')) + '</td>' +
+        (hasTrades ? '<td>' + (r.trades ? fmt(r.trades, 0) : '—') + '</td>' : '') +
         '</tr>';
     });
     h += '</tbody></table></div>';

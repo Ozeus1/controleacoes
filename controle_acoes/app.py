@@ -6172,6 +6172,7 @@ def api_lancamento_coberto(ticker):
             'delta':     delta,
             'vol_fin':   round(vol_fin, 2),
             'vol_qtd':   round(vol_qtd, 0),
+            'trades':    int(trades) if trades > 0 else 0,
         })
 
     rows.sort(key=lambda x: -x['taxa_ex'])
@@ -6329,6 +6330,7 @@ def api_venda_put_longa(ticker):
             'delta':     delta,
             'vol_fin':   round(vol_fin, 2),
             'vol_qtd':   round(vol_qtd, 0),
+            'trades':    int(trades) if trades > 0 else 0,
         })
 
     rows.sort(key=lambda x: -x['taxa_per'])

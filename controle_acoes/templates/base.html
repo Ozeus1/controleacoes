@@ -247,9 +247,6 @@
                     </div>
                 </div>
 
-                <a href="{{ url_for('fiis') }}"
-                    class="{{ 'active' if request.endpoint == 'fiis' else '' }}">FIIs</a>
-
                 {# ── Opções (dropdown com Estudos e Simulação) ── #}
                 <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_put','lancamento_coberto','venda_put_longa','ajuda_operacoes'] else '' }}">
                     <a href="{{ url_for('opcoes') }}"

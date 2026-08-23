@@ -200,6 +200,132 @@
 </div>
 {% endif %}
 
+{% if fiis %}
+<div class="card mt-4" id="fiis-section">
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+        <h3>Carteira de FIIs</h3>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <form action="{{ url_for('update_fii_dividends') }}" method="POST" style="margin: 0;">
+                <button type="submit" class="btn btn-warning btn-sm"
+                    onclick="this.innerHTML='Atualizando...'; this.disabled=true; this.form.submit();">
+                    Atualizar Dividendos
+                </button>
+            </form>
+            <a href="{{ url_for('add_asset', type='FII', strategy='HOLDER') }}" class="btn btn-primary btn-sm">Adicionar FII</a>
+        </div>
+    </div>
+    <table class="paginated">
+        <thead>
+            <tr>
+                <th>Ativo</th>
+                <th>Qtd</th>
+                <th>Valor Posição</th>
+                <th>Preço Compra</th>
+                <th>Total Compra</th>
+                <th>Peso %</th>
+                <th>Cotação</th>
+                <th>Var % Dia</th>
+                <th>Último Div.</th>
+                <th>Data Pag.</th>
+                <th>DY (12m) %</th>
+                <th>Atualização</th>
+                <th>Lucro R$</th>
+                <th>Lucro %</th>
+                <th>G. Dia</th>
+                <th>Tipo</th>
+                <th>Graf.</th>
+                <th>Ações</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in fiis %}
+            <tr>
+                <td><span class="ticker-badge">{{ item.asset.ticker }}</span></td>
+                <td>{{ item.asset.quantity }}</td>
+                <td data-ticker="{{ item.asset.ticker }}" data-field="position" data-qty="{{ item.asset.quantity }}" data-avgprice="{{ item.asset.avg_price }}">{{ item.current_total | brl }}</td>
+                <td>{{ item.asset.avg_price | brl }}</td>
+                <td>{{ item.total_invested | brl }}</td>
+                <td>{{ "%.2f"|format(item.weight)|replace('.', ',') }}%</td>
+                <td data-ticker="{{ item.asset.ticker }}" data-field="price">{{ item.current_price | brl }}</td>
+                <td data-ticker="{{ item.asset.ticker }}" data-field="change" class="{{ 'positive' if item.change_percent >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.change_percent)|replace('.', ',') }}%
+                </td>
+                <td>{{ item.asset.last_dividend | brl }}</td>
+                <td style="font-size: 0.85rem;">{{ item.asset.last_dividend_date | date_fmt }}</td>
+                <td>{{ "%.2f"|format(item.asset.dividend_yield * 100 if item.asset.dividend_yield else 0)|replace('.',
+                    ',') }}%</td>
+                <td data-ticker="{{ item.asset.ticker }}" data-field="updated" style="color: var(--text-secondary); font-size: 0.85rem;">
+                    {{ item.last_update }}
+                </td>
+                <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
+                    {{ item.profit | brl }}
+                </td>
+                <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
+                    {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
+                </td>
+                <td class="{{ 'positive' if item.day_gain >= 0 else 'negative' }}">
+                    {{ item.day_gain | brl }}
+                </td>
+                <td style="font-size: 0.8rem; color: var(--text-secondary);">
+                    {{ item.asset.fii_type or '-' }}
+                </td>
+                <td style="text-align:center;">
+                    <button class="btn btn-sm" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9; color:white;">📈</button>
+                </td>
+                <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
+                    <button class="btn btn-sm btn-dates" title="Datas de entrada/saída"
+                        style="background:#f59e0b; color:white;"
+                        data-id="{{ item.asset.id }}" data-ticker="{{ item.asset.ticker }}"
+                        data-entry="{{ item.asset.entry_date.isoformat() if item.asset.entry_date else '' }}"
+                        data-exit="{{ item.asset.exit_date.isoformat() if item.asset.exit_date else '' }}">📅</button>
+                    <a href="{{ url_for('buy_asset', id=item.asset.id) }}" class="btn btn-sm"
+                        style="background:var(--success-color); color: white;" title="Registrar Nova Compra">➕</a>
+                    <a href="{{ url_for('exit_trade', id=item.asset.id) }}" class="btn btn-sm"
+                        style="background:var(--accent-color); color: white;" title="Registrar Venda/Saída">🛑</a>
+                    <a href="{{ url_for('edit_asset', id=item.asset.id) }}" class="btn btn-sm btn-info"
+                        style="color: white;" title="Editar">✏️</a>
+                    <a href="{{ url_for('delete_asset', id=item.asset.id) }}" class="btn btn-sm btn-danger"
+                        onclick="return confirm('ATENÇÃO: Tem certeza absoluta que deseja excluir este ativo? Esta ação não pode ser desfeita.')"
+                        title="Excluir">🗑️</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="total-row"
+                style="font-weight: bold; background-color: var(--total-row-bg); color: var(--text-primary);">
+                <td>TOTAL</td>
+                <td></td> <!-- Qtd -->
+                <td>{{ total_fiis_current | brl }}</td>
+                <td></td> <!-- Avg Price -->
+                <td>{{ total_fiis_invested | brl }}</td>
+                <td>100,00%</td>
+                <td></td> <!-- Price -->
+                <td></td> <!-- Var -->
+                <td>-</td> <!-- Last Div -->
+                <td>-</td> <!-- Date -->
+                <td>-</td> <!-- DY -->
+                <td></td> <!-- Update -->
+                <td class="{{ 'positive' if (total_fiis_current - total_fiis_invested) >= 0 else 'negative' }}">
+                    {{ (total_fiis_current - total_fiis_invested) | brl }}
+                </td>
+                <td
+                    class="{{ 'positive' if ((total_fiis_current - total_fiis_invested) / total_fiis_invested * 100 if total_fiis_invested > 0 else 0) >= 0 else 'negative' }}">
+                    {{ ((total_fiis_current - total_fiis_invested) / total_fiis_invested * 100 if
+                    total_fiis_invested > 0 else 0) | pct }}
+                </td>
+                <td class="{{ 'positive' if fiis|sum(attribute='day_gain') >= 0 else 'negative' }}">
+                    {{ fiis|sum(attribute='day_gain') | brl }}
+                </td> <!-- G Dia -->
+                <td></td> <!-- Tipo -->
+                <td></td> <!-- Graf -->
+                <td></td> <!-- Actions -->
+            </tr>
+        </tfoot>
+    </table>
+</div>
+{% endif %}
+
 <!-- INTERNATIONAL RV -->
 <!-- removed if -->
 <div class="card mt-4">
@@ -615,6 +741,8 @@
     modal.addEventListener('click', function(e) { if (e.target === modal) closeTVChart(); });
 })();
 </script>
+
+{% include "_dates_modal.html" %}
 
 <!-- ── Quote Hint Tooltip ─────────────────────────────────────── -->
 {% include "_radar_modal.html" %}

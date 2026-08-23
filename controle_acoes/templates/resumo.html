@@ -82,11 +82,13 @@
             <div class="kpi-value">{{ total_acoes | brl }}</div>
             <div class="kpi-sub">{{ ((total_acoes / total_equity * 100) if total_equity > 0 else 0) | pct }}</div>
         </a>
-        <a href="{{ url_for('fiis') }}" class="card kpi-card kpi-link">
+        {% if total_fiis > 0 %}
+        <a href="{{ url_for('acoes') }}#fiis-section" class="card kpi-card kpi-link">
             <div class="kpi-label">FIIs</div>
             <div class="kpi-value">{{ total_fiis | brl }}</div>
             <div class="kpi-sub">{{ ((total_fiis / total_equity * 100) if total_equity > 0 else 0) | pct }}</div>
         </a>
+        {% endif %}
         <a href="{{ url_for('acoes') }}#etf-section" class="card kpi-card kpi-link">
             <div class="kpi-label">ETFs</div>
             <div class="kpi-value">{{ total_etfs | brl }}</div>
@@ -126,6 +128,7 @@
             <div class="pie-box"><canvas id="stockChart"></canvas></div>
             <div class="donut-legend" id="stockLegend"></div>
         </div>
+        {% if total_fiis > 0 %}
         <div class="card pie-card">
             <h3>Tipos de FIIs</h3>
             <div class="pie-box"><canvas id="fiiChart"></canvas></div>
@@ -136,6 +139,7 @@
             <div class="pie-box"><canvas id="broadChart"></canvas></div>
             <div class="donut-legend" id="broadLegend"></div>
         </div>
+        {% endif %}
     </div>
 
     <!-- FII Details Table -->
@@ -164,6 +168,7 @@
             vertical-align: super;
         }
     </style>
+    {% if total_fiis > 0 %}
     <div class="card mb-4 d-none d-md-block" style="padding: 1.5rem;">
         <h3 style="font-size: 1rem; margin-bottom: 1rem;">Detalhamento de FIIs</h3>
         <div class="table-responsive">
@@ -202,6 +207,7 @@
             </table>
         </div>
     </div>
+    {% endif %}
 
     <!-- Charts Row 2: Lucro + Dividendos -->
     <div class="card" style="padding:1.5rem; margin-bottom:2rem;">

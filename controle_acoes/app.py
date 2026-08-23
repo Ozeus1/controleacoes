@@ -7786,6 +7786,13 @@ def acoes():
     total_etfs_intl_invested = sum(a['total_invested'] for a in processed_etfs_intl)
     total_etfs_intl_current = sum(a['current_total'] for a in processed_etfs_intl)
 
+    # FIIs (tabela incorporada nesta página, depois de ETFs Nacionais)
+    raw_fiis = Asset.query.filter(Asset.type=='FII', Asset.user_id==current_user.id, Asset.quantity > 0).all()
+    processed_fiis = process_assets(raw_fiis)
+
+    total_fiis_invested = sum(a['total_invested'] for a in processed_fiis)
+    total_fiis_current = sum(a['current_total'] for a in processed_fiis)
+
     return render_template('acoes.html',
                            assets=processed_assets,
                            total_invested=total_invested,
@@ -7796,6 +7803,9 @@ def acoes():
                            etfs_intl=processed_etfs_intl,
                            total_etfs_intl_invested=total_etfs_intl_invested,
                            total_etfs_intl_current=total_etfs_intl_current,
+                           fiis=processed_fiis,
+                           total_fiis_invested=total_fiis_invested,
+                           total_fiis_current=total_fiis_current,
                            intls_rv=intls_rv,
                            intls_rf=intls_rf,
                            intl_rv_invested=intl_rv_invested,
@@ -7808,13 +7818,8 @@ def acoes():
 @app.route('/fiis')
 @login_required
 def fiis():
-    raw_assets = Asset.query.filter(Asset.type=='FII', Asset.user_id==current_user.id, Asset.quantity > 0).all()
-    processed_assets = process_assets(raw_assets)
-    
-    total_invested = sum(a['total_invested'] for a in processed_assets)
-    total_current = sum(a['current_total'] for a in processed_assets)
-    
-    return render_template('fiis.html', assets=processed_assets, total_invested=total_invested, total_current=total_current)
+    """A tabela de FIIs foi incorporada à página de Ações."""
+    return redirect(url_for('acoes') + '#fiis-section')
 
 @app.route('/update_fii_dividends', methods=['POST'])
 @login_required
@@ -7888,7 +7893,7 @@ def update_fii_dividends():
     except Exception as e:
         flash(f"Erro geral ao atualizar dividendos: {str(e)}", "danger")
         
-    return redirect(url_for('fiis'))
+    return redirect(url_for('acoes') + '#fiis-section')
 
 @app.route('/swingtrade')
 @login_required
@@ -8639,7 +8644,7 @@ def add_asset():
 
         db.session.commit()
         if type_ == 'FII':
-            return redirect(url_for('fiis'))
+            return redirect(url_for('acoes') + '#fiis-section')
         elif strategy == 'SWING':
             return redirect(url_for('swingtrade'))
         elif type_ == 'ETF':
@@ -8690,7 +8695,7 @@ def edit_asset(id):
         if asset.strategy == 'SWING':
             return redirect(url_for('swingtrade'))
         elif asset.type == 'FII':
-            return redirect(url_for('fiis'))
+            return redirect(url_for('acoes') + '#fiis-section')
         else:
             return redirect(url_for('acoes'))
     return render_template('add.html', asset=asset, edit=True)
@@ -8741,7 +8746,7 @@ def buy_asset(id):
             flash(f'Compra registrada! Novo PM: R$ {new_avg_price:.2f}')
         
         if asset.type == 'FII':
-            return redirect(url_for('fiis'))
+            return redirect(url_for('acoes') + '#fiis-section')
         elif asset.strategy == 'SWING':
             return redirect(url_for('swingtrade'))
         else:
@@ -8825,7 +8830,7 @@ def exit_trade(id):
             if asset.strategy == 'SWING':
                 return redirect(url_for('swingtrade'))
             elif asset.type == 'FII':
-                return redirect(url_for('fiis'))
+                return redirect(url_for('acoes') + '#fiis-section')
             else:
                 return redirect(url_for('acoes'))
                 

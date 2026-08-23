@@ -2394,7 +2394,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         if (!legs || !legs.length) { alert('Preencha a estrutura primeiro.'); return; }
         var ativo = (document.getElementById('e-ativo').value || '').toUpperCase();
         var opSel = document.getElementById('e-op');
-        var nome  = (opSel.options[opSel.selectedIndex].text || 'Estrutura').replace(/[⚖️🔗🚧🕊📈📉💰🚀🐄🐂🦋🔄🦅]/g, '').trim();
+        var nome  = (opSel.options[opSel.selectedIndex].text || 'Estrutura').replace(/[\p{Extended_Pictographic}️]/gu, '').trim();
         var parts = legs.map(function(l) {
             return [l.ticker, l.type, l.side, l.qty,
                     (l.premium || 0).toFixed(2), (l.strike || 0).toFixed(2), l.exp || ''].join(',');
@@ -2409,7 +2409,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         if (!legs || !legs.length) { alert('Preencha a estrutura primeiro.'); return; }
         var ativo = (document.getElementById('e-ativo').value || '').toUpperCase();
         var opSel = document.getElementById('e-op');
-        var nomeBase = (opSel.options[opSel.selectedIndex].text || 'Estrutura').replace(/[⚖️🔗🚧🕊📈📉💰🚀🐄🐂🦋🔄🦅]/g, '').trim();
+        var nomeBase = (opSel.options[opSel.selectedIndex].text || 'Estrutura').replace(/[\p{Extended_Pictographic}️]/gu, '').trim();
         var nomeSugerido = nomeComAtivo(nomeBase, ativo);
         var nome = prompt('Nome da simulação:', nomeSugerido);
         if (nome === null) return;                 // cancelou

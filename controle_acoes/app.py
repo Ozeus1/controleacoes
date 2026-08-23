@@ -9778,7 +9778,10 @@ def resumo():
     total_swing = 0 
     
     fii_types = {}
-    stock_sectors = {} # New: [Sector] -> Value
+    # Pré-popula com os 9 macro-grupos da taxonomia (zerados) para o card
+    # "Setores de Ações" sempre lembrar todos, mesmo sem posição ainda —
+    # serve de lembrete de diversificação (ver /resumo template).
+    stock_sectors = {g: 0 for g in SECTOR_GROUPS}
     
     # FII Classification Mapping
     fii_map = {

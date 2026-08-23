@@ -72,14 +72,16 @@
     };
 
     // ── legenda-lista interativa ──────────────────────────────────────────────
-    function renderDonutLegend(chart, el, onSliceClick) {
+    // extras: itens de valor zero (ex.: setor sem posição) que devem aparecer
+    // na legenda como lembrete, mesmo não desenhando fatia no donut.
+    function renderDonutLegend(chart, el, onSliceClick, extras) {
         function build() {
             var ds = chart.data.datasets[0];
             var sum = 0;
             ds.data.forEach(function (v, i) {
                 if (chart.getDataVisibility(i)) sum += Number(v) || 0;
             });
-            el.innerHTML = chart.data.labels.map(function (lb, i) {
+            var mainRows = chart.data.labels.map(function (lb, i) {
                 var v = Number(ds.data[i]) || 0;
                 var off = !chart.getDataVisibility(i);
                 var pct = (!off && sum > 0)
@@ -94,7 +96,17 @@
                        '<span class="dl-val">' + fmtBRLd(v) + '</span>' +
                        '<span class="dl-pct">(' + pct + ')</span></div>';
             }).join('');
-            el.querySelectorAll('.dl-row').forEach(function (row) {
+            var extraRows = (extras || []).map(function (ex) {
+                return '<div class="dl-row dl-extra" data-extra="' + ex.label.replace(/"/g, '&quot;') + '" ' +
+                       'title="' + (onSliceClick ? 'Clique para ver o detalhamento' : 'Sem posição neste setor') + '" ' +
+                       'style="opacity:.55;">' +
+                       '<span class="dl-dot" style="background:' + ex.color + '"></span>' +
+                       '<span class="dl-name">' + ex.label + '</span>' +
+                       '<span class="dl-val">' + fmtBRLd(0) + '</span>' +
+                       '<span class="dl-pct">(0,0%)</span></div>';
+            }).join('');
+            el.innerHTML = mainRows + extraRows;
+            el.querySelectorAll('.dl-row:not(.dl-extra)').forEach(function (row) {
                 var i = +row.dataset.i;
                 row.addEventListener('click', function () {
                     if (onSliceClick) { onSliceClick(chart.data.labels[i], ds.data[i]); return; }
@@ -112,6 +124,11 @@
                     chart.update();
                 });
             });
+            if (onSliceClick) {
+                el.querySelectorAll('.dl-row.dl-extra').forEach(function (row) {
+                    row.addEventListener('click', function () { onSliceClick(row.dataset.extra, 0); });
+                });
+            }
         }
         build();
     }
@@ -179,7 +196,14 @@
         });
         if (opts.legendId) {
             var lg = document.getElementById(opts.legendId);
-            if (lg) renderDonutLegend(chart, lg, opts.onSliceClick);
+            var extras = [];
+            if (opts.showZeroLabels) {
+                (labels || []).forEach(function (lb, i) {
+                    var v = Number(values[i]) || 0;
+                    if (v <= 0.005) extras.push({ label: lb, color: colors[i % colors.length] });
+                });
+            }
+            if (lg) renderDonutLegend(chart, lg, opts.onSliceClick, extras);
         }
         return chart;
     };

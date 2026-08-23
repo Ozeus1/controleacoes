@@ -497,7 +497,7 @@
             {{ stock_sectors.keys() | list | tojson }},
             {{ stock_sectors.values() | list | tojson }},
             ['#8b5cf6', '#ec4899', '#f97316', '#14b8a6', '#f43f5e', '#6366f1', '#84cc16', '#a855f7', '#0ea5e9', '#eab308', '#64748b'],
-            { legendId: 'stockLegend', centerLabel: 'Total Ações', onSliceClick: window.openSetorModal });
+            { legendId: 'stockLegend', centerLabel: 'Total Ações', onSliceClick: window.openSetorModal, showZeroLabels: true });
 
     // 5. Resultado Mensal (Lucro + Dividendos Ações + Dividendos FIIs)
     const monthLabels   = {{ months | tojson }};

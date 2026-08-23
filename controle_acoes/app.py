@@ -9734,6 +9734,10 @@ def api_setor_acoes(setor):
 
     if setor == 'Não Classificado':
         raw = [a for a in raw_all if not a.sector]
+    elif setor == 'Outros':
+        # Mesma regra do card: sector preenchido mas fora de qualquer
+        # subsetor mapeado em SECTOR_GROUPS cai em "Outros" (ver sector_group_of).
+        raw = [a for a in raw_all if a.sector and a.sector not in SECTOR_TO_GROUP]
     else:
         raw = [a for a in raw_all if a.sector == setor]
     processed = process_assets(raw)

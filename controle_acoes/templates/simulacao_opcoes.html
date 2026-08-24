@@ -1184,16 +1184,25 @@ function abrirEmCalculos() {
             if (Math.abs(rz - 2) < 0.01)   { go('call_ratio_1x2', cLo, cHi); return; }
             if (Math.abs(rz - 1.5) < 0.01) { go('call_ratio_2x3', cLo, cHi); return; }
         }
-        if (cLo.side === 'BUY' && cHi.side === 'SELL') { go('trava_alta', cLo, cHi); return; }
-        if (cLo.side === 'SELL' && cHi.side === 'BUY') { go('trava_credito_baixa', cLo, cHi); return; }
+        // Travas simples só se as duas pernas tiverem a MESMA quantidade —
+        // senão a proporção (ex.: 1×2, como na "Vaca de Alta com PUT") se
+        // perde ao forçar num modelo 1:1 e o payoff reaberto fica errado.
+        var qtyEqualC = Math.abs(cLo.qty - cHi.qty) < 0.01;
+        if (qtyEqualC && cLo.side === 'BUY' && cHi.side === 'SELL') { go('trava_alta', cLo, cHi); return; }
+        if (qtyEqualC && cLo.side === 'SELL' && cHi.side === 'BUY') { go('trava_credito_baixa', cLo, cHi); return; }
     }
     if (legs.length === 2 && puts.length === 2) {
         var pLo = puts[0], pHi = puts[1];
         // Boi: venda PUT alta n + compra PUT baixa 2n
         if (pHi.side === 'SELL' && pLo.side === 'BUY' && pLo.qty > pHi.qty &&
             Math.abs(pLo.qty / pHi.qty - 2) < 0.01) { go('boi_put', pHi, pLo); return; }
-        if (pHi.side === 'BUY' && pLo.side === 'SELL') { go('trava_baixa', pHi, pLo); return; }
-        if (pHi.side === 'SELL' && pLo.side === 'BUY') { go('trava_credito_alta', pHi, pLo); return; }
+        // Vaca de Alta com PUT: compra 1× PUT (strike maior) + venda 2× PUT (strike menor)
+        if (pHi.side === 'BUY' && pLo.side === 'SELL' && pLo.qty > pHi.qty &&
+            Math.abs(pLo.qty / pHi.qty - 2) < 0.01) { go('vaca_alta_put', pHi, pLo); return; }
+        // Travas simples só com quantidade igual nas duas pernas (ver comentário acima).
+        var qtyEqualP = Math.abs(pLo.qty - pHi.qty) < 0.01;
+        if (qtyEqualP && pHi.side === 'BUY' && pLo.side === 'SELL') { go('trava_baixa', pHi, pLo); return; }
+        if (qtyEqualP && pHi.side === 'SELL' && pLo.side === 'BUY') { go('trava_credito_alta', pHi, pLo); return; }
     }
 
     // ── 3 pernas ─────────────────────────────────────────────────────────────

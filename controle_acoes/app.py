@@ -1414,8 +1414,10 @@ def opcoes():
 
     for opt in all_options:
         underlying_price = 0.0
+        underlying_change = None
         if opt.underlying_asset in quotes:
             underlying_price = quotes[opt.underlying_asset].get('price', 0.0)
+            underlying_change = quotes[opt.underlying_asset].get('change_percent')
 
         option_type = getattr(opt, 'option_type', 'VENDA_CALL') or 'VENDA_CALL'
 
@@ -1437,6 +1439,7 @@ def opcoes():
             processed_options.append({
                 'option': opt,
                 'underlying_price': underlying_price,
+                'underlying_change': underlying_change,
                 'total_sold': total_sold,
                 'profit': profit,
                 'profit_pct': profit_pct,
@@ -1465,6 +1468,7 @@ def opcoes():
             venda_puts.append({
                 'option': opt,
                 'underlying_price': underlying_price,
+                'underlying_change': underlying_change,
                 'total_sold': total_sold,
                 'current_val': current_val,
                 'profit': profit,
@@ -1486,6 +1490,7 @@ def opcoes():
             item = {
                 'option': opt,
                 'underlying_price': underlying_price,
+                'underlying_change': underlying_change,
                 'total_invested': total_invested,
                 'current_value': current_value,
                 'profit': profit,
@@ -1530,6 +1535,7 @@ def opcoes():
 
     for sp in all_spreads:
         underlying_price = spread_quotes.get(sp.underlying_asset, {}).get('price', 0.0)
+        underlying_change = spread_quotes.get(sp.underlying_asset, {}).get('change_percent')
         net = sp.leg_short_price - sp.leg_long_price   # >0 crédito, <0 débito
         net_total = net * sp.quantity
         current_net = sp.leg_short_current - sp.leg_long_current
@@ -1572,6 +1578,7 @@ def opcoes():
         item = {
             'spread': sp,
             'underlying_price': underlying_price,
+            'underlying_change': underlying_change,
             'net': net,
             'net_total': net_total,
             'is_credit': is_credit,

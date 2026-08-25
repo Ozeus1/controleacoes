@@ -7,6 +7,15 @@
 <a href="{{ url_for('rolagem_opcoes') }}?roll=1&ativo={{ ativo or '' }}&nome={{ nome|urlencode }}&src={{ src }}&legs={{ legs_str|urlencode }}"
    class="btn btn-sm" style="background:#0d9488;color:white;" title="Simular rolagem no tempo">📆</a>
 {%- endmacro %}
+{# Célula de variação diária (%) do ativo subjacente — usada logo após a
+   coluna "Cotação Ativo"/"Cotação" em todas as tabelas desta página. #}
+{% macro var_dia_td(change) -%}
+{% if change is not none %}
+<td class="{{ 'positive' if change >= 0 else 'negative' }}">{{ "%.2f"|format(change)|replace('.', ',') }}%</td>
+{% else %}
+<td style="color:var(--text-secondary);">—</td>
+{% endif %}
+{%- endmacro %}
 <style>
     .profit-col-head {
         background: rgba(16, 185, 129, .18) !important;
@@ -40,6 +49,7 @@
                 <th>Qtd</th>
                 <th>Ativo</th>
                 <th>Cotação Ativo</th>
+                <th>Var Dia %</th>
                 <th>Preço Médio</th>
                 <th>Strike</th>
                 <th>Vencimento</th>
@@ -50,7 +60,7 @@
                 <th>Total</th>
                 <th>Cotação Opção</th>
                 <th>Atualiz.</th>
-                <th>Var dia %</th>
+                <th>Var dia % Opção</th>
                 <th class="profit-col-head">Lucro R$</th>
                 <th class="profit-col-head">Lucro %</th>
                 <th>Lucro Ação Ex.R$</th>
@@ -67,6 +77,7 @@
                 <td>{{ item.option.quantity }}</td>
                 <td>{{ item.option.underlying_asset }}</td>
                 <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                {{ var_dia_td(item.underlying_change) }}
                 <td>R$ {{ "%.2f"|format(item.avg_price)|replace('.', ',') }}</td>
                 <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
@@ -125,8 +136,8 @@
         <tfoot>
             <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
                 <td>TOTAL</td>
-                <td></td><td></td><td></td><td></td><td></td><td></td>
-                <td></td><td></td><td></td>
+                <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
+                <td></td><td></td><td></td><td></td>
                 <td>{{ options|sum(attribute='total_sold') | brl }}</td>
                 <td></td><td></td><td></td>
                 <td class="{{ 'positive' if options|sum(attribute='profit') >= 0 else 'negative' }}">
@@ -165,6 +176,7 @@
                 <th>Qtd</th>
                 <th>Ativo</th>
                 <th>Cotação Ativo</th>
+                <th>Var Dia %</th>
                 <th>Strike</th>
                 <th>Lastro R$</th>
                 <th>Lastro %</th>
@@ -177,7 +189,7 @@
                 <th>Total Recebido</th>
                 <th>Cotação Opção</th>
                 <th>Atualiz.</th>
-                <th>Var dia %</th>
+                <th>Var dia % Opção</th>
                 <th title="Delta em módulo — verde ≤0,30 | laranja 0,30-0,50 | vermelho ≥0,70">Δ Delta</th>
                 <th>Valor Atual</th>
                 <th>Lucro R$</th>
@@ -192,6 +204,7 @@
                 <td>{{ item.option.quantity }}</td>
                 <td>{{ item.option.underlying_asset }}</td>
                 <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                {{ var_dia_td(item.underlying_change) }}
                 <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
                 <td class="{{ 'positive' if item.lastro_rs >= 0 else 'negative' }}">
                     R$ {{ "%.2f"|format(item.lastro_rs)|replace('.', ',') }}
@@ -274,7 +287,7 @@
         <tfoot>
             <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
                 <td>TOTAL</td>
-                <td></td><td></td><td></td><td></td>
+                <td></td><td></td><td></td><td></td><td></td><td></td>
                 <td></td><td></td><td></td><td></td><td></td>
                 <td></td><td></td><td></td>
                 <td>{{ venda_puts|sum(attribute='total_sold') | brl }}</td>
@@ -316,6 +329,7 @@
                 <th>Qtd</th>
                 <th>Ativo</th>
                 <th>Cotação Ativo</th>
+                <th>Var Dia %</th>
                 <th>Strike</th>
                 <th>Vencimento</th>
                 <th>Dias</th>
@@ -323,7 +337,7 @@
                 <th>Total Investido</th>
                 <th>Cotação Opção</th>
                 <th>Atualiz.</th>
-                <th>Var dia %</th>
+                <th>Var dia % Opção</th>
                 <th>Valor Atual</th>
                 <th>Lucro R$</th>
                 <th>Lucro %</th>
@@ -337,6 +351,7 @@
                 <td>{{ item.option.quantity }}</td>
                 <td>{{ item.option.underlying_asset }}</td>
                 <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                {{ var_dia_td(item.underlying_change) }}
                 <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
                 <td data-order="{{ item.days_left if item.days_left is not none else -1 }}">{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
@@ -377,9 +392,9 @@
         <tfoot>
             <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
                 <td>TOTAL</td>
-                <td></td><td></td><td></td><td></td><td></td><td></td>
+                <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
                 <td>{{ compra_calls|sum(attribute='total_invested') | brl }}</td>
-                <td></td><td></td>
+                <td></td><td></td><td></td><td></td>
                 <td>{{ compra_calls|sum(attribute='current_value') | brl }}</td>
                 <td class="{{ 'positive' if compra_calls|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ compra_calls|sum(attribute='profit') | brl }}
@@ -417,6 +432,7 @@
                 <th>Qtd</th>
                 <th>Ativo</th>
                 <th>Cotação Ativo</th>
+                <th>Var Dia %</th>
                 <th>Strike</th>
                 <th>Vencimento</th>
                 <th>Dias</th>
@@ -424,7 +440,7 @@
                 <th>Total Investido</th>
                 <th>Cotação Opção</th>
                 <th>Atualiz.</th>
-                <th>Var dia %</th>
+                <th>Var dia % Opção</th>
                 <th>Valor Atual</th>
                 <th>Lucro R$</th>
                 <th>Lucro %</th>
@@ -438,6 +454,7 @@
                 <td>{{ item.option.quantity }}</td>
                 <td>{{ item.option.underlying_asset }}</td>
                 <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                {{ var_dia_td(item.underlying_change) }}
                 <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
                 <td data-order="{{ item.days_left if item.days_left is not none else -1 }}">{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
@@ -478,9 +495,9 @@
         <tfoot>
             <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
                 <td>TOTAL</td>
-                <td></td><td></td><td></td><td></td><td></td><td></td>
+                <td></td><td></td><td></td><td></td><td></td><td></td><td></td>
                 <td>{{ compra_puts|sum(attribute='total_invested') | brl }}</td>
-                <td></td><td></td>
+                <td></td><td></td><td></td><td></td>
                 <td>{{ compra_puts|sum(attribute='current_value') | brl }}</td>
                 <td class="{{ 'positive' if compra_puts|sum(attribute='profit') >= 0 else 'negative' }}">
                     {{ compra_puts|sum(attribute='profit') | brl }}
@@ -517,6 +534,7 @@
                 <th>Leg V (venda)</th>
                 <th>Ativo</th>
                 <th>Cotação</th>
+                <th>Var Dia %</th>
                 <th>Qtd</th>
                 <th>Vencimento</th>
                 <th>Dias</th>
@@ -539,6 +557,7 @@
                 <td><span class="ticker-badge">{{ item.spread.leg_short_ticker }}</span><br><small>K={{ "%.2f"|format(item.spread.leg_short_strike)|replace('.', ',') }}</small></td>
                 <td>{{ item.spread.underlying_asset }}</td>
                 <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                {{ var_dia_td(item.underlying_change) }}
                 <td>{{ item.spread.quantity }}</td>
                 <td>{{ item.spread.expiration_date.strftime('%d/%m/%Y') }}</td>
                 <td>{{ item.days_left }}</td>
@@ -586,7 +605,7 @@
         </tbody>
         <tfoot>
             <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
-                <td colspan="8">TOTAL</td>
+                <td colspan="9">TOTAL</td>
                 <td class="{{ 'positive' if items|sum(attribute='net_total') >= 0 else 'negative' }}">R$ {{ "%.2f"|format(items|sum(attribute='net_total')|abs)|replace('.', ',') }}</td>
                 <td></td><td></td>
                 <td class="{{ 'positive' if items|sum(attribute='result') >= 0 else 'negative' }}">R$ {{ "%.2f"|format(items|sum(attribute='result'))|replace('.', ',') }}</td>
@@ -639,6 +658,8 @@
                 <th>Nome</th>
                 <th>Pernas</th>
                 <th title="Vencimento da perna mais curta da operação">Venc.</th>
+                <th>Cotação</th>
+                <th>Var Dia %</th>
                 <th>Montagem</th>
                 <th>Lucro Atual</th>
                 <th title="Lucro atual / Lucro máximo">Lucro %</th>
@@ -688,6 +709,10 @@
                         {% endif %}
                     {% else %}—{% endif %}
                 </td>
+                <td style="white-space:nowrap;">
+                    {% if op.underlying_price %}{{ cur }} {{ "%.2f"|format(op.underlying_price)|replace('.', ',') }}{% else %}—{% endif %}
+                </td>
+                {{ var_dia_td(op.underlying_change) }}
                 <td class="{{ 'positive' if item.net >= 0 else 'negative' }}" style="white-space:nowrap;">
                     {{ cur + ' ' + "%.2f"|format(item.net|abs)|replace('.', ',') }}
                     <br><small>{{ '✅ crédito' if item.net >= 0 else '💰 débito' }}</small>

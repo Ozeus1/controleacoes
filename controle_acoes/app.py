@@ -15383,6 +15383,22 @@ def api_chart_data(ticker):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/asset-category/<ticker>')
+@login_required
+def api_asset_category(ticker):
+    """Categoria do ativo (acoes/fiis/etfs) para montar o link do Investidor10
+    no gráfico — usa o Asset.type cadastrado quando existe; senão, heurística
+    pelo sufixo do ticker B3 (11 = provável FII, dígito único = ação)."""
+    t = (ticker or '').upper().strip()
+    asset = Asset.query.filter_by(user_id=current_user.id, ticker=t).first()
+    if asset:
+        cat = {'FII': 'fiis', 'ETF': 'etfs', 'ACAO': 'acoes'}.get(asset.type, 'acoes')
+        return jsonify({'ticker': t, 'category': cat, 'source': 'asset'})
+    if t.endswith('11'):
+        return jsonify({'ticker': t, 'category': 'fiis', 'source': 'heuristic'})
+    return jsonify({'ticker': t, 'category': 'acoes', 'source': 'heuristic'})
+
+
 @app.route('/api/chart_lines/<ticker>', methods=['GET', 'POST', 'DELETE'])
 @login_required
 def api_chart_lines(ticker):

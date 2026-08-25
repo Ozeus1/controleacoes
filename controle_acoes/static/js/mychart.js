@@ -88,6 +88,18 @@ function tvSymbolUrl(ticker, isIntl) {
     return 'https://br.tradingview.com/symbols/' + exch + '-' + encodeURIComponent(sym) + '/';
 }
 
+// Monta a URL da página do ativo no Investidor10 (investidor10.com.br/{categoria}/{ticker}/).
+// Só cobre ativos B3 (ações/FIIs/ETFs) — o site não lista ativos internacionais/cripto,
+// então isIntl retorna null (botão fica desabilitado nesses casos).
+// category: 'acoes' | 'fiis' | 'etfs' — resolvida no backend (Asset.type cadastrado, com
+// fallback por sufixo do ticker) porque um ticker terminado em "11" pode ser FII ou ETF.
+function investidor10Url(ticker, isIntl, category) {
+    var tk = (ticker || '').toUpperCase().trim();
+    if (!tk || isIntl || !isB3Ticker(tk)) return null;
+    var cat = category || (tk.slice(-2) === '11' ? 'fiis' : 'acoes');
+    return 'https://investidor10.com.br/' + cat + '/' + encodeURIComponent(tk.toLowerCase()) + '/';
+}
+
 function median(values) {
     if (!values || !values.length) return 0;
     var arr = values.slice().sort(function(a, b) { return a - b; });
@@ -688,6 +700,7 @@ function ensureModal() {
         + '<button id="mc-del-lines"   title="Apagar linhas"                style="' + toolBtn(false) + '" onclick="MyChart._delLines()">🗑</button>'
         + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
         + '<button id="mc-tv-btn" title="Abrir no TradingView" style="' + toolBtn(false) + '">📊 TradingView</button>'
+        + '<button id="mc-i10-btn" title="Abrir no Investidor10" style="' + toolBtn(false) + '">📋 Investidor10</button>'
         + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
         + '<button onclick="MyChart._close()" style="background:none;border:none;font-size:1.4rem;color:#94a3b8;cursor:pointer;line-height:1;">&times;</button>'
         + '</div>';
@@ -975,6 +988,26 @@ MyChart.open = function(ticker, isIntl, quote) {
         tvBtn.onclick = tvUrl ? function() { window.open(tvUrl, '_blank', 'noopener'); } : null;
         tvBtn.disabled = !tvUrl;
         tvBtn.style.opacity = tvUrl ? '1' : '.4';
+    }
+
+    var i10Btn = document.getElementById('mc-i10-btn');
+    if (i10Btn) {
+        var i10Url = investidor10Url(ticker, isIntl);
+        i10Btn.onclick = i10Url ? function() {
+            // Espera a categoria certa (Asset.type cadastrado, com fallback por
+            // sufixo do ticker) antes de abrir a aba — depois de aberta, JS desta
+            // origem não consegue mais corrigir a URL de uma aba já navegada para
+            // outro domínio (bloqueio cross-origin do navegador).
+            _fetch('/api/asset-category/' + encodeURIComponent(ticker))
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    var url = investidor10Url(ticker, isIntl, d.category) || i10Url;
+                    window.open(url, '_blank', 'noopener');
+                })
+                .catch(function() { window.open(i10Url, '_blank', 'noopener'); });
+        } : null;
+        i10Btn.disabled = !i10Url;
+        i10Btn.style.opacity = i10Url ? '1' : '.4';
     }
 
     // Linhas salvas

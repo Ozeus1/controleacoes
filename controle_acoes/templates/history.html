@@ -572,9 +572,13 @@ function filterByStrategy() { applyFilters(); }
         var datasets = [];
         var stratagems = cat ? [cat] : allStrats;
 
-        // Verifica quais estratégias têm dados neste mês
+        // Verifica quais estratégias têm dados neste mês — checa a CHAVE (existe
+        // operação registrada), não o valor: uma estratégia cujas operações do
+        // dia somam exatamente R$0 (ganhos e perdas se cancelando) ainda tem
+        // dados reais e não pode sumir da legenda/pilha como se não houvesse
+        // nenhuma operação.
         var activeStrats = stratagems.filter(function(s) {
-            return days.some(function(d) { return dailyData[month][d][s]; });
+            return days.some(function(d) { return dailyData[month][d].hasOwnProperty(s); });
         });
 
         // Se categoria única: uma barra por dia com a cor da categoria
@@ -589,6 +593,10 @@ function filterByStrategy() { applyFilters(); }
                 backgroundColor: data.map(function(v){ return v >= 0 ? baseColor : '#ef4444'; }),
                 borderRadius: 4,
                 barPercentage: 0.7,
+                // Garante um traço mínimo visível em dias com resultado líquido
+                // zero (ganhos e perdas se cancelando) — sem isso a barra some
+                // por completo e o dia parece sem nenhuma operação.
+                minBarLength: 2,
             });
         } else {
             // Stacked por categoria
@@ -602,6 +610,11 @@ function filterByStrategy() { applyFilters(); }
                     backgroundColor: stratColor(s, allStrats.indexOf(s)),
                     borderRadius: 3,
                     stack: 'day',
+                    // Garante um traço mínimo visível quando as operações do dia
+                    // somam exatamente R$0 (ganhos e perdas se cancelando) — sem
+                    // isso a pilha inteira desaparece e o dia parece sem nenhuma
+                    // operação registrada.
+                    minBarLength: 2,
                 });
             });
         }

@@ -14819,6 +14819,35 @@ def api_radar_analise():
                 for n in news[:6] if isinstance(n, dict) and (n.get('titulo') or n.get('title'))
             ]
 
+        # ── Descrição da empresa, próximos eventos e eventos recentes ─────────
+        # Blocos que a API traz prontos (Yahoo Finance): texto/lista de eventos
+        # + fonte para atribuição. 'disponivel: false' vira lista vazia — o
+        # texto genérico "Information Not Available" da API não agrega nada.
+        def _info_block(bloco):
+            if not isinstance(bloco, dict):
+                return None
+            disponivel = bloco.get('disponivel', True)
+            texto = bloco.get('texto') if disponivel else None
+            eventos = bloco.get('eventos') if disponivel else None
+            if not texto and not eventos:
+                return None
+            return {
+                'texto':  texto,
+                'eventos': eventos if isinstance(eventos, list) else None,
+                'fonte':  bloco.get('fonte'),
+                'url':    bloco.get('url'),
+            }
+
+        descricao_block = _info_block(sd.get('descricao'))
+        if descricao_block:
+            out['descricao'] = descricao_block
+        eventos_futuros_block = _info_block(sd.get('proximos_eventos'))
+        if eventos_futuros_block:
+            out['proximos_eventos'] = eventos_futuros_block
+        eventos_recentes_block = _info_block(sd.get('eventos_recentes'))
+        if eventos_recentes_block:
+            out['eventos_recentes'] = eventos_recentes_block
+
         _radar_mem[cache_key] = {'ts': time.time(), 'data': out}
         return jsonify(out)
     except requests.exceptions.Timeout:

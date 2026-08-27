@@ -144,6 +144,33 @@
         <div id="r-exec-fontes" style="margin-top:.5rem; font-size:.72rem; color:#94a3b8;"></div>
       </div>
 
+      {# ── Descrição da empresa ── #}
+      <div id="r-desc-box" style="display:none; background:#fff; border-radius:8px; padding:.9rem 1rem;
+           margin-bottom:1rem; border:1px solid #e2e8f0;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.5rem;">
+          Descrição</div>
+        <p id="r-desc-texto" style="margin:0; font-size:.85rem; color:#334155; line-height:1.6;"></p>
+        <div id="r-desc-fonte" style="margin-top:.5rem; font-size:.72rem; color:#94a3b8;"></div>
+      </div>
+
+      {# ── Próximos eventos ── #}
+      <div id="r-eventf-box" style="display:none; background:#fff; border-radius:8px; padding:.9rem 1rem;
+           margin-bottom:1rem; border:1px solid #e2e8f0;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.5rem;">
+          Próximos eventos</div>
+        <ul id="r-eventf-lista" style="margin:0; padding-left:1.1rem; font-size:.85rem; color:#334155; line-height:1.6;"></ul>
+        <div id="r-eventf-fonte" style="margin-top:.5rem; font-size:.72rem; color:#94a3b8;"></div>
+      </div>
+
+      {# ── Eventos recentes ── #}
+      <div id="r-eventr-box" style="display:none; background:#fff; border-radius:8px; padding:.9rem 1rem;
+           margin-bottom:1rem; border:1px solid #e2e8f0;">
+        <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.5rem;">
+          Eventos recentes</div>
+        <ul id="r-eventr-lista" style="margin:0; padding-left:1.1rem; font-size:.85rem; color:#334155; line-height:1.6;"></ul>
+        <div id="r-eventr-fonte" style="margin-top:.5rem; font-size:.72rem; color:#94a3b8;"></div>
+      </div>
+
       <div style="font-size:.75rem; font-weight:700; color:#64748b; text-transform:uppercase; margin-bottom:.4rem;">Gráfico</div>
       <canvas id="radar-chart" style="width:100%; height:230px; background:#0b1220; border-radius:8px; display:none;"></canvas>
       <div id="radar-tv-wrap" style="border-radius:8px; overflow:hidden;"></div>
@@ -340,6 +367,35 @@
         } else {
             execBox.style.display = 'none';
         }
+
+        // ── Descrição / Próximos eventos / Eventos recentes ───────────────────
+        function fonteLine(bloco) {
+            if (!bloco || !bloco.fonte) return '';
+            var txt = 'Fonte: ' + bloco.fonte;
+            return bloco.url
+                ? 'Fonte: <a href="' + bloco.url + '" target="_blank" rel="noopener" style="color:#2563eb;text-decoration:none;">' + bloco.fonte + '</a>'
+                : txt;
+        }
+        function renderTextBlock(boxId, textId, fonteId, bloco) {
+            var box = document.getElementById(boxId);
+            if (!bloco || !bloco.texto) { box.style.display = 'none'; return; }
+            box.style.display = '';
+            set(textId, bloco.texto);
+            document.getElementById(fonteId).innerHTML = fonteLine(bloco);
+        }
+        function renderEventBlock(boxId, listId, fonteId, bloco) {
+            var box = document.getElementById(boxId);
+            var eventos = bloco && Array.isArray(bloco.eventos) ? bloco.eventos.filter(Boolean) : [];
+            if (!eventos.length) { box.style.display = 'none'; return; }
+            box.style.display = '';
+            document.getElementById(listId).innerHTML = eventos.map(function(ev) {
+                return '<li>' + ev + '</li>';
+            }).join('');
+            document.getElementById(fonteId).innerHTML = fonteLine(bloco);
+        }
+        renderTextBlock('r-desc-box', 'r-desc-texto', 'r-desc-fonte', d.descricao);
+        renderEventBlock('r-eventf-box', 'r-eventf-lista', 'r-eventf-fonte', d.proximos_eventos);
+        renderEventBlock('r-eventr-box', 'r-eventr-lista', 'r-eventr-fonte', d.eventos_recentes);
 
         // Pills de variação semana/mês no topo
         if (d.week_change != null && !isNaN(parseFloat(d.week_change))) {

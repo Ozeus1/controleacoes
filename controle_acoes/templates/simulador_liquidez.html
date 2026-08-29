@@ -4,6 +4,13 @@
 <style>
 /* ── Liquidez inline ── */
 #sl-liq-section { margin-bottom: 1.5rem; }
+.liq-ticker-switcher summary {
+  cursor: pointer; font-size: .8rem; color: var(--text-secondary);
+  list-style: none; user-select: none;
+}
+.liq-ticker-switcher summary::-webkit-details-marker { display: none; }
+.liq-ticker-switcher summary::before { content: '▸ '; }
+.liq-ticker-switcher[open] summary::before { content: '▾ '; }
 .sl-ticker-btn {
   padding: .25rem .6rem; border: 1px solid #475569; border-radius: 5px;
   font-size: .8rem; cursor: pointer; color: #e2e8f0; background: var(--hover-bg,#334155);
@@ -13,6 +20,43 @@
 .liq-venc-btn {
   background: rgba(148,163,184,.15); border: 1px solid transparent; border-radius: 4px;
   padding: .15rem .5rem; font-size: .78rem; color: #cbd5e1; cursor: pointer; transition: background .12s;
+}
+/* ── Cadeia de opções: scroll horizontal em celular, com o Strike central
+   fixo como referência (a tabela é simétrica: CALL à esquerda cresce para
+   a direita, PUT à direita cresce para a esquerda, ambas a partir dele). ── */
+#sl-liq-tables > div {
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 640px) {
+  #sl-liq-tables > div {
+    position: relative;
+    background:
+      linear-gradient(to right, var(--card-bg,#1e293b) 30%, rgba(0,0,0,0)),
+      linear-gradient(to right, rgba(0,0,0,0), var(--card-bg,#1e293b) 70%) 100% 0,
+      radial-gradient(farthest-side at 0 50%, rgba(0,0,0,.35), rgba(0,0,0,0)),
+      radial-gradient(farthest-side at 100% 50%, rgba(0,0,0,.35), rgba(0,0,0,0)) 100% 0;
+    background-repeat: no-repeat;
+    background-size: 20px 100%, 20px 100%, 8px 100%, 8px 100%;
+    background-attachment: local, local, scroll, scroll;
+  }
+  #sl-chain { min-width: 760px; }
+  /* A 1ª coluna (Cód.Call) não é uma boa referência pra travar durante o
+     scroll — quem serve de âncora aqui é o Strike, ao centro. Desliga o
+     freeze-pane padrão do site (primeira coluna) só nesta tabela. */
+  #sl-chain thead th:first-child,
+  #sl-chain tbody td:first-child {
+    position: static !important;
+    box-shadow: none !important;
+  }
+  #sl-chain th:nth-child(6),
+  #sl-chain td:nth-child(6) {
+    position: sticky;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--card-bg,#1e293b) !important;
+    z-index: 95;
+    box-shadow: 0 0 4px rgba(0,0,0,.35);
+  }
 }
 /* ── Tabela de pernas ── */
 #legs-table { width: 100%; border-collapse: collapse; font-size: .87rem; }
@@ -56,18 +100,28 @@
 
 {# ── Seção Liquidez ── #}
 <div id="sl-liq-section" class="card" style="padding:1rem">
-  <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.75rem">
+  <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.5rem">
     <span style="font-weight:600;font-size:.95rem">💧 Liquidez de Opções</span>
-    <div style="display:flex;gap:.35rem;flex-wrap:wrap" id="sl-ticker-btns"></div>
-    <div style="display:flex;gap:.4rem;align-items:center">
-      <input id="sl-add-ticker" placeholder="Novo ticker…" maxlength="10"
-             style="padding:.25rem .5rem;background:var(--card-bg);border:1px solid var(--border-color);
-                    color:var(--text-primary);border-radius:5px;font-size:.8rem;width:110px;text-transform:uppercase"
-             onkeydown="if(event.key==='Enter')slAddTicker()">
-      <button class="btn btn-sm btn-secondary" onclick="slAddTicker()" title="Adicionar aos atalhos e buscar">➕</button>
-    </div>
   </div>
-  <script>var SL_SERVER_TICKERS = {{ ranking_vol|map(attribute='ticker')|list|tojson }};</script>
+  <details class="liq-ticker-switcher" id="sl-ticker-switcher" style="margin-bottom:.5rem">
+    <summary>Trocar ticker</summary>
+    <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-top:.5rem">
+      <div style="display:flex;gap:.35rem;flex-wrap:wrap" id="sl-ticker-btns"></div>
+      <div style="display:flex;gap:.4rem;align-items:center">
+        <input id="sl-add-ticker" placeholder="Novo ticker…" maxlength="10"
+               style="padding:.25rem .5rem;background:var(--card-bg);border:1px solid var(--border-color);
+                      color:var(--text-primary);border-radius:5px;font-size:.8rem;width:110px;text-transform:uppercase"
+               onkeydown="if(event.key==='Enter')slAddTicker()">
+        <button class="btn btn-sm btn-secondary" onclick="slAddTicker()" title="Adicionar aos atalhos e buscar">➕</button>
+      </div>
+    </div>
+  </details>
+  <script>
+    var SL_SERVER_TICKERS = {{ ranking_vol|map(attribute='ticker')|list|tojson }};
+    // Aberto por padrão em telas largas; em celular começa fechado para não
+    // empurrar a cadeia de opções para fora da tela (ver ranking_vol.html).
+    if (window.innerWidth > 640) document.getElementById('sl-ticker-switcher').open = true;
+  </script>
 
   <div id="sl-liq-loading" style="color:var(--text-secondary);font-size:.85rem;padding:.5rem 0;display:none">
     Buscando dados via OpLab…
@@ -76,8 +130,8 @@
   {# Cadeia com o strike ao centro (mesmo formato da tela Cadeia de Opções):
      CALL à esquerda, PUT à direita, e só o lado que tem liquidez preenchido. #}
   <div id="sl-liq-tables" style="display:none">
-    <div style="overflow-x:auto">
-      <table id="sl-chain" style="width:100%;font-size:.78rem;border-collapse:collapse;white-space:nowrap">
+    <div style="overflow-x:auto;overflow-y:hidden">
+      <table id="sl-chain" class="no-datatable" style="width:100%;font-size:.78rem;border-collapse:collapse;white-space:nowrap">
         <thead>
           <tr style="color:var(--text-secondary);border-bottom:1px solid var(--border-color)">
             <th style="text-align:left;padding:.25rem .4rem;color:#3b82f6">📈 Cód.Call</th>

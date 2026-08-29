@@ -5,7 +5,7 @@ import sqlite3
 import math
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StudyStrategy, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, SearchedOption, RtdOptionData, PortfolioSnapshot, PMEvent, AssetTxn
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StudyStrategy, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, RankingVolExcluded, SearchedOption, RtdOptionData, PortfolioSnapshot, PMEvent, AssetTxn
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -862,6 +862,14 @@ def run_migrations():
             iv_percentil FLOAT,
             vol_impl FLOAT,
             updated_at DATETIME
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ranking_vol_excluded (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES user(id),
+            ticker VARCHAR(15) NOT NULL
         )
     """)
 
@@ -13035,9 +13043,11 @@ RANKING_GERAL_TICKERS = [
 
 
 def _seed_ranking_geral(uid):
-    """Garante que a lista GERAL do usuário contenha os tickers padrão."""
+    """Garante que a lista GERAL do usuário contenha os tickers padrão — exceto
+    os que o usuário já excluiu deliberadamente (ver RankingVolExcluded)."""
     existentes = {rv.ticker for rv in RankingVol.query.filter_by(user_id=uid, grupo='GERAL').all()}
-    novos = [t for t in RANKING_GERAL_TICKERS if t not in existentes]
+    excluidos  = {e.ticker for e in RankingVolExcluded.query.filter_by(user_id=uid).all()}
+    novos = [t for t in RANKING_GERAL_TICKERS if t not in existentes and t not in excluidos]
     for t in novos:
         db.session.add(RankingVol(user_id=uid, ticker=t, grupo='GERAL'))
     if novos:
@@ -13078,6 +13088,10 @@ def ranking_vol_add():
         flash(f'{ticker} já está no ranking.', 'warning')
         return redirect(url_for('ranking_volatilidade', lista=lista))
     db.session.add(RankingVol(user_id=current_user.id, ticker=ticker, grupo=grupo))
+    if grupo == 'GERAL':
+        # Usuário voltou a querer esse ticker padrão — a lápide não deve mais
+        # bloqueá-lo em seeds futuros da lista GERAL.
+        RankingVolExcluded.query.filter_by(user_id=current_user.id, ticker=ticker).delete()
     db.session.commit()
     flash(f'{ticker} adicionado ao Ranking de Volatilidade.', 'success')
     return redirect(url_for('ranking_volatilidade', lista=lista))
@@ -13088,6 +13102,14 @@ def ranking_vol_add():
 def ranking_vol_delete(rid):
     rv = RankingVol.query.filter_by(id=rid, user_id=current_user.id).first_or_404()
     lista = 'geral' if rv.grupo == 'GERAL' else 'liq'
+    ticker = rv.ticker
+    # Lápide: sem isso, _seed_ranking_geral() recria o ticker padrão na
+    # próxima visita à lista GERAL, porque só olha o que existe hoje na
+    # tabela, não o que o usuário já excluiu de propósito.
+    if rv.grupo == 'GERAL' and ticker in RANKING_GERAL_TICKERS:
+        already = RankingVolExcluded.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+        if not already:
+            db.session.add(RankingVolExcluded(user_id=current_user.id, ticker=ticker))
     db.session.delete(rv)
     db.session.commit()
     return redirect(url_for('ranking_volatilidade', lista=lista))

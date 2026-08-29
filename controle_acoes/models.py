@@ -389,6 +389,17 @@ class RankingVol(db.Model):
     grupo        = db.Column(db.String(10), nullable=True, default='LIQ')  # LIQ (com liquidez) | GERAL
 
 
+class RankingVolExcluded(db.Model):
+    """Lápide de exclusão: registra que o usuário removeu deliberadamente um
+    ticker padrão da lista GERAL do Ranking de Volatilidade. Sem isso,
+    _seed_ranking_geral() recriava o ticker a cada visita à tela, porque ele
+    só verifica o que existe hoje em RankingVol, não o histórico de exclusões."""
+    __tablename__ = 'ranking_vol_excluded'
+    id      = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    ticker  = db.Column(db.String(15), nullable=False)
+
+
 class StructuredOp(db.Model):
     """Operação estruturada multi-perna (condors, borboletas, strangles, etc.)."""
     __tablename__ = 'structured_op'

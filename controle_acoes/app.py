@@ -6881,6 +6881,64 @@ def _estruturada_roll_adjustment(op):
     return round(ajuste, 2), extrato
 
 
+def _option_roll_extract(opt):
+    """Extrato das rolagens de uma opção individual (venda coberta, venda a
+    seco, compra a seco), no mesmo formato de eventos usado pelas estruturadas.
+
+    O roll_history da opção individual guarda um registro por rolagem, com o
+    ticker/prêmio antigo, o custo de recompra e o prêmio novo — diferente das
+    estruturadas, que guardam uma lista de pernas por evento. Sem converter
+    para o formato comum, o detalhamento do Histórico ficava vazio para essas
+    operações mesmo tendo rolagens registradas.
+
+    Devolve (total_realizado, extrato).
+    """
+    import json as _json
+    try:
+        history = _json.loads(opt.roll_history) if opt.roll_history else []
+    except Exception:
+        return 0.0, []
+
+    is_sell = (opt.option_type or '') in ('VENDA_CALL', 'VENDA_PUT')
+    total, extrato = 0.0, []
+    for ev in history:
+        if not isinstance(ev, dict) or not ev.get('old_ticker'):
+            continue
+        qty = ev.get('quantity') or opt.quantity or 0
+        close_p = ev.get('close_premium')
+        new_p   = ev.get('new_premium')
+        old_p   = ev.get('old_premium')
+        # Resultado REALIZADO do trecho que foi fechado nesta rolagem — mesma
+        # convenção das estruturadas (_estruturada_roll_adjustment): numa
+        # venda, ganha-se a diferença entre o prêmio recebido e o custo de
+        # recompra. Não confundir com net_roll, que compara o prêmio novo com
+        # a recompra e mede o caixa da rolagem, não o resultado do trecho.
+        try:
+            pnl = (float(old_p) - float(close_p)) * qty if is_sell \
+                  else (float(close_p) - float(old_p)) * qty
+        except (TypeError, ValueError):
+            pnl = 0.0
+        total += pnl
+        extrato.append({
+            'data':        ev.get('roll_date') or ev.get('rolled_at') or '',
+            'ticker':      ev.get('old_ticker') or '',
+            'tipo':        'Substituída',
+            'side':        'SELL' if is_sell else 'BUY',
+            'quantity':    qty,
+            'entrada':     ev.get('old_premium'),
+            'saida':       close_p,
+            'novo':        ev.get('new_ticker') or '',
+            'novo_premio': new_p,
+            'pnl':         round(pnl, 2),
+            'contabiliza': True,
+        })
+    acc = 0.0
+    for mov in extrato:
+        acc += mov['pnl']
+        mov['saldo'] = round(acc, 2)
+    return round(total, 2), extrato
+
+
 @app.route('/payoff/spread/<int:id>')
 @login_required
 def payoff_spread(id):
@@ -7218,7 +7276,36 @@ def close_option(id):
             exit_p  = buy_back_price     # prêmio pago para recomprar
             profit_val = (entry_p - exit_p) * qty_exit
 
+        # Rolagens anteriores: a cada rolagem, opt.sale_price passa a ser o
+        # prêmio da NOVA perna, então o cálculo acima enxerga só o último
+        # trecho. O ganho/perda das rolagens fica no roll_history e precisa
+        # entrar no resultado — mesma lógica já usada nas estruturadas.
+        rolls_realized, roll_events = _option_roll_extract(opt)
+        if qty_exit != opt.quantity and opt.quantity:
+            # Saída parcial: só a fração encerrada agora carrega o realizado.
+            rolls_realized = round(rolls_realized * qty_exit / opt.quantity, 2)
+        profit_val += rolls_realized
+
         profit_pct = (profit_val / (qty_exit * entry_p) * 100) if entry_p > 0 else 0
+
+        import json as _json_opt
+        details_json = _json_opt.dumps({
+            'legs': [{
+                'ticker':   opt.ticker,
+                'side':     'SELL' if opt.option_type in ('VENDA_CALL', 'VENDA_PUT') else 'BUY',
+                'opt_type': 'CALL' if 'CALL' in (opt.option_type or '') else 'PUT',
+                'strike':   round(opt.strike_price or 0, 2),
+                'qty':      qty_exit,
+                'buy':      round(entry_p or 0, 4),
+                'sell':     round(exit_p or 0, 4),
+                'pnl':      round(profit_val - rolls_realized, 2),
+            }],
+            'events':           roll_events,
+            'realized_manejos': rolls_realized,
+        }, ensure_ascii=False) if roll_events else None
+
+        rolls_note = (f" | inclui R$ {rolls_realized:.2f} realizados em rolagens"
+                      if abs(rolls_realized) > 0.005 else '')
 
         history = TradeHistory(
             user_id    = current_user.id,
@@ -7234,7 +7321,8 @@ def close_option(id):
             days_held    = days_held,
             reason       = reason,
             underlying   = opt.underlying_asset,
-            notes        = f"{opt.option_type} | {opt.underlying_asset} | K={opt.strike_price:.2f} | venc {opt.expiration_date.strftime('%d/%m/%Y') if opt.expiration_date else '?'}",
+            notes        = f"{opt.option_type} | {opt.underlying_asset} | K={opt.strike_price:.2f} | venc {opt.expiration_date.strftime('%d/%m/%Y') if opt.expiration_date else '?'}{rolls_note}",
+            details      = details_json,
         )
         db.session.add(history)
 

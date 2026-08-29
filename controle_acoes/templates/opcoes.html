@@ -1047,6 +1047,10 @@ function openRollHistory(history, title, defaultQty) {
 
     var totalNet = 0;
     var html = '';
+    // Caixa acumulado da operação ao longo das rolagens (prêmio inicial recebido
+    // + saldo de cada rolagem). Serve para o breakeven: quanto ainda dá para
+    // pagar na recompra da perna vendida sem a operação virar prejuízo.
+    var cashAcum = null;
 
     history.forEach(function(r, i) {
         var net = null;
@@ -1088,12 +1092,35 @@ function openRollHistory(history, title, defaultQty) {
                 }
                 canCalc = true;
             }
+        } else if (r.old_ticker) {
+            // Opção individual (ex.: venda coberta): recompra a perna antiga e
+            // vende a nova. Numa venda, o caixa da rolagem é o prêmio novo
+            // recebido menos o custo de recomprar a antiga.
+            var closePrem = parseFloat(r.close_premium);
+            var newPrem   = parseFloat(r.new_premium);
+            var oldPrem   = parseFloat(r.old_premium);
+            var isSell    = (r.option_type || '').indexOf('VENDA') >= 0 || !r.option_type;
+            if (!isNaN(closePrem) && !isNaN(newPrem)) {
+                closeCash = (isSell ? -closePrem : closePrem) * qtyRoll;
+                openCash  = (isSell ?  newPrem  : -newPrem)  * qtyRoll;
+                net = closeCash + openCash;
+                if (!isNaN(oldPrem)) {
+                    initialCash = (isSell ? oldPrem : -oldPrem) * qtyRoll;
+                }
+                canCalc = true;
+            }
         }
         // Fallback: usar net_roll salvo (opção individual ou legado)
         if (net === null && r.net_roll != null) { net = r.net_roll; canCalc = true; }
         if (net === null) net = 0;
         net = Math.round(net * 100) / 100;
         if (canCalc) totalNet += net;
+        // Caixa acumulado: parte do prêmio inicial da 1ª rolagem e vai somando
+        // o saldo de cada uma.
+        if (canCalc) {
+            if (cashAcum === null) cashAcum = (initialCash != null ? initialCash : 0);
+            cashAcum += net;
+        }
         var netColor = net >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
         var borderCol = net >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
 
@@ -1188,6 +1215,22 @@ function openRollHistory(history, title, defaultQty) {
             html += '<div style="' + cardStyle + '"><div style="font-size:.72rem;color:var(--text-secondary);">Abertura da nova trava</div><strong style="color:' + ((openCash||0)>=0?'var(--success-color)':'var(--danger-color)') + ';">' + (openCash==null?'—':brl(openCash)) + '</strong></div>';
             html += '<div style="' + cardStyle + '"><div style="font-size:.72rem;color:var(--text-secondary);">Total carregado até a nova trava</div><strong style="color:' + ((carried||0)>=0?'var(--success-color)':'var(--danger-color)') + ';">' + (carried==null?'—':brl(carried)) + '</strong></div>';
             html += '</div>';
+        } else if (r.old_ticker && canCalc) {
+            // Opção individual: mostra o caixa de cada etapa e até quanto dá
+            // para pagar na recompra sem a operação virar prejuízo.
+            var cardStyleO = 'padding:.55rem .7rem;background:var(--hover-bg);border:1px solid var(--border-color);border-radius:7px;';
+            var beUnit = (cashAcum != null && qtyRoll) ? (cashAcum / qtyRoll) : null;
+            html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.5rem;margin-top:.6rem;">';
+            if (initialCash != null) {
+                html += '<div style="' + cardStyleO + '"><div style="font-size:.72rem;color:var(--text-secondary);">Prêmio inicial recebido</div><strong style="color:' + (initialCash>=0?'var(--success-color)':'var(--danger-color)') + ';">' + brl(initialCash) + '</strong></div>';
+            }
+            html += '<div style="' + cardStyleO + '"><div style="font-size:.72rem;color:var(--text-secondary);">Custo da recompra</div><strong style="color:' + ((closeCash||0)>=0?'var(--success-color)':'var(--danger-color)') + ';">' + (closeCash==null?'—':brl(closeCash)) + '</strong></div>';
+            html += '<div style="' + cardStyleO + '"><div style="font-size:.72rem;color:var(--text-secondary);">Prêmio novo recebido</div><strong style="color:' + ((openCash||0)>=0?'var(--success-color)':'var(--danger-color)') + ';">' + (openCash==null?'—':brl(openCash)) + '</strong></div>';
+            html += '<div style="' + cardStyleO + '"><div style="font-size:.72rem;color:var(--text-secondary);">Caixa acumulado até aqui</div><strong style="color:' + ((cashAcum||0)>=0?'var(--success-color)':'var(--danger-color)') + ';">' + (cashAcum==null?'—':brl(cashAcum)) + '</strong></div>';
+            if (beUnit != null) {
+                html += '<div style="' + cardStyleO + '" title="Enquanto a recompra sair abaixo desse preço unitário, a operação segue no lucro."><div style="font-size:.72rem;color:var(--text-secondary);">Recompra até (lucro zero)</div><strong>' + brl(beUnit) + '<span style="font-weight:400;font-size:.72rem;color:var(--text-secondary);"> /un.</span></strong></div>';
+            }
+            html += '</div>';
         }
 
         var netLabel = canCalc
@@ -1208,6 +1251,23 @@ function openRollHistory(history, title, defaultQty) {
         '<strong style="font-size:.88rem;">Total acumulado de rolagens (' + history.length + ')</strong>' +
         '<strong style="font-size:1rem;color:' + totalColor + ';">' + (totalNet>=0?'+':'') + brl(totalNet) + '</strong>' +
         '</div>';
+
+    // Breakeven da posição ainda aberta: com todo o caixa acumulado (prêmio
+    // inicial + saldo das rolagens), até quanto dá para pagar na recompra da
+    // perna vendida sem a operação virar prejuízo.
+    var lastRoll = history[history.length - 1];
+    var lastQty  = parseFloat(lastRoll && lastRoll.quantity) || defaultQty || 1;
+    if (cashAcum != null && lastQty) {
+        var beFinal = cashAcum / lastQty;
+        html += '<div style="margin-top:.5rem;padding:.75rem 1rem;background:var(--hover-bg);border-radius:8px;' +
+            'display:flex;justify-content:space-between;align-items:center;gap:1rem;border:1px solid var(--border-color);">' +
+            '<div><strong style="font-size:.88rem;">Recompra até (lucro zero)</strong>' +
+            '<div style="font-size:.75rem;color:var(--text-secondary);margin-top:.15rem;">' +
+            'Caixa acumulado ' + brl(cashAcum) + ' ÷ ' + lastQty + ' un. — recomprando abaixo disso, a operação fecha no lucro.' +
+            '</div></div>' +
+            '<strong style="font-size:1rem;white-space:nowrap;">' + brl(beFinal) + '<span style="font-weight:400;font-size:.75rem;color:var(--text-secondary);"> /un.</span></strong>' +
+            '</div>';
+    }
 
     body.innerHTML = html;
     document.getElementById('modal-roll-history').style.display = 'flex';

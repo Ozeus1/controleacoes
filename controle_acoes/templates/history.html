@@ -123,7 +123,12 @@
            controla as linhas de #historyTable, um <tr> extra aqui quebraria
            o modelo interno dele. O conteúdo é injetado como child row. #}
         <template id="trade-det-{{ trade.id }}">
-            <div style="background:rgba(0,0,0,.18); padding:.8rem 1rem;">
+            <div style="background:rgba(0,0,0,.18); padding:.8rem 1rem; position:relative;">
+                {# Fecha o detalhamento sem precisar rolar de volta até o 🔍 da linha. #}
+                <button type="button" onclick="toggleTradeDet({{ trade.id }})"
+                        title="Fechar detalhamento"
+                        style="position:absolute; top:.4rem; right:.6rem; background:none; border:none;
+                               color:var(--text-secondary); font-size:1.3rem; line-height:1; cursor:pointer;">&times;</button>
                 {% if det.legs %}
                 <div style="font-size:.82rem; font-weight:700; margin-bottom:.4rem;">Pernas da operação</div>
                 <div style="overflow-x:auto; margin-bottom:.9rem;">

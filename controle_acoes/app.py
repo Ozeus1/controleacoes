@@ -4368,29 +4368,32 @@ def api_busca_operacoes(ticker):
             rows = _diversify(rows, lambda x: (x['call_buy_symbol'], x['call_sell_symbol']), per_key=1)
 
         elif op in ('trava_alta', 'trava_baixa'):
-            # Travas no DÉBITO otimizadas pela equação do trader:
-            #   EV = POP×ganho − (1−POP)×custo > 0 (POP via log-normal com IV dos prêmios)
-            # Regras de qualidade:
-            #   • perna comprada ATM/levemente OTM (ITM tem book ralo — evita)
-            #   • custo entre ~25% e 55% da largura → relação ganho/custo 0.8–3.0
-            #     (nem "loteria" OTM distante de POP baixo, nem trava cara sem ganho)
-            #   • POP mínimo 35%
-            #   • puts exigem prêmios mais firmes (menos líquidas que calls)
+            # Travas no DÉBITO — varredura por faixa de strike + relação alvo:
+            #   • perna comprada: de 5% ITM até 20% OTM (faixa ampla, para
+            #     cobrir desde a trava conservadora ITM até a mais agressiva)
+            #   • perna vendida: a que fizer a relação ganho/risco cair entre
+            #     1:1 e 1:5 (ordenadas em relação crescente na tabela)
+            # POP e EV continuam calculados e exibidos, mas não filtram: numa
+            # trava de débito, relação alta exige débito baixo, o que derruba a
+            # POP — filtrar por POP eliminaria justamente as linhas de maior
+            # relação que esta busca existe para encontrar.
             T = dc / 365.0
             is_alta = op == 'trava_alta'
             if is_alta:
+                # CALL comprada: ITM = strike abaixo do spot; OTM = acima.
                 buys = [c for c in calls_ok
-                        if 0.97 * spot <= c['strike'] <= 1.06 * spot and c['ask'] >= 0.10][:10]
+                        if 0.95 * spot <= c['strike'] <= 1.20 * spot and c['ask'] >= 0.05]
             else:
+                # PUT comprada: ITM = strike acima do spot; OTM = abaixo.
                 buys = [p for p in puts_ok
-                        if 0.94 * spot <= p['strike'] <= 1.03 * spot and p['ask'] >= 0.15][:10]
+                        if 0.80 * spot <= p['strike'] <= 1.05 * spot and p['ask'] >= 0.05]
             for buy in buys:
                 if is_alta:
                     sells = [c for c in calls_ok
-                             if buy['strike'] < c['strike'] <= 1.18 * spot and c['bid'] >= 0.03][:8]
+                             if c['strike'] > buy['strike'] and c['bid'] >= 0.01]
                 else:
                     sells = [p for p in puts_ok
-                             if 0.82 * spot <= p['strike'] < buy['strike'] and p['bid'] >= 0.05][:8]
+                             if p['strike'] < buy['strike'] and p['bid'] >= 0.01]
                 for sell in sells:
                     cost  = buy['ask'] - sell['bid']
                     width = abs(sell['strike'] - buy['strike'])
@@ -4400,17 +4403,17 @@ def api_busca_operacoes(ticker):
                     if max_gain <= 0:
                         continue
                     ratio = max_gain / cost
-                    if ratio < 0.8 or ratio > 3.0:
+                    if ratio < 1.0 or ratio > 5.0:
                         continue
                     be = buy['strike'] + cost if is_alta else buy['strike'] - cost
                     iv = _iv_est(buy, is_alta, T) or _iv_est(sell, is_alta, T) or 0.35
                     p_above = _pop_above(be, T, iv)
-                    if p_above is None:
-                        continue
-                    pop = p_above if is_alta else 100 - p_above
-                    ev  = pop / 100 * max_gain - (1 - pop / 100) * cost
-                    if pop < 35 or ev <= 0:      # equação do trader
-                        continue
+                    pop = None
+                    ev = ev_pct = None
+                    if p_above is not None:
+                        pop = p_above if is_alta else 100 - p_above
+                        ev  = pop / 100 * max_gain - (1 - pop / 100) * cost
+                        ev_pct = round(ev / cost * 100, 1)
                     liq = min(buy.get('vol_fin') or 0, sell.get('vol_fin') or 0)
                     rows.append({
                         'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
@@ -4418,16 +4421,27 @@ def api_busca_operacoes(ticker):
                         'cost':      round(cost, 2),
                         'max_gain':  round(max_gain, 2),
                         'ratio':     round(ratio, 2),
-                        'pop':       round(pop, 1),
-                        'ev':        round(ev, 2),
-                        'ev_pct':    round(ev / cost * 100, 1),   # expectância por R$ arriscado
+                        'width':     round(width, 2),               # "Tamanho" da trava
+                        'buy_close':  buy.get('close'),             # último negócio de cada perna
+                        'sell_close': sell.get('close'),
+                        'buy_bid':   buy['bid'],                    # boca completa (bid/ask)
+                        'sell_ask':  sell['ask'],
+                        'pop':       round(pop, 1) if pop is not None else None,
+                        'ev':        round(ev, 2) if ev is not None else None,
+                        'ev_pct':    ev_pct,                        # expectância por R$ arriscado
                         'liq':       liq,
                         'breakeven': round(be, 2),
                         'be_dist':   round((be - spot) / spot * 100, 2),
                     })
-            # Maior expectância por unidade de risco; empate: mais volume (liquidez)
-            rows.sort(key=lambda x: (-x['ev_pct'], -x['liq']))
-            rows = _diversify(rows, lambda x: x['buy_symbol'], per_key=2)
+            # Relação crescente (1:1 → 1:5), como na referência; empate: mais volume
+            rows.sort(key=lambda x: (x['ratio'], -x['liq']))
+            # Faixa ampla (5% ITM a 20% OTM) gera muitas combinações. O corte
+            # por perna comprada é baixo de propósito: ordenado por relação
+            # crescente, um per_key alto encheria a tabela só com a comprada
+            # mais ITM (que forma as menores relações), escondendo as demais
+            # da faixa. Poucas linhas por âncora + limite alto = a escala
+            # inteira de relação, com variedade de strikes comprados.
+            rows = _diversify(rows, lambda x: x['buy_symbol'], per_key=3, limit=40)
 
         elif op in ('trava_alta_credito', 'trava_baixa_credito'):
             # Travas no CRÉDITO otimizadas pela equação do trader:

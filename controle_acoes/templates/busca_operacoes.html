@@ -189,8 +189,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     collar_baixa:  '🛡🔽 Collar de Baixa — compra a ação + vende CALL na linha do dinheiro + compra PUT o mais dentro do dinheiro possível (PUT ACIMA da CALL). Ganha na queda: abaixo do strike da CALL o papel sai pela PUT pelo strike alto; acima do strike da PUT é entregue pela CALL (piso). Só aparecem montagens cujo ganho máximo supera o CDI',
     fence:         '🚧 Fence / Cerca — a CALL vendida (coberta) financia a trava de baixa com PUT. Travas (N×) mostra quantas travas o prêmio da CALL paga: N>1 é a Fence Alavancada (Ratio Fence)',
     seagull:       '🕊 Seagull / Gaivota de alta (trava de alta com CALLs financiada por venda de PUT OTM)',
-    trava_alta:    '📈 Trava de Alta no débito (CALLs) — compra ATM + venda OTM; EV > 0 (equação do trader), POP ≥ 35%, relação 0,8–3',
-    trava_baixa:   '📉 Trava de Baixa no débito (PUTs) — compra ATM + venda OTM; EV > 0, POP ≥ 35%, relação 0,8–3 (puts: exige prêmios firmes)',
+    trava_alta:    '📈 Trava de Alta no débito (CALLs) — comprada de 5% ITM a 20% OTM; vendida buscada para relação 1:1 a 1:5 (ordenada por relação crescente)',
+    trava_baixa:   '📉 Trava de Baixa no débito (PUTs) — comprada de 5% ITM a 20% OTM; vendida buscada para relação 1:1 a 1:5 (ordenada por relação crescente)',
     trava_alta_credito:  '📈💰 Trava de Alta no crédito (PUTs OTM) — crédito 25–60% da largura; EV > 0, POP ≥ 55%',
     trava_baixa_credito: '📉💰 Trava de Baixa no crédito (CALLs OTM) — crédito 25–60% da largura; EV > 0, POP ≥ 55%',
     trava_credito: '💰 Ratio CALL — venda CALL perto do dinheiro (máx. 5% ITM a 5% OTM) financia compra de CALLs OTM (1x2 e 2x3, lucro ilimitado na alta)',
@@ -417,25 +417,41 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   }
 
   function spreadTable(rows, isBull, expIdx) {
-    if (!rows.length) return '<div class="bo-empty">Nenhuma trava passou nos critérios (EV &gt; 0, POP ≥ 35%, relação 0,8–3) neste vencimento.</div>';
+    if (!rows.length) return '<div class="bo-empty">Nenhuma trava na faixa buscada (comprada de 5% ITM a 20% OTM, relação 1:1 a 1:5) neste vencimento.</div>';
     var h = '<div class="bo-wrap"><table class="bo-tab"><thead><tr>' +
-      '<th>Compra (ask)</th><th>K</th><th>Ask</th>' +
-      '<th>Venda (bid)</th><th>K</th><th>Bid</th>' +
-      '<th>Custo</th><th>Ganho máx.</th><th>Relação</th>' +
+      '<th>Tickers</th>' +
+      '<th>Comprada</th><th>Vendida</th>' +
+      '<th title="Ganho máximo por R$ de risco (débito)">Risco/Retorno</th>' +
+      '<th title="Largura da trava: diferença entre os strikes">Tamanho</th>' +
+      '<th title="Último negócio de cada perna (comprada / vendida)">Último</th>' +
+      '<th title="Boca de cada perna: bid / ask">Boca</th>' +
+      '<th>Custo</th><th>Ganho máx.</th>' +
       '<th title="Probabilidade de lucro (log-normal, VI dos prêmios)">POP</th>' +
       '<th title="Equação do trader: POP×ganho − (1−POP)×custo, em % do custo">EV</th>' +
       '<th>Break-even</th><th>Dist. BE</th></tr></thead><tbody>';
+    var badge = isBull ? 'call' : 'put';
     rows.forEach(function(r, j) {
+      var popTxt = (r.pop === null || r.pop === undefined)
+        ? '<span style="color:var(--text-secondary)">—</span>'
+        : '<strong>' + fmt(r.pop, 1) + '%</strong>';
+      var evTxt = (r.ev_pct === null || r.ev_pct === undefined)
+        ? '<span style="color:var(--text-secondary)">—</span>'
+        : '<strong>' + (r.ev_pct > 0 ? '+' : '') + fmt(r.ev_pct, 1) + '%</strong>';
       h += rowAttr(expIdx, j) +
-        '<td><span class="bo-badge ' + (isBull ? 'call' : 'put') + '">' + r.buy_symbol + '</span></td>' +
-        '<td>' + brl(r.buy_strike) + '</td><td>' + brl(r.buy_ask) + '</td>' +
-        '<td><span class="bo-badge ' + (isBull ? 'call' : 'put') + '">' + r.sell_symbol + '</span></td>' +
-        '<td>' + brl(r.sell_strike) + '</td><td>' + brl(r.sell_bid) + '</td>' +
+        '<td style="white-space:nowrap">' +
+          '<span class="bo-badge ' + badge + '">+' + r.buy_symbol + '</span> ' +
+          '<span class="bo-badge ' + badge + '">−' + r.sell_symbol + '</span></td>' +
+        '<td>' + brl(r.buy_strike) + '</td>' +
+        '<td>' + brl(r.sell_strike) + '</td>' +
+        '<td class="pos"><strong>1 : ' + fmt(r.ratio) + '</strong></td>' +
+        '<td>' + brl(r.width) + '</td>' +
+        '<td style="white-space:nowrap">' + brl(r.buy_close) + ' / ' + brl(r.sell_close) + '</td>' +
+        '<td style="white-space:nowrap">' + brl(r.buy_bid) + '–' + brl(r.buy_ask) +
+          ' / ' + brl(r.sell_bid) + '–' + brl(r.sell_ask) + '</td>' +
         '<td>' + brl(r.cost) + '</td>' +
         '<td class="pos">' + brl(r.max_gain) + '</td>' +
-        '<td class="pos">' + fmt(r.ratio) + '</td>' +
-        '<td class="' + (r.pop >= 50 ? 'pos' : '') + '"><strong>' + fmt(r.pop, 1) + '%</strong></td>' +
-        '<td class="pos"><strong>+' + fmt(r.ev_pct, 1) + '%</strong></td>' +
+        '<td class="' + (r.pop >= 50 ? 'pos' : '') + '">' + popTxt + '</td>' +
+        '<td class="' + (r.ev_pct > 0 ? 'pos' : (r.ev_pct < 0 ? 'neg' : '')) + '">' + evTxt + '</td>' +
         '<td>' + brl(r.breakeven) + '</td>' +
         '<td class="' + (Math.abs(r.be_dist) < 2 ? 'pos' : '') + '">' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%</td>' +
         '</tr>';
@@ -1061,9 +1077,13 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         ['Custo (débito)', brl(r.cost * qty), ''],
         ['Lucro máximo', brl(r.max_gain * qty), 'pos'],
         ['Perda máxima', brl(r.cost * qty), 'neg'],
-        ['Relação ganho/custo', fmt(r.ratio), r.ratio > 1 ? 'pos' : ''],
-        ['POP (prob. de lucro)', fmt(r.pop, 1) + '%', r.pop >= 50 ? 'pos' : ''],
-        ['EV — equação do trader', brl(r.ev * qty) + ' (+' + fmt(r.ev_pct, 1) + '% do custo)', 'pos'],
+        ['Relação risco/retorno', '1 : ' + fmt(r.ratio), r.ratio > 1 ? 'pos' : ''],
+        // POP/EV podem vir nulos quando a VI não converge — a busca não filtra
+        // mais por eles, então a linha existe mesmo sem esses números.
+        ['POP (prob. de lucro)', r.pop == null ? '—' : fmt(r.pop, 1) + '%', r.pop >= 50 ? 'pos' : ''],
+        ['EV — equação do trader',
+         r.ev == null ? '—' : brl(r.ev * qty) + ' (' + (r.ev_pct > 0 ? '+' : '') + fmt(r.ev_pct, 1) + '% do custo)',
+         r.ev == null ? '' : (r.ev_pct > 0 ? 'pos' : 'neg')],
         ['Break-even', brl(r.breakeven) + ' (' + (r.be_dist > 0 ? '+' : '') + fmt(r.be_dist) + '%)', ''],
         ['Retorno máx. %', fmt(gPctT) + '%', 'pos'],
         ['Prazo (dias corridos)', dc + ' d.c.', '']

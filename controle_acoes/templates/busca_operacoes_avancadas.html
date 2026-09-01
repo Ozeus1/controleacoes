@@ -108,6 +108,8 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="strap">📈⚖️ Strap</button>
       <button class="ba-obtn" data-op="strip">📉⚖️ Strip</button>
       <button class="ba-obtn" data-op="box_spread">📦 Box Spread</button>
+      <button class="ba-obtn" data-op="box3">📦3️⃣ Box 3 Pontas</button>
+      <button class="ba-obtn" data-op="box4">📦4️⃣ Box 4 Pontas</button>
       <button class="ba-obtn" data-op="ratio_spread">➗ Ratio Spread (1×2)</button>
     </div>
     <div class="ba-cat">
@@ -158,6 +160,26 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
         <option value="120">120 dias</option>
         <option value="180">180 dias</option>
       </select>
+    </label>
+    <!-- Box 4 Pontas: crédito (captação) ou débito (aplicação sintética) -->
+    <label id="ba-boxmode-wrap" style="display:none;align-items:center;gap:.45rem;
+           font-size:.83rem;color:var(--text-secondary);cursor:pointer;">
+      Operação:
+      <select id="ba-boxmode" style="background:var(--card-bg);color:var(--text-primary);
+              border:1px solid var(--border-color);border-radius:5px;padding:.2rem .4rem;
+              font-size:.82rem;cursor:pointer;">
+        <option value="debito" selected>de Débito (aplicação)</option>
+        <option value="credito">de Crédito (captação)</option>
+      </select>
+    </label>
+    <!-- Slide Estrutural: amplitude mínima da estrutura (C − A) -->
+    <label id="ba-rangemin-wrap" style="display:none;align-items:center;gap:.45rem;
+           font-size:.83rem;color:var(--text-secondary);cursor:pointer;">
+      Range mín.:
+      <input type="number" id="ba-rangemin" value="0" min="0" step="1"
+             style="width:70px;background:var(--card-bg);color:var(--text-primary);
+                    border:1px solid var(--border-color);border-radius:5px;
+                    padding:.2rem .4rem;font-size:.82rem;">
     </label>
   </div>
 
@@ -228,7 +250,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     covered_put:    '📉 Covered Put — vende a ação (aluguel) + vende PUT OTM Δ −0,20 a −0,35 (renda em mercado de baixa)',
     jade_lizard:    '🦎 Jade Lizard — venda PUT OTM (Δ ≈ −0,20) + trava de baixa com CALL; crédito ≥ largura da trava → SEM risco na alta',
     jade_lizard_turbo: '🦎🔥 Jade Lizard Turbinada — mesma montagem, mas com o DOBRO de travas de CALL por PUT vendida (1:2); crédito bem maior, mas exige crédito ≥ custo máx. da trava (agora em dobro) pra continuar sem risco na alta',
-    slide_estrutural: '🛝 Slide Estrutural — compra CALL Δ 0,55–0,70 + venda CALL Δ 0,35–0,50 ("asa") + venda CALL Δ 0,15–0,30 (strike da venda coberta tradicional); custo ~zero, amplia o range de lucro da venda coberta',
+    slide_estrutural: '🛝 Slide Estrutural — operação DIRECIONAL DE INTERVALO: +1 CALL comprada (A) −2 CALLs vendidas em strikes consecutivos (B e C), formando o "escorregador" de lucro. Lucro máximo na FAIXA ENTRE OS DOIS STRIKES VENDIDOS; montagem a custo ~zero ou no crédito (ZCC)',
     stock_repair:   '🩹 Reparo de Posição (Stock Repair 1×2) — compra 1 CALL ATM (Δ 0,45–0,60) + vende 2 CALLs OTM (Δ 0,20–0,35) a custo ~ZERO; dobra a recuperação até o strike vendido para ação NO PREJUÍZO em carteira (2ª venda coberta pela ação)',
     ratio_spread:   '➗ Ratio Spread CALL 1×2 — compra 1 CALL ITM (Δ 0,55–0,72) + vende 2 CALLs OTM (Δ 0,20–0,35); débito baixo ou crédito, lucro máx. no strike vendido; risco ILIMITADO acima (front ratio — ponta nua)',
     iron_butterfly: '🦋💰 Iron Butterfly — venda straddle ATM + compra strangle OTM de proteção (Δ ≈ 0,05–0,10); crédito',
@@ -241,6 +263,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     strap:          '📈⚖️ Strap — compra 2 CALLs ATM + 1 PUT ATM (movimento forte com viés de ALTA)',
     strip:          '📉⚖️ Strip — compra 1 CALL ATM + 2 PUTs ATM (movimento forte com viés de BAIXA)',
     box_spread:     '📦 Box Spread — trava de alta com CALL + trava de baixa com PUT (mesmos strikes); arbitragem: débito < largura descontada pela Selic',
+    box3:           '📦3️⃣ Box de 3 Pontas — renda fixa sintética: ativo em carteira (ou comprado ao spot) + PUT comprada + CALL vendida NO MESMO STRIKE; resultado fixo no vencimento, seja qual for a direção do ativo. Ordenado pelo maior ganho potencial',
+    box4:           '📦4️⃣ Box de 4 Pontas — arbitragem de juros só com opções (sem a ação): +CALL(A) −PUT(A) −CALL(B) +PUT(B); no vencimento o ganho é exatamente (B − A). Lista apenas montagens com RETORNO POSITIVO',
     acao_sintetica: '🧬 Ação Sintética — compra CALL ATM + venda PUT ATM (mesmo strike; replica a ação com pouco capital)',
     short_sintetico: '🧬📉 Short Sintético — venda CALL ATM + compra PUT ATM (replica venda a descoberto; risco ilimitado na alta)',
     risk_reversal:  '🔄 Risk Reversal — compra CALL OTM (Δ 0,20–0,30) + venda PUT OTM (Δ −0,20 a −0,30); custo zero ou pequeno crédito',
@@ -262,7 +286,12 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   };
   var OP_NAMES = {};
   Object.keys(OP_TITLES).forEach(function(k) {
-    OP_NAMES[k] = OP_TITLES[k].split('—')[0].replace(/[^\wÀ-ú() ]/g, '').trim();
+    // Remove os emojis do início do título. Emojis "keycap" (📦3️⃣) trazem um
+    // dígito junto: só o que sobra ANTES da primeira letra é descartado, para
+    // não deixar um "3"/"4" solto grudado no nome da operação.
+    OP_NAMES[k] = OP_TITLES[k].split('—')[0]
+      .replace(/^[^\p{L}]+/u, '')
+      .replace(/[^\wÀ-ú() ]/g, '').trim();
   });
 
   function fmt(v, dec) {
@@ -359,6 +388,87 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     return h + '</tbody></table></div>';
   }
 
+  // ── Box de 3 Pontas ────────────────────────────────────────────────────────
+  function box3Table(rows, expIdx) {
+    if (!rows.length) return '<div class="ba-empty">Nenhum strike com CALL e PUT negociáveis neste vencimento.</div>';
+    var h = '<div class="ba-wrap"><table class="ba-tab"><thead><tr>' +
+      '<th>Tickers</th><th>Call Vendida</th><th>Put Comprada</th>' +
+      '<th title="Resultado travado no vencimento sobre o capital empatado">Ganho Potencial</th>' +
+      '<th title="Custo de montagem pelo último negócio de cada perna">Último</th>' +
+      '<th title="Custo de montagem pelo book (venda no bid, compra no ask)">Boca</th>' +
+      '</tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += '<tr class="ba-row" data-exp="' + expIdx + '" data-row="' + j + '" title="Clique para ver o resumo">' +
+        '<td><span class="ba-badge call">+' + r.call_symbol + '</span> ' +
+            '<span class="ba-badge put">−' + r.put_symbol + '</span></td>' +
+        '<td><strong>' + brl(r.strike) + '</strong></td>' +
+        '<td>' + brl(r.strike) + '</td>' +
+        '<td class="' + (r.ret_pct >= 0 ? 'pos' : 'neg') + '"><strong>' + fmt(r.ret_pct) + '%</strong>' +
+            (r.cdi_pct != null ? ' <span style="color:var(--text-secondary);font-size:.8em;">(' +
+              r.cdi_pct + '% CDI)</span>' : '') + '</td>' +
+        '<td>' + (r.ultimo != null ? brl(r.ultimo) : '—') + '</td>' +
+        '<td>' + brl(r.boca) + '</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  // ── Box de 4 Pontas ────────────────────────────────────────────────────────
+  function box4Table(rows, expIdx) {
+    if (!rows.length) return '<div class="ba-empty">Nenhuma montagem com retorno positivo neste vencimento.</div>';
+    var h = '<div class="ba-wrap"><table class="ba-tab"><thead><tr>' +
+      '<th>Opção</th><th>Strike</th>' +
+      '<th title="Largura da caixa: diferença entre os strikes">Asa</th>' +
+      '<th title="Valor líquido da montagem hoje">Prêmio</th>' +
+      '<th title="Retorno da operação no período (comparado ao CDI)">Retorno</th>' +
+      '</tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += '<tr class="ba-row" data-exp="' + expIdx + '" data-row="' + j + '" title="Clique para ver o resumo">' +
+        '<td>' + r.legs_txt.map(function(l) {
+            return '<span class="ba-badge ' + (l.s === '+' ? 'call' : 'put') + '">' +
+                   l.s + l.sym + '</span>'; }).join(' ') + '</td>' +
+        '<td>' + brl(r.strike_lo) + ' - ' + brl(r.strike_hi) + '</td>' +
+        '<td>' + brl(r.asa) + '</td>' +
+        '<td>' + brl(r.premio) + '</td>' +
+        '<td class="pos"><strong>' + fmt(r.ret_pct) + '%</strong>' +
+            (r.cdi_pct != null ? ' <span style="color:var(--text-secondary);font-size:.8em;">(' +
+              r.cdi_pct + '% CDI)</span>' : '') + '</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  // ── Slide Estrutural ───────────────────────────────────────────────────────
+  function slideTable(rows, expIdx) {
+    if (!rows.length) return '<div class="ba-empty">Nenhuma montagem a custo ~zero neste vencimento.</div>';
+    var h = '<div class="ba-wrap"><table class="ba-tab"><thead><tr>' +
+      '<th>Tickers</th><th>Comprada</th><th>Vendida 1</th><th>Vendida 2</th>' +
+      '<th title="Spot a partir do qual o resultado no vencimento fica negativo (é preciso ter o ativo ou stop definido)">Assunção</th>' +
+      '<th title="Distância entre os strikes: (B−A) : (C−B)">Asas</th>' +
+      '<th title="Amplitude total da estrutura: C − A">Range</th>' +
+      '<th title="Custo de montagem pelo último negócio de cada perna">Último</th>' +
+      '<th title="Custo de montagem pelo book (compra no ask, vendas no bid)">Boca</th>' +
+      '</tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += '<tr class="ba-row" data-exp="' + expIdx + '" data-row="' + j + '" title="Clique para ver o resumo">' +
+        '<td><span class="ba-badge call">+' + r.buy_symbol + '</span> ' +
+            '<span class="ba-badge put">−' + r.sell1_symbol + '</span> ' +
+            '<span class="ba-badge put">−' + r.sell2_symbol + '</span></td>' +
+        '<td><strong>' + brl(r.buy_strike) + '</strong></td>' +
+        '<td>' + brl(r.sell1_strike) + '</td>' +
+        '<td>' + brl(r.sell2_strike) + '</td>' +
+        '<td>' + brl(r.assuncao) + '</td>' +
+        '<td>' + r.asas + '</td>' +
+        '<td>' + brl(r.range) + '</td>' +
+        '<td>' + (r.ultimo != null ? brl(r.ultimo) : '—') + '</td>' +
+        '<td>' + brl(r.boca) + '</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  var CUSTOM_TABLES = {box3: box3Table, box4: box4Table, slide_estrutural: slideTable};
+
   function render(d) {
     window.__baData = d;
     spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
@@ -381,7 +491,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
           (e.exp_long ? ' · resultado no venc. curto (estimado por BS)' : '') + '</span>' +
         '</div>' +
         '<div class="ba-sec"><h4>' + OP_TITLES[d.op] + '</h4>' +
-        genTable(e.rows, i) + '</div></div>';
+        (CUSTOM_TABLES[d.op] || genTable)(e.rows, i) + '</div></div>';
     });
     if (!d.expirations.length) {
       h = '<div class="ba-empty" style="padding:1.5rem;">Nenhum vencimento com opções líquidas encontrado.</div>';
@@ -535,8 +645,14 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     modeEl.style.display = 'none';
     var weekly = document.getElementById('ba-weekly').checked ? '1' : '0';
     var days   = document.getElementById('ba-days').value;
+    var extra  = '';
+    if (currentOp === 'box4') {
+      extra = '&box_mode=' + document.getElementById('ba-boxmode').value;
+    } else if (currentOp === 'slide_estrutural') {
+      extra = '&range_min=' + (document.getElementById('ba-rangemin').value || 0);
+    }
     fetch('/api/busca-operacoes/' + encodeURIComponent(ticker) +
-          '?op=' + encodeURIComponent(currentOp) + '&weekly=' + weekly + '&days=' + days)
+          '?op=' + encodeURIComponent(currentOp) + '&weekly=' + weekly + '&days=' + days + extra)
       .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
       .then(function(res) {
         loading.style.display = 'none';
@@ -561,12 +677,22 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       });
   }
 
+  // Mostra só os filtros que fazem sentido para a operação escolhida
+  function syncOpFilters() {
+    document.getElementById('ba-boxmode-wrap').style.display =
+      (currentOp === 'box4') ? 'inline-flex' : 'none';
+    document.getElementById('ba-rangemin-wrap').style.display =
+      (currentOp === 'slide_estrutural') ? 'inline-flex' : 'none';
+  }
+  syncOpFilters();
+
   document.querySelectorAll('.ba-obtn').forEach(function(b) {
     b.addEventListener('click', function() {
       currentOp = b.dataset.op;
       document.querySelectorAll('.ba-obtn').forEach(function(x) {
         x.classList.toggle('active', x === b);
       });
+      syncOpFilters();
       if (currentTicker) load(currentTicker);
     });
   });
@@ -574,6 +700,12 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     if (currentTicker) load(currentTicker);
   });
   document.getElementById('ba-days').addEventListener('change', function() {
+    if (currentTicker) load(currentTicker);
+  });
+  document.getElementById('ba-boxmode').addEventListener('change', function() {
+    if (currentTicker) load(currentTicker);
+  });
+  document.getElementById('ba-rangemin').addEventListener('change', function() {
     if (currentTicker) load(currentTicker);
   });
   document.getElementById('add-ba-btn').addEventListener('click', function() {
@@ -592,6 +724,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     document.querySelectorAll('.ba-obtn').forEach(function(x) {
       x.classList.toggle('active', x.dataset.op === qOp);
     });
+    syncOpFilters();
   }
 
   // Ícone "?" ao lado de cada operação → card de ajuda correspondente

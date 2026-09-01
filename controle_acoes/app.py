@@ -3568,17 +3568,6 @@ _ADV_SPECS = {
     # explosão de alta o resultado fica perto de zero, nunca em prejuízo.
     'jade_lizard_turbo': {'legs': [('P', -1, (-0.30, -0.16)), ('C', -2, (0.15, 0.20)),
                                    ('C', 2, (0.03, 0.15))], 'asc': [1, 2], 'rule': 'jade'},
-    # Slide Estrutural: turbina a venda coberta tradicional. Pressupõe o
-    # ATIVO JÁ EM CARTEIRA (não é uma spec com perna 'S' — igual ao Reparo
-    # de Posição — porque o motor trataria 'S' como compra nova, distorcendo
-    # o custo). A operação soma DUAS fontes de ganho sobre a mesma ação já
-    # possuída: (1) a venda coberta de sempre (venda de CALL no strike C,
-    # igual à tradicional) e (2) uma trava de alta por cima (compra CALL A +
-    # venda CALL B, A < B < C), que amplia o lucro entre A e B sem exigir
-    # mais capital. Zona de lucro máximo entre B e C.
-    'slide_estrutural': {'legs': [('C', 1, (0.55, 0.70)), ('C', -1, (0.35, 0.50)),
-                                  ('C', -1, (0.15, 0.30))], 'asc': [0, 1, 2],
-                        'rule': 'low_cost'},
     # Reparo de posição (Stock Repair 1×2): compra 1 CALL ATM + vende 2 OTM a
     # custo ~zero — p/ ação NO PREJUÍZO em carteira (a 2ª venda fica coberta
     # pela ação; dobra a recuperação até o strike vendido, sem aporte novo)
@@ -5324,6 +5313,234 @@ def api_busca_operacoes(ticker):
                     })
             rows.sort(key=lambda x: abs(x['net_extr']))
             rows = _diversify(rows, lambda x: x['buy_symbol'], per_key=2)
+
+        elif op == 'slide_estrutural':
+            # ── Slide Estrutural ──────────────────────────────────────────────
+            # Estratégia DIRECIONAL DE INTERVALO com 3 pernas de CALL:
+            #   +1 comprada (A) −1 vendida 1 (B) −1 vendida 2 (C), A < B < C
+            # em strikes consecutivos, formando o "escorregador" de lucro.
+            # O lucro máximo ocorre na FAIXA ENTRE OS DOIS STRIKES VENDIDOS
+            # (B a C) — é uma operação de intervalo, não de trava simples.
+            # A montagem é a custo ~zero ou até no crédito (ZCC).
+            #
+            # Colunas do painel: Comprada (A), Vendida 1 (B), Vendida 2 (C),
+            # Assunção (spot a partir do qual o resultado vira negativo, ou
+            # seja o breakeven superior — onde o investidor "assume" a posição
+            # vendida a descoberto), Asas (B−A : C−B), Range (C−A), Último
+            # (custo pelo último negócio) e Boca (custo pelo book).
+            try:
+                range_min = float(request.args.get('range_min') or 0)
+            except (TypeError, ValueError):
+                range_min = 0.0
+            for i, a in enumerate(calls_ok):
+                if a['ask'] <= 0:
+                    continue
+                for j in range(i + 1, len(calls_ok)):
+                    b = calls_ok[j]
+                    if b['bid'] <= 0 or b['strike'] <= a['strike']:
+                        continue
+                    for c in calls_ok[j + 1:]:
+                        if c['bid'] <= 0 or c['strike'] <= b['strike']:
+                            continue
+                        rng = round(c['strike'] - a['strike'], 2)
+                        if range_min and rng < range_min:
+                            continue
+                        # Custo pelo book (executável) e pelo último negócio
+                        custo_boca = a['ask'] - b['bid'] - c['bid']
+                        if a.get('close') and b.get('close') and c.get('close'):
+                            custo_ult = a['close'] - b['close'] - c['close']
+                        else:
+                            custo_ult = None
+                        # Só montagens a custo ~zero ou no crédito (ZCC)
+                        if custo_boca > 0.10:
+                            continue
+                        asa_lo = round(b['strike'] - a['strike'], 2)
+                        asa_hi = round(c['strike'] - b['strike'], 2)
+                        if asa_lo <= 0 or asa_hi <= 0:
+                            continue
+                        # Payoff no vencimento (por ação), custo pelo book:
+                        #   lucro máximo no platô entre B e C = (B − A) − custo
+                        lucro_max = asa_lo - custo_boca
+                        if lucro_max <= 0:
+                            continue
+                        # Acima de C a inclinação vira −1 (uma call fica nua):
+                        # assunção = C + lucro_max
+                        assuncao = round(c['strike'] + lucro_max, 2)
+                        rows.append({
+                            'buy_symbol':  a['symbol'], 'buy_strike':  a['strike'],
+                            'sell1_symbol': b['symbol'], 'sell1_strike': b['strike'],
+                            'sell2_symbol': c['symbol'], 'sell2_strike': c['strike'],
+                            'assuncao':    assuncao,
+                            'asas':        '%g:%g' % (asa_lo, asa_hi),
+                            'asa_lo':      asa_lo, 'asa_hi': asa_hi,
+                            'range':       rng,
+                            'ultimo':      round(custo_ult, 2) if custo_ult is not None else None,
+                            'boca':        round(custo_boca, 2),
+                            'lucro_max':   round(lucro_max, 2),
+                            'liq':         min(a.get('vol_fin') or 0, b.get('vol_fin') or 0,
+                                               c.get('vol_fin') or 0),
+                            # Campos padrão (modal / abrir na cadeia / cálculos)
+                            'legs': [
+                                {'sym': a['symbol'], 'tp': 'CALL', 'k': a['strike'],
+                                 'q': 1,  'px': a['ask'], 'delta': None},
+                                {'sym': b['symbol'], 'tp': 'CALL', 'k': b['strike'],
+                                 'q': -1, 'px': b['bid'], 'delta': None},
+                                {'sym': c['symbol'], 'tp': 'CALL', 'k': c['strike'],
+                                 'q': -1, 'px': c['bid'], 'delta': None},
+                            ],
+                            'net':       round(-custo_boca, 2),
+                            'is_credit': custo_boca < 0,
+                            'montagem':  ('CRÉDITO' if custo_boca < -0.005 else 'ZERO'),
+                            'max_gain':  round(lucro_max, 2),
+                            'gain_unl':  False,
+                            'max_loss':  None,     # acima de C a perda é ilimitada
+                            'loss_unl':  True,
+                            'ratio':     None,
+                            'bes':       [assuncao],
+                        })
+            # Menor custo de montagem primeiro (quanto mais perto de zero /
+            # no crédito, melhor), com o range maior como desempate
+            rows.sort(key=lambda x: (x['boca'], -x['range']))
+            rows = _diversify(rows, lambda x: x['buy_symbol'], per_key=8, limit=40)
+
+        elif op == 'box3':
+            # ── Box de 3 Pontas (conversão / renda fixa sintética) ────────────
+            # Ativo em carteira (ou comprado ao spot) + PUT comprada + CALL
+            # vendida NO MESMO STRIKE. O payoff no vencimento é fixo em K,
+            # independentemente da direção do ativo:
+            #     resultado = K − (spot + put_ask − call_bid)
+            # O "ganho potencial" é esse resultado sobre o capital imobilizado
+            # (o desembolso da montagem), comparável ao CDI do período.
+            put_by_k = {}
+            for p in puts_ok:
+                put_by_k.setdefault(round(p['strike'], 2), p)
+            for c in calls_ok:
+                k = round(c['strike'], 2)
+                p = put_by_k.get(k)
+                if not p or c['bid'] <= 0 or p['ask'] <= 0:
+                    continue
+                # Capital empatado na montagem: ação + put − prêmio da call
+                capital = spot + p['ask'] - c['bid']
+                if capital <= 0:
+                    continue
+                lucro = k - capital                  # travado no vencimento
+                ret_pct = lucro / capital * 100
+                rows.append({
+                    'call_symbol': c['symbol'], 'put_symbol': p['symbol'],
+                    'strike':      k,
+                    'call_bid':    c['bid'],  'put_ask':   p['ask'],
+                    'call_close':  c.get('close'), 'put_close': p.get('close'),
+                    'capital':     round(capital, 2),
+                    'lucro':       round(lucro, 2),
+                    'ret_pct':     round(ret_pct, 2),
+                    # Quanto o retorno da operação representa do CDI do período
+                    'cdi_pct':     (round(ret_pct / selic_period * 100)
+                                    if selic_period > 0.0001 else None),
+                    'ultimo':      (round((c.get('close') or 0) - (p.get('close') or 0), 2)
+                                    if (c.get('close') and p.get('close')) else None),
+                    'boca':        round(c['bid'] - p['ask'], 2),
+                    'liq':         min(c.get('vol_fin') or 0, p.get('vol_fin') or 0),
+                    # Campos padrão (modal / abrir na cadeia / cálculos)
+                    'legs': [
+                        {'sym': ticker, 'tp': 'STOCK', 'k': None, 'q': 1,
+                         'px': round(spot, 2), 'delta': None},
+                        {'sym': p['symbol'], 'tp': 'PUT',  'k': k, 'q': 1,
+                         'px': p['ask'], 'delta': None},
+                        {'sym': c['symbol'], 'tp': 'CALL', 'k': k, 'q': -1,
+                         'px': c['bid'], 'delta': None},
+                    ],
+                    'net':       round(-capital, 2),
+                    'is_credit': False,
+                    'montagem':  'DÉBITO',
+                    'max_gain':  round(lucro, 2),
+                    'gain_unl':  False,
+                    'max_loss':  0.0,
+                    'loss_unl':  False,
+                    'ratio':     None,
+                    'bes':       [],
+                })
+            # Maior ganho potencial primeiro (critério de montagem do scanner)
+            rows.sort(key=lambda x: -x['ret_pct'])
+            rows = rows[:20]
+
+        elif op == 'box4':
+            # ── Box de 4 Pontas (arbitragem de juros, só com opções) ─────────
+            # Lado A (strike baixo): +CALL(A) −PUT(A) · Lado B (strike alto):
+            # −CALL(B) +PUT(B). No vencimento o resultado é exatamente a
+            # largura (B − A), qualquer que seja o spot.
+            #   • DÉBITO  → paga hoje e recebe a largura no vencimento
+            #               (aplicação sintética; retorno = largura/débito − 1)
+            #   • CRÉDITO → recebe hoje e devolve a largura no vencimento
+            #               (captação sintética; "retorno" é o custo do dinheiro)
+            # Só listamos linhas com RETORNO POSITIVO — as negativas são
+            # montagens que perdem para o simples ato de não fazer nada.
+            modo = (request.args.get('box_mode') or 'debito').lower()
+            call_by_k, put_by_k = {}, {}
+            for c in calls_ok:
+                call_by_k.setdefault(round(c['strike'], 2), c)
+            for p in puts_ok:
+                put_by_k.setdefault(round(p['strike'], 2), p)
+            ks = sorted(set(call_by_k) & set(put_by_k))
+            # Só strikes com alguma relevância em torno do spot
+            ks = [k for k in ks if 0.70 * spot <= k <= 1.30 * spot]
+            for i, ka in enumerate(ks):
+                for kb in ks[i + 1:]:
+                    ca, pa = call_by_k[ka], put_by_k[ka]
+                    cb, pb = call_by_k[kb], put_by_k[kb]
+                    width = round(kb - ka, 2)
+                    if width <= 0:
+                        continue
+                    if modo == 'credito':
+                        # Box VENDIDO: −CALL(A) +PUT(A) +CALL(B) −PUT(B)
+                        premio = (ca['bid'] - pa['ask'] - cb['ask'] + pb['bid'])
+                        # Recebe "premio" agora e devolve "width" no vencimento.
+                        # Retorno positivo = recebeu mais do que vai devolver.
+                        if premio <= 0:
+                            continue
+                        ret_pct = (premio - width) / width * 100
+                        box_legs = [(-1, ca, 'CALL', ca['bid']), (1, pa, 'PUT', pa['ask']),
+                                    (1, cb, 'CALL', cb['ask']), (-1, pb, 'PUT', pb['bid'])]
+                    else:
+                        # Box COMPRADO: +CALL(A) −PUT(A) −CALL(B) +PUT(B)
+                        premio = -(ca['ask'] - pa['bid'] - cb['bid'] + pb['ask'])
+                        # premio < 0 → débito pago hoje; recebe width no venc.
+                        custo = -premio
+                        if custo <= 0:
+                            continue
+                        ret_pct = (width - custo) / custo * 100
+                        box_legs = [(1, ca, 'CALL', ca['ask']), (-1, pa, 'PUT', pa['bid']),
+                                    (-1, cb, 'CALL', cb['bid']), (1, pb, 'PUT', pb['ask'])]
+                    if ret_pct <= 0:          # só oportunidades com retorno positivo
+                        continue
+                    rows.append({
+                        'legs_txt':  [{'s': '+' if q > 0 else '-', 'sym': rw['symbol']}
+                                      for q, rw, _tp, _px in box_legs],
+                        'strike_lo': ka, 'strike_hi': kb,
+                        'asa':       width,
+                        'premio':    round(premio, 2),
+                        'modo':      modo,
+                        'ret_pct':   round(ret_pct, 2),
+                        'cdi_pct':   (round(ret_pct / selic_period * 100)
+                                      if selic_period > 0.0001 else None),
+                        'liq':       min(ca.get('vol_fin') or 0, pa.get('vol_fin') or 0,
+                                         cb.get('vol_fin') or 0, pb.get('vol_fin') or 0),
+                        # Campos padrão (modal / abrir na cadeia / cálculos)
+                        'legs': [{'sym': rw['symbol'], 'tp': tp, 'k': rw['strike'],
+                                  'q': q, 'px': px, 'delta': None}
+                                 for q, rw, tp, px in box_legs],
+                        'net':       round(premio, 2),
+                        'is_credit': premio > 0,
+                        'montagem':  'CRÉDITO' if premio > 0 else 'DÉBITO',
+                        'max_gain':  round(abs(premio - width) if modo == 'credito'
+                                           else width + premio, 2),
+                        'gain_unl':  False,
+                        'max_loss':  0.0,
+                        'loss_unl':  False,
+                        'ratio':     None,
+                        'bes':       [],
+                    })
+            rows.sort(key=lambda x: -x['ret_pct'])
+            rows = _diversify(rows, lambda x: x['strike_lo'], per_key=3, limit=20)
 
         expirations.append({
             'exp':          exp,

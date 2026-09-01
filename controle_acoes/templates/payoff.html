@@ -96,6 +96,21 @@
                             <div class="mj-new"><label style="font-size:.72rem;color:var(--text-secondary);">Novo ticker</label>
                                 <input type="text" name="leg_new_ticker" class="form-control form-control-sm"
                                        style="text-transform:uppercase;" value="{{ leg.ticker }}" disabled></div>
+                            {# A perna substituta pode trocar de tipo (PUT↔CALL) e de lado
+                               (compra↔venda): fechar uma PUT vendida e abrir no lugar uma
+                               CALL comprada para travar o risco é um manejo legítimo. #}
+                            <div class="mj-new"><label style="font-size:.72rem;color:var(--text-secondary);">Novo tipo</label>
+                                <select name="leg_new_type" class="form-control form-control-sm"
+                                        onchange="mjSimRefresh()" disabled>
+                                    <option value="CALL" {{ 'selected' if leg.opt_type=='CALL' else '' }}>CALL</option>
+                                    <option value="PUT"  {{ 'selected' if leg.opt_type=='PUT'  else '' }}>PUT</option>
+                                </select></div>
+                            <div class="mj-new"><label style="font-size:.72rem;color:var(--text-secondary);">Novo lado</label>
+                                <select name="leg_new_side" class="form-control form-control-sm"
+                                        onchange="mjSimRefresh()" disabled>
+                                    <option value="SELL" {{ 'selected' if leg.side=='SELL' else '' }}>Venda (V)</option>
+                                    <option value="BUY"  {{ 'selected' if leg.side=='BUY'  else '' }}>Compra (C)</option>
+                                </select></div>
                             <div class="mj-new"><label style="font-size:.72rem;color:var(--text-secondary);">Novo strike</label>
                                 <input type="text" name="leg_new_strike" class="form-control form-control-sm"
                                        value="{{ '%.2f'|format(leg.strike or 0)|replace('.', ',') }}" disabled></div>
@@ -144,7 +159,7 @@
         var fs = chk.closest('.mj-leg');
         var fields = fs.querySelector('.mj-fields');
         fields.style.display = chk.checked ? 'block' : 'none';
-        fields.querySelectorAll('input').forEach(function (i) { i.disabled = !chk.checked; });
+        fields.querySelectorAll('input, select').forEach(function (i) { i.disabled = !chk.checked; });
         if (!chk.checked) {
             // Ao desmarcar a perna, desfaz também o "encerrar" para não deixar
             // um leg_drop pendente de uma perna que voltou a ficar intocada.
@@ -159,7 +174,7 @@
     function mjAplicaDrop(fs, encerrando) {
         fs.querySelectorAll('.mj-new').forEach(function (d) {
             d.style.display = encerrando ? 'none' : '';
-            d.querySelectorAll('input').forEach(function (i) { i.disabled = encerrando; });
+            d.querySelectorAll('input, select').forEach(function (i) { i.disabled = encerrando; });
         });
         var lbl = fs.querySelector('.mj-drop-lbl');
         if (lbl) {
@@ -234,6 +249,11 @@
                 line.new_strike  = mjNum(fs.querySelector('[name=leg_new_strike]').value);
                 line.open_price  = mjNum(fs.querySelector('[name=leg_new_premium]').value);
                 line.new_exp     = fs.querySelector('[name=leg_new_exp]').value || '';
+                // Troca de tipo/lado da perna substituta (PUT↔CALL, compra↔venda)
+                var tpEl = fs.querySelector('[name=leg_new_type]');
+                var sdEl = fs.querySelector('[name=leg_new_side]');
+                if (tpEl) line.new_type = tpEl.value;
+                if (sdEl) line.new_side = sdEl.value;
             }
             lines.push(line);
         });
@@ -341,12 +361,19 @@
             var nk    = mjNum(fs.querySelector('[name=leg_new_strike]').value) || base.strike;
             var np    = mjNum(fs.querySelector('[name=leg_new_premium]').value);
             var ne    = fs.querySelector('[name=leg_new_exp]').value || base.exp;
-            if (l.side === 'SELL') {           // recompra a antiga, vende a nova
-                saiu += close * q;  realizado += (base.entry - close) * q;  entrou += np * q;
-            } else {                            // vende a antiga, compra a nova
-                entrou += close * q; realizado += (close - base.entry) * q; saiu += np * q;
-            }
-            sim.push({side: l.side, type: l.opt_type, qty: q, strike: nk, entry: np, exp: ne});
+            // A nova perna pode trocar de tipo (PUT↔CALL) e de lado (compra↔venda)
+            var tpEl  = fs.querySelector('[name=leg_new_type]');
+            var sdEl  = fs.querySelector('[name=leg_new_side]');
+            var ntp   = (tpEl && tpEl.value) || l.opt_type;
+            var nsd   = (sdEl && sdEl.value) || l.side;
+            // O fechamento segue o lado ANTIGO; a abertura, o lado NOVO — eles
+            // divergem quando a perna troca de lado (ex.: fecha PUT vendida e
+            // abre CALL comprada, dois desembolsos).
+            if (l.side === 'SELL') { saiu   += close * q; realizado += (base.entry - close) * q; }
+            else                   { entrou += close * q; realizado += (close - base.entry) * q; }
+            if (nsd === 'SELL') entrou += np * q;
+            else                saiu   += np * q;
+            sim.push({side: nsd, type: ntp, qty: q, strike: nk, entry: np, exp: ne});
         });
         return {legs: sim, saiu: saiu, entrou: entrou, realizado: realizado,
                 algum: algum, encerradas: nEncerradas};

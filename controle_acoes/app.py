@@ -7865,6 +7865,11 @@ def roll_estruturada(id):
     new_strikes     = request.form.getlist('leg_new_strike')
     new_premiums    = request.form.getlist('leg_new_premium')
     new_exps        = request.form.getlist('leg_new_exp')
+    # A perna substituta pode trocar de TIPO (PUT↔CALL) e de LADO (compra↔venda):
+    # ex. encerrar uma PUT vendida e abrir no lugar uma CALL comprada para travar
+    # o risco de uma call descoberta. Listas paralelas às demais "leg_new_*".
+    new_types       = request.form.getlist('leg_new_type')
+    new_sides       = request.form.getlist('leg_new_side')
     # Pernas a ENCERRAR (zerar o braço): saem da estrutura em vez de trocar de
     # contrato. Vem como lista de leg_id — os campos da nova perna ficam
     # desabilitados no formulário, então não deslocam as listas paralelas acima.
@@ -7933,21 +7938,35 @@ def roll_estruturada(id):
             nk  = float(new_strikes[j].replace(',','.'))   if j < len(new_strikes)   and new_strikes[j]   else leg.strike
             np_ = float(new_premiums[j].replace(',','.'))  if j < len(new_premiums)  and new_premiums[j]  else leg.entry_price
             ne  = new_exps[j]                               if j < len(new_exps)      and new_exps[j]      else (leg.expiration_date.isoformat() if leg.expiration_date else '')
+            ntp = (new_types[j].upper().strip()             if j < len(new_types)     and new_types[j]     else leg.opt_type)
+            nsd = (new_sides[j].upper().strip()             if j < len(new_sides)     and new_sides[j]     else leg.side)
+            if ntp not in ('CALL', 'PUT'):
+                ntp = leg.opt_type
+            if nsd not in ('BUY', 'SELL'):
+                nsd = leg.side
             j += 1
 
-            # SELL: recebe novo prêmio, paga para fechar → crédito = np_ - cp
-            # BUY:  paga novo prêmio, recebe para fechar → custo  = cp - np_
+            # Caixa do ajuste: o FECHAMENTO segue o lado ANTIGO da perna e a
+            # ABERTURA segue o lado NOVO — eles podem divergir quando a perna
+            # troca de lado (ex.: fecha PUT vendida e abre CALL comprada, dois
+            # desembolsos). Usar um lado só distorceria o net do manejo.
             if leg.side == 'SELL':
-                net_roll += (np_ - cp) * qty
+                net_roll -= cp * qty        # recompra a vendida: paga
             else:
-                net_roll += (cp - np_) * qty
+                net_roll += cp * qty        # vende a comprada: recebe
+            if nsd == 'SELL':
+                net_roll += np_ * qty       # vende a nova: recebe
+            else:
+                net_roll -= np_ * qty       # compra a nova: paga
 
-            # A perna foi de fato manejada? (ticker/strike/prêmio/venc mudaram)
+            # A perna foi de fato manejada? (ticker/strike/prêmio/venc/tipo/lado)
             old_exp_iso = leg.expiration_date.isoformat() if leg.expiration_date else ''
             changed = (nt != leg.ticker
                        or abs(nk - (leg.strike or 0)) > 0.001
                        or abs(np_ - (leg.entry_price or 0)) > 0.001
-                       or (ne or '') != old_exp_iso)
+                       or (ne or '') != old_exp_iso
+                       or ntp != leg.opt_type
+                       or nsd != leg.side)
 
             # Resultado da perna fechada — apenas REGISTRADO (roll_history), NÃO
             # vira TradeHistory. Num manejo, fechar/abrir pernas é ajuste de
@@ -7970,7 +7989,10 @@ def roll_estruturada(id):
                 'new_strike':    nk,
                 'new_premium':   np_,
                 'new_exp':       ne,
-                'side':          leg.side,
+                'side':          leg.side,          # lado ANTIGO (fecha assim)
+                'old_type':      leg.opt_type,
+                'new_type':      ntp,
+                'new_side':      nsd,
                 'quantity':      qty,
                 'realized_pnl':  round(((leg.entry_price or 0) - cp) * qty if leg.side == 'SELL'
                                        else (cp - (leg.entry_price or 0)) * qty, 2) if changed else None,
@@ -7979,6 +8001,8 @@ def roll_estruturada(id):
             # Atualiza a perna
             leg.ticker          = nt
             leg.strike          = nk
+            leg.opt_type        = ntp
+            leg.side            = nsd
             leg.entry_price     = np_
             leg.current_price   = np_
             if ne:

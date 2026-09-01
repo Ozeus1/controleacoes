@@ -1008,6 +1008,17 @@ function openRollEstruturada(id, name, legs) {
             '<input type="text" name="leg_close_price" class="form-control form-control-sm" placeholder="0,00" value="' + ((leg.current_price||leg.entry_price||0).toFixed(2).replace('.',',')) + '"></div>' +
             '<div><label style="font-size:.72rem;color:var(--text-secondary);">Novo Ticker</label>' +
             '<input type="text" name="leg_new_ticker" class="form-control form-control-sm" style="text-transform:uppercase;" value="' + (leg.ticker||'') + '"></div>' +
+            // A perna substituta pode trocar de tipo (PUT↔CALL) e de lado (compra↔venda)
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Novo Tipo</label>' +
+            '<select name="leg_new_type" class="form-control form-control-sm">' +
+            '<option value="CALL"' + (leg.opt_type === 'CALL' ? ' selected' : '') + '>CALL</option>' +
+            '<option value="PUT"'  + (leg.opt_type === 'PUT'  ? ' selected' : '') + '>PUT</option>' +
+            '</select></div>' +
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Novo Lado</label>' +
+            '<select name="leg_new_side" class="form-control form-control-sm">' +
+            '<option value="SELL"' + (leg.side === 'SELL' ? ' selected' : '') + '>Venda (V)</option>' +
+            '<option value="BUY"'  + (leg.side === 'BUY'  ? ' selected' : '') + '>Compra (C)</option>' +
+            '</select></div>' +
             '<div><label style="font-size:.72rem;color:var(--text-secondary);">Novo Strike</label>' +
             '<input type="text" name="leg_new_strike" class="form-control form-control-sm" placeholder="0,00" value="' + ((leg.strike||0).toFixed(2).replace('.',',')) + '"></div>' +
             '<div><label style="font-size:.72rem;color:var(--text-secondary);">Novo Prêmio</label>' +
@@ -1190,12 +1201,27 @@ function openRollHistory(history, title, defaultQty) {
                 var cvBg  = isS ? 'rgba(239,68,68,.15)' : 'rgba(16,185,129,.15)';
                 var cvCol = isS ? 'var(--danger-color)' : 'var(--success-color)';
                 var newExp = l.new_exp ? l.new_exp.split('-').reverse().join('/') : '—';
+                // Quando a perna troca de lado, mostra a transição (ex.: V → C)
+                var nS = l.new_side || l.side;
+                var cvTxt = (isS ? 'V' : 'C');
+                if (l.new_side && l.new_side !== l.side) {
+                    cvTxt += ' → ' + (nS === 'SELL' ? 'V' : 'C');
+                }
+                // Idem para a troca de tipo (PUT ↔ CALL), anotada no ticker novo
+                var tipoTxt = '';
+                if (l.new_type && l.old_type && l.new_type !== l.old_type) {
+                    tipoTxt = ' <span style="color:var(--text-secondary);font-size:.72rem;">(' +
+                              l.old_type + '→' + l.new_type + ')</span>';
+                } else if (l.new_type) {
+                    tipoTxt = ' <span style="color:var(--text-secondary);font-size:.72rem;">' +
+                              l.new_type + '</span>';
+                }
                 html += '<tr>' +
-                    '<td style="' + tdStyle() + '"><span style="padding:.1rem .4rem;border-radius:4px;font-size:.75rem;font-weight:700;background:' + cvBg + ';color:' + cvCol + ';">' + (isS?'V':'C') + '</span></td>' +
+                    '<td style="' + tdStyle() + '"><span style="padding:.1rem .4rem;border-radius:4px;font-size:.75rem;font-weight:700;background:' + cvBg + ';color:' + cvCol + ';">' + cvTxt + '</span></td>' +
                     '<td style="' + tdStyle() + '"><strong>' + (l.old_ticker||'') + '</strong></td>' +
                     '<td style="' + tdStyle('r') + '">' + brl(l.old_strike) + '</td>' +
                     '<td style="' + tdStyle('r') + '">' + brl(l.close_price) + '</td>' +
-                    '<td style="' + tdStyle() + '"><strong>' + (l.new_ticker||'') + '</strong></td>' +
+                    '<td style="' + tdStyle() + '"><strong>' + (l.new_ticker||'') + '</strong>' + tipoTxt + '</td>' +
                     '<td style="' + tdStyle('r') + '">' + brl(l.new_strike) + '</td>' +
                     '<td style="' + tdStyle('r') + '">' + brl(l.new_premium) + '</td>' +
                     '<td style="' + tdStyle() + '">' + newExp + '</td>' +

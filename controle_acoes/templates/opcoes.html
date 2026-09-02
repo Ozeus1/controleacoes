@@ -1054,7 +1054,61 @@ function openRollHistory(history, title, defaultQty) {
         return isNaN(n) ? '—' : 'R$ ' + n.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
     }
     function thStyle() { return 'padding:.35rem .6rem;text-align:left;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-secondary);white-space:nowrap;border-bottom:1px solid var(--border-color);'; }
-    function tdStyle(align) { return 'padding:.35rem .6rem;font-size:.83rem;border-bottom:1px solid var(--border-color);' + (align==='r'?'text-align:right;':''); }
+    function tdStyle(align) { return 'padding:.45rem .6rem;font-size:.83rem;border-bottom:1px solid var(--border-color);vertical-align:top;' + (align==='r'?'text-align:right;':''); }
+
+    function dBR(iso) { return iso ? String(iso).split('-').reverse().join('/') : null; }
+    function nOrNull(v) { var n = parseFloat(v); return isNaN(n) ? null : n; }
+
+    // Célula "ticker + strike/venc + preço" de uma ponta (a que saiu ou a que entrou)
+    function pernaCel(tk, tipo, k, px, exp, rotPreco) {
+        if (!tk && k == null && px == null) return '<span style="color:var(--text-secondary);">—</span>';
+        var sub = [];
+        if (k != null) sub.push('K ' + brl(k));
+        if (exp) sub.push('venc. ' + exp);
+        return '<div><strong>' + (tk || '—') + '</strong>' +
+               (tipo ? ' <span style="font-size:.7rem;color:var(--text-secondary);">' + tipo + '</span>' : '') +
+               '</div>' +
+               (sub.length ? '<div style="font-size:.72rem;color:var(--text-secondary);">' + sub.join(' · ') + '</div>' : '') +
+               (px != null ? '<div style="font-size:.75rem;">' + rotPreco + ' <strong>' + brl(px) + '</strong></div>' : '');
+    }
+
+    // Descreve o que de fato mudou na perna: strike, prazo, tipo e lado.
+    function mudancaCel(okStrike, nkStrike, oldExp, newExp, oldType, newType, oldSide, newSide) {
+        var tags = [];
+        function tag(txt, cor) {
+            return '<span style="display:inline-block;padding:.08rem .4rem;border-radius:4px;font-size:.72rem;' +
+                   'background:' + (cor || 'rgba(148,163,184,.15)') + ';margin:.1rem .15rem .1rem 0;white-space:nowrap;">' + txt + '</span>';
+        }
+        var ok = nOrNull(okStrike), nk = nOrNull(nkStrike);
+        if (ok != null && nk != null && Math.abs(nk - ok) > 0.005) {
+            var dif = nk - ok;
+            tags.push(tag('🎯 Strike ' + (dif > 0 ? '↑' : '↓') + ' ' + brl(Math.abs(dif)),
+                          dif > 0 ? 'rgba(16,185,129,.15)' : 'rgba(239,68,68,.15)'));
+        }
+        if (oldExp && newExp && oldExp !== newExp) {
+            var d1 = new Date(oldExp + 'T00:00:00'), d2 = new Date(newExp + 'T00:00:00');
+            var dias = Math.round((d2 - d1) / 864e5);
+            tags.push(tag('📅 Prazo ' + (dias > 0 ? '+' : '') + dias + 'd', 'rgba(59,130,246,.15)'));
+        } else if (newExp && !oldExp) {
+            tags.push(tag('📅 venc. ' + dBR(newExp), 'rgba(59,130,246,.15)'));
+        }
+        if (oldType && newType && oldType !== newType) {
+            tags.push(tag('🔄 ' + oldType + ' → ' + newType, 'rgba(168,85,247,.18)'));
+        }
+        if (oldSide && newSide && oldSide !== newSide) {
+            tags.push(tag('🔀 ' + (oldSide === 'SELL' ? 'Venda' : 'Compra') + ' → ' +
+                          (newSide === 'SELL' ? 'Venda' : 'Compra'), 'rgba(168,85,247,.18)'));
+        }
+        if (!tags.length) tags.push('<span style="color:var(--text-secondary);font-size:.75rem;">mesma posição</span>');
+        return tags.join('');
+    }
+
+    // Caixa de uma perna: fecha pelo lado antigo, abre pelo lado novo.
+    function caixaCel(vlr) {
+        if (vlr == null) return '<span style="color:var(--text-secondary);">—</span>';
+        var cor = vlr >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+        return '<strong style="color:' + cor + ';white-space:nowrap;">' + (vlr >= 0 ? '+' : '') + brl(vlr) + '</strong>';
+    }
 
     var totalNet = 0;
     var html = '';
@@ -1071,7 +1125,9 @@ function openRollHistory(history, title, defaultQty) {
         var qtyRoll = parseFloat(r.quantity) || defaultQty || 1;
         var canCalc = false;
 
-        // Estruturada: recalcula a partir das pernas
+        // Estruturada: recalcula a partir das pernas, com a MESMA convenção da
+        // coluna "Caixa da perna" — fecha pelo lado ANTIGO e abre pelo lado NOVO
+        // (podem divergir), e pernas encerradas entram só com o fechamento.
         if (r.legs && r.legs.length) {
             var sum = 0;
             var hasData = false;
@@ -1079,10 +1135,13 @@ function openRollHistory(history, title, defaultQty) {
                 var qty = parseFloat(l.quantity) || 1;
                 var cp  = parseFloat(l.close_price);
                 var np_ = parseFloat(l.new_premium);
-                // Só calcula se ambos os preços existem e não são ambos zero
-                if (!isNaN(cp) && !isNaN(np_) && (cp !== 0 || np_ !== 0)) {
+                var nS  = l.new_side || l.side;
+                if (!isNaN(cp)) {
                     hasData = true;
-                    sum += l.side === 'SELL' ? (np_ - cp) * qty : (cp - np_) * qty;
+                    sum += (l.side === 'SELL' ? -cp : cp) * qty;      // fechamento
+                    if (!l.closed_leg && !isNaN(np_)) {
+                        sum += (nS === 'SELL' ? np_ : -np_) * qty;    // abertura
+                    }
                 }
             });
             if (hasData) { net = sum; canCalc = true; }
@@ -1137,94 +1196,119 @@ function openRollHistory(history, title, defaultQty) {
 
         html += '<div style="margin-bottom:1.2rem;border-left:3px solid ' + borderCol + ';padding-left:.75rem;">';
         // Cabeçalho da rolagem
-        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;gap:.75rem;">' +
-            '<strong style="font-size:.9rem;">Rolagem #' + (i+1) + ' — ' + (r.roll_type||'TEMPO') + '</strong>' +
-            '<span style="font-size:.78rem;color:var(--text-secondary);">' + (r.rolled_at||'') + (qtyRoll ? ' · Qtd ' + qtyRoll : '') + '</span></div>';
+        var dataEv = r.rolled_at || dBR(r.roll_date) || '';
+        var nPernas = (r.legs && r.legs.length) ? r.legs.length
+                     : (r.old_long_ticker ? 2 : (r.old_ticker ? 1 : 0));
+        // Numa estruturada a quantidade real está em CADA PERNA e o campo do
+        // evento costuma vir ausente ou como 1 — exibir esse 1 numa operação
+        // de, por exemplo, 500 contratos faz o valor por perna não fechar com
+        // o saldo. Quando há pernas, elas mandam.
+        var qtyShow = qtyRoll;
+        if (r.legs && r.legs.length) {
+            var qs = r.legs.map(function(l) { return parseFloat(l.quantity) || 0; })
+                           .filter(function(q) { return q > 0; });
+            if (qs.length) {
+                var uniq = qs.filter(function(v, ix, a) { return a.indexOf(v) === ix; });
+                qtyShow = uniq.length === 1 ? uniq[0] : Math.max.apply(null, qs);
+            }
+        }
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;gap:.75rem;flex-wrap:wrap;">' +
+            '<strong style="font-size:.9rem;">Evento #' + (i+1) + ' — ' + (r.roll_type||'TEMPO') +
+            (nPernas ? '<span style="font-weight:400;font-size:.78rem;color:var(--text-secondary);"> · ' +
+                       nPernas + (nPernas > 1 ? ' pernas' : ' perna') + '</span>' : '') + '</strong>' +
+            '<span style="font-size:.78rem;color:var(--text-secondary);">📅 ' + dataEv + (qtyShow ? ' · Qtd ' + qtyShow : '') + '</span></div>';
 
-        // Tabela de tickers negociados
+        // Tabela de tickers negociados. Cada linha conta a história de UMA perna:
+        // o que saiu, o que entrou no lugar, o que mudou (strike/prazo) e quanto
+        // isso movimentou de caixa.
         html += '<div style="overflow-x:auto;">' +
             '<table style="width:100%;border-collapse:collapse;background:var(--hover-bg);border-radius:6px;overflow:hidden;">' +
             '<thead><tr>' +
             '<th style="' + thStyle() + '">C/V</th>' +
-            '<th style="' + thStyle() + '">Ticker Saiu</th>' +
-            '<th style="' + thStyle() + 'text-align:right;">Strike Saiu</th>' +
-            '<th style="' + thStyle() + 'text-align:right;">Preço Saída</th>' +
-            '<th style="' + thStyle() + '">Ticker Entrou</th>' +
-            '<th style="' + thStyle() + 'text-align:right;">Strike Entrou</th>' +
-            '<th style="' + thStyle() + 'text-align:right;">Preço Entrada</th>' +
-            '<th style="' + thStyle() + '">Novo Venc.</th>' +
+            '<th style="' + thStyle() + '">↙ Saiu (fechou)</th>' +
+            '<th style="' + thStyle() + '">↗ Entrou (abriu)</th>' +
+            '<th style="' + thStyle() + '">Mudança</th>' +
+            '<th style="' + thStyle() + 'text-align:right;">Caixa da perna</th>' +
             '</tr></thead><tbody>';
 
         // Opção individual
         if (r.old_ticker) {
-            var isShort = (r.option_type||'').indexOf('VENDA') >= 0;
+            var isShort = (r.option_type||'').indexOf('VENDA') >= 0 || !r.option_type;
             html += '<tr>' +
-                '<td style="' + tdStyle() + '"><span style="padding:.1rem .4rem;border-radius:4px;font-size:.75rem;font-weight:700;background:rgba(239,68,68,.15);color:var(--danger-color);">V</span></td>' +
-                '<td style="' + tdStyle() + '"><strong>' + (r.old_ticker||'') + '</strong></td>' +
-                '<td style="' + tdStyle('r') + '">' + brl(r.old_strike) + '</td>' +
-                '<td style="' + tdStyle('r') + '">' + brl(r.close_premium) + '</td>' +
-                '<td style="' + tdStyle() + '"><strong>' + (r.new_ticker||'') + '</strong></td>' +
-                '<td style="' + tdStyle('r') + '">' + brl(r.new_strike) + '</td>' +
-                '<td style="' + tdStyle('r') + '">' + brl(r.new_premium) + '</td>' +
-                '<td style="' + tdStyle() + '">' + (r.new_exp ? r.new_exp.split('-').reverse().join('/') : '—') + '</td>' +
+                '<td style="' + tdStyle() + '"><span style="padding:.1rem .4rem;border-radius:4px;font-size:.75rem;font-weight:700;background:' +
+                    (isShort ? 'rgba(239,68,68,.15);color:var(--danger-color);' : 'rgba(16,185,129,.15);color:var(--success-color);') + '">' +
+                    (isShort ? 'V' : 'C') + '</span></td>' +
+                '<td style="' + tdStyle() + '">' + pernaCel(r.old_ticker, null, r.old_strike, r.close_premium,
+                        dBR(r.old_exp), isShort ? 'recompra' : 'venda') + '</td>' +
+                '<td style="' + tdStyle() + '">' + pernaCel(r.new_ticker, null, r.new_strike, r.new_premium,
+                        dBR(r.new_exp), isShort ? 'prêmio' : 'custo') + '</td>' +
+                '<td style="' + tdStyle() + '">' + mudancaCel(r.old_strike, r.new_strike, r.old_exp, r.new_exp) + '</td>' +
+                '<td style="' + tdStyle('r') + '">' + caixaCel(net) + '</td>' +
                 '</tr>';
         }
 
         // Trava (long + short)
         if (r.old_long_ticker) {
+            // Comprada: vende para fechar (entra caixa), paga para abrir (sai)
+            var cxLong = (nOrNull(r.close_long_price) == null || nOrNull(r.new_long_price) == null)
+                ? null : (nOrNull(r.close_long_price) - nOrNull(r.new_long_price)) * qtyRoll;
+            // Vendida: recompra para fechar (sai), recebe para abrir (entra)
+            var cxShort = (nOrNull(r.close_short_price) == null || nOrNull(r.new_short_price) == null)
+                ? null : (nOrNull(r.new_short_price) - nOrNull(r.close_short_price)) * qtyRoll;
             html += '<tr>' +
                 '<td style="' + tdStyle() + '"><span style="padding:.1rem .4rem;border-radius:4px;font-size:.75rem;font-weight:700;background:rgba(16,185,129,.15);color:var(--success-color);">C</span></td>' +
-                '<td style="' + tdStyle() + '"><strong>' + (r.old_long_ticker||'') + '</strong></td>' +
-                '<td style="' + tdStyle('r') + '">' + brl(r.old_long_strike) + '</td>' +
-                '<td style="' + tdStyle('r') + '">' + brl(r.close_long_price) + '</td>' +
-                '<td style="' + tdStyle() + '"><strong>' + (r.new_long_ticker||'') + '</strong></td>' +
-                '<td style="' + tdStyle('r') + '">' + brl(r.new_long_strike) + '</td>' +
-                '<td style="' + tdStyle('r') + '">' + brl(r.new_long_price) + '</td>' +
-                '<td style="' + tdStyle() + '">' + (r.new_exp ? r.new_exp.split('-').reverse().join('/') : '—') + '</td>' +
+                '<td style="' + tdStyle() + '">' + pernaCel(r.old_long_ticker, null, r.old_long_strike, r.close_long_price, dBR(r.old_exp), 'venda') + '</td>' +
+                '<td style="' + tdStyle() + '">' + pernaCel(r.new_long_ticker, null, r.new_long_strike, r.new_long_price, dBR(r.new_exp), 'custo') + '</td>' +
+                '<td style="' + tdStyle() + '">' + mudancaCel(r.old_long_strike, r.new_long_strike, r.old_exp, r.new_exp) + '</td>' +
+                '<td style="' + tdStyle('r') + '">' + caixaCel(cxLong) + '</td>' +
                 '</tr>';
             html += '<tr>' +
                 '<td style="' + tdStyle() + '"><span style="padding:.1rem .4rem;border-radius:4px;font-size:.75rem;font-weight:700;background:rgba(239,68,68,.15);color:var(--danger-color);">V</span></td>' +
-                '<td style="' + tdStyle() + '"><strong>' + (r.old_short_ticker||'') + '</strong></td>' +
-                '<td style="' + tdStyle('r') + '">' + brl(r.old_short_strike) + '</td>' +
-                '<td style="' + tdStyle('r') + '">' + brl(r.close_short_price) + '</td>' +
-                '<td style="' + tdStyle() + '"><strong>' + (r.new_short_ticker||'') + '</strong></td>' +
-                '<td style="' + tdStyle('r') + '">' + brl(r.new_short_strike) + '</td>' +
-                '<td style="' + tdStyle('r') + '">' + brl(r.new_short_price) + '</td>' +
-                '<td style="' + tdStyle() + '">' + (r.new_exp ? r.new_exp.split('-').reverse().join('/') : '—') + '</td>' +
+                '<td style="' + tdStyle() + '">' + pernaCel(r.old_short_ticker, null, r.old_short_strike, r.close_short_price, dBR(r.old_exp), 'recompra') + '</td>' +
+                '<td style="' + tdStyle() + '">' + pernaCel(r.new_short_ticker, null, r.new_short_strike, r.new_short_price, dBR(r.new_exp), 'prêmio') + '</td>' +
+                '<td style="' + tdStyle() + '">' + mudancaCel(r.old_short_strike, r.new_short_strike, r.old_exp, r.new_exp) + '</td>' +
+                '<td style="' + tdStyle('r') + '">' + caixaCel(cxShort) + '</td>' +
                 '</tr>';
         }
 
         // Estruturada (múltiplas pernas)
         if (r.legs) {
             r.legs.forEach(function(l) {
-                var isS = l.side === 'SELL';
+                var isS  = l.side === 'SELL';
+                var nS   = l.new_side || l.side;
+                var qL   = parseFloat(l.quantity) || 1;
+                var encerrada = !!l.closed_leg;
                 var cvBg  = isS ? 'rgba(239,68,68,.15)' : 'rgba(16,185,129,.15)';
                 var cvCol = isS ? 'var(--danger-color)' : 'var(--success-color)';
-                var newExp = l.new_exp ? l.new_exp.split('-').reverse().join('/') : '—';
-                // Quando a perna troca de lado, mostra a transição (ex.: V → C)
-                var nS = l.new_side || l.side;
                 var cvTxt = (isS ? 'V' : 'C');
-                if (l.new_side && l.new_side !== l.side) {
+                if (l.new_side && l.new_side !== l.side && !encerrada) {
                     cvTxt += ' → ' + (nS === 'SELL' ? 'V' : 'C');
                 }
-                // Idem para a troca de tipo (PUT ↔ CALL), anotada no ticker novo
-                var tipoTxt = '';
-                if (l.new_type && l.old_type && l.new_type !== l.old_type) {
-                    tipoTxt = ' <span style="color:var(--text-secondary);font-size:.72rem;">(' +
-                              l.old_type + '→' + l.new_type + ')</span>';
-                } else if (l.new_type) {
-                    tipoTxt = ' <span style="color:var(--text-secondary);font-size:.72rem;">' +
-                              l.new_type + '</span>';
+                // Caixa da perna: fecha pelo lado ANTIGO, abre pelo lado NOVO
+                var cpL = nOrNull(l.close_price), npL = nOrNull(l.new_premium);
+                var cxL = null;
+                if (cpL != null) {
+                    cxL = (isS ? -cpL : cpL) * qL;            // fechamento
+                    if (!encerrada && npL != null) {
+                        cxL += (nS === 'SELL' ? npL : -npL) * qL;   // abertura
+                    }
                 }
-                html += '<tr>' +
+                var entrouCel = encerrada
+                    ? '<span style="color:var(--danger-color);font-size:.78rem;">🗑️ perna encerrada' +
+                      '<div style="font-size:.72rem;color:var(--text-secondary);">saiu da estrutura</div></span>'
+                    : pernaCel(l.new_ticker, l.new_type, l.new_strike, l.new_premium,
+                               dBR(l.new_exp), nS === 'SELL' ? 'prêmio' : 'custo');
+                var mudCel = encerrada
+                    ? '<span style="color:var(--text-secondary);font-size:.75rem;">posição zerada</span>'
+                    : mudancaCel(l.old_strike, l.new_strike, l.old_exp, l.new_exp,
+                                 l.old_type, l.new_type, l.side, l.new_side);
+                html += '<tr' + (encerrada ? ' style="opacity:.85;"' : '') + '>' +
                     '<td style="' + tdStyle() + '"><span style="padding:.1rem .4rem;border-radius:4px;font-size:.75rem;font-weight:700;background:' + cvBg + ';color:' + cvCol + ';">' + cvTxt + '</span></td>' +
-                    '<td style="' + tdStyle() + '"><strong>' + (l.old_ticker||'') + '</strong></td>' +
-                    '<td style="' + tdStyle('r') + '">' + brl(l.old_strike) + '</td>' +
-                    '<td style="' + tdStyle('r') + '">' + brl(l.close_price) + '</td>' +
-                    '<td style="' + tdStyle() + '"><strong>' + (l.new_ticker||'') + '</strong>' + tipoTxt + '</td>' +
-                    '<td style="' + tdStyle('r') + '">' + brl(l.new_strike) + '</td>' +
-                    '<td style="' + tdStyle('r') + '">' + brl(l.new_premium) + '</td>' +
-                    '<td style="' + tdStyle() + '">' + newExp + '</td>' +
+                    '<td style="' + tdStyle() + '">' + pernaCel(l.old_ticker, l.old_type, l.old_strike, l.close_price,
+                            dBR(l.old_exp), isS ? 'recompra' : 'venda') + '</td>' +
+                    '<td style="' + tdStyle() + '">' + entrouCel + '</td>' +
+                    '<td style="' + tdStyle() + '">' + mudCel + '</td>' +
+                    '<td style="' + tdStyle('r') + '">' + caixaCel(cxL) + '</td>' +
                     '</tr>';
             });
         }
@@ -1232,7 +1316,37 @@ function openRollHistory(history, title, defaultQty) {
         html += '</tbody></table></div>';
 
         // Resumo da rolagem
-        if (r.old_long_ticker) {
+        if (r.legs && r.legs.length) {
+            // Estruturada: separa o que SAIU (desembolsos) do que ENTROU
+            // (recebimentos) no evento, para o saldo não esconder os dois lados.
+            var saiuE = 0, entrouE = 0, realizE = 0, temRealiz = false, nEnc = 0;
+            r.legs.forEach(function(l) {
+                var qL  = parseFloat(l.quantity) || 1;
+                var cpL = nOrNull(l.close_price), npL = nOrNull(l.new_premium);
+                var isS = l.side === 'SELL', nS = l.new_side || l.side;
+                if (cpL != null) {
+                    if (isS) saiuE += cpL * qL; else entrouE += cpL * qL;
+                }
+                if (!l.closed_leg && npL != null) {
+                    if (nS === 'SELL') entrouE += npL * qL; else saiuE += npL * qL;
+                }
+                var pl = nOrNull(l.realized_pnl);
+                if (pl != null) { realizE += pl; temRealiz = true; }
+                if (l.closed_leg) nEnc++;
+            });
+            var cardStyleE = 'padding:.55rem .7rem;background:var(--hover-bg);border:1px solid var(--border-color);border-radius:7px;';
+            html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.5rem;margin-top:.6rem;">';
+            html += '<div style="' + cardStyleE + '"><div style="font-size:.72rem;color:var(--text-secondary);">💸 Saiu da operação</div><strong style="color:var(--danger-color);">' + brl(saiuE) + '</strong></div>';
+            html += '<div style="' + cardStyleE + '"><div style="font-size:.72rem;color:var(--text-secondary);">💰 Entrou na operação</div><strong style="color:var(--success-color);">' + brl(entrouE) + '</strong></div>';
+            html += '<div style="' + cardStyleE + '"><div style="font-size:.72rem;color:var(--text-secondary);">Saldo do evento</div><strong style="color:' + ((entrouE-saiuE)>=0?'var(--success-color)':'var(--danger-color)') + ';">' + ((entrouE-saiuE)>=0?'+':'') + brl(entrouE - saiuE) + '</strong></div>';
+            if (temRealiz) {
+                html += '<div style="' + cardStyleE + '" title="Resultado das pernas fechadas neste evento. Só é apurado no encerramento da operação."><div style="font-size:.72rem;color:var(--text-secondary);">Realizado nas pernas fechadas</div><strong style="color:' + (realizE>=0?'var(--success-color)':'var(--danger-color)') + ';">' + (realizE>=0?'+':'') + brl(realizE) + '</strong></div>';
+            }
+            if (nEnc) {
+                html += '<div style="' + cardStyleE + '"><div style="font-size:.72rem;color:var(--text-secondary);">Pernas encerradas</div><strong>' + nEnc + '</strong></div>';
+            }
+            html += '</div>';
+        } else if (r.old_long_ticker) {
             var cardStyle = 'padding:.55rem .7rem;background:var(--hover-bg);border:1px solid var(--border-color);border-radius:7px;';
             var carried = initialCash == null ? null : initialCash + net;
             html += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:.5rem;margin-top:.6rem;">';
@@ -1260,8 +1374,8 @@ function openRollHistory(history, title, defaultQty) {
         }
 
         var netLabel = canCalc
-            ? 'Líquido da rolagem: ' + (net>=0?'+':'') + brl(net)
-            : 'Líquido da rolagem: <span style="color:var(--text-secondary);font-weight:400;">não disponível (preços de entrada não registrados)</span>';
+            ? 'Saldo do evento: ' + (net>=0?'+':'') + brl(net)
+            : 'Saldo do evento: <span style="color:var(--text-secondary);font-weight:400;">não disponível (preços de entrada não registrados)</span>';
         html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:.5rem;padding:.4rem .2rem;">' +
             '<span style="font-size:.82rem;color:var(--text-secondary);">' + (r.notes ? '<em>📝 ' + r.notes + '</em>' : '') + '</span>' +
             '<span style="font-size:.88rem;font-weight:700;color:' + netColor + ';">' + netLabel + '</span>' +
@@ -1282,7 +1396,14 @@ function openRollHistory(history, title, defaultQty) {
     // inicial + saldo das rolagens), até quanto dá para pagar na recompra da
     // perna vendida sem a operação virar prejuízo.
     var lastRoll = history[history.length - 1];
-    var lastQty  = parseFloat(lastRoll && lastRoll.quantity) || defaultQty || 1;
+    var lastQty  = parseFloat(lastRoll && lastRoll.quantity) || 0;
+    // Numa estruturada a quantidade fica nas pernas (ver qtyShow acima)
+    if (!lastQty && lastRoll && lastRoll.legs && lastRoll.legs.length) {
+        var lq = lastRoll.legs.map(function(l) { return parseFloat(l.quantity) || 0; })
+                              .filter(function(q) { return q > 0; });
+        if (lq.length) lastQty = Math.max.apply(null, lq);
+    }
+    if (!lastQty) lastQty = defaultQty || 1;
     if (cashAcum != null && lastQty) {
         var beFinal = cashAcum / lastQty;
         html += '<div style="margin-top:.5rem;padding:.75rem 1rem;background:var(--hover-bg);border-radius:8px;' +

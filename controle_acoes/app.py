@@ -15395,7 +15395,57 @@ def _yahoo_fetch(yf_ticker, start_date=None):
             'l': round(float(l), 4), 'c': round(float(c), 4),
             'v': int(vols[i]) if vols[i] is not None else 0,
         })
+
+    # O candle do dia corrente vem sem OHLC no endpoint diário enquanto o
+    # pregão não fecha (só o preço ao vivo). Reconstrói o candle de verdade
+    # a partir das barras intradiárias, senão ele seria desenhado como um
+    # traço reto (o=h=l=c) — visualmente idêntico a "não ter candle".
+    if rows:
+        _hoje = _dt2.now().strftime('%Y-%m-%d')
+        ult = rows[-1]
+        if ult['t'] == _hoje and ult['o'] == ult['h'] == ult['l'] == ult['c']:
+            intra = _yahoo_intraday_ohlc(yf_ticker)
+            if intra:
+                ult.update(intra)
     return rows
+
+
+def _yahoo_intraday_ohlc(yf_ticker):
+    """OHLCV do dia corrente a partir das barras de 5 min da Yahoo.
+
+    O endpoint diário zera abertura/máxima/mínima do candle em formação; as
+    barras intradiárias trazem os valores reais, então o candle de hoje pode
+    ser montado de verdade em vez de virar um doji no preço atual.
+    Devolve {'o','h','l','c','v'} ou None se não houver dado utilizável.
+    """
+    import requests as _req
+    try:
+        for host in ('query1.finance.yahoo.com', 'query2.finance.yahoo.com'):
+            r = _req.get(f'https://{host}/v8/finance/chart/' + yf_ticker,
+                         params={'interval': '5m', 'range': '1d'},
+                         headers=_YF_HEADERS, cookies=_YF_COOKIES, timeout=8)
+            if r.status_code == 200:
+                break
+        if r.status_code != 200:
+            return None
+        res = (r.json().get('chart') or {}).get('result') or []
+        if not res:
+            return None
+        q = res[0]['indicators']['quote'][0]
+        opens  = [x for x in (q.get('open')  or []) if x]
+        highs  = [x for x in (q.get('high')  or []) if x]
+        lows   = [x for x in (q.get('low')   or []) if x]
+        closes = [x for x in (q.get('close') or []) if x]
+        vols   = [x for x in (q.get('volume') or []) if x]
+        if not (opens and highs and lows and closes):
+            return None
+        return {'o': round(float(opens[0]), 4),
+                'h': round(float(max(highs)), 4),
+                'l': round(float(min(lows)), 4),
+                'c': round(float(closes[-1]), 4),
+                'v': int(sum(vols))}
+    except Exception:
+        return None
 
 
 def _sanitize_chart_candles(candles):

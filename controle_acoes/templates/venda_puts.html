@@ -315,7 +315,10 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             </div>
             <div>
                 <label class="form-label">Quantidade</label>
-                <input class="form-control" id="e-qty" type="number" min="1" value="100" oninput="estruturaCalc()">
+                {# min="0": o HTML5 conta os passos A PARTIR do min, então
+                   min="1" com step="100" tornaria 100 inválido (aceitaria 101). #}
+                <input class="form-control" id="e-qty" type="number" min="0" step="100" value="100"
+                       oninput="estruturaCalc()">
             </div>
             <div id="e-ratio-wrap" style="display:none;">
                 <label class="form-label" title="Quantas travas de PUT para cada lote de CALL vendida">Travas de PUT (N×)</label>
@@ -416,6 +419,11 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             <button type="button" class="btn btn-sm" id="e-save-btn" style="background:#10b981;color:white;"
                     onclick="estruturaSalvarSim()" title="Salva esta estrutura nas Simulações de Opções">
                 💾 Salvar simulação
+            </button>
+            <button type="button" class="btn btn-sm" id="e-prod-btn" style="background:#f59e0b;color:white;"
+                    onclick="estruturaSalvarProducao()"
+                    title="Grava a operação nas tabelas de acompanhamento da página Opções (posição efetivamente lançada na bolsa): 1 opção → tabela da opção; trava de 2 pernas → Travas; demais → Operações Estruturadas">
+                🚀 Salvar em Produção
             </button>
             <button type="button" class="btn btn-primary btn-sm" onclick="estruturaAddLeg()">
                 ➕ Adicionar perna / editar no simulador
@@ -859,6 +867,25 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
     }
     document.getElementById('inp-qty').addEventListener('input', function() { qtyUserTouched = true; });
     document.querySelector('#put-form [name=underlying_asset]').addEventListener('input', updateQtyStep);
+
+    // Mesmo critério na aba Estruturas: as setinhas andam de 100 em 100
+    // (lote padrão de opções), exceto em BOVA11, que negocia por unidade.
+    (function() {
+        var eAtivo = document.getElementById('e-ativo');
+        var eQty   = document.getElementById('e-qty');
+        if (!eAtivo || !eQty) return;
+        function updateEstruturaQtyStep() {
+            var step = ((eAtivo.value || '').trim().toUpperCase() === 'BOVA11') ? 1 : 100;
+            if (parseInt(eQty.step, 10) === step) return;
+            eQty.step = step;
+            var cur = parseFloat(String(eQty.value).replace(',', '.'));
+            if (!isNaN(cur) && cur > 0) {
+                eQty.value = Math.max(step, Math.round(cur / step) * step);
+            }
+        }
+        eAtivo.addEventListener('input', updateEstruturaQtyStep);
+        updateEstruturaQtyStep();
+    })();
 
     // ── Pré-preenchimento da venda de put via URL (vindo de Busca de Operações) ─
     (function() {
@@ -2403,18 +2430,26 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         window.location.href = '/cadeia-opcoes?' + q.toString();
     };
 
-    // Salva a estrutura diretamente nas Simulações de Opções
-    window.estruturaSalvarSim = function() {
+    // Salva a estrutura nas Simulações de Opções. Com producao=true, também
+    // cria a posição real nas tabelas de acompanhamento da página Opções.
+    function estruturaEnviar(producao) {
         var legs = window.__estruturaLegs;
         if (!legs || !legs.length) { alert('Preencha a estrutura primeiro.'); return; }
         var ativo = (document.getElementById('e-ativo').value || '').toUpperCase();
         var opSel = document.getElementById('e-op');
         var nomeBase = (opSel.options[opSel.selectedIndex].text || 'Estrutura').replace(/[\p{Extended_Pictographic}️]/gu, '').trim();
         var nomeSugerido = nomeComAtivo(nomeBase, ativo);
+
+        if (producao && !confirm('Salvar esta operação nas tabelas de acompanhamento (página Opções)?\n\n' +
+                                 'Use quando a operação foi efetivamente lançada na bolsa. ' +
+                                 'A simulação também será salva.')) return;
+
         var nome = prompt('Nome da simulação:', nomeSugerido);
         if (nome === null) return;                 // cancelou
         nome = nome.trim() || nomeSugerido;
-        var btn = document.getElementById('e-save-btn');
+
+        var btn      = document.getElementById(producao ? 'e-prod-btn' : 'e-save-btn');
+        var rotulo   = producao ? '🚀 Salvar em Produção' : '💾 Salvar simulação';
         btn.disabled = true;
         fetch('/api/simulacao/save', {
             method: 'POST',
@@ -2422,6 +2457,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             body: JSON.stringify({
                 name: nome,
                 underlying: ativo,
+                producao: !!producao,
                 legs: legs.map(function(l) {
                     return {type: l.type, side: l.side, qty: l.qty, strike: l.strike,
                             premium: l.premium, exp: l.exp || '', ticker: l.ticker, iv: 0};
@@ -2437,11 +2473,24 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         .then(function(d) {
             btn.disabled = false;
             if (d.error) { alert('Erro ao salvar: ' + d.error); return; }
+            // A simulação foi salva, mas a produção não pôde ser criada
+            if (d.producao_error) {
+                alert('Simulação salva, mas NÃO enviada à produção:\n\n' + d.producao_error);
+                return;
+            }
+            if (producao) {
+                alert('Operação salva em produção na tabela "' + (d.destino || '—') + '".\n\n' +
+                      'Use Atualizar Cotações para trazer os preços ao vivo.');
+                window.location.href = '/opcoes';
+                return;
+            }
             btn.textContent = '✓ Salva!';
-            setTimeout(function() { btn.textContent = '💾 Salvar simulação'; }, 3000);
+            setTimeout(function() { btn.textContent = rotulo; }, 3000);
         })
         .catch(function(e) { btn.disabled = false; alert('Erro ao salvar: ' + (e.message || e)); });
-    };
+    }
+    window.estruturaSalvarSim      = function() { estruturaEnviar(false); };
+    window.estruturaSalvarProducao = function() { estruturaEnviar(true); };
 
     // ── Botão "Voltar" — presente quando a tela foi aberta a partir de outra
     // (ex.: Manejo de Put), preservando pra onde retornar via ?back=<url>.

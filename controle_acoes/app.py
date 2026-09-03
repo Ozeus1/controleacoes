@@ -2501,6 +2501,18 @@ def api_simulacao_save():
         ))
 
     db.session.commit()
+
+    # "Salvar em Produção" pela aba Estruturas: além de gravar a simulação,
+    # cria a posição real nas tabelas de acompanhamento (mesmo caminho do
+    # botão da tela de Simulação de Opções).
+    if d.get('producao'):
+        destino, err = _sim_to_producao(sim)
+        if err:
+            return jsonify({'id': sim.id, 'name': sim.name,
+                            'producao_error': err}), 200
+        db.session.commit()
+        return jsonify({'id': sim.id, 'name': sim.name, 'destino': destino})
+
     return jsonify({'id': sim.id, 'name': sim.name})
 
 

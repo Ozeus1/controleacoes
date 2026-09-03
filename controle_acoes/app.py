@@ -4587,7 +4587,8 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: (abs(x['mid_dist']), x['max_loss'], -x['max_gain']))
             rows = _diversify(rows, lambda x: x['mid_symbol'], per_key=2)
 
-        elif op in ('boi_coberto', 'vaca_tradicional', 'vaca_revertida', 'borboleta', 'condor'):
+        elif op in ('boi_coberto', 'vaca_tradicional', 'vaca_revertida', 'borboleta',
+                    'borboleta_otm', 'condor'):
             # Estruturas clássicas de CALLs — recomendações usuais de montagem:
             #   boi_coberto:      -1 ITM (moderada), +2 ATM, -1 OTM — a venda ITM paga
             #                     parte da montagem e a venda OTM limita o ganho;
@@ -4609,6 +4610,14 @@ def api_busca_operacoes(ticker):
                                      'rngs': [(0.92, 1.03), (0.99, 1.15), (1.01, 1.28)]},
                 'borboleta':        {'qty': (1, -2, 1),
                                      'rngs': [(0.88, 1.02), (0.95, 1.10), (1.00, 1.22)]},
+                # Borboleta OTM: a 1ª CALL comprada (A) fica de 3% a 8% ACIMA do
+                # spot, jogando o miolo (B) para fora do dinheiro. Como todas as
+                # pernas nascem OTM, a montagem sai bem mais barata que a
+                # borboleta clássica e o ganho vem da APROXIMAÇÃO do preço ao
+                # miolo — se o papel andar na direção da estrutura, o valor da
+                # posição cresce antes mesmo do vencimento.
+                'borboleta_otm':    {'qty': (1, -2, 1),
+                                     'rngs': [(1.03, 1.08), (1.06, 1.20), (1.09, 1.35)]},
                 'condor':           {'qty': (1, -1, -1, 1),
                                      'rngs': [(0.85, 0.99), (0.93, 1.05), (0.98, 1.12), (1.02, 1.25)]},
             }
@@ -4680,11 +4689,35 @@ def api_busca_operacoes(ticker):
                     # débito baixo em relação à asa; recusa borboleta "de graça" (dado ruim)
                     if cost <= 0 or cost > 0.30 * w_lo:
                         continue
+                elif op == 'borboleta_otm':
+                    # A comprada (A) tem de estar entre 3% e 8% acima do spot —
+                    # é o que joga o miolo para fora do dinheiro.
+                    dist_a = (ks[0] - spot) / spot * 100
+                    if dist_a < 3.0 or dist_a > 8.0:
+                        continue
+                    # Asas equidistantes (borboleta simétrica), com tolerância de
+                    # um strike de folga para não descartar cadeias irregulares.
+                    w_up = ks[2] - ks[1]
+                    if w_lo <= 0 or w_up <= 0:
+                        continue
+                    if abs(w_up - w_lo) > 0.34 * max(w_lo, w_up):
+                        continue
+                    # Montagem barata: por nascer toda OTM, deve custar bem menos
+                    # que a clássica — no máximo 20% da asa.
+                    if cost <= 0 or cost > 0.20 * w_lo:
+                        continue
                 elif op == 'condor':
                     if cost <= 0 or cost > 0.40 * w_lo:
                         continue
-                montagem = ('CRÉDITO' if net > 0.005
-                            else ('ZERO' if cost <= 0.15 * w_lo else 'INVEST'))
+                if op == 'borboleta_otm':
+                    # Nesta operação a montagem barata é a REGRA (tudo nasce OTM),
+                    # então o rótulo "ZERO" dos 15% da asa marcaria quase toda
+                    # linha e não informaria nada. Aqui o que interessa é que é
+                    # um DÉBITO pequeno — o custo em si já aparece ao lado.
+                    montagem = 'CRÉDITO' if net > 0.005 else 'DÉBITO'
+                else:
+                    montagem = ('CRÉDITO' if net > 0.005
+                                else ('ZERO' if cost <= 0.15 * w_lo else 'INVEST'))
                 ratio = (round(max_gain / max_loss, 1)
                          if (max_gain is not None and max_loss > 0.001) else None)
                 rows.append({
@@ -4706,6 +4739,11 @@ def api_busca_operacoes(ticker):
                 rows.sort(key=lambda x: (not x['is_credit'], -(x['ratio'] or 999), x['max_loss']))
             elif op in ('vaca_tradicional', 'vaca_revertida'):
                 rows.sort(key=lambda x: (not x['is_credit'], -x['net'], x['max_loss']))
+            elif op == 'borboleta_otm':
+                # Aqui o miolo OTM é o objetivo, não um defeito: ordena pela
+                # melhor alavancagem (ganho/custo) e, empatando, pelo miolo mais
+                # perto do spot — que é o alvo mais provável de ser alcançado.
+                rows.sort(key=lambda x: (-(x['ratio'] or 0), abs(x['center_dist'])))
             else:   # borboleta / condor: centro mais perto do spot, melhor relação
                 rows.sort(key=lambda x: (abs(x['center_dist']), -(x['ratio'] or 0)))
             rows = _diversify(rows, lambda x: x['legs'][1]['sym'], per_key=2, limit=12)

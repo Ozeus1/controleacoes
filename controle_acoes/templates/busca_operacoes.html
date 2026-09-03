@@ -94,6 +94,7 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
     <button class="bo-obtn" data-op="vaca_tradicional">🐄 Vaca Tradicional</button>
     <button class="bo-obtn" data-op="vaca_revertida">🐄🔄 Vaca Revertida</button>
     <button class="bo-obtn" data-op="borboleta">🦋 Borboleta</button>
+    <button class="bo-obtn" data-op="borboleta_otm">🦋➡️ Borboleta OTM</button>
     <button class="bo-obtn" data-op="condor">🦅 Condor</button>
     <button class="bo-obtn" data-op="iron_condor">🦅💰 Iron Condor</button>
     <button class="bo-obtn" data-op="boi_put">🐂 Boi com PUT 1x2</button>
@@ -199,6 +200,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     vaca_tradicional: '🐄 Vaca Tradicional — +1 CALL baixa, −3 CALLs médias, +2 CALLs altas (montada no crédito; lucro máximo no strike médio)',
     vaca_revertida: '🐄🔄 Vaca Revertida — +1 CALL baixa, −5 CALLs médias, +5 CALLs altas (crédito; lucro ILIMITADO na alta forte)',
     borboleta:     '🦋 Borboleta — +1 CALL baixa, −2 CALLs médias, +1 CALL alta (débito ≤ 30% da asa; centro próximo do ATM = preço-alvo)',
+    borboleta_otm: '🦋➡️ Borboleta OTM — mesma montagem (+1 −2 +1), mas com a CALL comprada de 3% a 8% ACIMA do spot: o miolo fica fora do dinheiro, a montagem sai barata (débito ≤ 20% da asa) e o ganho vem da APROXIMAÇÃO do preço ao miolo',
     condor:        '🦅 Condor — +1 CALL baixa, −1 e −1 CALLs médias, +1 CALL alta (débito ≤ 40% da asa; platô de lucro entre os strikes vendidos)',
     iron_condor:   '🦅💰 Iron Condor — trava de alta com PUT (vende K2 / compra K1, abaixo do spot) + trava de baixa com CALL (vende K3 / compra K4, acima); crédito ≥ 25% da asa; lucro se ficar entre K2 e K3',
     boi_put:       '🐂 Boi com PUT — compra 2 PUTs próximas do OTM financiadas (parcialmente) pela venda de 1 PUT ATM/ITM; custo até 40% da largura (lucro cresce na queda forte)',
@@ -756,7 +758,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     return h + '</tbody></table></div>';
   }
 
-  var GEN_OPS = ['boi_coberto', 'vaca_tradicional', 'vaca_revertida', 'borboleta', 'condor'];
+  var GEN_OPS = ['boi_coberto', 'vaca_tradicional', 'vaca_revertida', 'borboleta',
+                 'borboleta_otm', 'condor'];
 
   function legStr(l) {
     return '<span class="bo-badge ' + (l.q > 0 ? 'call' : 'put') + '" title="' +
@@ -944,7 +947,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
 
     if (GEN_OPS.indexOf(op) !== -1) {
       var opNames = {boi_coberto: 'Boi Coberto', vaca_tradicional: 'Vaca Tradicional',
-                     vaca_revertida: 'Vaca Revertida', borboleta: 'Borboleta', condor: 'Condor'};
+                     vaca_revertida: 'Vaca Revertida', borboleta: 'Borboleta',
+                     borboleta_otm: 'Borboleta OTM', condor: 'Condor'};
       title = opNames[op] + ' ' + d.ticker + ' — ' +
               r.legs.map(function(l) { return (l.q > 0 ? '+' : '') + l.q + '× ' + l.sym; }).join(' / ');
       boxes = r.legs.map(function(l) {
@@ -963,9 +967,12 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         ['Centro vs spot', (r.center_dist > 0 ? '+' : '') + fmt(r.center_dist, 1) + '%', ''],
         ['Prazo (dias corridos)', dc + ' d.c.', '']
       ]);
-      // Abre em Cálculos de Opções (aba Estruturas) — pernas A/B/C/(D)
+      // Abre em Cálculos de Opções (aba Estruturas) — pernas A/B/C/(D).
+      // A Borboleta OTM tem as mesmas pernas da clássica (+1 −2 +1), então
+      // reaproveita o preset "borboleta" da aba Estruturas.
+      var opCalc = (op === 'borboleta_otm') ? 'borboleta' : op;
       var spG = new URLSearchParams({st: '1', ativo: d.ticker, spot: spot, qty: qty,
-        exp: e.exp, op: op,
+        exp: e.exp, op: opCalc,
         at: r.legs[0].sym, ak: r.legs[0].k, ap: r.legs[0].px,
         bt: r.legs[1].sym, bk: r.legs[1].k, bp: r.legs[1].px,
         ct2: r.legs[2].sym, ck2: r.legs[2].k, cp2: r.legs[2].px});
@@ -1253,7 +1260,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     trava_baixa:'Trava de Baixa (déb.)', trava_alta_credito:'Trava de Alta (créd.)',
     trava_baixa_credito:'Trava de Baixa (créd.)', trava_credito:'Ratio CALL',
     vaca_travada:'Vaca Travada', boi_coberto:'Boi Coberto', vaca_tradicional:'Vaca Tradicional',
-    vaca_revertida:'Vaca Revertida', borboleta:'Borboleta', condor:'Condor',
+    vaca_revertida:'Vaca Revertida', borboleta:'Borboleta', borboleta_otm:'Borboleta OTM',
+    condor:'Condor',
     iron_condor:'Iron Condor', boi_put:'Boi com PUT', vaca_put:'Vaca de Baixa (PUTs)',
     vaca_alta_put:'Vaca de Alta com PUT',
     venda_put_itm:'Venda de PUT', straddle_vendido:'Straddle vendido', strangle_vendido:'Strangle vendido',

@@ -15357,6 +15357,26 @@ def _yahoo_fetch(yf_ticker, start_date=None):
     from datetime import datetime as _dt2, timezone as _tz2
     for i, epoch in enumerate(ts):
         o = opens[i];  h = highs[i];  l = lows[i];  c = closes[i]
+        # Candle do dia AINDA EM FORMAÇÃO: com o pregão aberto a Yahoo às vezes
+        # devolve o dia corrente com abertura/máxima/mínima zeradas (ou nulas) e
+        # só o fechamento com o preço ao vivo. O candle é válido — está apenas
+        # incompleto —, então reconstrói o OHLC a partir do preço disponível em
+        # vez de deixá-lo ser descartado como inválido (o gráfico perdia o
+        # último candle e ficava um dia atrasado em relação ao mercado).
+        def _bad(x):
+            return x is None or float(x) <= 0
+        if _bad(o) or _bad(h) or _bad(l):
+            ref = None
+            for cand in (c, o, h, l):
+                if cand is not None and float(cand) > 0:
+                    ref = float(cand)
+                    break
+            if ref is None:
+                continue
+            c = float(c) if not _bad(c) else ref
+            o = float(o) if not _bad(o) else ref
+            h = max(ref, c, o) if _bad(h) else float(h)
+            l = min(ref, c, o) if _bad(l) else float(l)
         if o is None or h is None or l is None or c is None:
             continue
         if i < len(adj) and adj[i] is not None and c:
@@ -15723,8 +15743,15 @@ def api_chart_data(ticker):
             # candle do dia fica "em formação" enquanto o mercado está aberto
             # (o Yahoo v8 atualiza esse candle ao vivo) — sem refetch aqui ele
             # ficava congelado no valor da primeira busca do dia, mesmo horas
-            # depois. Só days_old == 1 (ontem) pula o refetch com segurança.
-            if days_old == 1:
+            # depois.
+            #
+            # days_old == 1 (last_date é ONTEM) só pode pular o refetch quando
+            # HOJE ainda não tem pregão a buscar: fim de semana ou antes da
+            # abertura. Do contrário o gráfico ficava um dia atrasado o pregão
+            # inteiro — o candle de hoje existe na Yahoo e nunca era buscado.
+            _agora = datetime.now()
+            _hoje_tem_pregao = (_date.today().weekday() < 5 and _agora.hour >= 10)
+            if days_old == 1 and not _hoje_tem_pregao:
                 if len(candles) != original_len:
                     gz = _gzip.compress(_json.dumps(candles).encode(), compresslevel=6)
                     db_entry.candles_gz = gz

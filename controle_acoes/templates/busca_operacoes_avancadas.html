@@ -248,7 +248,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     venda_coberta:  '📋 Venda Coberta por delta — compra a ação + vende CALL OTM Δ 0,20–0,35 (DTE 30–45d; máximo Theta)',
     protective_put: '🛡 Protective Put — compra a ação + compra PUT Δ −0,40 a −0,50 (seguro contra quedas)',
     covered_put:    '📉 Covered Put — vende a ação (aluguel) + vende PUT OTM Δ −0,20 a −0,35 (renda em mercado de baixa)',
-    jade_lizard:    '🦎 Jade Lizard — venda PUT do ATM até 5% OTM + trava de baixa com CALL. Regra obrigatória: largura da trava ≤ crédito total recebido, então ultrapassar a trava NÃO gera prejuízo — risco de alta ZERO',
+    jade_lizard:    '🦎 Jade Lizard — venda PUT de 10% ITM a 10% OTM + trava de baixa com CALL. Regra obrigatória: largura da trava ≤ crédito total recebido, então ultrapassar a trava NÃO gera prejuízo — risco de alta ZERO. A coluna "PUT vs spot" mostra o quanto o strike está ITM/OTM: quanto mais ITM, maior o prêmio e maior a chance de exercício',
     jade_lizard_turbo: '🦎🔥 Jade Lizard Turbinada — mesma montagem, mas com o DOBRO de travas de CALL por PUT vendida (1:2); crédito bem maior, exigindo crédito ≥ largura DOBRADA da trava para manter o risco de alta zero (bem mais restritiva: pode não haver montagem válida)',
     slide_estrutural: '🛝 Slide Estrutural — operação DIRECIONAL DE INTERVALO: +1 CALL comprada (A) −2 CALLs vendidas em strikes consecutivos (B e C), formando o "escorregador" de lucro. Lucro máximo na FAIXA ENTRE OS DOIS STRIKES VENDIDOS; montagem a custo ~zero ou no crédito (ZCC)',
     stock_repair:   '🩹 Reparo de Posição (Stock Repair 1×2) — compra 1 CALL ATM (Δ 0,45–0,60) + vende 2 CALLs OTM (Δ 0,20–0,35) a custo ~ZERO; dobra a recuperação até o strike vendido para ação NO PREJUÍZO em carteira (2ª venda coberta pela ação)',
@@ -364,15 +364,36 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
            (l.q > 0 ? '+' : '') + l.q + '× ' + l.sym + '</span>';
   }
 
+  // Distância do strike da PUT vendida até o spot, com o rótulo ITM/OTM.
+  // Numa PUT, strike ABAIXO do spot é OTM; ACIMA do spot é ITM.
+  function putDistCel(d) {
+    if (d == null) return '<span style="color:var(--text-secondary);">—</span>';
+    var abs = Math.abs(d);
+    if (abs < 0.05) {
+      return '<strong>0,0%</strong> <span style="font-size:.72rem;color:var(--text-secondary);">ATM</span>';
+    }
+    var itm = d > 0;
+    var cor = itm ? 'var(--danger-color)' : 'var(--success-color)';
+    return '<strong style="color:' + cor + ';">' + (d > 0 ? '+' : '') + fmt(d, 1) + '%</strong>' +
+           ' <span style="font-size:.72rem;color:var(--text-secondary);">' + (itm ? 'ITM' : 'OTM') + '</span>';
+  }
+
   function genTable(rows, expIdx) {
     if (!rows.length) return '<div class="ba-empty">Nenhuma montagem dentro dos deltas/regras neste vencimento.</div>';
+    // Na Jade Lizard a PUT vendida é a perna que define o risco: mostra o quanto
+    // o strike dela está ITM/OTM em relação ao spot (center_dist é a distância
+    // da 1ª perna, que nessas operações é justamente a PUT).
+    var showPutDist = (window.__baData && /^jade_lizard/.test(window.__baData.op || ''));
     var h = '<div class="ba-wrap"><table class="ba-tab"><thead><tr>' +
-      '<th>Pernas (qtd × série)</th><th>Strikes</th><th>Deltas</th><th>Montagem</th>' +
+      '<th>Pernas (qtd × série)</th><th>Strikes</th>' +
+      (showPutDist ? '<th title="Distância do strike da PUT vendida até o spot: negativo = OTM (abaixo do spot), positivo = ITM (acima)">PUT vs spot</th>' : '') +
+      '<th>Deltas</th><th>Montagem</th>' +
       '<th>Lucro máx.</th><th>Perda máx.</th><th>Relação</th><th>Breakevens</th></tr></thead><tbody>';
     rows.forEach(function(r, j) {
       h += '<tr class="ba-row" data-exp="' + expIdx + '" data-row="' + j + '" title="Clique para ver o resumo">' +
         '<td>' + r.legs.map(legBadge).join(' ') + '</td>' +
         '<td>' + r.legs.map(function(l) { return l.k != null ? fmt(l.k) : 'ação'; }).join(' / ') + '</td>' +
+        (showPutDist ? '<td>' + putDistCel(r.center_dist) + '</td>' : '') +
         '<td>' + r.legs.map(function(l) { return l.delta != null ? fmt(l.delta, 0) : '—'; }).join(' / ') + '</td>' +
         '<td><span class="ba-badge ' + (r.is_credit ? 'credit' : 'debit') + '">' + r.montagem +
              ' ' + brl(Math.abs(r.net)) + '</span>' +
@@ -525,6 +546,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       ['Relação lucro/perda', r.ratio != null ? fmt(r.ratio) : (r.gain_unl ? '∞' : '—'), ''],
       ['Breakevens', r.bes.length ? r.bes.map(function(b) { return brl(b); }).join(' · ') : '—', ''],
       ['Prazo (dias corridos)', e.dc + ' d.c.', '']
+    ]);
+    if (/^jade_lizard/.test(d.op || '')) boxes = boxes.concat([
+      ['PUT vendida vs spot', putDistCel(r.center_dist), '']
     ]);
     document.getElementById('bam-grid').innerHTML = boxes.map(function(b) {
       return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +

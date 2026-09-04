@@ -3565,14 +3565,15 @@ _ADV_SPECS = {
     'venda_coberta':  {'legs': [('S', 1, None), ('C', -1, (0.20, 0.35))]},
     'protective_put': {'legs': [('S', 1, None), ('P', 1, (-0.50, -0.40))]},
     'covered_put':    {'legs': [('S', -1, None), ('P', -1, (-0.35, -0.20))]},
-    # Jade Lizard: venda 1 PUT do ATM até 5% OTM (é ela que carrega a maior
+    # Jade Lizard: venda 1 PUT de 10% ITM a 10% OTM (é ela que carrega a maior
     # parte do prêmio) + trava de baixa com calls (venda CALL OTM + compra
-    # CALL mais OTM ainda). Quem decide a montagem é a regra rule='jade'
-    # abaixo — crédito total ≥ largura da trava de CALL, garantindo risco ZERO
-    # na alta —, então as faixas de delta são propositalmente amplas para não
-    # descartar combinações válidas antes mesmo de testar a regra; a faixa de
-    # strike da PUT (95% do spot até o spot) é aplicada junto com a regra.
-    'jade_lizard':    {'legs': [('P', -1, (-0.55, -0.16)), ('C', -1, (0.10, 0.25)),
+    # CALL mais OTM ainda). Quem decide a montagem são as regras de rule='jade'
+    # abaixo — crédito total ≥ largura da trava de CALL (risco ZERO na alta) e
+    # a faixa de strike da PUT —, então as janelas de delta ficam propositalmente
+    # MUITO amplas: elas apenas descartam pontas sem prêmio, sem restringir a
+    # faixa de strike pedida (uma PUT 10% ITM tem delta ≈ −0,92 e uma 10% OTM
+    # ≈ −0,04, então a janela precisa cobrir quase todo o intervalo).
+    'jade_lizard':    {'legs': [('P', -1, (-0.95, -0.03)), ('C', -1, (0.10, 0.25)),
                                 ('C', 1, (0.02, 0.20))], 'asc': [1, 2], 'rule': 'jade'},
     # Jade Lizard Turbinada: mesma montagem, mas com o DOBRO de travas de
     # call por put vendida (proporção 1 put : 2 travas) — aumenta bastante
@@ -3581,7 +3582,7 @@ _ADV_SPECS = {
     # explosão de alta o resultado nunca fica em prejuízo. Exigir isso com o
     # dobro de largura é bem mais restritivo: só fecha em cadeias com prêmio
     # gordo (VI alta ou prazo maior).
-    'jade_lizard_turbo': {'legs': [('P', -1, (-0.55, -0.16)), ('C', -2, (0.10, 0.25)),
+    'jade_lizard_turbo': {'legs': [('P', -1, (-0.95, -0.03)), ('C', -2, (0.10, 0.25)),
                                    ('C', 2, (0.02, 0.20))], 'asc': [1, 2], 'rule': 'jade'},
     # Reparo de posição (Stock Repair 1×2): compra 1 CALL ATM + vende 2 OTM a
     # custo ~zero — p/ ação NO PREJUÍZO em carteira (a 2ª venda fica coberta
@@ -4895,7 +4896,12 @@ def api_busca_operacoes(ticker):
             # distantes da vendida (travas largas, que a regra rejeita) e a
             # busca voltava vazia.
             _wide = (rule == 'jade')
-            cand_lists = [_leg_cands(tp, q, win, top=(12 if _wide else 4))
+            # A PUT precisa de folga maior: a janela de delta cobre quase todo o
+            # intervalo, então as candidatas mais próximas do centro ficariam
+            # todas no miolo da faixa e as pontas (10% ITM / 10% OTM) nunca
+            # seriam testadas contra a regra de strike.
+            cand_lists = [_leg_cands(tp, q, win,
+                                     top=((24 if tp == 'P' else 12) if _wide else 4))
                           for tp, q, win in legs]
             if all(cand_lists):
                 for combo in _it.product(*cand_lists):
@@ -4990,9 +4996,9 @@ def api_busca_operacoes(ticker):
                         wc = (opt_ks[2] - opt_ks[1]) * call_sell_qty
                         if net <= 0 or net < wc:
                             continue
-                        # A PUT vendida vai do ATM até 5% OTM — ou seja, strike
-                        # entre 95% do spot e o próprio spot (nunca ITM).
-                        if not (0.95 * spot <= opt_ks[0] <= 1.001 * spot):
+                        # A PUT vendida varre de 10% OTM a 10% ITM — ou seja,
+                        # strike entre 90% e 110% do spot.
+                        if not (0.90 * spot <= opt_ks[0] <= 1.10 * spot):
                             continue
                         jade_zero_risk = True
                     if rule == 'bwb':
@@ -5043,7 +5049,15 @@ def api_busca_operacoes(ticker):
                 rows.sort(key=_jade_key)
             else:
                 rows.sort(key=lambda x: (not x['is_credit'], -(x['ratio'] or 0), -x['net']))
-            rows = _diversify(rows, lambda x: x['legs'][0]['sym'], per_key=2, limit=10)
+            if rule == 'jade':
+                # A escolha do strike da PUT é uma decisão de risco do usuário
+                # (quanto mais ITM, maior o prêmio e maior a chance de exercício),
+                # então mostra UMA melhor montagem por strike de PUT em vez de
+                # encher a lista com as puts mais ITM, que têm sempre o maior
+                # crédito e esconderiam as alternativas OTM.
+                rows = _diversify(rows, lambda x: x['legs'][0]['sym'], per_key=1, limit=12)
+            else:
+                rows = _diversify(rows, lambda x: x['legs'][0]['sym'], per_key=2, limit=10)
 
         elif op == 'boi_put':
             # Boi com PUT (put ratio backspread 1x2): compra 2 PUTs próximas do OTM

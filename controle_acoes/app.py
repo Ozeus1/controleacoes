@@ -15381,6 +15381,11 @@ def api_current_quotes():
 
 
 _chart_mem = {}  # cache em memória por processo: {ticker: {'ts': float, 'candles': [...]}}
+
+# Cotações recusadas pelo filtro de desvio, aguardando confirmação:
+# {ticker: (preço, nº de vezes que veio igual)}. Ver _cotacao_confiavel —
+# evita que um preço anterior errado trave o ativo para sempre.
+_quote_pendente: dict = {}
 _CHART_MEM_TTL = 120  # segundos — evita hit no SQLite em acessos repetidos rápidos
 
 _YF_HEADERS = {
@@ -16522,6 +16527,27 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
         var = variations.get(ticker)
         if var is not None and abs(float(var)) >= desvio * 100 * 0.5:
             return True
+        # Impasse: se o preço ANTERIOR é que estava errado (desdobramento,
+        # bonificação, ou uma cotação ruim gravada antes), toda cotação nova
+        # passa a destoar mais de 20% e é recusada para sempre — o ativo trava
+        # no valor errado e nunca mais atualiza. Quando a MESMA cotação se
+        # confirma em 3 atualizações seguidas, ela deixa de ser "suspeita" e
+        # passa a valer: o dado obsoleto que motivou este filtro oscilava entre
+        # o valor velho e o real, então não sobrevive a essa exigência.
+        pend = _quote_pendente.get(ticker)
+        if pend and abs(pend[0] - novo) / max(novo, 0.01) <= 0.02:
+            vezes = pend[1] + 1
+            if vezes >= 3:
+                app.logger.warning(
+                    'OpLab: cotacao de %s (%.2f) confirmada em %d atualizacoes seguidas '
+                    '— preco anterior %.2f considerado obsoleto e substituido',
+                    ticker, novo, vezes, anterior)
+                _quote_pendente.pop(ticker, None)
+                return True
+            _quote_pendente[ticker] = (novo, vezes)
+            return False
+        # Cotação diferente da pendente: reinicia a contagem (dado instável)
+        _quote_pendente[ticker] = (novo, 1)
         app.logger.warning(
             'OpLab: cotacao suspeita de %s descartada (%.2f vs %.2f anterior, %.1f%% de desvio, variacao informada %s)',
             ticker, novo, anterior, desvio * 100, var)
@@ -16536,8 +16562,13 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
         key = a.ticker.upper()
         if key in prices and prices[key] > 0:
             # Cotação destoante do último preço fica de fora: o ticker não entra
-            # em oplab_covered e o Yahoo assume no passo seguinte.
+            # em oplab_covered e o Yahoo assume no passo seguinte. A VARIAÇÃO do
+            # dia, porém, continua sendo gravada — ela é um percentual válido
+            # mesmo quando o preço é segurado, e sem isso a coluna "Var Dia %"
+            # ficava congelada junto com a cotação.
             if not _cotacao_confiavel(key, prices[key], a.current_price):
+                if key in variations:
+                    a.daily_change = variations[key]
                 continue
             a.current_price = prices[key]
             a.last_update   = now

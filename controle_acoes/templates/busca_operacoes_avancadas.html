@@ -248,8 +248,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     venda_coberta:  '📋 Venda Coberta por delta — compra a ação + vende CALL OTM Δ 0,20–0,35 (DTE 30–45d; máximo Theta)',
     protective_put: '🛡 Protective Put — compra a ação + compra PUT Δ −0,40 a −0,50 (seguro contra quedas)',
     covered_put:    '📉 Covered Put — vende a ação (aluguel) + vende PUT OTM Δ −0,20 a −0,35 (renda em mercado de baixa)',
-    jade_lizard:    '🦎 Jade Lizard — venda PUT OTM (Δ ≈ −0,20) + trava de baixa com CALL; crédito ≥ largura da trava → SEM risco na alta',
-    jade_lizard_turbo: '🦎🔥 Jade Lizard Turbinada — mesma montagem, mas com o DOBRO de travas de CALL por PUT vendida (1:2); crédito bem maior, mas exige crédito ≥ custo máx. da trava (agora em dobro) pra continuar sem risco na alta',
+    jade_lizard:    '🦎 Jade Lizard — venda PUT do ATM até 5% OTM + trava de baixa com CALL. Regra obrigatória: largura da trava ≤ crédito total recebido, então ultrapassar a trava NÃO gera prejuízo — risco de alta ZERO',
+    jade_lizard_turbo: '🦎🔥 Jade Lizard Turbinada — mesma montagem, mas com o DOBRO de travas de CALL por PUT vendida (1:2); crédito bem maior, exigindo crédito ≥ largura DOBRADA da trava para manter o risco de alta zero (bem mais restritiva: pode não haver montagem válida)',
     slide_estrutural: '🛝 Slide Estrutural — operação DIRECIONAL DE INTERVALO: +1 CALL comprada (A) −2 CALLs vendidas em strikes consecutivos (B e C), formando o "escorregador" de lucro. Lucro máximo na FAIXA ENTRE OS DOIS STRIKES VENDIDOS; montagem a custo ~zero ou no crédito (ZCC)',
     stock_repair:   '🩹 Reparo de Posição (Stock Repair 1×2) — compra 1 CALL ATM (Δ 0,45–0,60) + vende 2 CALLs OTM (Δ 0,20–0,35) a custo ~ZERO; dobra a recuperação até o strike vendido para ação NO PREJUÍZO em carteira (2ª venda coberta pela ação)',
     ratio_spread:   '➗ Ratio Spread CALL 1×2 — compra 1 CALL ITM (Δ 0,55–0,72) + vende 2 CALLs OTM (Δ 0,20–0,35); débito baixo ou crédito, lucro máx. no strike vendido; risco ILIMITADO acima (front ratio — ponta nua)',
@@ -376,8 +376,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
         '<td>' + r.legs.map(function(l) { return l.delta != null ? fmt(l.delta, 0) : '—'; }).join(' / ') + '</td>' +
         '<td><span class="ba-badge ' + (r.is_credit ? 'credit' : 'debit') + '">' + r.montagem +
              ' ' + brl(Math.abs(r.net)) + '</span>' +
-             (r.jade_zero_risk === true ? ' <span class="ba-badge credit" title="Crédito ≥ custo máx. da trava">⚖️ risco alta ZERO</span>' :
-              r.jade_zero_risk === false ? ' <span class="ba-badge debit" title="Crédito menor que o custo máx. da trava">⚠️ risco residual na alta</span>' : '') +
+             (r.jade_zero_risk === true ? ' <span class="ba-badge credit" title="Crédito recebido ≥ largura da trava de CALL: se o ativo ultrapassar a trava, o prejuízo dela é pago pelo prêmio e o risco na alta é ZERO">⚖️ risco alta ZERO</span>' : '') +
              '</td>' +
         '<td class="pos"><strong>' + (r.gain_unl ? 'ILIMITADO 🚀' : (r.est ? '≈ ' : '') + brl(r.max_gain)) + '</strong></td>' +
         '<td class="neg">' + (r.loss_unl ? 'ILIMITADA ⚠️' : (r.est ? '≈ ' : '') + brl(r.max_loss)) + '</td>' +

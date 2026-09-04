@@ -3565,21 +3565,24 @@ _ADV_SPECS = {
     'venda_coberta':  {'legs': [('S', 1, None), ('C', -1, (0.20, 0.35))]},
     'protective_put': {'legs': [('S', 1, None), ('P', 1, (-0.50, -0.40))]},
     'covered_put':    {'legs': [('S', -1, None), ('P', -1, (-0.35, -0.20))]},
-    # Jade Lizard: venda 1 PUT OTM (Δ 0,16-0,30, carrega a maior parte do
-    # prêmio) + trava de baixa com calls (venda CALL OTM Δ 0,15-0,20 + compra
-    # CALL mais OTM ainda). A regra de crédito ≥ largura do call spread (ver
-    # rule='jade' abaixo) é quem realmente decide a montagem — a faixa de
-    # delta da call comprada fica ampla (0,03-0,15) para não descartar
-    # combinações válidas antes mesmo de testar a regra.
-    'jade_lizard':    {'legs': [('P', -1, (-0.30, -0.16)), ('C', -1, (0.15, 0.20)),
-                                ('C', 1, (0.03, 0.15))], 'asc': [1, 2], 'rule': 'jade'},
+    # Jade Lizard: venda 1 PUT do ATM até 5% OTM (é ela que carrega a maior
+    # parte do prêmio) + trava de baixa com calls (venda CALL OTM + compra
+    # CALL mais OTM ainda). Quem decide a montagem é a regra rule='jade'
+    # abaixo — crédito total ≥ largura da trava de CALL, garantindo risco ZERO
+    # na alta —, então as faixas de delta são propositalmente amplas para não
+    # descartar combinações válidas antes mesmo de testar a regra; a faixa de
+    # strike da PUT (95% do spot até o spot) é aplicada junto com a regra.
+    'jade_lizard':    {'legs': [('P', -1, (-0.55, -0.16)), ('C', -1, (0.10, 0.25)),
+                                ('C', 1, (0.02, 0.20))], 'asc': [1, 2], 'rule': 'jade'},
     # Jade Lizard Turbinada: mesma montagem, mas com o DOBRO de travas de
     # call por put vendida (proporção 1 put : 2 travas) — aumenta bastante
     # o crédito recebido. A regra de crédito ≥ custo máx. da trava continua
     # valendo (agora sobre o dobro de contratos de call), então mesmo numa
-    # explosão de alta o resultado fica perto de zero, nunca em prejuízo.
-    'jade_lizard_turbo': {'legs': [('P', -1, (-0.30, -0.16)), ('C', -2, (0.15, 0.20)),
-                                   ('C', 2, (0.03, 0.15))], 'asc': [1, 2], 'rule': 'jade'},
+    # explosão de alta o resultado nunca fica em prejuízo. Exigir isso com o
+    # dobro de largura é bem mais restritivo: só fecha em cadeias com prêmio
+    # gordo (VI alta ou prazo maior).
+    'jade_lizard_turbo': {'legs': [('P', -1, (-0.55, -0.16)), ('C', -2, (0.10, 0.25)),
+                                   ('C', 2, (0.02, 0.20))], 'asc': [1, 2], 'rule': 'jade'},
     # Reparo de posição (Stock Repair 1×2): compra 1 CALL ATM + vende 2 OTM a
     # custo ~zero — p/ ação NO PREJUÍZO em carteira (a 2ª venda fica coberta
     # pela ação; dobra a recuperação até o strike vendido, sem aporte novo)
@@ -4857,7 +4860,7 @@ def api_busca_operacoes(ticker):
                 nd = _norm_cdf(d1)
                 return nd if is_call else nd - 1
 
-            def _leg_cands(tp, q, win):
+            def _leg_cands(tp, q, win, top=4):
                 if tp == 'S':
                     return [None]
                 pool = calls_ok if tp == 'C' else puts_ok
@@ -4876,16 +4879,24 @@ def api_busca_operacoes(ticker):
                         out_near.append((dist, rw, dl))
                 out.sort(key=lambda x: x[0])
                 if out:
-                    return [(rw, dl) for _, rw, dl in out[:4]]
+                    return [(rw, dl) for _, rw, dl in out[:top]]
                 # Nenhum strike caiu exatamente na janela recomendada (comum em
                 # ativos com poucos strikes/vencimentos) — usa os mais próximos
                 # dela em vez de descartar o vencimento inteiro sem oportunidade.
                 out_near.sort(key=lambda x: x[0])
-                return [(rw, dl) for _, rw, dl in out_near[:4]]
+                return [(rw, dl) for _, rw, dl in out_near[:top]]
 
             import itertools as _it
             rule = spec.get('rule')
-            cand_lists = [_leg_cands(tp, q, win) for tp, q, win in legs]
+            # Na Jade Lizard quem decide a montagem são as regras (crédito ≥
+            # largura da trava e PUT a ±5% do spot), não o delta — então as três
+            # pernas precisam ser varridas com folga. Com o corte padrão de 4
+            # candidatas mais próximas do centro da janela sobravam só calls
+            # distantes da vendida (travas largas, que a regra rejeita) e a
+            # busca voltava vazia.
+            _wide = (rule == 'jade')
+            cand_lists = [_leg_cands(tp, q, win, top=(12 if _wide else 4))
+                          for tp, q, win in legs]
             if all(cand_lists):
                 for combo in _it.product(*cand_lists):
                     # strikes das pernas de opção, na ordem das pernas
@@ -4964,18 +4975,26 @@ def api_busca_operacoes(ticker):
                         continue
                     jade_zero_risk = None
                     if rule == 'jade':
-                        # crédito >= custo máximo da trava de CALL na alta → sem
-                        # risco na alta. Custo máx. = largura × qtd. de contratos
-                        # da perna vendida (a versão "turbinada" usa 2 travas por
-                        # put, então o custo dobra). Não descarta mais quando não
-                        # zera: mostra a montagem mesmo assim (risco residual
-                        # pequeno na alta pode valer a pena) — só exige crédito
-                        # líquido positivo na operação toda.
+                        # REGRA OBRIGATÓRIA da Jade Lizard: o spread da trava de
+                        # CALL tem de ser MENOR OU IGUAL ao crédito total
+                        # recebido na montagem. É isso que garante risco ZERO na
+                        # alta — se o ativo ultrapassar a trava, a perda máxima
+                        # da trava (a largura) é integralmente paga pelo prêmio
+                        # que entrou, e o resultado acima dela é no mínimo zero.
+                        # Montagens que não cumprem isso deixam risco residual na
+                        # alta e por isso são descartadas (antes eram exibidas
+                        # apenas com um aviso).
+                        # Largura × qtd. de contratos da trava: a versão
+                        # "turbinada" usa 2 travas por put, então o custo dobra.
                         call_sell_qty = abs(legs[1][1])
                         wc = (opt_ks[2] - opt_ks[1]) * call_sell_qty
-                        if net <= 0:
+                        if net <= 0 or net < wc:
                             continue
-                        jade_zero_risk = net >= wc
+                        # A PUT vendida vai do ATM até 5% OTM — ou seja, strike
+                        # entre 95% do spot e o próprio spot (nunca ITM).
+                        if not (0.95 * spot <= opt_ks[0] <= 1.001 * spot):
+                            continue
+                        jade_zero_risk = True
                     if rule == 'bwb':
                         # broken wing: asa superior mais espaçada que a inferior
                         if opt_ks[2] - opt_ks[1] <= opt_ks[1] - opt_ks[0]:
@@ -5011,15 +5030,16 @@ def api_busca_operacoes(ticker):
                         'jade_zero_risk': jade_zero_risk,
                     })
             if rule == 'jade':
-                # Prioriza: 1) zera o risco de alta (crédito ≥ largura da trava);
-                # 2) o platô de ganho (crédito líquido) é MAIOR que o prejuízo
-                # que resta na queda, abaixo do 2º breakeven (a put nua) — ou
-                # seja, ratio ganho/risco de queda ≥ 1, não só net positivo;
-                # 3) maior crédito líquido como desempate final.
+                # Todas as linhas já têm risco ZERO na alta (crédito ≥ largura da
+                # trava é agora condição de entrada). Ordena então por:
+                # 1) o platô de ganho (crédito líquido) ser MAIOR que o prejuízo
+                #    que resta na queda, abaixo do 2º breakeven (a put nua) — ou
+                #    seja, ratio ganho/risco de queda ≥ 1;
+                # 2) maior crédito líquido como desempate.
                 def _jade_key(x):
                     plato_ok = (x['max_loss'] is not None and x['max_gain'] is not None
                                 and x['max_gain'] >= x['max_loss'])
-                    return (not (x['jade_zero_risk'] or False), not plato_ok, -x['net'])
+                    return (not plato_ok, -x['net'])
                 rows.sort(key=_jade_key)
             else:
                 rows.sort(key=lambda x: (not x['is_credit'], -(x['ratio'] or 0), -x['net']))

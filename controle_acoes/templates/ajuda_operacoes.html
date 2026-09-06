@@ -562,6 +562,15 @@ var OPS=[
  sel:['Só CALLs, nos 3 vencimentos mensais mais próximos','Proporção compra:venda de 1:2, 2:3, 3:4 ou 4:5','Asa (distância entre strikes) de 0 a 12','Comprada e vendida podem ficar em vencimentos diferentes (calendário embutido)','Ordenado pela melhor relação lucro/custo, com as montagens no crédito na frente'],
  man:['O alvo é o strike vendido: realizar quando o ativo chegar perto dele','Acima do PONTO DE ASSUNÇÃO o resultado fica negativo e as pontas nuas exigem cobertura ou stop','Alta forte e rápida: rolar as vendidas para strike mais alto','Montagem no crédito não tem risco na queda — o pior caso é a estrutura virar pó'],
  busca:FYT},
+{cat:'cat-vol',nome:'THL (Trava de Alta Diagonal 1:1)',cen:'alta',tipo:'debito',vi:'baixa',
+ alias:['thl'],
+ tags:['DIAGONAL 1:1','STRIKE COMPRADO ABAIXO DO VENDIDO','PMCC ORIENTADO POR VENCIMENTO'],
+ legs:[{t:'C',q:1,K:83,p:20.6},{t:'C',q:-1,K:88,p:16.5}],
+ mont:'Compra 1 CALL no vencimento MAIS DISTANTE (strike MENOR) e vende 1 CALL no vencimento MAIS PRÓXIMO (strike MAIOR). Proporção sempre 1:1 — só variam vencimentos e strikes.',
+ cenario:'Trava de alta financiada pelo calendário: a vendida de prazo curto ajuda a pagar a comprada de prazo longo. Ao vencimento da vendida, se o papel ficar abaixo do strike vendido, a comprada segue viva e pode ser rolada para uma nova vendida — repetindo o ciclo de renda sobre a mesma comprada.',
+ sel:['Ambos os strikes de 20% ITM a 20% OTM do spot','Vencimento da comprada: qualquer um dos 12 mensais mais próximos (perna de prazo longo)','Vencimento da vendida: próximo mensal ou +1 mês (perna de prazo curto, sempre antes da comprada)','Preço máximo (custo) editável — vazio traz todas as combinações','Ordenado pelo melhor Retorno % (crédito líquido sobre o custo da comprada)'],
+ man:['Retorno% negativo é normal — mede o quanto a montagem consome de capital sobre o valor da comprada; perto de 0% é a melhor montagem','Perto do vencimento da vendida: rolar para uma nova vendida de prazo curto sobre a mesma comprada','Papel dispara acima do strike vendido: a vendida fica ITM — decidir entre recomprar ou aceitar o exercício','Comprada tem valor de tempo residual: normalmente vale mais recompor a vendida do que liquidar tudo'],
+ busca:FYT+'?estrutura=thl'},
 
 /* ══ SINTÉTICAS E AVANÇADAS ══ */
 {cat:'cat-sint',nome:'Ação Sintética (Long Synthetic)',cen:'alta',tipo:'zero',

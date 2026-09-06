@@ -96,6 +96,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       <select id="fyt-op">
         <option value="booster">🚀 Booster / Ratio (CALLs)</option>
         <option value="thl">📐 THL (Trava de Alta Diagonal)</option>
+        <option value="mannerheim">🛡️ Linha de Mannerheim</option>
       </select>
     </div>
 
@@ -181,6 +182,50 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <span style="font-size:.78rem;color:var(--text-secondary);padding-top:.2rem;">
           Strikes: 20% ITM a 20% OTM · ratio sempre 1:1
         </span>
+      </div>
+    </div>
+
+    <!-- Filtros da Linha de Mannerheim -->
+    <div id="fyt-filtros-mann" style="display:none;">
+      <div class="fyt-campo">
+        <label for="fyt-mann-tipo" title="Tipo da opção vendida a descoberto. PUT = Tradicional (THLs de CALL, viés alta/lateral). CALL = Reversa (THLs de PUT, viés baixa/lateral)">
+          Tipo (vendida a descoberto)</label>
+        <select id="fyt-mann-tipo">
+          <option value="put" selected>PUT — Tradicional (THLs de CALL)</option>
+          <option value="call">CALL — Reversa (THLs de PUT)</option>
+        </select>
+      </div>
+
+      <div class="fyt-campo">
+        <label for="fyt-mann-exp-v" title="Ciclo da opção vendida a descoberto e da perna curta das THLs">
+          Vencimento das vendidas</label>
+        <select id="fyt-mann-exp-v">
+          <option value="0" selected>Próximo mensal</option>
+          <option value="1">Mensal +1</option>
+        </select>
+      </div>
+
+      <div class="fyt-campo">
+        <label for="fyt-mann-exp-c" title="Meses à frente para a perna longa das THLs">
+          Vencimento das compradas</label>
+        <select id="fyt-mann-exp-c">
+          <option value="all" selected>Todos (+1 a +3)</option>
+          <option value="1">+1 mês</option>
+          <option value="2">+2 meses</option>
+          <option value="3">+3 meses</option>
+        </select>
+      </div>
+
+      <div class="fyt-campo">
+        <label for="fyt-mann-strike-pct" title="Faixa de strikes varrida em torno do preço do ativo (ex.: 10 = de 10% ITM a 10% OTM)">
+          Variação do strike (± %)</label>
+        <input type="number" id="fyt-mann-strike-pct" min="0.5" max="50" step="0.5" value="10">
+      </div>
+
+      <div class="fyt-campo">
+        <label for="fyt-mann-min-thl" title="Proporção mínima de THLs por opção vendida. Recomenda-se ≥ 2,6 na Tradicional e ≥ 3 na Reversa. Vazio = traz todas">
+          Mín. THLs</label>
+        <input type="number" id="fyt-mann-min-thl" min="0" step="0.1" placeholder="vazio = todas">
       </div>
     </div>
 
@@ -296,9 +341,10 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   // ── Alterna o painel de filtros conforme a estrutura escolhida ─────────
   var opSel = document.getElementById('fyt-op');
   function syncFiltrosEstrutura() {
-    var isThl = opSel.value === 'thl';
-    document.getElementById('fyt-filtros-booster').style.display = isThl ? 'none' : 'contents';
-    document.getElementById('fyt-filtros-thl').style.display = isThl ? 'contents' : 'none';
+    var v = opSel.value;
+    document.getElementById('fyt-filtros-booster').style.display = (v === 'booster') ? 'contents' : 'none';
+    document.getElementById('fyt-filtros-thl').style.display     = (v === 'thl')     ? 'contents' : 'none';
+    document.getElementById('fyt-filtros-mann').style.display    = (v === 'mannerheim') ? 'contents' : 'none';
   }
   opSel.addEventListener('change', syncFiltrosEstrutura);
   syncFiltrosEstrutura();
@@ -320,6 +366,15 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         max_px: document.getElementById('fyt-thl-max-px').value || ''
       });
       url = '/api/fyt-thl/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'mannerheim') {
+      q = new URLSearchParams({
+        tipo:       document.getElementById('fyt-mann-tipo').value,
+        exp_v:      document.getElementById('fyt-mann-exp-v').value,
+        exp_c:      document.getElementById('fyt-mann-exp-c').value,
+        strike_pct: document.getElementById('fyt-mann-strike-pct').value || '10',
+        min_thl:    document.getElementById('fyt-mann-min-thl').value || ''
+      });
+      url = '/api/fyt-mannerheim/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else {
       var ratios = Array.prototype.map.call(
         document.querySelectorAll('#fyt-ratios .fyt-chip.on'), function(c) { return c.dataset.r; }).join(',');
@@ -349,7 +404,9 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
           return;
         }
         currentEstrutura = estrutura;
-        if (estrutura === 'thl') renderThl(res.j); else render(res.j);
+        if (estrutura === 'thl') renderThl(res.j);
+        else if (estrutura === 'mannerheim') renderMann(res.j);
+        else render(res.j);
       })
       .catch(function(e) {
         loading.style.display = 'none';
@@ -497,6 +554,80 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     });
   }
 
+  // ── Render Linha de Mannerheim ────────────────────────────────────────
+  function renderMann(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
+          (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
+        : '');
+
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">' +
+        'Nenhuma montagem atende aos filtros neste ativo.</div>';
+      return;
+    }
+
+    var tradicional = d.variante === 'tradicional';
+    var vencCompradas = d.exp_c_all ? 'todos (+1 a +3)'
+                                    : dateBR(d.exp_c) + ' (' + (d.rows[0] ? d.rows[0].dc_c : '') + 'd)';
+
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">' +
+      '🛡️ <strong>' + (tradicional ? 'Tradicional' : 'Reversa') + '</strong> — vende ' +
+      d.tipo_vendida + ' a descoberto + THLs de ' + d.tipo_thl + ' · ' +
+      '📆 Vendidas: <strong>' + dateBR(d.exp_v) + '</strong> (' + d.dc_v + 'd) · ' +
+      'Compradas: <strong>' + vencCompradas + '</strong>' +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') +
+      ' · <strong>' + d.rows.length + '</strong> montagem(ns)' +
+      '<br><span style="color:#fbbf24;">⚠️ ' + d.tipo_vendida + ' vendida A DESCOBERTO: ' +
+      (tradicional ? 'risco na queda forte.' : 'risco na alta forte e na queda forte (PUTs DITM).') +
+      ' Recomenda-se ≥ ' + (tradicional ? '2,6' : '3') + ' THLs por vendida.</span>' +
+      '</div>';
+
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th title="Strike das três pernas (a THL usa o mesmo strike da vendida)">Strike</th>' +
+      '<th title="Opção vendida a descoberto (venc. curto)">Vendida ' + d.tipo_vendida + '</th>' +
+      '<th title="Bid × ask da vendida">Boca vend.</th>' +
+      '<th title="Composição da THL: compra o mês longo, vende o mês curto">THL (' + d.tipo_thl + ')</th>' +
+      (d.exp_c_all ? '<th title="Vencimento da perna longa da THL">Venc. compr.</th>' : '') +
+      '<th title="Custo unitário de 1 THL (longa − curta)">Custo THL</th>' +
+      '<th title="Quantas THLs o prêmio da vendida financia">THLs</th>' +
+      '<th title="Financeiro com a quantidade inteira de THLs. Negativo = crédito">Financeiro</th>' +
+      '</tr></thead><tbody>';
+
+    d.rows.forEach(function(r, i) {
+      var atm = Math.abs(r.strike_dist) <= 1.0;
+      h += '<tr data-i="' + i + '" title="Clique para ver o detalhamento">' +
+        '<td><strong style="' + (atm ? 'color:#a78bfa;' : '') + '">' + brl(r.strike) + '</strong>' +
+            '<br><span style="font-size:.72rem;color:var(--text-secondary);">' +
+            pct(r.strike_dist) + (atm ? ' · ATM' : '') + '</span></td>' +
+        '<td><span class="fyt-badge sell">−1× ' + r.vend_symbol + '</span>' +
+            '<br><span style="font-size:.72rem;color:var(--text-secondary);">@ ' +
+            brl(r.vend_px) + '</span></td>' +
+        '<td>' + bocaCel(r.vend_bid, r.vend_ask, r.vend_src) + '</td>' +
+        '<td><span class="fyt-badge buy">+' + r.thl_c_symbol + '</span> ' +
+            '<span class="fyt-badge sell">−' + r.thl_v_symbol + '</span>' +
+            '<br><span style="font-size:.72rem;color:var(--text-secondary);">' +
+            bocaCel(r.thl_c_bid, r.thl_c_ask, r.thl_c_src) + ' / ' +
+            bocaCel(r.thl_v_bid, r.thl_v_ask, r.thl_v_src) + '</span></td>' +
+        (d.exp_c_all ? '<td>' + dateBR(r.exp_c) +
+            '<br><span style="font-size:.72rem;color:var(--text-secondary);">' + r.dc_c + 'd</span></td>' : '') +
+        '<td>' + brl(r.custo_thl) + '</td>' +
+        '<td><strong class="' + (r.n_thl >= 2.6 ? 'pos' : 'neg') + '">' + fmt(r.n_thl, 2) + '</strong>' +
+            '<br><span style="font-size:.72rem;color:var(--text-secondary);">monta ' +
+            r.n_thl_int + '</span></td>' +
+        '<td><span class="fyt-badge ' + (r.is_credito ? 'cred' : 'deb') + '">' +
+            (r.is_credito ? 'crédito ' + brl(Math.abs(r.financeiro)) : brl(r.financeiro)) + '</span></td>' +
+        '</tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) {
+      tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); });
+    });
+  }
+
   // ── Modal ─────────────────────────────────────────────────────────────
   var modalIdx = null;
   function openModal(i) {
@@ -515,6 +646,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   function refreshModal() {
     if (lastData == null || modalIdx == null) return;
     if (currentEstrutura === 'thl') { refreshModalThl(); return; }
+    if (currentEstrutura === 'mannerheim') { refreshModalMann(); return; }
     var r = lastData.rows[modalIdx];
     var q = parseInt(document.getElementById('fytm-qty').value) || 100;
 
@@ -628,6 +760,66 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     calcBtn.style.display = 'none';
   }
 
+  // ── Modal da Linha de Mannerheim ──────────────────────────────────────
+  function refreshModalMann() {
+    var r = lastData.rows[modalIdx];
+    var q = parseInt(document.getElementById('fytm-qty').value) || 100;
+    var n = r.n_thl_int;                       // THLs inteiras que se monta
+
+    document.getElementById('fytm-title').textContent =
+      'Linha de Mannerheim (' + (lastData.variante === 'tradicional' ? 'Tradicional' : 'Reversa') +
+      ') ' + lastData.ticker + ' — K ' + fmt(r.strike);
+
+    var creditoVend = r.vend_px * q;
+    var custoTHLs   = r.custo_thl * n * q;
+    var finTotal    = r.financeiro * q;
+
+    var boxes = [
+      ['Venda a descoberto ' + q + '× ' + r.vend_symbol + ' (' + lastData.tipo_vendida +
+          ' K ' + fmt(r.strike) + ' · ' + dateBR(lastData.exp_v) + ')',
+          brl(creditoVend) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.vend_bid, r.vend_ask, r.vend_src) + ')</span>', 'pos'],
+      ['THLs compradas: ' + n + '× (' + (n * q) + ' contratos)',
+          brl(custoTHLs), 'neg'],
+      ['  ↳ compra ' + r.thl_c_symbol + ' (' + dateBR(r.exp_c) + ')',
+          brl(r.thl_c_px * n * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.thl_c_bid, r.thl_c_ask, r.thl_c_src) + ')</span>', 'neg'],
+      ['  ↳ vende ' + r.thl_v_symbol + ' (' + dateBR(lastData.exp_v) + ')',
+          brl(r.thl_v_px * n * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.thl_v_bid, r.thl_v_ask, r.thl_v_src) + ')</span>', 'pos'],
+      [r.is_credito ? 'Financeiro (crédito)' : 'Financeiro (débito)',
+          brl(Math.abs(finTotal)), r.is_credito ? 'pos' : 'neg'],
+      ['THLs por vendida', fmt(r.n_thl, 2) + '× ' +
+          (r.n_thl >= 2.6 ? '' : '<span style="font-size:.72rem;color:#fbbf24;"> (abaixo de 2,6)</span>'),
+          r.n_thl >= 2.6 ? 'pos' : 'neg'],
+      ['Custo unitário da THL', brl(r.custo_thl), ''],
+      ['Strike (as 3 pernas)', brl(r.strike) + ' (' + pct(r.strike_dist) + ')', ''],
+      ['Vencimento das vendidas', dateBR(lastData.exp_v) + ' (' + lastData.dc_v + ' d.c.)', ''],
+      ['Vencimento da comprada', dateBR(r.exp_c) + ' (' + r.dc_c + ' d.c.)', '']
+    ];
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
+             '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+
+    // Abrir na Cadeia de Opções com as 3 pernas. A perna longa da THL fica
+    // num vencimento diferente das outras duas, então só a Cadeia dá conta —
+    // a aba Estruturas de Cálculos de Opções trabalha com um vencimento só.
+    var tp = lastData.tipo_thl;                 // tipo das pernas da THL
+    var legs = [
+      [r.vend_symbol, lastData.tipo_vendida, 'SELL', q, r.vend_px, r.strike, lastData.exp_v].join(','),
+      [r.thl_c_symbol, tp, 'BUY',  n * q, r.thl_c_px, r.strike, r.exp_c].join(','),
+      [r.thl_v_symbol, tp, 'SELL', n * q, r.thl_v_px, r.strike, lastData.exp_v].join(',')
+    ].join('|');
+    var qs = new URLSearchParams({sim: '1', ativo: lastData.ticker,
+      nome: 'Linha de Mannerheim ' + lastData.ticker + ' K' + fmt(r.strike), legs: legs});
+    document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + qs.toString();
+
+    var calcBtnM = document.getElementById('fytm-calc');
+    calcBtnM.removeAttribute('href');
+    calcBtnM.style.display = 'none';
+  }
+
   // Pré-seleção via URL (?ticker=XXXX) — não dispara a busca sozinha
   var qTicker = new URLSearchParams(location.search).get('ticker');
   if (qTicker) setTicker(qTicker);
@@ -635,8 +827,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   // Pré-seleção da estrutura via URL (?estrutura=thl), usada pela Ajuda de
   // Operações — também não dispara a busca sozinha.
   var qEstrutura = new URLSearchParams(location.search).get('estrutura');
-  if (qEstrutura === 'thl') {
-    opSel.value = 'thl';
+  if (qEstrutura === 'thl' || qEstrutura === 'mannerheim') {
+    opSel.value = qEstrutura;
     syncFiltrosEstrutura();
   }
 })();

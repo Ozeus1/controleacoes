@@ -571,6 +571,15 @@ var OPS=[
  sel:['Ambos os strikes de 20% ITM a 20% OTM do spot','Vencimento da comprada: qualquer um dos 12 mensais mais próximos (perna de prazo longo)','Vencimento da vendida: próximo mensal ou +1 mês (perna de prazo curto, sempre antes da comprada)','Preço máximo (custo) editável — vazio traz todas as combinações','Ordenado pelo melhor Retorno % (crédito líquido sobre o custo da comprada)'],
  man:['Retorno% negativo é normal — mede o quanto a montagem consome de capital sobre o valor da comprada; perto de 0% é a melhor montagem','Perto do vencimento da vendida: rolar para uma nova vendida de prazo curto sobre a mesma comprada','Papel dispara acima do strike vendido: a vendida fica ITM — decidir entre recomprar ou aceitar o exercício','Comprada tem valor de tempo residual: normalmente vale mais recompor a vendida do que liquidar tudo'],
  busca:FYT+'?estrutura=thl'},
+{cat:'cat-vol',nome:'Linha de Mannerheim',cen:'lateral',tipo:'zero',vi:'alta',
+ alias:['mannerheim'],
+ tags:['VENDA A DESCOBERTO + THLs','FINANCEIRO ~ZERO','⚠️ PONTA NUA'],
+ legs:[{t:'P',q:-1,K:100,p:2.6},{t:'C',q:3,K:100,p:1.4},{t:'C',q:-3,K:100,p:0.55}],
+ mont:'Vende 1 opção ATM A DESCOBERTO e usa o prêmio para comprar N Travas Horizontais de Linha (THLs) no MESMO strike, com financeiro total próximo de zero. A THL é um calendário puro: compra o mês longo e vende o mês curto, ambos no strike da vendida.',
+ cenario:'A maximização ocorre nas proximidades do strike da opção vendida, nos últimos dias para o vencimento — quando a vendida \"vira pó\" e sobram as THLs com valor temporal. Quanto mais THLs por vendida, menor o risco de movimento forte contra.',
+ sel:['Tradicional: vende PUT a descoberto + THLs de CALL (viés alta ou lateral)','Reversa: vende CALL a descoberto + THLs de PUT (viés baixa ou lateral)','Vencimento das vendidas: próximo mensal ou +1 mês (vale para a descoberta e para a perna curta das THLs)','Vencimento das compradas: +1 a +3 meses (perna longa das THLs)','Variação do strike editável (±% do spot) e Mín. THLs — vazio traz todas','Ordenado pelos strikes mais próximos do ATM, que é onde a operação se maximiza'],
+ man:['Proporção mínima recomendada: ≥ 2,6 THLs por vendida na Tradicional e ≥ 3 na Reversa','Tradicional: risco na queda forte (PUT descoberta)','Reversa: risco na alta forte (CALL descoberta) e também na queda forte (PUTs DITM exigem desembolso para desmontar)','Strikes muito ITM financiam mais THLs, mas o prêmio deles é valor intrínseco, não de tempo — descaracteriza a operação','Acompanhar de perto na semana do vencimento: é quando a vendida perde valor e a estrutura se maximiza'],
+ busca:FYT+'?estrutura=mannerheim'},
 
 /* ══ SINTÉTICAS E AVANÇADAS ══ */
 {cat:'cat-sint',nome:'Ação Sintética (Long Synthetic)',cen:'alta',tipo:'zero',

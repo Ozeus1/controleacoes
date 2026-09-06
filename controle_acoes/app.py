@@ -7092,6 +7092,335 @@ def api_fyt_thl(ticker):
     })
 
 
+@app.route('/api/fyt-mannerheim/<ticker>')
+@login_required
+def api_fyt_mannerheim(ticker):
+    """Busca a Linha de Mannerheim na cadeia de opcoes.
+
+    Linha de Mannerheim: vende 1 opcao ATM A DESCOBERTO e usa o premio para
+    comprar N Travas Horizontais de Linha (THLs) no MESMO strike, com
+    financeiro total proximo de zero.
+
+    A THL e um calendario puro no mesmo strike K:
+      + compra 1 opcao de K no vencimento LONGO
+      - vende  1 opcao de K no vencimento CURTO (o mesmo da descoberta)
+
+    Variantes:
+      tradicional  -> vende PUT a descoberto  + THLs de CALL (vies alta/lateral)
+      reversa      -> vende CALL a descoberto + THLs de PUT  (vies baixa/lateral)
+
+    Cada linha da tabela e um strike K:
+      vendida  = 1 opcao K no venc. curto (PUT na tradicional, CALL na reversa)
+      thl_venda = N opcoes K no venc. curto (do tipo oposto ao da vendida)
+      thl_compra = N opcoes K no venc. longo (mesmo tipo da thl_venda)
+
+    Financeiro: credito da vendida - N x (custo da THL). N e escolhido como o
+    maior numero de THLs que o premio da vendida financia (financeiro <= 0,
+    isto e, sem desembolso liquido), e a linha so entra se N >= min_thl.
+
+    Filtros:
+      tipo     = 'call' (reversa: vende CALL, THLs de PUT)
+                 'put'  (tradicional: vende PUT, THLs de CALL)
+      exp_v    = indice do vencimento das VENDIDAS (0 = proximo mensal,
+                 1 = proximo + 1) — vale para a descoberta e para a perna
+                 curta das THLs
+      exp_c    = indice do vencimento das COMPRADAS (perna longa das THLs),
+                 de exp_v+1 ate exp_v+3, ou 'all' para varrer os tres
+      strike_pct = variacao maxima do strike em % do spot (ex.: 10 = de 10%
+                 ITM a 10% OTM). Default 10.
+      min_thl  = proporcao minima de THLs por opcao vendida; vazio = sem
+                 minimo (traz todas as linhas com pelo menos 1 THL)
+    """
+    ticker = ticker.strip().upper()
+    token  = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    if not spot:
+        return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
+
+    # ── Filtros ──────────────────────────────────────────────────────────
+    tipo = (request.args.get('tipo') or 'put').strip().lower()
+    if tipo not in ('call', 'put'):
+        tipo = 'put'
+    # tradicional = vende PUT + THLs de CALL | reversa = vende CALL + THLs de PUT
+    variante = 'tradicional' if tipo == 'put' else 'reversa'
+
+    def _idx(name, default, hi):
+        try:
+            v = int(request.args.get(name, default))
+        except (TypeError, ValueError):
+            v = default
+        return v if 0 <= v <= hi else default
+
+    exp_v_i = _idx('exp_v', 0, 1)      # vendidas: proximo mensal ou +1
+
+    raw_exp_c = (request.args.get('exp_c') or '').strip().lower()
+    exp_c_all = raw_exp_c in ('all', 'todos', 'todas', '-1', '')
+
+    def _num(name, default):
+        raw = (request.args.get(name) or '').strip()
+        if not raw:
+            return default
+        try:
+            return float(raw.replace(',', '.'))
+        except ValueError:
+            return default
+
+    strike_pct = _num('strike_pct', 10.0)
+    strike_pct = min(max(abs(strike_pct), 0.5), 50.0)
+
+    min_thl_raw = (request.args.get('min_thl') or '').strip()
+    min_thl = None
+    if min_thl_raw:
+        try:
+            min_thl = float(min_thl_raw.replace(',', '.'))
+        except ValueError:
+            min_thl = None
+
+    # ── Cadeia ───────────────────────────────────────────────────────────
+    try:
+        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+    except OplabApiError as e:
+        return jsonify({'error': str(e), 'status': e.status_code}), 503
+    except Exception:
+        app.logger.exception('api_fyt_mannerheim error for %s', ticker)
+        return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+
+    opt_list = data if isinstance(data, list) else (
+        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+    )
+
+    from datetime import date as _date
+    today = _date.today()
+
+    def _third_friday(y, m):
+        count, day = 0, 1
+        while True:
+            d = _date(y, m, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    return d
+            day += 1
+
+    def _is_monthly(exp_str):
+        d = _date.fromisoformat(exp_str)
+        tf = _third_friday(d.year, d.month)
+        return abs((d - tf).days) <= 2
+
+    lo_k = spot * (1 - strike_pct / 100.0)
+    hi_k = spot * (1 + strike_pct / 100.0)
+
+    # Separa CALLs e PUTs por vencimento, dentro da faixa de strike pedida
+    calls_by_exp, puts_by_exp = {}, {}
+    for o in opt_list:
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        is_put = ('PUT' in cat or cat == 'P')
+        strike = float(o.get('strike') or 0)
+        if strike <= 0 or not (lo_k <= strike <= hi_k):
+            continue
+        due = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due:
+            due = due.split('T')[0]
+        if not due:
+            continue
+        try:
+            if _date.fromisoformat(due) <= today:
+                continue
+        except ValueError:
+            continue
+        row = {
+            'symbol': str(o.get('symbol') or o.get('ticker') or '').upper(),
+            'strike': round(strike, 2),
+            'bid':    round(float(o.get('bid') or 0), 2),
+            'ask':    round(float(o.get('ask') or 0), 2),
+            'close':  round(float(o.get('close') or 0), 2),
+            'vol_fin': round(float(o.get('financial_volume')
+                                   or o.get('volume_financial') or 0), 2),
+        }
+        (puts_by_exp if is_put else calls_by_exp).setdefault(due, []).append(row)
+
+    # Vencimentos mensais presentes nos DOIS tipos (precisamos de call e put)
+    all_exps = set(calls_by_exp) | set(puts_by_exp)
+    monthlies = sorted([e for e in all_exps if _is_monthly(e)])[:8]
+    if len(monthlies) < 2:
+        return jsonify({'error': f'Menos de 2 vencimentos mensais na cadeia de {ticker}.'}), 404
+
+    exps_out = [{'exp': e,
+                 'dc': max((_date.fromisoformat(e) - today).days, 0),
+                 'label': ('Próximo mensal' if i == 0 else f'Mensal +{i}')}
+                for i, e in enumerate(monthlies)]
+
+    exp_v_i = min(exp_v_i, len(monthlies) - 1)
+    exp_v = monthlies[exp_v_i]
+
+    # Compradas: de exp_v+1 ate exp_v+3
+    if exp_c_all:
+        exp_c_candidates = [i for i in range(exp_v_i + 1, exp_v_i + 4)
+                            if i < len(monthlies)]
+    else:
+        exp_c_i = _idx('exp_c', exp_v_i + 1, len(monthlies) - 1)
+        # A comprada tem de vencer DEPOIS da vendida, no maximo 3 meses a frente
+        exp_c_i = max(exp_v_i + 1, min(exp_c_i, exp_v_i + 3))
+        exp_c_candidates = [exp_c_i] if exp_c_i < len(monthlies) else []
+
+    if not exp_c_candidates:
+        return jsonify({'error': f'{ticker} não tem vencimento mensal posterior '
+                        'ao das vendidas para montar as THLs.',
+                        'expirations': exps_out}), 404
+
+    # ── Preço efetivo (book no pregão, último fora dele) ──────────────────
+    _now_b = now_brt()
+    market_open = (_now_b.weekday() < 5
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+
+    def _eff(rw):
+        bid, ask, last = rw['bid'], rw['ask'], rw['close']
+        last_ok = last if last >= 0.05 else None
+        has_book = bid >= 0.05 and ask >= 0.05
+        if not market_open:
+            return {'bid_eff': last_ok, 'ask_eff': last_ok,
+                    'bid_raw': bid if bid >= 0.05 else None,
+                    'ask_raw': ask if ask >= 0.05 else None,
+                    'src': 'ultimo', 'has_boca': has_book}
+        b = bid if bid >= 0.05 else last_ok
+        a = ask if ask >= 0.05 else last_ok
+        src = 'book' if has_book else 'ultimo'
+        if has_book and last_ok:
+            mid = (bid + ask) / 2
+            if (ask - bid) > max(0.10, 0.25 * mid):
+                b = a = last_ok
+                src = 'ultimo'
+        return {'bid_eff': b, 'ask_eff': a,
+                'bid_raw': bid if bid >= 0.05 else None,
+                'ask_raw': ask if ask >= 0.05 else None,
+                'src': src, 'has_boca': has_book}
+
+    # Tipo da opcao VENDIDA a descoberto e o tipo usado nas THLs (o oposto)
+    if tipo == 'put':
+        pool_vendida = puts_by_exp        # vende PUT a descoberto
+        pool_thl     = calls_by_exp       # THLs de CALL
+        tipo_vendida, tipo_thl = 'PUT', 'CALL'
+    else:
+        pool_vendida = calls_by_exp       # vende CALL a descoberto
+        pool_thl     = puts_by_exp        # THLs de PUT
+        tipo_vendida, tipo_thl = 'CALL', 'PUT'
+
+    vend_curto = {r['strike']: r for r in pool_vendida.get(exp_v, [])}
+    thl_curto  = {r['strike']: r for r in pool_thl.get(exp_v, [])}
+    if not vend_curto or not thl_curto:
+        return jsonify({'error': f'Cadeia sem {tipo_vendida}/{tipo_thl} no vencimento '
+                        'das vendidas dentro da faixa de strike escolhida.',
+                        'expirations': exps_out}), 404
+
+    dc_v = max((_date.fromisoformat(exp_v) - today).days, 1)
+    selic = _selic()
+
+    rows = []
+    for cand_i in exp_c_candidates:
+        exp_c = monthlies[cand_i]
+        thl_longo = {r['strike']: r for r in pool_thl.get(exp_c, [])}
+        if not thl_longo:
+            continue
+        dc_c = max((_date.fromisoformat(exp_c) - today).days, 1)
+
+        for k in sorted(set(vend_curto) & set(thl_curto) & set(thl_longo)):
+            v_row, tc_row, tl_row = vend_curto[k], thl_curto[k], thl_longo[k]
+
+            ev, etc, etl = _eff(v_row), _eff(tc_row), _eff(tl_row)
+            # A perna LONGA da THL e a mais sujeita a book fino: no pregao
+            # aberto exige boca real, como ja e feito na busca de THL.
+            if market_open and not etl['has_boca']:
+                continue
+
+            v_bid  = ev['bid_eff']          # credito da descoberta (vende)
+            tc_bid = etc['bid_eff']         # vende a curta da THL
+            tl_ask = etl['ask_eff']         # compra a longa da THL
+            if not v_bid or not tc_bid or not tl_ask:
+                continue
+
+            custo_thl = tl_ask - tc_bid     # custo unitario de 1 THL
+            if custo_thl <= 0.005:
+                # THL de graca ou no credito: dado inconsistente para esta
+                # montagem (o calendario longo deveria custar mais que o curto)
+                continue
+
+            # Quantas THLs o premio da descoberta financia sem desembolso
+            n_thl = v_bid / custo_thl
+            if n_thl < 1:
+                continue
+            if min_thl is not None and n_thl < min_thl:
+                continue
+
+            # Financeiro com a quantidade inteira de THLs (o que de fato se
+            # monta na pratica) e com a fracionaria (proporcao exata)
+            n_int = int(n_thl)
+            fin_int = round(n_int * custo_thl - v_bid, 2)   # <=0 => credito
+
+            liq = min(v_row.get('vol_fin') or 0, tc_row.get('vol_fin') or 0,
+                      tl_row.get('vol_fin') or 0)
+            rows.append({
+                'strike':        k,
+                'strike_dist':   round((k - spot) / spot * 100, 1),
+                'variante':      variante,
+                'tipo_vendida':  tipo_vendida,
+                'tipo_thl':      tipo_thl,
+                # Opcao vendida a descoberto (venc. curto)
+                'vend_symbol':   v_row['symbol'],
+                'vend_px':       round(v_bid, 2),
+                'vend_bid':      ev['bid_raw'], 'vend_ask': ev['ask_raw'],
+                'vend_src':      ev['src'],
+                # THL: perna curta (vendida) e perna longa (comprada)
+                'thl_v_symbol':  tc_row['symbol'],
+                'thl_v_px':      round(tc_bid, 2),
+                'thl_v_bid':     etc['bid_raw'], 'thl_v_ask': etc['ask_raw'],
+                'thl_v_src':     etc['src'],
+                'thl_c_symbol':  tl_row['symbol'],
+                'thl_c_px':      round(tl_ask, 2),
+                'thl_c_bid':     etl['bid_raw'], 'thl_c_ask': etl['ask_raw'],
+                'thl_c_src':     etl['src'],
+                'custo_thl':     round(custo_thl, 2),
+                'n_thl':         round(n_thl, 2),
+                'n_thl_int':     n_int,
+                'financeiro':    fin_int,
+                'is_credito':    fin_int < -0.005,
+                'exp_c':         exp_c, 'dc_c': dc_c,
+                'liq':           liq,
+            })
+
+    if not rows:
+        msg = ('Nenhuma montagem com boca real nas compradas — tente fora do '
+               'pregão ou aguarde mais liquidez.') if market_open else \
+              ('Nenhum strike tem as três pernas (vendida, THL curta e THL longa) '
+               'negociáveis na faixa escolhida.')
+        if min_thl is not None:
+            msg += f' Talvez a exigência de {min_thl:g} THLs por vendida esteja alta.'
+        return jsonify({'error': msg, 'expirations': exps_out}), 404
+
+    # Ordena pelos strikes mais proximos do ATM primeiro: o conceito da Linha
+    # de Mannerheim e vender uma opcao ATM (premio de TEMPO) e converter esse
+    # premio em THLs. Strikes muito ITM financiam mais THLs so porque o premio
+    # deles e quase todo valor INTRINSECO — ordenar por n_thl puro jogaria
+    # essas linhas para o topo e descaracterizaria a operacao. Elas continuam
+    # na tabela (dentro da faixa de strike escolhida), mas abaixo das ATM.
+    rows.sort(key=lambda x: (abs(x['strike_dist']), -x['n_thl'], -x['liq']))
+    rows = _fyt_diversify(rows, lambda x: (x['strike'], x['exp_c']), per_key=1, limit=60)
+
+    return jsonify({
+        'ticker': ticker, 'spot': spot, 'spot_change': spot_change,
+        'selic': round(selic, 2), 'market_open': market_open,
+        'expirations': exps_out,
+        'variante': variante, 'tipo_vendida': tipo_vendida, 'tipo_thl': tipo_thl,
+        'exp_v': exp_v, 'dc_v': dc_v,
+        'exp_c': (None if exp_c_all else monthlies[exp_c_candidates[0]]),
+        'exp_c_all': exp_c_all,
+        'strike_pct': strike_pct, 'min_thl': min_thl,
+        'rows': rows, 'total': len(rows),
+    })
+
+
 @app.route('/venda-put-longa')
 @login_required
 def venda_put_longa():

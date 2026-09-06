@@ -589,6 +589,15 @@ var OPS=[
  sel:['Tipo: Débito (CALLs) ou Crédito (PUTs)','Vencimento: próximo mensal, +1 ou +2','Tamanho da trava (distância entre strikes) de 4 a 12','Risco de 1:1 a 1:6 — no débito é ganho/custo (queremos alto); no crédito é perda/crédito invertido (queremos baixo)','Faixa da perna de referência (comprada no débito, vendida no crédito) de 40% ITM a 40% OTM','Preço da montagem de -8 a 8 (negativo = crédito, positivo = débito)'],
  man:['Débito: TP com o ativo perto do strike vendido; stop se romper o strike comprado na direção contrária','Crédito: acompanhar o strike vendido — se for testado, considerar rolar ou fechar','POP e EV são informativos e não filtram a busca, para não esconder as travas mais alavancadas','Ordenado pela relação de risco, do mais conservador ao mais alavancado'],
  busca:FYT+'?estrutura=trava_alta'},
+{cat:'cat-vol',nome:'Trava de Baixa (FYT)',cen:'baixa',tipo:'zero',vi:'baixa',
+ alias:['trava_baixa_fyt'],
+ tags:['DÉBITO (PUTs) OU CRÉDITO (CALLs)','FILTROS AJUSTÁVEIS'],
+ legs:[{t:'P',q:1,K:103,p:3.6},{t:'P',q:-1,K:98,p:1.2}],
+ mont:'Débito: compra PUT de strike MAIOR + vende PUT de strike MENOR (mesmo vencimento). Crédito: vende CALL de strike MENOR + compra CALL de strike MAIOR de proteção (mesmo vencimento). Espelho exato da Trava de Alta, com CALL/PUT trocados.',
+ cenario:'Baixa moderada até o strike vendido (débito) ou abaixo do strike vendido (crédito). No débito, o risco é limitado ao valor pago; no crédito, à largura menos o crédito recebido.',
+ sel:['Tipo: Débito (PUTs) ou Crédito (CALLs)','Vencimento: próximo mensal, +1 ou +2','Tamanho da trava (distância entre strikes) de 4 a 12','Risco de 1:1 a 1:6 — no débito é ganho/custo (queremos alto); no crédito é perda/crédito invertido (queremos baixo)','Faixa da perna de referência (comprada no débito, vendida no crédito) de 40% ITM a 40% OTM','Preço da montagem de -8 a 8 (negativo = crédito, positivo = débito)'],
+ man:['Débito: TP com o ativo perto do strike vendido; stop se romper o strike comprado na direção contrária','Crédito: acompanhar o strike vendido — se for testado, considerar rolar ou fechar','POP e EV são informativos e não filtram a busca, para não esconder as travas mais alavancadas','Ordenado pela relação de risco, do mais conservador ao mais alavancado'],
+ busca:FYT+'?estrutura=trava_baixa'},
 
 /* ══ SINTÉTICAS E AVANÇADAS ══ */
 {cat:'cat-sint',nome:'Ação Sintética (Long Synthetic)',cen:'alta',tipo:'zero',

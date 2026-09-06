@@ -98,6 +98,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <option value="thl">📐 THL (Trava de Alta Diagonal)</option>
         <option value="mannerheim">🛡️ Linha de Mannerheim</option>
         <option value="trava_alta">📈 Trava de Alta</option>
+        <option value="trava_baixa">📉 Trava de Baixa</option>
       </select>
     </div>
 
@@ -286,6 +287,62 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       </div>
     </div>
 
+    <!-- Filtros da Trava de Baixa -->
+    <div id="fyt-filtros-travabaixa" style="display:none;">
+      <div class="fyt-campo">
+        <label for="fyt-travab-tipo" title="Débito: compra PUT maior + vende PUT menor. Crédito: vende CALL menor + compra CALL maior (proteção)">
+          Tipo</label>
+        <select id="fyt-travab-tipo">
+          <option value="debito" selected>Débito (PUTs)</option>
+          <option value="credito">Crédito (CALLs)</option>
+        </select>
+      </div>
+
+      <div class="fyt-campo">
+        <label for="fyt-travab-exp">Vencimento</label>
+        <select id="fyt-travab-exp">
+          <option value="0" selected>Próximo mensal</option>
+          <option value="1">Mensal +1</option>
+          <option value="2">Mensal +2</option>
+        </select>
+      </div>
+
+      <div class="fyt-campo">
+        <label>Tamanho da trava (R$)</label>
+        <div class="fyt-asa">
+          <input type="number" id="fyt-travab-tam-min" min="0" step="0.5" value="4">
+          <span style="color:var(--text-secondary);">até</span>
+          <input type="number" id="fyt-travab-tam-max" min="0" step="0.5" value="12">
+        </div>
+      </div>
+
+      <div class="fyt-campo">
+        <label title="Débito: ganho máximo / custo. Crédito: perda máxima / crédito (invertido)">
+          Risco (1:X)</label>
+        <div class="fyt-asa">
+          <input type="number" id="fyt-travab-risco-min" min="0.1" step="0.1" value="1">
+          <span style="color:var(--text-secondary);">até</span>
+          <input type="number" id="fyt-travab-risco-max" min="0.1" step="0.1" value="6">
+        </div>
+      </div>
+
+      <div class="fyt-campo">
+        <label for="fyt-travab-strike-pct" title="Faixa da perna de referência (comprada no débito, vendida no crédito), em % do spot">
+          Faixa da perna de refer. (± %)</label>
+        <input type="number" id="fyt-travab-strike-pct" min="1" max="60" step="1" value="40">
+      </div>
+
+      <div class="fyt-campo">
+        <label title="Financeiro da montagem em R$. Negativo = crédito recebido, positivo = débito pago">
+          Preço (R$)</label>
+        <div class="fyt-asa">
+          <input type="number" id="fyt-travab-preco-min" step="0.5" value="-8">
+          <span style="color:var(--text-secondary);">até</span>
+          <input type="number" id="fyt-travab-preco-max" step="0.5" value="8">
+        </div>
+      </div>
+    </div>
+
     <div class="fyt-campo" style="justify-content:flex-end;">
       <label>&nbsp;</label>
       <button class="btn btn-primary btn-sm" id="fyt-buscar" style="padding:.45rem .9rem;">
@@ -403,6 +460,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('fyt-filtros-thl').style.display     = (v === 'thl')     ? 'contents' : 'none';
     document.getElementById('fyt-filtros-mann').style.display    = (v === 'mannerheim') ? 'contents' : 'none';
     document.getElementById('fyt-filtros-trava').style.display   = (v === 'trava_alta') ? 'contents' : 'none';
+    document.getElementById('fyt-filtros-travabaixa').style.display = (v === 'trava_baixa') ? 'contents' : 'none';
   }
   opSel.addEventListener('change', syncFiltrosEstrutura);
   syncFiltrosEstrutura();
@@ -446,6 +504,19 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         preco_max:   document.getElementById('fyt-trava-preco-max').value || '8'
       });
       url = '/api/fyt-trava-alta/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'trava_baixa') {
+      q = new URLSearchParams({
+        tipo:        document.getElementById('fyt-travab-tipo').value,
+        exp:         document.getElementById('fyt-travab-exp').value,
+        tamanho_min: document.getElementById('fyt-travab-tam-min').value || '4',
+        tamanho_max: document.getElementById('fyt-travab-tam-max').value || '12',
+        risco_min:   document.getElementById('fyt-travab-risco-min').value || '1',
+        risco_max:   document.getElementById('fyt-travab-risco-max').value || '6',
+        strike_pct:  document.getElementById('fyt-travab-strike-pct').value || '40',
+        preco_min:   document.getElementById('fyt-travab-preco-min').value || '-8',
+        preco_max:   document.getElementById('fyt-travab-preco-max').value || '8'
+      });
+      url = '/api/fyt-trava-baixa/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else {
       var ratios = Array.prototype.map.call(
         document.querySelectorAll('#fyt-ratios .fyt-chip.on'), function(c) { return c.dataset.r; }).join(',');
@@ -478,6 +549,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         if (estrutura === 'thl') renderThl(res.j);
         else if (estrutura === 'mannerheim') renderMann(res.j);
         else if (estrutura === 'trava_alta') renderTrava(res.j);
+        else if (estrutura === 'trava_baixa') renderTravaBaixa(res.j);
         else render(res.j);
       })
       .catch(function(e) {
@@ -764,6 +836,70 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     });
   }
 
+  // ── Render Trava de Baixa ─────────────────────────────────────────────
+  function renderTravaBaixa(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
+          (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
+        : '');
+
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">' +
+        'Nenhuma montagem atende aos filtros neste ativo. Tente ampliar o tamanho, ' +
+        'o risco ou a faixa de preço.</div>';
+      return;
+    }
+
+    var isDeb = d.tipo === 'debito';
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">' +
+      '📉 <strong>Trava de Baixa (' + (isDeb ? 'Débito · PUTs' : 'Crédito · CALLs') + ')</strong> · ' +
+      '📆 Vencimento: <strong>' + dateBR(d.exp) + '</strong> (' + d.dc + 'd)' +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') +
+      ' · <strong>' + d.rows.length + '</strong> montagem(ns)' +
+      '</div>';
+
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th title="Strike da comprada e distância até o spot">Comprada</th>' +
+      '<th title="Bid × ask da comprada">Boca C.</th>' +
+      '<th title="Strike da vendida e distância até o spot">Vendida</th>' +
+      '<th title="Bid × ask da vendida">Boca V.</th>' +
+      '<th title="Distância entre os strikes">Tamanho</th>' +
+      '<th title="Negativo = crédito recebido na montagem">Preço</th>' +
+      '<th title="Ganho máximo (débito) ou perda máxima (crédito)">' + (isDeb ? 'Ganho máx.' : 'Perda máx.') + '</th>' +
+      '<th title="' + (isDeb ? 'Ganho máximo / custo' : 'Perda máxima / crédito (invertido)') + '">Risco</th>' +
+      '<th title="Probabilidade de o ativo terminar ABAIXO do breakeven, via Black-Scholes">POP</th>' +
+      '<th title="Preço abaixo do qual a montagem passa a dar lucro">Breakeven</th>' +
+      '</tr></thead><tbody>';
+
+    d.rows.forEach(function(r, i) {
+      h += '<tr data-i="' + i + '" title="Clique para ver o detalhamento">' +
+        '<td><span class="fyt-badge buy">+1× ' + r.buy_symbol + '</span><br>' +
+            brl(r.buy_strike) + ' <span style="font-size:.72rem;color:var(--text-secondary);">' +
+            pct(r.buy_dist) + '</span></td>' +
+        '<td>' + bocaCel(r.buy_bid, r.buy_ask, r.buy_src) + '</td>' +
+        '<td><span class="fyt-badge sell">−1× ' + r.sell_symbol + '</span><br>' +
+            brl(r.sell_strike) + ' <span style="font-size:.72rem;color:var(--text-secondary);">' +
+            pct(r.sell_dist) + '</span></td>' +
+        '<td>' + bocaCel(r.sell_bid, r.sell_ask, r.sell_src) + '</td>' +
+        '<td>' + brl(r.width) + '</td>' +
+        '<td><span class="fyt-badge ' + (r.is_credito ? 'cred' : 'deb') + '">' +
+            (r.is_credito ? 'crédito ' + brl(Math.abs(r.custo)) : brl(r.custo)) + '</span></td>' +
+        '<td class="pos"><strong>' + brl(isDeb ? r.max_gain : r.max_loss) + '</strong></td>' +
+        '<td>1 : ' + fmt(r.ratio, 2) + '</td>' +
+        '<td>' + (r.pop != null ? fmt(r.pop, 1) + '%' : '—') + '</td>' +
+        '<td>' + brl(r.breakeven) + '<br><span style="font-size:.72rem;color:var(--text-secondary);">' +
+            pct(r.be_dist) + '</span></td>' +
+        '</tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) {
+      tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); });
+    });
+  }
+
   // ── Modal ─────────────────────────────────────────────────────────────
   var modalIdx = null;
   function openModal(i) {
@@ -784,6 +920,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (currentEstrutura === 'thl') { refreshModalThl(); return; }
     if (currentEstrutura === 'mannerheim') { refreshModalMann(); return; }
     if (currentEstrutura === 'trava_alta') { refreshModalTrava(); return; }
+    if (currentEstrutura === 'trava_baixa') { refreshModalTravaBaixa(); return; }
     var r = lastData.rows[modalIdx];
     var q = parseInt(document.getElementById('fytm-qty').value) || 100;
 
@@ -1017,6 +1154,64 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     calcBtnT.style.display = '';
   }
 
+  // ── Modal da Trava de Baixa ───────────────────────────────────────────
+  function refreshModalTravaBaixa() {
+    var r = lastData.rows[modalIdx];
+    var q = parseInt(document.getElementById('fytm-qty').value) || 100;
+    var isDeb = lastData.tipo === 'debito';
+    var tp = isDeb ? 'PUT' : 'CALL';
+
+    document.getElementById('fytm-title').textContent =
+      'Trava de Baixa (' + (isDeb ? 'Débito' : 'Crédito') + ') ' + lastData.ticker + ' — ' +
+      r.buy_symbol + ' / ' + r.sell_symbol;
+
+    var custoTotal = r.custo * q;
+
+    var boxes = [
+      ['Compra ' + q + '× ' + r.buy_symbol + ' (K ' + fmt(r.buy_strike) + ')',
+          brl(r.buy_px * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.buy_bid, r.buy_ask, r.buy_src) + ')</span>', 'neg'],
+      ['Venda ' + q + '× ' + r.sell_symbol + ' (K ' + fmt(r.sell_strike) + ')',
+          brl(r.sell_px * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.sell_bid, r.sell_ask, r.sell_src) + ')</span>', 'pos'],
+      [r.is_credito ? 'Crédito recebido' : 'Custo da montagem (débito)',
+          brl(Math.abs(custoTotal)), r.is_credito ? 'pos' : 'neg'],
+      [isDeb ? 'Ganho máximo (no strike vendido)' : 'Perda máxima (acima do strike comprado)',
+          brl((isDeb ? r.max_gain : r.max_loss) * q), isDeb ? 'pos' : 'neg'],
+      ['Relação de risco', '1 : ' + fmt(r.ratio, 2), ''],
+      ['Tamanho da trava (distância entre strikes)', brl(r.width), ''],
+      ['Breakeven', brl(r.breakeven) + ' (' + pct(r.be_dist) + ')', ''],
+      ['POP (prob. de terminar abaixo do breakeven)', r.pop != null ? fmt(r.pop, 1) + '%' : '—', ''],
+      ['EV (expectância / risco)', r.ev_pct != null ? pct(r.ev_pct) : '—', ''],
+      ['Vencimento', dateBR(lastData.exp) + ' (' + lastData.dc + ' d.c.)', '']
+    ];
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
+             '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+
+    // Abrir na Cadeia de Opções
+    var legs = [
+      [r.buy_symbol,  tp, 'BUY',  q, r.buy_px,  r.buy_strike,  lastData.exp].join(','),
+      [r.sell_symbol, tp, 'SELL', q, r.sell_px, r.sell_strike, lastData.exp].join(',')
+    ].join('|');
+    var qs = new URLSearchParams({sim: '1', ativo: lastData.ticker,
+      nome: 'Trava de Baixa ' + lastData.ticker, legs: legs});
+    document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + qs.toString();
+
+    // Abrir em Cálculos de Opções (aba Estruturas) — motor genérico "livre".
+    // As duas pernas sempre ficam no MESMO vencimento nesta busca.
+    var calcBtnTB = document.getElementById('fytm-calc');
+    var pTB = {st: '1', ativo: lastData.ticker, spot: lastData.spot, qty: q,
+      exp: lastData.exp, op: 'livre',
+      livre_legs: tp[0] + ':1|' + tp[0] + ':-1',
+      livre_nome: 'Trava de Baixa (' + (isDeb ? 'Débito' : 'Crédito') + ') ' + lastData.ticker,
+      at: r.buy_symbol,  ak: r.buy_strike,  ap: r.buy_px,
+      bt: r.sell_symbol, bk: r.sell_strike, bp: r.sell_px};
+    calcBtnTB.href = '/venda_puts?' + new URLSearchParams(pTB).toString() + '#estrutura';
+    calcBtnTB.style.display = '';
+  }
+
   // Pré-seleção via URL (?ticker=XXXX) — não dispara a busca sozinha
   var qTicker = new URLSearchParams(location.search).get('ticker');
   if (qTicker) setTicker(qTicker);
@@ -1024,7 +1219,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   // Pré-seleção da estrutura via URL (?estrutura=thl), usada pela Ajuda de
   // Operações — também não dispara a busca sozinha.
   var qEstrutura = new URLSearchParams(location.search).get('estrutura');
-  if (qEstrutura === 'thl' || qEstrutura === 'mannerheim' || qEstrutura === 'trava_alta') {
+  if (qEstrutura === 'thl' || qEstrutura === 'mannerheim' || qEstrutura === 'trava_alta' ||
+      qEstrutura === 'trava_baixa') {
     opSel.value = qEstrutura;
     syncFiltrosEstrutura();
   }

@@ -167,6 +167,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     </div>
     <div id="fytm-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:.75rem;"></div>
     <div style="margin-top:1.2rem; display:flex; gap:.6rem; flex-wrap:wrap;">
+      <a id="fytm-calc" href="#" class="btn btn-primary btn-sm">🧮 Abrir em Cálculos de Opções</a>
       <a id="fytm-cadeia" href="#" class="btn btn-secondary btn-sm">🔗 Editar em Cadeia de Opções</a>
       <button class="btn btn-secondary btn-sm" onclick="fytCloseModal()">Fechar</button>
     </div>
@@ -403,6 +404,26 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     var qs = new URLSearchParams({sim: '1', ativo: lastData.ticker,
       nome: 'Booster ' + r.ratio + ' ' + lastData.ticker, legs: legs});
     document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + qs.toString();
+
+    // Abrir em Cálculos de Opções (aba Estruturas) — motor genérico "livre",
+    // igual ao usado pela Busca de Operações Avançadas. Só funciona com as
+    // duas pernas no MESMO vencimento: a aba Estruturas trabalha com um
+    // vencimento só, e a variante calendário (comprada/vendida em meses
+    // diferentes) fica de fora, como já acontece lá.
+    var calcBtn = document.getElementById('fytm-calc');
+    if (lastData.mesmo_venc) {
+      var p2 = {st: '1', ativo: lastData.ticker, spot: lastData.spot, qty: q,
+        exp: lastData.exp_c, op: 'livre',
+        livre_legs: 'C:' + r.qc + '|C:' + (-r.qv),
+        livre_nome: 'Booster ' + r.ratio + ' ' + lastData.ticker,
+        at: r.buy_symbol,  ak: r.buy_strike,  ap: r.buy_px,
+        bt: r.sell_symbol, bk: r.sell_strike, bp: r.sell_px};
+      calcBtn.href = '/venda_puts?' + new URLSearchParams(p2).toString() + '#estrutura';
+      calcBtn.style.display = '';
+    } else {
+      calcBtn.removeAttribute('href');
+      calcBtn.style.display = 'none';
+    }
   }
 
   // Pré-seleção via URL (?ticker=XXXX) — não dispara a busca sozinha

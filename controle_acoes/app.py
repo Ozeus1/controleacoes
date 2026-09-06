@@ -12607,9 +12607,19 @@ def config():
 
         elif action == 'set_quote_mode':
             mode = request.form.get('quote_mode', 'yahoo')
-            if mode in ('yahoo', 'mt5'):
+            if mode == 'brapi':
+                env_key = os.environ.get('BRAPI_API_KEY', '')
+                has_token = bool(
+                    Settings.get_value('brapi_token', user_id=current_user.id)
+                    or (env_key and env_key != 'your_api_key_here')
+                )
+                if not has_token:
+                    flash('Configure a chave de API (BRAPI) acima antes de usar este modo.', 'warning')
+                    return redirect(url_for('config'))
+            if mode in ('yahoo', 'mt5', 'brapi'):
                 Settings.set_value('quote_mode', mode, user_id=current_user.id)
-                flash(f'Modo de cotação alterado para: {"Yahoo Finance" if mode == "yahoo" else "MT5 Feeder"}', 'success')
+                label = {'yahoo': 'Yahoo Finance', 'mt5': 'MT5 Feeder', 'brapi': 'BRAPI'}[mode]
+                flash(f'Modo de cotação alterado para: {label}', 'success')
 
         elif action == 'save_selic':
             selic = request.form.get('selic', '14.5').replace(',', '.')
@@ -12646,6 +12656,11 @@ def config():
         current_key = os.environ.get('BRAPI_API_KEY', '')
 
     quote_mode      = Settings.get_value('quote_mode',        user_id=current_user.id, default='yahoo')
+    _env_brapi_key  = os.environ.get('BRAPI_API_KEY', '')
+    brapi_ok        = bool(
+        Settings.get_value('brapi_token', user_id=current_user.id)
+        or (_env_brapi_key and _env_brapi_key != 'your_api_key_here')
+    )
     oplab_auto      = Settings.get_value('oplab_auto_update', user_id=current_user.id, default='false') == 'true'
     oplab_interval  = Settings.get_value('oplab_interval',    user_id=current_user.id, default='5')
     oplab_token_ok  = bool(Settings.get_value('oplab_token',  user_id=current_user.id))
@@ -12660,6 +12675,7 @@ def config():
     return render_template('config.html',
                            current_key=current_key,
                            quote_mode=quote_mode,
+                           brapi_ok=brapi_ok,
                            oplab_auto=oplab_auto,
                            oplab_interval=oplab_interval,
                            oplab_token_ok=oplab_token_ok,
@@ -13581,10 +13597,12 @@ def delete_balance_item(type, id):
     return redirect(url_for('balanceamento'))
 
 
-def update_all_assets_logic(user_id=None, skip_tickers: set = None, only_types: set = None):
+def update_all_assets_logic(user_id=None, skip_tickers: set = None, only_types: set = None, force_brapi: bool = False):
     """
     Atualiza cotações de Ações/FIIs/ETFs via Yahoo/Brapi.
     skip_tickers: conjunto de tickers já atualizados pelo OpLab — são ignorados aqui.
+    force_brapi: modo "BRAPI" explícito — usa BRAPI para tudo (inclusive ETFs),
+    com fallback Yahoo só para tickers que a BRAPI não cobrir.
     """
     if user_id is None:
         user_id = current_user.id
@@ -13609,7 +13627,7 @@ def update_all_assets_logic(user_id=None, skip_tickers: set = None, only_types: 
     for chunk in relevant_chunks:
         try:
             tickers = [a.ticker for a in chunk]
-            yahoo_preferred = {a.ticker.upper().strip() for a in chunk if a.type == 'ETF'}
+            yahoo_preferred = set() if force_brapi else {a.ticker.upper().strip() for a in chunk if a.type == 'ETF'}
             total_tried += len(tickers)
             quotes = get_quotes(tickers, user_id=user_id, prefer_yahoo=yahoo_preferred)
             
@@ -13741,6 +13759,9 @@ def update_quotes():
         if quote_mode == 'yahoo':
             count, tried, errs = update_all_assets_logic(skip_tickers=oplab_covered)
             final_msg += f'Yahoo/Brapi: {count}/{tried} ativo(s). '
+        elif quote_mode == 'brapi':
+            count, tried, errs = update_all_assets_logic(skip_tickers=oplab_covered, force_brapi=True)
+            final_msg += f'BRAPI: {count}/{tried} ativo(s). '
         else:
             # ETFs são sempre cotados pelo Yahoo (a OpLab não os cobre aqui).
             etf_count, etf_tried, errs = update_all_assets_logic(only_types={'ETF'})
@@ -13808,6 +13829,17 @@ def update_quotes_async():
                     intl_success, intl_msgs = update_intl_quotes_logic(user_id)
                     if tried > 0:
                         final_msg += f'Yahoo/Brapi: {count}/{tried} ativo(s). '
+                    if intl_success:
+                        final_msg += 'Intl/Cripto: OK. '
+                    else:
+                        final_msg += 'Intl: falha. '
+                elif quote_mode == 'brapi':
+                    count, tried, errs = update_all_assets_logic(
+                        user_id=user_id, skip_tickers=oplab_covered, force_brapi=True
+                    )
+                    intl_success, intl_msgs = update_intl_quotes_logic(user_id)
+                    if tried > 0:
+                        final_msg += f'BRAPI: {count}/{tried} ativo(s). '
                     if intl_success:
                         final_msg += 'Intl/Cripto: OK. '
                     else:

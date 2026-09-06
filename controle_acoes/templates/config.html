@@ -65,6 +65,18 @@
                 {% if quote_mode == 'yahoo' %}<span style="display:inline-block;margin-top:.5rem;padding:.15rem .6rem;background:var(--accent-color);color:white;border-radius:20px;font-size:.75rem;">✓ Ativo</span>{% endif %}
             </div>
             <div style="flex: 1; min-width: 200px; padding: 1rem; border-radius: 8px;
+                        border: 2px solid {{ '#f59e0b' if quote_mode == 'brapi' else 'var(--border-color)' }};
+                        background: {{ 'var(--hover-bg)' if quote_mode == 'brapi' else 'var(--card-bg)' }};
+                        {{ 'opacity:.6;' if not brapi_ok else '' }}">
+                <div style="font-size:1.3rem;">🅱️</div>
+                <strong>BRAPI</strong>
+                <p style="color:var(--text-secondary); font-size:.85rem; margin:.4rem 0 0;">
+                    Atualiza ações/FIIs/ETFs via BRAPI (um único request para tudo). Requer chave de API acima.
+                </p>
+                {% if quote_mode == 'brapi' %}<span style="display:inline-block;margin-top:.5rem;padding:.15rem .6rem;background:#f59e0b;color:white;border-radius:20px;font-size:.75rem;">✓ Ativo</span>
+                {% elif not brapi_ok %}<span style="display:inline-block;margin-top:.5rem;padding:.15rem .6rem;background:var(--border-color);color:var(--text-secondary);border-radius:20px;font-size:.75rem;">Requer chave de API</span>{% endif %}
+            </div>
+            <div style="flex: 1; min-width: 200px; padding: 1rem; border-radius: 8px;
                         border: 2px solid {{ 'var(--success-color)' if quote_mode == 'mt5' else 'var(--border-color)' }};
                         background: {{ 'var(--hover-bg)' if quote_mode == 'mt5' else 'var(--card-bg)' }};">
                 <div style="font-size:1.3rem;">⚡</div>
@@ -79,6 +91,9 @@
         <form method="POST" action="{{ url_for('config') }}" style="display:flex; gap:.75rem; flex-wrap:wrap;">
             <input type="hidden" name="action" value="set_quote_mode">
             <button type="submit" name="quote_mode" value="yahoo" class="btn {{ 'btn-primary' if quote_mode == 'yahoo' else 'btn-secondary' }}">Usar Yahoo Finance</button>
+            <button type="submit" name="quote_mode" value="brapi" class="btn btn-secondary"
+                    style="{{ 'background-color:#f59e0b;color:white;' if quote_mode == 'brapi' else '' }}"
+                    {{ 'title="Configure a chave de API (BRAPI) acima"' if not brapi_ok else '' }}>Usar BRAPI</button>
             <button type="submit" name="quote_mode" value="mt5"   class="btn {{ 'btn-success' if quote_mode == 'mt5'   else 'btn-secondary' }}">Usar MT5 Feeder</button>
         </form>
     </div>

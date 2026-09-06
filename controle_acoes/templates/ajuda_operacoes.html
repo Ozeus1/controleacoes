@@ -179,7 +179,7 @@ var CATS=[
   {id:'cat-cal',  nome:'📅 Calendário — múltiplos vencimentos (semanal → mensal)'}
 ];
 function B(pg,op){ return pg+'?op='+op; }
-var BO='/busca-operacoes', BA='/busca-operacoes-avancadas';
+var BO='/busca-operacoes', BA='/busca-operacoes-avancadas', FYT='/fyt';
 
 var OPS=[
 /* ══ DIRECIONAIS ══ */
@@ -553,6 +553,15 @@ var OPS=[
  sel:['Vencimento: DTE 30–60d','Comprada: Δ 0,60–0,70 · Vendidas: 2× Δ 0,20–0,30','Débito baixo ou crédito'],
  man:['TP: lateral/direção esperada → realizar nas vendidas','Stop: movimento forte contra → fechar (risco da ponta nua)'],
  busca:B(BA,'ratio_spread')},
+{cat:'cat-vol',nome:'Booster / Ratio (CALLs)',cen:'alta',tipo:'zero',vi:'alta',
+ alias:['booster'],
+ tags:['ALAVANCA A ALTA','MONTAGEM BARATA OU NO CRÉDITO','⚠️ PONTA NUA ACIMA'],
+ legs:[{t:'C',q:1,K:100,p:3.2},{t:'C',q:-2,K:105,p:1.7}],
+ mont:'Compra A CALLs de strike menor e vende B CALLs de strike maior, com B > A (1:2, 2:3, 3:4, 4:5). As vendidas financiam as compradas, então a montagem sai barata ou até no crédito.',
+ cenario:'Alta MODERADA, até o strike vendido. O lucro máximo acontece exatamente no strike da vendida; acima dele sobram (B − A) CALLs a descoberto e o ganho começa a ser devolvido.',
+ sel:['Só CALLs, nos 3 vencimentos mensais mais próximos','Proporção compra:venda de 1:2, 2:3, 3:4 ou 4:5','Asa (distância entre strikes) de 0 a 12','Comprada e vendida podem ficar em vencimentos diferentes (calendário embutido)','Ordenado pela melhor relação lucro/custo, com as montagens no crédito na frente'],
+ man:['O alvo é o strike vendido: realizar quando o ativo chegar perto dele','Acima do PONTO DE ASSUNÇÃO o resultado fica negativo e as pontas nuas exigem cobertura ou stop','Alta forte e rápida: rolar as vendidas para strike mais alto','Montagem no crédito não tem risco na queda — o pior caso é a estrutura virar pó'],
+ busca:FYT},
 
 /* ══ SINTÉTICAS E AVANÇADAS ══ */
 {cat:'cat-sint',nome:'Ação Sintética (Long Synthetic)',cen:'alta',tipo:'zero',
@@ -739,6 +748,7 @@ var VI_BY_OP={
   slide_estrutural:'baixa',
   straddle_comprado:'baixa', strangle_comprado:'baixa',
   borboleta:'alta', borboleta_otm:'alta', condor:'alta', broken_wing:'alta',
+  booster:'alta',
   vaca_travada:'alta', vaca_tradicional:'alta', vaca_revertida:'neutra',
   boi_coberto:'neutra', vaca_put:'alta',
   strap:'baixa', strip:'baixa', guts_long:'baixa', guts_short:'alta',

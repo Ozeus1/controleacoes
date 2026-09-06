@@ -1,0 +1,413 @@
+{% extends "base.html" %}
+{% block title %}FYT — Busca de Estruturas{% endblock %}
+{% block extra_scripts %}
+<style>
+#fyt-tickers{display:flex;flex-wrap:wrap;gap:.35rem;}
+.fyt-tbtn{padding:.25rem .6rem;border:1px solid #475569;border-radius:5px;font-size:.8rem;
+  cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap;transition:background .12s;}
+.fyt-tbtn.active{background:#7c3aed;border-color:#7c3aed;font-weight:700;}
+#fyt-spot{font-size:1rem;font-weight:700;color:var(--text-primary);display:inline-flex;gap:.5rem;align-items:baseline;}
+#fyt-spot .chg-pos{color:#34d399;font-size:.85rem;}
+#fyt-spot .chg-neg{color:#f87171;font-size:.85rem;}
+#fyt-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
+#fyt-error{display:none;color:#f87171;padding:1rem;}
+#fyt-hint{padding:1.5rem;text-align:center;color:var(--text-secondary);font-size:.88rem;}
+
+/* Painel de filtros */
+.fyt-filtros{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.9rem;
+  background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);border-radius:8px;
+  padding:.9rem 1rem;margin:.6rem 0 .8rem;}
+.fyt-campo{display:flex;flex-direction:column;gap:.3rem;}
+.fyt-campo label{font-size:.75rem;color:var(--text-secondary);font-weight:600;
+  text-transform:uppercase;letter-spacing:.03em;}
+.fyt-campo select,.fyt-campo input{background:var(--card-bg);color:var(--text-primary);
+  border:1px solid var(--border-color);border-radius:5px;padding:.35rem .5rem;font-size:.85rem;}
+.fyt-chips{display:flex;flex-wrap:wrap;gap:.3rem;}
+.fyt-chip{padding:.25rem .55rem;border:1px solid #475569;border-radius:5px;font-size:.78rem;
+  cursor:pointer;color:#cbd5e1;background:var(--card-bg);user-select:none;transition:all .12s;}
+.fyt-chip.on{background:#7c3aed;border-color:#7c3aed;color:#fff;font-weight:700;}
+.fyt-asa{display:flex;align-items:center;gap:.4rem;}
+.fyt-asa input{width:64px;}
+
+table.fyt-tab{width:100%;border-collapse:collapse;font-size:.8rem;}
+table.fyt-tab th{padding:.4rem .5rem;text-align:right;white-space:nowrap;
+  background:var(--card-bg);color:var(--text-secondary);font-weight:600;
+  border-bottom:1px solid var(--border-color);}
+table.fyt-tab th:first-child{text-align:left;}
+table.fyt-tab td{padding:.4rem .5rem;text-align:right;white-space:nowrap;color:var(--text-primary);
+  border-bottom:1px solid rgba(255,255,255,.04);}
+table.fyt-tab td:first-child{text-align:left;}
+table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
+.fyt-wrap{overflow-x:auto;}
+.pos{color:#34d399;}
+.neg{color:#f87171;}
+.fyt-badge{display:inline-block;padding:.08rem .4rem;border-radius:4px;font-size:.72rem;font-weight:700;}
+.fyt-badge.buy{background:rgba(16,185,129,.15);color:#34d399;}
+.fyt-badge.sell{background:rgba(239,68,68,.15);color:#f87171;}
+.fyt-badge.cred{background:rgba(16,185,129,.15);color:#34d399;}
+.fyt-badge.deb{background:rgba(239,68,68,.15);color:#f87171;}
+.metric-box{background:var(--hover-bg);border:1px solid var(--border-color);border-radius:6px;
+  padding:.6rem .9rem;display:flex;flex-direction:column;gap:.15rem;}
+.metric-label{font-size:.75rem;color:var(--text-secondary);}
+.metric-value{font-size:1.05rem;font-weight:600;color:var(--text-primary);}
+.metric-value.pos{color:#34d399;}
+.metric-value.neg{color:#f87171;}
+#fyt-add-input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
+  border-radius:5px;padding:.25rem .5rem;font-size:.82rem;width:110px;text-transform:uppercase;}
+@media (max-width:640px){
+  .fyt-filtros{grid-template-columns:1fr;}
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="padding:1.2rem 1.4rem;">
+
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.4rem;">
+    <h2 style="margin:0;">🧬 FYT — Busca de Estruturas</h2>
+    <div id="fyt-spot"></div>
+    <a href="{{ url_for('ajuda_operacoes') }}?op=booster"
+       style="font-size:.8rem;color:var(--accent-color,#7c3aed);text-decoration:none;">📖 Entenda a operação</a>
+  </div>
+  <p style="color:var(--text-secondary);font-size:.85rem;margin:.2rem 0 .8rem;">
+    Varre a <strong>cadeia de CALLs</strong> do ativo procurando montagens que atendam aos filtros abaixo.
+    Escolha o ativo, ajuste os filtros e clique em <strong>Buscar</strong> —
+    a consulta só é feita no clique, para não sobrecarregar a API.
+  </p>
+
+  <!-- Ativo -->
+  <div style="margin-bottom:.6rem;">
+    <div id="fyt-tickers" style="margin-bottom:.5rem;">
+      <button class="fyt-tbtn" data-t="BOVA11">BOVA11</button>
+      {% for rv in ranking_vol %}
+      <button class="fyt-tbtn" data-t="{{ rv.ticker }}">{{ rv.ticker }}</button>
+      {% endfor %}
+    </div>
+    <div style="display:flex;gap:.5rem;align-items:center;">
+      <input id="fyt-add-input" type="text" placeholder="Outro ticker…" maxlength="10">
+      <button class="btn btn-secondary btn-sm" id="fyt-add-btn">➕ Usar este ativo</button>
+    </div>
+  </div>
+
+  <!-- Filtros -->
+  <div class="fyt-filtros">
+    <div class="fyt-campo">
+      <label for="fyt-op">Estrutura</label>
+      <select id="fyt-op">
+        <option value="booster">🚀 Booster / Ratio (CALLs)</option>
+      </select>
+    </div>
+
+    <div class="fyt-campo">
+      <label for="fyt-exp-c">Vencimento da comprada</label>
+      <select id="fyt-exp-c">
+        <option value="0" selected>Próximo mensal</option>
+        <option value="1">Mensal +1</option>
+        <option value="2">Mensal +2</option>
+      </select>
+    </div>
+
+    <div class="fyt-campo">
+      <label for="fyt-exp-v">Vencimento da vendida</label>
+      <select id="fyt-exp-v">
+        <option value="0" selected>Próximo mensal</option>
+        <option value="1">Mensal +1</option>
+        <option value="2">Mensal +2</option>
+      </select>
+    </div>
+
+    <div class="fyt-campo">
+      <label>Proporção (compra : venda)</label>
+      <div class="fyt-chips" id="fyt-ratios">
+        <span class="fyt-chip on" data-r="1:2">1:2</span>
+        <span class="fyt-chip on" data-r="2:3">2:3</span>
+        <span class="fyt-chip on" data-r="3:4">3:4</span>
+        <span class="fyt-chip on" data-r="4:5">4:5</span>
+      </div>
+    </div>
+
+    <div class="fyt-campo">
+      <label>Asa (distância entre strikes, R$)</label>
+      <div class="fyt-asa">
+        <input type="number" id="fyt-asa-min" min="0" max="12" step="0.5" value="0">
+        <span style="color:var(--text-secondary);">até</span>
+        <input type="number" id="fyt-asa-max" min="0" max="12" step="0.5" value="12">
+      </div>
+    </div>
+
+    <div class="fyt-campo" style="justify-content:flex-end;">
+      <label>&nbsp;</label>
+      <button class="btn btn-primary btn-sm" id="fyt-buscar" style="padding:.45rem .9rem;">
+        🔎 Buscar
+      </button>
+    </div>
+  </div>
+
+  <div id="fyt-loading">⏳ Varrendo a cadeia de opções…</div>
+  <div id="fyt-error"></div>
+  <div id="fyt-hint">Escolha um ativo e clique em <strong>Buscar</strong> para varrer a cadeia.</div>
+  <div id="fyt-results"></div>
+</div>
+
+<!-- Modal de detalhe -->
+<div id="fyt-modal" style="display:none; position:fixed; inset:0; z-index:9999;
+     background:rgba(0,0,0,.75); align-items:center; justify-content:center; padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b); border-radius:10px; padding:1.2rem 1.4rem;
+              width:min(96vw,880px); max-height:92vh; overflow-y:auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+      <h3 id="fytm-title" style="margin:0; font-size:1rem;"></h3>
+      <button onclick="fytCloseModal()" style="background:none; border:none; font-size:1.4rem;
+              color:var(--text-secondary); cursor:pointer; line-height:1;">&times;</button>
+    </div>
+    <div style="display:flex; align-items:center; gap:.6rem; margin-bottom:1rem;">
+      <label style="font-size:.85rem; color:var(--text-secondary);">Lote base (contratos da comprada):</label>
+      <input id="fytm-qty" type="number" min="0" step="100" value="100"
+             style="width:110px; background:var(--hover-bg); color:var(--text-primary);
+                    border:1px solid var(--border-color); border-radius:5px; padding:.3rem .5rem;">
+    </div>
+    <div id="fytm-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:.75rem;"></div>
+    <div style="margin-top:1.2rem; display:flex; gap:.6rem; flex-wrap:wrap;">
+      <a id="fytm-cadeia" href="#" class="btn btn-secondary btn-sm">🔗 Editar em Cadeia de Opções</a>
+      <button class="btn btn-secondary btn-sm" onclick="fytCloseModal()">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var currentTicker = '';
+  var lastData = null;
+
+  var loading = document.getElementById('fyt-loading');
+  var errBox  = document.getElementById('fyt-error');
+  var hintBox = document.getElementById('fyt-hint');
+  var results = document.getElementById('fyt-results');
+  var spotEl  = document.getElementById('fyt-spot');
+
+  function fmt(v, dec) {
+    dec = dec == null ? 2 : dec;
+    return v == null ? '—' : v.toLocaleString('pt-BR', {minimumFractionDigits:dec, maximumFractionDigits:dec});
+  }
+  function brl(v) { return v == null ? '—' : 'R$ ' + fmt(v); }
+  function pct(v) { return v == null ? '—' : (v > 0 ? '+' : '') + fmt(v, 1) + '%'; }
+  function dateBR(iso) {
+    var p = (iso || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+  }
+
+  // ── Seleção de ativo ──────────────────────────────────────────────────
+  function setTicker(t) {
+    currentTicker = (t || '').trim().toUpperCase();
+    document.querySelectorAll('.fyt-tbtn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.t === currentTicker);
+    });
+  }
+  document.getElementById('fyt-tickers').addEventListener('click', function(ev) {
+    var b = ev.target.closest('.fyt-tbtn');
+    if (b) setTicker(b.dataset.t);
+  });
+  document.getElementById('fyt-add-btn').addEventListener('click', function() {
+    var inp = document.getElementById('fyt-add-input');
+    var t = (inp.value || '').trim().toUpperCase();
+    if (!t) return;
+    if (!document.querySelector('.fyt-tbtn[data-t="' + t + '"]')) {
+      var b = document.createElement('button');
+      b.className = 'fyt-tbtn';
+      b.dataset.t = t;
+      b.textContent = t;
+      document.getElementById('fyt-tickers').appendChild(b);
+    }
+    setTicker(t);
+    inp.value = '';
+  });
+  document.getElementById('fyt-add-input').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('fyt-add-btn').click(); }
+  });
+
+  // ── Chips de proporção ────────────────────────────────────────────────
+  document.getElementById('fyt-ratios').addEventListener('click', function(ev) {
+    var c = ev.target.closest('.fyt-chip');
+    if (!c) return;
+    c.classList.toggle('on');
+    // nunca deixa todas desmarcadas
+    if (!document.querySelectorAll('#fyt-ratios .fyt-chip.on').length) c.classList.add('on');
+  });
+
+  // ── Busca (só no clique do botão) ─────────────────────────────────────
+  function buscar() {
+    if (!currentTicker) {
+      errBox.textContent = '⚠️ Escolha um ativo antes de buscar.';
+      errBox.style.display = 'block';
+      hintBox.style.display = 'none';
+      return;
+    }
+    var ratios = Array.prototype.map.call(
+      document.querySelectorAll('#fyt-ratios .fyt-chip.on'), function(c) { return c.dataset.r; }).join(',');
+    var q = new URLSearchParams({
+      exp_c:   document.getElementById('fyt-exp-c').value,
+      exp_v:   document.getElementById('fyt-exp-v').value,
+      ratios:  ratios,
+      asa_min: document.getElementById('fyt-asa-min').value || '0',
+      asa_max: document.getElementById('fyt-asa-max').value || '12'
+    });
+
+    loading.style.display = 'block';
+    errBox.style.display  = 'none';
+    hintBox.style.display = 'none';
+    results.innerHTML     = '';
+    spotEl.innerHTML      = '';
+
+    fetch('/api/fyt/' + encodeURIComponent(currentTicker) + '?' + q.toString())
+      .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+      .then(function(res) {
+        loading.style.display = 'none';
+        if (!res.ok || res.j.error) {
+          errBox.textContent = '⚠️ ' + (res.j.error || 'Erro ao buscar estruturas.');
+          errBox.style.display = 'block';
+          return;
+        }
+        render(res.j);
+      })
+      .catch(function(e) {
+        loading.style.display = 'none';
+        errBox.textContent = '⚠️ Falha na requisição: ' + e;
+        errBox.style.display = 'block';
+      });
+  }
+  document.getElementById('fyt-buscar').addEventListener('click', buscar);
+
+  // ── Render ────────────────────────────────────────────────────────────
+  function render(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
+          (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
+        : '');
+
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">' +
+        'Nenhuma montagem atende aos filtros neste ativo. Tente ampliar a faixa da asa ' +
+        'ou incluir mais proporções.</div>';
+      return;
+    }
+
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">' +
+      '📆 Comprada: <strong>' + dateBR(d.exp_c) + '</strong> (' + d.dc_c + 'd) · ' +
+      'Vendida: <strong>' + dateBR(d.exp_v) + '</strong> (' + d.dc_v + 'd)' +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') +
+      ' · <strong>' + d.rows.length + '</strong> montagem(ns)' +
+      (d.mesmo_venc === false
+        ? '<br><span style="color:#fbbf24;">⚠️ Vencimentos diferentes: no vencimento da comprada a vendida ' +
+          'ainda tem valor de tempo, então lucro máximo e ponto de assunção são aproximações.</span>'
+        : '') +
+      '</div>';
+
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th>Estrutura</th>' +
+      '<th title="Proporção compradas : vendidas">Prop.</th>' +
+      '<th title="Strike da perna comprada e distância até o spot">Comprada</th>' +
+      '<th title="Strike da perna vendida e distância até o spot">Vendida</th>' +
+      '<th title="Distância entre os strikes">Asa</th>' +
+      '<th title="Negativo = crédito recebido na montagem">Custo</th>' +
+      '<th title="Lucro no strike da vendida, por lote base">Lucro máx.</th>' +
+      '<th title="Lucro máximo dividido pelo custo">Relação</th>' +
+      '<th title="Quantidade de CALLs a descoberto acima do strike vendido">Nuas</th>' +
+      '<th title="Preço a partir do qual o resultado fica negativo">Assunção</th>' +
+      '</tr></thead><tbody>';
+
+    d.rows.forEach(function(r, i) {
+      var rel = r.custo > 0.005 ? (r.lucro_max / r.custo) : null;
+      h += '<tr data-i="' + i + '" title="Clique para ver o detalhamento">' +
+        '<td><span class="fyt-badge buy">+' + r.qc + '× ' + r.buy_symbol + '</span> ' +
+            '<span class="fyt-badge sell">−' + r.qv + '× ' + r.sell_symbol + '</span></td>' +
+        '<td><strong>' + r.ratio + '</strong></td>' +
+        '<td>' + brl(r.buy_strike) + '<br><span style="font-size:.72rem;color:var(--text-secondary);">' +
+            pct(r.buy_dist) + '</span></td>' +
+        '<td>' + brl(r.sell_strike) + '<br><span style="font-size:.72rem;color:var(--text-secondary);">' +
+            pct(r.sell_dist) + '</span></td>' +
+        '<td>' + brl(r.asa) + '</td>' +
+        '<td><span class="fyt-badge ' + (r.is_credito ? 'cred' : 'deb') + '">' +
+            (r.is_credito ? 'crédito ' + brl(Math.abs(r.custo)) : brl(r.custo)) + '</span></td>' +
+        '<td class="pos"><strong>' + brl(r.lucro_max) + '</strong></td>' +
+        '<td>' + (rel != null ? fmt(rel, 1) + '×' : '∞') + '</td>' +
+        '<td>' + (r.nuas > 0 ? '<span class="neg">' + r.nuas + '</span>' : '—') + '</td>' +
+        '<td>' + (r.assuncao != null
+                  ? brl(r.assuncao) + '<br><span style="font-size:.72rem;color:var(--text-secondary);">' +
+                    pct(r.dist_assunc) + '</span>'
+                  : '<span class="pos">sem risco</span>') + '</td>' +
+        '</tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) {
+      tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); });
+    });
+  }
+
+  // ── Modal ─────────────────────────────────────────────────────────────
+  var modalIdx = null;
+  function openModal(i) {
+    modalIdx = i;
+    refreshModal();
+    document.getElementById('fyt-modal').style.display = 'flex';
+  }
+  window.fytCloseModal = function() {
+    document.getElementById('fyt-modal').style.display = 'none';
+  };
+  document.getElementById('fyt-modal').addEventListener('click', function(ev) {
+    if (ev.target === this) fytCloseModal();
+  });
+  document.getElementById('fytm-qty').addEventListener('input', refreshModal);
+
+  function refreshModal() {
+    if (lastData == null || modalIdx == null) return;
+    var r = lastData.rows[modalIdx];
+    var q = parseInt(document.getElementById('fytm-qty').value) || 100;
+
+    document.getElementById('fytm-title').textContent =
+      'Booster ' + r.ratio + ' ' + lastData.ticker + ' — ' +
+      r.buy_symbol + ' / ' + r.sell_symbol;
+
+    var custoTotal  = r.custo * q;
+    var lucroTotal  = r.lucro_max * q;
+    var rel = r.custo > 0.005 ? (r.lucro_max / r.custo) : null;
+
+    var boxes = [
+      ['Compra ' + (r.qc * q) + '× ' + r.buy_symbol + ' (K ' + fmt(r.buy_strike) + ')',
+          brl(r.buy_px * r.qc * q), 'neg'],
+      ['Venda ' + (r.qv * q) + '× ' + r.sell_symbol + ' (K ' + fmt(r.sell_strike) + ')',
+          brl(r.sell_px * r.qv * q), 'pos'],
+      [r.is_credito ? 'Crédito recebido' : 'Custo da montagem',
+          brl(Math.abs(custoTotal)), r.is_credito ? 'pos' : 'neg'],
+      ['Lucro máximo (no strike vendido)', brl(lucroTotal), 'pos'],
+      ['Relação lucro / custo', rel != null ? fmt(rel, 1) + '×' : '∞ (crédito)', ''],
+      ['Asa (distância entre strikes)', brl(r.asa), ''],
+      ['CALLs a descoberto acima', r.nuas > 0 ? (r.nuas * q) + ' contratos' : 'nenhuma', r.nuas > 0 ? 'neg' : 'pos'],
+      ['Ponto de assunção', r.assuncao != null ? brl(r.assuncao) + ' (' + pct(r.dist_assunc) + ')' : 'sem risco na alta',
+          r.assuncao != null ? 'neg' : 'pos'],
+      ['Breakeven de baixa', r.be_baixo != null ? brl(r.be_baixo) : 'não há (montagem no crédito)', ''],
+      ['Vencimento comprada', dateBR(lastData.exp_c) + ' (' + lastData.dc_c + ' d.c.)', ''],
+      ['Vencimento vendida', dateBR(lastData.exp_v) + ' (' + lastData.dc_v + ' d.c.)', '']
+    ];
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
+             '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+
+    // Abrir na Cadeia de Opções com as duas pernas montadas
+    var legs = [
+      [r.buy_symbol,  'CALL', 'BUY',  r.qc * q, r.buy_px,  r.buy_strike,  lastData.exp_c].join(','),
+      [r.sell_symbol, 'CALL', 'SELL', r.qv * q, r.sell_px, r.sell_strike, lastData.exp_v].join(',')
+    ].join('|');
+    var qs = new URLSearchParams({sim: '1', ativo: lastData.ticker,
+      nome: 'Booster ' + r.ratio + ' ' + lastData.ticker, legs: legs});
+    document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + qs.toString();
+  }
+
+  // Pré-seleção via URL (?ticker=XXXX) — não dispara a busca sozinha
+  var qTicker = new URLSearchParams(location.search).get('ticker');
+  if (qTicker) setTicker(qTicker);
+})();
+</script>
+{% endblock %}

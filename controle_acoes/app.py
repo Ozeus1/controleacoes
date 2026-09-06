@@ -6524,6 +6524,278 @@ def api_lancamento_coberto(ticker):
     })
 
 
+# ══════════════════════════════════════════════════════════════════════════
+#  FYT — busca de estruturas na cadeia de opções por filtros de montagem
+# ══════════════════════════════════════════════════════════════════════════
+
+def _fyt_diversify(rows_list, key_fn, per_key=3, limit=60):
+    """Evita linhas quase idênticas: no máx. per_key linhas por perna-âncora."""
+    out, count = [], {}
+    for r in rows_list:
+        k = key_fn(r)
+        c = count.get(k, 0)
+        if c >= per_key:
+            continue
+        count[k] = c + 1
+        out.append(r)
+        if len(out) >= limit:
+            break
+    return out
+
+
+@app.route('/fyt')
+@login_required
+def fyt():
+    """Página FYT: busca de estruturas na cadeia por filtros (Booster/Ratio)."""
+    ranking_vol = _ranking_liq_filter(
+        RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    return render_template('fyt.html', ranking_vol=ranking_vol, selic=_selic())
+
+
+@app.route('/api/fyt/<ticker>')
+@login_required
+def api_fyt(ticker):
+    """Busca estruturas Booster/Ratio na cadeia de CALLs de um ativo.
+
+    Booster (Ratio 1xN): compra A calls de strike menor e vende B calls de
+    strike maior, com B > A. A perna vendida financia a comprada, então a
+    montagem sai barata ou no crédito; o lucro máximo fica no strike vendido
+    e acima dele a estrutura fica com (B - A) calls a descoberto.
+
+    Parâmetros:
+      exp_c   = índice do vencimento da COMPRADA  (0 = próximo mensal, 1, 2)
+      exp_v   = índice do vencimento da VENDIDA   (0, 1, 2)
+      ratios  = proporções aceitas, ex.: "1:2,2:3"
+      asa_min / asa_max = distância entre os strikes (R$), 0 a 12
+    """
+    ticker = ticker.strip().upper()
+    token  = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    if not spot:
+        return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
+
+    # ── Filtros ──────────────────────────────────────────────────────────
+    def _idx(name, default=0):
+        try:
+            v = int(request.args.get(name, default))
+        except (TypeError, ValueError):
+            v = default
+        return v if v in (0, 1, 2) else default
+
+    exp_c_i = _idx('exp_c', 0)          # vencimento da perna COMPRADA
+    exp_v_i = _idx('exp_v', 0)          # vencimento da perna VENDIDA
+
+    def _num(name, default):
+        try:
+            return float(str(request.args.get(name, default)).replace(',', '.'))
+        except (TypeError, ValueError):
+            return default
+
+    asa_min = max(0.0, _num('asa_min', 0.0))
+    asa_max = min(12.0, _num('asa_max', 12.0))
+    if asa_max < asa_min:
+        asa_min, asa_max = asa_max, asa_min
+
+    # Proporções compra:venda aceitas
+    RATIOS_OK = [(1, 2), (2, 3), (3, 4), (4, 5)]
+    raw_r = (request.args.get('ratios') or '').strip()
+    if raw_r:
+        want = set()
+        for part in raw_r.split(','):
+            part = part.strip().replace('x', ':').replace('X', ':')
+            if ':' in part:
+                a, _, b = part.partition(':')
+                try:
+                    want.add((int(a), int(b)))
+                except ValueError:
+                    pass
+        ratios = [r for r in RATIOS_OK if r in want] or RATIOS_OK
+    else:
+        ratios = RATIOS_OK
+
+    # ── Cadeia ───────────────────────────────────────────────────────────
+    try:
+        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+    except OplabApiError as e:
+        return jsonify({'error': str(e), 'status': e.status_code}), 503
+    except Exception:
+        app.logger.exception('api_fyt error for %s', ticker)
+        return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+
+    opt_list = data if isinstance(data, list) else (
+        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+    )
+
+    from datetime import date as _date
+    today = _date.today()
+
+    def _third_friday(y, m):
+        count, day = 0, 1
+        while True:
+            d = _date(y, m, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    return d
+            day += 1
+
+    def _is_monthly(exp_str):
+        d = _date.fromisoformat(exp_str)
+        tf = _third_friday(d.year, d.month)
+        return abs((d - tf).days) <= 2      # tolera feriado na 3a sexta
+
+    # Só CALLs (o usuário não filtra tipo nesta busca)
+    calls_by_exp = {}
+    for o in opt_list:
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        if 'PUT' in cat or cat == 'P':
+            continue
+        strike = float(o.get('strike') or 0)
+        due    = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due:
+            due = due.split('T')[0]
+        if not due or strike <= 0:
+            continue
+        try:
+            if _date.fromisoformat(due) <= today:
+                continue
+        except ValueError:
+            continue
+        calls_by_exp.setdefault(due, []).append({
+            'symbol': str(o.get('symbol') or o.get('ticker') or '').upper(),
+            'strike': round(strike, 2),
+            'bid':    round(float(o.get('bid') or 0), 2),
+            'ask':    round(float(o.get('ask') or 0), 2),
+            'close':  round(float(o.get('close') or 0), 2),
+            'vol_fin': round(float(o.get('financial_volume')
+                                   or o.get('volume_financial') or 0), 2),
+        })
+
+    # Os 3 vencimentos MENSAIS mais próximos
+    monthlies = sorted([e for e in calls_by_exp if _is_monthly(e)])[:3]
+    if not monthlies:
+        return jsonify({'error': f'Nenhum vencimento mensal com CALLs para {ticker}.'}), 404
+
+    exps_out = [{'exp': e,
+                 'dc': max((_date.fromisoformat(e) - today).days, 0),
+                 'label': ('Próximo mensal' if i == 0 else f'Mensal +{i}')}
+                for i, e in enumerate(monthlies)]
+
+    if exp_c_i >= len(monthlies) or exp_v_i >= len(monthlies):
+        return jsonify({'error': 'Vencimento escolhido não disponível para este ativo.',
+                        'expirations': exps_out}), 404
+
+    exp_c = monthlies[exp_c_i]
+    exp_v = monthlies[exp_v_i]
+
+    # ── Preço efetivo (book no pregão, último fora dele) ──────────────────
+    _now_b = now_brt()
+    market_open = (_now_b.weekday() < 5
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+
+    def _eff_fyt(rw):
+        bid, ask, last = rw['bid'], rw['ask'], rw['close']
+        last_ok = last if last >= 0.05 else None
+        if not market_open:
+            return last_ok, last_ok
+        b = bid if bid >= 0.05 else last_ok
+        a = ask if ask >= 0.05 else last_ok
+        if bid >= 0.05 and ask >= 0.05 and last_ok:
+            mid = (bid + ask) / 2
+            if (ask - bid) > max(0.10, 0.25 * mid):
+                b = a = last_ok
+        return b, a
+
+    buys  = sorted(calls_by_exp.get(exp_c, []), key=lambda x: x['strike'])
+    sells = sorted(calls_by_exp.get(exp_v, []), key=lambda x: x['strike'])
+    if not buys or not sells:
+        return jsonify({'error': 'Cadeia sem CALLs nos vencimentos escolhidos.',
+                        'expirations': exps_out}), 404
+
+    dc_c = max((_date.fromisoformat(exp_c) - today).days, 1)
+    dc_v = max((_date.fromisoformat(exp_v) - today).days, 1)
+    selic = _selic()
+    mesmo_venc = (exp_c == exp_v)
+
+    rows = []
+    for b in buys:
+        _bb, b_ask = _eff_fyt(b)
+        if not b_ask or b_ask <= 0:
+            continue
+        for s in sells:
+            asa = round(s['strike'] - b['strike'], 2)
+            if asa < asa_min or asa > asa_max:
+                continue
+            # A vendida precisa estar ACIMA da comprada. Com strikes iguais
+            # (asa 0) as pernas se cancelam e sobra apenas uma ponta vendida a
+            # descoberto — nao e um Booster, e o "credito" enorme dessas linhas
+            # dominava a ordenacao.
+            if asa <= 0:
+                continue
+            s_bid, _sa = _eff_fyt(s)
+            if not s_bid or s_bid <= 0:
+                continue
+            for qc, qv in ratios:
+                # custo > 0 = débito | custo < 0 = crédito recebido
+                custo = b_ask * qc - s_bid * qv
+                # Lucro máximo no strike da vendida: as compradas valem a asa
+                # e as vendidas ainda não têm valor intrínseco. Só faz sentido
+                # com as duas pernas no MESMO vencimento — em vencimentos
+                # diferentes a vendida ainda tem valor de tempo no venc. da
+                # comprada, então o resultado ali é estimado, não travado.
+                lucro_max = asa * qc - custo
+                if lucro_max <= 0:
+                    continue
+                nuas = qv - qc                     # calls a descoberto acima
+                assuncao = (s['strike'] + lucro_max / nuas) if nuas > 0 else None
+                be_baixo = (b['strike'] + custo / qc) if custo > 0 else None
+                liq = min(b.get('vol_fin') or 0, s.get('vol_fin') or 0)
+                rows.append({
+                    'buy_symbol':  b['symbol'],  'buy_strike':  b['strike'],
+                    'buy_px':      round(b_ask, 2),
+                    'sell_symbol': s['symbol'],  'sell_strike': s['strike'],
+                    'sell_px':     round(s_bid, 2),
+                    'qc': qc, 'qv': qv, 'ratio': f'{qc}:{qv}',
+                    'asa':         asa,
+                    'custo':       round(custo, 2),
+                    'is_credito':  custo < -0.005,
+                    'lucro_max':   round(lucro_max, 2),
+                    'nuas':        nuas,
+                    'assuncao':    round(assuncao, 2) if assuncao else None,
+                    'be_baixo':    round(be_baixo, 2) if be_baixo else None,
+                    'dist_assunc': (round((assuncao - spot) / spot * 100, 1)
+                                    if assuncao else None),
+                    'buy_dist':    round((b['strike'] - spot) / spot * 100, 1),
+                    'sell_dist':   round((s['strike'] - spot) / spot * 100, 1),
+                    'mesmo_venc':  mesmo_venc,
+                    'liq':   liq,
+                })
+
+    # Ordenação: o Booster é uma aposta em alta ATÉ o strike vendido, então o
+    # que interessa é (1) o alvo estar ao alcance — strike vendido acima do
+    # spot, mas não distante demais — e (2) a eficiência do capital.
+    # Ordenar só por lucro/custo trazia compradas muito ITM ao topo: elas têm
+    # lucro nominal grande, mas exigem capital alto e o "alvo" já está no preço.
+    def _key(x):
+        alvo_ok = 0 if x['sell_strike'] > spot else 1      # alvo acima do spot
+        rel = (x['lucro_max'] / x['custo']) if x['custo'] > 0.005 else 9999
+        return (alvo_ok, not x['is_credito'], -rel, abs(x['buy_dist']), -x['liq'])
+    rows.sort(key=_key)
+    rows = _fyt_diversify(rows, lambda x: x['buy_symbol'], per_key=3, limit=60)
+
+    return jsonify({
+        'ticker': ticker, 'spot': spot, 'spot_change': spot_change,
+        'selic': round(selic, 2), 'market_open': market_open,
+        'expirations': exps_out,
+        'exp_c': exp_c, 'exp_v': exp_v, 'dc_c': dc_c, 'dc_v': dc_v,
+        'mesmo_venc': mesmo_venc,
+        'rows': rows, 'total': len(rows),
+    })
+
+
 @app.route('/venda-put-longa')
 @login_required
 def venda_put_longa():

@@ -6697,17 +6697,30 @@ def api_fyt(ticker):
                    and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
 
     def _eff_fyt(rw):
+        """Retorna dict com bid/ask EFETIVOS (o que de fato é usado no cálculo),
+        o bid/ask CRUS do book (para exibir na tabela) e se veio de livro real
+        ('book') ou do último negócio ('ultimo' — fora do pregão, ou book
+        ausente/spread abusivo dentro dele)."""
         bid, ask, last = rw['bid'], rw['ask'], rw['close']
         last_ok = last if last >= 0.05 else None
+        has_book = bid >= 0.05 and ask >= 0.05
         if not market_open:
-            return last_ok, last_ok
+            return {'bid_eff': last_ok, 'ask_eff': last_ok,
+                    'bid_raw': bid if bid >= 0.05 else None,
+                    'ask_raw': ask if ask >= 0.05 else None,
+                    'src': 'ultimo'}
         b = bid if bid >= 0.05 else last_ok
         a = ask if ask >= 0.05 else last_ok
-        if bid >= 0.05 and ask >= 0.05 and last_ok:
+        src = 'book' if has_book else 'ultimo'
+        if has_book and last_ok:
             mid = (bid + ask) / 2
             if (ask - bid) > max(0.10, 0.25 * mid):
                 b = a = last_ok
-        return b, a
+                src = 'ultimo'
+        return {'bid_eff': b, 'ask_eff': a,
+                'bid_raw': bid if bid >= 0.05 else None,
+                'ask_raw': ask if ask >= 0.05 else None,
+                'src': src}
 
     buys  = sorted(calls_by_exp.get(exp_c, []), key=lambda x: x['strike'])
     sells = sorted(calls_by_exp.get(exp_v, []), key=lambda x: x['strike'])
@@ -6722,7 +6735,8 @@ def api_fyt(ticker):
 
     rows = []
     for b in buys:
-        _bb, b_ask = _eff_fyt(b)
+        eb = _eff_fyt(b)
+        b_ask = eb['ask_eff']
         if not b_ask or b_ask <= 0:
             continue
         for s in sells:
@@ -6735,7 +6749,8 @@ def api_fyt(ticker):
             # dominava a ordenacao.
             if asa <= 0:
                 continue
-            s_bid, _sa = _eff_fyt(s)
+            es = _eff_fyt(s)
+            s_bid = es['bid_eff']
             if not s_bid or s_bid <= 0:
                 continue
             for qc, qv in ratios:
@@ -6756,8 +6771,12 @@ def api_fyt(ticker):
                 rows.append({
                     'buy_symbol':  b['symbol'],  'buy_strike':  b['strike'],
                     'buy_px':      round(b_ask, 2),
+                    'buy_bid':     eb['bid_raw'], 'buy_ask': eb['ask_raw'],
+                    'buy_px_src':  eb['src'],
                     'sell_symbol': s['symbol'],  'sell_strike': s['strike'],
                     'sell_px':     round(s_bid, 2),
+                    'sell_bid':    es['bid_raw'], 'sell_ask': es['ask_raw'],
+                    'sell_px_src': es['src'],
                     'qc': qc, 'qv': qv, 'ratio': f'{qc}:{qv}',
                     'asa':         asa,
                     'custo':       round(custo, 2),
@@ -6807,13 +6826,21 @@ def api_fyt_thl(ticker):
 
     Filtros:
       exp_c    = indice do vencimento da COMPRADA entre os 12 mensais mais
-                 proximos (0 a 11) — a comprada e a perna de prazo LONGO
+                 proximos (0 a 11), ou 'all' para varrer TODOS os mensais
+                 possiveis (qualquer um que vença depois da vendida) — a
+                 comprada e a perna de prazo LONGO
       exp_v    = indice do vencimento da VENDIDA entre os 2 mensais mais
                  proximos (0 = proximo mensal, 1 = proximo + 1 mes) — a
                  vendida e a perna de prazo CURTO e tem de vencer ANTES
                  (ou no mesmo mes) da comprada
       max_px   = preco maximo (custo liquido da montagem); vazio = sem limite
     Strikes: ambas as pernas varrem de 20% ITM a 20% OTM do spot.
+
+    Liquidez (só afeta a perna COMPRADA, de prazo longo — a mais provavel de
+    ter book fino): com o PREGAO ABERTO, só entram CALLs com bid E ask
+    definidos no book (boca real) — sem fallback para o último negócio, que
+    aqui seria um preço velho de uma opção sem liquidez agora. Com o pregão
+    FECHADO, usa o último negócio normalmente, como nas demais buscas.
     """
     ticker = ticker.strip().upper()
     token  = Settings.get_value('oplab_token', user_id=current_user.id)
@@ -6824,6 +6851,9 @@ def api_fyt_thl(ticker):
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
+    raw_exp_c = (request.args.get('exp_c') or '').strip().lower()
+    exp_c_all = raw_exp_c in ('all', 'todos', 'todas', '-1')
+
     def _idx(name, default, hi):
         try:
             v = int(request.args.get(name, default))
@@ -6831,8 +6861,8 @@ def api_fyt_thl(ticker):
             v = default
         return v if 0 <= v <= hi else default
 
-    exp_c_i = _idx('exp_c', 2, 11)    # comprada: prazo LONGO, ate 12 mensais
-    exp_v_i = _idx('exp_v', 0, 1)     # vendida: prazo CURTO, so as 2 primeiras
+    exp_c_i = None if exp_c_all else _idx('exp_c', 2, 11)  # comprada: prazo LONGO
+    exp_v_i = _idx('exp_v', 0, 1)                          # vendida: prazo CURTO
 
     max_px = None
     raw_max = (request.args.get('max_px') or '').strip()
@@ -6911,18 +6941,26 @@ def api_fyt_thl(ticker):
                  'label': ('Próximo mensal' if i == 0 else f'Mensal +{i}')}
                 for i, e in enumerate(monthlies)]
 
-    exp_c_i = min(exp_c_i, len(monthlies) - 1)
     exp_v_i = min(exp_v_i, len(monthlies) - 1)
-    if exp_v_i >= exp_c_i:
-        # A vendida (prazo curto) precisa vencer ANTES da comprada (prazo
-        # longo) — corrige em vez de devolver uma montagem sem sentido
-        # (a "curta" vencendo depois da "longa").
-        exp_v_i = max(0, exp_c_i - 1)
-    if exp_v_i >= exp_c_i:
-        return jsonify({'error': f'{ticker} não tem 2 vencimentos mensais distintos '
-                        'suficientes para montar o THL.', 'expirations': exps_out}), 404
 
-    exp_c = monthlies[exp_c_i]
+    if exp_c_all:
+        # Todos os mensais que vencem DEPOIS da vendida escolhida.
+        exp_c_candidates = list(range(exp_v_i + 1, len(monthlies)))
+        if not exp_c_candidates:
+            return jsonify({'error': f'{ticker} não tem vencimento mensal posterior '
+                            'ao da vendida escolhida.', 'expirations': exps_out}), 404
+    else:
+        exp_c_i = min(exp_c_i, len(monthlies) - 1)
+        if exp_v_i >= exp_c_i:
+            # A vendida (prazo curto) precisa vencer ANTES da comprada (prazo
+            # longo) — corrige em vez de devolver uma montagem sem sentido
+            # (a "curta" vencendo depois da "longa").
+            exp_v_i = max(0, exp_c_i - 1)
+        if exp_v_i >= exp_c_i:
+            return jsonify({'error': f'{ticker} não tem 2 vencimentos mensais distintos '
+                            'suficientes para montar o THL.', 'expirations': exps_out}), 404
+        exp_c_candidates = [exp_c_i]
+
     exp_v = monthlies[exp_v_i]
 
     # ── Preço efetivo (book no pregão, último fora dele) ──────────────────
@@ -6931,25 +6969,35 @@ def api_fyt_thl(ticker):
                    and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
 
     def _eff_thl(rw):
+        """Retorna dict com bid/ask efetivos, bid/ask crus do book, se veio de
+        book real ('book') ou do último negócio ('ultimo'), e se TEM boca
+        (bid e ask ambos definidos no livro agora, sem fallback nenhum)."""
         bid, ask, last = rw['bid'], rw['ask'], rw['close']
         last_ok = last if last >= 0.05 else None
+        has_book = bid >= 0.05 and ask >= 0.05
         if not market_open:
-            return last_ok, last_ok
+            return {'bid_eff': last_ok, 'ask_eff': last_ok,
+                    'bid_raw': bid if bid >= 0.05 else None,
+                    'ask_raw': ask if ask >= 0.05 else None,
+                    'src': 'ultimo', 'has_boca': has_book}
         b = bid if bid >= 0.05 else last_ok
         a = ask if ask >= 0.05 else last_ok
-        if bid >= 0.05 and ask >= 0.05 and last_ok:
+        src = 'book' if has_book else 'ultimo'
+        if has_book and last_ok:
             mid = (bid + ask) / 2
             if (ask - bid) > max(0.10, 0.25 * mid):
                 b = a = last_ok
-        return b, a
+                src = 'ultimo'
+        return {'bid_eff': b, 'ask_eff': a,
+                'bid_raw': bid if bid >= 0.05 else None,
+                'ask_raw': ask if ask >= 0.05 else None,
+                'src': src, 'has_boca': has_book}
 
-    buys  = sorted(calls_by_exp.get(exp_c, []), key=lambda x: x['strike'])
     sells = sorted(calls_by_exp.get(exp_v, []), key=lambda x: x['strike'])
-    if not buys or not sells:
+    if not sells:
         return jsonify({'error': 'Cadeia sem CALLs na faixa de strike escolhida '
-                        'para os vencimentos selecionados.', 'expirations': exps_out}), 404
+                        'para o vencimento da vendida.', 'expirations': exps_out}), 404
 
-    dc_c = max((_date.fromisoformat(exp_c) - today).days, 1)
     dc_v = max((_date.fromisoformat(exp_v) - today).days, 1)
     selic = _selic()
 
@@ -6959,38 +7007,72 @@ def api_fyt_thl(ticker):
     # isso inflava o retorno% para milhares de %, sem ser uma trava de alta
     # de verdade.
     px_min_compra = max(0.20, 0.01 * spot)
-    for b in buys:
-        _bb, b_ask = _eff_thl(b)
-        if not b_ask or b_ask < px_min_compra:
+
+    exp_c_used = set()
+    for cand_i in exp_c_candidates:
+        exp_c = monthlies[cand_i]
+        buys = sorted(calls_by_exp.get(exp_c, []), key=lambda x: x['strike'])
+        if not buys:
             continue
-        for s in sells:
-            # Comprada (strike menor, vencimento mais distante) sempre ABAIXO
-            # da vendida (strike maior, vencimento mais próximo).
-            if s['strike'] <= b['strike']:
+        dc_c = max((_date.fromisoformat(exp_c) - today).days, 1)
+        for b in buys:
+            eb = _eff_thl(b)
+            # Pregão aberto: só entra CALL comprada com boca real (bid E ask
+            # no livro agora) — sem isso a linha usaria um último negócio
+            # velho de uma opção sem liquidez neste momento. Pregão fechado:
+            # último negócio é o dado normal, como nas demais buscas.
+            if market_open and not eb['has_boca']:
                 continue
-            s_bid, _sa = _eff_thl(s)
-            if not s_bid or s_bid <= 0:
+            b_ask = eb['ask_eff']
+            if not b_ask or b_ask < px_min_compra:
                 continue
-            custo = round(b_ask - s_bid, 2)     # >0 débito | <0 crédito
-            if max_px is not None and custo > max_px:
-                continue
-            credito_liq = -custo                 # >0 quando sai no crédito
-            retorno_pct = (round(credito_liq / b_ask * 100, 1)
-                           if b_ask > 0.005 else None)
-            liq = min(b.get('vol_fin') or 0, s.get('vol_fin') or 0)
-            rows.append({
-                'buy_symbol':  b['symbol'],  'buy_strike':  b['strike'],
-                'buy_px':      round(b_ask, 2),
-                'sell_symbol': s['symbol'],  'sell_strike': s['strike'],
-                'sell_px':     round(s_bid, 2),
-                'asa':         round(s['strike'] - b['strike'], 2),
-                'custo':       custo,
-                'is_credito':  custo < -0.005,
-                'retorno_pct': retorno_pct,
-                'buy_dist':    round((b['strike'] - spot) / spot * 100, 1),
-                'sell_dist':   round((s['strike'] - spot) / spot * 100, 1),
-                'liq':         liq,
-            })
+            for s in sells:
+                # Comprada (strike menor, vencimento mais distante) sempre
+                # ABAIXO da vendida (strike maior, vencimento mais próximo).
+                if s['strike'] <= b['strike']:
+                    continue
+                es = _eff_thl(s)
+                s_bid = es['bid_eff']
+                if not s_bid or s_bid <= 0:
+                    continue
+                custo = round(b_ask - s_bid, 2)     # >0 débito | <0 crédito
+                if max_px is not None and custo > max_px:
+                    continue
+                credito_liq = -custo                 # >0 quando sai no crédito
+                retorno_pct = (round(credito_liq / b_ask * 100, 1)
+                               if b_ask > 0.005 else None)
+                liq = min(b.get('vol_fin') or 0, s.get('vol_fin') or 0)
+                exp_c_used.add(exp_c)
+                rows.append({
+                    'buy_symbol':  b['symbol'],  'buy_strike':  b['strike'],
+                    'buy_px':      round(b_ask, 2),
+                    'buy_bid':     eb['bid_raw'], 'buy_ask': eb['ask_raw'],
+                    'buy_px_src':  eb['src'],
+                    'sell_symbol': s['symbol'],  'sell_strike': s['strike'],
+                    'sell_px':     round(s_bid, 2),
+                    'sell_bid':    es['bid_raw'], 'sell_ask': es['ask_raw'],
+                    'sell_px_src': es['src'],
+                    'asa':         round(s['strike'] - b['strike'], 2),
+                    'custo':       custo,
+                    'is_credito':  custo < -0.005,
+                    'retorno_pct': retorno_pct,
+                    'buy_dist':    round((b['strike'] - spot) / spot * 100, 1),
+                    'sell_dist':   round((s['strike'] - spot) / spot * 100, 1),
+                    'exp_c':       exp_c, 'dc_c': dc_c,
+                    'liq':         liq,
+                })
+
+    if not rows and exp_c_all:
+        return jsonify({'error': 'Nenhuma CALL comprada com boca (bid e ask) '
+                        'disponível em nenhum vencimento mensal.' if market_open else
+                        'Cadeia sem CALLs líquidas na faixa de strike escolhida.',
+                        'expirations': exps_out}), 404
+    if not rows:
+        return jsonify({'error': ('Nenhuma CALL comprada com boca (bid e ask) disponível '
+                        'neste vencimento — tente "Todos" ou aguarde mais liquidez.')
+                        if market_open else
+                        'Cadeia sem CALLs na faixa de strike escolhida para os '
+                        'vencimentos selecionados.', 'expirations': exps_out}), 404
 
     # Melhor retorno % primeiro; sem retorno calculável vai para o fim.
     def _key(x):
@@ -7003,7 +7085,9 @@ def api_fyt_thl(ticker):
         'ticker': ticker, 'spot': spot, 'spot_change': spot_change,
         'selic': round(selic, 2), 'market_open': market_open,
         'expirations': exps_out,
-        'exp_c': exp_c, 'exp_v': exp_v, 'dc_c': dc_c, 'dc_v': dc_v,
+        'exp_c': (None if exp_c_all else monthlies[exp_c_candidates[0]]),
+        'exp_c_all': exp_c_all,
+        'exp_v': exp_v, 'dc_v': dc_v,
         'rows': rows, 'total': len(rows),
     })
 

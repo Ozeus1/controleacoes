@@ -145,9 +145,10 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <label for="fyt-thl-exp-c" title="Perna comprada, strike menor — vencimento de prazo LONGO">
           Vencimento da comprada (longa)</label>
         <select id="fyt-thl-exp-c">
+          <option value="all" selected>Todos</option>
           <option value="0">Próximo mensal</option>
           <option value="1">Mensal +1</option>
-          <option value="2" selected>Mensal +2</option>
+          <option value="2">Mensal +2</option>
           <option value="3">Mensal +3</option>
           <option value="4">Mensal +4</option>
           <option value="5">Mensal +5</option>
@@ -243,6 +244,15 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   function dateBR(iso) {
     var p = (iso || '').split('-');
     return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+  }
+  // "Boca" de uma perna: bid × ask do livro. Some quando a linha usou o
+  // último negócio (pregão fechado, ou book sem os dois lados agora).
+  function bocaCel(bid, ask, src) {
+    if (bid == null || ask == null) {
+      return '<span style="font-size:.72rem;color:var(--text-secondary);">' +
+             (src === 'ultimo' ? 'últ.' : '—') + '</span>';
+    }
+    return '<span style="font-size:.75rem;">' + fmt(bid) + ' × ' + fmt(ask) + '</span>';
   }
 
   // ── Seleção de ativo ──────────────────────────────────────────────────
@@ -380,7 +390,9 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       '<th>Estrutura</th>' +
       '<th title="Proporção compradas : vendidas">Prop.</th>' +
       '<th title="Strike da perna comprada e distância até o spot">Comprada</th>' +
+      '<th title="Bid × ask da comprada (últ. = preço do último negócio, sem book agora)">Boca C.</th>' +
       '<th title="Strike da perna vendida e distância até o spot">Vendida</th>' +
+      '<th title="Bid × ask da vendida (últ. = preço do último negócio, sem book agora)">Boca V.</th>' +
       '<th title="Distância entre os strikes">Asa</th>' +
       '<th title="Negativo = crédito recebido na montagem">Custo</th>' +
       '<th title="Lucro no strike da vendida, por lote base">Lucro máx.</th>' +
@@ -397,8 +409,10 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         '<td><strong>' + r.ratio + '</strong></td>' +
         '<td>' + brl(r.buy_strike) + '<br><span style="font-size:.72rem;color:var(--text-secondary);">' +
             pct(r.buy_dist) + '</span></td>' +
+        '<td>' + bocaCel(r.buy_bid, r.buy_ask, r.buy_px_src) + '</td>' +
         '<td>' + brl(r.sell_strike) + '<br><span style="font-size:.72rem;color:var(--text-secondary);">' +
             pct(r.sell_dist) + '</span></td>' +
+        '<td>' + bocaCel(r.sell_bid, r.sell_ask, r.sell_px_src) + '</td>' +
         '<td>' + brl(r.asa) + '</td>' +
         '<td><span class="fyt-badge ' + (r.is_credito ? 'cred' : 'deb') + '">' +
             (r.is_credito ? 'crédito ' + brl(Math.abs(r.custo)) : brl(r.custo)) + '</span></td>' +
@@ -434,17 +448,24 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       return;
     }
 
+    var vencCompradaInfo = d.exp_c_all
+      ? 'todos os mensais posteriores à vendida'
+      : dateBR(d.exp_c) + ' (' + (d.rows[0] ? d.rows[0].dc_c : '') + 'd)';
     var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">' +
-      '📆 Comprada (longa): <strong>' + dateBR(d.exp_c) + '</strong> (' + d.dc_c + 'd) · ' +
+      '📆 Comprada (longa): <strong>' + vencCompradaInfo + '</strong> · ' +
       'Vendida (curta): <strong>' + dateBR(d.exp_v) + '</strong> (' + d.dc_v + 'd)' +
-      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' :
+       ' · 🔒 só CALLs compradas com boca (bid e ask) real no livro agora') +
       ' · <strong>' + d.rows.length + '</strong> montagem(ns)' +
       '</div>';
 
     h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
       '<th>Estrutura</th>' +
+      (d.exp_c_all ? '<th title="Vencimento da perna comprada nesta linha">Venc. compr.</th>' : '') +
       '<th title="Strike da perna comprada (menor) e distância até o spot">Comprada</th>' +
+      '<th title="Bid × ask da comprada (últ. = preço do último negócio, sem book agora)">Boca C.</th>' +
       '<th title="Strike da perna vendida (maior) e distância até o spot">Vendida</th>' +
+      '<th title="Bid × ask da vendida (últ. = preço do último negócio, sem book agora)">Boca V.</th>' +
       '<th title="Distância entre os strikes">Asa</th>' +
       '<th title="Positivo = débito pago · negativo = crédito recebido">Custo</th>' +
       '<th title="Crédito líquido dividido pelo custo da comprada, em %">Retorno %</th>' +
@@ -454,10 +475,14 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       h += '<tr data-i="' + i + '" title="Clique para ver o detalhamento">' +
         '<td><span class="fyt-badge buy">+1× ' + r.buy_symbol + '</span> ' +
             '<span class="fyt-badge sell">−1× ' + r.sell_symbol + '</span></td>' +
+        (d.exp_c_all ? '<td>' + dateBR(r.exp_c) + '<br><span style="font-size:.72rem;color:var(--text-secondary);">' +
+            r.dc_c + 'd</span></td>' : '') +
         '<td>' + brl(r.buy_strike) + '<br><span style="font-size:.72rem;color:var(--text-secondary);">' +
             pct(r.buy_dist) + '</span></td>' +
+        '<td>' + bocaCel(r.buy_bid, r.buy_ask, r.buy_px_src) + '</td>' +
         '<td>' + brl(r.sell_strike) + '<br><span style="font-size:.72rem;color:var(--text-secondary);">' +
             pct(r.sell_dist) + '</span></td>' +
+        '<td>' + bocaCel(r.sell_bid, r.sell_ask, r.sell_px_src) + '</td>' +
         '<td>' + brl(r.asa) + '</td>' +
         '<td><span class="fyt-badge ' + (r.is_credito ? 'cred' : 'deb') + '">' +
             (r.is_credito ? 'crédito ' + brl(Math.abs(r.custo)) : brl(r.custo)) + '</span></td>' +
@@ -503,9 +528,11 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
 
     var boxes = [
       ['Compra ' + (r.qc * q) + '× ' + r.buy_symbol + ' (K ' + fmt(r.buy_strike) + ')',
-          brl(r.buy_px * r.qc * q), 'neg'],
+          brl(r.buy_px * r.qc * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.buy_bid, r.buy_ask, r.buy_px_src) + ')</span>', 'neg'],
       ['Venda ' + (r.qv * q) + '× ' + r.sell_symbol + ' (K ' + fmt(r.sell_strike) + ')',
-          brl(r.sell_px * r.qv * q), 'pos'],
+          brl(r.sell_px * r.qv * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.sell_bid, r.sell_ask, r.sell_px_src) + ')</span>', 'pos'],
       [r.is_credito ? 'Crédito recebido' : 'Custo da montagem',
           brl(Math.abs(custoTotal)), r.is_credito ? 'pos' : 'neg'],
       ['Lucro máximo (no strike vendido)', brl(lucroTotal), 'pos'],
@@ -564,17 +591,19 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     var custoTotal = r.custo * q;
 
     var boxes = [
-      ['Compra ' + q + '× ' + r.buy_symbol + ' (K ' + fmt(r.buy_strike) + ' · ' + dateBR(lastData.exp_c) + ')',
-          brl(r.buy_px * q), 'neg'],
+      ['Compra ' + q + '× ' + r.buy_symbol + ' (K ' + fmt(r.buy_strike) + ' · ' + dateBR(r.exp_c) + ')',
+          brl(r.buy_px * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.buy_bid, r.buy_ask, r.buy_px_src) + ')</span>', 'neg'],
       ['Venda ' + q + '× ' + r.sell_symbol + ' (K ' + fmt(r.sell_strike) + ' · ' + dateBR(lastData.exp_v) + ')',
-          brl(r.sell_px * q), 'pos'],
+          brl(r.sell_px * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.sell_bid, r.sell_ask, r.sell_px_src) + ')</span>', 'pos'],
       [r.is_credito ? 'Crédito recebido' : 'Custo da montagem (débito)',
           brl(Math.abs(custoTotal)), r.is_credito ? 'pos' : 'neg'],
       ['Retorno % (crédito líquido / custo da comprada)',
           r.retorno_pct != null ? pct(r.retorno_pct) : '—',
           r.retorno_pct != null && r.retorno_pct >= 0 ? 'pos' : 'neg'],
       ['Asa (distância entre strikes)', brl(r.asa), ''],
-      ['Vencimento comprada (longa)', dateBR(lastData.exp_c) + ' (' + lastData.dc_c + ' d.c.)', ''],
+      ['Vencimento comprada (longa)', dateBR(r.exp_c) + ' (' + r.dc_c + ' d.c.)', ''],
       ['Vencimento vendida (curta)', dateBR(lastData.exp_v) + ' (' + lastData.dc_v + ' d.c.)', '']
     ];
     document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
@@ -587,7 +616,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     // destino possível; a aba Estruturas de Cálculos de Opções exige um
     // único vencimento.
     var legs = [
-      [r.buy_symbol,  'CALL', 'BUY',  q, r.buy_px,  r.buy_strike,  lastData.exp_c].join(','),
+      [r.buy_symbol,  'CALL', 'BUY',  q, r.buy_px,  r.buy_strike,  r.exp_c].join(','),
       [r.sell_symbol, 'CALL', 'SELL', q, r.sell_px, r.sell_strike, lastData.exp_v].join(',')
     ].join('|');
     var qs = new URLSearchParams({sim: '1', ativo: lastData.ticker,

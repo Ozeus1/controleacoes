@@ -7421,6 +7421,342 @@ def api_fyt_mannerheim(ticker):
     })
 
 
+@app.route('/api/fyt-trava-alta/<ticker>')
+@login_required
+def api_fyt_trava_alta(ticker):
+    """Busca Trava de Alta na cadeia, no DÉBITO (CALLs) ou no CRÉDITO (PUTs).
+
+    Débito (CALLs): compra CALL de strike MENOR + vende CALL de strike MAIOR,
+    mesmo vencimento. Ganha até o strike vendido; risco limitado ao débito
+    pago.
+
+    Crédito (PUTs): vende PUT de strike MAIOR + compra PUT de strike MENOR
+    (proteção), mesmo vencimento. Recebe o crédito de montagem; risco
+    limitado à largura menos o crédito, abaixo do strike comprado.
+
+    Filtros:
+      tipo       = 'debito' (CALLs) ou 'credito' (PUTs)
+      exp        = índice do vencimento (0 = próximo mensal, 1 = +1, 2 = +2)
+      tamanho_min/tamanho_max = largura da trava em R$ (distância entre
+                   strikes), de 4 a 12
+      risco_min/risco_max     = relação de risco, de 1 a 6:
+                   no DÉBITO é ganho_máximo / custo (queremos alto — barato
+                   e alavancado); no CRÉDITO é invertida, perda_máxima /
+                   crédito (queremos baixo — trava mais conservadora)
+      strike_pct = variação da perna de referência em % do spot (padrão 40 —
+                   de 40% ITM a 40% OTM). No débito é a CALL comprada; no
+                   crédito é a PUT vendida (a perna que fica perto do spot
+                   e define a montagem)
+      preco_min/preco_max = financeiro da montagem em R$, de -8 a 8
+                   (negativo = crédito recebido, positivo = débito pago)
+    """
+    ticker = ticker.strip().upper()
+    token  = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    if not spot:
+        return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
+
+    # ── Filtros ──────────────────────────────────────────────────────────
+    tipo = (request.args.get('tipo') or 'debito').strip().lower()
+    if tipo not in ('debito', 'credito'):
+        tipo = 'debito'
+
+    try:
+        exp_i = int(request.args.get('exp', 0))
+    except (TypeError, ValueError):
+        exp_i = 0
+    exp_i = exp_i if exp_i in (0, 1, 2) else 0
+
+    def _num(name, default):
+        raw = (request.args.get(name) or '').strip()
+        if not raw:
+            return default
+        try:
+            return float(raw.replace(',', '.'))
+        except ValueError:
+            return default
+
+    tamanho_min = max(0.0, _num('tamanho_min', 4.0))
+    tamanho_max = min(50.0, _num('tamanho_max', 12.0))
+    if tamanho_max < tamanho_min:
+        tamanho_min, tamanho_max = tamanho_max, tamanho_min
+
+    risco_min = max(0.1, _num('risco_min', 1.0))
+    risco_max = min(20.0, _num('risco_max', 6.0))
+    if risco_max < risco_min:
+        risco_min, risco_max = risco_max, risco_min
+
+    strike_pct = _num('strike_pct', 40.0)
+    strike_pct = min(max(abs(strike_pct), 1.0), 60.0)
+
+    preco_min = _num('preco_min', -8.0)
+    preco_max = _num('preco_max', 8.0)
+    if preco_max < preco_min:
+        preco_min, preco_max = preco_max, preco_min
+
+    # ── Cadeia ───────────────────────────────────────────────────────────
+    try:
+        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+    except OplabApiError as e:
+        return jsonify({'error': str(e), 'status': e.status_code}), 503
+    except Exception:
+        app.logger.exception('api_fyt_trava_alta error for %s', ticker)
+        return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+
+    opt_list = data if isinstance(data, list) else (
+        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+    )
+
+    from datetime import date as _date
+    today = _date.today()
+
+    def _third_friday(y, m):
+        count, day = 0, 1
+        while True:
+            d = _date(y, m, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    return d
+            day += 1
+
+    def _is_monthly(exp_str):
+        d = _date.fromisoformat(exp_str)
+        tf = _third_friday(d.year, d.month)
+        return abs((d - tf).days) <= 2
+
+    # Só o tipo de opção usado nesta variante (CALLs no débito, PUTs no crédito)
+    is_call_leg = (tipo == 'debito')
+    opts_by_exp = {}
+    for o in opt_list:
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        o_is_put = ('PUT' in cat or cat == 'P')
+        if o_is_put == is_call_leg:      # descarta o tipo que não interessa
+            continue
+        strike = float(o.get('strike') or 0)
+        if strike <= 0:
+            continue
+        due = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due:
+            due = due.split('T')[0]
+        if not due:
+            continue
+        try:
+            if _date.fromisoformat(due) <= today:
+                continue
+        except ValueError:
+            continue
+        opts_by_exp.setdefault(due, []).append({
+            'symbol': str(o.get('symbol') or o.get('ticker') or '').upper(),
+            'strike': round(strike, 2),
+            'bid':    round(float(o.get('bid') or 0), 2),
+            'ask':    round(float(o.get('ask') or 0), 2),
+            'close':  round(float(o.get('close') or 0), 2),
+            'delta':  o.get('delta'),
+            'vol_fin': round(float(o.get('financial_volume')
+                                   or o.get('volume_financial') or 0), 2),
+        })
+
+    monthlies = sorted([e for e in opts_by_exp if _is_monthly(e)])[:3]
+    if not monthlies:
+        return jsonify({'error': f'Nenhum vencimento mensal com '
+                        f'{"CALLs" if is_call_leg else "PUTs"} para {ticker}.'}), 404
+
+    exps_out = [{'exp': e,
+                 'dc': max((_date.fromisoformat(e) - today).days, 0),
+                 'label': ('Próximo mensal' if i == 0 else f'Mensal +{i}')}
+                for i, e in enumerate(monthlies)]
+
+    if exp_i >= len(monthlies):
+        return jsonify({'error': 'Vencimento escolhido não disponível para este ativo.',
+                        'expirations': exps_out}), 404
+    exp = monthlies[exp_i]
+
+    # ── Preço efetivo (book no pregão, último fora dele) ──────────────────
+    _now_b = now_brt()
+    market_open = (_now_b.weekday() < 5
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+
+    def _eff(rw):
+        bid, ask, last = rw['bid'], rw['ask'], rw['close']
+        last_ok = last if last >= 0.05 else None
+        has_book = bid >= 0.05 and ask >= 0.05
+        if not market_open:
+            return {'bid_eff': last_ok, 'ask_eff': last_ok,
+                    'bid_raw': bid if bid >= 0.05 else None,
+                    'ask_raw': ask if ask >= 0.05 else None,
+                    'src': 'ultimo'}
+        b = bid if bid >= 0.05 else last_ok
+        a = ask if ask >= 0.05 else last_ok
+        src = 'book' if has_book else 'ultimo'
+        if has_book and last_ok:
+            mid = (bid + ask) / 2
+            if (ask - bid) > max(0.10, 0.25 * mid):
+                b = a = last_ok
+                src = 'ultimo'
+        return {'bid_eff': b, 'ask_eff': a,
+                'bid_raw': bid if bid >= 0.05 else None,
+                'ask_raw': ask if ask >= 0.05 else None,
+                'src': src}
+
+    opts = sorted(opts_by_exp.get(exp, []), key=lambda x: x['strike'])
+    if not opts:
+        return jsonify({'error': 'Cadeia sem opções no vencimento escolhido.',
+                        'expirations': exps_out}), 404
+
+    dc = max((_date.fromisoformat(exp) - today).days, 1)
+    T  = dc / 365.0
+    selic = _selic()
+    r_cont = math.log(1 + selic / 100.0)
+
+    def _iv_est(rw, T_):
+        prem = rw['close'] or ((rw['bid'] + rw['ask']) / 2 if (rw['bid'] and rw['ask']) else 0)
+        if not prem or T_ <= 0 or not rw['strike']:
+            return None
+        intr = max(0.0, (spot - rw['strike']) if is_call_leg else (rw['strike'] - spot))
+        if prem <= intr * 1.005:
+            return None
+        iv = _implied_vol(spot, rw['strike'], T_, r_cont, prem, is_call_leg)
+        return iv if 0.005 < iv < 4.9 else None
+
+    def _pop_above(be, T_, iv):
+        if be <= 0 or T_ <= 0 or not iv:
+            return None
+        d2 = (math.log(spot / be) + (r_cont - 0.5 * iv * iv) * T_) / (iv * math.sqrt(T_))
+        return _norm_cdf(d2) * 100
+
+    # Faixa da perna de referência: comprada no débito, vendida no crédito —
+    # ambas ficam perto do spot e são a perna que "escolhe" a montagem.
+    lo_k = spot * (1 - strike_pct / 100.0)
+    hi_k = spot * (1 + strike_pct / 100.0)
+    ref_cands = [o for o in opts if lo_k <= o['strike'] <= hi_k]
+
+    rows = []
+    for ref in ref_cands:
+        e_ref = _eff(ref)
+        if tipo == 'debito':
+            # ref = comprada (paga o ask); busca vendida em strike MAIOR
+            ref_px = e_ref['ask_eff']
+            if not ref_px or ref_px <= 0:
+                continue
+            outros = [o for o in opts if o['strike'] > ref['strike']]
+        else:
+            # ref = vendida (recebe o bid); busca comprada em strike MENOR
+            ref_px = e_ref['bid_eff']
+            if not ref_px or ref_px <= 0:
+                continue
+            outros = [o for o in opts if o['strike'] < ref['strike']]
+
+        for outro in outros:
+            width = round(abs(outro['strike'] - ref['strike']), 2)
+            if width < tamanho_min or width > tamanho_max:
+                continue
+            e_out = _eff(outro)
+
+            if tipo == 'debito':
+                out_px = e_out['bid_eff']       # vendida: recebe o bid
+                if not out_px or out_px <= 0:
+                    continue
+                custo = round(ref_px - out_px, 2)          # >0 débito esperado
+                if custo <= 0.01:
+                    continue
+                if not (preco_min <= custo <= preco_max):
+                    continue
+                max_gain = width - custo
+                if max_gain <= 0:
+                    continue
+                max_loss = custo
+                ratio = max_gain / custo
+                if ratio < risco_min or ratio > risco_max:
+                    continue
+                be = ref['strike'] + custo
+                buy_row, sell_row = ref, outro
+                buy_px, sell_px = ref_px, out_px
+                e_buy, e_sell = e_ref, e_out
+            else:
+                out_px = e_out['ask_eff']       # comprada: paga o ask
+                if not out_px or out_px <= 0:
+                    continue
+                credito = round(ref_px - out_px, 2)        # >0 crédito esperado
+                if credito <= 0.01:
+                    continue
+                custo = round(-credito, 2)                  # financeiro (negativo=crédito)
+                if not (preco_min <= custo <= preco_max):
+                    continue
+                max_loss = width - credito
+                if max_loss <= 0:
+                    continue
+                max_gain = credito
+                # Risco/crédito invertido: quanto se arrisca por R$1 de crédito
+                ratio = max_loss / credito
+                if ratio < risco_min or ratio > risco_max:
+                    continue
+                be = ref['strike'] - credito
+                buy_row, sell_row = outro, ref
+                buy_px, sell_px = out_px, ref_px
+                e_buy, e_sell = e_out, e_ref
+
+            iv = _iv_est(buy_row, T) or _iv_est(sell_row, T) or 0.35
+            p_above = _pop_above(be, T, iv)
+            pop = ev = ev_pct = None
+            if p_above is not None:
+                pop = p_above                    # trava de alta: ganha acima do BE
+                risco_ref = max_loss if max_loss else 0.001
+                ev = pop / 100 * max_gain - (1 - pop / 100) * risco_ref
+                ev_pct = round(ev / risco_ref * 100, 1)
+
+            liq = min(buy_row.get('vol_fin') or 0, sell_row.get('vol_fin') or 0)
+            rows.append({
+                'tipo':        tipo,
+                'buy_symbol':  buy_row['symbol'],  'buy_strike':  buy_row['strike'],
+                'buy_px':      round(buy_px, 2),
+                'buy_bid':     e_buy['bid_raw'], 'buy_ask': e_buy['ask_raw'],
+                'buy_src':     e_buy['src'],
+                'sell_symbol': sell_row['symbol'], 'sell_strike': sell_row['strike'],
+                'sell_px':     round(sell_px, 2),
+                'sell_bid':    e_sell['bid_raw'], 'sell_ask': e_sell['ask_raw'],
+                'sell_src':    e_sell['src'],
+                'width':       width,
+                'custo':       custo,
+                'is_credito':  custo < -0.005,
+                'max_gain':    round(max_gain, 2),
+                'max_loss':    round(max_loss, 2),
+                'ratio':       round(ratio, 2),
+                'breakeven':   round(be, 2),
+                'be_dist':     round((be - spot) / spot * 100, 2),
+                'pop':         round(pop, 1) if pop is not None else None,
+                'ev':          round(ev, 2) if ev is not None else None,
+                'ev_pct':      ev_pct,
+                'buy_dist':    round((buy_row['strike'] - spot) / spot * 100, 1),
+                'sell_dist':   round((sell_row['strike'] - spot) / spot * 100, 1),
+                'liq':         liq,
+            })
+
+    if not rows:
+        return jsonify({'error': 'Nenhuma montagem atende aos filtros neste ativo/vencimento. '
+                        'Tente ampliar o tamanho, o risco ou a faixa de preço.',
+                        'expirations': exps_out}), 404
+
+    # Ordena pela relação crescente (1:1 → 1:6 no débito; menor risco por R$
+    # de crédito primeiro no crédito), como na Trava de Alta já existente.
+    if tipo == 'debito':
+        rows.sort(key=lambda x: (x['ratio'], -x['liq']))
+    else:
+        rows.sort(key=lambda x: (x['ratio'], -x['liq']))
+    rows = _fyt_diversify(rows, lambda x: x['buy_symbol'], per_key=3, limit=60)
+
+    return jsonify({
+        'ticker': ticker, 'spot': spot, 'spot_change': spot_change,
+        'selic': round(selic, 2), 'market_open': market_open,
+        'expirations': exps_out,
+        'exp': exp, 'dc': dc, 'tipo': tipo,
+        'rows': rows, 'total': len(rows),
+    })
+
+
 @app.route('/venda-put-longa')
 @login_required
 def venda_put_longa():

@@ -580,6 +580,15 @@ var OPS=[
  sel:['Tradicional: vende PUT a descoberto + THLs de CALL (viés alta ou lateral)','Reversa: vende CALL a descoberto + THLs de PUT (viés baixa ou lateral)','Vencimento das vendidas: próximo mensal ou +1 mês (vale para a descoberta e para a perna curta das THLs)','Vencimento das compradas: +1 a +3 meses (perna longa das THLs)','Variação do strike editável (±% do spot) e Mín. THLs — vazio traz todas','Ordenado pelos strikes mais próximos do ATM, que é onde a operação se maximiza'],
  man:['Proporção mínima recomendada: ≥ 2,6 THLs por vendida na Tradicional e ≥ 3 na Reversa','Tradicional: risco na queda forte (PUT descoberta)','Reversa: risco na alta forte (CALL descoberta) e também na queda forte (PUTs DITM exigem desembolso para desmontar)','Strikes muito ITM financiam mais THLs, mas o prêmio deles é valor intrínseco, não de tempo — descaracteriza a operação','Acompanhar de perto na semana do vencimento: é quando a vendida perde valor e a estrutura se maximiza'],
  busca:FYT+'?estrutura=mannerheim'},
+{cat:'cat-vol',nome:'Trava de Alta (FYT)',cen:'alta',tipo:'zero',vi:'baixa',
+ alias:['trava_alta_fyt'],
+ tags:['DÉBITO (CALLs) OU CRÉDITO (PUTs)','FILTROS AJUSTÁVEIS'],
+ legs:[{t:'C',q:1,K:98,p:3.6},{t:'C',q:-1,K:103,p:1.2}],
+ mont:'Débito: compra CALL de strike MENOR + vende CALL de strike MAIOR (mesmo vencimento). Crédito: vende PUT de strike MAIOR + compra PUT de strike MENOR de proteção (mesmo vencimento). As duas são trava de alta, com perfis de risco opostos.',
+ cenario:'Alta moderada até o strike vendido (débito) ou acima do strike vendido (crédito). No débito, o risco é limitado ao valor pago; no crédito, à largura menos o crédito recebido.',
+ sel:['Tipo: Débito (CALLs) ou Crédito (PUTs)','Vencimento: próximo mensal, +1 ou +2','Tamanho da trava (distância entre strikes) de 4 a 12','Risco de 1:1 a 1:6 — no débito é ganho/custo (queremos alto); no crédito é perda/crédito invertido (queremos baixo)','Faixa da perna de referência (comprada no débito, vendida no crédito) de 40% ITM a 40% OTM','Preço da montagem de -8 a 8 (negativo = crédito, positivo = débito)'],
+ man:['Débito: TP com o ativo perto do strike vendido; stop se romper o strike comprado na direção contrária','Crédito: acompanhar o strike vendido — se for testado, considerar rolar ou fechar','POP e EV são informativos e não filtram a busca, para não esconder as travas mais alavancadas','Ordenado pela relação de risco, do mais conservador ao mais alavancado'],
+ busca:FYT+'?estrutura=trava_alta'},
 
 /* ══ SINTÉTICAS E AVANÇADAS ══ */
 {cat:'cat-sint',nome:'Ação Sintética (Long Synthetic)',cen:'alta',tipo:'zero',

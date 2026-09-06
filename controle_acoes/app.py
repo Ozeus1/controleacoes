@@ -1542,8 +1542,16 @@ def opcoes():
     spreads_baixa_call = []  # crédito: vende call baixa + compra call alta
 
     for sp in all_spreads:
-        underlying_price = spread_quotes.get(sp.underlying_asset, {}).get('price', 0.0)
-        underlying_change = spread_quotes.get(sp.underlying_asset, {}).get('change_percent')
+        # Prioriza o preço salvo na própria trava (gravado pelo Atualizar
+        # Cotações) — o lookup genérico por ticker pode achar um valor
+        # desatualizado vindo de outra tabela (Option/PutSale/StructuredOp)
+        # quando o ativo não está na carteira (Asset).
+        if sp.underlying_price:
+            underlying_price = sp.underlying_price
+            underlying_change = sp.underlying_change
+        else:
+            underlying_price = spread_quotes.get(sp.underlying_asset, {}).get('price', 0.0)
+            underlying_change = spread_quotes.get(sp.underlying_asset, {}).get('change_percent')
         net = sp.leg_short_price - sp.leg_long_price   # >0 crédito, <0 débito
         net_total = net * sp.quantity
         current_net = sp.leg_short_current - sp.leg_long_current

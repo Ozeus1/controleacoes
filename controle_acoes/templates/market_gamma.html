@@ -1,0 +1,410 @@
+{% extends "base.html" %}
+{% block title %}Market Gamma{% endblock %}
+{% block extra_scripts %}
+<style>
+.mg-filtros{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:.9rem;
+  background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);border-radius:8px;
+  padding:.9rem 1rem;margin:.6rem 0 .8rem;}
+.mg-campo{display:flex;flex-direction:column;gap:.3rem;}
+.mg-campo label{font-size:.75rem;color:var(--text-secondary);font-weight:600;
+  text-transform:uppercase;letter-spacing:.03em;}
+.mg-campo select,.mg-campo input{background:var(--card-bg);color:var(--text-primary);
+  border:1px solid var(--border-color);border-radius:5px;padding:.35rem .5rem;font-size:.85rem;}
+.mg-campo input{text-transform:uppercase;}
+
+#mg-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
+#mg-error{display:none;color:#f87171;padding:1rem;background:rgba(239,68,68,.08);
+  border:1px solid rgba(239,68,68,.25);border-radius:6px;margin:.6rem 0;}
+#mg-hint{padding:1.5rem;text-align:center;color:var(--text-secondary);font-size:.88rem;}
+#mg-res{display:none;}
+
+.mg-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:.7rem;margin:1rem 0;}
+.mg-card{background:var(--hover-bg);border:1px solid var(--border-color);border-radius:6px;
+  padding:.7rem .9rem;display:flex;flex-direction:column;gap:.2rem;text-align:center;}
+.mg-card .lbl{font-size:.74rem;color:var(--text-secondary);}
+.mg-card .val{font-size:1.15rem;font-weight:700;color:var(--text-primary);}
+.mg-card .sub{font-size:.72rem;color:var(--text-secondary);}
+.mg-card .val.pos{color:#34d399;} .mg-card .val.neg{color:#f87171;}
+.mg-card .val.flip{color:#facc15;}
+
+.mg-chart{position:relative;height:400px;background:var(--card-bg);
+  border:1px solid var(--border-color);border-radius:8px;padding:.6rem;margin-bottom:.4rem;}
+.mg-chart.baixo{height:330px;}
+.mg-legenda{display:flex;gap:1.2rem;justify-content:center;flex-wrap:wrap;
+  font-size:.8rem;color:var(--text-secondary);margin:.5rem 0 .3rem;}
+.mg-legenda span{display:inline-flex;align-items:center;gap:.35rem;}
+.mg-dot{width:12px;height:12px;border-radius:2px;display:inline-block;}
+.mg-nota{font-size:.78rem;color:var(--text-secondary);margin:.5rem 0;}
+.mg-sec{margin-top:1.6rem;font-size:1rem;}
+
+/* Explicação */
+.mg-abas{display:flex;gap:.4rem;flex-wrap:wrap;border-bottom:1px solid var(--border-color);
+  margin-bottom:.8rem;}
+.mg-aba{padding:.4rem .8rem;font-size:.85rem;cursor:pointer;color:var(--text-secondary);
+  border-bottom:2px solid transparent;}
+.mg-aba.on{color:var(--text-primary);border-bottom-color:#7c3aed;font-weight:600;}
+.mg-painel{display:none;font-size:.86rem;line-height:1.6;color:var(--text-secondary);}
+.mg-painel.on{display:block;}
+.mg-painel strong{color:var(--text-primary);}
+@media (max-width:640px){.mg-filtros{grid-template-columns:1fr;}
+  .mg-chart{height:300px;} .mg-chart.baixo{height:260px;}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
+    <h2 style="margin:0;">📐 Market Gamma</h2>
+    <span class="mg-nota" style="margin:0;">Exposição gama dos formadores (GEX) — fonte BRAPI / B3</span>
+  </div>
+
+  {% if not tem_token %}
+  <div style="margin:.7rem 0;padding:.6rem .9rem;background:rgba(234,179,8,.1);
+              border-left:3px solid #eab308;border-radius:4px;font-size:.83rem;color:var(--text-secondary);">
+    ⚠️ Sem chave BRAPI cadastrada: a API libera apenas <strong>PETR4</strong> (sandbox).
+    Para os demais ativos, cadastre sua chave do plano Pro em
+    <a href="{{ url_for('config') }}">Configuração</a>.
+  </div>
+  {% endif %}
+
+  <div class="mg-filtros">
+    <div class="mg-campo">
+      <label>Ativo subjacente</label>
+      <select id="mg-ticker">
+        {% for t in sugestoes %}<option value="{{ t }}" {{ 'selected' if t == 'PETR4' else '' }}>{{ t }}</option>{% endfor %}
+        <option value="__outro__">— outro ativo… —</option>
+      </select>
+      <input id="mg-ticker-livre" placeholder="Digite o ticker" maxlength="10"
+             style="display:none;margin-top:.3rem;">
+    </div>
+    <div class="mg-campo">
+      <label>Vencimento</label>
+      <select id="mg-exp"><option value="">— carregando —</option></select>
+    </div>
+    <div class="mg-campo">
+      <label>&nbsp;</label>
+      <button type="button" id="mg-buscar" class="btn btn-primary" style="padding:.4rem;">Gerar gráfico</button>
+    </div>
+  </div>
+
+  <div id="mg-error"></div>
+  <div id="mg-loading">⏳ Calculando exposição gama…</div>
+  <div id="mg-hint">Escolha o ativo e o vencimento e clique em <strong>Gerar gráfico</strong>.</div>
+
+  <div id="mg-res">
+    <div id="mg-info" class="mg-nota"></div>
+
+    <div class="mg-legenda">
+      <span><i class="mg-dot" style="background:#facc15;"></i> CALL + PUT</span>
+      <span><i class="mg-dot" style="background:#60a5fa;height:3px;"></i> CALL</span>
+      <span><i class="mg-dot" style="background:#f87171;height:3px;"></i> PUT</span>
+      <span><i class="mg-dot" style="background:rgba(52,211,153,.5);"></i> gama positivo — volatilidade contida</span>
+      <span><i class="mg-dot" style="background:rgba(248,113,113,.5);"></i> gama negativo — movimentos amplificados</span>
+    </div>
+    <div class="mg-chart"><canvas id="mg-curva"></canvas></div>
+
+    <div class="mg-cards" id="mg-cards"></div>
+
+    <h3 class="mg-sec">Paredes de gama por strike</h3>
+    <p class="mg-nota" style="margin-top:0;">
+      Quanto de gama cada strike concentra, avaliado no preço atual. Barras para cima
+      são CALLs (gama positivo); para baixo, PUTs.
+    </p>
+    <div class="mg-legenda">
+      <span><i class="mg-dot" style="background:#34d399;"></i> CALL</span>
+      <span><i class="mg-dot" style="background:#f87171;"></i> PUT</span>
+    </div>
+    <div class="mg-chart baixo"><canvas id="mg-paredes"></canvas></div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1.2rem;">
+  <h3 style="margin-top:0;">Como interpretar</h3>
+  <div class="mg-abas">
+    <span class="mg-aba on" data-p="conceito">Conceito</span>
+    <span class="mg-aba" data-p="zonas">Zonas</span>
+    <span class="mg-aba" data-p="metricas">Métricas</span>
+  </div>
+  <div class="mg-painel on" id="mgp-conceito">
+    <p>O gráfico mostra como os <strong>formadores de mercado</strong> estão posicionados em opções
+    e como isso tende a afetar o comportamento do preço — o que se conhece como
+    <strong>Gamma Exposure (GEX)</strong>. Eles se protegem das variações fazendo
+    <strong>delta hedge</strong>: compram ou vendem o ativo-objeto para neutralizar o delta da carteira.</p>
+    <p>A forma como esse hedge acontece depende do <strong>sinal do gama</strong>, o que cria duas
+    zonas de comportamento oposto. Aqui vale a convenção de mercado: o formador está
+    comprado em CALL e vendido em PUT.</p>
+  </div>
+  <div class="mg-painel" id="mgp-zonas">
+    <p><strong style="color:#34d399;">Gama positivo (área verde):</strong> quando o ativo sobe, o
+    formador precisa vender; quando cai, precisa comprar. Ele atua <em>contra</em> a tendência e
+    funciona como um freio — a volatilidade fica <strong>atenuada</strong>.</p>
+    <p><strong style="color:#f87171;">Gama negativo (área vermelha):</strong> o inverso. Quando o
+    ativo cai, o formador vende; quando sobe, compra. Ele atua <em>a favor</em> da tendência e
+    <strong>amplifica</strong> os movimentos — o efeito "sobe de escada, desce de elevador".</p>
+    <p><strong style="color:#facc15;">Flip (gama = 0):</strong> o ponto onde a curva cruza o zero.
+    É o nível para o qual o preço tende a gravitar na ausência de força direcional, e seu
+    rompimento costuma marcar mudança de regime.</p>
+  </div>
+  <div class="mg-painel" id="mgp-metricas">
+    <p><strong>Gama atual</strong>: valor da curva no preço de hoje. <strong>Gama máximo/mínimo</strong>:
+    onde a curva atinge o pico positivo e o fundo negativo dentro da faixa analisada.</p>
+    <p><strong>Gamma Score</strong>: a que distância o gama atual está da média da curva, medida em
+    desvios-padrão. Dá uma noção rápida do regime — quanto mais positivo, mais o mercado
+    tende a ficar contido.</p>
+    <p>O gama de cada série é calculado por Black-Scholes a partir da volatilidade implícita e do
+    open interest, e expresso em reais por 1% de variação do ativo. Séries com IV degenerada
+    (abaixo de 2% ou acima de 300%) são descartadas, porque distorceriam a curva inteira.
+    Os dados são de fechamento (EOD).</p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+(function(){
+  var elT=document.getElementById('mg-ticker'), elTL=document.getElementById('mg-ticker-livre');
+  var elE=document.getElementById('mg-exp');
+  var elErr=document.getElementById('mg-error'), elLoad=document.getElementById('mg-loading');
+  var elHint=document.getElementById('mg-hint'), elRes=document.getElementById('mg-res');
+  var chCurva=null, chPar=null;
+
+  function showErr(m){ elErr.textContent=m; elErr.style.display='block'; }
+  function clearErr(){ elErr.style.display='none'; }
+  function money(v){ return v==null?'—':('R$ '+Number(v).toFixed(2).replace('.',',')); }
+  function fmtBig(n){
+    n=Number(n)||0; var s=n<0?'-':''; n=Math.abs(n);
+    if(n>=1e9) return s+(n/1e9).toFixed(1).replace('.',',')+' bi';
+    if(n>=1e6) return s+(n/1e6).toFixed(1).replace('.',',')+' mi';
+    if(n>=1e3) return s+(n/1e3).toFixed(0)+' mil';
+    return s+n.toFixed(0);
+  }
+
+  function tickerAtual(){
+    if(elT.value==='__outro__') return (elTL.value||'').trim().toUpperCase();
+    return (elT.value||'').trim().toUpperCase();
+  }
+  elT.addEventListener('change', function(){
+    var livre = elT.value==='__outro__';
+    elTL.style.display = livre ? '' : 'none';
+    if(livre){ elTL.focus(); return; }
+    carregarVencimentos();
+  });
+  elTL.addEventListener('change', carregarVencimentos);
+  elTL.addEventListener('keydown', function(e){
+    if(e.key==='Enter'){ e.preventDefault(); carregarVencimentos(); }
+  });
+
+  function carregarVencimentos(){
+    var t=tickerAtual(); if(!t) return;
+    elE.innerHTML='<option value="">— carregando —</option>'; clearErr();
+    fetch('/api/mapa-opcoes/vencimentos/'+encodeURIComponent(t))
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
+      .then(function(res){
+        if(!res.ok){ elE.innerHTML='<option value="">—</option>'; showErr(res.j.error||'Erro ao buscar vencimentos.'); return; }
+        var vs=res.j.vencimentos||[];
+        if(!vs.length){ elE.innerHTML='<option value="">— sem vencimentos —</option>'; return; }
+        var html='<option value="all">Visão completa (todos)</option>';
+        html+=vs.map(function(v){ var p=v.split('-');
+          return '<option value="'+v+'">'+p[2]+'/'+p[1]+'/'+p[0]+'</option>'; }).join('');
+        elE.innerHTML=html;
+      })
+      .catch(function(){ showErr('Falha de rede ao buscar vencimentos.'); });
+  }
+
+  function buscar(){
+    var t=tickerAtual(), e=elE.value;
+    if(!t||!e){ showErr('Escolha o ativo e o vencimento.'); return; }
+    clearErr(); elHint.style.display='none'; elRes.style.display='none'; elLoad.style.display='block';
+    fetch('/api/market-gamma/'+encodeURIComponent(t)+'?exp='+encodeURIComponent(e))
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
+      .then(function(res){
+        elLoad.style.display='none';
+        if(!res.ok){ showErr(res.j.error||'Erro ao gerar o gráfico.'); elHint.style.display='block'; return; }
+        render(res.j); elRes.style.display='block';
+      })
+      .catch(function(err){
+        // Distingue falha de rede de erro ao desenhar — a mensagem genérica
+        // escondia exceções do render e dificultava o diagnóstico.
+        elLoad.style.display='none';
+        showErr('Erro ao montar o gráfico: '+((err && err.message) || err || 'falha de rede'));
+        elHint.style.display='block';
+      });
+  }
+  document.getElementById('mg-buscar').onclick=buscar;
+
+  function render(d){
+    var dt=function(s){ return s? s.split('-').reverse().join('/') : ''; };
+    var venc = d.exp==='all' ? ('visão completa — '+d.vencimentos.length+' vencimentos')
+                             : ('vencimento '+dt(d.exp));
+    document.getElementById('mg-info').innerHTML=
+      '<strong>'+d.ticker+'</strong> · '+venc+
+      ' · spot <strong>'+money(d.spot)+'</strong>'+
+      (d.data_ref?(' · dados de '+dt(d.data_ref)):'')+
+      ' · '+d.n_series+' séries';
+    renderCards(d); renderCurva(d); renderParedes(d);
+  }
+
+  function renderCards(d){
+    var g=d.gamma_atual;
+    var c=[
+      {l:'Gamma Score [σ]', v:(d.score==null?'—':String(d.score).replace('.',',')),
+       s:'desvios da média', k:(d.score>0?'pos':(d.score<0?'neg':''))},
+      {l:'Gama atual', v:fmtBig(g), s:'por 1% do ativo', k:(g>0?'pos':(g<0?'neg':''))},
+      {l:'Gama mínimo', v:(d.gamma_min?money(d.gamma_min.s):'—'), s:'fundo negativo', k:'neg'},
+      {l:'Flip', v:(d.flip==null?'—':money(d.flip)), s:'gama = 0', k:'flip'},
+      {l:'Gama máximo', v:(d.gamma_max?money(d.gamma_max.s):'—'), s:'pico positivo', k:'pos'}
+    ];
+    document.getElementById('mg-cards').innerHTML=c.map(function(x){
+      return '<div class="mg-card"><span class="lbl">'+x.l+'</span>'+
+             '<span class="val '+x.k+'">'+x.v+'</span><span class="sub">'+x.s+'</span></div>';
+    }).join('');
+  }
+
+  // Linha vertical do spot (e do flip) sobre os gráficos
+  function refsPlugin(refs, labels){
+    return {
+      id:'mg-refs',
+      afterDatasetsDraw:function(ch){
+        var xs=ch.scales.x, ys=ch.scales.y, g=ch.ctx;
+        refs.forEach(function(r){
+          var px=null;
+          for(var i=0;i<labels.length-1;i++){
+            if(r.v>=labels[i] && r.v<=labels[i+1]){
+              var f=(r.v-labels[i])/((labels[i+1]-labels[i])||1);
+              px=xs.getPixelForValue(i)+f*(xs.getPixelForValue(i+1)-xs.getPixelForValue(i));
+              break;
+            }
+          }
+          if(px==null) return;
+          g.save();
+          g.strokeStyle=r.cor; g.lineWidth=1.5;
+          if(r.tracejada) g.setLineDash([5,4]);
+          g.beginPath(); g.moveTo(px,ys.top); g.lineTo(px,ys.bottom); g.stroke();
+          g.setLineDash([]);
+          g.font='600 10px sans-serif'; g.textAlign='center';
+          var w=g.measureText(r.txt).width+10;
+          g.fillStyle=r.cor; g.fillRect(px-w/2, ys.top-16, w, 14);
+          g.fillStyle='#0f172a'; g.fillText(r.txt, px, ys.top-6);
+          g.restore();
+        });
+      }
+    };
+  }
+
+  function renderCurva(d){
+    var ctx=document.getElementById('mg-curva').getContext('2d');
+    if(chCurva) chCurva.destroy();
+    var labels=d.curva.map(function(p){ return p.s; });
+    var tot=d.curva.map(function(p){ return p.total; });
+    var css=getComputedStyle(document.body);
+    var tick=css.getPropertyValue('--text-secondary')||'#94a3b8';
+
+    var refs=[{v:d.spot, cor:'#60a5fa', txt:'Spot: '+money(d.spot), tracejada:false}];
+    if(d.flip!=null) refs.push({v:d.flip, cor:'#facc15', txt:'Flip: '+money(d.flip), tracejada:true});
+
+    chCurva=new Chart(ctx,{
+      type:'line',
+      data:{labels:labels, datasets:[
+        {label:'CALL + PUT', data:tot, borderColor:'#facc15', borderWidth:2,
+         pointRadius:0, tension:.35, fill:{target:{value:0}},
+         backgroundColor:function(c){
+           // Verde acima do zero, vermelho abaixo. Na primeira passada o
+           // Chart.js ainda não mediu a área: sem altura, a proporção do
+           // corte daria NaN e addColorStop rejeita valor não-finito.
+           var ch=c.chart, a=ch.chartArea;
+           if(!a || !(a.bottom>a.top)) return 'rgba(52,211,153,.20)';
+           var y0=ch.scales.y.getPixelForValue(0);
+           if(!isFinite(y0)) return 'rgba(52,211,153,.20)';
+           var p=(y0-a.top)/(a.bottom-a.top);
+           if(!isFinite(p)) return 'rgba(52,211,153,.20)';
+           p=Math.min(Math.max(p,0),1);
+           var gr=ch.ctx.createLinearGradient(0,a.top,0,a.bottom);
+           gr.addColorStop(0,'rgba(52,211,153,.35)');
+           gr.addColorStop(Math.max(p-0.001,0),'rgba(52,211,153,.10)');
+           gr.addColorStop(Math.min(p+0.001,1),'rgba(248,113,113,.10)');
+           gr.addColorStop(1,'rgba(248,113,113,.35)');
+           return gr;
+         }},
+        {label:'CALL', data:d.curva.map(function(p){return p.call;}), borderColor:'#60a5fa',
+         borderWidth:1, pointRadius:0, tension:.35, fill:false, borderDash:[4,3]},
+        {label:'PUT', data:d.curva.map(function(p){return p.put;}), borderColor:'#f87171',
+         borderWidth:1, pointRadius:0, tension:.35, fill:false, borderDash:[4,3]}
+      ]},
+      options:{
+        responsive:true, maintainAspectRatio:false, layout:{padding:{top:24}},
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          // A legenda própria fica acima do gráfico; a nativa colidiria com
+          // as etiquetas de Spot e Flip desenhadas no topo da área.
+          legend:{display:false},
+          tooltip:{callbacks:{
+            title:function(it){ return 'Ativo a '+money(Number(it[0].label)); },
+            label:function(c){ return c.dataset.label+': '+fmtBig(c.raw); }
+          }}
+        },
+        scales:{
+          x:{ticks:{color:tick,font:{size:9},maxRotation:90,minRotation:90,autoSkip:true,maxTicksLimit:40},
+             grid:{display:false}},
+          y:{ticks:{color:tick,font:{size:10},callback:function(v){return fmtBig(v);}},
+             grid:{color:'rgba(148,163,184,.12)'}}
+        }
+      },
+      plugins:[refsPlugin(refs, labels)]
+    });
+  }
+
+  function renderParedes(d){
+    var ctx=document.getElementById('mg-paredes').getContext('2d');
+    if(chPar) chPar.destroy();
+    var labels=d.paredes.map(function(p){ return p.strike; });
+    var css=getComputedStyle(document.body);
+    var tick=css.getPropertyValue('--text-secondary')||'#94a3b8';
+    var refs=[{v:d.spot, cor:'#60a5fa', txt:'Spot: '+money(d.spot), tracejada:false}];
+
+    chPar=new Chart(ctx,{
+      type:'bar',
+      data:{labels:labels, datasets:[
+        {label:'CALL', data:d.paredes.map(function(p){return p.call;}), backgroundColor:'#34d399', stack:'g'},
+        {label:'PUT',  data:d.paredes.map(function(p){return p.put;}),  backgroundColor:'#f87171', stack:'g'}
+      ]},
+      options:{
+        responsive:true, maintainAspectRatio:false, layout:{padding:{top:24}},
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{
+            title:function(it){ return 'Strike '+money(Number(it[0].label)); },
+            label:function(c){ return c.dataset.label+': '+fmtBig(c.raw); },
+            footer:function(it){ return 'Líquido: '+fmtBig(d.paredes[it[0].dataIndex].total); }
+          }}
+        },
+        scales:{
+          x:{stacked:true, ticks:{color:tick,font:{size:9},maxRotation:90,minRotation:90,autoSkip:true,maxTicksLimit:45},
+             grid:{display:false}},
+          y:{stacked:true, ticks:{color:tick,font:{size:10},callback:function(v){return fmtBig(v);}},
+             grid:{color:'rgba(148,163,184,.12)'}}
+        }
+      },
+      plugins:[refsPlugin(refs, labels)]
+    });
+  }
+
+  // Abas da explicação
+  document.querySelectorAll('.mg-aba').forEach(function(a){
+    a.onclick=function(){
+      document.querySelectorAll('.mg-aba').forEach(function(x){x.classList.remove('on');});
+      document.querySelectorAll('.mg-painel').forEach(function(x){x.classList.remove('on');});
+      a.classList.add('on');
+      document.getElementById('mgp-'+a.dataset.p).classList.add('on');
+    };
+  });
+
+  var qs=new URLSearchParams(location.search);
+  if(qs.get('ticker')){
+    var qt=qs.get('ticker').toUpperCase();
+    var achou=Array.prototype.some.call(elT.options, function(o){ return o.value===qt; });
+    if(achou){ elT.value=qt; } else { elT.value='__outro__'; elTL.style.display=''; elTL.value=qt; }
+  }
+  carregarVencimentos();
+})();
+</script>
+{% endblock %}

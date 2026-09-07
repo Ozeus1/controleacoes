@@ -6997,6 +6997,259 @@ def api_mapa_opcoes(ticker):
     })
 
 
+# ══════════════════════════════════════════════════════════════════
+# MARKET GAMMA (GEX) — exposição gama dos formadores de mercado
+# ══════════════════════════════════════════════════════════════════
+
+def _bs_gamma(S, K, T, r, sig):
+    """Gama Black-Scholes de uma opção (igual para call e put)."""
+    if not (S > 0 and K > 0 and T > 0 and sig > 0):
+        return None
+    try:
+        d1 = (math.log(S / K) + (r + 0.5 * sig * sig) * T) / (sig * math.sqrt(T))
+        return math.exp(-d1 * d1 / 2) / (math.sqrt(2 * math.pi) * S * sig * math.sqrt(T))
+    except Exception:
+        return None
+
+
+def _gamma_series(analytics, r_cont):
+    """Normaliza a resposta do /analytics: [(side, K, T, iv, oi, lote)].
+
+    O gama é sempre recalculado a partir da IV em vez de usar o campo
+    'gamma' da BRAPI por dois motivos: 29% das séries vêm com gamma nulo
+    (IV não convergida do lado deles), e algumas das que vêm estão
+    inconsistentes com a própria IV publicada — conferido série a série,
+    o gama recalculado reproduz o da BRAPI com erro de 0,000% nas demais.
+    """
+    out = []
+    for a in analytics or []:
+        try:
+            S = float(a.get('underlyingPrice') or 0)
+            K = float(a.get('strike') or 0)
+            T = float(a.get('timeToExpirationYears') or 0)
+            oi = int(a.get('openInterest') or 0)
+            if not (S > 0 and K > 0 and T > 0) or oi <= 0:
+                continue
+            side = (a.get('side') or '').lower()
+            if side not in ('call', 'put'):
+                continue
+            iv = a.get('impliedVolatility')
+            if iv is None:
+                px = a.get('optionPrice')
+                if not px or px <= 0:
+                    continue
+                iv = _implied_vol(S, K, T, r_cont, float(px), side == 'call')
+            iv = float(iv or 0)
+            # Descarta IV degenerada: o gama é proporcional a 1/σ, então uma
+            # série com IV ~0 (bisecção que não convergiu, prêmio furado)
+            # gera um pico centenas de vezes maior que o resto da cadeia e
+            # domina a curva inteira. Acima de 300% também não é informação
+            # de mercado utilizável.
+            if not (0.02 <= iv <= 3.0):
+                continue
+            out.append({'side': side, 'K': K, 'T': T, 'iv': iv, 'oi': oi, 'S': S,
+                        'lote': int(a.get('allocationRoundLot') or 100)})
+        except Exception:
+            continue
+    return out
+
+
+def _gex_curva(series, spot, pontos=90, faixa=0.30):
+    """Curva de GEX por preço do ativo.
+
+    Convenção de mercado (SpotGamma/GEX): o formador está comprado em CALL
+    e vendido em PUT, então o gama das calls entra positivo e o das puts
+    negativo. O valor é o gama em R$ por 1% de variação do ativo:
+        GEX = Γ · OI · lote · S² · 0,01
+    """
+    if not series or not spot or spot <= 0:
+        return [], None, None, None
+    lo, hi = spot * (1 - faixa), spot * (1 + faixa)
+    passo = (hi - lo) / max(pontos - 1, 1)
+    curva = []
+    for i in range(pontos):
+        S = lo + i * passo
+        g_call = g_put = 0.0
+        for o in series:
+            g = _bs_gamma(S, o['K'], o['T'], o['r'], o['iv'])
+            if not g:
+                continue
+            val = g * o['oi'] * o['lote'] * S * S * 0.01
+            if o['side'] == 'call':
+                g_call += val
+            else:
+                g_put += val
+        curva.append({'s': round(S, 2),
+                      'call': round(g_call, 2),
+                      'put': round(-g_put, 2),
+                      'total': round(g_call - g_put, 2)})
+
+    # Flip: onde a curva total cruza o zero, o mais próximo do spot
+    flip = None
+    melhor = None
+    for i in range(len(curva) - 1):
+        a, b = curva[i]['total'], curva[i + 1]['total']
+        if a == 0:
+            cand = curva[i]['s']
+        elif (a < 0) != (b < 0):
+            x0, x1 = curva[i]['s'], curva[i + 1]['s']
+            cand = x0 + (x1 - x0) * (0 - a) / ((b - a) or 1)
+        else:
+            continue
+        dist = abs(cand - spot)
+        if melhor is None or dist < melhor:
+            melhor, flip = dist, round(cand, 2)
+
+    mx = max(curva, key=lambda c: c['total'])
+    mn = min(curva, key=lambda c: c['total'])
+    return curva, flip, mx, mn
+
+
+@app.route('/market-gamma')
+@login_required
+def market_gamma():
+    """Página Market Gamma: exposição gama dos formadores de mercado."""
+    ativos = sorted({(a.ticker or '').strip().upper()
+                     for a in Asset.query.filter_by(user_id=current_user.id).all()
+                     if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
+    rk = sorted({(r.ticker or '').strip().upper()
+                 for r in _ranking_liq_filter(
+                     RankingVol.query.filter_by(user_id=current_user.id)).all()
+                 if r.ticker})
+    return render_template('market_gamma.html',
+                           sugestoes=sorted(set(ativos) | set(rk)),
+                           tem_token=bool(_brapi_opt_token(current_user.id)))
+
+
+@app.route('/api/market-gamma/<ticker>')
+@login_required
+def api_market_gamma(ticker):
+    """Curva de GEX + paredes de gama por strike.
+
+    Query: exp = YYYY-MM-DD ou 'all' (soma a cadeia inteira).
+    """
+    t = (ticker or '').strip().upper()
+    exp = (request.args.get('exp') or '').strip()
+    data_pos = (request.args.get('data') or '').strip()   # snapshot: YYYY-MM-DD
+    if not t or not exp:
+        return jsonify({'error': 'Informe o ativo e o vencimento.'}), 400
+
+    try:
+        r_cont = math.log(1 + _selic() / 100.0)
+    except Exception:
+        r_cont = math.log(1.14)
+
+    # ── Vencimentos a considerar ─────────────────────────────────────
+    if exp == 'all':
+        ex_data, ex_err = _brapi_opt_get('/expirations', {'underlying': t}, current_user.id)
+        if ex_err:
+            return jsonify({'error': ex_err}), 502
+        vencs = ((ex_data or {}).get('expirations') or [])[:12]
+        if not vencs:
+            return jsonify({'error': f'Sem vencimentos para {t}.'}), 404
+    else:
+        vencs = [exp]
+
+    uid = current_user.id
+
+    def _puxa(x):
+        par = {'underlying': t, 'expirationDate': x}
+        if data_pos:
+            par['date'] = data_pos
+        with app.app_context():
+            d, e = _brapi_opt_get('/analytics', par, uid, timeout=15)
+        return (x, d, e)
+
+    series, erros, data_ref, usados = [], [], None, []
+    if len(vencs) == 1:
+        resultados = [_puxa(vencs[0])]
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            resultados = list(pool.map(_puxa, vencs))
+
+    for x, d, e in resultados:
+        if e or not d:
+            erros.append(e or 'sem dados')
+            continue
+        parte = _gamma_series((d or {}).get('analytics'), r_cont)
+        if parte:
+            for o in parte:
+                o['r'] = r_cont
+            series.extend(parte)
+            usados.append(x)
+            data_ref = data_ref or (d or {}).get('date')
+
+    if not series:
+        return jsonify({'error': erros[0] if erros else
+                        f'Sem dados de gama para {t}.'}), 502
+
+    # Spot: o próprio underlyingPrice das séries (mesma base do gama)
+    spot = series[0]['S']
+    try:
+        q = get_quotes([t], user_id=uid) or {}
+        p = (q.get(t) or {}).get('price')
+        if p and float(p) > 0:
+            spot_live = float(p)
+        else:
+            spot_live = spot
+    except Exception:
+        spot_live = spot
+
+    curva, flip, mx, mn = _gex_curva(series, spot)
+
+    # ── Paredes: GEX por strike, avaliado no spot ────────────────────
+    paredes = {}
+    for o in series:
+        g = _bs_gamma(spot, o['K'], o['T'], o['r'], o['iv'])
+        if not g:
+            continue
+        val = g * o['oi'] * o['lote'] * spot * spot * 0.01
+        p = paredes.setdefault(round(o['K'], 2), {'strike': round(o['K'], 2),
+                                                  'call': 0.0, 'put': 0.0})
+        if o['side'] == 'call':
+            p['call'] += val
+        else:
+            p['put'] += val
+    lista_par = []
+    for p in paredes.values():
+        p['call'] = round(p['call'], 2)
+        p['put'] = round(-p['put'], 2)          # put entra negativa
+        p['total'] = round(p['call'] + p['put'], 2)
+        lista_par.append(p)
+    lista_par.sort(key=lambda x: x['strike'])
+
+    # Gama atual (no spot) e Gamma Score: quão longe do zero a curva está,
+    # em desvios-padrão da própria curva — dá noção de regime.
+    gama_atual = None
+    for c in curva:
+        if gama_atual is None or abs(c['s'] - spot) < abs(gama_atual['s'] - spot):
+            gama_atual = c
+    score = None
+    try:
+        vals = [c['total'] for c in curva]
+        media = sum(vals) / len(vals)
+        var = sum((v - media) ** 2 for v in vals) / len(vals)
+        dp = math.sqrt(var)
+        if dp > 0:
+            score = round((gama_atual['total'] - media) / dp, 2)
+    except Exception:
+        score = None
+
+    return jsonify({
+        'ticker': t, 'exp': exp, 'vencimentos': usados,
+        'data_ref': data_ref, 'spot': round(spot, 2), 'spot_live': round(spot_live, 2),
+        'curva': curva, 'paredes': lista_par,
+        'flip': flip,
+        'gamma_atual': gama_atual['total'] if gama_atual else None,
+        'gamma_max': {'s': mx['s'], 'v': mx['total']} if mx else None,
+        'gamma_min': {'s': mn['s'], 'v': mn['total']} if mn else None,
+        'score': score,
+        'n_series': len(series),
+        'avisos': erros[:2],
+    })
+
+
 @app.route('/fyt')
 @login_required
 def fyt():

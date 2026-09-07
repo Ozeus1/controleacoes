@@ -249,11 +249,11 @@
     };
   }
 
-  function eixos(tick){
+  function eixos(tick, stacked){
     return {
-      x:{stacked:false, ticks:{color:tick,font:{size:8},maxRotation:90,minRotation:90,autoSkip:true,maxTicksLimit:45},
+      x:{stacked:!!stacked, ticks:{color:tick,font:{size:8},maxRotation:90,minRotation:90,autoSkip:true,maxTicksLimit:45},
          grid:{display:false}},
-      y:{ticks:{color:tick,font:{size:10},callback:function(v){return fmtBig(v);}},
+      y:{stacked:!!stacked, ticks:{color:tick,font:{size:10},callback:function(v){return fmtBig(v);}},
          grid:{color:'rgba(148,163,184,.12)'}}
     };
   }
@@ -266,9 +266,13 @@
     chOI=new Chart(ctx,{
       type:'bar',
       data:{labels:labels, datasets:[
-        // Put entra negativa para o gráfico ficar espelhado, como na referência
-        {label:'Total de Call', data:d.barras.map(function(b){return b.call;}), backgroundColor:'#34d399'},
-        {label:'Total de Put',  data:d.barras.map(function(b){return -b.put;}), backgroundColor:'#f87171'}
+        // Put entra negativa para o gráfico ficar espelhado, como na referência.
+        // 'stack' igual nas duas séries: sem isso o Chart.js desenha call e
+        // put lado a lado (barras agrupadas) em vez de centradas na mesma
+        // posição X do strike — o mesmo strike parecia ter call e put em
+        // colunas diferentes, quando eram sempre do mesmo strike.
+        {label:'Total de Call', data:d.barras.map(function(b){return b.call;}), backgroundColor:'#34d399', stack:'oi'},
+        {label:'Total de Put',  data:d.barras.map(function(b){return -b.put;}), backgroundColor:'#f87171', stack:'oi'}
       ]},
       options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
         interaction:{mode:'index',intersect:false},
@@ -277,7 +281,7 @@
             title:function(it){ return 'Strike '+pts(Number(it[0].label)); },
             label:function(c){ return c.dataset.label+': '+nb(Math.abs(c.raw)); }
           }}},
-        scales:eixos(tick)},
+        scales:eixos(tick, true)},
       plugins:[spotPlugin(d,labels)]
     });
   }

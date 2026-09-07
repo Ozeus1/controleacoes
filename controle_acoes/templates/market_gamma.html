@@ -121,6 +121,25 @@
       <span><i class="mg-dot" style="background:#f87171;"></i> PUT</span>
     </div>
     <div class="mg-chart baixo"><canvas id="mg-paredes"></canvas></div>
+
+    <h3 class="mg-sec">Jumba Walls — gama por strike e vencimento</h3>
+    <p class="mg-nota" style="margin-top:0;">
+      Mesmo gama por strike acima, mas separado entre o vencimento selecionado e os
+      demais empilhados — mostra onde os "muros" de gama se formam em cada vencimento.
+    </p>
+    <div class="mg-legenda">
+      <span><i class="mg-dot" style="background:#f87171;"></i> Vencimento atual</span>
+      <span><i class="mg-dot" style="background:#facc15;"></i> Próximos vencimentos</span>
+      <label style="cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;"
+             title="Limita a 5 próximos vencimentos em vez de todos — mais rápido, menos completo.">
+        <input type="checkbox" id="mg-walls-rapido" style="cursor:pointer;margin:0;">
+        Só próximos 5 vencimentos (mais rápido)
+      </label>
+    </div>
+    <div id="mg-walls-loading" style="display:none;padding:1.5rem;text-align:center;color:var(--text-secondary);font-size:.85rem;">
+      ⏳ Somando os demais vencimentos…
+    </div>
+    <div class="mg-chart baixo"><canvas id="mg-walls"></canvas></div>
   </div>
 </div>
 
@@ -184,8 +203,9 @@
     elD.innerHTML=html;
   })();
   var elErr=document.getElementById('mg-error'), elLoad=document.getElementById('mg-loading');
+  var elWallsRapido=document.getElementById('mg-walls-rapido'), elLoadWalls=document.getElementById('mg-walls-loading');
   var elHint=document.getElementById('mg-hint'), elRes=document.getElementById('mg-res');
-  var chCurva=null, chPar=null;
+  var chCurva=null, chPar=null, chWalls=null;
 
   function showErr(m){ elErr.textContent=m; elErr.style.display='block'; }
   function clearErr(){ elErr.style.display='none'; }
@@ -236,6 +256,8 @@
     clearErr(); elHint.style.display='none'; elRes.style.display='none'; elLoad.style.display='block';
     var url='/api/market-gamma/'+encodeURIComponent(t)+'?exp='+encodeURIComponent(e);
     if(elD.value) url+='&data='+encodeURIComponent(elD.value);
+    url+='&walls='+(elWallsRapido.checked?'proximos':'todos');
+    if(e!=='all') elLoadWalls.style.display='block';
     fetch(url)
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
       .then(function(res){
@@ -262,7 +284,8 @@
       ' · spot <strong>'+money(d.spot)+'</strong>'+
       (d.data_ref?(' · dados de '+dt(d.data_ref)):'')+
       ' · '+d.n_series+' séries';
-    renderCards(d); renderCurva(d); renderParedes(d);
+    renderCards(d); renderCurva(d); renderParedes(d); renderWalls(d);
+    elLoadWalls.style.display='none';
   }
 
   function renderCards(d){
@@ -404,6 +427,64 @@
             title:function(it){ return 'Strike '+money(Number(it[0].label)); },
             label:function(c){ return c.dataset.label+': '+fmtBig(c.raw); },
             footer:function(it){ return 'Líquido: '+fmtBig(d.paredes[it[0].dataIndex].total); }
+          }}
+        },
+        scales:{
+          x:{stacked:true, ticks:{color:tick,font:{size:9},maxRotation:90,minRotation:90,autoSkip:true,maxTicksLimit:45},
+             grid:{display:false}},
+          y:{stacked:true, ticks:{color:tick,font:{size:10},callback:function(v){return fmtBig(v);}},
+             grid:{color:'rgba(148,163,184,.12)'}}
+        }
+      },
+      plugins:[refsPlugin(refs, labels)]
+    });
+  }
+
+  function renderWalls(d){
+    var ctx=document.getElementById('mg-walls').getContext('2d');
+    if(chWalls){ chWalls.destroy(); chWalls=null; }
+    var walls=d.walls||[];
+    var wrap=ctx.canvas.parentElement;
+    var msg=wrap.querySelector('.mg-walls-vazio');
+    if(!walls.length){
+      ctx.canvas.style.display='none';
+      if(!msg){
+        msg=document.createElement('p'); msg.className='mg-walls-vazio';
+        msg.style.cssText='text-align:center;color:var(--text-secondary);padding:2rem 0;';
+        wrap.appendChild(msg);
+      }
+      msg.textContent = d.exp==='all'
+        ? 'Escolha um vencimento específico para separar atual de próximos.'
+        : 'Sem dados suficientes para montar os Walls.';
+      return;
+    }
+    ctx.canvas.style.display=''; if(msg) msg.remove();
+
+    var labels=walls.map(function(w){ return w.strike; });
+    var css=getComputedStyle(document.body);
+    var tick=css.getPropertyValue('--text-secondary')||'#94a3b8';
+    var refs=[{v:d.spot, cor:'#60a5fa', txt:'Spot: '+money(d.spot), tracejada:false}];
+
+    chWalls=new Chart(ctx,{
+      type:'bar',
+      data:{labels:labels, datasets:[
+        {label:'Vencimento atual', data:walls.map(function(w){return w.atual;}),
+         backgroundColor:'#f87171', stack:'g',
+         // Barras estreitas: com poucos strikes com valor, uma categoria
+         // única expande e cobre o gráfico inteiro (visto no Trader IND/DOL).
+         barPercentage:0.7, categoryPercentage:0.6, maxBarThickness:50},
+        {label:'Próximos vencimentos', data:walls.map(function(w){return w.proximos;}),
+         backgroundColor:'#facc15', stack:'g',
+         barPercentage:0.7, categoryPercentage:0.6, maxBarThickness:50}
+      ]},
+      options:{
+        responsive:true, maintainAspectRatio:false, layout:{padding:{top:38}},
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{
+            title:function(it){ return 'Strike '+money(Number(it[0].label)); },
+            label:function(c){ return c.dataset.label+': '+fmtBig(c.raw); }
           }}
         },
         scales:{

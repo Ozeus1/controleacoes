@@ -113,6 +113,22 @@
     <p class="tf-sub">Exposição gama dos formadores, em R$ por 1% de variação</p>
     <div class="tf-chart med"><canvas id="tf-gamma"></canvas></div>
     <div class="tf-cards" id="tf-cards"></div>
+
+    <h3 class="tf-titulo">Jumba Walls — gama por strike e vencimento</h3>
+    <p class="tf-sub">Vencimento selecionado (vermelho) contra os demais somados (amarelo)</p>
+    <div class="tf-legenda">
+      <span><i class="tf-dot" style="background:#f87171;"></i> Vencimento atual</span>
+      <span><i class="tf-dot" style="background:#facc15;"></i> Próximos vencimentos</span>
+      <label style="cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;"
+             title="Limita a 5 próximos vencimentos em vez de todos — mais rápido, menos completo.">
+        <input type="checkbox" id="tf-walls-rapido" style="cursor:pointer;margin:0;">
+        Só próximos 5 vencimentos (mais rápido)
+      </label>
+    </div>
+    <div id="tf-walls-loading" style="display:none;padding:1.5rem;text-align:center;color:var(--text-secondary);font-size:.85rem;">
+      ⏳ Somando os demais vencimentos… (pode levar mais tempo em IND, que tem vencimentos semanais)
+    </div>
+    <div class="tf-chart med"><canvas id="tf-walls"></canvas></div>
   </div>
 </div>
 
@@ -123,7 +139,8 @@
   var elD=document.getElementById('tf-data');
   var elErr=document.getElementById('tf-error'), elLoad=document.getElementById('tf-loading');
   var elHint=document.getElementById('tf-hint'), elRes=document.getElementById('tf-res');
-  var chOI=null, chVC=null, chVP=null, chG=null;
+  var elWallsRapido=document.getElementById('tf-walls-rapido'), elLoadWalls=document.getElementById('tf-walls-loading');
+  var chOI=null, chVC=null, chVP=null, chG=null, chW=null;
 
   function showErr(m){ elErr.textContent=m; elErr.style.display='block'; }
   function clearErr(){ elErr.style.display='none'; }
@@ -173,15 +190,17 @@
     clearErr(); elHint.style.display='none'; elRes.style.display='none'; elLoad.style.display='block';
     var url='/api/trader-fut/'+encodeURIComponent(elA.value)+'?exp='+encodeURIComponent(e);
     if(elD.value) url+='&data='+encodeURIComponent(elD.value);
+    url+='&walls='+(elWallsRapido.checked?'proximos':'todos');
+    elLoadWalls.style.display='block';
     fetch(url)
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
       .then(function(res){
         elLoad.style.display='none';
-        if(!res.ok){ showErr(res.j.error||'Erro ao gerar.'); elHint.style.display='block'; return; }
-        render(res.j); elRes.style.display='block';
+        if(!res.ok){ showErr(res.j.error||'Erro ao gerar.'); elHint.style.display='block'; elLoadWalls.style.display='none'; return; }
+        render(res.j); elRes.style.display='block'; elLoadWalls.style.display='none';
       })
       .catch(function(err){
-        elLoad.style.display='none';
+        elLoad.style.display='none'; elLoadWalls.style.display='none';
         showErr('Erro ao montar os gráficos: '+((err&&err.message)||err||'falha de rede'));
         elHint.style.display='block';
       });
@@ -199,7 +218,7 @@
     document.getElementById('tf-base1').textContent=txtBase;
     document.getElementById('tf-base2').textContent=txtBase;
 
-    renderOI(d); renderVar(d); renderGamma(d); renderCards(d);
+    renderOI(d); renderVar(d); renderGamma(d); renderCards(d); renderWalls(d);
   }
 
   // Linha vertical do preço de referência
@@ -352,6 +371,53 @@
             label:function(c){ return 'GEX: '+fmtBig(c.raw); }
           }}},
         scales:eixos(tick)},
+      plugins:[spotPlugin(d,labels)]
+    });
+  }
+
+  function renderWalls(d){
+    var ctx=document.getElementById('tf-walls').getContext('2d');
+    if(chW){ chW.destroy(); chW=null; }
+    var walls=d.walls||[];
+    var wrap=ctx.canvas.parentElement;
+    var msg=wrap.querySelector('.tf-walls-vazio');
+    if(!walls.length){
+      ctx.canvas.style.display='none';
+      if(!msg){
+        msg=document.createElement('p'); msg.className='tf-walls-vazio';
+        msg.style.cssText='text-align:center;color:var(--text-secondary);padding:2rem 0;';
+        wrap.appendChild(msg);
+      }
+      msg.textContent='Sem dados suficientes para montar os Walls.';
+      return;
+    }
+    ctx.canvas.style.display=''; if(msg) msg.remove();
+
+    var labels=walls.map(function(w){ return w.strike; });
+    var tick=getComputedStyle(document.body).getPropertyValue('--text-secondary')||'#94a3b8';
+    chW=new Chart(ctx,{
+      type:'bar',
+      data:{labels:labels, datasets:[
+        {label:'Vencimento atual', data:walls.map(function(w){return w.atual;}),
+         backgroundColor:'#f87171', stack:'g',
+         barPercentage:0.7, categoryPercentage:0.6, maxBarThickness:50},
+        {label:'Próximos vencimentos', data:walls.map(function(w){return w.proximos;}),
+         backgroundColor:'#facc15', stack:'g',
+         barPercentage:0.7, categoryPercentage:0.6, maxBarThickness:50}
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
+        interaction:{mode:'index',intersect:false},
+        plugins:{legend:{display:false},
+          tooltip:{callbacks:{
+            title:function(it){ return 'Strike '+pts(Number(it[0].label)); },
+            label:function(c){ return c.dataset.label+': '+fmtBig(c.raw); }
+          }}},
+        scales:{
+          x:{stacked:true, ticks:{color:tick,font:{size:8},maxRotation:90,minRotation:90,autoSkip:true,maxTicksLimit:45},
+             grid:{display:false}},
+          y:{stacked:true, ticks:{color:tick,font:{size:10},callback:function(v){return fmtBig(v);}},
+             grid:{color:'rgba(148,163,184,.12)'}}
+        }},
       plugins:[spotPlugin(d,labels)]
     });
   }

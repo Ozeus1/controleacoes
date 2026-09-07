@@ -7179,19 +7179,38 @@ def _gex_walls(series, spot):
     """Gama por strike ('Jumba Walls'): separa o vencimento selecionado
     dos demais, avaliado no preço atual — mesma convenção do GEX (call
     positivo, put negativo). Cada item em `series` precisa da chave
-    'alvo' (bool) marcando se pertence ao vencimento em foco."""
+    'alvo' (bool) marcando se pertence ao vencimento em foco.
+
+    Devolve tanto o líquido por vencimento (call - put, para o gráfico
+    empilhado principal) quanto os 4 componentes brutos — call/put ×
+    atual/próximos, todos em módulo — para o gráfico "Valores Absolutos"
+    da referência, que mostra put e call do mesmo vencimento como barras
+    distintas em vez de já cancelarem uma à outra.
+    """
     ag = {}
     for o in series:
         g = _bs_gamma(spot, o['K'], o['T'], o['r'], o['iv'])
         if not g:
             continue
         val = g * o['oi'] * o['lote'] * spot * spot * 0.01
-        d = ag.setdefault(round(o['K'], 2), {'strike': round(o['K'], 2),
-                                             'atual': 0.0, 'proximos': 0.0})
-        chave = 'atual' if o.get('alvo') else 'proximos'
+        d = ag.setdefault(round(o['K'], 2), {
+            'strike': round(o['K'], 2), 'atual': 0.0, 'proximos': 0.0,
+            'call_atual': 0.0, 'call_proximos': 0.0,
+            'put_atual': 0.0, 'put_proximos': 0.0,
+        })
+        alvo = bool(o.get('alvo'))
+        chave = 'atual' if alvo else 'proximos'
         d[chave] += val if o['side'] == 'call' else -val
-    out = [{'strike': k, 'atual': round(v['atual'], 2), 'proximos': round(v['proximos'], 2)}
-           for k, v in ag.items()]
+        campo = ('call_' if o['side'] == 'call' else 'put_') + chave
+        d[campo] += val   # sempre em módulo — val já é positivo (gama absoluto)
+    out = []
+    for v in ag.values():
+        out.append({
+            'strike': v['strike'],
+            'atual': round(v['atual'], 2), 'proximos': round(v['proximos'], 2),
+            'call_atual': round(v['call_atual'], 2), 'call_proximos': round(v['call_proximos'], 2),
+            'put_atual': round(v['put_atual'], 2), 'put_proximos': round(v['put_proximos'], 2),
+        })
     out.sort(key=lambda x: x['strike'])
     return out
 

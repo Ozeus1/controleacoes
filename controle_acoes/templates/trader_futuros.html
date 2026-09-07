@@ -129,6 +129,16 @@
       ⏳ Somando os demais vencimentos… (pode levar mais tempo em IND, que tem vencimentos semanais)
     </div>
     <div class="tf-chart med"><canvas id="tf-walls"></canvas></div>
+
+    <h3 class="tf-titulo">Jumba Walls — valores absolutos</h3>
+    <p class="tf-sub">Call e put aparecem cada uma com sua própria barra, sem cancelar uma à outra</p>
+    <div class="tf-legenda">
+      <span><i class="tf-dot" style="background:#6ee7b7;"></i> Call vencimento atual</span>
+      <span><i class="tf-dot" style="background:#065f46;"></i> Call próximos vencimentos</span>
+      <span><i class="tf-dot" style="background:#fca5a5;"></i> Put vencimento atual</span>
+      <span><i class="tf-dot" style="background:#7f1d1d;"></i> Put próximos vencimentos</span>
+    </div>
+    <div class="tf-chart med"><canvas id="tf-walls-abs"></canvas></div>
   </div>
 </div>
 
@@ -140,7 +150,7 @@
   var elErr=document.getElementById('tf-error'), elLoad=document.getElementById('tf-loading');
   var elHint=document.getElementById('tf-hint'), elRes=document.getElementById('tf-res');
   var elWallsRapido=document.getElementById('tf-walls-rapido'), elLoadWalls=document.getElementById('tf-walls-loading');
-  var chOI=null, chVC=null, chVP=null, chG=null, chW=null;
+  var chOI=null, chVC=null, chVP=null, chG=null, chW=null, chWAbs=null;
 
   function showErr(m){ elErr.textContent=m; elErr.style.display='block'; }
   function clearErr(){ elErr.style.display='none'; }
@@ -218,7 +228,7 @@
     document.getElementById('tf-base1').textContent=txtBase;
     document.getElementById('tf-base2').textContent=txtBase;
 
-    renderOI(d); renderVar(d); renderGamma(d); renderCards(d); renderWalls(d);
+    renderOI(d); renderVar(d); renderGamma(d); renderCards(d); renderWalls(d); renderWallsAbs(d);
   }
 
   // Linha vertical do preço de referência
@@ -420,6 +430,55 @@
           x:{stacked:true, ticks:{color:tick,font:{size:8},maxRotation:90,minRotation:90,autoSkip:true,maxTicksLimit:45},
              grid:{display:false}},
           y:{stacked:true, ticks:{color:tick,font:{size:10},callback:function(v){return fmtBig(v);}},
+             grid:{color:'rgba(148,163,184,.12)'}}
+        }},
+      plugins:[spotPlugin(d,labels)]
+    });
+  }
+
+  function renderWallsAbs(d){
+    var ctx=document.getElementById('tf-walls-abs').getContext('2d');
+    if(chWAbs){ chWAbs.destroy(); chWAbs=null; }
+    var walls=d.walls||[];
+    var wrap=ctx.canvas.parentElement;
+    var msg=wrap.querySelector('.tf-walls-abs-vazio');
+    if(!walls.length){
+      ctx.canvas.style.display='none';
+      if(!msg){
+        msg=document.createElement('p'); msg.className='tf-walls-abs-vazio';
+        msg.style.cssText='text-align:center;color:var(--text-secondary);padding:2rem 0;';
+        wrap.appendChild(msg);
+      }
+      msg.textContent='Sem dados suficientes para montar os Walls.';
+      return;
+    }
+    ctx.canvas.style.display=''; if(msg) msg.remove();
+
+    var labels=walls.map(function(w){ return w.strike; });
+    var tick=getComputedStyle(document.body).getPropertyValue('--text-secondary')||'#94a3b8';
+    chWAbs=new Chart(ctx,{
+      type:'bar',
+      data:{labels:labels, datasets:[
+        {label:'Call vencimento atual', data:walls.map(function(w){return w.call_atual;}),
+         backgroundColor:'#6ee7b7', stack:'c'},
+        {label:'Call próximos vencimentos', data:walls.map(function(w){return w.call_proximos;}),
+         backgroundColor:'#065f46', stack:'c'},
+        {label:'Put vencimento atual', data:walls.map(function(w){return -w.put_atual;}),
+         backgroundColor:'#fca5a5', stack:'p'},
+        {label:'Put próximos vencimentos', data:walls.map(function(w){return -w.put_proximos;}),
+         backgroundColor:'#7f1d1d', stack:'p'}
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
+        interaction:{mode:'index',intersect:false},
+        plugins:{legend:{display:false},
+          tooltip:{callbacks:{
+            title:function(it){ return 'Strike '+pts(Number(it[0].label)); },
+            label:function(c){ return c.dataset.label+': '+fmtBig(Math.abs(c.raw)); }
+          }}},
+        scales:{
+          x:{stacked:true, ticks:{color:tick,font:{size:8},maxRotation:90,minRotation:90,autoSkip:true,maxTicksLimit:45},
+             grid:{display:false}},
+          y:{stacked:true, ticks:{color:tick,font:{size:10},callback:function(v){return fmtBig(Math.abs(v));}},
              grid:{color:'rgba(148,163,184,.12)'}}
         }},
       plugins:[spotPlugin(d,labels)]

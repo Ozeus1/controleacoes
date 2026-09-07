@@ -126,6 +126,7 @@
     <p class="mg-nota" style="margin-top:0;">
       Mesmo gama por strike acima, mas separado entre o vencimento selecionado e os
       demais empilhados — mostra onde os "muros" de gama se formam em cada vencimento.
+      Líquido (call − put) por vencimento.
     </p>
     <div class="mg-legenda">
       <span><i class="mg-dot" style="background:#f87171;"></i> Vencimento atual</span>
@@ -140,6 +141,19 @@
       ⏳ Somando os demais vencimentos…
     </div>
     <div class="mg-chart baixo"><canvas id="mg-walls"></canvas></div>
+
+    <h3 class="mg-sec">Jumba Walls — valores absolutos</h3>
+    <p class="mg-nota" style="margin-top:0;">
+      Mesma decomposição, mas call e put aparecem cada uma com sua própria barra —
+      em vez de já cancelarem uma à outra no líquido acima.
+    </p>
+    <div class="mg-legenda">
+      <span><i class="mg-dot" style="background:#6ee7b7;"></i> Call vencimento atual</span>
+      <span><i class="mg-dot" style="background:#065f46;"></i> Call próximos vencimentos</span>
+      <span><i class="mg-dot" style="background:#fca5a5;"></i> Put vencimento atual</span>
+      <span><i class="mg-dot" style="background:#7f1d1d;"></i> Put próximos vencimentos</span>
+    </div>
+    <div class="mg-chart baixo"><canvas id="mg-walls-abs"></canvas></div>
   </div>
 </div>
 
@@ -205,7 +219,7 @@
   var elErr=document.getElementById('mg-error'), elLoad=document.getElementById('mg-loading');
   var elWallsRapido=document.getElementById('mg-walls-rapido'), elLoadWalls=document.getElementById('mg-walls-loading');
   var elHint=document.getElementById('mg-hint'), elRes=document.getElementById('mg-res');
-  var chCurva=null, chPar=null, chWalls=null;
+  var chCurva=null, chPar=null, chWalls=null, chWallsAbs=null;
 
   function showErr(m){ elErr.textContent=m; elErr.style.display='block'; }
   function clearErr(){ elErr.style.display='none'; }
@@ -284,7 +298,7 @@
       ' · spot <strong>'+money(d.spot)+'</strong>'+
       (d.data_ref?(' · dados de '+dt(d.data_ref)):'')+
       ' · '+d.n_series+' séries';
-    renderCards(d); renderCurva(d); renderParedes(d); renderWalls(d);
+    renderCards(d); renderCurva(d); renderParedes(d); renderWalls(d); renderWallsAbs(d);
     elLoadWalls.style.display='none';
   }
 
@@ -491,6 +505,67 @@
           x:{stacked:true, ticks:{color:tick,font:{size:9},maxRotation:90,minRotation:90,autoSkip:true,maxTicksLimit:45},
              grid:{display:false}},
           y:{stacked:true, ticks:{color:tick,font:{size:10},callback:function(v){return fmtBig(v);}},
+             grid:{color:'rgba(148,163,184,.12)'}}
+        }
+      },
+      plugins:[refsPlugin(refs, labels)]
+    });
+  }
+
+  function renderWallsAbs(d){
+    var ctx=document.getElementById('mg-walls-abs').getContext('2d');
+    if(chWallsAbs){ chWallsAbs.destroy(); chWallsAbs=null; }
+    var walls=d.walls||[];
+    var wrap=ctx.canvas.parentElement;
+    var msg=wrap.querySelector('.mg-walls-abs-vazio');
+    if(!walls.length){
+      ctx.canvas.style.display='none';
+      if(!msg){
+        msg=document.createElement('p'); msg.className='mg-walls-abs-vazio';
+        msg.style.cssText='text-align:center;color:var(--text-secondary);padding:2rem 0;';
+        wrap.appendChild(msg);
+      }
+      msg.textContent = d.exp==='all'
+        ? 'Escolha um vencimento específico para separar atual de próximos.'
+        : 'Sem dados suficientes para montar os Walls.';
+      return;
+    }
+    ctx.canvas.style.display=''; if(msg) msg.remove();
+
+    var labels=walls.map(function(w){ return w.strike; });
+    var css=getComputedStyle(document.body);
+    var tick=css.getPropertyValue('--text-secondary')||'#94a3b8';
+    var refs=[{v:d.spot, cor:'#60a5fa', txt:'Spot: '+money(d.spot), tracejada:false}];
+
+    // Calls empilham para cima (stack 'c'); puts para baixo (stack 'p',
+    // valores negativados só para posicionar — a legenda e o tooltip
+    // mostram sempre o valor absoluto, como no gráfico de referência.
+    chWallsAbs=new Chart(ctx,{
+      type:'bar',
+      data:{labels:labels, datasets:[
+        {label:'Call vencimento atual', data:walls.map(function(w){return w.call_atual;}),
+         backgroundColor:'#6ee7b7', stack:'c'},
+        {label:'Call próximos vencimentos', data:walls.map(function(w){return w.call_proximos;}),
+         backgroundColor:'#065f46', stack:'c'},
+        {label:'Put vencimento atual', data:walls.map(function(w){return -w.put_atual;}),
+         backgroundColor:'#fca5a5', stack:'p'},
+        {label:'Put próximos vencimentos', data:walls.map(function(w){return -w.put_proximos;}),
+         backgroundColor:'#7f1d1d', stack:'p'}
+      ]},
+      options:{
+        responsive:true, maintainAspectRatio:false, layout:{padding:{top:38}},
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:{callbacks:{
+            title:function(it){ return 'Strike '+money(Number(it[0].label)); },
+            label:function(c){ return c.dataset.label+': '+fmtBig(Math.abs(c.raw)); }
+          }}
+        },
+        scales:{
+          x:{stacked:true, ticks:{color:tick,font:{size:9},maxRotation:90,minRotation:90,autoSkip:true,maxTicksLimit:45},
+             grid:{display:false}},
+          y:{stacked:true, ticks:{color:tick,font:{size:10},callback:function(v){return fmtBig(Math.abs(v));}},
              grid:{color:'rgba(148,163,184,.12)'}}
         }
       },

@@ -466,17 +466,17 @@
       type:'bar',
       data:{labels:labels, datasets:[
         {label:'Call vencimento atual', data:walls.map(function(w){return w.call_atual;}),
-         backgroundColor:'#a7f3d0', stack:'c'},
+         backgroundColor:'#a7f3d0', stack:'g'},
         {label:'Call próximo vencimento', data:walls.map(function(w){return w.call_proximo;}),
-         backgroundColor:'#34d399', stack:'c'},
+         backgroundColor:'#34d399', stack:'g'},
         {label:'Call demais vencimentos', data:walls.map(function(w){return w.call_demais;}),
-         backgroundColor:'#065f46', stack:'c'},
+         backgroundColor:'#065f46', stack:'g'},
         {label:'Put vencimento atual', data:walls.map(function(w){return -w.put_atual;}),
-         backgroundColor:'#fecaca', stack:'p'},
+         backgroundColor:'#fecaca', stack:'g'},
         {label:'Put próximo vencimento', data:walls.map(function(w){return -w.put_proximo;}),
-         backgroundColor:'#f87171', stack:'p'},
+         backgroundColor:'#f87171', stack:'g'},
         {label:'Put demais vencimentos', data:walls.map(function(w){return -w.put_demais;}),
-         backgroundColor:'#7f1d1d', stack:'p'}
+         backgroundColor:'#7f1d1d', stack:'g'}
       ]},
       options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
         interaction:{mode:'index',intersect:false},

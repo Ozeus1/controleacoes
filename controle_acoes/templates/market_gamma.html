@@ -539,25 +539,29 @@
     var tick=css.getPropertyValue('--text-secondary')||'#94a3b8';
     var refs=[{v:d.spot, cor:'#60a5fa', txt:'Spot: '+money(d.spot), tracejada:false}];
 
-    // Calls empilham para cima (stack 'c'); puts para baixo (stack 'p',
-    // valores negativados só para posicionar — a legenda e o tooltip
-    // mostram sempre o valor absoluto, como no gráfico de referência.
-    // Três tons por lado (claro→escuro = atual→próximo→demais).
+    // Calls empilham para cima, puts para baixo (valores negativados só
+    // para posicionar — a legenda e o tooltip mostram sempre o valor
+    // absoluto, como no gráfico de referência). Três tons por lado
+    // (claro→escuro = atual→próximo→demais). Todos os 6 datasets usam o
+    // MESMO 'stack': dois grupos de stack diferentes fazem o Chart.js
+    // desenhá-los lado a lado dentro da categoria em vez de centrados na
+    // mesma posição X do strike — o mesmo bug de desalinhamento já visto
+    // no gráfico de Posições em Aberto do Trader IND/DOL.
     chWallsAbs=new Chart(ctx,{
       type:'bar',
       data:{labels:labels, datasets:[
         {label:'Call vencimento atual', data:walls.map(function(w){return w.call_atual;}),
-         backgroundColor:'#a7f3d0', stack:'c'},
+         backgroundColor:'#a7f3d0', stack:'g'},
         {label:'Call próximo vencimento', data:walls.map(function(w){return w.call_proximo;}),
-         backgroundColor:'#34d399', stack:'c'},
+         backgroundColor:'#34d399', stack:'g'},
         {label:'Call demais vencimentos', data:walls.map(function(w){return w.call_demais;}),
-         backgroundColor:'#065f46', stack:'c'},
+         backgroundColor:'#065f46', stack:'g'},
         {label:'Put vencimento atual', data:walls.map(function(w){return -w.put_atual;}),
-         backgroundColor:'#fecaca', stack:'p'},
+         backgroundColor:'#fecaca', stack:'g'},
         {label:'Put próximo vencimento', data:walls.map(function(w){return -w.put_proximo;}),
-         backgroundColor:'#f87171', stack:'p'},
+         backgroundColor:'#f87171', stack:'g'},
         {label:'Put demais vencimentos', data:walls.map(function(w){return -w.put_demais;}),
-         backgroundColor:'#7f1d1d', stack:'p'}
+         backgroundColor:'#7f1d1d', stack:'g'}
       ]},
       options:{
         responsive:true, maintainAspectRatio:false, layout:{padding:{top:38}},

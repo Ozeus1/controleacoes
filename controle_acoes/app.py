@@ -7175,7 +7175,7 @@ def _gama_series_fut(posicoes, precos_por_symbol, spot, T, r_cont):
     return out
 
 
-def _gex_walls(series, spot):
+def _gex_walls(series, spot, faixa=0.30):
     """Gama por strike ('Jumba Walls'): separa o vencimento selecionado, o
     próximo vencimento seguinte, e a soma de todos os demais depois dele —
     avaliado no preço atual, mesma convenção do GEX (call positivo, put
@@ -7187,10 +7187,17 @@ def _gex_walls(series, spot):
     todos em módulo — para o gráfico "Valores Absolutos" da referência, que
     mostra put e call do mesmo grupo como barras distintas em vez de já
     cancelarem uma à outra.
+
+    `faixa` limita os strikes a ±faixa do spot (mesmo range da curva de
+    GEX): sem isso, vencimentos longos trazem strikes muito OTM (a vários
+    múltiplos do spot) que só poluem o gráfico sem informação relevante.
     """
+    lo, hi = (spot * (1 - faixa), spot * (1 + faixa)) if spot else (None, None)
     grupos = ('atual', 'proximo', 'demais')
     ag = {}
     for o in series:
+        if lo is not None and not (lo <= o['K'] <= hi):
+            continue
         g = _bs_gamma(spot, o['K'], o['T'], o['r'], o['iv'])
         if not g:
             continue
@@ -7353,8 +7360,13 @@ def api_market_gamma(ticker):
     curva, flip, mx, mn = _gex_curva(series, spot)
 
     # ── Paredes: GEX por strike, avaliado no spot ────────────────────
+    # Mesma faixa ±30% do spot da curva de GEX: sem isso, vencimentos
+    # longos trazem strikes muito OTM que só poluem o gráfico.
+    _lo_par, _hi_par = spot * 0.70, spot * 1.30
     paredes = {}
     for o in series:
+        if not (_lo_par <= o['K'] <= _hi_par):
+            continue
         g = _bs_gamma(spot, o['K'], o['T'], o['r'], o['iv'])
         if not g:
             continue

@@ -82,6 +82,12 @@
       <select id="mg-exp"><option value="">— carregando —</option></select>
     </div>
     <div class="mg-campo">
+      <label>Data das posições</label>
+      <select id="mg-data">
+        <option value="">Mais recente</option>
+      </select>
+    </div>
+    <div class="mg-campo">
       <label>&nbsp;</label>
       <button type="button" id="mg-buscar" class="btn btn-primary" style="padding:.4rem;">Gerar gráfico</button>
     </div>
@@ -162,7 +168,21 @@
 <script>
 (function(){
   var elT=document.getElementById('mg-ticker'), elTL=document.getElementById('mg-ticker-livre');
-  var elE=document.getElementById('mg-exp');
+  var elE=document.getElementById('mg-exp'), elD=document.getElementById('mg-data');
+
+  // Últimos pregões, para comparar o mapa em datas anteriores. A BRAPI
+  // devolve o pregão disponível mais próximo da data pedida.
+  (function preencheDatas(){
+    var hoje=new Date(), n=0, html='<option value="">Mais recente</option>';
+    for(var i=0; i<20 && n<10; i++){
+      var d=new Date(hoje.getTime()-i*86400000);
+      if(d.getDay()===0 || d.getDay()===6) continue;   // sem pregão
+      var iso=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      var br=String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+      html+='<option value="'+iso+'">'+br+'</option>'; n++;
+    }
+    elD.innerHTML=html;
+  })();
   var elErr=document.getElementById('mg-error'), elLoad=document.getElementById('mg-loading');
   var elHint=document.getElementById('mg-hint'), elRes=document.getElementById('mg-res');
   var chCurva=null, chPar=null;
@@ -214,7 +234,9 @@
     var t=tickerAtual(), e=elE.value;
     if(!t||!e){ showErr('Escolha o ativo e o vencimento.'); return; }
     clearErr(); elHint.style.display='none'; elRes.style.display='none'; elLoad.style.display='block';
-    fetch('/api/market-gamma/'+encodeURIComponent(t)+'?exp='+encodeURIComponent(e))
+    var url='/api/market-gamma/'+encodeURIComponent(t)+'?exp='+encodeURIComponent(e);
+    if(elD.value) url+='&data='+encodeURIComponent(elD.value);
+    fetch(url)
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
       .then(function(res){
         elLoad.style.display='none';
@@ -265,6 +287,7 @@
       id:'mg-refs',
       afterDatasetsDraw:function(ch){
         var xs=ch.scales.x, ys=ch.scales.y, g=ch.ctx;
+        var usados=[];     // faixas já ocupadas por outra etiqueta
         refs.forEach(function(r){
           var px=null;
           for(var i=0;i<labels.length-1;i++){
@@ -282,8 +305,14 @@
           g.setLineDash([]);
           g.font='600 10px sans-serif'; g.textAlign='center';
           var w=g.measureText(r.txt).width+10;
-          g.fillStyle=r.cor; g.fillRect(px-w/2, ys.top-16, w, 14);
-          g.fillStyle='#0f172a'; g.fillText(r.txt, px, ys.top-6);
+          // Spot e Flip podem ficar lado a lado e as etiquetas se cobrirem:
+          // empilha a segunda numa linha acima em vez de sobrepor.
+          var linha=0, ini=px-w/2, fim=px+w/2;
+          while(usados.some(function(u){ return u[2]===linha && ini<u[1] && fim>u[0]; })) linha++;
+          usados.push([ini, fim, linha]);
+          var topo=ys.top-16-linha*15;
+          g.fillStyle=r.cor; g.fillRect(ini, topo, w, 14);
+          g.fillStyle='#0f172a'; g.fillText(r.txt, px, topo+10);
           g.restore();
         });
       }
@@ -330,7 +359,7 @@
          borderWidth:1, pointRadius:0, tension:.35, fill:false, borderDash:[4,3]}
       ]},
       options:{
-        responsive:true, maintainAspectRatio:false, layout:{padding:{top:24}},
+        responsive:true, maintainAspectRatio:false, layout:{padding:{top:38}},
         interaction:{mode:'index',intersect:false},
         plugins:{
           // A legenda própria fica acima do gráfico; a nativa colidiria com
@@ -367,7 +396,7 @@
         {label:'PUT',  data:d.paredes.map(function(p){return p.put;}),  backgroundColor:'#f87171', stack:'g'}
       ]},
       options:{
-        responsive:true, maintainAspectRatio:false, layout:{padding:{top:24}},
+        responsive:true, maintainAspectRatio:false, layout:{padding:{top:38}},
         interaction:{mode:'index',intersect:false},
         plugins:{
           legend:{display:false},

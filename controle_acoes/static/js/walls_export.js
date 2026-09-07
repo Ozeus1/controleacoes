@@ -43,20 +43,16 @@
   }
 
   /**
-   * Monta o texto do indicador NTSL a partir dos dados já calculados na
-   * tela (paredes por strike, flip, gamma_max/min) — não faz nenhuma
-   * requisição nova, só reformata o que o usuário já está vendo.
+   * Extrai os até 16 "walls" principais (maior |gama líquido|, reordenados
+   * por strike) a partir do payload da API — mesma lógica usada tanto na
+   * exportação do .txt quanto no gráfico de candles com os walls plotados.
    *
-   * @param {Object} d        payload da API (mesmo formato de /api/market-gamma
-   *                          e /api/trader-fut): precisa de d.flip, d.gamma_max,
-   *                          d.gamma_min, d.data_ref, e de d.paredes OU d.walls
-   *                          (o Trader IND/DOL não tem 'paredes' — usa 'walls'
-   *                          somando os 3 grupos atual+proximo+demais por strike).
-   * @param {string[]} ativos lista de nomes aceitos por GetAsset() no Profit
-   *                          (ex.: ['PETR4'] ou ['WINFUT','INDFUT','WINV26','INDV26']).
-   * @returns {string} conteúdo completo do .txt
+   * @param {Object} d payload da API: precisa de d.paredes OU d.walls (o
+   *                   Trader IND/DOL não tem 'paredes' — usa 'walls' somando
+   *                   os 3 grupos atual+proximo+demais por strike).
+   * @returns {Array<{strike:number,total:number,largura:number}>}
    */
-  function gerarWallsNTSL(d, ativos) {
+  function extrairTop16Walls(d) {
     var paredes;
     if (d.paredes && d.paredes.length) {
       paredes = d.paredes.filter(function (p) {
@@ -70,13 +66,11 @@
           return { strike: w.strike, total: total };
         });
     }
-    // Até 16 walls: os de maior |gama líquido|, depois reordenados por strike.
     var top16 = paredes.slice()
       .sort(function (a, b) { return Math.abs(b.total) - Math.abs(a.total); })
       .slice(0, 16)
       .sort(function (a, b) { return a.strike - b.strike; });
 
-    // Largura por tercil de magnitude dentro do próprio conjunto exportado.
     var mags = top16.map(function (p) { return Math.abs(p.total); }).sort(function (a, b) { return a - b; });
     function largura(mag) {
       if (!mags.length) return 1;
@@ -86,10 +80,27 @@
       if (pos < 2 / 3) return 2;
       return 3;
     }
+    top16.forEach(function (p) { p.largura = largura(Math.abs(p.total)); });
+    return top16;
+  }
 
+  /**
+   * Monta o texto do indicador NTSL a partir dos dados já calculados na
+   * tela (paredes por strike, flip, gamma_max/min) — não faz nenhuma
+   * requisição nova, só reformata o que o usuário já está vendo.
+   *
+   * @param {Object} d        payload da API (mesmo formato de /api/market-gamma
+   *                          e /api/trader-fut): precisa de d.flip, d.gamma_max,
+   *                          d.gamma_min, d.data_ref, e de d.paredes OU d.walls.
+   * @param {string[]} ativos lista de nomes aceitos por GetAsset() no Profit
+   *                          (ex.: ['PETR4'] ou ['WINFUT','INDFUT','WINV26','INDV26']).
+   * @returns {string} conteúdo completo do .txt
+   */
+  function gerarWallsNTSL(d, ativos) {
+    var top16 = extrairTop16Walls(d);
     var linhas = [];   // {valor, cor, largura}
     top16.forEach(function (p) {
-      linhas.push({ valor: p.strike, cor: 'clWall', largura: largura(Math.abs(p.total)), estilo: 0 });
+      linhas.push({ valor: p.strike, cor: 'clWall', largura: p.largura, estilo: 0 });
     });
     for (var i = 0; i < top16.length - 1; i++) {
       var a = top16[i].strike, b = top16[i + 1].strike;
@@ -169,5 +180,6 @@
   }
 
   global.gerarWallsNTSL = gerarWallsNTSL;
+  global.extrairTop16Walls = extrairTop16Walls;
   global.baixarTxt = baixarTxt;
 })(window);

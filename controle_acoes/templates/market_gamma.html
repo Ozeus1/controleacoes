@@ -113,7 +113,10 @@
 
     <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
       <h3 class="mg-sec" style="margin:0;">Paredes de gama por strike</h3>
-      <button type="button" id="mg-exportar" class="btn btn-secondary btn-sm">⬇️ Exportar Walls</button>
+      <div style="display:flex;gap:.5rem;">
+        <button type="button" id="mg-exportar" class="btn btn-secondary btn-sm">⬇️ Exportar Walls</button>
+        <button type="button" id="mg-ver-grafico" class="btn btn-secondary btn-sm">📈 Ver Gráfico</button>
+      </div>
     </div>
     <p class="mg-nota" style="margin-top:.4rem;">
       Quanto de gama cada strike concentra, avaliado no preço atual. Barras para cima
@@ -205,6 +208,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="{{ url_for('static', filename='js/walls_export.js') }}"></script>
+<script src="{{ url_for('static', filename='js/walls_chart_modal.js') }}"></script>
 <script>
 (function(){
   var elT=document.getElementById('mg-ticker'), elTL=document.getElementById('mg-ticker-livre');
@@ -597,6 +601,26 @@
     }
     var txt=gerarWallsNTSL(lastData, [lastData.ticker]);
     baixarTxt(txt, 'walls_'+lastData.ticker+'.txt');
+  };
+
+  // ── Ver Gráfico: candles de 5min do pregão em que os walls valem ──────
+  function proximoDiaUtilISO(isoDate){
+    var d = isoDate ? new Date(isoDate+'T00:00:00') : new Date();
+    do { d.setDate(d.getDate()+1); } while(d.getDay()===0 || d.getDay()===6);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  document.getElementById('mg-ver-grafico').onclick=function(){
+    if(!lastData || !lastData.paredes || !lastData.paredes.length){
+      showErr('Gere o gráfico antes de ver os candles.'); return;
+    }
+    var dia=proximoDiaUtilISO(lastData.data_ref);
+    abrirGraficoWalls({
+      titulo: lastData.ticker+' — candles de '+dia.split('-').reverse().join('/'),
+      endpoint: '/api/walls-candles/'+encodeURIComponent(lastData.ticker)+'?dia='+encodeURIComponent(dia)+'&simbolo='+encodeURIComponent(lastData.ticker),
+      dados: lastData,
+      dia: dia,
+      spot: lastData.spot
+    });
   };
 
   // Abas da explicação

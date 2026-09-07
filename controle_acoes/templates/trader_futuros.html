@@ -117,6 +117,7 @@
     <div style="display:flex;justify-content:center;align-items:center;gap:.8rem;flex-wrap:wrap;">
       <h3 class="tf-titulo" style="margin:1.4rem 0 0;">Jumba Walls — gama por strike e vencimento</h3>
       <button type="button" id="tf-exportar" class="btn btn-secondary btn-sm">⬇️ Exportar Walls</button>
+      <button type="button" id="tf-ver-grafico" class="btn btn-secondary btn-sm">📈 Ver Gráfico</button>
     </div>
     <p class="tf-sub">Vencimento selecionado, o próximo, e os demais somados</p>
     <div class="tf-legenda">
@@ -150,6 +151,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="{{ url_for('static', filename='js/walls_export.js') }}"></script>
+<script src="{{ url_for('static', filename='js/walls_chart_modal.js') }}"></script>
 <script>
 (function(){
   var elA=document.getElementById('tf-ativo'), elE=document.getElementById('tf-exp');
@@ -535,6 +537,27 @@
     });
     var txt=gerarWallsNTSL(lastData, ativos);
     baixarTxt(txt, 'walls_'+(mini||lastData.ativo)+'.txt');
+  };
+
+  // ── Ver Gráfico: candles de 5min do pregão em que os walls valem ──────
+  function proximoDiaUtilISO(isoDate){
+    var d = isoDate ? new Date(isoDate+'T00:00:00') : new Date();
+    do { d.setDate(d.getDate()+1); } while(d.getDay()===0 || d.getDay()===6);
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  document.getElementById('tf-ver-grafico').onclick=function(){
+    if(!lastData || !lastData.walls || !lastData.walls.length){
+      showErr('Gere o gráfico antes de ver os candles.'); return;
+    }
+    var dia=proximoDiaUtilISO(lastData.data_ref);
+    var nomeTitulo=(lastData.ativo==='DOL'?'Dólar':'Índice')+' — candles de '+dia.split('-').reverse().join('/');
+    abrirGraficoWalls({
+      titulo: nomeTitulo,
+      endpoint: '/api/walls-candles/'+encodeURIComponent(lastData.ativo)+'?dia='+encodeURIComponent(dia),
+      dados: lastData,
+      dia: dia,
+      spot: lastData.spot
+    });
   };
 
   var qs=new URLSearchParams(location.search);

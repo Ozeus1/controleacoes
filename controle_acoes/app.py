@@ -7744,6 +7744,128 @@ def api_trader_futuros(ativo):
     })
 
 
+# ══════════════════════════════════════════════════════════════════
+# GRÁFICO DE CANDLES 5min PARA O MODAL DE WALLS
+# ══════════════════════════════════════════════════════════════════
+#
+# A BRAPI não tem candle intraday para contratos futuros (WIN/DOL): o
+# /v2/futures/historical devolve só uma linha por dia mesmo pedindo
+# interval=5m. O endpoint antigo /api/quote, porém, aceita candle de 5min
+# para qualquer ativo que ele reconheça como ação/FII/ETF/índice — e tanto
+# ^BVSP (Ibovespa à vista) quanto USDBRL=X (dólar à vista) são aceitos por
+# ele, na mesma ordem de grandeza de pontos/preço do IND e do DOL
+# respectivamente (diferente do minicontrato WIN, que exigiria reescalar
+# os strikes pelo fator 0,2). Por isso o proxy usado aqui é o ativo à
+# vista, não o futuro.
+
+_WALLS_PROXY = {'IND': '%5EBVSP', 'DOL': 'USDBRL=X'}
+
+
+def _brapi_quote_candles_5m(symbol, dias_atras, user_id):
+    """Candles de 5min via /api/quote (não é o mesmo host de _brapi_opt_get,
+    que atende só /v2/options e /v2/futures). `dias_atras` define o range
+    pedido à API — precisa cobrir a data alvo mais folga para fins de
+    semana/feriados."""
+    from services import get_token
+    token = get_token(user_id)
+    rng = '5d' if dias_atras <= 4 else ('1mo' if dias_atras <= 25 else '3mo')
+    params = {'range': rng, 'interval': '5m'}
+    if token:
+        params['token'] = token
+    try:
+        r = requests.get(f'https://brapi.dev/api/quote/{symbol}', params=params,
+                         timeout=20, headers={'User-Agent': 'MyInvest/1.0'})
+    except requests.exceptions.RequestException:
+        return None, 'Não foi possível conectar à BRAPI.'
+    if r.status_code != 200:
+        try:
+            msg = (r.json() or {}).get('message') or ''
+        except Exception:
+            msg = ''
+        return None, f'BRAPI {r.status_code}: {msg or "erro na consulta"}'
+    try:
+        data = r.json()
+    except Exception:
+        return None, 'Resposta inválida da BRAPI.'
+    results = data.get('results') or []
+    if not results:
+        return None, 'Sem dados para esse ativo.'
+    return results[0], None
+
+
+@app.route('/api/walls-candles/<ativo>')
+@login_required
+def api_walls_candles(ativo):
+    """Candles de 5min do dia pedido, para o modal 'Ver Gráfico' dos Walls.
+
+    Query:
+      dia = YYYY-MM-DD (obrigatório) — normalmente o próximo pregão após o
+            cálculo dos walls, mesma data usada no ELDate() do .txt exportado.
+      simbolo = ticker de ação/FII/ETF (opcional) — quando informado, ignora
+                o mapeamento IND/DOL e usa esse símbolo direto (página de
+                ações). Sem ele, `ativo` precisa ser 'IND' ou 'DOL'.
+    """
+    a = (ativo or '').strip().upper()
+    dia = (request.args.get('dia') or '').strip()
+    simbolo_livre = (request.args.get('simbolo') or '').strip().upper()
+    if not dia:
+        return jsonify({'error': 'Informe o dia.'}), 400
+
+    try:
+        alvo = datetime.strptime(dia, '%Y-%m-%d').date()
+    except Exception:
+        return jsonify({'error': 'Data inválida.'}), 400
+
+    if simbolo_livre:
+        symbol_api = simbolo_livre if simbolo_livre.startswith('^') else simbolo_livre
+        nome_exib = simbolo_livre
+    else:
+        proxy = _WALLS_PROXY.get(a)
+        if not proxy:
+            return jsonify({'error': 'Ativo inválido. Use IND, DOL, ou informe "simbolo".'}), 400
+        symbol_api = proxy
+        nome_exib = {'IND': 'Ibovespa (à vista)', 'DOL': 'Dólar (à vista)'}[a]
+
+    dias_atras = (date.today() - alvo).days + 3   # +3 de folga p/ fim de semana/feriado
+    dias_atras = max(dias_atras, 1)
+    dado, err = _brapi_quote_candles_5m(symbol_api, dias_atras, current_user.id)
+    if err:
+        return jsonify({'error': err}), 502
+
+    todos = dado.get('historicalDataPrice') or []
+    candles = []
+    for c in todos:
+        try:
+            ts = c.get('date')
+            if not ts:
+                continue
+            dt_c = datetime.utcfromtimestamp(ts)
+            # Candles da BRAPI vêm em UTC; horário de pregão B3 é UTC-3.
+            dt_brt = dt_c - timedelta(hours=3)
+            if dt_brt.date() != alvo:
+                continue
+            o, h, l, cl = c.get('open'), c.get('high'), c.get('low'), c.get('close')
+            if o is None or h is None or l is None or cl is None:
+                continue
+            candles.append({
+                't': dt_brt.strftime('%H:%M'),
+                'o': float(o), 'h': float(h), 'l': float(l), 'c': float(cl),
+                'v': int(c.get('volume') or 0),
+            })
+        except Exception:
+            continue
+
+    if not candles:
+        return jsonify({'error': f'Sem candles de 5min para {dia}. '
+                        'Pode ser fim de semana/feriado, ou a data está fora '
+                        'da janela que a BRAPI ainda mantém em 5min.'}), 404
+
+    return jsonify({
+        'ativo': a, 'simbolo': symbol_api.replace('%5E', '^'), 'nome': nome_exib,
+        'dia': dia, 'candles': candles,
+    })
+
+
 @app.route('/fyt')
 @login_required
 def fyt():

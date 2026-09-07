@@ -124,17 +124,18 @@
 
     <h3 class="mg-sec">Jumba Walls — gama por strike e vencimento</h3>
     <p class="mg-nota" style="margin-top:0;">
-      Mesmo gama por strike acima, mas separado entre o vencimento selecionado e os
-      demais empilhados — mostra onde os "muros" de gama se formam em cada vencimento.
-      Líquido (call − put) por vencimento.
+      Mesmo gama por strike acima, mas separado entre o vencimento selecionado, o
+      próximo vencimento e os demais empilhados — mostra onde os "muros" de gama se
+      formam em cada vencimento. Líquido (call − put) por grupo.
     </p>
     <div class="mg-legenda">
       <span><i class="mg-dot" style="background:#f87171;"></i> Vencimento atual</span>
-      <span><i class="mg-dot" style="background:#facc15;"></i> Próximos vencimentos</span>
+      <span><i class="mg-dot" style="background:#fb923c;"></i> Próximo vencimento</span>
+      <span><i class="mg-dot" style="background:#facc15;"></i> Demais vencimentos</span>
       <label style="cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;"
-             title="Limita a 5 próximos vencimentos em vez de todos — mais rápido, menos completo.">
+             title="Limita a 6 vencimentos seguintes em vez de todos — mais rápido, menos completo.">
         <input type="checkbox" id="mg-walls-rapido" style="cursor:pointer;margin:0;">
-        Só próximos 5 vencimentos (mais rápido)
+        Só os 6 vencimentos seguintes (mais rápido)
       </label>
     </div>
     <div id="mg-walls-loading" style="display:none;padding:1.5rem;text-align:center;color:var(--text-secondary);font-size:.85rem;">
@@ -148,10 +149,12 @@
       em vez de já cancelarem uma à outra no líquido acima.
     </p>
     <div class="mg-legenda">
-      <span><i class="mg-dot" style="background:#6ee7b7;"></i> Call vencimento atual</span>
-      <span><i class="mg-dot" style="background:#065f46;"></i> Call próximos vencimentos</span>
-      <span><i class="mg-dot" style="background:#fca5a5;"></i> Put vencimento atual</span>
-      <span><i class="mg-dot" style="background:#7f1d1d;"></i> Put próximos vencimentos</span>
+      <span><i class="mg-dot" style="background:#a7f3d0;"></i> Call atual</span>
+      <span><i class="mg-dot" style="background:#34d399;"></i> Call próximo</span>
+      <span><i class="mg-dot" style="background:#065f46;"></i> Call demais</span>
+      <span><i class="mg-dot" style="background:#fecaca;"></i> Put atual</span>
+      <span><i class="mg-dot" style="background:#f87171;"></i> Put próximo</span>
+      <span><i class="mg-dot" style="background:#7f1d1d;"></i> Put demais</span>
     </div>
     <div class="mg-chart baixo"><canvas id="mg-walls-abs"></canvas></div>
   </div>
@@ -468,7 +471,7 @@
         wrap.appendChild(msg);
       }
       msg.textContent = d.exp==='all'
-        ? 'Escolha um vencimento específico para separar atual de próximos.'
+        ? 'Escolha um vencimento específico para separar atual, próximo e demais.'
         : 'Sem dados suficientes para montar os Walls.';
       return;
     }
@@ -487,7 +490,10 @@
          // Barras estreitas: com poucos strikes com valor, uma categoria
          // única expande e cobre o gráfico inteiro (visto no Trader IND/DOL).
          barPercentage:0.7, categoryPercentage:0.6, maxBarThickness:50},
-        {label:'Próximos vencimentos', data:walls.map(function(w){return w.proximos;}),
+        {label:'Próximo vencimento', data:walls.map(function(w){return w.proximo;}),
+         backgroundColor:'#fb923c', stack:'g',
+         barPercentage:0.7, categoryPercentage:0.6, maxBarThickness:50},
+        {label:'Demais vencimentos', data:walls.map(function(w){return w.demais;}),
          backgroundColor:'#facc15', stack:'g',
          barPercentage:0.7, categoryPercentage:0.6, maxBarThickness:50}
       ]},
@@ -526,7 +532,7 @@
         wrap.appendChild(msg);
       }
       msg.textContent = d.exp==='all'
-        ? 'Escolha um vencimento específico para separar atual de próximos.'
+        ? 'Escolha um vencimento específico para separar atual, próximo e demais.'
         : 'Sem dados suficientes para montar os Walls.';
       return;
     }
@@ -540,16 +546,21 @@
     // Calls empilham para cima (stack 'c'); puts para baixo (stack 'p',
     // valores negativados só para posicionar — a legenda e o tooltip
     // mostram sempre o valor absoluto, como no gráfico de referência.
+    // Três tons por lado (claro→escuro = atual→próximo→demais).
     chWallsAbs=new Chart(ctx,{
       type:'bar',
       data:{labels:labels, datasets:[
         {label:'Call vencimento atual', data:walls.map(function(w){return w.call_atual;}),
-         backgroundColor:'#6ee7b7', stack:'c'},
-        {label:'Call próximos vencimentos', data:walls.map(function(w){return w.call_proximos;}),
+         backgroundColor:'#a7f3d0', stack:'c'},
+        {label:'Call próximo vencimento', data:walls.map(function(w){return w.call_proximo;}),
+         backgroundColor:'#34d399', stack:'c'},
+        {label:'Call demais vencimentos', data:walls.map(function(w){return w.call_demais;}),
          backgroundColor:'#065f46', stack:'c'},
         {label:'Put vencimento atual', data:walls.map(function(w){return -w.put_atual;}),
-         backgroundColor:'#fca5a5', stack:'p'},
-        {label:'Put próximos vencimentos', data:walls.map(function(w){return -w.put_proximos;}),
+         backgroundColor:'#fecaca', stack:'p'},
+        {label:'Put próximo vencimento', data:walls.map(function(w){return -w.put_proximo;}),
+         backgroundColor:'#f87171', stack:'p'},
+        {label:'Put demais vencimentos', data:walls.map(function(w){return -w.put_demais;}),
          backgroundColor:'#7f1d1d', stack:'p'}
       ]},
       options:{

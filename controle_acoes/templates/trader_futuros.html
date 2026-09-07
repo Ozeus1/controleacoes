@@ -115,14 +115,15 @@
     <div class="tf-cards" id="tf-cards"></div>
 
     <h3 class="tf-titulo">Jumba Walls — gama por strike e vencimento</h3>
-    <p class="tf-sub">Vencimento selecionado (vermelho) contra os demais somados (amarelo)</p>
+    <p class="tf-sub">Vencimento selecionado, o próximo, e os demais somados</p>
     <div class="tf-legenda">
       <span><i class="tf-dot" style="background:#f87171;"></i> Vencimento atual</span>
-      <span><i class="tf-dot" style="background:#facc15;"></i> Próximos vencimentos</span>
+      <span><i class="tf-dot" style="background:#fb923c;"></i> Próximo vencimento</span>
+      <span><i class="tf-dot" style="background:#facc15;"></i> Demais vencimentos</span>
       <label style="cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;"
-             title="Limita a 5 próximos vencimentos em vez de todos — mais rápido, menos completo.">
+             title="Limita a 6 vencimentos seguintes em vez de todos — mais rápido, menos completo.">
         <input type="checkbox" id="tf-walls-rapido" style="cursor:pointer;margin:0;">
-        Só próximos 5 vencimentos (mais rápido)
+        Só os 6 vencimentos seguintes (mais rápido)
       </label>
     </div>
     <div id="tf-walls-loading" style="display:none;padding:1.5rem;text-align:center;color:var(--text-secondary);font-size:.85rem;">
@@ -133,10 +134,12 @@
     <h3 class="tf-titulo">Jumba Walls — valores absolutos</h3>
     <p class="tf-sub">Call e put aparecem cada uma com sua própria barra, sem cancelar uma à outra</p>
     <div class="tf-legenda">
-      <span><i class="tf-dot" style="background:#6ee7b7;"></i> Call vencimento atual</span>
-      <span><i class="tf-dot" style="background:#065f46;"></i> Call próximos vencimentos</span>
-      <span><i class="tf-dot" style="background:#fca5a5;"></i> Put vencimento atual</span>
-      <span><i class="tf-dot" style="background:#7f1d1d;"></i> Put próximos vencimentos</span>
+      <span><i class="tf-dot" style="background:#a7f3d0;"></i> Call atual</span>
+      <span><i class="tf-dot" style="background:#34d399;"></i> Call próximo</span>
+      <span><i class="tf-dot" style="background:#065f46;"></i> Call demais</span>
+      <span><i class="tf-dot" style="background:#fecaca;"></i> Put atual</span>
+      <span><i class="tf-dot" style="background:#f87171;"></i> Put próximo</span>
+      <span><i class="tf-dot" style="background:#7f1d1d;"></i> Put demais</span>
     </div>
     <div class="tf-chart med"><canvas id="tf-walls-abs"></canvas></div>
   </div>
@@ -415,7 +418,10 @@
         {label:'Vencimento atual', data:walls.map(function(w){return w.atual;}),
          backgroundColor:'#f87171', stack:'g',
          barPercentage:0.7, categoryPercentage:0.6, maxBarThickness:50},
-        {label:'Próximos vencimentos', data:walls.map(function(w){return w.proximos;}),
+        {label:'Próximo vencimento', data:walls.map(function(w){return w.proximo;}),
+         backgroundColor:'#fb923c', stack:'g',
+         barPercentage:0.7, categoryPercentage:0.6, maxBarThickness:50},
+        {label:'Demais vencimentos', data:walls.map(function(w){return w.demais;}),
          backgroundColor:'#facc15', stack:'g',
          barPercentage:0.7, categoryPercentage:0.6, maxBarThickness:50}
       ]},
@@ -460,12 +466,16 @@
       type:'bar',
       data:{labels:labels, datasets:[
         {label:'Call vencimento atual', data:walls.map(function(w){return w.call_atual;}),
-         backgroundColor:'#6ee7b7', stack:'c'},
-        {label:'Call próximos vencimentos', data:walls.map(function(w){return w.call_proximos;}),
+         backgroundColor:'#a7f3d0', stack:'c'},
+        {label:'Call próximo vencimento', data:walls.map(function(w){return w.call_proximo;}),
+         backgroundColor:'#34d399', stack:'c'},
+        {label:'Call demais vencimentos', data:walls.map(function(w){return w.call_demais;}),
          backgroundColor:'#065f46', stack:'c'},
         {label:'Put vencimento atual', data:walls.map(function(w){return -w.put_atual;}),
-         backgroundColor:'#fca5a5', stack:'p'},
-        {label:'Put próximos vencimentos', data:walls.map(function(w){return -w.put_proximos;}),
+         backgroundColor:'#fecaca', stack:'p'},
+        {label:'Put próximo vencimento', data:walls.map(function(w){return -w.put_proximo;}),
+         backgroundColor:'#f87171', stack:'p'},
+        {label:'Put demais vencimentos', data:walls.map(function(w){return -w.put_demais;}),
          backgroundColor:'#7f1d1d', stack:'p'}
       ]},
       options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},

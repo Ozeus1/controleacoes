@@ -7176,41 +7176,43 @@ def _gama_series_fut(posicoes, precos_por_symbol, spot, T, r_cont):
 
 
 def _gex_walls(series, spot):
-    """Gama por strike ('Jumba Walls'): separa o vencimento selecionado
-    dos demais, avaliado no preço atual — mesma convenção do GEX (call
-    positivo, put negativo). Cada item em `series` precisa da chave
-    'alvo' (bool) marcando se pertence ao vencimento em foco.
+    """Gama por strike ('Jumba Walls'): separa o vencimento selecionado, o
+    próximo vencimento seguinte, e a soma de todos os demais depois dele —
+    avaliado no preço atual, mesma convenção do GEX (call positivo, put
+    negativo). Cada item em `series` precisa da chave 'grupo' com um dos
+    valores 'atual', 'proximo' ou 'demais'.
 
-    Devolve tanto o líquido por vencimento (call - put, para o gráfico
-    empilhado principal) quanto os 4 componentes brutos — call/put ×
-    atual/próximos, todos em módulo — para o gráfico "Valores Absolutos"
-    da referência, que mostra put e call do mesmo vencimento como barras
-    distintas em vez de já cancelarem uma à outra.
+    Devolve tanto o líquido por grupo (call - put, para o gráfico empilhado
+    principal) quanto os 6 componentes brutos — call/put × os 3 grupos,
+    todos em módulo — para o gráfico "Valores Absolutos" da referência, que
+    mostra put e call do mesmo grupo como barras distintas em vez de já
+    cancelarem uma à outra.
     """
+    grupos = ('atual', 'proximo', 'demais')
     ag = {}
     for o in series:
         g = _bs_gamma(spot, o['K'], o['T'], o['r'], o['iv'])
         if not g:
             continue
         val = g * o['oi'] * o['lote'] * spot * spot * 0.01
-        d = ag.setdefault(round(o['K'], 2), {
-            'strike': round(o['K'], 2), 'atual': 0.0, 'proximos': 0.0,
-            'call_atual': 0.0, 'call_proximos': 0.0,
-            'put_atual': 0.0, 'put_proximos': 0.0,
-        })
-        alvo = bool(o.get('alvo'))
-        chave = 'atual' if alvo else 'proximos'
+        d = ag.setdefault(round(o['K'], 2), dict(
+            {'strike': round(o['K'], 2)},
+            **{gr: 0.0 for gr in grupos},
+            **{f'call_{gr}': 0.0 for gr in grupos},
+            **{f'put_{gr}': 0.0 for gr in grupos},
+        ))
+        chave = o.get('grupo') if o.get('grupo') in grupos else 'demais'
         d[chave] += val if o['side'] == 'call' else -val
         campo = ('call_' if o['side'] == 'call' else 'put_') + chave
         d[campo] += val   # sempre em módulo — val já é positivo (gama absoluto)
     out = []
     for v in ag.values():
-        out.append({
-            'strike': v['strike'],
-            'atual': round(v['atual'], 2), 'proximos': round(v['proximos'], 2),
-            'call_atual': round(v['call_atual'], 2), 'call_proximos': round(v['call_proximos'], 2),
-            'put_atual': round(v['put_atual'], 2), 'put_proximos': round(v['put_proximos'], 2),
-        })
+        item = {'strike': v['strike']}
+        for gr in grupos:
+            item[gr] = round(v[gr], 2)
+            item[f'call_{gr}'] = round(v[f'call_{gr}'], 2)
+            item[f'put_{gr}'] = round(v[f'put_{gr}'], 2)
+        out.append(item)
     out.sort(key=lambda x: x['strike'])
     return out
 
@@ -7259,6 +7261,7 @@ def api_market_gamma(ticker):
     ex_data, ex_err = _brapi_opt_get('/expirations', {'underlying': t}, uid)
     todos_vencs = ((ex_data or {}).get('expirations') or []) if not ex_err else []
 
+    proximo_venc = None   # vencimento seguinte ao selecionado, p/ os Walls
     if exp == 'all':
         vencs = todos_vencs[:12]
         if not vencs:
@@ -7266,10 +7269,15 @@ def api_market_gamma(ticker):
         vencs_walls = []       # 'all' já soma tudo na curva principal
     else:
         vencs = [exp]
-        # Walls: o vencimento selecionado + os demais, para separar
-        # "vencimento atual" de "próximos" no gráfico por strike.
-        outros = [v for v in todos_vencs if v != exp]
-        vencs_walls = outros if modo_walls == 'todos' else outros[:5]
+        # Walls: o vencimento selecionado, o próximo seguinte a ele (o
+        # primeiro depois de 'exp' na lista ordenada), e os demais depois
+        # desse — três grupos, não dois. Vencimentos anteriores a 'exp'
+        # (já vencidos) não entram em nenhum grupo.
+        depois = [v for v in todos_vencs if v > exp]
+        if depois:
+            proximo_venc = depois[0]
+        outros = depois
+        vencs_walls = outros if modo_walls == 'todos' else outros[:6]
 
     def _puxa(x):
         par = {'underlying': t, 'expirationDate': x}
@@ -7302,13 +7310,14 @@ def api_market_gamma(ticker):
             series.extend(parte)
             usados.append(x)
             data_ref = data_ref or (d or {}).get('date')
-            for o in parte:
-                o2 = dict(o); o2['alvo'] = True
-                series_walls.append(o2)
+            grupo = 'atual'
+        elif x == proximo_venc:
+            grupo = 'proximo'
         else:
-            for o in parte:
-                o2 = dict(o); o2['alvo'] = False
-                series_walls.append(o2)
+            grupo = 'demais'
+        for o in parte:
+            o2 = dict(o); o2['grupo'] = grupo
+            series_walls.append(o2)
 
     if not series:
         return jsonify({'error': erros[0] if erros else
@@ -7349,10 +7358,10 @@ def api_market_gamma(ticker):
         lista_par.append(p)
     lista_par.sort(key=lambda x: x['strike'])
 
-    # ── Jumba Walls: gama por strike, vencimento atual vs próximos ───
+    # ── Jumba Walls: gama por strike — atual / próximo / demais ──────
     walls = []
     if exp != 'all':
-        base_walls = series_walls if series_walls else [dict(o, alvo=True) for o in series]
+        base_walls = series_walls if series_walls else [dict(o, grupo='atual') for o in series]
         walls = _gex_walls(base_walls, spot)
 
     # Gama atual (no spot) e Gamma Score: quão longe do zero a curva está,
@@ -7642,13 +7651,16 @@ def api_trader_futuros(ativo):
                 if dp > 0:
                     score = round((gatual - media) / dp, 2)
 
-    # ── Jumba Walls: gama por strike, vencimento atual vs próximos ───
+    # ── Jumba Walls: gama por strike — atual / próximo / demais ──────
     walls = []
     if spot and spot > 0 and series:
         ex_data, ex_err = _brapi_opt_get('/expirations', {'underlying': cfg['opt']}, uid)
         todos_vencs = ((ex_data or {}).get('expirations') or []) if not ex_err else []
-        outros = [v for v in todos_vencs if v != exp]
-        vencs_extra = outros if modo_walls == 'todos' else outros[:5]
+        # Só o que vem depois de 'exp': vencimentos anteriores (já vencidos
+        # na prática) não entram em nenhum grupo dos Walls.
+        depois = [v for v in todos_vencs if v > exp]
+        proximo_venc = depois[0] if depois else None
+        vencs_extra = depois if modo_walls == 'todos' else depois[:6]
 
         def _puxa_venc(x):
             par2 = {'underlying': cfg['opt'], 'expirationDate': x}
@@ -7675,13 +7687,16 @@ def api_trader_futuros(ativo):
                 T2 = 30 / 365.0
             return _gama_series_fut(pos2, precos2, spot, T2, r_cont)
 
-        series_walls = [dict(o, alvo=True) for o in series]
+        series_walls = [dict(o, grupo='atual') for o in series]
         if vencs_extra:
             from concurrent.futures import ThreadPoolExecutor
             with ThreadPoolExecutor(max_workers=8) as pool:
-                for parte in pool.map(_puxa_venc, vencs_extra):
-                    if parte:
-                        series_walls.extend(dict(o, alvo=False) for o in parte)
+                resultados_extra = list(pool.map(_puxa_venc, vencs_extra))
+            for x, parte in zip(vencs_extra, resultados_extra):
+                if not parte:
+                    continue
+                grupo = 'proximo' if x == proximo_venc else 'demais'
+                series_walls.extend(dict(o, grupo=grupo) for o in parte)
         walls = _gex_walls(series_walls, spot)
 
     return jsonify({

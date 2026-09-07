@@ -111,8 +111,11 @@
 
     <div class="mg-cards" id="mg-cards"></div>
 
-    <h3 class="mg-sec">Paredes de gama por strike</h3>
-    <p class="mg-nota" style="margin-top:0;">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
+      <h3 class="mg-sec" style="margin:0;">Paredes de gama por strike</h3>
+      <button type="button" id="mg-exportar" class="btn btn-secondary btn-sm">⬇️ Exportar Walls</button>
+    </div>
+    <p class="mg-nota" style="margin-top:.4rem;">
       Quanto de gama cada strike concentra, avaliado no preço atual. Barras para cima
       são CALLs (gama positivo); para baixo, PUTs.
     </p>
@@ -201,6 +204,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='js/walls_export.js') }}"></script>
 <script>
 (function(){
   var elT=document.getElementById('mg-ticker'), elTL=document.getElementById('mg-ticker-livre');
@@ -223,6 +227,7 @@
   var elWallsRapido=document.getElementById('mg-walls-rapido'), elLoadWalls=document.getElementById('mg-walls-loading');
   var elHint=document.getElementById('mg-hint'), elRes=document.getElementById('mg-res');
   var chCurva=null, chPar=null, chWalls=null, chWallsAbs=null;
+  var lastData=null;
 
   function showErr(m){ elErr.textContent=m; elErr.style.display='block'; }
   function clearErr(){ elErr.style.display='none'; }
@@ -293,6 +298,7 @@
   document.getElementById('mg-buscar').onclick=buscar;
 
   function render(d){
+    lastData=d;
     var dt=function(s){ return s? s.split('-').reverse().join('/') : ''; };
     var venc = d.exp==='all' ? ('visão completa — '+d.vencimentos.length+' vencimentos')
                              : ('vencimento '+dt(d.exp));
@@ -583,6 +589,15 @@
       plugins:[refsPlugin(refs, labels)]
     });
   }
+
+  // ── Exportar Walls: gera o .txt no formato NTSL (indicador de Profit) ──
+  document.getElementById('mg-exportar').onclick=function(){
+    if(!lastData || !lastData.paredes || !lastData.paredes.length){
+      showErr('Gere o gráfico antes de exportar.'); return;
+    }
+    var txt=gerarWallsNTSL(lastData, [lastData.ticker]);
+    baixarTxt(txt, 'walls_'+lastData.ticker+'.txt');
+  };
 
   // Abas da explicação
   document.querySelectorAll('.mg-aba').forEach(function(a){

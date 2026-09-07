@@ -7302,32 +7302,52 @@ def trader_futuros():
 @app.route('/api/trader-fut/contratos/<ativo>')
 @login_required
 def api_trader_contratos(ativo):
-    """Vencimentos dos contratos futuros + do minicontrato equivalente."""
+    """Vencimentos das OPÇÕES do ativo, cada um casado com o contrato
+    futuro (cheio e mini) vigente naquela data.
+
+    As opções de IND têm vencimentos semanais (W1, D2, E2...) que não
+    correspondem a um contrato futuro próprio — só os futuros
+    trimestrais (INDV26, INDZ26...) são listados em /futures/list. Por
+    isso a lista de vencimentos vem de /options/expirations, e o
+    contrato exibido é o futuro cujo próprio vencimento é o primeiro que
+    ainda não passou da data da opção (o contrato "vigente" naquele dia,
+    do jeito que a B3 rola WIN/WDO a cada dois meses).
+    """
     a = (ativo or '').strip().upper()
     cfg = _FUT_CFG.get(a)
     if not cfg:
         return jsonify({'error': 'Ativo inválido. Use IND ou DOL.'}), 400
 
-    cheio, e1 = _fut_contratos(cfg['ativo'], current_user.id)
-    if e1:
-        return jsonify({'error': e1}), 502
-    mini, _ = _fut_contratos(cfg['mini'], current_user.id)
-    mini_por_exp = {m['exp']: m for m in mini}
-
-    # Só vencimentos que têm opções negociadas
     ex, e2 = _brapi_opt_get('/expirations', {'underlying': cfg['opt']}, current_user.id)
-    com_opcoes = set(((ex or {}).get('expirations') or [])) if not e2 else set()
+    if e2:
+        return jsonify({'error': e2}), 502
+    vencs_opcoes = (ex or {}).get('expirations') or []
+    if not vencs_opcoes:
+        return jsonify({'ativo': a, 'nome': cfg['nome'], 'contratos': []})
+
+    cheio, e1 = _fut_contratos(cfg['ativo'], current_user.id)
+    mini, _em = _fut_contratos(cfg['mini'], current_user.id)
+    if e1 and not cheio:
+        cheio = []
+
+    def _vigente(lista, venc_opcao):
+        """1º contrato futuro cujo vencimento é >= ao da opção."""
+        for c in lista:
+            if c['exp'] and c['exp'] >= venc_opcao:
+                return c
+        return lista[-1] if lista else None
 
     out = []
-    for c in cheio:
-        m = mini_por_exp.get(c['exp'])
+    for v in vencs_opcoes:
+        c_cheio = _vigente(cheio, v)
+        c_mini = _vigente(mini, v)
         out.append({
-            'exp': c['exp'],
-            'symbol': c['symbol'],
-            'mult': c['mult'],
-            'mini_symbol': (m or {}).get('symbol'),
-            'mini_mult': (m or {}).get('mult'),
-            'tem_opcoes': c['exp'] in com_opcoes,
+            'exp': v,
+            'symbol': (c_cheio or {}).get('symbol'),
+            'mult': (c_cheio or {}).get('mult'),
+            'mini_symbol': (c_mini or {}).get('symbol'),
+            'mini_mult': (c_mini or {}).get('mult'),
+            'tem_opcoes': True,
         })
     return jsonify({'ativo': a, 'nome': cfg['nome'], 'contratos': out})
 
@@ -7363,10 +7383,20 @@ def api_trader_futuros(ativo):
     data_ref = (pos or {}).get('date')
 
     # ── Contrato futuro: preço de referência e multiplicador ─────────
+    # Vencimentos de opções não têm um contrato futuro próprio (as
+    # opções de IND vencem toda semana; os futuros, a cada dois meses) —
+    # usa o contrato vigente na data da opção, o primeiro cujo próprio
+    # vencimento ainda não passou.
+    def _vigente(lista, venc_opcao):
+        for c in lista:
+            if c['exp'] and c['exp'] >= venc_opcao:
+                return c
+        return lista[-1] if lista else None
+
     contratos, _ec = _fut_contratos(cfg['ativo'], uid)
     minis, _em = _fut_contratos(cfg['mini'], uid)
-    c_cheio = next((c for c in contratos if c['exp'] == exp), None)
-    c_mini = next((c for c in minis if c['exp'] == exp), None)
+    c_cheio = _vigente(contratos, exp)
+    c_mini = _vigente(minis, exp)
     # O minicontrato é a referência exibida (é o mais negociado); sem ele,
     # cai no contrato cheio.
     alvo = c_mini or c_cheio

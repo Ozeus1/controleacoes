@@ -271,11 +271,31 @@
       // Só strikes que mudaram — o resto é ruído no gráfico de variação
       var bs=d.barras.filter(function(b){ return b[campo]; });
       var labels=bs.map(function(b){ return b.strike; });
+      if(!bs.length){
+        // Nada mudou nesse lado — evita um Chart.js vazio "esticando"
+        // uma categoria inexistente e mostra a mensagem em vez do canvas.
+        ctx.canvas.style.display='none';
+        var msg=ctx.canvas.parentElement.querySelector('.tf-sem-var');
+        if(!msg){
+          msg=document.createElement('p');
+          msg.className='tf-sem-var'; msg.style.cssText='text-align:center;color:var(--text-secondary);padding:2rem 0;';
+          ctx.canvas.parentElement.appendChild(msg);
+        }
+        msg.textContent='Nenhuma mudança registrada neste lado.';
+        return null;
+      }
+      ctx.canvas.style.display='';
+      var msgExistente=ctx.canvas.parentElement.querySelector('.tf-sem-var');
+      if(msgExistente) msgExistente.remove();
       return new Chart(ctx,{
         type:'bar',
         data:{labels:labels, datasets:[{
           label:'Variação', data:bs.map(function(b){ return b[campo]; }),
-          backgroundColor:function(c){ return (c.raw||0)>=0 ? '#34d399' : '#f87171'; }
+          backgroundColor:function(c){ return (c.raw||0)>=0 ? '#34d399' : '#f87171'; },
+          // Com poucos strikes mudando, uma única categoria ocupava o eixo
+          // inteiro e a barra virava um bloco cobrindo todo o gráfico.
+          // Limitar a largura mantém a barra proporcional sempre.
+          barPercentage:0.6, categoryPercentage:0.5, maxBarThickness:60
         }]},
         options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},
           plugins:{legend:{display:false},

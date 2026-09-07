@@ -7121,9 +7121,16 @@ def _gama_series_fut(posicoes, precos_por_symbol, spot, T, r_cont):
     naquele strike é coerente. Put e call do mesmo strike/vencimento
     compartilham a mesma superfície de vol (paridade put-call), então a IV
     da ponta que falhou usa a da oposta como proxy antes de descartar.
+
+    No dólar (DOL/WDO) é outro problema: 'close' vem nulo em quase toda a
+    cadeia (só 3 de 172 séries, no dia conferido) — a B3 publica 'close'
+    normalmente para índice, mas para moeda o campo populado é
+    'referencePrice' (o preço teórico/ajuste do dia), presente em 100% das
+    séries no mesmo teste. Sem esse fallback, praticamente toda a cadeia de
+    DOL era descartada por falta de preço, não por IV ruim.
     """
     def _iv_de(K, side, s):
-        px = s.get('close')
+        px = s.get('close') or s.get('referencePrice')
         if not px or px <= 0:
             return None
         try:

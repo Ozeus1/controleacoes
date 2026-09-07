@@ -19,11 +19,6 @@
 .mo-side button.on{background:#2563eb;color:#fff;border-color:#2563eb;}
 .mo-side button.on.put{background:#dc2626;border-color:#dc2626;}
 
-#mo-sug{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem;}
-.mo-tbtn{padding:.25rem .6rem;border:1px solid #475569;border-radius:5px;font-size:.8rem;
-  cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap;}
-.mo-tbtn.active{background:#2563eb;border-color:#2563eb;font-weight:700;}
-
 #mo-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
 #mo-error{display:none;color:#f87171;padding:1rem;background:rgba(239,68,68,.08);
   border:1px solid rgba(239,68,68,.25);border-radius:6px;margin:.6rem 0;}
@@ -81,14 +76,15 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
   </div>
   {% endif %}
 
-  <div id="mo-sug">
-    {% for t in sugestoes %}<span class="mo-tbtn" data-t="{{ t }}">{{ t }}</span>{% endfor %}
-  </div>
-
   <div class="mo-filtros">
     <div class="mo-campo">
       <label>Ativo subjacente</label>
-      <input id="mo-ticker" placeholder="PETR4" value="PETR4" maxlength="10">
+      <select id="mo-ticker">
+        {% for t in sugestoes %}<option value="{{ t }}" {{ 'selected' if t == 'PETR4' else '' }}>{{ t }}</option>{% endfor %}
+        <option value="__outro__">— outro ativo… —</option>
+      </select>
+      <input id="mo-ticker-livre" placeholder="Digite o ticker" maxlength="10"
+             style="display:none;margin-top:.3rem;">
     </div>
     <div class="mo-campo">
       <label>Vencimento</label>
@@ -100,6 +96,15 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
         <button type="button" id="mo-call" class="on">CALL</button>
         <button type="button" id="mo-put">PUT</button>
       </div>
+    </div>
+    <div class="mo-campo">
+      <label>Exibição</label>
+      <select id="mo-modo">
+        <option value="abs" selected>Val. Absolutos</option>
+        <option value="var1">Variação 1 dia</option>
+        <option value="var2">Variação 2 dias</option>
+        <option value="var5">Variação 5 dias</option>
+      </select>
     </div>
     <div class="mo-campo">
       <label>&nbsp;</label>
@@ -154,6 +159,7 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
 <script>
 (function(){
   var elT=document.getElementById('mo-ticker'), elE=document.getElementById('mo-exp');
+  var elTL=document.getElementById('mo-ticker-livre'), elModo=document.getElementById('mo-modo');
   var bCall=document.getElementById('mo-call'), bPut=document.getElementById('mo-put');
   var elErr=document.getElementById('mo-error'), elLoad=document.getElementById('mo-loading');
   var elHint=document.getElementById('mo-hint'), elRes=document.getElementById('mo-res');
@@ -180,17 +186,25 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
   bCall.onclick=function(){ setSide('call'); };
   bPut.onclick=function(){ setSide('put'); };
 
-  document.querySelectorAll('.mo-tbtn').forEach(function(b){
-    b.onclick=function(){
-      document.querySelectorAll('.mo-tbtn').forEach(function(x){x.classList.remove('active');});
-      b.classList.add('active');
-      elT.value=b.dataset.t;
-      carregarVencimentos();
-    };
+  // Ticker vem do dropdown; "— outro ativo… —" revela o campo livre.
+  function tickerAtual(){
+    if(elT.value==='__outro__') return (elTL.value||'').trim().toUpperCase();
+    return (elT.value||'').trim().toUpperCase();
+  }
+  elT.addEventListener('change', function(){
+    var livre = elT.value==='__outro__';
+    elTL.style.display = livre ? '' : 'none';
+    if(livre){ elTL.focus(); return; }
+    carregarVencimentos();
   });
+  elTL.addEventListener('change', carregarVencimentos);
+  elTL.addEventListener('keydown', function(ev){
+    if(ev.key==='Enter'){ ev.preventDefault(); carregarVencimentos(); }
+  });
+  elModo.addEventListener('change', function(){ if(lastData) buscar(); });
 
   function carregarVencimentos(){
-    var t=(elT.value||'').trim().toUpperCase();
+    var t=tickerAtual();
     if(!t){ return; }
     elE.innerHTML='<option value="">— carregando —</option>';
     clearErr();
@@ -207,13 +221,13 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
       })
       .catch(function(){ showErr('Falha de rede ao buscar vencimentos.'); });
   }
-  elT.addEventListener('change', carregarVencimentos);
 
   function buscar(){
-    var t=(elT.value||'').trim().toUpperCase(), e=elE.value;
+    var t=tickerAtual(), e=elE.value;
     if(!t||!e){ showErr('Escolha o ativo e o vencimento.'); return; }
     clearErr(); elHint.style.display='none'; elRes.style.display='none'; elLoad.style.display='block';
-    fetch('/api/mapa-opcoes/'+encodeURIComponent(t)+'?exp='+encodeURIComponent(e)+'&side='+side)
+    fetch('/api/mapa-opcoes/'+encodeURIComponent(t)+'?exp='+encodeURIComponent(e)
+          +'&side='+side+'&modo='+elModo.value)
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
       .then(function(res){
         elLoad.style.display='none';
@@ -227,10 +241,18 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
   function render(d){
     var lbl=d.side==='call'?'CALL':'PUT';
     var p=(d.exp||'').split('-');
+    var dt=function(s){ return s? s.split('-').reverse().join('/') : ''; };
+    var modoTxt='';
+    if(d.modo && d.modo!=='abs'){
+      var nd={var1:'1 dia',var2:'2 dias',var5:'5 dias'}[d.modo]||d.modo;
+      modoTxt=' · <strong style="color:#eab308;">variação de '+nd+'</strong>'+
+              (d.data_base?(' (base '+dt(d.data_base)+')'):'');
+    }
     document.getElementById('mo-info').innerHTML=
       '<strong>'+d.ticker+'</strong> · '+lbl+' · vencimento '+(p[2]+'/'+p[1]+'/'+p[0])+
       (d.spot?(' · spot <strong>R$ '+Number(d.spot).toFixed(2).replace('.',',')+'</strong>'):'')+
-      (d.data_ref?(' · posições de '+d.data_ref.split('-').reverse().join('/')):'');
+      (d.data_ref?(' · posições de '+dt(d.data_ref)):'')+modoTxt+
+      (d.aviso?('<br><span style="color:#eab308;">⚠️ '+d.aviso+'</span>'):'');
 
     renderChart(d);
     renderCards(d);
@@ -240,11 +262,20 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
   function renderCards(d){
     var mp=d.max_pain==null?'—':('R$ '+Number(d.max_pain).toFixed(2).replace('.',','));
     var mpSub=d.max_pain_pct==null?'':((d.max_pain_pct>0?'+':'')+String(d.max_pain_pct).replace('.',',')+'% do spot');
+    var lado=(d.side==='call'?'CALLs':'PUTs');
+    var sufixo=(d.modo&&d.modo!=='abs')?(' (variação)'):'';
+    // Sem token não dá para varrer a cadeia inteira: cai no ratio do vencimento.
+    var pcVal, pcSub;
+    if(d.pc_ratio!=null){ pcVal=String(d.pc_ratio).replace('.',','); pcSub='OI put ÷ OI call · '+d.pc_vencs+' vencimentos'; }
+    else if(d.pc_ratio_venc!=null){ pcVal=String(d.pc_ratio_venc).replace('.',','); pcSub='somente este vencimento'; }
+    else { pcVal='—'; pcSub='OI put ÷ OI call'; }
     var c=[
-      {l:'Coberto', v:fmt(d.tot_coberto), s:'Total de '+(d.side==='call'?'CALLs':'PUTs'), k:'cob'},
-      {l:'Travado', v:fmt(d.tot_travado), s:'Total de '+(d.side==='call'?'CALLs':'PUTs'), k:'tra'},
-      {l:'Descoberto', v:fmt(d.tot_descoberto), s:'Total de '+(d.side==='call'?'CALLs':'PUTs'), k:'des'},
-      {l:'PUT/CALL Ratio', v:(d.pc_ratio==null?'—':String(d.pc_ratio).replace('.',',')), s:'OI put ÷ OI call', k:''},
+      {l:'Coberto'+sufixo, v:fmt(d.tot_coberto), s:'Total de '+lado, k:'cob'},
+      {l:'Travado'+sufixo, v:fmt(d.tot_travado), s:'Total de '+lado, k:'tra'},
+      {l:'Descoberto'+sufixo, v:fmt(d.tot_descoberto), s:'Total de '+lado, k:'des'},
+      {l:'IQ das '+lado, v:(d.iq==null?'—':String(d.iq).replace('.',',')),
+       s:'titulares ÷ lançadores', k:''},
+      {l:'PUT/CALL Ratio', v:pcVal, s:pcSub, k:''},
       {l:'Max Pain', v:mp, s:mpSub, k:''}
     ];
     document.getElementById('mo-cards').innerHTML=c.map(function(x){
@@ -369,10 +400,16 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
     };
   });
 
-  // Pré-seleção via URL (?ticker=PETR4&exp=...&side=put)
+  // Pré-seleção via URL (?ticker=PETR4&side=put&modo=var1)
   var qs=new URLSearchParams(location.search);
-  if(qs.get('ticker')) elT.value=qs.get('ticker').toUpperCase();
+  if(qs.get('ticker')){
+    var qt=qs.get('ticker').toUpperCase();
+    var achou=Array.prototype.some.call(elT.options, function(o){ return o.value===qt; });
+    if(achou){ elT.value=qt; }
+    else { elT.value='__outro__'; elTL.style.display=''; elTL.value=qt; }
+  }
   if(qs.get('side')==='put') setSide('put');
+  if(qs.get('modo')) elModo.value=qs.get('modo');
   carregarVencimentos();
 })();
 </script>

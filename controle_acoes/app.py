@@ -6608,6 +6608,10 @@ def _brapi_opt_get(path, params, user_id=None, timeout=20):
             extra = ('Sem token, a BRAPI libera apenas PETR4 (sandbox); '
                      'outros ativos exigem plano Pro. Cadastre a chave em Configuração.')
             return None, f'BRAPI {r.status_code}: {msg or "acesso negado"}. {extra}'
+        if r.status_code == 429:
+            return None, ('BRAPI 429: limite de requisições excedido. '
+                          'Aguarde alguns instantes ou cadastre a chave do plano Pro '
+                          'em Configuração.')
         return None, f'BRAPI {r.status_code}: {msg or "erro na consulta"}'
 
     try:
@@ -6677,16 +6681,20 @@ def api_mapa_vencimentos(ticker):
 def api_mapa_opcoes(ticker):
     """Posições em aberto por strike + indicadores do mapa.
 
-    Query: exp (YYYY-MM-DD, obrigatório), side (call|put).
-    O gráfico usa a decomposição da B3 repassada pela BRAPI:
-    coberto (coveredQuantity), travado (blockedQuantity) e
-    descoberto (uncoveredQuantity).
+    Query:
+      exp   YYYY-MM-DD (obrigatório)
+      side  call|put
+      modo  abs | var1 | var2 | var5  — valores absolutos ou a variação
+            das posições contra 1, 2 ou 5 pregões atrás.
     """
     t = (ticker or '').strip().upper()
     exp = (request.args.get('exp') or '').strip()
     side = (request.args.get('side') or 'call').strip().lower()
+    modo = (request.args.get('modo') or 'abs').strip().lower()
     if side not in ('call', 'put'):
         side = 'call'
+    if modo not in ('abs', 'var1', 'var2', 'var5'):
+        modo = 'abs'
     if not t or not exp:
         return jsonify({'error': 'Informe o ativo e o vencimento.'}), 400
 
@@ -6698,7 +6706,67 @@ def api_mapa_opcoes(ticker):
     if not todas:
         return jsonify({'error': f'Sem posições em aberto para {t} em {exp}.'}), 404
 
-    # Fechamento de cada série (tabela) — falha aqui não impede o gráfico
+    data_ref = (pos or {}).get('date')
+
+    # ── Base de comparação para o modo variação ──────────────────────
+    # A B3 republica o último snapshot nos dias sem pregão novo, então a
+    # data devolvida pela BRAPI pode repetir o conteúdo de dias anteriores.
+    # Em vez de confiar no calendário, recua até achar um snapshot que de
+    # fato diferente do atual e conta só esses como "pregões".
+    base_map, data_base, aviso = {}, None, None
+    if modo != 'abs':
+        n_dias = {'var1': 1, 'var2': 2, 'var5': 5}[modo]
+
+        def _assinatura(lst):
+            return {(o.get('symbol') or '').upper():
+                    (o.get('coveredQuantity') or 0, o.get('blockedQuantity') or 0,
+                     o.get('uncoveredQuantity') or 0)
+                    for o in lst}
+
+        try:
+            cursor = datetime.strptime(data_ref, '%Y-%m-%d').date()
+        except Exception:
+            cursor = date.today()
+
+        atual_sig = _assinatura(todas)
+        distintos = 0          # snapshots realmente diferentes já encontrados
+        prev_ok = None
+        tentativas = 0
+        while distintos < n_dias and tentativas < 20:
+            cursor -= timedelta(days=1)
+            tentativas += 1
+            if cursor.weekday() >= 5:       # fim de semana não tem pregão
+                continue
+            cand, cerr2 = _brapi_opt_get(
+                '/positions',
+                {'underlying': t, 'expirationDate': exp, 'date': cursor.isoformat()},
+                current_user.id, timeout=12)
+            if cerr2 or not (cand or {}).get('positions'):
+                continue
+            cand_sig = _assinatura(cand['positions'])
+            # Compara só as séries presentes nos dois snapshots: séries que
+            # entram/saem da listagem não significam mudança de posição.
+            comuns = set(cand_sig) & set(atual_sig)
+            if comuns and all(cand_sig[s] == atual_sig[s] for s in comuns):
+                # mesmo conteúdo republicado: não conta como pregão anterior
+                continue
+            atual_sig = cand_sig
+            prev_ok = cand
+            distintos += 1
+
+        if not prev_ok:
+            aviso = ('Sem histórico anterior disponível para comparar; '
+                     'exibindo valores absolutos.')
+            modo = 'abs'
+        else:
+            prev = prev_ok
+            data_base = (prev or {}).get('date')
+            for o in prev['positions']:
+                sym = (o.get('symbol') or '').upper()
+                if sym:
+                    base_map[sym] = o
+
+    # ── Fechamento de cada série (tabela) ────────────────────────────
     fech = {}
     chain, cerr = _brapi_opt_get('/chain',
                                  {'underlying': t, 'expirationDate': exp}, current_user.id)
@@ -6708,8 +6776,7 @@ def api_mapa_opcoes(ticker):
             if sym:
                 fech[sym] = s.get('close')
 
-    # Max Pain considera as duas pontas do vencimento, independente do lado
-    # exibido no gráfico — é uma medida da cadeia inteira.
+    # ── Max Pain: usa as duas pontas do vencimento ───────────────────
     por_strike = {}
     for o in todas:
         k = o.get('strike')
@@ -6717,13 +6784,16 @@ def api_mapa_opcoes(ticker):
             continue
         k = round(float(k), 2)
         d = por_strike.setdefault(k, {'call': 0, 'put': 0})
-        d[(o.get('side') or '').lower()] = d.get((o.get('side') or '').lower(), 0) + (o.get('openInterest') or 0)
+        sd = (o.get('side') or '').lower()
+        d[sd] = d.get(sd, 0) + (o.get('openInterest') or 0)
     mp_strike, mp_curva = _max_pain(por_strike)
 
-    oi_call = sum((o.get('openInterest') or 0) for o in todas if (o.get('side') or '').lower() == 'call')
-    oi_put = sum((o.get('openInterest') or 0) for o in todas if (o.get('side') or '').lower() == 'put')
+    oi_call_exp = sum((o.get('openInterest') or 0) for o in todas
+                      if (o.get('side') or '').lower() == 'call')
+    oi_put_exp = sum((o.get('openInterest') or 0) for o in todas
+                     if (o.get('side') or '').lower() == 'put')
 
-    # Série exibida
+    # ── Série exibida ────────────────────────────────────────────────
     rows, agg = [], {}
     for o in todas:
         if (o.get('side') or '').lower() != side:
@@ -6732,11 +6802,22 @@ def api_mapa_opcoes(ticker):
         if k is None:
             continue
         k = round(float(k), 2)
+        sym = (o.get('symbol') or '').upper()
+
         cob = o.get('coveredQuantity') or 0
         tra = o.get('blockedQuantity') or 0
         des = o.get('uncoveredQuantity') or 0
         tot = o.get('totalPositionQuantity') or (cob + tra + des)
-        sym = (o.get('symbol') or '').upper()
+
+        if modo != 'abs':
+            b = base_map.get(sym) or {}
+            cob -= (b.get('coveredQuantity') or 0)
+            tra -= (b.get('blockedQuantity') or 0)
+            des -= (b.get('uncoveredQuantity') or 0)
+            tot -= (b.get('totalPositionQuantity')
+                    or ((b.get('coveredQuantity') or 0) + (b.get('blockedQuantity') or 0)
+                        + (b.get('uncoveredQuantity') or 0)))
+
         tit = o.get('borrowerQuantity') or 0
         lan = o.get('lenderQuantity') or 0
         rows.append({
@@ -6759,13 +6840,15 @@ def api_mapa_opcoes(ticker):
         return jsonify({'error': f'Sem {side.upper()}s com posição em aberto para {t} em {exp}.'}), 404
 
     barras = sorted(agg.values(), key=lambda x: x['strike'])
+    if modo != 'abs':
+        # No modo variação, strikes sem nenhuma mudança só poluem o gráfico.
+        barras = [b for b in barras
+                  if b['coberto'] or b['travado'] or b['descoberto']]
     for b in barras:
         b['iq'] = round(b['titular'] / b['lancador'], 2) if b['lancador'] else None
     rows.sort(key=lambda x: x['strike'])
 
-    # Spot ao vivo: o mapa serve para qualquer ticker, inclusive fora da
-    # carteira, então o cache do banco (que pode estar velho ou vazio) entra
-    # apenas como fallback.
+    # ── Spot ao vivo (cache do banco só como fallback) ───────────────
     spot = None
     try:
         q = get_quotes([t], user_id=current_user.id) or {}
@@ -6784,14 +6867,67 @@ def api_mapa_opcoes(ticker):
     tot_tra = sum(b['travado'] for b in barras)
     tot_des = sum(b['descoberto'] for b in barras)
 
+    # ── IQ do lado exibido: titulares ÷ lançadores ───────────────────
+    lado = [o for o in todas if (o.get('side') or '').lower() == side]
+    t_tit = sum((o.get('borrowerQuantity') or 0) for o in lado)
+    t_lan = sum((o.get('lenderQuantity') or 0) for o in lado)
+    iq_lado = round(t_tit / t_lan, 2) if t_lan else None
+
+    # ── PUT/CALL Ratio da CADEIA INTEIRA ─────────────────────────────
+    # O ratio do vencimento isolado oscila muito e não é comparável com o
+    # de referência do mercado, que soma todos os vencimentos abertos.
+    # Varrer a cadeia inteira custa 1 request por vencimento, o que estoura o
+    # limite do sandbox (HTTP 429). Só é feito quando há token, e o resultado
+    # fica no cache de 15 min; sem token, exibe-se o ratio do vencimento.
+    pc_cadeia, pc_vencs = None, 0
+    try:
+        if not _brapi_opt_token(current_user.id):
+            raise RuntimeError('sem token: pula varredura da cadeia')
+        ex_data, ex_err = _brapi_opt_get('/expirations', {'underlying': t}, current_user.id)
+        if not ex_err:
+            vencs = (ex_data or {}).get('expirations') or []
+            uid_pc = current_user.id
+
+            def _oi_venc(x):
+                dx, e2 = _brapi_opt_get('/positions',
+                                        {'underlying': t, 'expirationDate': x},
+                                        uid_pc, timeout=12)
+                if e2 or not dx:
+                    return None
+                c = p = 0
+                for o in dx.get('positions') or []:
+                    oi = o.get('openInterest') or 0
+                    if (o.get('side') or '').lower() == 'call':
+                        c += oi
+                    else:
+                        p += oi
+                return (c, p)
+
+            c_tot = p_tot = 0
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=8) as ex_pool:
+                for res in ex_pool.map(_oi_venc, vencs):
+                    if not res:
+                        continue
+                    c_tot += res[0]
+                    p_tot += res[1]
+                    pc_vencs += 1
+            if c_tot:
+                pc_cadeia = round(p_tot / c_tot, 3)
+    except Exception:
+        pc_cadeia = None
+
     return jsonify({
-        'ticker': t, 'exp': exp, 'side': side,
-        'data_ref': (pos or {}).get('date'),
+        'ticker': t, 'exp': exp, 'side': side, 'modo': modo,
+        'data_ref': data_ref, 'data_base': data_base, 'aviso': aviso,
         'spot': spot,
         'barras': barras, 'rows': rows,
         'tot_coberto': tot_cob, 'tot_travado': tot_tra, 'tot_descoberto': tot_des,
-        'oi_call': oi_call, 'oi_put': oi_put,
-        'pc_ratio': round(oi_put / oi_call, 2) if oi_call else None,
+        'oi_call': oi_call_exp, 'oi_put': oi_put_exp,
+        'iq': iq_lado, 'iq_titular': t_tit, 'iq_lancador': t_lan,
+        'pc_ratio': pc_cadeia,
+        'pc_ratio_venc': (round(oi_put_exp / oi_call_exp, 3) if oi_call_exp else None),
+        'pc_vencs': pc_vencs,
         'max_pain': mp_strike,
         'max_pain_curva': mp_curva,
         'max_pain_pct': (round((mp_strike - spot) / spot * 100, 1)

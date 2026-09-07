@@ -71,7 +71,7 @@
       '  <div id="wcmg-legenda" style="display:flex;gap:1.1rem;flex-wrap:wrap;font-size:.8rem;' +
       '       color:var(--text-secondary,#94a3b8);margin-bottom:.5rem;flex-shrink:0;"></div>' +
       '  <p style="margin:0 0 .5rem;font-size:.74rem;color:var(--text-secondary,#94a3b8);flex-shrink:0;">' +
-      '    Roda do mouse para zoom · arraste para mover · duplo clique para resetar' +
+      '    Roda do mouse para zoom · roda sobre o eixo de preço (esquerda) para abrir/fechar a escala vertical · arraste para mover · duplo clique para resetar' +
       '  </p>' +
       '  <div id="wcmg-canvas-wrap" style="position:relative;flex:1;min-height:0;">' +
       '    <canvas id="wcmg-canvas" style="width:100%;height:100%;display:block;cursor:grab;"></canvas>' +
@@ -113,16 +113,17 @@
     var folga = (vmaxBase - vminBase) * 0.10 || Math.abs(vminBase) * 0.01 || 1;
     vminBase -= folga; vmaxBase += folga;
 
-    var zoom = (view && view.zoom) || 1;
+    var zoomX = (view && (view.zoomX || view.zoom)) || 1;
+    var zoomY = (view && view.zoomY) || 1;
     var panX = (view && view.panX) || 0;   // em "candles" deslocados
     var panY = (view && view.panY) || 0;   // em unidades de valor
 
-    var nVis = candles.length / zoom;
+    var nVis = candles.length / zoomX;
     var centroI = candles.length / 2 - panX;
     var iMin = centroI - nVis / 2, iMax = centroI + nVis / 2;
 
     var vmin = vminBase + panY, vmax = vmaxBase + panY;
-    var meioV = (vmin + vmax) / 2, faixaV = (vmax - vmin) / zoom;
+    var meioV = (vmin + vmax) / 2, faixaV = (vmax - vmin) / zoomY;
     vmin = meioV - faixaV / 2; vmax = meioV + faixaV / 2;
 
     function yPix(v, clamp) {
@@ -135,7 +136,7 @@
 
     return { vmin: vmin, vmax: vmax, iMin: iMin, iMax: iMax,
              yPix: yPix, xPix: xPix, iDoPix: iDoPix, vDoPix: vDoPix,
-             plotW: plotW, plotH: plotH };
+             plotW: plotW, plotH: plotH, padL: padL, padR: padR };
   }
 
   function desenhar(canvas, candles, linhas, spot, view) {
@@ -259,7 +260,7 @@
   function ligaInteracao(canvas, tooltipEl, candles, linhas, spot, opts) {
     opts = opts || {};
     var permiteZoom = !!opts.zoom;
-    var view = opts.view || { zoom: 1, panX: 0, panY: 0 };
+    var view = opts.view || { zoomX: 1, zoomY: 1, panX: 0, panY: 0 };
     var arrastando = false, ultimoX = 0, ultimoY = 0;
 
     function redesenha() {
@@ -287,7 +288,7 @@
       if (arrastando && permiteZoom) {
         var dx = mx - ultimoX, dy = my - ultimoY;
         ultimoX = mx; ultimoY = my;
-        var nVis = candles.length / view.zoom;
+        var nVis = candles.length / view.zoomX;
         view.panX += dx / escAtual.plotW * nVis;
         var faixaV = (escAtual.vmax - escAtual.vmin);
         view.panY += dy / escAtual.plotH * faixaV;
@@ -330,11 +331,22 @@
       canvas.addEventListener('wheel', function (e) {
         e.preventDefault();
         var fator = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-        view.zoom = Math.min(Math.max(view.zoom * fator, 1), 40);
+        var rectW = canvas.getBoundingClientRect();
+        var mxW = e.clientX - rectW.left;
+        if (mxW < escAtual.padL) {
+          // roda sobre o eixo de valores (margem esquerda): zoom só no eixo Y,
+          // mantendo a janela de tempo igual. Ao contrário do zoom em X (que
+          // só estreita, já que abrir além do dia inteiro não faz sentido),
+          // aqui zoomY pode cair abaixo de 1 — é isso que abre a faixa de
+          // preço para revelar walls mais distantes do candle do dia.
+          view.zoomY = Math.min(Math.max(view.zoomY * fator, 0.1), 40);
+        } else {
+          view.zoomX = Math.min(Math.max(view.zoomX * fator, 1), 40);
+        }
         escAtual = redesenha();
       }, { passive: false });
       canvas.addEventListener('dblclick', function () {
-        view.zoom = 1; view.panX = 0; view.panY = 0;
+        view.zoomX = 1; view.zoomY = 1; view.panX = 0; view.panY = 0;
         escAtual = redesenha();
       });
       canvas.style.cursor = 'grab';
@@ -346,7 +358,7 @@
     ro.observe(canvas.parentElement);
 
     return { view: view, resetar: function () {
-      view.zoom = 1; view.panX = 0; view.panY = 0; escAtual = redesenha();
+      view.zoomX = 1; view.zoomY = 1; view.panX = 0; view.panY = 0; escAtual = redesenha();
     } };
   }
 

@@ -6556,8 +6556,30 @@ def _fyt_diversify(rows_list, key_fn, per_key=3, limit=60):
 # ══════════════════════════════════════════════════════════════════
 
 _BRAPI_OPT_BASE = 'https://brapi.dev/api/v2/options'
-_brapi_opt_cache = {}          # {chave: (ts, payload)}
-_BRAPI_OPT_TTL = 900           # 15 min — dados são EOD, não mudam durante o dia
+_brapi_opt_cache = {}          # camada 1: memória do processo {chave: (ts, payload)}
+_BRAPI_OPT_TTL = 900           # 15 min na memória
+
+
+def _brapi_opt_ainda_vale(gravado_em):
+    """O dado guardado ainda serve?
+
+    As posições em aberto são EOD: a B3 publica uma vez por dia e o conteúdo
+    não muda durante o pregão. Então o cache vale até a próxima publicação —
+    prevista para ~19h30 de Brasília. Guardar por 24h fixas serviria dado
+    velho na manhã seguinte; expirar no corte diário resolve isso.
+    """
+    try:
+        g = gravado_em.replace(tzinfo=None)
+    except Exception:
+        return False
+    agora = now_brt().replace(tzinfo=None)
+    if agora < g:                       # relógio andou para trás
+        return True
+    # último corte de publicação já ocorrido
+    corte = agora.replace(hour=19, minute=30, second=0, microsecond=0)
+    if agora < corte:
+        corte -= timedelta(days=1)
+    return g >= corte
 
 
 def _brapi_opt_token(user_id=None):
@@ -6590,6 +6612,22 @@ def _brapi_opt_get(path, params, user_id=None, timeout=20):
     if hit and (time.time() - hit[0]) < _BRAPI_OPT_TTL:
         return hit[1], None
 
+    # ── Camada 2: SQLite (sobrevive ao restart e é compartilhada) ─────
+    disk_key = '{}|{}|{}'.format(
+        path, '|'.join('{}={}'.format(k, v) for k, v in ck[1]), 'T' if token else 'S')[:220]
+    import gzip as _gz
+    try:
+        from models import OptionMapCache
+        ent = OptionMapCache.query.get(disk_key)
+        if ent and ent.fetched_at and _brapi_opt_ainda_vale(ent.fetched_at):
+            data = json.loads(_gz.decompress(ent.payload_gz).decode())
+            _brapi_opt_cache[ck] = (time.time(), data)
+            return data, None
+    except Exception:
+        # Sem contexto de app (chamada dentro de thread) ou tabela ausente:
+        # segue para a rede, o cache em memória ainda vale.
+        pass
+
     try:
         r = requests.get(f'{_BRAPI_OPT_BASE}{path}', params=p, timeout=timeout,
                          headers={'User-Agent': 'MyInvest/1.0'})
@@ -6620,6 +6658,27 @@ def _brapi_opt_get(path, params, user_id=None, timeout=20):
         return None, 'Resposta inválida da BRAPI.'
 
     _brapi_opt_cache[ck] = (time.time(), data)
+
+    # Persiste em disco para sobreviver ao restart e poupar cota da API.
+    try:
+        from models import OptionMapCache
+        gz = _gz.compress(json.dumps(data).encode(), 6)
+        agora_db = now_brt().replace(tzinfo=None)
+        ent = OptionMapCache.query.get(disk_key)
+        if ent:
+            ent.payload_gz = gz
+            ent.fetched_at = agora_db
+        else:
+            db.session.add(OptionMapCache(cache_key=disk_key, payload_gz=gz,
+                                          fetched_at=agora_db))
+        db.session.commit()
+    except Exception:
+        # Idem: em thread sem contexto de app a gravação é ignorada.
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
     return data, None
 
 
@@ -6889,9 +6948,12 @@ def api_mapa_opcoes(ticker):
             uid_pc = current_user.id
 
             def _oi_venc(x):
-                dx, e2 = _brapi_opt_get('/positions',
-                                        {'underlying': t, 'expirationDate': x},
-                                        uid_pc, timeout=12)
+                # Contexto de app dentro da thread: sem ele o cache em disco
+                # não pode ser lido nem gravado (db.session é por contexto).
+                with app.app_context():
+                    dx, e2 = _brapi_opt_get('/positions',
+                                            {'underlying': t, 'expirationDate': x},
+                                            uid_pc, timeout=12)
                 if e2 or not dx:
                     return None
                 c = p = 0

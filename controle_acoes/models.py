@@ -633,6 +633,21 @@ class VolHistCache(db.Model):
     series_gz  = db.Column(db.LargeBinary, nullable=False)  # JSON gzip: [{d, iv, hv}, ...]
 
 
+class OptionMapCache(db.Model):
+    """Cache persistente das respostas da BRAPI no Mapa de Opções.
+
+    As posições em aberto são EOD (a B3 publica uma vez por dia), então a
+    mesma consulta devolve o mesmo conteúdo o dia inteiro. Guardar em disco
+    evita repetir as chamadas a cada acesso — importante porque o cálculo do
+    PUT/CALL da cadeia faz uma requisição por vencimento — e sobrevive ao
+    restart do servidor."""
+    __tablename__ = 'option_map_cache'
+    # chave = path + params (sem token), ex.: "/positions|PETR4|2026-09-18"
+    cache_key  = db.Column(db.String(220), primary_key=True)
+    fetched_at = db.Column(db.DateTime,    nullable=False, default=datetime.utcnow)
+    payload_gz = db.Column(db.LargeBinary, nullable=False)   # JSON gzip da resposta
+
+
 class UserChartLine(db.Model):
     """Linhas de tendência desenhadas pelo usuário no gráfico de candlestick."""
     __tablename__ = 'user_chart_lines'

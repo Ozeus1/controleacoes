@@ -7113,24 +7113,56 @@ def _gama_series_fut(posicoes, precos_por_symbol, spot, T, r_cont):
     """Monta a lista de séries para GEX a partir de /positions + /chain de
     futuros (IND/DOL) — usado tanto no vencimento principal quanto nos
     'próximos' dos Jumba Walls. A IV sai do preço de tela de cada série
-    (o /analytics da BRAPI não calcula gregas para esse mercado)."""
+    (o /analytics da BRAPI não calcula gregas para esse mercado).
+
+    No índice, boa parte das CALLs (mesmo líquidas) tem 'close' desatualizado
+    e devolve IV degenerada, enquanto a PUT do mesmo strike costuma ter preço
+    são — confirmado comparando as duas: quando a call falha, o smile da put
+    naquele strike é coerente. Put e call do mesmo strike/vencimento
+    compartilham a mesma superfície de vol (paridade put-call), então a IV
+    da ponta que falhou usa a da oposta como proxy antes de descartar.
+    """
+    def _iv_de(K, side, s):
+        px = s.get('close')
+        if not px or px <= 0:
+            return None
+        try:
+            iv = _implied_vol(spot, K, T, r_cont, float(px), side == 'call')
+        except Exception:
+            return None
+        return iv if (iv and 0.02 <= iv <= 3.0) else None
+
+    # Indexa os preços de tela por (strike, lado) para achar a ponta oposta
+    por_strike_lado = {}
+    for sym, s in (precos_por_symbol or {}).items():
+        K0 = s.get('strike')
+        sd0 = (s.get('side') or '').lower()
+        if K0 is not None and sd0 in ('call', 'put'):
+            por_strike_lado[(round(float(K0), 2), sd0)] = s
+
     out = []
     for o in posicoes or []:
         sym = (o.get('symbol') or '').upper()
         s = precos_por_symbol.get(sym) or {}
-        px = s.get('close')
         K = o.get('strike')
         oi = o.get('openInterest') or 0
-        if not px or px <= 0 or not K or oi <= 0:
+        if not K or oi <= 0:
             continue
+        K = float(K)
         side = (o.get('side') or '').lower()
-        try:
-            iv = _implied_vol(spot, float(K), T, r_cont, float(px), side == 'call')
-        except Exception:
-            iv = None
-        if not iv or not (0.02 <= iv <= 3.0):
+        if side not in ('call', 'put'):
             continue
-        out.append({'side': side, 'K': float(K), 'T': T, 'iv': iv,
+
+        iv = _iv_de(K, side, s)
+        if iv is None:
+            oposto = 'put' if side == 'call' else 'call'
+            s_op = por_strike_lado.get((round(K, 2), oposto))
+            if s_op:
+                iv = _iv_de(K, oposto, s_op)
+        if iv is None:
+            continue
+
+        out.append({'side': side, 'K': K, 'T': T, 'iv': iv,
                     'oi': oi, 'lote': int(o.get('allocationRoundLot') or 1),
                     'r': r_cont})
     return out

@@ -6595,26 +6595,30 @@ def _brapi_opt_token(user_id=None):
     return env if env and env != 'your_api_key_here' else ''
 
 
-def _brapi_opt_get(path, params, user_id=None, timeout=20):
+def _brapi_opt_get(path, params, user_id=None, timeout=20, base=None):
     """GET no módulo de opções da BRAPI, com cache e erro legível.
 
     Retorna (json, erro). Sem token a API só libera PETR4 (sandbox); para
     os demais ativos o plano Pro é obrigatório e a mensagem da própria
-    BRAPI é repassada à tela.
+    BRAPI é repassada à tela. `base` troca a raiz da URL para reaproveitar
+    o cache com os endpoints de futuros (/api/v2/futures/...).
     """
     p = {k: v for k, v in (params or {}).items() if v not in (None, '')}
     token = _brapi_opt_token(user_id)
     if token:
         p['token'] = token
 
-    ck = (path, tuple(sorted((k, str(v)) for k, v in p.items() if k != 'token')), bool(token))
+    raiz = base or _BRAPI_OPT_BASE
+    ck = (raiz, path,
+          tuple(sorted((k, str(v)) for k, v in p.items() if k != 'token')), bool(token))
     hit = _brapi_opt_cache.get(ck)
     if hit and (time.time() - hit[0]) < _BRAPI_OPT_TTL:
         return hit[1], None
 
     # ── Camada 2: SQLite (sobrevive ao restart e é compartilhada) ─────
-    disk_key = '{}|{}|{}'.format(
-        path, '|'.join('{}={}'.format(k, v) for k, v in ck[1]), 'T' if token else 'S')[:220]
+    disk_key = '{}{}|{}|{}'.format(
+        ('F' if base else ''), path,
+        '|'.join('{}={}'.format(k, v) for k, v in ck[2]), 'T' if token else 'S')[:220]
     import gzip as _gz
     try:
         from models import OptionMapCache
@@ -6629,7 +6633,7 @@ def _brapi_opt_get(path, params, user_id=None, timeout=20):
         pass
 
     try:
-        r = requests.get(f'{_BRAPI_OPT_BASE}{path}', params=p, timeout=timeout,
+        r = requests.get(f'{raiz}{path}', params=p, timeout=timeout,
                          headers={'User-Agent': 'MyInvest/1.0'})
     except requests.exceptions.Timeout:
         return None, 'A BRAPI demorou para responder. Tente novamente.'
@@ -7247,6 +7251,264 @@ def api_market_gamma(ticker):
         'score': score,
         'n_series': len(series),
         'avisos': erros[:2],
+    })
+
+
+# ══════════════════════════════════════════════════════════════════
+# TRADER FUTUROS — posições em aberto de opções de índice e dólar
+# ══════════════════════════════════════════════════════════════════
+#
+# As opções de IND/WIN são listadas pela B3 sob o subjacente IBOV (e não
+# IND ou WIN, que devolvem lista vazia); as de DOL/WDO, sob DOL. O preço
+# de referência vem do contrato futuro em /futures/quote, e os strikes
+# são convertidos para o contrato escolhido pelo contractMultiplier.
+
+_FUT_CFG = {
+    'IND': {'opt': 'IBOV', 'ativo': 'IND', 'mini': 'WIN', 'nome': 'Índice Bovespa'},
+    'DOL': {'opt': 'DOL',  'ativo': 'DOL', 'mini': 'WDO', 'nome': 'Dólar'},
+}
+
+
+def _brapi_fut_get(path, params, user_id=None, timeout=20):
+    """GET nos endpoints de futuros (/api/v2/futures/...), com o mesmo
+    cache e tratamento de erro do módulo de opções."""
+    return _brapi_opt_get(path, params, user_id, timeout,
+                          base='https://brapi.dev/api/v2/futures')
+
+
+def _fut_contratos(ativo, user_id):
+    """Contratos futuros negociados do ativo (WINV26, INDV26, ...)."""
+    d, e = _brapi_fut_get('/list', {'asset': ativo, 'limit': 30}, user_id)
+    if e:
+        return [], e
+    out = []
+    for f in (d or {}).get('futures') or []:
+        out.append({'symbol': f.get('symbol'),
+                    'exp': f.get('expirationDate'),
+                    'mult': f.get('contractMultiplier') or 1,
+                    'desc': f.get('assetDescription') or ''})
+    out.sort(key=lambda x: x['exp'] or '')
+    return out, None
+
+
+@app.route('/trader-futuros')
+@login_required
+def trader_futuros():
+    """Página Trader: posições em aberto das opções de IND e DOL."""
+    return render_template('trader_futuros.html',
+                           tem_token=bool(_brapi_opt_token(current_user.id)))
+
+
+@app.route('/api/trader-fut/contratos/<ativo>')
+@login_required
+def api_trader_contratos(ativo):
+    """Vencimentos dos contratos futuros + do minicontrato equivalente."""
+    a = (ativo or '').strip().upper()
+    cfg = _FUT_CFG.get(a)
+    if not cfg:
+        return jsonify({'error': 'Ativo inválido. Use IND ou DOL.'}), 400
+
+    cheio, e1 = _fut_contratos(cfg['ativo'], current_user.id)
+    if e1:
+        return jsonify({'error': e1}), 502
+    mini, _ = _fut_contratos(cfg['mini'], current_user.id)
+    mini_por_exp = {m['exp']: m for m in mini}
+
+    # Só vencimentos que têm opções negociadas
+    ex, e2 = _brapi_opt_get('/expirations', {'underlying': cfg['opt']}, current_user.id)
+    com_opcoes = set(((ex or {}).get('expirations') or [])) if not e2 else set()
+
+    out = []
+    for c in cheio:
+        m = mini_por_exp.get(c['exp'])
+        out.append({
+            'exp': c['exp'],
+            'symbol': c['symbol'],
+            'mult': c['mult'],
+            'mini_symbol': (m or {}).get('symbol'),
+            'mini_mult': (m or {}).get('mult'),
+            'tem_opcoes': c['exp'] in com_opcoes,
+        })
+    return jsonify({'ativo': a, 'nome': cfg['nome'], 'contratos': out})
+
+
+@app.route('/api/trader-fut/<ativo>')
+@login_required
+def api_trader_futuros(ativo):
+    """Posições em aberto + mudanças + gama das opções do vencimento.
+
+    Query: exp (YYYY-MM-DD, obrigatório), data (snapshot, opcional).
+    """
+    a = (ativo or '').strip().upper()
+    cfg = _FUT_CFG.get(a)
+    if not cfg:
+        return jsonify({'error': 'Ativo inválido. Use IND ou DOL.'}), 400
+    exp = (request.args.get('exp') or '').strip()
+    data_pos = (request.args.get('data') or '').strip()
+    if not exp:
+        return jsonify({'error': 'Informe o vencimento.'}), 400
+
+    uid = current_user.id
+
+    # ── Posições do dia ──────────────────────────────────────────────
+    par = {'underlying': cfg['opt'], 'expirationDate': exp}
+    if data_pos:
+        par['date'] = data_pos
+    pos, err = _brapi_opt_get('/positions', par, uid)
+    if err:
+        return jsonify({'error': err}), 502
+    atuais = (pos or {}).get('positions') or []
+    if not atuais:
+        return jsonify({'error': f'Sem posições em aberto para {a} em {exp}.'}), 404
+    data_ref = (pos or {}).get('date')
+
+    # ── Contrato futuro: preço de referência e multiplicador ─────────
+    contratos, _ec = _fut_contratos(cfg['ativo'], uid)
+    minis, _em = _fut_contratos(cfg['mini'], uid)
+    c_cheio = next((c for c in contratos if c['exp'] == exp), None)
+    c_mini = next((c for c in minis if c['exp'] == exp), None)
+    # O minicontrato é a referência exibida (é o mais negociado); sem ele,
+    # cai no contrato cheio.
+    alvo = c_mini or c_cheio
+    spot = None
+    if alvo:
+        q, _eq = _brapi_fut_get('/quote', {'symbols': alvo['symbol']}, uid)
+        for x in (q or {}).get('quotes') or []:
+            spot = x.get('close') or x.get('settlement') or x.get('referencePrice')
+            break
+
+    # ── Base para as "Mudanças": snapshot anterior com conteúdo distinto
+    def _assin(lst):
+        return {(o.get('symbol') or '').upper(): (o.get('openInterest') or 0) for o in lst}
+
+    base_map, data_base = {}, None
+    try:
+        cursor = datetime.strptime(data_ref, '%Y-%m-%d').date()
+    except Exception:
+        cursor = date.today()
+    sig_atual = _assin(atuais)
+    tent = 0
+    while tent < 12:
+        cursor -= timedelta(days=1)
+        tent += 1
+        if cursor.weekday() >= 5:
+            continue
+        cand, ce = _brapi_opt_get('/positions',
+                                  {'underlying': cfg['opt'], 'expirationDate': exp,
+                                   'date': cursor.isoformat()}, uid, timeout=12)
+        lst = (cand or {}).get('positions') or []
+        if ce or not lst:
+            continue
+        sc = _assin(lst)
+        comuns = set(sc) & set(sig_atual)
+        if comuns and all(sc[s] == sig_atual[s] for s in comuns):
+            continue           # snapshot republicado, não é pregão anterior
+        base_map = {(o.get('symbol') or '').upper(): o for o in lst}
+        data_base = (cand or {}).get('date')
+        break
+
+    # ── Agrega por strike ────────────────────────────────────────────
+    ag = {}
+    for o in atuais:
+        k = o.get('strike')
+        if k is None:
+            continue
+        k = float(k)
+        side = (o.get('side') or '').lower()
+        oi = o.get('openInterest') or 0
+        sym = (o.get('symbol') or '').upper()
+        ant = (base_map.get(sym) or {}).get('openInterest')
+        var = (oi - ant) if (ant is not None) else 0
+
+        d = ag.setdefault(k, {'strike': k, 'call': 0, 'put': 0,
+                              'var_call': 0, 'var_put': 0,
+                              'cob': 0, 'trav': 0, 'desc': 0})
+        if side == 'call':
+            d['call'] += oi
+            d['var_call'] += var
+        else:
+            d['put'] += oi
+            d['var_put'] += var
+        d['cob'] += o.get('coveredQuantity') or 0
+        d['trav'] += o.get('blockedQuantity') or 0
+        d['desc'] += o.get('uncoveredQuantity') or 0
+
+    barras = sorted(ag.values(), key=lambda x: x['strike'])
+    for b in barras:
+        b['total'] = b['call'] + b['put']
+
+    oi_call = sum(b['call'] for b in barras)
+    oi_put = sum(b['put'] for b in barras)
+
+    # ── Gama: a BRAPI não calcula gregas para índice (analytics vem com
+    # underlyingPrice/IV/gamma nulos), então a IV sai do preço de tela da
+    # própria série e o gama é calculado por Black-Scholes aqui.
+    curva, flip, gmax, gmin, score, gatual = [], None, None, None, None, None
+    try:
+        r_cont = math.log(1 + _selic() / 100.0)
+    except Exception:
+        r_cont = math.log(1.145)
+
+    if spot and spot > 0:
+        ch, _ec2 = _brapi_opt_get('/chain', par, uid)
+        precos = {}
+        for s in (ch or {}).get('series') or []:
+            sym = (s.get('symbol') or '').upper()
+            if sym:
+                precos[sym] = s
+        try:
+            venc = datetime.strptime(exp, '%Y-%m-%d').date()
+            ref = datetime.strptime(data_ref, '%Y-%m-%d').date() if data_ref else date.today()
+            T = max((venc - ref).days / 365.0, 1.0 / 365.0)
+        except Exception:
+            T = 30 / 365.0
+
+        series = []
+        for o in atuais:
+            sym = (o.get('symbol') or '').upper()
+            s = precos.get(sym) or {}
+            px = s.get('close')
+            K = o.get('strike')
+            oi = o.get('openInterest') or 0
+            if not px or px <= 0 or not K or oi <= 0:
+                continue
+            side = (o.get('side') or '').lower()
+            try:
+                iv = _implied_vol(spot, float(K), T, r_cont, float(px), side == 'call')
+            except Exception:
+                iv = None
+            if not iv or not (0.02 <= iv <= 3.0):
+                continue
+            series.append({'side': side, 'K': float(K), 'T': T, 'iv': iv,
+                           'oi': oi, 'lote': int(o.get('allocationRoundLot') or 1),
+                           'r': r_cont})
+        if series:
+            curva, flip, mx, mn = _gex_curva(series, spot)
+            gmax = {'s': mx['s'], 'v': mx['total']} if mx else None
+            gmin = {'s': mn['s'], 'v': mn['total']} if mn else None
+            if curva:
+                p = min(curva, key=lambda c: abs(c['s'] - spot))
+                gatual = p['total']
+                vals = [c['total'] for c in curva]
+                media = sum(vals) / len(vals)
+                dp = math.sqrt(sum((v - media) ** 2 for v in vals) / len(vals))
+                if dp > 0:
+                    score = round((gatual - media) / dp, 2)
+
+    return jsonify({
+        'ativo': a, 'nome': cfg['nome'], 'exp': exp,
+        'data_ref': data_ref, 'data_base': data_base,
+        'contrato': (alvo or {}).get('symbol'),
+        'contrato_cheio': (c_cheio or {}).get('symbol'),
+        'mult': (alvo or {}).get('mult'),
+        'spot': spot,
+        'barras': barras,
+        'oi_call': oi_call, 'oi_put': oi_put,
+        'pc_ratio': round(oi_put / oi_call, 3) if oi_call else None,
+        'curva': curva, 'flip': flip,
+        'gamma_atual': gatual, 'gamma_max': gmax, 'gamma_min': gmin,
+        'score': score,
+        'n_series': len(atuais),
     })
 
 

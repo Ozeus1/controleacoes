@@ -6551,6 +6551,254 @@ def _fyt_diversify(rows_list, key_fn, per_key=3, limit=60):
     return out
 
 
+# ══════════════════════════════════════════════════════════════════
+# MAPA DE OPÇÕES — posições em aberto (open interest) via BRAPI v2
+# ══════════════════════════════════════════════════════════════════
+
+_BRAPI_OPT_BASE = 'https://brapi.dev/api/v2/options'
+_brapi_opt_cache = {}          # {chave: (ts, payload)}
+_BRAPI_OPT_TTL = 900           # 15 min — dados são EOD, não mudam durante o dia
+
+
+def _brapi_opt_token(user_id=None):
+    """Token BRAPI do usuário; ignora o placeholder do .env."""
+    try:
+        if user_id:
+            t = Settings.get_value('brapi_token', user_id=user_id)
+            if t:
+                return t.strip()
+    except Exception:
+        pass
+    env = (os.environ.get('BRAPI_API_KEY') or '').strip()
+    return env if env and env != 'your_api_key_here' else ''
+
+
+def _brapi_opt_get(path, params, user_id=None, timeout=20):
+    """GET no módulo de opções da BRAPI, com cache e erro legível.
+
+    Retorna (json, erro). Sem token a API só libera PETR4 (sandbox); para
+    os demais ativos o plano Pro é obrigatório e a mensagem da própria
+    BRAPI é repassada à tela.
+    """
+    p = {k: v for k, v in (params or {}).items() if v not in (None, '')}
+    token = _brapi_opt_token(user_id)
+    if token:
+        p['token'] = token
+
+    ck = (path, tuple(sorted((k, str(v)) for k, v in p.items() if k != 'token')), bool(token))
+    hit = _brapi_opt_cache.get(ck)
+    if hit and (time.time() - hit[0]) < _BRAPI_OPT_TTL:
+        return hit[1], None
+
+    try:
+        r = requests.get(f'{_BRAPI_OPT_BASE}{path}', params=p, timeout=timeout,
+                         headers={'User-Agent': 'MyInvest/1.0'})
+    except requests.exceptions.Timeout:
+        return None, 'A BRAPI demorou para responder. Tente novamente.'
+    except requests.exceptions.RequestException:
+        return None, 'Não foi possível conectar à BRAPI.'
+
+    if r.status_code != 200:
+        msg = ''
+        try:
+            msg = (r.json() or {}).get('message') or ''
+        except Exception:
+            msg = (r.text or '')[:200]
+        if r.status_code in (401, 402, 403):
+            extra = ('Sem token, a BRAPI libera apenas PETR4 (sandbox); '
+                     'outros ativos exigem plano Pro. Cadastre a chave em Configuração.')
+            return None, f'BRAPI {r.status_code}: {msg or "acesso negado"}. {extra}'
+        return None, f'BRAPI {r.status_code}: {msg or "erro na consulta"}'
+
+    try:
+        data = r.json()
+    except Exception:
+        return None, 'Resposta inválida da BRAPI.'
+
+    _brapi_opt_cache[ck] = (time.time(), data)
+    return data, None
+
+
+def _max_pain(strikes_map):
+    """Strike que minimiza o valor intrínseco total a pagar pelos lançadores.
+
+    strikes_map: {strike: {'call': oi_call, 'put': oi_put}}
+    No vencimento, quem vendeu CALL paga max(S-K,0) e quem vendeu PUT paga
+    max(K-S,0), ponderado pelo open interest de cada série.
+    """
+    ks = sorted(strikes_map.keys())
+    if not ks:
+        return None, []
+    curva = []
+    for s in ks:
+        dor = 0.0
+        for k, v in strikes_map.items():
+            if k < s:
+                dor += (s - k) * (v.get('call') or 0)
+            elif k > s:
+                dor += (k - s) * (v.get('put') or 0)
+        curva.append({'strike': s, 'dor': round(dor, 2)})
+    melhor = min(curva, key=lambda x: x['dor'])
+    return melhor['strike'], curva
+
+
+@app.route('/mapa-opcoes')
+@login_required
+def mapa_opcoes():
+    """Mapa de Opções: posições em aberto (OI) por strike, via BRAPI."""
+    ativos = sorted({(a.ticker or '').strip().upper()
+                     for a in Asset.query.filter_by(user_id=current_user.id).all()
+                     if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
+    rk = sorted({(r.ticker or '').strip().upper()
+                 for r in _ranking_liq_filter(
+                     RankingVol.query.filter_by(user_id=current_user.id)).all()
+                 if r.ticker})
+    sugestoes = sorted(set(ativos) | set(rk))
+    return render_template('mapa_opcoes.html',
+                           sugestoes=sugestoes,
+                           tem_token=bool(_brapi_opt_token(current_user.id)))
+
+
+@app.route('/api/mapa-opcoes/vencimentos/<ticker>')
+@login_required
+def api_mapa_vencimentos(ticker):
+    """Vencimentos negociados do ativo (para popular o filtro)."""
+    t = (ticker or '').strip().upper()
+    if not t:
+        return jsonify({'error': 'Informe o ativo.'}), 400
+    data, err = _brapi_opt_get('/expirations', {'underlying': t}, current_user.id)
+    if err:
+        return jsonify({'error': err}), 502
+    return jsonify({'ticker': t, 'vencimentos': (data or {}).get('expirations') or []})
+
+
+@app.route('/api/mapa-opcoes/<ticker>')
+@login_required
+def api_mapa_opcoes(ticker):
+    """Posições em aberto por strike + indicadores do mapa.
+
+    Query: exp (YYYY-MM-DD, obrigatório), side (call|put).
+    O gráfico usa a decomposição da B3 repassada pela BRAPI:
+    coberto (coveredQuantity), travado (blockedQuantity) e
+    descoberto (uncoveredQuantity).
+    """
+    t = (ticker or '').strip().upper()
+    exp = (request.args.get('exp') or '').strip()
+    side = (request.args.get('side') or 'call').strip().lower()
+    if side not in ('call', 'put'):
+        side = 'call'
+    if not t or not exp:
+        return jsonify({'error': 'Informe o ativo e o vencimento.'}), 400
+
+    pos, err = _brapi_opt_get('/positions',
+                              {'underlying': t, 'expirationDate': exp}, current_user.id)
+    if err:
+        return jsonify({'error': err}), 502
+    todas = (pos or {}).get('positions') or []
+    if not todas:
+        return jsonify({'error': f'Sem posições em aberto para {t} em {exp}.'}), 404
+
+    # Fechamento de cada série (tabela) — falha aqui não impede o gráfico
+    fech = {}
+    chain, cerr = _brapi_opt_get('/chain',
+                                 {'underlying': t, 'expirationDate': exp}, current_user.id)
+    if not cerr:
+        for s in (chain or {}).get('series') or []:
+            sym = (s.get('symbol') or '').upper()
+            if sym:
+                fech[sym] = s.get('close')
+
+    # Max Pain considera as duas pontas do vencimento, independente do lado
+    # exibido no gráfico — é uma medida da cadeia inteira.
+    por_strike = {}
+    for o in todas:
+        k = o.get('strike')
+        if k is None:
+            continue
+        k = round(float(k), 2)
+        d = por_strike.setdefault(k, {'call': 0, 'put': 0})
+        d[(o.get('side') or '').lower()] = d.get((o.get('side') or '').lower(), 0) + (o.get('openInterest') or 0)
+    mp_strike, mp_curva = _max_pain(por_strike)
+
+    oi_call = sum((o.get('openInterest') or 0) for o in todas if (o.get('side') or '').lower() == 'call')
+    oi_put = sum((o.get('openInterest') or 0) for o in todas if (o.get('side') or '').lower() == 'put')
+
+    # Série exibida
+    rows, agg = [], {}
+    for o in todas:
+        if (o.get('side') or '').lower() != side:
+            continue
+        k = o.get('strike')
+        if k is None:
+            continue
+        k = round(float(k), 2)
+        cob = o.get('coveredQuantity') or 0
+        tra = o.get('blockedQuantity') or 0
+        des = o.get('uncoveredQuantity') or 0
+        tot = o.get('totalPositionQuantity') or (cob + tra + des)
+        sym = (o.get('symbol') or '').upper()
+        tit = o.get('borrowerQuantity') or 0
+        lan = o.get('lenderQuantity') or 0
+        rows.append({
+            'symbol': sym, 'strike': k, 'close': fech.get(sym),
+            'coberto': cob, 'travado': tra, 'descoberto': des, 'total': tot,
+            'titular': tit, 'lancador': lan,
+            'iq': round(tit / lan, 2) if lan else None,
+            'oi': o.get('openInterest') or 0,
+        })
+        a = agg.setdefault(k, {'strike': k, 'coberto': 0, 'travado': 0, 'descoberto': 0,
+                               'total': 0, 'titular': 0, 'lancador': 0})
+        a['coberto'] += cob
+        a['travado'] += tra
+        a['descoberto'] += des
+        a['total'] += tot
+        a['titular'] += tit
+        a['lancador'] += lan
+
+    if not rows:
+        return jsonify({'error': f'Sem {side.upper()}s com posição em aberto para {t} em {exp}.'}), 404
+
+    barras = sorted(agg.values(), key=lambda x: x['strike'])
+    for b in barras:
+        b['iq'] = round(b['titular'] / b['lancador'], 2) if b['lancador'] else None
+    rows.sort(key=lambda x: x['strike'])
+
+    # Spot ao vivo: o mapa serve para qualquer ticker, inclusive fora da
+    # carteira, então o cache do banco (que pode estar velho ou vazio) entra
+    # apenas como fallback.
+    spot = None
+    try:
+        q = get_quotes([t], user_id=current_user.id) or {}
+        p = (q.get(t) or {}).get('price')
+        spot = float(p) if p else None
+    except Exception:
+        spot = None
+    if not spot:
+        try:
+            cp, _chg = _get_underlying_quote_cached(t, current_user.id)
+            spot = float(cp) if cp else None
+        except Exception:
+            spot = None
+
+    tot_cob = sum(b['coberto'] for b in barras)
+    tot_tra = sum(b['travado'] for b in barras)
+    tot_des = sum(b['descoberto'] for b in barras)
+
+    return jsonify({
+        'ticker': t, 'exp': exp, 'side': side,
+        'data_ref': (pos or {}).get('date'),
+        'spot': spot,
+        'barras': barras, 'rows': rows,
+        'tot_coberto': tot_cob, 'tot_travado': tot_tra, 'tot_descoberto': tot_des,
+        'oi_call': oi_call, 'oi_put': oi_put,
+        'pc_ratio': round(oi_put / oi_call, 2) if oi_call else None,
+        'max_pain': mp_strike,
+        'max_pain_curva': mp_curva,
+        'max_pain_pct': (round((mp_strike - spot) / spot * 100, 1)
+                         if (mp_strike is not None and spot) else None),
+    })
+
+
 @app.route('/fyt')
 @login_required
 def fyt():

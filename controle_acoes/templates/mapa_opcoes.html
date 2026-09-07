@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+{% block title %}Mapa de Opções{% endblock %}
+{% block extra_scripts %}
+<style>
+.mo-filtros{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.9rem;
+  background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);border-radius:8px;
+  padding:.9rem 1rem;margin:.6rem 0 .8rem;}
+.mo-campo{display:flex;flex-direction:column;gap:.3rem;}
+.mo-campo label{font-size:.75rem;color:var(--text-secondary);font-weight:600;
+  text-transform:uppercase;letter-spacing:.03em;}
+.mo-campo select,.mo-campo input{background:var(--card-bg);color:var(--text-primary);
+  border:1px solid var(--border-color);border-radius:5px;padding:.35rem .5rem;font-size:.85rem;}
+.mo-campo input{text-transform:uppercase;}
+.mo-side{display:flex;gap:0;}
+.mo-side button{flex:1;padding:.35rem .5rem;font-size:.85rem;font-weight:700;cursor:pointer;
+  background:var(--card-bg);color:var(--text-secondary);border:1px solid var(--border-color);}
+.mo-side button:first-child{border-radius:5px 0 0 5px;}
+.mo-side button:last-child{border-radius:0 5px 5px 0;border-left:none;}
+.mo-side button.on{background:#2563eb;color:#fff;border-color:#2563eb;}
+.mo-side button.on.put{background:#dc2626;border-color:#dc2626;}
+
+#mo-sug{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.5rem;}
+.mo-tbtn{padding:.25rem .6rem;border:1px solid #475569;border-radius:5px;font-size:.8rem;
+  cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap;}
+.mo-tbtn.active{background:#2563eb;border-color:#2563eb;font-weight:700;}
+
+#mo-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
+#mo-error{display:none;color:#f87171;padding:1rem;background:rgba(239,68,68,.08);
+  border:1px solid rgba(239,68,68,.25);border-radius:6px;margin:.6rem 0;}
+#mo-hint{padding:1.5rem;text-align:center;color:var(--text-secondary);font-size:.88rem;}
+#mo-res{display:none;}
+
+.mo-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;margin:1rem 0;}
+.mo-card{background:var(--hover-bg);border:1px solid var(--border-color);border-radius:6px;
+  padding:.7rem .9rem;display:flex;flex-direction:column;gap:.2rem;text-align:center;}
+.mo-card .lbl{font-size:.74rem;color:var(--text-secondary);}
+.mo-card .val{font-size:1.15rem;font-weight:700;color:var(--text-primary);}
+.mo-card .sub{font-size:.72rem;color:var(--text-secondary);}
+.mo-card .val.cob{color:#3b82f6;}
+.mo-card .val.tra{color:#eab308;}
+.mo-card .val.des{color:#f87171;}
+
+.mo-legenda{display:flex;gap:1.2rem;justify-content:center;flex-wrap:wrap;
+  font-size:.8rem;color:var(--text-secondary);margin-bottom:.4rem;}
+.mo-legenda span{display:inline-flex;align-items:center;gap:.35rem;}
+.mo-dot{width:12px;height:12px;border-radius:2px;display:inline-block;}
+
+#mo-chart-wrap{position:relative;height:420px;background:var(--card-bg);
+  border:1px solid var(--border-color);border-radius:8px;padding:.6rem;}
+table.mo-tab{width:100%;border-collapse:collapse;font-size:.8rem;}
+table.mo-tab th{padding:.4rem .5rem;text-align:right;white-space:nowrap;background:var(--card-bg);
+  color:var(--text-secondary);font-weight:600;border-bottom:1px solid var(--border-color);
+  position:sticky;top:0;cursor:pointer;user-select:none;}
+table.mo-tab th:first-child{text-align:left;}
+table.mo-tab td{padding:.4rem .5rem;text-align:right;white-space:nowrap;color:var(--text-primary);
+  border-bottom:1px solid rgba(255,255,255,.04);}
+table.mo-tab td:first-child{text-align:left;}
+table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
+.mo-wrap{overflow-x:auto;max-height:520px;overflow-y:auto;}
+.mo-itm td:first-child{border-left:3px solid #eab308;}
+.mo-itm td{background:rgba(234,179,8,.06);}
+.mo-sym{font-weight:600;color:#60a5fa;}
+.mo-nota{font-size:.78rem;color:var(--text-secondary);margin:.5rem 0;}
+@media (max-width:640px){.mo-filtros{grid-template-columns:1fr;}#mo-chart-wrap{height:340px;}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
+    <h2 style="margin:0;">🗺️ Mapa de Opções</h2>
+    <span class="mo-nota" style="margin:0;">Posições em aberto (Open Interest) — fonte BRAPI / B3</span>
+  </div>
+
+  {% if not tem_token %}
+  <div style="margin:.7rem 0;padding:.6rem .9rem;background:rgba(234,179,8,.1);
+              border-left:3px solid #eab308;border-radius:4px;font-size:.83rem;color:var(--text-secondary);">
+    ⚠️ Sem chave BRAPI cadastrada: a API libera apenas <strong>PETR4</strong> (sandbox).
+    Para os demais ativos, cadastre sua chave do plano Pro em
+    <a href="{{ url_for('config') }}">Configuração</a>.
+  </div>
+  {% endif %}
+
+  <div id="mo-sug">
+    {% for t in sugestoes %}<span class="mo-tbtn" data-t="{{ t }}">{{ t }}</span>{% endfor %}
+  </div>
+
+  <div class="mo-filtros">
+    <div class="mo-campo">
+      <label>Ativo subjacente</label>
+      <input id="mo-ticker" placeholder="PETR4" value="PETR4" maxlength="10">
+    </div>
+    <div class="mo-campo">
+      <label>Vencimento</label>
+      <select id="mo-exp"><option value="">— carregando —</option></select>
+    </div>
+    <div class="mo-campo">
+      <label>Tipo</label>
+      <div class="mo-side">
+        <button type="button" id="mo-call" class="on">CALL</button>
+        <button type="button" id="mo-put">PUT</button>
+      </div>
+    </div>
+    <div class="mo-campo">
+      <label>&nbsp;</label>
+      <button type="button" id="mo-buscar" class="btn btn-primary" style="padding:.4rem;">Gerar mapa</button>
+    </div>
+  </div>
+
+  <div id="mo-error"></div>
+  <div id="mo-loading">⏳ Consultando posições em aberto…</div>
+  <div id="mo-hint">Escolha o ativo e o vencimento e clique em <strong>Gerar mapa</strong>.</div>
+
+  <div id="mo-res">
+    <div id="mo-info" class="mo-nota"></div>
+
+    <div class="mo-legenda">
+      <span><i class="mo-dot" style="background:#f87171;"></i> Descoberto</span>
+      <span><i class="mo-dot" style="background:#eab308;"></i> Travado</span>
+      <span><i class="mo-dot" style="background:#3b82f6;"></i> Coberto</span>
+    </div>
+    <div id="mo-chart-wrap"><canvas id="mo-chart"></canvas></div>
+
+    <div class="mo-cards" id="mo-cards"></div>
+
+    <h3 style="margin:1.2rem 0 .4rem;font-size:1rem;">Séries do vencimento</h3>
+    <div class="mo-wrap">
+      <table class="mo-tab no-datatable" id="mo-tabela">
+        <thead><tr>
+          <th data-s="symbol">Opção</th>
+          <th data-s="strike">Strike</th>
+          <th data-s="close">Fechamento</th>
+          <th data-s="coberto">Coberto</th>
+          <th data-s="travado">Travado</th>
+          <th data-s="descoberto">Descoberto</th>
+          <th data-s="total">Total</th>
+          <th data-s="titular">Titular</th>
+          <th data-s="lancador">Lançador</th>
+          <th data-s="iq" title="Titulares ÷ Lançadores">IQ</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="mo-nota">
+      Linhas destacadas estão <strong>ITM</strong> em relação ao spot.
+      <strong>Coberto</strong>: lançador entregou o ativo/margem em garantia.
+      <strong>Travado</strong>: posição bloqueada por outra opção (trava).
+      <strong>Descoberto</strong>: a descoberto, sem cobertura.
+    </p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+(function(){
+  var elT=document.getElementById('mo-ticker'), elE=document.getElementById('mo-exp');
+  var bCall=document.getElementById('mo-call'), bPut=document.getElementById('mo-put');
+  var elErr=document.getElementById('mo-error'), elLoad=document.getElementById('mo-loading');
+  var elHint=document.getElementById('mo-hint'), elRes=document.getElementById('mo-res');
+  var side='call', chart=null, lastData=null, sortKey='strike', sortAsc=true;
+
+  function fmt(n){ return (n||0).toLocaleString('pt-BR'); }
+  function fmtM(n){
+    n=n||0;
+    if(Math.abs(n)>=1e6) return (n/1e6).toFixed(1).replace('.',',')+'M';
+    if(Math.abs(n)>=1e3) return (n/1e3).toFixed(0)+'k';
+    return String(n);
+  }
+  function money(v){ return v==null?'—':('R$ '+Number(v).toFixed(2).replace('.',',')); }
+  function showErr(m){ elErr.textContent=m; elErr.style.display='block'; }
+  function clearErr(){ elErr.style.display='none'; }
+
+  function setSide(s){
+    side=s;
+    bCall.classList.toggle('on', s==='call');
+    bPut.classList.toggle('on', s==='put');
+    bPut.classList.toggle('put', s==='put');
+    if(lastData) buscar();
+  }
+  bCall.onclick=function(){ setSide('call'); };
+  bPut.onclick=function(){ setSide('put'); };
+
+  document.querySelectorAll('.mo-tbtn').forEach(function(b){
+    b.onclick=function(){
+      document.querySelectorAll('.mo-tbtn').forEach(function(x){x.classList.remove('active');});
+      b.classList.add('active');
+      elT.value=b.dataset.t;
+      carregarVencimentos();
+    };
+  });
+
+  function carregarVencimentos(){
+    var t=(elT.value||'').trim().toUpperCase();
+    if(!t){ return; }
+    elE.innerHTML='<option value="">— carregando —</option>';
+    clearErr();
+    fetch('/api/mapa-opcoes/vencimentos/'+encodeURIComponent(t))
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
+      .then(function(res){
+        if(!res.ok){ elE.innerHTML='<option value="">—</option>'; showErr(res.j.error||'Erro ao buscar vencimentos.'); return; }
+        var vs=res.j.vencimentos||[];
+        if(!vs.length){ elE.innerHTML='<option value="">— sem vencimentos —</option>'; return; }
+        elE.innerHTML=vs.map(function(v){
+          var p=v.split('-');
+          return '<option value="'+v+'">'+p[2]+'/'+p[1]+'/'+p[0]+'</option>';
+        }).join('');
+      })
+      .catch(function(){ showErr('Falha de rede ao buscar vencimentos.'); });
+  }
+  elT.addEventListener('change', carregarVencimentos);
+
+  function buscar(){
+    var t=(elT.value||'').trim().toUpperCase(), e=elE.value;
+    if(!t||!e){ showErr('Escolha o ativo e o vencimento.'); return; }
+    clearErr(); elHint.style.display='none'; elRes.style.display='none'; elLoad.style.display='block';
+    fetch('/api/mapa-opcoes/'+encodeURIComponent(t)+'?exp='+encodeURIComponent(e)+'&side='+side)
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
+      .then(function(res){
+        elLoad.style.display='none';
+        if(!res.ok){ showErr(res.j.error||'Erro ao gerar o mapa.'); elHint.style.display='block'; return; }
+        lastData=res.j; render(res.j); elRes.style.display='block';
+      })
+      .catch(function(){ elLoad.style.display='none'; showErr('Falha de rede.'); elHint.style.display='block'; });
+  }
+  document.getElementById('mo-buscar').onclick=buscar;
+
+  function render(d){
+    var lbl=d.side==='call'?'CALL':'PUT';
+    var p=(d.exp||'').split('-');
+    document.getElementById('mo-info').innerHTML=
+      '<strong>'+d.ticker+'</strong> · '+lbl+' · vencimento '+(p[2]+'/'+p[1]+'/'+p[0])+
+      (d.spot?(' · spot <strong>R$ '+Number(d.spot).toFixed(2).replace('.',',')+'</strong>'):'')+
+      (d.data_ref?(' · posições de '+d.data_ref.split('-').reverse().join('/')):'');
+
+    renderChart(d);
+    renderCards(d);
+    renderTabela(d);
+  }
+
+  function renderCards(d){
+    var mp=d.max_pain==null?'—':('R$ '+Number(d.max_pain).toFixed(2).replace('.',','));
+    var mpSub=d.max_pain_pct==null?'':((d.max_pain_pct>0?'+':'')+String(d.max_pain_pct).replace('.',',')+'% do spot');
+    var c=[
+      {l:'Coberto', v:fmt(d.tot_coberto), s:'Total de '+(d.side==='call'?'CALLs':'PUTs'), k:'cob'},
+      {l:'Travado', v:fmt(d.tot_travado), s:'Total de '+(d.side==='call'?'CALLs':'PUTs'), k:'tra'},
+      {l:'Descoberto', v:fmt(d.tot_descoberto), s:'Total de '+(d.side==='call'?'CALLs':'PUTs'), k:'des'},
+      {l:'PUT/CALL Ratio', v:(d.pc_ratio==null?'—':String(d.pc_ratio).replace('.',',')), s:'OI put ÷ OI call', k:''},
+      {l:'Max Pain', v:mp, s:mpSub, k:''}
+    ];
+    document.getElementById('mo-cards').innerHTML=c.map(function(x){
+      return '<div class="mo-card"><span class="lbl">'+x.l+'</span>'+
+             '<span class="val '+x.k+'">'+x.v+'</span>'+
+             '<span class="sub">'+(x.s||'')+'</span></div>';
+    }).join('');
+  }
+
+  function renderChart(d){
+    var ctx=document.getElementById('mo-chart').getContext('2d');
+    if(chart){ chart.destroy(); }
+    var labels=d.barras.map(function(b){ return b.strike; });
+    var css=getComputedStyle(document.body);
+    var grid='rgba(148,163,184,.12)', tick=css.getPropertyValue('--text-secondary')||'#94a3b8';
+
+    // Linhas de referência (spot e max pain) desenhadas por plugin
+    var refs=[];
+    if(d.spot) refs.push({v:d.spot, cor:'#60a5fa', txt:'Spot: R$ '+Number(d.spot).toFixed(2).replace('.',',')});
+    if(d.max_pain!=null) refs.push({v:d.max_pain, cor:'#c084fc', txt:'Max Pain: R$ '+Number(d.max_pain).toFixed(2).replace('.',',')});
+
+    var refPlugin={
+      id:'mo-refs',
+      afterDatasetsDraw:function(ch){
+        var xs=ch.scales.x, ys=ch.scales.y, g=ch.ctx;
+        refs.forEach(function(r){
+          // posição proporcional entre as barras de strike
+          var px=null;
+          for(var i=0;i<labels.length-1;i++){
+            if(r.v>=labels[i] && r.v<=labels[i+1]){
+              var f=(r.v-labels[i])/((labels[i+1]-labels[i])||1);
+              px=xs.getPixelForValue(i)+f*(xs.getPixelForValue(i+1)-xs.getPixelForValue(i));
+              break;
+            }
+          }
+          if(px==null){
+            if(r.v<labels[0]) px=xs.getPixelForValue(0);
+            else if(r.v>labels[labels.length-1]) px=xs.getPixelForValue(labels.length-1);
+            else return;
+          }
+          g.save();
+          g.strokeStyle=r.cor; g.lineWidth=1.5; g.setLineDash([5,4]);
+          g.beginPath(); g.moveTo(px, ys.top); g.lineTo(px, ys.bottom); g.stroke();
+          g.setLineDash([]);
+          g.font='600 10px sans-serif'; g.textAlign='center';
+          var w=g.measureText(r.txt).width+10;
+          g.fillStyle=r.cor;
+          g.fillRect(px-w/2, ys.top-16, w, 14);
+          g.fillStyle='#0f172a';
+          g.fillText(r.txt, px, ys.top-6);
+          g.restore();
+        });
+      }
+    };
+
+    chart=new Chart(ctx,{
+      type:'bar',
+      data:{labels:labels, datasets:[
+        {label:'Descoberto', data:d.barras.map(function(b){return b.descoberto;}), backgroundColor:'#f87171', stack:'s'},
+        {label:'Travado',    data:d.barras.map(function(b){return b.travado;}),    backgroundColor:'#eab308', stack:'s'},
+        {label:'Coberto',    data:d.barras.map(function(b){return b.coberto;}),    backgroundColor:'#3b82f6', stack:'s'}
+      ]},
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        layout:{padding:{top:20}},
+        interaction:{mode:'index', intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:{
+            callbacks:{
+              title:function(it){ return 'Strike R$ '+Number(it[0].label).toFixed(2).replace('.',','); },
+              label:function(c){ return c.dataset.label+': '+fmt(c.raw); },
+              footer:function(it){
+                var i=it[0].dataIndex, b=d.barras[i];
+                return 'Total: '+fmt(b.total)+'\nTitular: '+fmt(b.titular)+' · Lançador: '+fmt(b.lancador);
+              }
+            }
+          }
+        },
+        scales:{
+          x:{stacked:true, ticks:{color:tick, font:{size:9}, maxRotation:90, minRotation:90, autoSkip:true, maxTicksLimit:60},
+             grid:{display:false}},
+          y:{stacked:true, ticks:{color:tick, font:{size:10}, callback:function(v){return fmtM(v);}},
+             grid:{color:grid}}
+        }
+      },
+      plugins:[refPlugin]
+    });
+  }
+
+  function renderTabela(d){
+    var rows=d.rows.slice();
+    rows.sort(function(a,b){
+      var x=a[sortKey], y=b[sortKey];
+      if(x==null) x=-Infinity; if(y==null) y=-Infinity;
+      if(typeof x==='string') return sortAsc? x.localeCompare(y) : y.localeCompare(x);
+      return sortAsc? x-y : y-x;
+    });
+    var spot=d.spot;
+    document.querySelector('#mo-tabela tbody').innerHTML=rows.map(function(r){
+      var itm = spot && (d.side==='call' ? r.strike<spot : r.strike>spot);
+      return '<tr class="'+(itm?'mo-itm':'')+'">'+
+        '<td class="mo-sym">'+r.symbol+'</td>'+
+        '<td>'+money(r.strike)+'</td>'+
+        '<td>'+(r.close==null?'—':money(r.close))+'</td>'+
+        '<td>'+fmt(r.coberto)+'</td>'+
+        '<td>'+fmt(r.travado)+'</td>'+
+        '<td>'+fmt(r.descoberto)+'</td>'+
+        '<td><strong>'+fmt(r.total)+'</strong></td>'+
+        '<td>'+fmt(r.titular)+'</td>'+
+        '<td>'+fmt(r.lancador)+'</td>'+
+        '<td>'+(r.iq==null?'—':String(r.iq).replace('.',','))+'</td>'+
+      '</tr>';
+    }).join('');
+  }
+
+  document.querySelectorAll('#mo-tabela th').forEach(function(th){
+    th.onclick=function(){
+      var k=th.dataset.s; if(!k) return;
+      if(sortKey===k) sortAsc=!sortAsc; else { sortKey=k; sortAsc=(k==='symbol'||k==='strike'); }
+      if(lastData) renderTabela(lastData);
+    };
+  });
+
+  // Pré-seleção via URL (?ticker=PETR4&exp=...&side=put)
+  var qs=new URLSearchParams(location.search);
+  if(qs.get('ticker')) elT.value=qs.get('ticker').toUpperCase();
+  if(qs.get('side')==='put') setSide('put');
+  carregarVencimentos();
+})();
+</script>
+{% endblock %}

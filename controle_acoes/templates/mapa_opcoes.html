@@ -123,6 +123,10 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
       <span><i class="mo-dot" style="background:#f87171;"></i> Descoberto</span>
       <span><i class="mo-dot" style="background:#eab308;"></i> Travado</span>
       <span><i class="mo-dot" style="background:#3b82f6;"></i> Coberto</span>
+      <label style="cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;"
+             title="Titulares ÷ lançadores de cada strike">
+        <input type="checkbox" id="mo-iq-chk" checked style="cursor:pointer;margin:0;"> IQ sobre as barras
+      </label>
     </div>
     <div id="mo-chart-wrap"><canvas id="mo-chart"></canvas></div>
 
@@ -164,6 +168,11 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
   var elErr=document.getElementById('mo-error'), elLoad=document.getElementById('mo-loading');
   var elHint=document.getElementById('mo-hint'), elRes=document.getElementById('mo-res');
   var side='call', chart=null, lastData=null, sortKey='strike', sortAsc=true;
+  var elIQ=document.getElementById('mo-iq-chk'), mostrarIQ=true;
+  elIQ.addEventListener('change', function(){
+    mostrarIQ=elIQ.checked;
+    if(chart) chart.update();      // só redesenha, não refaz a consulta
+  });
 
   function fmt(n){ return (n||0).toLocaleString('pt-BR'); }
   function fmtM(n){
@@ -301,6 +310,7 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
       id:'mo-refs',
       afterDatasetsDraw:function(ch){
         var xs=ch.scales.x, ys=ch.scales.y, g=ch.ctx;
+        ch.$moRefBoxes=[];        // faixas x das etiquetas, lidas pelo iqPlugin
         refs.forEach(function(r){
           // posição proporcional entre as barras de strike
           var px=null;
@@ -327,7 +337,57 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
           g.fillStyle='#0f172a';
           g.fillText(r.txt, px, ys.top-6);
           g.restore();
+          ch.$moRefBoxes.push([px-w/2, px+w/2]);
         });
+      }
+    };
+
+    // IQ (titulares ÷ lançadores) escrito no topo de cada barra. Com ~170
+    // strikes não cabe um rótulo em cada um: desenha das barras maiores para
+    // as menores e pula as que colidiriam com um rótulo já escrito.
+    var iqPlugin={
+      id:'mo-iq',
+      afterDatasetsDraw:function(ch){
+        if(!mostrarIQ) return;
+        var meta=ch.getDatasetMeta(0), ys=ch.scales.y, g=ch.ctx;
+        if(!meta || !meta.data || !meta.data.length) return;
+
+        var itens=[];
+        for(var i=0;i<d.barras.length;i++){
+          var b=d.barras[i];
+          if(b.iq==null) continue;
+          var el=meta.data[i]; if(!el) continue;
+          var soma=(b.coberto||0)+(b.travado||0)+(b.descoberto||0);
+          // topo da pilha: acima se positiva, abaixo se negativa (modo variação)
+          var yTopo=ys.getPixelForValue(soma>=0?Math.max(soma,0):Math.min(soma,0));
+          itens.push({x:el.x, y:yTopo, neg:soma<0, mag:Math.abs(soma),
+                      txt:String(b.iq).replace('.',',')});
+        }
+        itens.sort(function(a,b2){ return b2.mag-a.mag; });
+
+        g.save();
+        g.font='600 9px sans-serif'; g.textAlign='center';
+        g.fillStyle=tick||'#94a3b8';
+        var ocupados=[];
+        var refBoxes=ch.$moRefBoxes||[];
+        itens.forEach(function(it){
+          var meia=g.measureText(it.txt).width/2+2;
+          var ini=it.x-meia, fim=it.x+meia;
+          for(var j=0;j<ocupados.length;j++){
+            if(ini<ocupados[j][1] && fim>ocupados[j][0]) return;   // colide com outro IQ
+          }
+          var y=it.neg? (it.y+10) : (it.y-3);
+          if(y<ys.top+9) y=ys.top+9;          // mantém dentro da área do gráfico
+          // Sob uma etiqueta de Spot/Max Pain: desce o rótulo em vez de sumir
+          // com ele — são justamente os strikes de maior interesse.
+          for(var k=0;k<refBoxes.length;k++){
+            if(ini<refBoxes[k][1] && fim>refBoxes[k][0] && y<ys.top+14){ y=ys.top+14; break; }
+          }
+          if(y>ys.bottom-2) return;
+          g.fillText(it.txt, it.x, y);
+          ocupados.push([ini,fim]);
+        });
+        g.restore();
       }
     };
 
@@ -340,7 +400,7 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
       ]},
       options:{
         responsive:true, maintainAspectRatio:false,
-        layout:{padding:{top:20}},
+        layout:{padding:{top:28}},
         interaction:{mode:'index', intersect:false},
         plugins:{
           legend:{display:false},
@@ -362,7 +422,7 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
              grid:{color:grid}}
         }
       },
-      plugins:[refPlugin]
+      plugins:[refPlugin, iqPlugin]
     });
   }
 

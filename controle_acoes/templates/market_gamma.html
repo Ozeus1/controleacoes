@@ -470,9 +470,7 @@
         msg.style.cssText='text-align:center;color:var(--text-secondary);padding:2rem 0;';
         wrap.appendChild(msg);
       }
-      msg.textContent = d.exp==='all'
-        ? 'Escolha um vencimento específico para separar atual, próximo e demais.'
-        : 'Sem dados suficientes para montar os Walls.';
+      msg.textContent = 'Sem dados suficientes para montar os Walls.';
       return;
     }
     ctx.canvas.style.display=''; if(msg) msg.remove();
@@ -531,9 +529,7 @@
         msg.style.cssText='text-align:center;color:var(--text-secondary);padding:2rem 0;';
         wrap.appendChild(msg);
       }
-      msg.textContent = d.exp==='all'
-        ? 'Escolha um vencimento específico para separar atual, próximo e demais.'
-        : 'Sem dados suficientes para montar os Walls.';
+      msg.textContent = 'Sem dados suficientes para montar os Walls.';
       return;
     }
     ctx.canvas.style.display=''; if(msg) msg.remove();

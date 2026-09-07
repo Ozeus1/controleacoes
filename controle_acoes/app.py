@@ -7261,14 +7261,24 @@ def api_market_gamma(ticker):
     ex_data, ex_err = _brapi_opt_get('/expirations', {'underlying': t}, uid)
     todos_vencs = ((ex_data or {}).get('expirations') or []) if not ex_err else []
 
-    proximo_venc = None   # vencimento seguinte ao selecionado, p/ os Walls
+    atual_venc, proximo_venc = None, None   # referências p/ os grupos dos Walls
     if exp == 'all':
         vencs = todos_vencs[:12]
         if not vencs:
             return jsonify({'error': f'Sem vencimentos para {t}.'}), 404
-        vencs_walls = []       # 'all' já soma tudo na curva principal
+        # A curva principal já soma tudo; os Walls, porém, ainda fazem
+        # sentido aqui — usam o vencimento mais próximo do calendário como
+        # 'atual' e o segundo mais próximo como 'próximo', o mesmo critério
+        # que se aplicaria se o usuário tivesse selecionado manualmente o
+        # primeiro vencimento em vez de 'Visão Completa'.
+        if len(vencs) >= 1:
+            atual_venc = vencs[0]
+        if len(vencs) >= 2:
+            proximo_venc = vencs[1]
+        vencs_walls = vencs   # já buscados para a curva — reaproveita
     else:
         vencs = [exp]
+        atual_venc = exp
         # Walls: o vencimento selecionado, o próximo seguinte a ele (o
         # primeiro depois de 'exp' na lista ordenada), e os demais depois
         # desse — três grupos, não dois. Vencimentos anteriores a 'exp'
@@ -7310,6 +7320,11 @@ def api_market_gamma(ticker):
             series.extend(parte)
             usados.append(x)
             data_ref = data_ref or (d or {}).get('date')
+        # Classificação do grupo é independente de "entra na curva
+        # principal": em Visão Completa todos os vencimentos entram na
+        # curva, mas só o mais próximo do calendário conta como 'atual'
+        # nos Walls.
+        if x == atual_venc:
             grupo = 'atual'
         elif x == proximo_venc:
             grupo = 'proximo'
@@ -7359,10 +7374,10 @@ def api_market_gamma(ticker):
     lista_par.sort(key=lambda x: x['strike'])
 
     # ── Jumba Walls: gama por strike — atual / próximo / demais ──────
-    walls = []
-    if exp != 'all':
-        base_walls = series_walls if series_walls else [dict(o, grupo='atual') for o in series]
-        walls = _gex_walls(base_walls, spot)
+    # Também roda em 'all': mesmo somando tudo na curva principal, os
+    # grupos usam o vencimento mais próximo do calendário como referência.
+    base_walls = series_walls if series_walls else [dict(o, grupo='atual') for o in series]
+    walls = _gex_walls(base_walls, spot)
 
     # Gama atual (no spot) e Gamma Score: quão longe do zero a curva está,
     # em desvios-padrão da própria curva — dá noção de regime.

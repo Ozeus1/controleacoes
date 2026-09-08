@@ -299,20 +299,20 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
     var canvasHtml = '<div class="mp-canvas-wrap"><canvas class="mp-payoff" id="' + canvasId + '"></canvas></div>';
 
     var toolbarHtml = '<div class="mp-toolbar">' +
-      '<button type="button" class="btn btn-sm" style="background:#10b981;color:white;" ' +
+      '<button type="button" class="btn btn-sm btn-verde"  ' +
       'onclick="mpAtualizarCard(' + st.id + ')" id="mp-atualiza-' + st.id + '" ' +
       'title="Atualiza os prêmios via OpLab (pregão aberto: bid/ask executável; fechado: último negócio)">⟳ Atualizar</button>' +
-      '<button type="button" class="btn btn-sm" style="background:#7c3aed;color:white;" ' +
+      '<button type="button" class="btn btn-sm btn-violeta"  ' +
       'onclick="mpAbrirEmCalculos(' + st.id + ')" ' +
       'title="Abre esta estrutura pré-preenchida na página Cálculos de Opções">🧮 Abrir em Cálculos</button>' +
-      '<button type="button" class="btn btn-sm" style="background:#0ea5e9;color:white;" ' +
+      '<button type="button" class="btn btn-sm btn-azul"  ' +
       'onclick="mpEditarEmCadeia(' + st.id + ')" ' +
       'title="Abre o editor da Cadeia de Opções com estas pernas">🔗 Editar em Cadeia de Opções</button>' +
       '</div>';
 
     var saveHtml = '<div class="mp-save-row" style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.7rem;">' +
       '<button type="button" class="btn btn-sm btn-primary" onclick="mpSaveStrategy(' + st.id + ', false)">💾 Salvar</button>' +
-      '<button type="button" class="btn btn-sm" style="background:#f59e0b;color:white;" ' +
+      '<button type="button" class="btn btn-sm btn-laranja"  ' +
       'onclick="mpSaveStrategy(' + st.id + ', true)" ' +
       'title="Grava a operação nas tabelas de acompanhamento da página Opções. Se esta put veio de uma posição existente, ela sai de \'Venda a Seco de Puts\' e a estrutura toda passa a ser acompanhada como Operação Estruturada.">🚀 Salvar em Produção</button>' +
       '<span id="mp-save-msg-' + st.id + '" style="font-size:.8rem;color:var(--text-secondary);align-self:center;"></span>' +

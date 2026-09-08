@@ -14,7 +14,7 @@
         </div>
         <div style="display:flex; gap:.5rem; margin-left:auto;">
             {% if manage_op_id is defined and manage_op_id %}
-            <button class="btn btn-sm" style="background:#f59e0b;color:white;" onclick="openManejo()"
+            <button class="btn btn-sm btn-laranja" onclick="openManejo()"
                     title="Fechar/substituir pernas registrando o resultado realizado no Histórico">🔧 Manejo</button>
             {% endif %}
             {% if underlying %}
@@ -139,10 +139,10 @@
                 </div>
 
                 <div style="display:flex; gap:.5rem; justify-content:flex-end; margin-top:1rem; flex-wrap:wrap;">
-                    <button type="button" class="btn btn-sm" id="mj-sim-btn" style="background:#0ea5e9;color:white;"
+                    <button type="button" class="btn btn-sm btn-azul" id="mj-sim-btn" 
                             onclick="mjSimBtnClick()"
                             title="1º clique: prévia dos fluxos e do novo payoff (recalcula sozinha ao editar). Depois: salva a simulação na tela Manejo">🔮 Simular manejo</button>
-                    <button type="button" class="btn btn-sm" style="background:#0d9488;color:white;"
+                    <button type="button" class="btn btn-sm btn-teal" 
                             onclick="mjAbrirSimulador()"
                             title="Abre a tela Manejo com estas pernas — lá é possível varrer a cadeia (10/20 strikes, semanais, prazo), simular e salvar">📆 Abrir no Manejo</button>
                     <button type="button" class="btn btn-secondary btn-sm" onclick="closeManejo()">Cancelar</button>
@@ -729,6 +729,7 @@
 <script>
 var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
 </script>
+<script src="{{ url_for('static', filename='js/payoff_style.js') }}"></script>
 <script>
 (function () {
     var r = Math.log(1 + SELIC_RATE / 100); // taxa contínua a.a.
@@ -1014,87 +1015,39 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
         function yPx(P) { return PAD.top  + (1 - (P - yMin) / (yMax - yMin)) * cH; }
 
         var y0 = yPx(0);
+        var geo = { W:W, H:H, PAD:PAD, cW:cW, cH:cH };
 
-        // ── Grade ─────────────────────────────────────────────────────────────
-        ctx.strokeStyle = 'rgba(100,116,139,0.18)';
-        ctx.lineWidth = 1;
-        var nY = 6;
-        for (var yi = 0; yi <= nY; yi++) {
-            var yv = yMin + yi * (yMax - yMin) / nY;
-            var yp = yPx(yv);
-            ctx.beginPath(); ctx.moveTo(PAD.left, yp); ctx.lineTo(W - PAD.right, yp); ctx.stroke();
-        }
-
-        // ── Eixo zero ────────────────────────────────────────────────────────
-        ctx.strokeStyle = 'rgba(100,116,139,0.55)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(PAD.left, y0); ctx.lineTo(W - PAD.right, y0); ctx.stroke();
+        PayoffStyle.grade(ctx, geo);
+        PayoffStyle.eixoZero(ctx, geo, y0);
 
         // ── Linhas de strike ─────────────────────────────────────────────────
         strikes.forEach(function(K) {
             var xk = xPx(K);
-            ctx.setLineDash([5,4]);
-            ctx.strokeStyle = 'rgba(148,163,184,0.55)';
-            ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(xk, PAD.top); ctx.lineTo(xk, H - PAD.bottom); ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.fillStyle = 'rgba(148,163,184,0.85)';
-            ctx.font = '11px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('K=' + K.toLocaleString('pt-BR', {minimumFractionDigits:2}), xk, PAD.top - 6);
+            PayoffStyle.marco(ctx, geo, xk, PayoffStyle.CORES.strike, [4,4]);
+            PayoffStyle.pilula(ctx, 'K ' + K.toLocaleString('pt-BR', {minimumFractionDigits:2}),
+                xk, PAD.top - 9, 'rgba(30,41,59,.92)', 'rgba(203,213,225,.95)',
+                { borda:'rgba(148,163,184,.35)', limites:{ min:PAD.left, max:W-PAD.right } });
         });
 
-        // ── Linhas de breakeven ───────────────────────────────────────────────
+        // Faixa de realce entre o preço atual e o breakeven mais próximo
+        if (spotPrice > 0 && spotPrice >= Smin && spotPrice <= Smax && breakevens.length) {
+            var beProxP = breakevens.reduce(function(a,b){
+                return Math.abs(b-spotPrice) < Math.abs(a-spotPrice) ? b : a; });
+            PayoffStyle.faixa(ctx, geo, xPx(spotPrice), xPx(beProxP));
+        }
+
+        // ── Áreas de lucro/prejuízo e curva do vencimento ──────────────────────
+        PayoffStyle.areas(ctx, geo, Sarr, Parr, xPx, yPx, y0);
+        PayoffStyle.curva(ctx, Sarr, Parr, xPx, yPx);
+
+        // ── Linhas de breakeven (por cima da curva) ────────────────────────────
         breakevens.forEach(function(be) {
             var xb = xPx(be);
-            ctx.setLineDash([6,3]);
-            ctx.strokeStyle = 'rgba(234,179,8,0.9)';
-            ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(xb, PAD.top); ctx.lineTo(xb, H - PAD.bottom); ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.fillStyle = '#ca8a04';
-            ctx.font = 'bold 11px sans-serif';
-            ctx.textAlign = 'center';
-            ctx.fillText('BE ' + be.toLocaleString('pt-BR', {minimumFractionDigits:2}), xb, H - PAD.bottom + 14);
+            PayoffStyle.marco(ctx, geo, xb, 'rgba(148,163,184,.75)', [5,4]);
+            PayoffStyle.pilula(ctx, 'Break Even: ' + be.toLocaleString('pt-BR', {minimumFractionDigits:2}),
+                xb, H - PAD.bottom + 13, 'rgba(71,85,105,.95)', '#f1f5f9',
+                { limites:{ min:PAD.left, max:W-PAD.right } });
         });
-
-        // ── Curva de payoff (fill segmentado) ────────────────────────────────
-        // Área verde (payoff > 0)
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(xPx(Sarr[0]), y0);
-        for (var i = 0; i < Sarr.length; i++) ctx.lineTo(xPx(Sarr[i]), yPx(Parr[i]));
-        ctx.lineTo(xPx(Sarr[Sarr.length-1]), y0);
-        ctx.closePath();
-        ctx.rect(PAD.left, PAD.top, cW, y0 - PAD.top); // clip acima do zero
-        ctx.clip();
-        ctx.fillStyle = 'rgba(16,185,129,0.18)';
-        ctx.fill();
-        ctx.restore();
-
-        // Área vermelha (payoff < 0)
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(xPx(Sarr[0]), y0);
-        for (var i = 0; i < Sarr.length; i++) ctx.lineTo(xPx(Sarr[i]), yPx(Parr[i]));
-        ctx.lineTo(xPx(Sarr[Sarr.length-1]), y0);
-        ctx.closePath();
-        ctx.rect(PAD.left, y0, cW, H - PAD.bottom - y0); // clip abaixo do zero
-        ctx.clip();
-        ctx.fillStyle = 'rgba(239,68,68,0.18)';
-        ctx.fill();
-        ctx.restore();
-
-        // Linha da curva com cor segmentada
-        for (var i = 0; i < Sarr.length - 1; i++) {
-            var avg = (Parr[i] + Parr[i+1]) / 2;
-            ctx.strokeStyle = avg >= 0 ? 'rgba(16,185,129,1)' : 'rgba(239,68,68,1)';
-            ctx.lineWidth = 2.5;
-            ctx.beginPath();
-            ctx.moveTo(xPx(Sarr[i]),   yPx(Parr[i]));
-            ctx.lineTo(xPx(Sarr[i+1]), yPx(Parr[i+1]));
-            ctx.stroke();
-        }
 
         // ── Eixo X (labels de preço) ─────────────────────────────────────────
         ctx.fillStyle = 'rgba(148,163,184,0.9)';
@@ -1131,12 +1084,7 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
         // ── Cotação atual do subjacente (desenhado por último, sobre tudo) ────
         if (spotPrice > 0 && spotPrice >= Smin && spotPrice <= Smax) {
             var xs = xPx(spotPrice);
-            // Linha vertical azul
-            ctx.setLineDash([4, 3]);
-            ctx.strokeStyle = 'rgba(99,179,237,0.95)';
-            ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(xs, PAD.top); ctx.lineTo(xs, H - PAD.bottom); ctx.stroke();
-            ctx.setLineDash([]);
+            PayoffStyle.marco(ctx, geo, xs, PayoffStyle.CORES.spot, [4,3]);
 
             // Rótulo na base (abaixo do eixo X, à direita do BE)
             var spotVal = spotPrice.toLocaleString('pt-BR', {minimumFractionDigits:2});

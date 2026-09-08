@@ -519,7 +519,7 @@
                             <td data-label="Acoes" class="actions" style="display: flex; gap: 5px; justify-content: center;">
                                 <div class="btn-group btn-group-sm" role="group">
                                     <button type="button" class="btn btn-chart crypto-chart-btn" data-ticker="{{ item.name }}"
-                                        title="Gráfico TradingView" style="background:#0ea5e9; color:white;">📈</button>
+                                        title="Gráfico TradingView">📈</button>
                                     <a href="{{ url_for('buy_crypto', id=item.id) }}" class="btn btn-success"
                                         title="Comprar">➕</a>
                                     <a href="{{ url_for('exit_crypto', id=item.id) }}" class="btn btn-danger"

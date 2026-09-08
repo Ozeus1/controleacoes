@@ -148,10 +148,10 @@
     <button id="btn-rv-update" class="btn btn-sm btn-primary" onclick="rvUpdate()">
       ⟳ Atualizar
     </button>
-    <button class="btn btn-sm" style="background:#7c3aed;color:#fff" onclick="openLiquidez()">
+    <button class="btn btn-sm btn-violeta" onclick="openLiquidez()">
       💧 Ver Liquidez
     </button>
-    <button class="btn btn-sm" style="background:#0ea5e9;color:#fff" onclick="openBuscaLiquidez()">
+    <button class="btn btn-sm btn-azul" onclick="openBuscaLiquidez()">
       Busca Liquidez
     </button>
     <button class="btn btn-sm btn-success" onclick="document.getElementById('modal-add-rv').style.display='flex'">
@@ -261,19 +261,19 @@
           {% if rv.vol_max is not none %}{{ '%.1f'|format(rv.vol_max) }}{% else %}—{% endif %}
         </td>
         <td class="actions" style="white-space:nowrap">
-          <button class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#0ea5e9;color:#fff;margin-right:.2rem"
+          <button class="btn btn-sm btn-azul" style="padding:.1rem .4rem;font-size:.75rem;margin-right:.2rem"
                   onclick="openTVChart('{{ rv.ticker }}')" title="Gráfico TradingView">📈</button>
-          <button class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#8b5cf6;color:#fff;margin-right:.2rem"
+          <button class="btn btn-sm btn-violeta" style="padding:.1rem .4rem;font-size:.75rem;margin-right:.2rem"
                   onclick="openRadar('{{ rv.ticker }}')" title="Análise Radar">📊</button>
-          <a class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#10b981;color:#fff;margin-right:.2rem;text-decoration:none"
+          <a class="btn btn-sm btn-verde" style="padding:.1rem .4rem;font-size:.75rem;margin-right:.2rem;text-decoration:none"
              href="{{ url_for('estudo_ir', ticker=rv.ticker) }}" title="Abrir/editar na tela Estudos">📋</a>
-          <a class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#f59e0b;color:#fff;margin-right:.2rem;text-decoration:none"
+          <a class="btn btn-sm btn-laranja" style="padding:.1rem .4rem;font-size:.75rem;margin-right:.2rem;text-decoration:none"
              href="{{ url_for('busca_operacoes_avancadas') }}?ticker={{ rv.ticker }}" title="Busca de Operações Avançadas">🧭</a>
-          <a class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#ec4899;color:#fff;margin-right:.2rem;text-decoration:none"
+          <a class="btn btn-sm btn-pink" style="padding:.1rem .4rem;font-size:.75rem;margin-right:.2rem;text-decoration:none"
              href="{{ url_for('busca_operacoes') }}?ticker={{ rv.ticker }}" title="Busca de Operações">🔎</a>
-          <button class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#0ea5e9;color:#fff;margin-right:.2rem"
+          <button class="btn btn-sm btn-azul" style="padding:.1rem .4rem;font-size:.75rem;margin-right:.2rem"
                   onclick="openBuscaLiquidez('{{ rv.ticker }}')" title="Busca Liquidez">💧🔍</button>
-          <button class="btn btn-sm" style="padding:.1rem .4rem;font-size:.75rem;background:#dc2626;color:#fff;margin-right:.2rem"
+          <button class="btn btn-sm btn-vermelho" style="padding:.1rem .4rem;font-size:.75rem;margin-right:.2rem"
                   onclick="openVolHist('{{ rv.ticker }}')" title="Histórico de Volatilidade (implícita × histórica)">〽️</button>
           <form method="POST" action="{{ url_for('ranking_vol_delete', rid=rv.id) }}" style="display:inline"
                 onsubmit="return confirm('Remover {{ rv.ticker }} do ranking?')">
@@ -359,7 +359,7 @@
         <div style="display:flex;gap:.35rem;flex-wrap:wrap" id="liq-ticker-btns"></div>
         <div style="display:flex;gap:.3rem;align-items:center">
           <input id="liq-add-ticker" type="text" placeholder="Ticker" style="width:78px;text-transform:uppercase;background:var(--input-bg,#0f172a);border:1px solid var(--border-color);color:var(--text-primary);border-radius:5px;padding:.18rem .4rem;font-size:.75rem">
-          <button type="button" onclick="addLiqTicker()" style="background:#16a34a;border:0;border-radius:5px;color:#fff;padding:.2rem .45rem;font-size:.75rem;cursor:pointer">Adicionar</button>
+          <button type="button" class="btn-verde" onclick="addLiqTicker()" style="border-radius:5px;padding:.2rem .45rem;font-size:.75rem;cursor:pointer">Adicionar</button>
         </div>
       </div>
     </details>

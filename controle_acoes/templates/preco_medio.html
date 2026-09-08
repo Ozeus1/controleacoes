@@ -6,7 +6,13 @@
 .pm-badge{display:inline-block;padding:.1rem .5rem;border-radius:12px;font-size:.72rem;font-weight:700;}
 .pm-badge.sug{background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid rgba(245,158,11,.4);}
 .pm-badge.ok{background:rgba(16,185,129,.15);color:#34d399;}
-.pm-btn{padding:.15rem .45rem;font-size:.78rem;border-radius:5px;border:none;cursor:pointer;color:#fff;margin-right:.15rem;}
+.pm-btn{padding:.15rem .45rem;font-size:.78rem;border-radius:5px;border:1px solid transparent;cursor:pointer;margin-right:.15rem;background:var(--surface-2);color:var(--text-secondary);}
+.pm-btn:disabled{opacity:.5;cursor:default;}
+.pm-btn.pm-btn-verde{background:rgba(16,185,129,.16);border-color:rgba(16,185,129,.34);color:#10b981;}
+.pm-btn.pm-btn-azul{background:rgba(56,189,248,.14);border-color:rgba(56,189,248,.32);color:#38bdf8;}
+.pm-btn.pm-btn-laranja{background:rgba(251,191,36,.16);border-color:rgba(251,191,36,.34);color:#fbbf24;}
+.pm-btn.pm-btn-violeta{background:rgba(167,139,250,.16);border-color:rgba(167,139,250,.34);color:#a78bfa;}
+.pm-btn.pm-btn-vermelho{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.32);color:#f87171;}
 </style>
 
 {% macro pm_table(items, titulo) %}
@@ -72,19 +78,18 @@
                 <td style="white-space:nowrap;">
                     {% set pm_pode_aplicar = it.pending_n > 0 and it.pool > 0.005 %}
                     <form method="POST" action="{{ url_for('pm_aplicar', ticker=a.ticker) }}" style="display:inline;">
-                        <button type="submit" class="pm-btn"
-                                style="background:{{ '#10b981' if pm_pode_aplicar else '#334155' }};{{ '' if pm_pode_aplicar else 'opacity:.5;' }}"
+                        <button type="submit" class="pm-btn{{ ' pm-btn-verde' if pm_pode_aplicar else '' }}"
                                 title="{{ 'Aplicar os créditos pendentes ao PM (dividendos + resultado de opções)' if pm_pode_aplicar else 'Sem crédito disponível pra aplicar agora' }}"
                                 {% if not pm_pode_aplicar %}disabled{% endif %}
                                 onclick="return confirm('Aplicar os créditos pendentes de {{ a.ticker }} ao Preço Médio?');">💰</button>
                     </form>
-                    <button type="button" class="pm-btn" style="background:#0ea5e9;"
+                    <button type="button" class="pm-btn pm-btn-azul"
                             title="Comprar mais unidades usando lucro/dividendo (ações entram a PM zero; reflete na carteira oficial)"
                             onclick="pmOpenBuy('{{ a.ticker }}', {{ it.pool }}, {{ a.current_price or 0 }})">🛒</button>
-                    <button type="button" class="pm-btn" style="background:#f59e0b;"
+                    <button type="button" class="pm-btn pm-btn-laranja"
                             title="Lançar lucro avulso não capturado pela varredura (aluguel, bonificação, ajuste…) — positivo abate o PM, negativo aumenta"
                             onclick="pmOpenManual('{{ a.ticker }}')">➕</button>
-                    <button type="button" class="pm-btn" style="background:#8b5cf6;"
+                    <button type="button" class="pm-btn pm-btn-violeta"
                             title="Histórico didático das mudanças do PM"
                             onclick="pmOpenHist('{{ a.ticker }}')">📜</button>
                 </td>
@@ -261,9 +266,9 @@ function pmOpenHist(tk){
           '<span style="font-size:.8rem;">PM '+pmTxt+
             ' <small style="color:var(--text-secondary);">· '+e.created+'</small></span>'+
           '<span style="white-space:nowrap;">'+
-            (e.kind==='IGNORADO'?'':'<button type="button" class="pm-btn" style="background:#0ea5e9;" title="Editar linha" '+
+            (e.kind==='IGNORADO'?'':'<button type="button" class="pm-btn pm-btn-azul" title="Editar linha" '+
               'onclick=\'pmHistEdit('+e.id+','+JSON.stringify(String(e.valor))+','+JSON.stringify(e.date_iso||'')+','+JSON.stringify(e.ref||'')+')\'>✏️</button>')+
-            '<button type="button" class="pm-btn" style="background:#ef4444;" title="'+(e.kind==='IGNORADO'?'Reativar o crédito (volta a ficar pendente)':'Excluir linha')+'" onclick="pmHistDel('+e.id+','+(e.has_source?1:0)+','+(e.kind==='IGNORADO'?1:0)+')">🗑️</button>'+
+            '<button type="button" class="pm-btn pm-btn-vermelho" title="'+(e.kind==='IGNORADO'?'Reativar o crédito (volta a ficar pendente)':'Excluir linha')+'" onclick="pmHistDel('+e.id+','+(e.has_source?1:0)+','+(e.kind==='IGNORADO'?1:0)+')">🗑️</button>'+
           '</span>'+
         '</div>'+
       '</div>';

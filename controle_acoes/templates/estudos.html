@@ -12,7 +12,7 @@
 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.5rem">
   <h3 style="margin:0">Estudo Opções Cobertas</h3>
   <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center">
-    <button class="btn btn-sm" id="btn-greeks-all" style="background:#10b981;color:white;"
+    <button class="btn btn-sm btn-verde" id="btn-greeks-all" 
             onclick="updateAllGreeks()" title="Atualiza VE/Delta/Gama de todas as linhas via OpLab e recalcula VDX/NV">
       ⚡ Atualizar todos
     </button>
@@ -86,11 +86,11 @@
         <td>{{ '%.4f'|format(row.nv) if row.nv is not none else '-' }}</td>
         <td><span style="font-size:.75rem;color:var(--text-secondary)">V. Coberta</span></td>
         <td class="actions" style="white-space:nowrap;">
-          <button class="btn btn-sm greeks-btn" id="vc-greeks-btn-{{ row.id }}"
+          <button class="btn btn-sm greeks-btn btn-verde" id="vc-greeks-btn-{{ row.id }}"
                   data-ticker="{{ row.ticker }}" data-model="option" data-id="{{ row.id }}"
-                  style="background:#10b981;color:white;" title="Atualizar VE/Delta/Gama via OpLab"
+                   title="Atualizar VE/Delta/Gama via OpLab"
                   onclick="fetchGreeksOplab('{{ row.ticker }}', 'option', {{ row.id }}, 'vc', this)">⚡</button>
-          <button class="btn btn-sm" onclick="openTVChart('{{ row.underlying }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
+          <button class="btn btn-sm btn-azul" onclick="openTVChart('{{ row.underlying }}')" title="Gráfico TradingView" >📈</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditGreeks({{ row.id }}, '{{ row.ticker }}',
               '{{ row.ve or '' }}', '{{ row.delta or '' }}', '{{ row.gama or '' }}'
@@ -116,11 +116,11 @@
         <td>{{ '%.4f'|format(row.nv) if row.nv is not none else '-' }}</td>
         <td><span style="font-size:.75rem;color:var(--success-color)">Estudo</span></td>
         <td class="actions" style="white-space:nowrap;">
-          <button class="btn btn-sm greeks-btn" id="so-greeks-btn-{{ row.id }}"
+          <button class="btn btn-sm greeks-btn btn-verde" id="so-greeks-btn-{{ row.id }}"
                   data-ticker="{{ row.ticker }}" data-model="study_option" data-id="{{ row.id }}"
-                  style="background:#10b981;color:white;" title="Atualizar VE/Delta/Gama via OpLab"
+                   title="Atualizar VE/Delta/Gama via OpLab"
                   onclick="fetchGreeksOplab('{{ row.ticker }}', 'study_option', {{ row.id }}, 'so', this)">⚡</button>
-          <button class="btn btn-sm" onclick="openTVChart('{{ row.underlying }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
+          <button class="btn btn-sm btn-azul" onclick="openTVChart('{{ row.underlying }}')" title="Gráfico TradingView" >📈</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditOpcao({{ row.id }}, '{{ row.ticker }}', '{{ row.underlying }}',
               '{{ row.ve or '' }}', '{{ row.delta or '' }}', '{{ row.gama or '' }}'
@@ -232,8 +232,8 @@
         {{ strat_cell(ss.ticker, ss.strategy_active) }}
         <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
         <td class="actions" style="white-space:nowrap;">
-          <button class="btn btn-sm" onclick="openRadarAndUpdate({{ ss.id }}, '{{ ss.ticker }}', 'stock')" title="Análise Radar + atualizar RSI/ATR" style="background:#8b5cf6;color:white;">📊</button>
-          <button class="btn btn-sm" onclick="openTVChart('{{ ss.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
+          <button class="btn btn-sm btn-violeta" onclick="openRadarAndUpdate({{ ss.id }}, '{{ ss.ticker }}', 'stock')" title="Análise Radar + atualizar RSI/ATR" >📊</button>
+          <button class="btn btn-sm btn-azul" onclick="openTVChart('{{ ss.ticker }}')" title="Gráfico TradingView" >📈</button>
           <button class="btn btn-primary btn-sm" id="edit-stock-btn-{{ ss.id }}"
             onclick="openEditAcao({{ ss.id }}, '{{ ss.ticker }}',
               '{{ ss.trend or '' }}', '{{ ss.rsi or '' }}',
@@ -313,8 +313,8 @@
         {{ strat_cell(ss.ticker, ss.strategy_active) }}
         <td>{{ ss.entry_date.strftime('%d/%m/%Y') if ss.entry_date else '-' }}</td>
         <td class="actions" style="white-space:nowrap;">
-          <button class="btn btn-sm" onclick="openRadarAndUpdate({{ ss.id }}, '{{ ss.ticker }}', 'intl')" title="Análise Radar + atualizar RSI/ATR" style="background:#8b5cf6;color:white;">📊</button>
-          <button class="btn btn-sm" onclick="openTVChart('{{ ss.ticker }}', true)" title="Gráfico TradingView" style="background:#0ea5e9;color:white;">📈</button>
+          <button class="btn btn-sm btn-violeta" onclick="openRadarAndUpdate({{ ss.id }}, '{{ ss.ticker }}', 'intl')" title="Análise Radar + atualizar RSI/ATR" >📊</button>
+          <button class="btn btn-sm btn-azul" onclick="openTVChart('{{ ss.ticker }}', true)" title="Gráfico TradingView" >📈</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditIntlAcao({{ ss.id }}, '{{ ss.ticker }}',
               '{{ ss.trend or '' }}', '{{ ss.rsi or '' }}',
@@ -602,12 +602,12 @@
       <div class="modal-header" style="flex-wrap:wrap; gap:.5rem;">
         <h5 class="modal-title">Editar Ação de Estudo</h5>
         <div style="display:flex; gap:.4rem; margin-left:auto; margin-right:.5rem;">
-          <button type="button" class="btn btn-sm" id="ea-btn-update"
-                  style="background:#10b981;color:white;"
+          <button type="button" class="btn btn-sm btn-verde" id="ea-btn-update"
+
                   title="Atualiza IV Rank/Percentil (OpLab), RSI, ATR% e tendência diária (Radar) e a Data Estudo"
                   onclick="updateStudyFromApis('ea')">⟳ Atualizar</button>
-          <button type="button" class="btn btn-sm" id="ea-btn-tv"
-                  style="background:#0ea5e9;color:white;" title="Gráfico TradingView"
+          <button type="button" class="btn btn-sm btn-azul" id="ea-btn-tv"
+                   title="Gráfico TradingView"
                   onclick="openTVFromModal('ea')">📈 Gráfico</button>
         </div>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
@@ -783,12 +783,12 @@
       <div class="modal-header" style="flex-wrap:wrap; gap:.5rem;">
         <h5 class="modal-title">Editar Ação Internacional de Estudo</h5>
         <div style="display:flex; gap:.4rem; margin-left:auto; margin-right:.5rem;">
-          <button type="button" class="btn btn-sm" id="eia-btn-update"
-                  style="background:#10b981;color:white;"
+          <button type="button" class="btn btn-sm btn-verde" id="eia-btn-update"
+
                   title="Atualiza IV e volatilidade de opções, RSI, ATR% e tendência diária (Radar) e a Data Estudo"
                   onclick="updateStudyFromApis('eia')">⟳ Atualizar</button>
-          <button type="button" class="btn btn-sm" id="eia-btn-tv"
-                  style="background:#0ea5e9;color:white;" title="Gráfico TradingView"
+          <button type="button" class="btn btn-sm btn-azul" id="eia-btn-tv"
+                   title="Gráfico TradingView"
                   onclick="openTVFromModal('eia')">📈 Gráfico</button>
         </div>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>

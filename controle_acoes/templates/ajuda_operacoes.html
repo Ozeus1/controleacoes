@@ -45,8 +45,11 @@
 .aj-sec ul{margin:.15rem 0 .15rem 1.1rem;padding:0;}
 .aj-sec li{margin:.12rem 0;line-height:1.35;}
 .aj-buscar{display:inline-block;margin-top:.45rem;font-size:.78rem;padding:.28rem .7rem;border-radius:6px;
-  background:var(--accent-color,#7c3aed);color:#fff;text-decoration:none;}
-.aj-buscar:hover{opacity:.9;color:#fff;}
+  background:var(--accent-soft);border:1px solid color-mix(in srgb, var(--accent-color) 35%, transparent);
+  color:var(--accent-color);text-decoration:none;}
+.aj-buscar:hover{background:color-mix(in srgb, var(--accent-color) 22%, transparent);}
+.aj-buscar-azul{background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.32);color:#38bdf8;}
+.aj-buscar-azul:hover{background:rgba(56,189,248,.24);}
 .aj-info{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.35);border-radius:8px;
   padding:.7rem .9rem;font-size:.82rem;margin:.8rem 0;}
 </style>
@@ -822,7 +825,7 @@ CATS.forEach(function(cat){
       '<div class="aj-sec"><b class="lbl">🎯 Seleção algorítmica</b>'+ul(op.sel)+'</div>'+
       '<div class="aj-sec"><b class="lbl">🔧 Manejo</b>'+ul(op.man)+'</div>'+
       (op.busca?'<a class="aj-buscar" href="'+op.busca+'">🔍 Buscar esta operação</a>':'')+
-      (op.busca2?' <a class="aj-buscar" href="'+op.busca2+'" style="background:#0ea5e9;">🔍 '+esc(op.busca2label||'Buscar (variação)')+'</a>':'')+
+      (op.busca2?' <a class="aj-buscar aj-buscar-azul" href="'+op.busca2+'">🔍 '+esc(op.busca2label||'Buscar (variação)')+'</a>':'')+
       '</div>';
   });
   html+='</div>';

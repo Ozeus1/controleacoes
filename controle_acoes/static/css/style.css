@@ -502,13 +502,13 @@ tr.bg-primary.text-white td,
 }
 
 .btn-danger {
-    background-color: rgba(255, 84, 112, 0.12);
-    border: 1px solid rgba(255, 84, 112, 0.28);
+    background-color: color-mix(in srgb, var(--danger-color) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger-color) 28%, transparent);
     color: var(--danger-color);
 }
 
 .btn-danger:hover {
-    background-color: rgba(255, 84, 112, 0.22);
+    background-color: color-mix(in srgb, var(--danger-color) 22%, transparent);
 }
 
 /* Botão secundário: usado nas barras de ação (Exportar Walls, Ver Gráfico…) */
@@ -522,6 +522,134 @@ tr.bg-primary.text-white td,
     border-color: var(--accent-color) !important;
     color: var(--accent-color) !important;
 }
+
+/* Botões de status (info/warning/success) — Bootstrap por padrão pinta com
+   as cores chapadas do framework; aqui seguem o mesmo padrão translúcido
+   já aplicado a primary/danger/secondary, com os tokens do tema. */
+.btn-info {
+    background-color: color-mix(in srgb, var(--info-color) 12%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--info-color) 28%, transparent) !important;
+    color: var(--info-color) !important;
+}
+
+.btn-info:hover {
+    background-color: color-mix(in srgb, var(--info-color) 22%, transparent) !important;
+}
+
+.btn-warning {
+    background-color: color-mix(in srgb, var(--warning-color) 14%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--warning-color) 30%, transparent) !important;
+    color: var(--warning-color) !important;
+}
+
+.btn-warning:hover {
+    background-color: color-mix(in srgb, var(--warning-color) 24%, transparent) !important;
+}
+
+.btn-success {
+    background-color: color-mix(in srgb, var(--success-color) 12%, transparent) !important;
+    border: 1px solid color-mix(in srgb, var(--success-color) 28%, transparent) !important;
+    color: var(--success-color) !important;
+}
+
+.btn-success:hover {
+    background-color: color-mix(in srgb, var(--success-color) 22%, transparent) !important;
+}
+
+.btn-outline-secondary,
+.btn-outline-light,
+.btn-outline-info,
+.btn-outline-dark {
+    background-color: transparent !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-secondary) !important;
+}
+
+.btn-outline-secondary:hover,
+.btn-outline-light:hover,
+.btn-outline-info:hover,
+.btn-outline-dark:hover {
+    border-color: var(--accent-color) !important;
+    color: var(--accent-color) !important;
+    background-color: var(--accent-soft) !important;
+}
+
+.btn-dark {
+    background-color: var(--surface-2) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-primary) !important;
+}
+
+.btn-dark:hover {
+    border-color: var(--accent-color) !important;
+    color: var(--accent-color) !important;
+}
+
+/* Botão "Gráfico TradingView" (📈) — cor fixa própria, fora dos tokens de
+   tema, mas no mesmo padrão translúcido (o sólido com texto branco caía
+   a 2.77:1, ilegível). */
+.btn-chart {
+    background-color: rgba(14, 165, 233, 0.14) !important;
+    border: 1px solid rgba(14, 165, 233, 0.32) !important;
+    color: #38bdf8 !important;
+}
+
+.btn-chart:hover {
+    background-color: rgba(14, 165, 233, 0.24) !important;
+}
+
+/* Botões de atalho com cor própria (Radar, Manejo, IV/Gregas etc.) —
+   antes cada um vinha com fundo sólido inline e texto branco fixo; várias
+   dessas cores reprovam contraste com branco (ex.: laranja ficava em
+   2.15:1). Reaproveitam o mesmo padrão translúcido dos demais botões. */
+.btn-violeta {
+    background-color: rgba(167, 139, 250, 0.16) !important;
+    border: 1px solid rgba(167, 139, 250, 0.34) !important;
+    color: #a78bfa !important;
+}
+.btn-violeta:hover { background-color: rgba(167, 139, 250, 0.26) !important; }
+
+.btn-azul {
+    background-color: rgba(56, 189, 248, 0.14) !important;
+    border: 1px solid rgba(56, 189, 248, 0.32) !important;
+    color: #38bdf8 !important;
+}
+.btn-azul:hover { background-color: rgba(56, 189, 248, 0.24) !important; }
+
+.btn-laranja {
+    background-color: rgba(251, 191, 36, 0.16) !important;
+    border: 1px solid rgba(251, 191, 36, 0.34) !important;
+    color: #fbbf24 !important;
+}
+.btn-laranja:hover { background-color: rgba(251, 191, 36, 0.26) !important; }
+
+.btn-verde {
+    background-color: rgba(16, 185, 129, 0.16) !important;
+    border: 1px solid rgba(16, 185, 129, 0.34) !important;
+    color: #10b981 !important;
+}
+.btn-verde:hover { background-color: rgba(16, 185, 129, 0.26) !important; }
+
+.btn-teal {
+    background-color: rgba(45, 212, 191, 0.16) !important;
+    border: 1px solid rgba(45, 212, 191, 0.34) !important;
+    color: #2dd4bf !important;
+}
+.btn-teal:hover { background-color: rgba(45, 212, 191, 0.26) !important; }
+
+.btn-vermelho {
+    background-color: rgba(248, 113, 113, 0.14) !important;
+    border: 1px solid rgba(248, 113, 113, 0.32) !important;
+    color: #f87171 !important;
+}
+.btn-vermelho:hover { background-color: rgba(248, 113, 113, 0.24) !important; }
+
+.btn-pink {
+    background-color: rgba(244, 114, 182, 0.16) !important;
+    border: 1px solid rgba(244, 114, 182, 0.34) !important;
+    color: #f472b6 !important;
+}
+.btn-pink:hover { background-color: rgba(244, 114, 182, 0.26) !important; }
 
 /* Foco visível e consistente (acessibilidade + acabamento) */
 .btn:focus-visible,

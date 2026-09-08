@@ -416,11 +416,11 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
 
         {# Ações: salvar simulação / levar para o editor de pernas #}
         <div id="e-actions" style="display:none; margin-top:1.25rem; gap:.6rem; flex-wrap:wrap;">
-            <button type="button" class="btn btn-sm" id="e-save-btn" style="background:#10b981;color:white;"
+            <button type="button" class="btn btn-sm btn-verde" id="e-save-btn" 
                     onclick="estruturaSalvarSim()" title="Salva esta estrutura nas Simulações de Opções">
                 💾 Salvar simulação
             </button>
-            <button type="button" class="btn btn-sm" id="e-prod-btn" style="background:#f59e0b;color:white;"
+            <button type="button" class="btn btn-sm btn-laranja" id="e-prod-btn" 
                     onclick="estruturaSalvarProducao()"
                     title="Grava a operação nas tabelas de acompanhamento da página Opções (posição efetivamente lançada na bolsa): 1 opção → tabela da opção; trava de 2 pernas → Travas; demais → Operações Estruturadas">
                 🚀 Salvar em Produção
@@ -515,7 +515,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 </td>
                 <td>{{ 'R$ %.2f'|format(be)|replace('.',',') }}</td>
                 <td class="actions" style="white-space:nowrap;">
-                    <button class="btn btn-sm" onclick="openTVChart('{{ p.underlying_asset }}')" title="Gráfico" style="background:#0ea5e9;color:white;">📈</button>
+                    <button class="btn btn-sm btn-azul" onclick="openTVChart('{{ p.underlying_asset }}')" title="Gráfico" >📈</button>
                     <a href="{{ url_for('venda_puts_edit', id=p.id) }}" class="btn btn-sm btn-secondary">✏️</a>
                     <form method="POST" action="{{ url_for('venda_puts_delete', id=p.id) }}"
                           style="display:inline;" onsubmit="return confirm('Excluir?')">

@@ -52,8 +52,8 @@
                     {{ item.day_gain | brl }}
                 </td>
                 <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
-                    <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9; color:white;">📈</button>
-                    <button class="btn btn-sm" onclick="openRadar('{{ item.asset.ticker }}')" title="Analise Radar" style="background:#8b5cf6; color:white;">&#128202;</button>
+                    <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView">📈</button>
+                    <button class="btn btn-sm btn-violeta" onclick="openRadar('{{ item.asset.ticker }}')" title="Analise Radar" >&#128202;</button>
                     <a href="{{ url_for('buy_asset', id=item.asset.id) }}" class="btn btn-sm"
                         style="background:var(--success-color); color: white;" title="Registrar Nova Compra">➕</a>
                     <a href="{{ url_for('exit_trade', id=item.asset.id) }}" class="btn btn-sm"
@@ -156,7 +156,7 @@
                     {{ item.day_gain | brl }}
                 </td>
                 <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
-                    <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9; color:white;">📈</button>
+                    <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView">📈</button>
                     <a href="{{ url_for('buy_asset', id=item.asset.id) }}" class="btn btn-sm"
                         style="background:var(--success-color); color: white;" title="Registrar Nova Compra">➕</a>
                     <a href="{{ url_for('exit_trade', id=item.asset.id) }}" class="btn btn-sm"
@@ -270,11 +270,11 @@
                     {{ item.asset.fii_type or '-' }}
                 </td>
                 <td style="text-align:center;">
-                    <button class="btn btn-sm" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9; color:white;">📈</button>
+                    <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView">📈</button>
                 </td>
                 <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
-                    <button class="btn btn-sm btn-dates" title="Datas de entrada/saída"
-                        style="background:#f59e0b; color:white;"
+                    <button class="btn btn-sm btn-dates btn-laranja" title="Datas de entrada/saída"
+
                         data-id="{{ item.asset.id }}" data-ticker="{{ item.asset.ticker }}"
                         data-entry="{{ item.asset.entry_date.isoformat() if item.asset.entry_date else '' }}"
                         data-exit="{{ item.asset.exit_date.isoformat() if item.asset.exit_date else '' }}">📅</button>
@@ -389,8 +389,8 @@
                     <td class="">R$ {{ item.rate_usd | brl_fmt }}</td>
                     <td class="">{{ item.institution }}</td>
                     <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
-                        <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.name }}')" title="Gráfico TradingView" style="background:#0ea5e9; color:white;">📈</button>
-                        <button class="btn btn-sm" onclick="openRadar('{{ item.name }}')" title="Análise Radar" style="background:#8b5cf6; color:white;">&#128202;</button>
+                        <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.name }}')" title="Gráfico TradingView">📈</button>
+                        <button class="btn btn-sm btn-violeta" onclick="openRadar('{{ item.name }}')" title="Análise Radar" >&#128202;</button>
                         <a href="{{ url_for('buy_intl', id=item.id) }}" class="btn btn-sm"
                             style="background:var(--success-color); color: white;" title="Comprar">➕</a>
                         <a href="{{ url_for('exit_intl', id=item.id) }}" class="btn btn-sm"
@@ -479,7 +479,7 @@
                     {{ item.day_gain | brl }}
                 </td>
                 <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
-                    <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView" style="background:#0ea5e9; color:white;">📈</button>
+                    <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView">📈</button>
                     <a href="{{ url_for('buy_asset', id=item.asset.id) }}" class="btn btn-sm"
                         style="background:var(--success-color); color: white;" title="Registrar Nova Compra">➕</a>
                     <a href="{{ url_for('exit_trade', id=item.asset.id) }}" class="btn btn-sm"
@@ -584,7 +584,7 @@
                     <td>$ {{ total | brl_fmt }}</td>
                     <td class="">{{ item.institution }}</td>
                     <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
-                        <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.name }}')" title="Gráfico TradingView" style="background:#0ea5e9; color:white;">📈</button>
+                        <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.name }}')" title="Gráfico TradingView">📈</button>
                         <a href="{{ url_for('buy_intl', id=item.id) }}" class="btn btn-sm"
                             style="background:var(--success-color); color: white;" title="Comprar">➕</a>
                         <a href="{{ url_for('exit_intl', id=item.id) }}" class="btn btn-sm"

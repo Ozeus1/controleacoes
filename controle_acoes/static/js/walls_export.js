@@ -123,6 +123,13 @@
 
     var out = [];
     out.push('var');
+    // As 6 cores usadas no BEGIN (clWall := clLime; etc.) precisam estar
+    // declaradas aqui — sem isso o NTSL recusa compilar por variável não
+    // declarada (bug encontrado: o arquivo gerado pulava direto para as
+    // linhas, atribuindo cor a variáveis nunca declaradas).
+    Object.keys(CORES).forEach(function (k) {
+      out.push('  ' + k + ' : integer;');
+    });
     for (var k = 1; k <= n; k++) {
       out.push('  line' + k + ' : float;');
       out.push('  line' + k + 'Color : integer;');

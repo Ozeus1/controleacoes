@@ -7832,9 +7832,11 @@ def api_walls_candles(ativo):
     if err:
         return jsonify({'error': err}), 502
 
-    todos = dado.get('historicalDataPrice') or []
-    candles = []
-    for c in todos:
+    # Agrupa todos os candles por dia (BRT) — permite tanto filtrar pelo dia
+    # pedido quanto, se ele não tiver dados (pregão ainda não abriu, feriado),
+    # cair para o último dia com candles disponível.
+    por_dia = {}
+    for c in (dado.get('historicalDataPrice') or []):
         try:
             ts = c.get('date')
             if not ts:
@@ -7842,18 +7844,30 @@ def api_walls_candles(ativo):
             dt_c = datetime.utcfromtimestamp(ts)
             # Candles da BRAPI vêm em UTC; horário de pregão B3 é UTC-3.
             dt_brt = dt_c - timedelta(hours=3)
-            if dt_brt.date() != alvo:
-                continue
             o, h, l, cl = c.get('open'), c.get('high'), c.get('low'), c.get('close')
             if o is None or h is None or l is None or cl is None:
                 continue
-            candles.append({
+            por_dia.setdefault(dt_brt.date(), []).append({
                 't': dt_brt.strftime('%H:%M'),
                 'o': float(o), 'h': float(h), 'l': float(l), 'c': float(cl),
                 'v': int(c.get('volume') or 0),
             })
         except Exception:
             continue
+
+    candles = por_dia.get(alvo) or []
+    dia_usado = alvo
+    fallback = False
+    if not candles:
+        # Sem candles no dia pedido (ex.: pregão de hoje ainda não abriu, ou
+        # feriado) — usa o último dia disponível ANTES do alvo só para não
+        # deixar o usuário sem visualização nenhuma; o front avisa que a
+        # data mostrada é diferente da calculada.
+        anteriores = sorted(d for d in por_dia if d < alvo)
+        if anteriores:
+            dia_usado = anteriores[-1]
+            candles = por_dia[dia_usado]
+            fallback = True
 
     if not candles:
         return jsonify({'error': f'Sem candles de 5min para {dia}. '
@@ -7862,7 +7876,8 @@ def api_walls_candles(ativo):
 
     return jsonify({
         'ativo': a, 'simbolo': symbol_api.replace('%5E', '^'), 'nome': nome_exib,
-        'dia': dia, 'candles': candles,
+        'dia': dia, 'dia_usado': dia_usado.isoformat(), 'fallback': fallback,
+        'candles': candles,
     })
 
 

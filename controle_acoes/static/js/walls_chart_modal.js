@@ -407,6 +407,8 @@
     document.getElementById('wcm-sub').textContent = '';
     document.getElementById('wcm-legenda').innerHTML = '';
     document.getElementById('wcm-canvas-wrap').style.display = 'none';
+    var elAvisoPrevio = document.getElementById('wcm-aviso-fallback');
+    if (elAvisoPrevio) elAvisoPrevio.style.display = 'none';
     var elStatus = document.getElementById('wcm-status');
     elStatus.style.display = 'block';
     elStatus.textContent = '⏳ Buscando candles de 5min…';
@@ -440,11 +442,33 @@
           linhas.push({ valor: opts.dados.flip, cor: 'clFlip', largura: 2 });
         }
 
-        var p = (j.dia || '').split('-');
-        var sub = j.nome + ' · ' + j.simbolo + ' · pregão de ' +
-          (p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : j.dia) +
+        var diaExib = j.dia_usado || j.dia;
+        var p = (diaExib || '').split('-');
+        var diaFmt = p.length === 3 ? (p[2] + '/' + p[1] + '/' + p[0]) : diaExib;
+        var sub = j.nome + ' · ' + j.simbolo + ' · pregão de ' + diaFmt +
           ' · ' + j.candles.length + ' candles de 5min';
         document.getElementById('wcm-sub').textContent = sub;
+
+        var elAviso = document.getElementById('wcm-aviso-fallback');
+        if (j.fallback) {
+          if (!elAviso) {
+            elAviso = document.createElement('p');
+            elAviso.id = 'wcm-aviso-fallback';
+            elAviso.style.cssText = 'margin:0 0 .5rem;font-size:.78rem;color:#fbbf24;' +
+              'background:rgba(251,191,36,.10);border:1px solid rgba(251,191,36,.3);' +
+              'border-radius:6px;padding:.4rem .7rem;';
+            document.getElementById('wcm-sub').insertAdjacentElement('afterend', elAviso);
+          }
+          var pAlvo = (j.dia || '').split('-');
+          var diaAlvoFmt = pAlvo.length === 3 ? (pAlvo[2] + '/' + pAlvo[1] + '/' + pAlvo[0]) : j.dia;
+          elAviso.textContent = '⚠️ Ainda não há candles de 5min para ' + diaAlvoFmt +
+            ' (pregão não abriu ou é feriado/fim de semana) — mostrando o último ' +
+            'pregão disponível, ' + diaFmt + '.';
+          elAviso.style.display = 'block';
+        } else if (elAviso) {
+          elAviso.style.display = 'none';
+        }
+
         document.getElementById('wcm-legenda').innerHTML = montaLegendaHTML();
 
         elStatus.style.display = 'none';

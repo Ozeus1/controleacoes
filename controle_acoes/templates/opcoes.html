@@ -125,7 +125,7 @@
                             onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
-                        style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
+                        style="background:var(--accent-color); color: var(--accent-contrast);" title="Gravar Saída">🛑</a>
                     <a href="{{ url_for('edit_option', id=item.option.id) }}" class="btn btn-sm btn-primary">✏️</a>
                     <a href="{{ url_for('delete_option', id=item.option.id) }}" class="btn btn-sm btn-danger"
                         onclick="return confirm('Apagar?')">🗑️</a>
@@ -276,7 +276,7 @@
                             onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
-                        style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
+                        style="background:var(--accent-color); color: var(--accent-contrast);" title="Gravar Saída">🛑</a>
                     <a href="{{ url_for('edit_option', id=item.option.id) }}" class="btn btn-sm btn-primary">✏️</a>
                     <a href="{{ url_for('delete_option', id=item.option.id) }}" class="btn btn-sm btn-danger"
                         onclick="return confirm('Apagar?')">🗑️</a>
@@ -381,7 +381,7 @@
                             onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
-                        style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
+                        style="background:var(--accent-color); color: var(--accent-contrast);" title="Gravar Saída">🛑</a>
                     <a href="{{ url_for('edit_option', id=item.option.id) }}" class="btn btn-sm btn-primary">✏️</a>
                     <a href="{{ url_for('delete_option', id=item.option.id) }}" class="btn btn-sm btn-danger"
                         onclick="return confirm('Apagar?')">🗑️</a>
@@ -484,7 +484,7 @@
                             onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
                     <a href="{{ url_for('close_option', id=item.option.id) }}" class="btn btn-sm"
-                        style="background:var(--accent-color); color: white;" title="Gravar Saída">🛑</a>
+                        style="background:var(--accent-color); color: var(--accent-contrast);" title="Gravar Saída">🛑</a>
                     <a href="{{ url_for('edit_option', id=item.option.id) }}" class="btn btn-sm btn-primary">✏️</a>
                     <a href="{{ url_for('delete_option', id=item.option.id) }}" class="btn btn-sm btn-danger"
                         onclick="return confirm('Apagar?')">🗑️</a>
@@ -596,7 +596,7 @@
                             data-roll="{{ item.spread.roll_history|e }}" data-roll-title="{{ item.spread.underlying_asset }}" data-roll-qty="{{ item.spread.quantity }}"
                             onclick="openRollHistoryBtn(this)">📋</button>
                     {% endif %}
-                    <a href="{{ url_for('close_spread', id=item.spread.id) }}" class="btn btn-sm" style="background:var(--accent-color); color: white;" title="Encerrar">🛑</a>
+                    <a href="{{ url_for('close_spread', id=item.spread.id) }}" class="btn btn-sm" style="background:var(--accent-color); color: var(--accent-contrast);" title="Encerrar">🛑</a>
                     <a href="{{ url_for('edit_spread', id=item.spread.id) }}" class="btn btn-sm btn-primary">✏️</a>
                     <a href="{{ url_for('delete_spread', id=item.spread.id) }}" class="btn btn-sm btn-danger" onclick="return confirm('Apagar?')">🗑️</a>
                 </td>
@@ -798,7 +798,7 @@
                     {% endif %}
                     <a href="{{ url_for('edit_estruturada', id=op.id) }}" class="btn btn-sm btn-primary" title="Editar">✏️</a>
                     <form action="{{ url_for('close_estruturada', id=op.id) }}" method="post" style="display:inline;">
-                        <button type="submit" class="btn btn-sm" style="background:var(--accent-color); color:white;"
+                        <button type="submit" class="btn btn-sm" style="background:var(--accent-color); color: var(--accent-contrast);"
                                 title="Encerrar operação" onclick="return confirm('Encerrar esta operação?')">🛑</button>
                     </form>
                     <form action="{{ url_for('delete_estruturada', id=op.id) }}" method="post" style="display:inline;">

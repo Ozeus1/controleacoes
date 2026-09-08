@@ -62,7 +62,7 @@
                 <p style="color:var(--text-secondary); font-size:.85rem; margin:.4rem 0 0;">
                     Atualiza ações/FIIs/ETFs via internet. Funciona em qualquer lugar.
                 </p>
-                {% if quote_mode == 'yahoo' %}<span style="display:inline-block;margin-top:.5rem;padding:.15rem .6rem;background:var(--accent-color);color:white;border-radius:20px;font-size:.75rem;">✓ Ativo</span>{% endif %}
+                {% if quote_mode == 'yahoo' %}<span style="display:inline-block;margin-top:.5rem;padding:.15rem .6rem;background:var(--accent-color);color: var(--accent-contrast);border-radius:20px;font-size:.75rem;">✓ Ativo</span>{% endif %}
             </div>
             <div style="flex: 1; min-width: 200px; padding: 1rem; border-radius: 8px;
                         border: 2px solid {{ '#f59e0b' if quote_mode == 'brapi' else 'var(--border-color)' }};

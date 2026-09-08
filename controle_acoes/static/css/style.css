@@ -631,13 +631,36 @@ tr:hover > td:first-child {
     background: var(--card-bg) !important;
 }
 
+/* Badge de ticker/estratégia: fundo translúcido com texto na cor de
+   destaque. O estilo sólido com texto branco não sobrevive a um accent
+   claro — branco sobre o verde-menta fica em 1.75:1, ilegível. */
 .ticker-badge {
-    background-color: var(--accent-color);
-    color: white;
+    background-color: var(--accent-soft);
+    color: var(--accent-color);
+    border: 1px solid color-mix(in srgb, var(--accent-color) 35%, transparent);
     padding: 0.15rem 0.5rem;
     border-radius: 0.5rem;
     font-family: monospace;
     font-weight: 700;
+}
+
+/* Variante do badge para o ativo-objeto, distinguindo-o do ticker da
+   operação sem recorrer a um fundo sólido de baixa legibilidade. */
+.ticker-badge-alt {
+    background-color: color-mix(in srgb, var(--info-color) 14%, transparent);
+    color: var(--info-color);
+    border-color: color-mix(in srgb, var(--info-color) 35%, transparent);
+}
+
+/* No tema claro o texto do badge precisa de um tom mais fechado que o
+   accent para passar AA sobre o próprio fundo translúcido (o accent puro
+   fica em ~3.9:1 nesse fundo bem claro). */
+[data-theme="light"] .ticker-badge {
+    color: #04703f;
+}
+
+[data-theme="light"] .ticker-badge-alt {
+    color: #0a63b5;
 }
 
 .positive {

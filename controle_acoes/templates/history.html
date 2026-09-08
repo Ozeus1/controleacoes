@@ -76,7 +76,7 @@
                 </td>
                 <td>
                     {% set tk_base = trade.underlying if trade.underlying else trade.ticker %}
-                    <span class="ticker-badge" style="background:#0d9488;">{{ tk_base }}</span>
+                    <span class="ticker-badge ticker-badge-alt">{{ tk_base }}</span>
                 </td>
                 <td>{{ trade.strategy or 'Outros' }}</td>
                 <td data-order="{{ trade.entry_date.strftime('%Y-%m-%d') if trade.entry_date else '' }}">

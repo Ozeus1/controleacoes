@@ -216,6 +216,7 @@ table.cadeia td.empty{color:#334155;}
 
 </div><!-- /card -->
 
+<script src="{{ url_for('static', filename='js/payoff_style.js') }}"></script>
 <script>
 var SELIC_RATE = {{ selic|default(14.5) }};
 (function(){
@@ -593,32 +594,18 @@ function drawChartC(legs){
   function yPx(P){return PAD.top+(1-(P-yMin)/(yMax-yMin))*cH;}
   var y0=yPx(0);
 
-  // Grid
-  ctx.strokeStyle='rgba(100,116,139,0.18)'; ctx.lineWidth=1;
-  for(var yi=0;yi<=6;yi++){var yp=PAD.top+yi*cH/6;ctx.beginPath();ctx.moveTo(PAD.left,yp);ctx.lineTo(W-PAD.right,yp);ctx.stroke();}
-  ctx.strokeStyle='rgba(100,116,139,0.5)'; ctx.lineWidth=1.5;
-  ctx.beginPath();ctx.moveTo(PAD.left,y0);ctx.lineTo(W-PAD.right,y0);ctx.stroke();
+  var geo={W:W,H:H,PAD:PAD,cW:cW,cH:cH};
+  PayoffStyle.grade(ctx,geo);
+  PayoffStyle.eixoZero(ctx,geo,y0);
 
   // Strikes
   strikes.forEach(function(K){
     var xk=xPx(K);
-    ctx.setLineDash([5,4]);ctx.strokeStyle='rgba(148,163,184,0.45)';ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(xk,PAD.top);ctx.lineTo(xk,H-PAD.bottom);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle='rgba(148,163,184,0.7)';ctx.font='10px sans-serif';ctx.textAlign='center';
-    ctx.fillText('K='+K.toLocaleString('pt-BR',{minimumFractionDigits:2}),xk,PAD.top-8);
+    PayoffStyle.marco(ctx,geo,xk,PayoffStyle.CORES.strike,[4,4]);
+    PayoffStyle.pilula(ctx,'K '+K.toLocaleString('pt-BR',{minimumFractionDigits:2}),
+      xk,PAD.top-9,'rgba(30,41,59,.92)','rgba(203,213,225,.95)',
+      {borda:'rgba(148,163,184,.35)',limites:{min:PAD.left,max:W-PAD.right}});
   });
-
-  // Cotação atual
-  if(curSpot&&curSpot>=Smin&&curSpot<=Smax){
-    var xs=xPx(curSpot);
-    ctx.setLineDash([4,3]);ctx.strokeStyle='rgba(250,204,21,0.85)';ctx.lineWidth=2;
-    ctx.beginPath();ctx.moveTo(xs,PAD.top);ctx.lineTo(xs,H-PAD.bottom);ctx.stroke();ctx.setLineDash([]);
-    var spotP=payoffAtC(curSpot,legs,multiExp,refDateStr);
-    ctx.fillStyle='#fbbf24';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
-    ctx.fillText('S='+curSpot.toLocaleString('pt-BR',{minimumFractionDigits:2})+' '+(spotP>=0?'+':'')+fmtBRLsimC(spotP),xs,PAD.top-8);
-    ctx.fillStyle='#fbbf24';
-    ctx.beginPath();ctx.arc(xs,yPx(spotP),5,0,2*Math.PI);ctx.fill();
-  }
 
   // Breakevens
   var bes=[];
@@ -626,29 +613,40 @@ function drawChartC(legs){
     var p1=Parr[j],p2=Parr[j+1];
     if(p1*p2<0){var be=Sarr[j]+(-p1)*(Sarr[j+1]-Sarr[j])/(p2-p1);bes.push(Math.round(be*100)/100);}
   }
-  bes.forEach(function(be){
-    var xb=xPx(be);
-    ctx.setLineDash([6,3]);ctx.strokeStyle='rgba(234,179,8,0.9)';ctx.lineWidth=2;
-    ctx.beginPath();ctx.moveTo(xb,PAD.top);ctx.lineTo(xb,H-PAD.bottom);ctx.stroke();ctx.setLineDash([]);
-    ctx.fillStyle='#ca8a04';ctx.font='bold 10px sans-serif';ctx.textAlign='center';
-    ctx.fillText('BE '+be.toLocaleString('pt-BR',{minimumFractionDigits:2}),xb,H-PAD.bottom+14);
-  });
+  // Faixa de realce entre spot e o breakeven mais próximo
+  if(curSpot&&curSpot>=Smin&&curSpot<=Smax&&bes.length){
+    var beProxC=bes.reduce(function(a,b){
+      return Math.abs(b-curSpot)<Math.abs(a-curSpot)?b:a;});
+    PayoffStyle.faixa(ctx,geo,xPx(curSpot),xPx(beProxC));
+  }
 
   // Zonas lucro/prejuízo
-  ctx.save();ctx.beginPath();ctx.moveTo(xPx(Sarr[0]),y0);
-  for(var ii=0;ii<Sarr.length;ii++) ctx.lineTo(xPx(Sarr[ii]),yPx(Parr[ii]));
-  ctx.lineTo(xPx(Sarr[Sarr.length-1]),y0);ctx.closePath();
-  ctx.rect(PAD.left,PAD.top,cW,y0-PAD.top);ctx.clip();ctx.fillStyle='rgba(16,185,129,0.18)';ctx.fill();ctx.restore();
-  ctx.save();ctx.beginPath();ctx.moveTo(xPx(Sarr[0]),y0);
-  for(var ii=0;ii<Sarr.length;ii++) ctx.lineTo(xPx(Sarr[ii]),yPx(Parr[ii]));
-  ctx.lineTo(xPx(Sarr[Sarr.length-1]),y0);ctx.closePath();
-  ctx.rect(PAD.left,y0,cW,H-PAD.bottom-y0);ctx.clip();ctx.fillStyle='rgba(239,68,68,0.18)';ctx.fill();ctx.restore();
+  PayoffStyle.areas(ctx,geo,Sarr,Parr,xPx,yPx,y0);
 
   // Curva payoff
-  for(var ii=0;ii<Sarr.length-1;ii++){
-    ctx.strokeStyle=(Parr[ii]+Parr[ii+1])/2>=0?'rgba(16,185,129,1)':'rgba(239,68,68,1)';
-    ctx.lineWidth=2.5;
-    ctx.beginPath();ctx.moveTo(xPx(Sarr[ii]),yPx(Parr[ii]));ctx.lineTo(xPx(Sarr[ii+1]),yPx(Parr[ii+1]));ctx.stroke();
+  PayoffStyle.curva(ctx,Sarr,Parr,xPx,yPx);
+
+  // Breakevens e cotação atual — por cima da curva, como na referência
+  bes.forEach(function(be){
+    var xb=xPx(be);
+    PayoffStyle.marco(ctx,geo,xb,'rgba(148,163,184,.75)',[5,4]);
+    PayoffStyle.pilula(ctx,'Break Even: '+be.toLocaleString('pt-BR',{minimumFractionDigits:2}),
+      xb,H-PAD.bottom+13,'rgba(71,85,105,.95)','#f1f5f9',
+      {limites:{min:PAD.left,max:W-PAD.right}});
+  });
+  if(curSpot&&curSpot>=Smin&&curSpot<=Smax){
+    var xs=xPx(curSpot);
+    var spotP=payoffAtC(curSpot,legs,multiExp,refDateStr);
+    PayoffStyle.marco(ctx,geo,xs,'rgba(59,130,246,.85)',[4,3]);
+    ctx.save();
+    ctx.fillStyle=PayoffStyle.CORES.spot;
+    ctx.beginPath();ctx.arc(xs,yPx(spotP),4.5,0,2*Math.PI);ctx.fill();
+    ctx.strokeStyle='#fff';ctx.lineWidth=1.5;ctx.stroke();
+    ctx.restore();
+    PayoffStyle.pilula(ctx,'Spot: '+curSpot.toLocaleString('pt-BR',{minimumFractionDigits:2})+
+      '  '+(spotP>=0?'+':'')+fmtBRLsimC(spotP),
+      xs,H-PAD.bottom-11,PayoffStyle.CORES.spot,'#ffffff',
+      {limites:{min:PAD.left,max:W-PAD.right}});
   }
 
   // Eixos X e Y

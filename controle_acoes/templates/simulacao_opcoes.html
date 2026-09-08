@@ -301,6 +301,7 @@
   </div>
 </div>
 
+<script src="{{ url_for('static', filename='js/payoff_style.js') }}"></script>
 <script>
 // ── Seletor de opções da cadeia (botão 🔎 em cada perna) ─────────────────────
 // Mesma regra da tela Cálculos de Opções: lista só o tipo da perna (CALL/PUT),
@@ -714,22 +715,18 @@ function drawChart(legs) {
     function yPx(P) { return PAD.top  + (1 - (P - yMin) / (yMax - yMin)) * cH; }
     var y0 = yPx(0);
 
-    // Grade
-    ctx.strokeStyle = 'rgba(100,116,139,0.18)'; ctx.lineWidth = 1;
-    for (var yi = 0; yi <= 6; yi++) { var yp=PAD.top+yi*cH/6; ctx.beginPath(); ctx.moveTo(PAD.left,yp); ctx.lineTo(W-PAD.right,yp); ctx.stroke(); }
+    var geo = { W:W, H:H, PAD:PAD, cW:cW, cH:cH };
 
-    // Eixo zero
-    ctx.strokeStyle = 'rgba(100,116,139,0.5)'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(PAD.left, y0); ctx.lineTo(W-PAD.right, y0); ctx.stroke();
+    PayoffStyle.grade(ctx, geo);
+    PayoffStyle.eixoZero(ctx, geo, y0);
 
     // Strikes
     strikes.forEach(function(K) {
         var xk = xPx(K);
-        ctx.setLineDash([5,4]); ctx.strokeStyle='rgba(148,163,184,0.5)'; ctx.lineWidth=1;
-        ctx.beginPath(); ctx.moveTo(xk,PAD.top); ctx.lineTo(xk,H-PAD.bottom); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle='rgba(148,163,184,0.8)'; ctx.font='10px sans-serif'; ctx.textAlign='center';
-        ctx.fillText('K='+K.toLocaleString('pt-BR',{minimumFractionDigits:2}), xk, PAD.top-8);
+        PayoffStyle.marco(ctx, geo, xk, PayoffStyle.CORES.strike, [4,4]);
+        PayoffStyle.pilula(ctx, 'K ' + K.toLocaleString('pt-BR',{minimumFractionDigits:2}),
+            xk, PAD.top - 9, 'rgba(30,41,59,.92)', 'rgba(203,213,225,.95)',
+            { borda:'rgba(148,163,184,.35)', limites:{ min:PAD.left, max:W-PAD.right } });
     });
 
     // Breakevens — só calcula se há variação real no payoff
@@ -745,34 +742,34 @@ function drawChart(legs) {
             }
         }
     }
+    // Faixa de realce entre o preço atual e o breakeven mais próximo,
+    // como na referência (destaca a região que precisa ser percorrida).
+    if (stockRef > 0 && bes.length) {
+        var beProx = bes.reduce(function(a,b){
+            return Math.abs(b-stockRef) < Math.abs(a-stockRef) ? b : a; });
+        PayoffStyle.faixa(ctx, geo, xPx(stockRef), xPx(beProx));
+    }
+
+    // Áreas de lucro/prejuízo e curva do vencimento
+    PayoffStyle.areas(ctx, geo, Sarr, Parr, xPx, yPx, y0);
+    PayoffStyle.curva(ctx, Sarr, Parr, xPx, yPx);
+
+    // Breakevens (depois da curva, para as pílulas ficarem por cima)
     bes.forEach(function(be) {
         var xb=xPx(be);
-        ctx.setLineDash([6,3]); ctx.strokeStyle='rgba(234,179,8,0.9)'; ctx.lineWidth=2;
-        ctx.beginPath(); ctx.moveTo(xb,PAD.top); ctx.lineTo(xb,H-PAD.bottom); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.fillStyle='#ca8a04'; ctx.font='bold 10px sans-serif'; ctx.textAlign='center';
-        ctx.fillText('BE '+be.toLocaleString('pt-BR',{minimumFractionDigits:2}), xb, H-PAD.bottom+14);
+        PayoffStyle.marco(ctx, geo, xb, 'rgba(148,163,184,.75)', [5,4]);
+        PayoffStyle.pilula(ctx, 'Break Even: '+be.toLocaleString('pt-BR',{minimumFractionDigits:2}),
+            xb, H-PAD.bottom+13, 'rgba(71,85,105,.95)', '#f1f5f9',
+            { limites:{ min:PAD.left, max:W-PAD.right } });
     });
 
-    // Fill verde
-    ctx.save(); ctx.beginPath(); ctx.moveTo(xPx(Sarr[0]),y0);
-    for (var i=0;i<Sarr.length;i++) ctx.lineTo(xPx(Sarr[i]),yPx(Parr[i]));
-    ctx.lineTo(xPx(Sarr[Sarr.length-1]),y0); ctx.closePath();
-    ctx.rect(PAD.left,PAD.top,cW,y0-PAD.top); ctx.clip();
-    ctx.fillStyle='rgba(16,185,129,0.18)'; ctx.fill(); ctx.restore();
-
-    // Fill vermelho
-    ctx.save(); ctx.beginPath(); ctx.moveTo(xPx(Sarr[0]),y0);
-    for (var i=0;i<Sarr.length;i++) ctx.lineTo(xPx(Sarr[i]),yPx(Parr[i]));
-    ctx.lineTo(xPx(Sarr[Sarr.length-1]),y0); ctx.closePath();
-    ctx.rect(PAD.left,y0,cW,H-PAD.bottom-y0); ctx.clip();
-    ctx.fillStyle='rgba(239,68,68,0.18)'; ctx.fill(); ctx.restore();
-
-    // Curva
-    for (var i=0;i<Sarr.length-1;i++) {
-        ctx.strokeStyle=(Parr[i]+Parr[i+1])/2>=0?'rgba(16,185,129,1)':'rgba(239,68,68,1)';
-        ctx.lineWidth=2.5;
-        ctx.beginPath(); ctx.moveTo(xPx(Sarr[i]),yPx(Parr[i])); ctx.lineTo(xPx(Sarr[i+1]),yPx(Parr[i+1])); ctx.stroke();
+    // Preço atual do ativo
+    if (stockRef > 0 && stockRef >= Smin && stockRef <= Smax) {
+        var xs = xPx(stockRef);
+        PayoffStyle.marco(ctx, geo, xs, 'rgba(59,130,246,.85)', [4,3]);
+        PayoffStyle.pilula(ctx, 'Spot: '+stockRef.toLocaleString('pt-BR',{minimumFractionDigits:2}),
+            xs, H-PAD.bottom-11, PayoffStyle.CORES.spot, '#ffffff',
+            { limites:{ min:PAD.left, max:W-PAD.right } });
     }
 
     // Eixo X

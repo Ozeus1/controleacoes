@@ -29,12 +29,80 @@
     clMinGamma: 'clRed',
   };
 
+  /** Domingo de Páscoa do ano — algoritmo de Meeus/Jones/Butcher (gregoriano),
+   * base pros feriados móveis (Carnaval, Sexta-feira Santa, Corpus Christi). */
+  function domingoPascoa(ano) {
+    var a = ano % 19, b = Math.floor(ano / 100), c = ano % 100;
+    var d = Math.floor(b / 4), e = b % 4;
+    var f = Math.floor((b + 8) / 25), g = Math.floor((b - f + 1) / 3);
+    var h = (19 * a + b - d - g + 15) % 30;
+    var i = Math.floor(c / 4), k = c % 4;
+    var l = (32 + 2 * e + 2 * i - h - k) % 7;
+    var m = Math.floor((a + 11 * h + 22 * l) / 451);
+    var mes = Math.floor((h + l - 7 * m + 114) / 31);
+    var dia = ((h + l - 7 * m + 114) % 31) + 1;
+    return new Date(ano, mes - 1, dia);
+  }
+
+  /** Feriados nacionais fixos + móveis (a B3/pregão fecha nesses dias) —
+   * B3 não opera em nenhum deles, então "próximo dia útil" precisa pular
+   * também feriado, não só fim de semana (bug real: um pregão em sexta
+   * calculava "segunda" como dia de validade do indicador, mas 07/09 é
+   * feriado nacional — Independência —, sem pregão, e as linhas nunca
+   * apareciam no gráfico do Profit naquele dia). Ponto/facultativo (ex.:
+   * véspera de Natal) fica de fora — a B3 costuma operar normalmente.
+   */
+  function feriadosNacionaisBR(ano) {
+    var pascoa = domingoPascoa(ano);
+    function menosDias(base, n) {
+      var d = new Date(base); d.setDate(d.getDate() - n); return d;
+    }
+    var fixos = [
+      [0, 1],   // Confraternização Universal
+      [3, 21],  // Tiradentes
+      [4, 1],   // Dia do Trabalho
+      [8, 7],   // Independência
+      [9, 12],  // Nossa Sra. Aparecida
+      [10, 2],  // Finados
+      [10, 15], // Proclamação da República
+      [10, 20], // Consciência Negra (feriado nacional desde 2024)
+      [11, 25], // Natal
+    ];
+    var chave = function (d) { return d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate(); };
+    var set = {};
+    fixos.forEach(function (mD) { set[chave(new Date(ano, mD[0], mD[1]))] = true; });
+    set[chave(menosDias(pascoa, 47))] = true;  // Carnaval (terça)
+    set[chave(menosDias(pascoa, 48))] = true;  // Carnaval (segunda) — B3 fecha os dois dias
+    set[chave(menosDias(pascoa, 2))]  = true;  // Sexta-feira Santa
+    set[chave(menosDias(pascoa, -60))] = true; // Corpus Christi
+    return set;
+  }
+
+  var _feriadosCache = {};   // {ano: {chave: true}} — evita recalcular Páscoa a cada chamada
+  function ehFeriadoBR(d) {
+    var ano = d.getFullYear();
+    if (!_feriadosCache[ano]) _feriadosCache[ano] = feriadosNacionaisBR(ano);
+    return !!_feriadosCache[ano][ano + '-' + d.getMonth() + '-' + d.getDate()];
+  }
+
+  /** Avança até o próximo dia de pregão real — pula fim de semana E feriado
+   * nacional. Usada tanto pra montar a condição de data do .txt exportado
+   * quanto pelo botão "Ver Gráfico" (candles do dia em que o indicador
+   * passa a valer). */
   function proximoDiaUtil(isoDate) {
     var d = isoDate ? new Date(isoDate + 'T00:00:00') : new Date();
     do {
       d.setDate(d.getDate() + 1);
-    } while (d.getDay() === 0 || d.getDay() === 6);
+    } while (d.getDay() === 0 || d.getDay() === 6 || ehFeriadoBR(d));
     return { y: d.getFullYear(), m: d.getMonth() + 1, dia: d.getDate() };
+  }
+
+  /** Mesma regra de proximoDiaUtil, mas devolvendo string YYYY-MM-DD — usada
+   * pelo botão "Ver Gráfico" (que precisa da data pronta pra montar a URL
+   * do endpoint de candles, não os 3 campos separados do .txt). */
+  function proximoDiaUtilISO(isoDate) {
+    var p = proximoDiaUtil(isoDate);
+    return p.y + '-' + String(p.m).padStart(2, '0') + '-' + String(p.dia).padStart(2, '0');
   }
 
   function fmtNum(v) {
@@ -177,6 +245,22 @@
     return out.join('\r\n');
   }
 
+  /** Toast simples e autocontido (sem depender de UI de cada tela) pra
+   * avisar se a cópia pra área de transferência funcionou — o navegador
+   * pode negar (aba não focada, permissão, contexto não-seguro), e como é
+   * assíncrono, sem aviso o usuário não saberia se colou o conteúdo certo. */
+  function _toastClipboard(ok) {
+    var el = document.createElement('div');
+    el.textContent = ok ? '✅ Walls copiado para a área de transferência'
+                         : '⚠️ Não foi possível copiar automaticamente — use o arquivo baixado';
+    el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);'
+      + 'background:' + (ok ? '#065f46' : '#7c2d12') + ';color:#f1f5f9;'
+      + 'padding:.6rem 1.1rem;border-radius:8px;font-size:.85rem;z-index:20000;'
+      + 'box-shadow:0 4px 16px rgba(0,0,0,.4);';
+    document.body.appendChild(el);
+    setTimeout(function () { el.remove(); }, 3000);
+  }
+
   function baixarTxt(conteudo, nomeArquivo) {
     var blob = new Blob([conteudo], { type: 'text/plain;charset=utf-8' });
     var url = URL.createObjectURL(blob);
@@ -184,9 +268,20 @@
     a.href = url; a.download = nomeArquivo;
     document.body.appendChild(a); a.click();
     setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+
+    // Além do download, copia o mesmo texto pra área de transferência —
+    // conveniência pra colar direto no editor do Profit sem abrir o arquivo.
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(conteudo)
+        .then(function () { _toastClipboard(true); })
+        .catch(function () { _toastClipboard(false); });
+    } else {
+      _toastClipboard(false);
+    }
   }
 
   global.gerarWallsNTSL = gerarWallsNTSL;
   global.extrairTop16Walls = extrairTop16Walls;
   global.baixarTxt = baixarTxt;
+  global.proximoDiaUtilISO = proximoDiaUtilISO;
 })(window);

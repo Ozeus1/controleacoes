@@ -604,11 +604,8 @@
   };
 
   // ── Ver Gráfico: candles de 5min do pregão em que os walls valem ──────
-  function proximoDiaUtilISO(isoDate){
-    var d = isoDate ? new Date(isoDate+'T00:00:00') : new Date();
-    do { d.setDate(d.getDate()+1); } while(d.getDay()===0 || d.getDay()===6);
-    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-  }
+  // proximoDiaUtilISO vem de walls_export.js (pula fim de semana E feriado
+  // nacional — antes só pulava fim de semana e caía em datas sem pregão).
   document.getElementById('mg-ver-grafico').onclick=function(){
     if(!lastData || !lastData.paredes || !lastData.paredes.length){
       showErr('Gere o gráfico antes de ver os candles.'); return;

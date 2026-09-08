@@ -658,8 +658,13 @@ function drawChart(legs) {
     canvas.width  = W;
     canvas.height = H;
 
-    PayoffStyle.ligaZoom(canvas, canvas._payoffView || (canvas._payoffView = { zoom:1, pan:0 }),
-        function () { drawChart(readLegs()); });
+    // Guardado por try/catch: se um cache antigo servir uma versão de
+    // payoff_style.js sem essas funções, o zoom fica desativado em vez de
+    // quebrar o desenho inteiro do gráfico.
+    try {
+        PayoffStyle.ligaZoom(canvas, canvas._payoffView || (canvas._payoffView = { zoom:1, pan:0 }),
+            function () { drawChart(readLegs()); });
+    } catch (eZoom) {}
 
     var ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, W, H);
@@ -707,8 +712,11 @@ function drawChart(legs) {
     var SminBase = Math.max(0.01, minK - pad);
     var SmaxBase = maxK + pad;
     canvas._payoffView = canvas._payoffView || { zoom:1, pan:0 };
-    var zoomed = PayoffStyle.aplicaZoom(SminBase, SmaxBase, canvas._payoffView);
-    var Smin = Math.max(0.01, zoomed.Smin), Smax = zoomed.Smax;
+    var Smin = SminBase, Smax = SmaxBase;
+    try {
+        var zoomed = PayoffStyle.aplicaZoom(SminBase, SmaxBase, canvas._payoffView);
+        Smin = Math.max(0.01, zoomed.Smin); Smax = zoomed.Smax;
+    } catch (eZoom) {}
     var N = 400, step = (Smax - Smin) / N;
     var Sarr = [], Parr = [];
     for (var i = 0; i <= N; i++) { var S = Smin + i*step; Sarr.push(S); Parr.push(payoffAt(S, legs, multiExp, refDateStr)); }

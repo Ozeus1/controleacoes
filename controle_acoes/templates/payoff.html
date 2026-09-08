@@ -1016,9 +1016,17 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
         // Recalcula o range visível a cada frame a partir do zoom/pan atual —
         // Smin/Smax (var externa à IIFE de draw) ficam sempre em sincronia
         // com o que está desenhado, para o tooltip usar o mesmo range.
-        var zoomed = PayoffStyle.aplicaZoom(SminBase, SmaxBase, canvas._payoffView);
-        Smin = Math.max(0.01, zoomed.Smin);
-        Smax = zoomed.Smax;
+        // Guardado por try/catch: se um service worker/CDN servir uma versão
+        // desatualizada de payoff_style.js sem aplicaZoom (cache antigo), o
+        // gráfico cai para o range base em vez de ficar em branco.
+        try {
+            var zoomed = PayoffStyle.aplicaZoom(SminBase, SmaxBase, canvas._payoffView);
+            Smin = Math.max(0.01, zoomed.Smin);
+            Smax = zoomed.Smax;
+        } catch (e) {
+            Smin = SminBase;
+            Smax = SmaxBase;
+        }
 
         var cW = W - PAD.left - PAD.right;
         var cH = H - PAD.top  - PAD.bottom;
@@ -1190,7 +1198,10 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
     canvas.addEventListener('mouseleave', function() { tooltip.style.display = 'none'; });
 
     // ── Init ─────────────────────────────────────────────────────────────────
-    var zoomCtrl = PayoffStyle.ligaZoom(canvas, canvas._payoffView, draw);
+    var zoomCtrl = { estaArrastando: function () { return false; } };
+    try {
+        zoomCtrl = PayoffStyle.ligaZoom(canvas, canvas._payoffView, draw) || zoomCtrl;
+    } catch (eZoom) {}
     setSize();
     window.addEventListener('resize', setSize);
 })();

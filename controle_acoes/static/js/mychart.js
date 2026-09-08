@@ -10,6 +10,8 @@ var _cache      = {};    // {TICKER: {ts, candles[]}}
 var _lines      = {};    // {TICKER: [{id,x1,y1,x2,y2,color,width},...]}
 var _state      = null;
 var _modal      = null;
+var _card       = null;
+var _expanded   = false; // modal em tela cheia (toggle "Expandir")
 var _canvas     = null;
 var _ctx        = null;
 var CSRF        = '';
@@ -59,33 +61,14 @@ function isB3Ticker(ticker) {
 // origem (nenhum conhecido no momento) — mantido como ponto de extensão.
 var TV_CRYPTO_EXCHANGE = 'BINANCE';
 
-// Monta a URL da página do ativo na TradingView (br.tradingview.com/symbols/EXCHANGE-SYMBOL/).
-// ticker: como usado internamente (B3 sem sufixo, cripto tipo "BTC-USD", internacional tipo "AAPL").
-// isIntl: true para cripto/internacional (mesma flag usada por MyChart.open).
-function tvSymbolUrl(ticker, isIntl) {
+// Monta a URL do botão "Graf" — gráfico completo em acoes.receberbemevinhos.com.br,
+// mesmo padrão para B3, internacional e cripto: ?action=ticker&view=TICKER
+// usando o ticker como usado internamente (B3 sem sufixo, ex.: PETR4, XPLG11;
+// internacional puro, ex.: AAPL, SPY; cripto no formato "BTC-USD").
+function grafUrl(ticker) {
     var tk = (ticker || '').toUpperCase().trim();
     if (!tk) return null;
-    var exch, sym;
-    if (!isIntl && isB3Ticker(tk)) {
-        exch = 'BMFBOVESPA';
-        sym  = tk;
-    } else if (/-USD$/.test(tk)) {
-        // Cripto no formato interno "BTC-USD" → par BINANCE:BTCUSDT (par mais líquido/comum)
-        exch = TV_CRYPTO_EXCHANGE;
-        sym  = tk.replace(/-USD$/, '') + 'USDT';
-    } else if (isB3Ticker(tk)) {
-        // Ticker com "cara" de B3 mas explicitamente marcado isIntl (raro) — melhor esforço
-        exch = 'BMFBOVESPA';
-        sym  = tk;
-    } else {
-        // Internacional (ações/ETFs US) — não guardamos a bolsa exata (NASDAQ/
-        // NYSE/AMEX/BMV etc.). /symbols/{TICKER}/ sem prefixo de bolsa resolve
-        // pra listagem primária na prática (não é a forma documentada, mas
-        // funciona); sem isso teríamos que adivinhar a bolsa, o que erraria
-        // com frequência.
-        return 'https://br.tradingview.com/symbols/' + encodeURIComponent(tk) + '/';
-    }
-    return 'https://br.tradingview.com/symbols/' + exch + '-' + encodeURIComponent(sym) + '/';
+    return 'https://acoes.receberbemevinhos.com.br/?action=ticker&view=' + encodeURIComponent(tk);
 }
 
 // Monta a URL da página do ativo no Investidor10 (investidor10.com.br/{categoria}/{ticker}/).
@@ -161,6 +144,17 @@ function toolBtn(active) {
         + ';cursor:pointer;border:none;'
         + 'background:' + (active ? '#3b82f6' : '#1e293b') + ';'
         + 'color:'      + (active ? '#fff'    : '#94a3b8') + ';';
+}
+
+// Tamanho do card do modal — padrão (largura limitada, como uma janela) ou
+// expandido (ocupa quase a tela toda, altura incluída, pra ver mais candles
+// sem precisar rolar a página em telas grandes).
+function _cardStyle(expanded) {
+    var size = expanded
+        ? 'width:98vw;height:96vh;'
+        : 'width:min(98vw,1200px);';
+    return 'background:#0f172a;border-radius:10px;' + size
+        + 'display:flex;flex-direction:column;margin:auto;border:1px solid #1e293b;overflow:hidden;';
 }
 
 // ── Ferramenta ────────────────────────────────────────────────────────────────
@@ -667,8 +661,8 @@ function ensureModal() {
         + 'overflow-y:auto;padding:1.5vh 0;';
 
     var card = document.createElement('div');
-    card.style.cssText = 'background:#0f172a;border-radius:10px;width:min(98vw,1200px);'
-        + 'display:flex;flex-direction:column;margin:auto;border:1px solid #1e293b;overflow:hidden;';
+    _card = card;
+    card.style.cssText = _cardStyle(false);
 
     // Header
     var hdr = document.createElement('div');
@@ -699,9 +693,10 @@ function ensureModal() {
         + '<button id="mc-tool-zoom"   title="Zoom por área (arraste um retângulo)" style="' + toolBtn(false) + '">▭</button>'
         + '<button id="mc-del-lines"   title="Apagar linhas"                style="' + toolBtn(false) + '" onclick="MyChart._delLines()">🗑</button>'
         + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
-        + '<button id="mc-tv-btn" title="Abrir no TradingView" style="' + toolBtn(false) + '">📊 TradingView</button>'
+        + '<button id="mc-tv-btn" title="Abrir gráfico completo" style="' + toolBtn(false) + '">📊 Graf</button>'
         + '<button id="mc-i10-btn" title="Abrir no Investidor10" style="' + toolBtn(false) + '">📋 Investidor10</button>'
         + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
+        + '<button id="mc-expand-btn" title="Expandir em tela cheia (E)" style="' + toolBtn(false) + '">⛶</button>'
         + '<button onclick="MyChart._close()" style="background:none;border:none;font-size:1.4rem;color:#94a3b8;cursor:pointer;line-height:1;">&times;</button>'
         + '</div>';
     card.appendChild(hdr);
@@ -717,7 +712,7 @@ function ensureModal() {
         + '<label style="font-size:.75rem;cursor:pointer;color:#f87171"><input type="checkbox" id="mc-ma200" checked style="margin-right:.3rem">MM200</label>'
         + '<span style="font-size:.72rem;color:#475569;margin-left:.5rem">'
         + (COARSE ? '👆 1 dedo=mover  ✌️ pinça=zoom  ╱=desenhar linha'
-                  : '🖱 scroll=zoom horiz.  Ctrl+scroll=zoom vert.  Shift+drag=pan  ▭=zoom por área')
+                  : '🖱 scroll=zoom horiz.  Ctrl+scroll=zoom vert.  Shift+drag=pan  ▭=zoom por área  E=expandir')
         + '</span>'
         + '<span id="mc-crosshair-info" style="font-size:.75rem;color:#94a3b8;margin-left:auto"></span>';
     card.appendChild(maRow);
@@ -766,12 +761,14 @@ function ensureModal() {
         if (_modal.style.display === 'none') return;
         if (e.key === 'Escape') {
             if (_selLine) { _selLine = null; _editDrag = null; _draw(); }
+            else if (_expanded) { MyChart._toggleExpand(); }
             else MyChart._close();
             return;
         }
         if (e.key === 'l' || e.key === 'L') { _setTool('line'); return; }
         if (e.key === 'c' || e.key === 'C') { _setTool('cursor'); return; }
         if (e.key === 'z' || e.key === 'Z') { _setTool('zoom'); return; }
+        if (e.key === 'e' || e.key === 'E') { MyChart._toggleExpand(); return; }
         if ((e.key === 'Delete' || e.key === 'Backspace') && _selLine) {
             e.preventDefault();
             var ln  = _selLine.line;
@@ -824,6 +821,10 @@ function ensureModal() {
         _applyView();
         _draw();
     };
+
+    // Expandir/recolher — alterna o card entre janela e quase-tela-cheia,
+    // mantendo o mesmo modal aberto (não é um segundo modal/instância).
+    document.getElementById('mc-expand-btn').onclick = function() { MyChart._toggleExpand(); };
 
     // MA checkboxes
     ['mc-ma8','mc-ma20','mc-ma200'].forEach(function(id) {
@@ -984,7 +985,7 @@ MyChart.open = function(ticker, isIntl, quote) {
 
     var tvBtn = document.getElementById('mc-tv-btn');
     if (tvBtn) {
-        var tvUrl = tvSymbolUrl(ticker, isIntl);
+        var tvUrl = grafUrl(ticker);
         tvBtn.onclick = tvUrl ? function() { window.open(tvUrl, '_blank', 'noopener'); } : null;
         tvBtn.disabled = !tvUrl;
         tvBtn.style.opacity = tvUrl ? '1' : '.4';
@@ -1061,6 +1062,25 @@ MyChart._close = function() {
     _state = null; _view = null;
 };
 
+MyChart._toggleExpand = function() {
+    if (!_card) return;
+    _expanded = !_expanded;
+    _card.style.cssText = _cardStyle(_expanded);
+    var btn = document.getElementById('mc-expand-btn');
+    if (btn) {
+        btn.textContent = _expanded ? '⛶' : '⛶';
+        btn.title = _expanded ? 'Recolher' : 'Expandir em tela cheia';
+        btn.style.background = _expanded ? '#3b82f6' : '#1e293b';
+        btn.style.color      = _expanded ? '#fff'    : '#94a3b8';
+    }
+    // O card mudou de tamanho — recalcula canvas e redesenha na próxima
+    // repintura (o navegador ainda não aplicou o novo layout neste frame).
+    requestAnimationFrame(function() {
+        _resize();
+        if (_state) _draw();
+    });
+};
+
 // ── Resize canvas ──────────────────────────────────────────────────────────────
 function _resize() {
     if (!_canvas) return;
@@ -1069,6 +1089,21 @@ function _resize() {
     if (!wrap) return;
     var W = wrap.clientWidth || 900;
     var H = Math.max(380, Math.round(W * 0.44));
+    if (_expanded && _card) {
+        // Em tela cheia a largura cresce muito (98vw) e H = W*0.44 estouraria
+        // a altura da viewport — usa o espaço vertical realmente disponível
+        // dentro do card (descontando header/barra de médias/status/volume)
+        // em vez de deixar H crescer proporcional à largura.
+        var outros = 0;
+        Array.prototype.forEach.call(_card.children, function(el) {
+            if (el !== wrap && el.id !== 'mc-vol-canvas' && el.tagName !== 'CANVAS') {
+                outros += el.offsetHeight || 0;
+            }
+        });
+        var volH = Math.round(H * 0.15); // aproximação p/ subtrair antes de fixar H
+        var disponivel = _card.clientHeight - outros - volH;
+        if (disponivel > 260) H = disponivel;
+    }
     _canvas.width        = W * dpr;
     _canvas.height       = H * dpr;
     _canvas.style.height = H + 'px';
@@ -1266,7 +1301,7 @@ function _draw() {
 
     document.getElementById('mc-status').textContent =
         vis.length + ' candles  |  ' + fmtDate(vis[0].t) + ' – ' + fmtDate(vis[vis.length-1].t)
-        + '  |  Scroll=zoom  Ctrl+Scroll=zoom↕  Shift+drag=pan  2×clique=reset↕  L=linha  C=cursor  Z=zoom por área';
+        + '  |  Scroll=zoom  Ctrl+Scroll=zoom↕  Shift+drag=pan  2×clique=reset↕  L=linha  C=cursor  Z=zoom por área  E=expandir';
 
     _drawVolume(vis, W, cW);
 }

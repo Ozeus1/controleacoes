@@ -18347,6 +18347,65 @@ def _is_b3_yahoo_ticker(ticker):
     tk = (ticker or '').upper().strip()
     return bool(tk and '.' not in tk and '-' not in tk and re.match(r'^[A-Z0-9]{4,8}\d{1,2}$', tk))
 
+
+def _brapi_chart_fetch(ticker, user_id, start_date=None):
+    """OHLCV diário via BRAPI /api/quote — cobre B3, internacional (AAPL) e
+    cripto (BTC-USD) num único endpoint, sem sufixo .SA nem tratamento por
+    bolsa (diferente do Yahoo). `ticker` é o símbolo como o usuário digita
+    (ex.: PETR4, AAPL, BTC-USD) — a BRAPI aceita todos nesse formato.
+
+    Diferente do Yahoo v8, a BRAPI já devolve o candle do dia em formação
+    com OHLC completo (não zerado até o fechamento), então não precisa da
+    reconstrução via barras intradiárias que o Yahoo exigia.
+    """
+    from services import get_token
+    token = get_token(user_id)
+    rng = '1y'
+    if start_date:
+        try:
+            dias = (date.today() - date.fromisoformat(start_date)).days
+            if dias <= 5:
+                rng = '5d'
+            elif dias <= 32:
+                rng = '1mo'
+            elif dias <= 95:
+                rng = '3mo'
+            elif dias <= 190:
+                rng = '6mo'
+        except Exception:
+            pass
+    params = {'range': rng, 'interval': '1d', 'fundamental': 'false', 'dividends': 'false'}
+    if token:
+        params['token'] = token
+    r = requests.get(f'https://brapi.dev/api/quote/{ticker}', params=params,
+                      timeout=15, headers={'User-Agent': 'MyInvest/1.0'})
+    if r.status_code != 200:
+        try:
+            msg = (r.json() or {}).get('message') or ''
+        except Exception:
+            msg = ''
+        raise Exception(f'BRAPI {r.status_code}: {msg or "erro na consulta"}')
+    data = r.json()
+    results = data.get('results') or []
+    if not results:
+        return []
+    res = results[0]
+    if res.get('error'):
+        raise Exception(res.get('message') or f'Ticker {ticker} não encontrado na BRAPI.')
+    rows = []
+    for c in (res.get('historicalDataPrice') or []):
+        ts = c.get('date')
+        o, h, l, cl = c.get('open'), c.get('high'), c.get('low'), c.get('close')
+        if ts is None or None in (o, h, l, cl):
+            continue
+        rows.append({
+            't': datetime.utcfromtimestamp(ts).strftime('%Y-%m-%d'),
+            'o': round(float(o), 4), 'h': round(float(h), 4),
+            'l': round(float(l), 4), 'c': round(float(cl), 4),
+            'v': int(c.get('volume') or 0),
+        })
+    return rows
+
 def _yahoo_fetch(yf_ticker, start_date=None):
     """Chama Yahoo Finance v8 diretamente (sem yfinance) — ~0.5 s vs ~1.3 s.
     Tenta query1 primeiro, fallback para query2 em caso de 400/429."""
@@ -18789,7 +18848,7 @@ def api_chart_data(ticker):
     """OHLCV diário — 6 meses, 3 camadas de cache:
        1. Memória (120 s)  — zero I/O
        2. SQLite            — sobrevive restart; fetch incremental se stale
-       3. Yahoo Finance v8  — chamada HTTP direta, ~0.5 s
+       3. BRAPI /api/quote  — cobre B3, internacional e cripto num só endpoint
     """
     import re, time as _time, gzip as _gzip, json as _json
     from models import ChartCache
@@ -18807,8 +18866,6 @@ def api_chart_data(ticker):
             candles = [c for c in candles if c['t'] > since]
         return jsonify({'ticker': ticker, 'candles': candles, 'cached': 'mem'})
 
-    yf_ticker = ticker + '.SA' if _is_b3_yahoo_ticker(ticker) else ticker
-
     candles = None
     try:
         # ── Camada 2: SQLite ───────────────────────────────────────────────────
@@ -18819,19 +18876,18 @@ def api_chart_data(ticker):
             original_len = len(candles)
             candles = _sanitize_chart_candles(candles)
             if not candles:
-                candles = _sanitize_chart_candles(_yahoo_fetch(yf_ticker))
+                candles = _sanitize_chart_candles(_brapi_chart_fetch(ticker, current_user.id))
             days_old = (_date.today() - _date.fromisoformat(db_entry.last_date)).days
 
             # days_old == 0 (last_date é HOJE) NÃO é tratado como fresco: o
             # candle do dia fica "em formação" enquanto o mercado está aberto
-            # (o Yahoo v8 atualiza esse candle ao vivo) — sem refetch aqui ele
-            # ficava congelado no valor da primeira busca do dia, mesmo horas
-            # depois.
+            # — sem refetch aqui ele ficava congelado no valor da primeira
+            # busca do dia, mesmo horas depois.
             #
             # days_old == 1 (last_date é ONTEM) só pode pular o refetch quando
             # HOJE ainda não tem pregão a buscar: fim de semana ou antes da
             # abertura. Do contrário o gráfico ficava um dia atrasado o pregão
-            # inteiro — o candle de hoje existe na Yahoo e nunca era buscado.
+            # inteiro — o candle de hoje existe na BRAPI e nunca era buscado.
             _agora = datetime.now()
             _hoje_tem_pregao = (_date.today().weekday() < 5 and _agora.hour >= 10)
             if days_old == 1 and not _hoje_tem_pregao:
@@ -18848,7 +18904,7 @@ def api_chart_data(ticker):
 
             # Stale — busca só dias que faltam
             start_date = (_date.fromisoformat(db_entry.last_date) - _td(days=3)).isoformat()
-            new_rows = _yahoo_fetch(yf_ticker, start_date=start_date)
+            new_rows = _brapi_chart_fetch(ticker, current_user.id, start_date=start_date)
             if new_rows:
                 new_rows = _sanitize_chart_candles(new_rows)
                 new_dates = {r['t'] for r in new_rows}
@@ -18856,8 +18912,8 @@ def api_chart_data(ticker):
                 candles.sort(key=lambda c: c['t'])
                 candles = candles[-260:]  # ~1 ano de dias úteis (warm-up MM200 + 8 meses)
         else:
-            # Primeira vez — busca 6 meses completos
-            candles = _yahoo_fetch(yf_ticker)
+            # Primeira vez — busca 1 ano completo
+            candles = _brapi_chart_fetch(ticker, current_user.id)
 
         candles = _sanitize_chart_candles(candles)
 
@@ -18877,7 +18933,7 @@ def api_chart_data(ticker):
 
         _chart_mem[ticker] = {'ts': now_ts, 'candles': candles}
         out = [c for c in candles if c['t'] > since] if since else candles
-        return jsonify({'ticker': ticker, 'candles': out, 'cached': 'yf'})
+        return jsonify({'ticker': ticker, 'candles': out, 'cached': 'brapi'})
 
     except Exception as e:
         app.logger.error('api_chart_data %s: %s', ticker, e)

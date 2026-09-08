@@ -21,13 +21,13 @@
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/investimento.png') }}">
     <!-- PWA -->
     <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#0f172a">
+    <meta name="theme-color" content="#080b12">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MyInvest">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/icon-192.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=43">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=44">
     <!-- Custom override for DataTables to match theme -->
     <style>
         .dataTables_wrapper .dataTables_length,
@@ -155,7 +155,7 @@
                     <h1 class="mobile-title">
                         <img src="{{ url_for('static', filename='img/investimento.png') }}" alt="Logo"
                             style="height: 32px; margin-right: 10px;">
-                        <span style="color:#ef4444; font-weight:700;">My</span><span style="color:#3b82f6; font-weight:700;">Invest</span>
+                        <span style="color:var(--danger-color); font-weight:700;">My</span><span style="color:var(--accent-color); font-weight:700;">Invest</span>
                     </h1>
                     <button class="menu-toggle" onclick="toggleMenu()">☰</button>
                 </div>

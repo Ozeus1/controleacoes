@@ -1,49 +1,73 @@
+/* ══════════════════════════════════════════════════════════════════
+   Paleta — inspirada nos painéis BRAPI/Jumba: fundo quase-preto com
+   viés azulado, superfícies elevadas por camadas sutis (não por
+   bordas fortes) e verde-menta vibrante como cor de ação. O verde
+   como accent (no lugar do azul genérico) é o que dá o ar de terminal
+   financeiro moderno das referências.
+   ══════════════════════════════════════════════════════════════════ */
+
 /* Dark Theme (default) */
 :root {
-    --bg-color: #0f172a;
-    --card-bg: #1e293b;
-    --text-primary: #f8fafc;
-    --text-secondary: #94a3b8;
-    --accent-color: #3b82f6;
-    --success-color: #10b981;
-    --danger-color: #ef4444;
-    --border-color: #334155;
-    --nav-active: #3b82f6;
-    --table-header-bg: #1e1e1e;
-    --input-bg: #0f172a;
-    --input-color: #f8fafc;
-    --hover-bg: rgba(255, 255, 255, 0.02);
-    --dropdown-hover: rgba(255, 255, 255, 0.05);
-    --toggle-bg: rgba(255, 255, 255, 0.05);
-    --nav-mobile-border: rgba(255, 255, 255, 0.05);
+    --bg-color: #080b12;
+    --card-bg: #10151f;
+    --surface-2: #161d2b;          /* camada acima do card (inputs, chips) */
+    --text-primary: #f2f6fc;
+    --text-secondary: #8b9bb4;
+    --accent-color: #00e08a;       /* verde-menta — cor de ação/destaque */
+    --accent-hover: #24f5a3;
+    --accent-contrast: #04120c;    /* texto sobre fundo accent */
+    --accent-soft: rgba(0, 224, 138, 0.12);
+    --success-color: #00e08a;
+    --danger-color: #ff5470;
+    --warning-color: #ffb340;
+    --info-color: #4dabff;
+    --border-color: #222c3d;
+    --nav-active: #00e08a;
+    --table-header-bg: #131a26;
+    --input-bg: #0c1119;
+    --input-color: #f2f6fc;
+    --hover-bg: rgba(255, 255, 255, 0.028);
+    --dropdown-hover: rgba(0, 224, 138, 0.10);
+    --toggle-bg: rgba(255, 255, 255, 0.06);
+    --nav-mobile-border: rgba(255, 255, 255, 0.06);
     --indicator-price-color: #ffffff;
-    --shadow-color: rgba(0, 0, 0, 0.1);
-    --indicators-border: rgba(255, 255, 255, 0.1);
+    --shadow-color: rgba(0, 0, 0, 0.5);
+    --indicators-border: rgba(255, 255, 255, 0.08);
     --total-row-bg: rgba(255, 255, 255, 0.05);
+    --focus-ring: rgba(0, 224, 138, 0.35);
 }
 
 /* Light Theme */
 [data-theme="light"] {
-    --bg-color: #f1f5f9;
+    --bg-color: #f4f7fb;
     --card-bg: #ffffff;
-    --text-primary: #0f172a;
-    --text-secondary: #475569;
-    --accent-color: #2563eb;
-    --success-color: #059669;
-    --danger-color: #dc2626;
-    --border-color: #cbd5e1;
-    --nav-active: #2563eb;
-    --table-header-bg: #e2e8f0;
+    --surface-2: #eef2f8;
+    --text-primary: #0b1220;
+    --text-secondary: #55647c;
+    /* Verde mais fechado que o do dark: sobre fundo branco, o menta vivo
+       fica em ~3:1 e reprova em texto — este mantém o tom e passa AA. */
+    --accent-color: #00874f;
+    --accent-hover: #046c43;
+    --accent-contrast: #ffffff;
+    --accent-soft: rgba(0, 135, 79, 0.12);
+    --success-color: #00874f;
+    --danger-color: #e11d48;
+    --warning-color: #d97706;
+    --info-color: #0b74d4;
+    --border-color: #d9e1ec;
+    --nav-active: #00874f;
+    --table-header-bg: #e8eef6;
     --input-bg: #ffffff;
-    --input-color: #0f172a;
+    --input-color: #0b1220;
     --hover-bg: rgba(0, 0, 0, 0.03);
-    --dropdown-hover: rgba(0, 0, 0, 0.05);
+    --dropdown-hover: rgba(0, 135, 79, 0.10);
     --toggle-bg: rgba(0, 0, 0, 0.06);
     --nav-mobile-border: rgba(0, 0, 0, 0.08);
-    --indicator-price-color: #0f172a;
-    --shadow-color: rgba(0, 0, 0, 0.08);
+    --indicator-price-color: #0b1220;
+    --shadow-color: rgba(15, 30, 60, 0.10);
     --indicators-border: rgba(0, 0, 0, 0.1);
-    --total-row-bg: rgba(0, 0, 0, 0.06);
+    --total-row-bg: rgba(0, 0, 0, 0.05);
+    --focus-ring: rgba(0, 135, 79, 0.30);
 }
 
 * {
@@ -57,6 +81,13 @@ body {
     background-color: var(--bg-color);
     color: var(--text-primary);
     line-height: 1.6;
+    /* Halo sutil no topo: dá profundidade ao fundo quase-preto sem virar
+       "fundo colorido" — fixed para não deslizar com o scroll. */
+    background-image: radial-gradient(1200px 520px at 50% -220px,
+                                      var(--accent-soft), transparent 70%);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    -webkit-font-smoothing: antialiased;
 }
 
 .container {
@@ -159,9 +190,13 @@ header {
     transition: all 0.2s;
 }
 
-.main-nav a:hover,
-.main-nav a.active {
+.main-nav a:hover {
     color: var(--text-primary);
+    border-bottom-color: var(--border-color);
+}
+
+.main-nav a.active {
+    color: var(--accent-color);
     border-bottom-color: var(--accent-color);
 }
 
@@ -232,11 +267,17 @@ header {
     transition: background .15s, color .15s;
 }
 
-.nav-dropdown-menu a:hover,
-.nav-dropdown-menu a.active {
+.nav-dropdown-menu a:hover {
     background: var(--dropdown-hover);
     color: var(--text-primary);
     border-bottom: none !important;
+}
+
+.nav-dropdown-menu a.active {
+    background: var(--accent-soft);
+    color: var(--accent-color);
+    border-bottom: none !important;
+    box-shadow: inset 2px 0 0 var(--accent-color);
 }
 
 /* Desktop: abre via classe .open controlada por JS (click).
@@ -447,12 +488,12 @@ tr.bg-primary.text-white td,
 
 .btn-primary {
     background-color: var(--accent-color);
-    color: white;
+    color: var(--accent-contrast) !important;
 }
 
 .btn-primary:hover {
-    background-color: #2563eb;
-    transform: translateY(-2px);
+    background-color: var(--accent-hover);
+    box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .btn-sm {
@@ -461,20 +502,45 @@ tr.bg-primary.text-white td,
 }
 
 .btn-danger {
-    background-color: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.2);
+    background-color: rgba(255, 84, 112, 0.12);
+    border: 1px solid rgba(255, 84, 112, 0.28);
     color: var(--danger-color);
 }
 
 .btn-danger:hover {
-    background-color: rgba(239, 68, 68, 0.2);
+    background-color: rgba(255, 84, 112, 0.22);
+}
+
+/* Botão secundário: usado nas barras de ação (Exportar Walls, Ver Gráfico…) */
+.btn-secondary {
+    background-color: var(--surface-2) !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-primary) !important;
+}
+
+.btn-secondary:hover {
+    border-color: var(--accent-color) !important;
+    color: var(--accent-color) !important;
+}
+
+/* Foco visível e consistente (acessibilidade + acabamento) */
+.btn:focus-visible,
+.form-control:focus,
+.form-select:focus,
+select:focus,
+input:focus,
+textarea:focus {
+    outline: none !important;
+    border-color: var(--accent-color) !important;
+    box-shadow: 0 0 0 3px var(--focus-ring) !important;
 }
 
 .card {
     background-color: var(--card-bg);
-    border-radius: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.875rem;
     padding: 1rem;
-    box-shadow: 0 4px 6px -1px var(--shadow-color);
+    box-shadow: 0 1px 2px var(--shadow-color), 0 8px 24px -16px var(--shadow-color);
     margin-bottom: 2rem;
 }
 
@@ -507,6 +573,7 @@ th {
     font-weight: 600;
     text-transform: uppercase;
     font-size: 0.75rem;
+    letter-spacing: 0.03em;
 }
 
 th:first-child,

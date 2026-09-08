@@ -6,8 +6,14 @@
 'use strict';
 
 // ── Estado global ──────────────────────────────────────────────────────────────
-var _cache      = {};    // {TICKER: {ts, candles[]}}
-var _lines      = {};    // {TICKER: [{id,x1,y1,x2,y2,color,width},...]}
+var _cache       = {};    // {TICKER: {ts, candles[]}}
+var _lines       = {};    // {TICKER: [{id,x1,y1,x2,y2,color,width},...]}
+var _linesHidden = {};    // {TICKER: true} quando o usuário oculta as linhas (botão 👁)
+// Quais médias móveis estão marcadas no dropdown "Médias" — global (não por
+// ticker, igual ao comportamento anterior dos checkboxes soltos). Default:
+// MM200/20/8 marcadas, mesmo conjunto que já vinha ligado por padrão.
+var _maChecked = { 'mc-ma200': true, 'mc-ma60': false, 'mc-ma20': true,
+                    'mc-ma8': true, 'mc-ema9': false, 'mc-ema20': false };
 var _state      = null;
 var _modal      = null;
 var _card       = null;
@@ -38,6 +44,56 @@ function sma(arr, n) {
         out[i] = s / n;
     }
     return out;
+}
+
+// Média móvel exponencial — usada pelas opções "M. exponencial 9/20" do
+// dropdown de Médias. k = fator de suavização (2/(n+1)); primeiro valor
+// válido (índice n-1) começa na SMA dos n primeiros pontos, padrão comum.
+function ema(arr, n) {
+    var out = new Array(arr.length).fill(null);
+    if (arr.length < n) return out;
+    var k = 2 / (n + 1);
+    var s = 0;
+    for (var i = 0; i < n; i++) s += arr[i];
+    var prev = s / n;
+    out[n - 1] = prev;
+    for (var i = n; i < arr.length; i++) {
+        prev = arr[i] * k + prev * (1 - k);
+        out[i] = prev;
+    }
+    return out;
+}
+
+// Agrupa candles diários em semanas (ISO, segunda a domingo) ou meses, sem
+// nenhuma busca nova — o Intervalo S/M é só uma agregação client-side sobre
+// os mesmos candles diários já carregados em MyChart.open.
+function aggregateCandles(daily, granularity) {
+    if (granularity === 'D' || !daily.length) return daily;
+    var groups = [];
+    var keyOf = granularity === 'M'
+        ? function(t) { return t.slice(0, 7); }               // YYYY-MM
+        : function(t) {                                        // semana ISO: segunda-feira daquela semana
+            var d = new Date(t + 'T00:00:00');
+            var day = (d.getDay() + 6) % 7;                    // 0=segunda
+            d.setDate(d.getDate() - day);
+            return d.toISOString().slice(0, 10);
+        };
+    var curKey = null, cur = null;
+    daily.forEach(function(c) {
+        var k = keyOf(c.t);
+        if (k !== curKey) {
+            if (cur) groups.push(cur);
+            cur = { t: c.t, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v };
+            curKey = k;
+        } else {
+            cur.h = Math.max(cur.h, c.h);
+            cur.l = Math.min(cur.l, c.l);
+            cur.c = c.c;               // último fechamento do grupo
+            cur.v += c.v;
+        }
+    });
+    if (cur) groups.push(cur);
+    return groups;
 }
 
 function fmtDate(s) {
@@ -146,6 +202,43 @@ function toolBtn(active) {
         + 'color:'      + (active ? '#fff'    : '#94a3b8') + ';';
 }
 
+// ── Dropdowns genéricos (Intervalo / Período / Médias) ──────────────────────
+// Um botão que abre um painel flutuante ancorado embaixo dele; fecha ao
+// clicar fora ou pressionar Esc. Usado pelos três seletores do header —
+// mesma interação da referência (fig2): clique no botão, lista aparece,
+// escolha aplica na hora e fecha o painel.
+var _openDropdown = null;   // painel atualmente aberto (só um por vez)
+
+function _closeDropdowns() {
+    if (_openDropdown) { _openDropdown.remove(); _openDropdown = null; }
+}
+
+function _buildDropdown(btn, panelHTML, onOpen) {
+    btn.onclick = function(e) {
+        e.stopPropagation();
+        if (_openDropdown) { _closeDropdowns(); return; }
+        var panel = document.createElement('div');
+        panel.className = 'mc-dropdown-panel';
+        panel.style.cssText = 'position:absolute;background:#1e293b;border:1px solid #334155;'
+            + 'border-radius:6px;padding:.4rem;z-index:19100;min-width:150px;'
+            + 'box-shadow:0 8px 24px rgba(0,0,0,.4);font-size:.8rem;';
+        panel.innerHTML = panelHTML;
+        document.body.appendChild(panel);
+        var r = btn.getBoundingClientRect();
+        panel.style.top  = (r.bottom + window.scrollY + 4) + 'px';
+        panel.style.left = (r.left + window.scrollX) + 'px';
+        // não deixa vazar pra fora da tela à direita
+        var pr = panel.getBoundingClientRect();
+        if (pr.right > window.innerWidth) panel.style.left = (window.innerWidth - pr.width - 8) + 'px';
+        _openDropdown = panel;
+        if (onOpen) onOpen(panel);
+        panel.addEventListener('click', function(ev) { ev.stopPropagation(); });
+    };
+}
+
+document.addEventListener('click', _closeDropdowns);
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') _closeDropdowns(); });
+
 // Tamanho do card do modal — padrão (largura limitada, como uma janela) ou
 // expandido (ocupa quase a tela toda, altura incluída, pra ver mais candles
 // sem precisar rolar a página em telas grandes).
@@ -210,29 +303,43 @@ function _clampView() {
     _view.start = Math.max(0, Math.min(total - 1, _view.start));
 }
 
+// Médias disponíveis no dropdown "Médias" — id do checkbox, período, tipo
+// (sma/ema) e cor de traço. A ordem aqui é a ordem de exibição na lista.
+var MA_DEFS = [
+    { id: 'mc-ma200', n: 200, type: 'sma', color: '#f87171', label: 'MMóvel 200' },
+    { id: 'mc-ma60',  n: 60,  type: 'sma', color: '#a78bfa', label: 'MMóvel 60'  },
+    { id: 'mc-ma20',  n: 20,  type: 'sma', color: '#60a5fa', label: 'MMóvel 20'  },
+    { id: 'mc-ma8',   n: 8,   type: 'sma', color: '#fbbf24', label: 'MMóvel 8'   },
+    { id: 'mc-ema9',  n: 9,   type: 'ema', color: '#34d399', label: 'M. exponencial 9'  },
+    { id: 'mc-ema20', n: 20,  type: 'ema', color: '#f472b6', label: 'M. exponencial 20' },
+];
+
 function _applyView() {
     if (!_state || !_state.allCandles || !_view) return;
     var all    = _state.allCandles;
     var start  = _view.start;
     var count  = _view.count;
 
-    // Para MM200 precisamos warm-up de 200 candles antes da janela visível
+    // Warm-up antes da janela visível — a maior média (200) precisa de 200
+    // candles anteriores pro primeiro ponto visível já vir preenchido.
     var warmup  = 200;
     var wStart  = Math.max(0, start - warmup);
     // Fatia apenas candles reais (start pode ser próximo do fim — há espaço vazio à direita)
     var visEnd  = Math.min(all.length, start + count);
     var full    = all.slice(wStart, visEnd);
     var closes  = full.map(function(c) { return c.c; });
+    var offset  = start - wStart;   // índice dentro de full onde começa a janela visível
 
-    var ma8f   = sma(closes, 8);
-    var ma20f  = sma(closes, 20);
-    var ma200f = sma(closes, 200);
+    // Calcula TODAS as médias definidas de uma vez (uma passada sobre os
+    // dados já em memória, sem refetch) — o dropdown só decide quais dessas
+    // já-calculadas entram no desenho.
+    _state._mas = {};
+    MA_DEFS.forEach(function(def) {
+        var f = (def.type === 'ema' ? ema : sma)(closes, def.n);
+        _state._mas[def.id] = f.slice(offset);
+    });
 
-    var offset = start - wStart;   // índice dentro de full onde começa a janela visível
-    _state._vis   = full.slice(offset);
-    _state._ma8   = ma8f.slice(offset);
-    _state._ma20  = ma20f.slice(offset);
-    _state._ma200 = ma200f.slice(offset);
+    _state._vis = full.slice(offset);
     // Quantos slots reais existem na janela (pode ser < count quando pan além do fim)
     _state._visCount = count;
 }
@@ -241,6 +348,16 @@ function _applyView() {
 function _applyPeriod() {
     _initView();
     _applyView();
+}
+
+// Recalcula _state.allCandles a partir de allCandlesRaw (sempre diário, como
+// vem do backend) conforme o Intervalo selecionado — D usa os candles como
+// estão; S/M agregam sem nenhuma busca nova. Chamado ao trocar o dropdown de
+// Intervalo e uma vez ao carregar os dados.
+function _applyInterval() {
+    if (!_state || !_state.allCandlesRaw) return;
+    var interval = _state.interval || 'D';
+    _state.allCandles = aggregateCandles(_state.allCandlesRaw, interval);
 }
 
 // ── Coordenadas CSS ↔ data/price ──────────────────────────────────────────────
@@ -290,6 +407,7 @@ function _distPointSeg(px, py, ax, ay, bx, by) {
 
 // Retorna { line, idx, mode } ou null
 function _hitLine(cx, cy) {
+    if (_state && _linesHidden[_state.ticker]) return null;   // ocultas não são clicáveis
     var lines = (_state && _lines[_state.ticker]) || [];
     for (var i = lines.length - 1; i >= 0; i--) {
         var ln = lines[i];
@@ -636,15 +754,24 @@ function _updateHoverUI() {
     }
 }
 
-// ── Apagar linhas ──────────────────────────────────────────────────────────────
-MyChart._delLines = function() {
+// ── Mostrar/ocultar linhas ───────────────────────────────────────────────────
+// Antes apagava todas as linhas de tendência do ativo (irreversível); agora só
+// alterna a visibilidade — as linhas continuam salvas, só somem/aparecem do
+// desenho. Estado por ticker (_linesHidden), já que cada ativo tem seu
+// próprio conjunto de linhas.
+MyChart._toggleLines = function() {
     if (!_state) return;
-    if (!confirm('Apagar todas as linhas de ' + _state.ticker + '?')) return;
-    _fetch('/api/chart_lines/' + _state.ticker, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
-        body: JSON.stringify({})
-    }).then(function() { _lines[_state.ticker] = []; _draw(); });
+    var tk = _state.ticker;
+    _linesHidden[tk] = !_linesHidden[tk];
+    var btn = document.getElementById('mc-del-lines');
+    if (btn) {
+        var hidden = !!_linesHidden[tk];
+        btn.textContent = hidden ? '👁‍🗨' : '👁';
+        btn.title = hidden ? 'Mostrar linhas' : 'Ocultar linhas';
+        btn.style.background = hidden ? '#3b82f6' : '#1e293b';
+        btn.style.color      = hidden ? '#fff'    : '#94a3b8';
+    }
+    _draw();
 };
 
 // ── Modal ─────────────────────────────────────────────────────────────────────
@@ -675,12 +802,8 @@ function ensureModal() {
         + '<span id="mc-change" style="font-size:.85rem"></span>'
         + '</div>'
         + '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">'
-        + '<span style="font-size:.78rem;color:#64748b">Período:</span>'
-        + '<button class="mc-per-btn" data-per="2w"  style="' + btnStyle(true)   + '">2S</button>'
-        + '<button class="mc-per-btn" data-per="1mo" style="' + btnStyle()       + '">1M</button>'
-        + '<button class="mc-per-btn" data-per="3mo" style="' + btnStyle()       + '">3M</button>'
-        + '<button class="mc-per-btn" data-per="6mo" style="' + btnStyle()       + '">6M</button>'
-        + '<button class="mc-per-btn" data-per="8mo" style="' + btnStyle()       + '">8M</button>'
+        + '<button id="mc-interval-btn" style="' + toolBtn(false) + '">Intervalo: D ▾</button>'
+        + '<button id="mc-period-btn"   style="' + toolBtn(false) + '">Período: 2S ▾</button>'
         + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
         + '<span style="font-size:.78rem;color:#64748b">Zoom:</span>'
         + '<button id="mc-zoom-in"  title="Aumentar zoom (+)"           style="' + toolBtn(false) + '">🔍+</button>'
@@ -691,7 +814,7 @@ function ensureModal() {
         + '<button id="mc-tool-cursor" title="Cursor (pan com Shift+drag)"  style="' + toolBtn(true)  + '">↖</button>'
         + '<button id="mc-tool-line"   title="Linha (L)"                    style="' + toolBtn(false) + '">╱</button>'
         + '<button id="mc-tool-zoom"   title="Zoom por área (arraste um retângulo)" style="' + toolBtn(false) + '">▭</button>'
-        + '<button id="mc-del-lines"   title="Apagar linhas"                style="' + toolBtn(false) + '" onclick="MyChart._delLines()">🗑</button>'
+        + '<button id="mc-del-lines"   title="Ocultar linhas"               style="' + toolBtn(false) + '" onclick="MyChart._toggleLines()">👁</button>'
         + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
         + '<button id="mc-tv-btn" title="Abrir gráfico completo" style="' + toolBtn(false) + '">📊 Graf</button>'
         + '<button id="mc-i10-btn" title="Abrir no Investidor10" style="' + toolBtn(false) + '">📋 Investidor10</button>'
@@ -706,10 +829,7 @@ function ensureModal() {
     maRow.style.cssText = 'display:flex;gap:.5rem;align-items:center;padding:.4rem 1rem;'
         + 'background:#0f172a;border-bottom:1px solid #1e293b;flex-wrap:wrap;';
     maRow.innerHTML =
-        '<span style="font-size:.75rem;color:#64748b">Médias:</span>'
-        + '<label style="font-size:.75rem;cursor:pointer;color:#fbbf24"><input type="checkbox" id="mc-ma8"   checked style="margin-right:.3rem">MM8</label>'
-        + '<label style="font-size:.75rem;cursor:pointer;color:#60a5fa"><input type="checkbox" id="mc-ma20"  checked style="margin-right:.3rem">MM20</label>'
-        + '<label style="font-size:.75rem;cursor:pointer;color:#f87171"><input type="checkbox" id="mc-ma200" checked style="margin-right:.3rem">MM200</label>'
+        '<button id="mc-ma-btn" style="' + toolBtn(false) + '">Médias ▾</button>'
         + '<span style="font-size:.72rem;color:#475569;margin-left:.5rem">'
         + (COARSE ? '👆 1 dedo=mover  ✌️ pinça=zoom  ╱=desenhar linha'
                   : '🖱 scroll=zoom horiz.  Ctrl+scroll=zoom vert.  Shift+drag=pan  ▭=zoom por área  E=expandir')
@@ -782,15 +902,77 @@ function ensureModal() {
         }
     });
 
-    // Botões período
-    _modal.querySelectorAll('.mc-per-btn').forEach(function(b) {
-        b.onclick = function() {
-            _modal.querySelectorAll('.mc-per-btn').forEach(function(x) {
-                x.style.background = '#1e293b'; x.style.color = '#94a3b8'; x.style.fontWeight = '400';
-            });
-            b.style.background = '#3b82f6'; b.style.color = '#fff'; b.style.fontWeight = '600';
-            if (_state) { _state.period = b.dataset.per; _applyPeriod(); _draw(); }
-        };
+    // Dropdown Período — mesma lista de antes (2S/1M/3M/6M/8M), agora em
+    // lista suspensa em vez de botões soltos.
+    var PERIOD_OPTS = [
+        { v: '2w',  label: '2 semanas' },
+        { v: '1mo', label: '1 mês' },
+        { v: '3mo', label: '3 meses' },
+        { v: '6mo', label: '6 meses' },
+        { v: '8mo', label: '8 meses' },
+    ];
+    var PERIOD_SHORT = { '2w': '2S', '1mo': '1M', '3mo': '3M', '6mo': '6M', '8mo': '8M' };
+    _buildDropdown(document.getElementById('mc-period-btn'), PERIOD_OPTS.map(function(o) {
+        return '<div class="mc-dd-item" data-v="' + o.v + '" style="padding:.35rem .6rem;'
+            + 'border-radius:4px;cursor:pointer;color:#e2e8f0;white-space:nowrap;">' + o.label + '</div>';
+    }).join(''), function(panel) {
+        panel.querySelectorAll('.mc-dd-item').forEach(function(it) {
+            it.onmouseenter = function() { it.style.background = '#334155'; };
+            it.onmouseleave = function() { it.style.background = ''; };
+            it.onclick = function() {
+                var v = it.dataset.v;
+                document.getElementById('mc-period-btn').textContent = 'Período: ' + PERIOD_SHORT[v] + ' ▾';
+                if (_state) { _state.period = v; _applyPeriod(); _draw(); }
+                _closeDropdowns();
+            };
+        });
+    });
+
+    // Dropdown Intervalo — só D (diário, padrão) e S/M (agregados client-side
+    // a partir do mesmo candle diário, sem nova busca) estão habilitados;
+    // 1m/5m/15m/1h aparecem na lista mas desabilitados (fora de escopo por
+    // exigirem dados intraday, que este gráfico ainda não busca).
+    var INTERVAL_OPTS = [
+        { v: '1m',  label: '1 minuto',  disabled: true },
+        { v: '5m',  label: '5 minutos', disabled: true },
+        { v: '15m', label: '15 minutos', disabled: true },
+        { v: '1h',  label: '1 hora',    disabled: true },
+        { v: 'D',   label: 'Diário' },
+        { v: 'S',   label: 'Semanal' },
+        { v: 'M',   label: 'Mensal' },
+    ];
+    _buildDropdown(document.getElementById('mc-interval-btn'), INTERVAL_OPTS.map(function(o) {
+        var dis = o.disabled;
+        return '<div class="mc-dd-item" data-v="' + o.v + '" style="padding:.35rem .6rem;'
+            + 'border-radius:4px;white-space:nowrap;'
+            + (dis ? 'color:#475569;cursor:not-allowed;' : 'color:#e2e8f0;cursor:pointer;') + '">'
+            + o.label + (dis ? ' <span style="font-size:.68rem">(em breve)</span>' : '') + '</div>';
+    }).join(''), function(panel) {
+        panel.querySelectorAll('.mc-dd-item').forEach(function(it) {
+            var opt = INTERVAL_OPTS.filter(function(o) { return o.v === it.dataset.v; })[0];
+            if (opt.disabled) return;
+            it.onmouseenter = function() { it.style.background = '#334155'; };
+            it.onmouseleave = function() { it.style.background = ''; };
+            it.onclick = function() {
+                document.getElementById('mc-interval-btn').textContent = 'Intervalo: ' + it.dataset.v + ' ▾';
+                if (_state) { _state.interval = it.dataset.v; _applyInterval(); _applyPeriod(); _draw(); }
+                _closeDropdowns();
+            };
+        });
+    });
+
+    // Dropdown Médias — checkboxes calculados de uma vez em _applyView (uma
+    // passada sobre os candles já carregados); marcar/desmarcar aqui só
+    // decide o que _draw() desenha, sem recalcular nada.
+    _buildDropdown(document.getElementById('mc-ma-btn'), MA_DEFS.map(function(def) {
+        return '<label style="display:flex;align-items:center;gap:.4rem;padding:.3rem .5rem;'
+            + 'cursor:pointer;color:' + def.color + ';white-space:nowrap;font-size:.82rem;">'
+            + '<input type="checkbox" class="mc-ma-check" data-v="' + def.id + '"'
+            + (_maChecked[def.id] ? ' checked' : '') + '>' + def.label + '</label>';
+    }).join(''), function(panel) {
+        panel.querySelectorAll('.mc-ma-check').forEach(function(cb) {
+            cb.onchange = function() { _maChecked[cb.dataset.v] = cb.checked; _draw(); };
+        });
     });
 
     // Botões ferramenta
@@ -825,11 +1007,6 @@ function ensureModal() {
     // Expandir/recolher — alterna o card entre janela e quase-tela-cheia,
     // mantendo o mesmo modal aberto (não é um segundo modal/instância).
     document.getElementById('mc-expand-btn').onclick = function() { MyChart._toggleExpand(); };
-
-    // MA checkboxes
-    ['mc-ma8','mc-ma20','mc-ma200'].forEach(function(id) {
-        document.getElementById(id).onchange = function() { if (_state) _draw(); };
-    });
 
     // Resize
     window.addEventListener('resize', function() {
@@ -969,19 +1146,18 @@ MyChart.open = function(ticker, isIntl, quote) {
     document.getElementById('mc-change').textContent = '';
     document.getElementById('mc-status').textContent = '⏳ Carregando dados…';
 
-    _state = { ticker: ticker, yfticker: yfticker, isIntl: !!isIntl, period: '2w', liveQuote: liveQuote,
+    _state = { ticker: ticker, yfticker: yfticker, isIntl: !!isIntl, period: '2w', interval: 'D', liveQuote: liveQuote,
                _vis: [], _layout: null, _crossX: null, _crossY: null };
     _view  = null;
     _setTool('cursor');
     _resize();
 
-    // Reseta os botões de período visualmente pro padrão "2S"
-    _modal.querySelectorAll('.mc-per-btn').forEach(function(b) {
-        var on = b.dataset.per === '2w';
-        b.style.background = on ? '#3b82f6' : '#1e293b';
-        b.style.color      = on ? '#fff'    : '#94a3b8';
-        b.style.fontWeight = on ? '600'     : '400';
-    });
+    // Reseta os dropdowns de Período/Intervalo pro padrão (2 semanas, Diário)
+    // a cada abertura — evita herdar a seleção de um ticker anterior.
+    var perBtn = document.getElementById('mc-period-btn');
+    if (perBtn) perBtn.textContent = 'Período: 2S ▾';
+    var intBtn = document.getElementById('mc-interval-btn');
+    if (intBtn) intBtn.textContent = 'Intervalo: D ▾';
 
     var tvBtn = document.getElementById('mc-tv-btn');
     if (tvBtn) {
@@ -1011,6 +1187,18 @@ MyChart.open = function(ticker, isIntl, quote) {
         i10Btn.style.opacity = i10Url ? '1' : '.4';
     }
 
+    // Botão de visibilidade das linhas — reflete o estado deste ticker
+    // específico (_linesHidden é por ticker), já que ao trocar de ativo o
+    // botão herdaria visualmente o estado do ticker anterior.
+    var linesBtn = document.getElementById('mc-del-lines');
+    if (linesBtn) {
+        var hiddenNow = !!_linesHidden[ticker];
+        linesBtn.textContent = hiddenNow ? '👁‍🗨' : '👁';
+        linesBtn.title = hiddenNow ? 'Mostrar linhas' : 'Ocultar linhas';
+        linesBtn.style.background = hiddenNow ? '#3b82f6' : '#1e293b';
+        linesBtn.style.color      = hiddenNow ? '#fff'    : '#94a3b8';
+    }
+
     // Linhas salvas
     if (!_lines[ticker]) {
         _fetch('/api/chart_lines/' + ticker)
@@ -1025,8 +1213,8 @@ MyChart.open = function(ticker, isIntl, quote) {
     var now = Date.now(), cached = _cache[ticker];
     if (cached && (now - cached.ts) < 120000) {
         cached.candles = sanitizeCandles(cached.candles);
-        _state.allCandles = cached.candles;
-        _applyPeriod(); _draw();
+        _state.allCandlesRaw = cached.candles;
+        _applyInterval(); _applyPeriod(); _draw();
         return;
     }
 
@@ -1048,8 +1236,8 @@ MyChart.open = function(ticker, isIntl, quote) {
             }
             _cache[ticker] = { ts: Date.now(), candles: candles };
             if (_state && _state.ticker === ticker) {
-                _state.allCandles = candles;
-                _applyPeriod(); _draw();
+                _state.allCandlesRaw = candles;
+                _applyInterval(); _applyPeriod(); _draw();
             }
         })
         .catch(function(e) {
@@ -1184,11 +1372,8 @@ function _draw() {
         ctx.fillText(fmtDate(vis[i].t), xg, H - padB + 14);
     }
 
-    // MAs
-    var showMA8   = document.getElementById('mc-ma8')   && document.getElementById('mc-ma8').checked;
-    var showMA20  = document.getElementById('mc-ma20')  && document.getElementById('mc-ma20').checked;
-    var showMA200 = document.getElementById('mc-ma200') && document.getElementById('mc-ma200').checked;
-
+    // MAs — desenha só as marcadas no dropdown "Médias" (checkbox por id em
+    // MA_DEFS), calculadas todas de uma vez em _applyView (sem refetch).
     function drawMA(arr, color, lw) {
         if (!arr || !arr.length) return;
         ctx.strokeStyle = color; ctx.lineWidth = lw; ctx.setLineDash([]);
@@ -1201,9 +1386,9 @@ function _draw() {
         ctx.stroke();
     }
 
-    if (showMA200) drawMA(_state._ma200, '#f87171', 1.2);
-    if (showMA20)  drawMA(_state._ma20,  '#60a5fa', 1.2);
-    if (showMA8)   drawMA(_state._ma8,   '#fbbf24', 1.0);
+    MA_DEFS.forEach(function(def) {
+        if (_maChecked[def.id] && _state._mas) drawMA(_state._mas[def.id], def.color, 1.2);
+    });
 
     // Candles
     var candleW = Math.max(1, Math.min(14, cW / (slots + 1) * 0.7));
@@ -1219,8 +1404,10 @@ function _draw() {
                      candleW, Math.max(1, Math.abs(yPx(c.c) - yPx(c.o))));
     }
 
-    // Linhas de tendência salvas
-    (_lines[_state.ticker] || []).forEach(function(ln, idx) {
+    // Linhas de tendência salvas — não desenha se estiverem ocultas para
+    // este ticker (botão 👁), mas continuam salvas e clicáveis pra edição
+    // assim que reexibidas.
+    (_linesHidden[_state.ticker] ? [] : (_lines[_state.ticker] || [])).forEach(function(ln, idx) {
         var p1  = _data2px(ln.x1, ln.y1), p2 = _data2px(ln.x2, ln.y2);
         var sel = _selLine && _selLine.idx === idx;
         ctx.strokeStyle = sel ? '#facc15' : (ln.color || '#3b82f6');

@@ -18360,7 +18360,12 @@ def _brapi_chart_fetch(ticker, user_id, start_date=None):
     """
     from services import get_token
     token = get_token(user_id)
-    rng = '1y'
+    # 2y (não 1y) na primeira carga: a MM200 do gráfico precisa de 200 candles
+    # de warm-up ANTES do início da janela visível — no período de 8 meses
+    # (~174 candles) só 1y de histórico (~254 candles) não sobra warm-up
+    # suficiente e a MM200 nunca aparece. Com 2y (~498 candles) ela cobre
+    # até o período mais longo com folga.
+    rng = '2y'
     if start_date:
         try:
             dias = (date.today() - date.fromisoformat(start_date)).days
@@ -18910,9 +18915,13 @@ def api_chart_data(ticker):
                 new_dates = {r['t'] for r in new_rows}
                 candles = [c for c in candles if c['t'] not in new_dates] + new_rows
                 candles.sort(key=lambda c: c['t'])
-                candles = candles[-260:]  # ~1 ano de dias úteis (warm-up MM200 + 8 meses)
+                # ~2 anos de dias úteis — 200 de warm-up da MM200 + ~174 do
+                # período mais longo do gráfico (8 meses) cabem com folga;
+                # 260 (só ~1 ano) cortava o warm-up e a MM200 nunca aparecia
+                # em períodos longos.
+                candles = candles[-500:]
         else:
-            # Primeira vez — busca 1 ano completo
+            # Primeira vez — busca 2 anos completos
             candles = _brapi_chart_fetch(ticker, current_user.id)
 
         candles = _sanitize_chart_candles(candles)

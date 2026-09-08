@@ -18,7 +18,7 @@
     --accent-contrast: #04120c;    /* texto sobre fundo accent */
     --accent-soft: rgba(0, 224, 138, 0.12);
     --success-color: #00e08a;
-    --danger-color: #ff5470;
+    --danger-color: #ff4d6d;
     --warning-color: #ffb340;
     --info-color: #4dabff;
     --border-color: #222c3d;
@@ -51,7 +51,7 @@
     --accent-contrast: #ffffff;
     --accent-soft: rgba(0, 135, 79, 0.12);
     --success-color: #00874f;
-    --danger-color: #e11d48;
+    --danger-color: #e2264a;
     --warning-color: #d97706;
     --info-color: #0b74d4;
     --border-color: #d9e1ec;
@@ -780,6 +780,30 @@ tr:hover > td:first-child {
     border-color: color-mix(in srgb, var(--info-color) 35%, transparent);
 }
 
+/* Variantes por categoria de ativo (ETF, Internacional RV/RF…) — no lugar
+   de background-color sólido inline herdando o texto verde do badge base
+   (ilegível sobre laranja/roxo/ciano). */
+.ticker-badge-roxo {
+    background-color: rgba(139, 92, 246, 0.16);
+    color: #a78bfa;
+    border-color: rgba(139, 92, 246, 0.36);
+}
+.ticker-badge-laranja {
+    background-color: rgba(245, 158, 11, 0.16);
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.36);
+}
+.ticker-badge-ciano {
+    background-color: rgba(6, 182, 212, 0.16);
+    color: #22d3ee;
+    border-color: rgba(6, 182, 212, 0.36);
+}
+.ticker-badge-indigo {
+    background-color: rgba(99, 102, 241, 0.18);
+    color: #818cf8;
+    border-color: rgba(99, 102, 241, 0.38);
+}
+
 /* No tema claro o texto do badge precisa de um tom mais fechado que o
    accent para passar AA sobre o próprio fundo translúcido (o accent puro
    fica em ~3.9:1 nesse fundo bem claro). */
@@ -790,6 +814,11 @@ tr:hover > td:first-child {
 [data-theme="light"] .ticker-badge-alt {
     color: #0a63b5;
 }
+
+[data-theme="light"] .ticker-badge-roxo { color: #6d28d9; }
+[data-theme="light"] .ticker-badge-laranja { color: #9a4700; }
+[data-theme="light"] .ticker-badge-ciano { color: #0c6b83; }
+[data-theme="light"] .ticker-badge-indigo { color: #4338ca; }
 
 .positive {
     color: var(--success-color);

@@ -101,7 +101,7 @@
 
       {% for row in study_calls_extra %}
       <tr{{ roll_attrs(row.roll_flag) }}>
-        <td><span class="ticker-badge" style="background:var(--success-color)">{{ row.ticker.upper() }}</span></td>
+        <td><span class="ticker-badge">{{ row.ticker.upper() }}</span></td>
         <td>{{ row.underlying }}</td>
         <td data-ticker="{{ row.underlying }}" data-estudos-field="underlying_price">{{ '%.2f'|format(row.underlying_price) if row.underlying_price else '-' }}</td>
         <td>{{ '%.2f'|format(row.avg_price) if row.avg_price else '-' }}</td>

@@ -724,6 +724,9 @@
              border:1px solid var(--border-color); border-radius:6px; padding:.4rem .7rem;
              font-size:.82rem; pointer-events:none; white-space:nowrap; z-index:10;"></div>
     </div>
+    <p style="margin:.3rem 0 0; font-size:.72rem; color:var(--text-secondary);">
+        Roda do mouse para zoom · arraste para mover · duplo clique para resetar
+    </p>
 </div>
 
 <script>
@@ -871,17 +874,23 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
     var minK = strikes.length ? Math.min.apply(null, strikes) : 10;
     var maxK = strikes.length ? Math.max.apply(null, strikes) : 60;
     var pad  = Math.max((maxK - minK) * 0.55, maxK * 0.25);
-    var Smin = Math.max(0.01, minK - pad);
-    var Smax = maxK + pad;
+    var SminBase = Math.max(0.01, minK - pad);
+    var SmaxBase = maxK + pad;
     var N    = 400;
-    var step = (Smax - Smin) / N;
+    var step = (SmaxBase - SminBase) / N;
 
     var Sarr = [], Parr = [];
     for (var i = 0; i <= N; i++) {
-        var S = Smin + i * step;
+        var S = SminBase + i * step;
         Sarr.push(S);
         Parr.push(payoffAt(S));
     }
+
+    // Zoom/pan: Smin/Smax são o range VISÍVEL, recalculado a cada draw() a
+    // partir do range base acima + view. O tooltip (mousemove) lê o mesmo
+    // par de variáveis, sempre em sincronia com o último desenho.
+    canvas._payoffView = { zoom: 1, pan: 0 };
+    var Smin = SminBase, Smax = SmaxBase;
 
     // ── Métricas ─────────────────────────────────────────────────────────────
     var net     = netPremium();
@@ -1004,6 +1013,13 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
         var ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, W, H);
 
+        // Recalcula o range visível a cada frame a partir do zoom/pan atual —
+        // Smin/Smax (var externa à IIFE de draw) ficam sempre em sincronia
+        // com o que está desenhado, para o tooltip usar o mesmo range.
+        var zoomed = PayoffStyle.aplicaZoom(SminBase, SmaxBase, canvas._payoffView);
+        Smin = Math.max(0.01, zoomed.Smin);
+        Smax = zoomed.Smax;
+
         var cW = W - PAD.left - PAD.right;
         var cH = H - PAD.top  - PAD.bottom;
 
@@ -1084,7 +1100,7 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
         // ── Cotação atual do subjacente (desenhado por último, sobre tudo) ────
         if (spotPrice > 0 && spotPrice >= Smin && spotPrice <= Smax) {
             var xs = xPx(spotPrice);
-            PayoffStyle.marco(ctx, geo, xs, PayoffStyle.CORES.spot, [4,3]);
+            PayoffStyle.marco(ctx, geo, xs, 'rgba(59,130,246,.85)', [4,3], 2);
 
             // Rótulo na base (abaixo do eixo X, à direita do BE)
             var spotVal = spotPrice.toLocaleString('pt-BR', {minimumFractionDigits:2});
@@ -1150,6 +1166,7 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
 
     // ── Tooltip ao mover o mouse ──────────────────────────────────────────────
     canvas.addEventListener('mousemove', function(e) {
+        if (zoomCtrl.estaArrastando()) { tooltip.style.display = 'none'; return; }
         var rect = canvas.getBoundingClientRect();
         var mx   = (e.clientX - rect.left) * (canvas.width / rect.width);
         var W    = canvas.width, H = canvas.height;
@@ -1173,6 +1190,7 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
     canvas.addEventListener('mouseleave', function() { tooltip.style.display = 'none'; });
 
     // ── Init ─────────────────────────────────────────────────────────────────
+    var zoomCtrl = PayoffStyle.ligaZoom(canvas, canvas._payoffView, draw);
     setSize();
     window.addEventListener('resize', setSize);
 })();

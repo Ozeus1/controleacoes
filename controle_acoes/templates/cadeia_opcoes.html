@@ -212,6 +212,9 @@ table.cadeia td.empty{color:#334155;}
       <canvas id="payoff-canvas-c"></canvas>
       <div id="chart-tooltip-c"></div>
     </div>
+    <p style="margin:.3rem 0 0; font-size:.72rem; color:var(--text-secondary);">
+      Roda do mouse para zoom · arraste para mover · duplo clique para resetar
+    </p>
   </div>
 
 </div><!-- /card -->
@@ -573,6 +576,10 @@ function drawChartC(legs){
   var wrap=document.getElementById('chart-wrap-c');
   var W=wrap.clientWidth||700, H=Math.max(280,Math.round(W*0.36));
   canvas.width=W; canvas.height=H;
+
+  PayoffStyle.ligaZoom(canvas, canvas._payoffView || (canvas._payoffView = { zoom:1, pan:0 }),
+      function () { drawChartC(readLegsC()); });
+
   var ctx=canvas.getContext('2d'); ctx.clearRect(0,0,W,H);
   if(!legs||!legs.length) return;
 
@@ -582,7 +589,9 @@ function drawChartC(legs){
   if(!strikes.length) strikes=[50];
   var minK=Math.min.apply(null,strikes), maxK=Math.max.apply(null,strikes);
   var pad=Math.max((maxK-minK)*0.6,maxK*0.3);
-  var Smin=Math.max(0.01,minK-pad), Smax=maxK+pad;
+  var SminBase=Math.max(0.01,minK-pad), SmaxBase=maxK+pad;
+  var zoomed=PayoffStyle.aplicaZoom(SminBase,SmaxBase,canvas._payoffView);
+  var Smin=Math.max(0.01,zoomed.Smin), Smax=zoomed.Smax;
   var N=400, step=(Smax-Smin)/N, Sarr=[], Parr=[];
   for(var i=0;i<=N;i++){var S=Smin+i*step;Sarr.push(S);Parr.push(payoffAtC(S,legs,multiExp,refDateStr));}
 
@@ -637,7 +646,7 @@ function drawChartC(legs){
   if(curSpot&&curSpot>=Smin&&curSpot<=Smax){
     var xs=xPx(curSpot);
     var spotP=payoffAtC(curSpot,legs,multiExp,refDateStr);
-    PayoffStyle.marco(ctx,geo,xs,'rgba(59,130,246,.85)',[4,3]);
+    PayoffStyle.marco(ctx,geo,xs,'rgba(59,130,246,.85)',[4,3],2);
     ctx.save();
     ctx.fillStyle=PayoffStyle.CORES.spot;
     ctx.beginPath();ctx.arc(xs,yPx(spotP),4.5,0,2*Math.PI);ctx.fill();
@@ -721,7 +730,8 @@ function fmtBRLsimC(v){return 'R$ '+Math.abs(v).toLocaleString('pt-BR',{minimumF
   var canvas=document.getElementById('payoff-canvas-c');
   var tooltip=document.getElementById('chart-tooltip-c');
   canvas.addEventListener('mousemove',function(e){
-    if(!canvas._ser){tooltip.style.display='none';return;}
+    if(!canvas._ser || (canvas._payoffZoomCtrl && canvas._payoffZoomCtrl.estaArrastando())){
+      tooltip.style.display='none';return;}
     var rect=canvas.getBoundingClientRect();
     var mx=(e.clientX-rect.left)*(canvas.width/rect.width);
     var cW2=canvas.width-PAD.left-PAD.right;

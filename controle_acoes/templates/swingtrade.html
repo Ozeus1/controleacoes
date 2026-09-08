@@ -31,7 +31,7 @@
         <tbody>
             {% for item in assets %}
             <tr>
-                <td><span class="ticker-badge" style="background: #312e81; color: #818cf8;">{{ item.asset.ticker
+                <td><span class="ticker-badge ticker-badge-indigo">{{ item.asset.ticker
                         }}</span></td>
                 <td>{{ item.asset.quantity }}</td>
                 <td data-ticker="{{ item.asset.ticker }}" data-field="position" data-qty="{{ item.asset.quantity }}" data-avgprice="{{ item.asset.avg_price }}">{{ item.current_total | brl }}</td>

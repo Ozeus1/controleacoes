@@ -163,11 +163,11 @@
   }
 
   /** Linha vertical pontilhada de um marco (strike, BE, spot). */
-  function marco(ctx, geo, x, cor, tracejado) {
+  function marco(ctx, geo, x, cor, tracejado, largura) {
     ctx.save();
     ctx.setLineDash(tracejado || [4, 4]);
     ctx.strokeStyle = cor;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = largura || 1;
     ctx.beginPath();
     ctx.moveTo(x, geo.PAD.top);
     ctx.lineTo(x, geo.H - geo.PAD.bottom);
@@ -184,6 +184,74 @@
     ctx.restore();
   }
 
+  /**
+   * Aplica o zoom/pan de uma view {zoom, pan} ao intervalo [Smin, Smax]
+   * já calculado pela tela — pan em fração do intervalo original, não em
+   * preço absoluto, para continuar fazendo sentido em qualquer ativo.
+   * Cada tela chama isto logo após calcular Smin/Smax "base" (a partir dos
+   * strikes) e antes de gerar a série de pontos da curva.
+   */
+  function aplicaZoom(Smin, Smax, view) {
+    var zoom = (view && view.zoom) || 1;
+    var pan  = (view && view.pan)  || 0;
+    var largura = (Smax - Smin) / zoom;
+    var centro  = (Smin + Smax) / 2 + pan * (Smax - Smin);
+    return { Smin: centro - largura / 2, Smax: centro + largura / 2 };
+  }
+
+  /**
+   * Liga zoom (roda do mouse) e pan (arrastar) num canvas de payoff.
+   * `view` é o objeto {zoom, pan} mutável (guardado pela tela, tipicamente
+   * em canvas._payoffView); `redesenha` é a função local de desenho da
+   * tela (drawChart/draw/…), chamada a cada mudança de view.
+   * Não depende de nenhum outro estado — cada tela mantém seu próprio
+   * cálculo de payoff intacto, só o range visível muda.
+   */
+  function ligaZoom(canvas, view, redesenha) {
+    if (canvas._payoffZoomCtrl) return canvas._payoffZoomCtrl;
+    var arrastando = false, moveu = false, ultimoX = 0;
+
+    canvas.addEventListener('wheel', function (e) {
+      e.preventDefault();
+      var fator = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      view.zoom = Math.min(Math.max(view.zoom * fator, 1), 30);
+      redesenha();
+    }, { passive: false });
+
+    canvas.addEventListener('mousedown', function (e) {
+      arrastando = true; moveu = false;
+      ultimoX = e.clientX;
+      canvas.style.cursor = 'grabbing';
+    });
+    window.addEventListener('mouseup', function () {
+      if (arrastando) { arrastando = false; canvas.style.cursor = 'grab'; }
+    });
+    // Captura na fase de captura (antes de qualquer listener de tooltip
+    // adicionado depois): assim o pan sempre ganha prioridade e o tooltip
+    // de cada tela só roda quando NÃO se está arrastando o gráfico.
+    canvas.addEventListener('mousemove', function (e) {
+      if (!arrastando) return;
+      moveu = true;
+      var dx = e.clientX - ultimoX;
+      ultimoX = e.clientX;
+      // desloca em fração do intervalo visível, dividido pela largura do
+      // canvas em CSS px (não canvas.width, que já vem em px de device)
+      var rect = canvas.getBoundingClientRect();
+      view.pan -= (dx / rect.width) / view.zoom;
+      redesenha();
+    }, true);
+    canvas.addEventListener('dblclick', function () {
+      view.zoom = 1; view.pan = 0;
+      redesenha();
+    });
+    canvas.style.cursor = 'grab';
+
+    canvas._payoffZoomCtrl = {
+      estaArrastando: function () { return arrastando && moveu; }
+    };
+    return canvas._payoffZoomCtrl;
+  }
+
   global.PayoffStyle = {
     CORES: CORES,
     grade: grade,
@@ -193,6 +261,8 @@
     curva: curva,
     marco: marco,
     faixa: faixa,
-    pilula: pilula
+    pilula: pilula,
+    aplicaZoom: aplicaZoom,
+    ligaZoom: ligaZoom
   };
 })(window);

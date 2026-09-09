@@ -289,9 +289,9 @@ function _initView() {
 }
 
 function _visCount() {
-    // Baseado no período selecionado
+    // Baseado no período selecionado — dias úteis aproximados (~21,75/mês)
     var per  = _state ? (_state.period || '2w') : '2w';
-    var days = { '2w': 10, '1mo': 22, '3mo': 63, '6mo': 130, '8mo': 174 };
+    var days = { '2w': 10, '3mo': 63, '6mo': 130, '12mo': 261, '36mo': 783 };
     return days[per] || 10;
 }
 
@@ -902,16 +902,15 @@ function ensureModal() {
         }
     });
 
-    // Dropdown Período — mesma lista de antes (2S/1M/3M/6M/8M), agora em
-    // lista suspensa em vez de botões soltos.
+    // Dropdown Período — 2S/3M/6M/12M/36M (substituiu 1M/8M por 12M/36M).
     var PERIOD_OPTS = [
         { v: '2w',  label: '2 semanas' },
-        { v: '1mo', label: '1 mês' },
         { v: '3mo', label: '3 meses' },
         { v: '6mo', label: '6 meses' },
-        { v: '8mo', label: '8 meses' },
+        { v: '12mo', label: '12 meses' },
+        { v: '36mo', label: '36 meses' },
     ];
-    var PERIOD_SHORT = { '2w': '2S', '1mo': '1M', '3mo': '3M', '6mo': '6M', '8mo': '8M' };
+    var PERIOD_SHORT = { '2w': '2S', '3mo': '3M', '6mo': '6M', '12mo': '12M', '36mo': '36M' };
     _buildDropdown(document.getElementById('mc-period-btn'), PERIOD_OPTS.map(function(o) {
         return '<div class="mc-dd-item" data-v="' + o.v + '" style="padding:.35rem .6rem;'
             + 'border-radius:4px;cursor:pointer;color:#e2e8f0;white-space:nowrap;">' + o.label + '</div>';

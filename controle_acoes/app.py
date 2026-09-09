@@ -18360,12 +18360,11 @@ def _brapi_chart_fetch(ticker, user_id, start_date=None):
     """
     from services import get_token
     token = get_token(user_id)
-    # 2y (não 1y) na primeira carga: a MM200 do gráfico precisa de 200 candles
-    # de warm-up ANTES do início da janela visível — no período de 8 meses
-    # (~174 candles) só 1y de histórico (~254 candles) não sobra warm-up
-    # suficiente e a MM200 nunca aparece. Com 2y (~498 candles) ela cobre
-    # até o período mais longo com folga.
-    rng = '2y'
+    # 5y na primeira carga: o período mais longo do gráfico é 36 meses
+    # (~783 candles) + 200 de warm-up da MM200 = ~983 candles necessários.
+    # Com 5y (~1246 candles via BRAPI) sobra folga confortável; 2y (~498)
+    # não seria suficiente pra cobrir 36 meses com warm-up.
+    rng = '5y'
     if start_date:
         try:
             dias = (date.today() - date.fromisoformat(start_date)).days
@@ -18377,6 +18376,10 @@ def _brapi_chart_fetch(ticker, user_id, start_date=None):
                 rng = '3mo'
             elif dias <= 190:
                 rng = '6mo'
+            elif dias <= 370:
+                rng = '1y'
+            elif dias <= 740:
+                rng = '2y'
         except Exception:
             pass
     params = {'range': rng, 'interval': '1d', 'fundamental': 'false', 'dividends': 'false'}
@@ -18915,13 +18918,13 @@ def api_chart_data(ticker):
                 new_dates = {r['t'] for r in new_rows}
                 candles = [c for c in candles if c['t'] not in new_dates] + new_rows
                 candles.sort(key=lambda c: c['t'])
-                # ~2 anos de dias úteis — 200 de warm-up da MM200 + ~174 do
-                # período mais longo do gráfico (8 meses) cabem com folga;
-                # 260 (só ~1 ano) cortava o warm-up e a MM200 nunca aparecia
+                # ~5 anos de dias úteis — 200 de warm-up da MM200 + ~783 do
+                # período mais longo do gráfico (36 meses) cabem com folga;
+                # um cap menor cortaria o warm-up e a MM200 não apareceria
                 # em períodos longos.
-                candles = candles[-500:]
+                candles = candles[-1250:]
         else:
-            # Primeira vez — busca 2 anos completos
+            # Primeira vez — busca 5 anos completos
             candles = _brapi_chart_fetch(ticker, current_user.id)
 
         candles = _sanitize_chart_candles(candles)

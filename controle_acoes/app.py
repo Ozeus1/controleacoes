@@ -7080,7 +7080,18 @@ def _gex_curva(series, spot, pontos=90, faixa=0.30):
     Convenção de mercado (SpotGamma/GEX): o formador está comprado em CALL
     e vendido em PUT, então o gama das calls entra positivo e o das puts
     negativo. O valor é o gama em R$ por 1% de variação do ativo:
-        GEX = Γ · OI · lote · S² · 0,01
+        GEX = Γ · OI · S² · 0,01
+
+    NÃO multiplica por 'lote' (allocationRoundLot): o campo openInterest da
+    BRAPI já vem em número de AÇÕES cobertas pelas posições, não em número
+    de contratos — conferido cruzando com /positions do mesmo strike/dia
+    (PETR4, 28/08/2026, strike 42,42 PUT): totalPositionQuantity=17.111.500
+    é exatamente coveredQuantity+blockedQuantity+uncoveredQuantity, e
+    dividindo por allocationRoundLot=100 dá 171.115 — próximo da soma de
+    borrowerQuantity/lenderQuantity (contagem real de titulares/lançadores),
+    confirmando que o OI cru já é "contratos × lote". Multiplicar por lote
+    de novo inflava o GEX em ~100x (bug encontrado comparando com o Jumba:
+    "Gamma Atual" saía em bilhões de reais onde a referência mostra milhões).
     """
     if not series or not spot or spot <= 0:
         return [], None, None, None
@@ -7094,7 +7105,7 @@ def _gex_curva(series, spot, pontos=90, faixa=0.30):
             g = _bs_gamma(S, o['K'], o['T'], o['r'], o['iv'])
             if not g:
                 continue
-            val = g * o['oi'] * o['lote'] * S * S * 0.01
+            val = g * o['oi'] * S * S * 0.01   # oi já é em ações, não multiplica por lote (ver docstring)
             if o['side'] == 'call':
                 g_call += val
             else:
@@ -7217,7 +7228,7 @@ def _gex_walls(series, spot, faixa=0.30):
         g = _bs_gamma(spot, o['K'], o['T'], o['r'], o['iv'])
         if not g:
             continue
-        val = g * o['oi'] * o['lote'] * spot * spot * 0.01
+        val = g * o['oi'] * spot * spot * 0.01   # oi já é em ações (ver _gex_curva)
         d = ag.setdefault(round(o['K'], 2), dict(
             {'strike': round(o['K'], 2)},
             **{gr: 0.0 for gr in grupos},
@@ -7386,7 +7397,7 @@ def api_market_gamma(ticker):
         g = _bs_gamma(spot, o['K'], o['T'], o['r'], o['iv'])
         if not g:
             continue
-        val = g * o['oi'] * o['lote'] * spot * spot * 0.01
+        val = g * o['oi'] * spot * spot * 0.01   # oi já é em ações (ver _gex_curva)
         p = paredes.setdefault(round(o['K'], 2), {'strike': round(o['K'], 2),
                                                   'call': 0.0, 'put': 0.0})
         if o['side'] == 'call':

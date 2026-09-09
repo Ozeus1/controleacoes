@@ -8110,9 +8110,10 @@ def api_fyt(ticker):
 
     def _eff_fyt(rw):
         """Retorna dict com bid/ask EFETIVOS (o que de fato é usado no cálculo),
-        o bid/ask CRUS do book (para exibir na tabela) e se veio de livro real
+        o bid/ask CRUS do book (para exibir na tabela), se veio de livro real
         ('book') ou do último negócio ('ultimo' — fora do pregão, ou book
-        ausente/spread abusivo dentro dele)."""
+        ausente/spread abusivo dentro dele), e se TEM boca (bid e ask reais no
+        livro agora, sem fallback)."""
         bid, ask, last = rw['bid'], rw['ask'], rw['close']
         last_ok = last if last >= 0.05 else None
         has_book = bid >= 0.05 and ask >= 0.05
@@ -8120,7 +8121,7 @@ def api_fyt(ticker):
             return {'bid_eff': last_ok, 'ask_eff': last_ok,
                     'bid_raw': bid if bid >= 0.05 else None,
                     'ask_raw': ask if ask >= 0.05 else None,
-                    'src': 'ultimo'}
+                    'src': 'ultimo', 'has_boca': has_book}
         b = bid if bid >= 0.05 else last_ok
         a = ask if ask >= 0.05 else last_ok
         src = 'book' if has_book else 'ultimo'
@@ -8132,7 +8133,7 @@ def api_fyt(ticker):
         return {'bid_eff': b, 'ask_eff': a,
                 'bid_raw': bid if bid >= 0.05 else None,
                 'ask_raw': ask if ask >= 0.05 else None,
-                'src': src}
+                'src': src, 'has_boca': has_book}
 
     buys  = sorted(calls_by_exp.get(exp_c, []), key=lambda x: x['strike'])
     sells = sorted(calls_by_exp.get(exp_v, []), key=lambda x: x['strike'])
@@ -8148,6 +8149,13 @@ def api_fyt(ticker):
     rows = []
     for b in buys:
         eb = _eff_fyt(b)
+        # Mercado aberto: só CALL com boca real (book dos dois lados) — sem
+        # isso o preço "efetivo" vem do último negócio, que pode estar
+        # bem defasado da cotação atual do book. PUT (não usada nesta
+        # estrutura, só CALL) teria exceção por ser tipicamente mais
+        # ilíquida — ver _eff_thl/_eff_mann para o caso que mistura os dois.
+        if market_open and not eb['has_boca']:
+            continue
         b_ask = eb['ask_eff']
         if not b_ask or b_ask <= 0:
             continue
@@ -8162,6 +8170,8 @@ def api_fyt(ticker):
             if asa <= 0:
                 continue
             es = _eff_fyt(s)
+            if market_open and not es['has_boca']:
+                continue
             s_bid = es['bid_eff']
             if not s_bid or s_bid <= 0:
                 continue
@@ -8444,6 +8454,8 @@ def api_fyt_thl(ticker):
                 if s['strike'] <= b['strike']:
                     continue
                 es = _eff_thl(s)
+                if market_open and not es['has_boca']:
+                    continue
                 s_bid = es['bid_eff']
                 if not s_bid or s_bid <= 0:
                     continue
@@ -8742,10 +8754,17 @@ def api_fyt_mannerheim(ticker):
             v_row, tc_row, tl_row = vend_curto[k], thl_curto[k], thl_longo[k]
 
             ev, etc, etl = _eff(v_row), _eff(tc_row), _eff(tl_row)
-            # A perna LONGA da THL e a mais sujeita a book fino: no pregao
-            # aberto exige boca real, como ja e feito na busca de THL.
-            if market_open and not etl['has_boca']:
-                continue
+            # Pregão aberto: exige boca real (book dos dois lados) em cada
+            # perna, para não usar um último negócio velho — exceto PUT sem
+            # boca, que por ser tipicamente mais ilíquida pode cair no último
+            # negócio mesmo com o mercado aberto.
+            if market_open:
+                if tipo_vendida == 'CALL' and not ev['has_boca']:
+                    continue
+                if tipo_thl == 'CALL' and not etc['has_boca']:
+                    continue
+                if tipo_thl == 'CALL' and not etl['has_boca']:
+                    continue
 
             v_bid  = ev['bid_eff']          # credito da descoberta (vende)
             tc_bid = etc['bid_eff']         # vende a curta da THL
@@ -9000,7 +9019,7 @@ def api_fyt_trava_alta(ticker):
             return {'bid_eff': last_ok, 'ask_eff': last_ok,
                     'bid_raw': bid if bid >= 0.05 else None,
                     'ask_raw': ask if ask >= 0.05 else None,
-                    'src': 'ultimo'}
+                    'src': 'ultimo', 'has_boca': has_book}
         b = bid if bid >= 0.05 else last_ok
         a = ask if ask >= 0.05 else last_ok
         src = 'book' if has_book else 'ultimo'
@@ -9012,7 +9031,7 @@ def api_fyt_trava_alta(ticker):
         return {'bid_eff': b, 'ask_eff': a,
                 'bid_raw': bid if bid >= 0.05 else None,
                 'ask_raw': ask if ask >= 0.05 else None,
-                'src': src}
+                'src': src, 'has_boca': has_book}
 
     opts = sorted(opts_by_exp.get(exp, []), key=lambda x: x['strike'])
     if not opts:
@@ -9049,6 +9068,11 @@ def api_fyt_trava_alta(ticker):
     rows = []
     for ref in ref_cands:
         e_ref = _eff(ref)
+        # Pregão aberto: exige boca real (book dos dois lados) — exceto PUT
+        # sem boca (crédito usa PUT), que por ser tipicamente mais ilíquida
+        # pode cair no último negócio mesmo com o mercado aberto.
+        if market_open and is_call_leg and not e_ref['has_boca']:
+            continue
         if tipo == 'debito':
             # ref = comprada (paga o ask); busca vendida em strike MAIOR
             ref_px = e_ref['ask_eff']
@@ -9067,6 +9091,8 @@ def api_fyt_trava_alta(ticker):
             if width < tamanho_min or width > tamanho_max:
                 continue
             e_out = _eff(outro)
+            if market_open and is_call_leg and not e_out['has_boca']:
+                continue
 
             if tipo == 'debito':
                 out_px = e_out['bid_eff']       # vendida: recebe o bid
@@ -9340,7 +9366,7 @@ def api_fyt_trava_baixa(ticker):
             return {'bid_eff': last_ok, 'ask_eff': last_ok,
                     'bid_raw': bid if bid >= 0.05 else None,
                     'ask_raw': ask if ask >= 0.05 else None,
-                    'src': 'ultimo'}
+                    'src': 'ultimo', 'has_boca': has_book}
         b = bid if bid >= 0.05 else last_ok
         a = ask if ask >= 0.05 else last_ok
         src = 'book' if has_book else 'ultimo'
@@ -9352,7 +9378,7 @@ def api_fyt_trava_baixa(ticker):
         return {'bid_eff': b, 'ask_eff': a,
                 'bid_raw': bid if bid >= 0.05 else None,
                 'ask_raw': ask if ask >= 0.05 else None,
-                'src': src}
+                'src': src, 'has_boca': has_book}
 
     opts = sorted(opts_by_exp.get(exp, []), key=lambda x: x['strike'])
     if not opts:
@@ -9392,6 +9418,11 @@ def api_fyt_trava_baixa(ticker):
     rows = []
     for ref in ref_cands:
         e_ref = _eff(ref)
+        # Pregão aberto: exige boca real (book dos dois lados) — exceto PUT
+        # sem boca (débito usa PUT), que por ser tipicamente mais ilíquida
+        # pode cair no último negócio mesmo com o mercado aberto.
+        if market_open and is_call_leg and not e_ref['has_boca']:
+            continue
         if tipo == 'debito':
             # ref = PUT comprada (paga o ask); busca vendida em strike MENOR
             # (trava de baixa no débito: comprada acima, vendida abaixo)
@@ -9412,6 +9443,8 @@ def api_fyt_trava_baixa(ticker):
             if width < tamanho_min or width > tamanho_max:
                 continue
             e_out = _eff(outro)
+            if market_open and is_call_leg and not e_out['has_boca']:
+                continue
 
             if tipo == 'debito':
                 out_px = e_out['bid_eff']       # vendida: recebe o bid

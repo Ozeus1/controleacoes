@@ -2,10 +2,6 @@
 {% block title %}FYT — Busca de Estruturas{% endblock %}
 {% block extra_scripts %}
 <style>
-#fyt-tickers{display:flex;flex-wrap:wrap;gap:.35rem;}
-.fyt-tbtn{padding:.25rem .6rem;border:1px solid #475569;border-radius:5px;font-size:.8rem;
-  cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap;transition:background .12s;}
-.fyt-tbtn.active{background:#7c3aed;border-color:#7c3aed;font-weight:700;}
 #fyt-spot{font-size:1rem;font-weight:700;color:var(--text-primary);display:inline-flex;gap:.5rem;align-items:baseline;}
 #fyt-spot .chg-pos{color:#34d399;font-size:.85rem;}
 #fyt-spot .chg-neg{color:#f87171;font-size:.85rem;}
@@ -52,8 +48,6 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
 .metric-value{font-size:1.05rem;font-weight:600;color:var(--text-primary);}
 .metric-value.pos{color:#34d399;}
 .metric-value.neg{color:#f87171;}
-#fyt-add-input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
-  border-radius:5px;padding:.25rem .5rem;font-size:.82rem;width:110px;text-transform:uppercase;}
 @media (max-width:640px){
   .fyt-filtros{grid-template-columns:1fr;}
 }
@@ -76,17 +70,17 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   </p>
 
   <!-- Ativo -->
-  <div style="margin-bottom:.6rem;">
-    <div id="fyt-tickers" style="margin-bottom:.5rem;">
-      <button class="fyt-tbtn" data-t="BOVA11">BOVA11</button>
+  <div class="fyt-campo" style="margin-bottom:.9rem;max-width:260px;">
+    <label for="fyt-ticker">Ativo subjacente</label>
+    <select id="fyt-ticker">
+      <option value="BOVA11">BOVA11</option>
       {% for rv in ranking_vol %}
-      <button class="fyt-tbtn" data-t="{{ rv.ticker }}">{{ rv.ticker }}</button>
+      <option value="{{ rv.ticker }}">{{ rv.ticker }}</option>
       {% endfor %}
-    </div>
-    <div style="display:flex;gap:.5rem;align-items:center;">
-      <input id="fyt-add-input" type="text" placeholder="Outro ticker…" maxlength="10">
-      <button class="btn btn-secondary btn-sm" id="fyt-add-btn">➕ Usar este ativo</button>
-    </div>
+      <option value="__outro__">— outro ativo… —</option>
+    </select>
+    <input id="fyt-ticker-livre" placeholder="Digite o ticker" maxlength="10"
+           style="display:none;margin-top:.3rem;">
   </div>
 
   <!-- Filtros -->
@@ -415,32 +409,23 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   }
 
   // ── Seleção de ativo ──────────────────────────────────────────────────
+  var elTicker  = document.getElementById('fyt-ticker');
+  var elTickerL = document.getElementById('fyt-ticker-livre');
+
   function setTicker(t) {
     currentTicker = (t || '').trim().toUpperCase();
-    document.querySelectorAll('.fyt-tbtn').forEach(function(b) {
-      b.classList.toggle('active', b.dataset.t === currentTicker);
-    });
   }
-  document.getElementById('fyt-tickers').addEventListener('click', function(ev) {
-    var b = ev.target.closest('.fyt-tbtn');
-    if (b) setTicker(b.dataset.t);
+  setTicker(elTicker.value);
+
+  elTicker.addEventListener('change', function() {
+    var livre = elTicker.value === '__outro__';
+    elTickerL.style.display = livre ? '' : 'none';
+    if (livre) { elTickerL.focus(); return; }
+    setTicker(elTicker.value);
   });
-  document.getElementById('fyt-add-btn').addEventListener('click', function() {
-    var inp = document.getElementById('fyt-add-input');
-    var t = (inp.value || '').trim().toUpperCase();
-    if (!t) return;
-    if (!document.querySelector('.fyt-tbtn[data-t="' + t + '"]')) {
-      var b = document.createElement('button');
-      b.className = 'fyt-tbtn';
-      b.dataset.t = t;
-      b.textContent = t;
-      document.getElementById('fyt-tickers').appendChild(b);
-    }
-    setTicker(t);
-    inp.value = '';
-  });
-  document.getElementById('fyt-add-input').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') { e.preventDefault(); document.getElementById('fyt-add-btn').click(); }
+  elTickerL.addEventListener('change', function() { setTicker(elTickerL.value); });
+  elTickerL.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); setTicker(elTickerL.value); }
   });
 
   // ── Chips de proporção (só do Booster) ─────────────────────────────────
@@ -466,7 +451,12 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   syncFiltrosEstrutura();
 
   // ── Busca (só no clique do botão) ─────────────────────────────────────
+  function tickerAtual() {
+    if (elTicker.value === '__outro__') return (elTickerL.value || '').trim().toUpperCase();
+    return (elTicker.value || '').trim().toUpperCase();
+  }
   function buscar() {
+    setTicker(tickerAtual());
     if (!currentTicker) {
       errBox.textContent = '⚠️ Escolha um ativo antes de buscar.';
       errBox.style.display = 'block';

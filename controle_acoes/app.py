@@ -7620,6 +7620,16 @@ def api_trader_futuros(ativo):
     # em relação ao spot mostrado, e as "paredes" saem no strike errado
     # (ex.: um muro real em 213.000 do futuro aparece plotado em 210.000).
     # Convertido = strike_bruto × (spot_futuro / preço_à_vista no dia).
+    #
+    # O proxy à vista de DOL (USDBRL=X) vem em R$/US$ (ex.: 5,09), mas o
+    # strike das opções de DOL já é cotado em "pontos" (5150 ≈ 5156 do
+    # WDOV26, ou seja, R$/US$ × 1000) — sem escalar o preço à vista por
+    # esse mesmo fator antes de dividir, o fator de conversão saía ~1000x
+    # maior do que devia e inflava todos os strikes (regressão encontrada
+    # comparando com o Jumba: strikes saíam como 4.977.162,65 em vez de
+    # ~5.100). Índice não tem esse problema — IBOV à vista já é cotado na
+    # mesma escala de pontos que as opções e o futuro.
+    _UNIDADE_CASH = {'IND': 1, 'DOL': 1000}
     fator_strike = 1.0
     proxy = _WALLS_PROXY.get(a)
     if spot and proxy and data_ref:
@@ -7637,7 +7647,8 @@ def api_trader_futuros(ativo):
                     if d_c <= alvo_d and (melhor is None or d_c > melhor[0]):
                         melhor = (d_c, float(px))
                 if melhor and melhor[1] > 0:
-                    fator_strike = spot / melhor[1]
+                    cash_px = melhor[1] * _UNIDADE_CASH.get(a, 1)
+                    fator_strike = spot / cash_px
             except Exception:
                 fator_strike = 1.0
 

@@ -1110,8 +1110,8 @@
                 symbol = symbol + '-USD';
             }
         }
-        if (window.MyChart && typeof MyChart.open === 'function') {
-            MyChart.open(symbol, true);
+        if (window.TickerBrowser && typeof TickerBrowser.open === 'function') {
+            TickerBrowser.open(symbol);
         }
     };
     document.addEventListener('click', function(e) {

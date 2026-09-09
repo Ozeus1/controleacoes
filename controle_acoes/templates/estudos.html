@@ -1263,7 +1263,7 @@ function setSelect(id, val) {
     // isIntl=true → ticker sem prefixo BMFBOVESPA (ações internacionais)
     window.openTVChart = function(ticker, isIntl) {
         ticker = (ticker || '').toUpperCase();
-        MyChart.open(ticker, isIntl);
+        TickerBrowser.open(ticker);
     };
 
     window.closeTVChart = function() { modal.style.display = 'none'; };

@@ -2581,7 +2581,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
 
     // ── TradingView modal ─────────────────────────────────────────────────────
     var modal = document.getElementById('tv-modal');
-    window.openTVChart = function(ticker) { MyChart.open((ticker || '').toUpperCase()); };
+    window.openTVChart = function(ticker) { TickerBrowser.open((ticker || '').toUpperCase()); };
     window.closeTVChart = function() { modal.style.display = 'none'; };
     modal.addEventListener('click', function(e) { if (e.target === modal) closeTVChart(); });
 

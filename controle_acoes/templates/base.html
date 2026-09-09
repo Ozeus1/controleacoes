@@ -390,7 +390,7 @@
         <script>
             // buildTVWidget is overridden by mychart.js — stub here as fallback only
             function buildTVWidget(containerId, symbol, theme, height) {
-                if (window.MyChart) { window.MyChart.open(symbol); return; }
+                if (window.TickerBrowser) { window.TickerBrowser.open(symbol); return; }
                 var c = document.getElementById(containerId);
                 if (c) c.innerHTML = '<p style="color:#aaa;padding:1rem">Carregando gráfico…</p>';
             }
@@ -525,6 +525,7 @@
         });
     </script>
     <script src="{{ url_for('static', filename='js/mychart.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ticker_browser.js') }}"></script>
     {% block extra_scripts %}{% endblock %}
     <script>
         // Init Indicators Bar State

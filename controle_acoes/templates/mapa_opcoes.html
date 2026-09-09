@@ -107,6 +107,10 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
       </select>
     </div>
     <div class="mo-campo">
+      <label title="Pregão específico das posições em aberto — vazio busca o snapshot mais recente publicado pela BRAPI (padrão)">Data (opcional)</label>
+      <input type="date" id="mo-data" title="Vazio = snapshot mais recente disponível">
+    </div>
+    <div class="mo-campo">
       <label>&nbsp;</label>
       <button type="button" id="mo-buscar" class="btn btn-primary" style="padding:.4rem;">Gerar mapa</button>
     </div>
@@ -164,6 +168,8 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
 (function(){
   var elT=document.getElementById('mo-ticker'), elE=document.getElementById('mo-exp');
   var elTL=document.getElementById('mo-ticker-livre'), elModo=document.getElementById('mo-modo');
+  var elData=document.getElementById('mo-data');
+  elData.max=new Date().toISOString().slice(0,10);   // não deixa escolher data futura
   var bCall=document.getElementById('mo-call'), bPut=document.getElementById('mo-put');
   var elErr=document.getElementById('mo-error'), elLoad=document.getElementById('mo-loading');
   var elHint=document.getElementById('mo-hint'), elRes=document.getElementById('mo-res');
@@ -236,7 +242,8 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
     if(!t||!e){ showErr('Escolha o ativo e o vencimento.'); return; }
     clearErr(); elHint.style.display='none'; elRes.style.display='none'; elLoad.style.display='block';
     fetch('/api/mapa-opcoes/'+encodeURIComponent(t)+'?exp='+encodeURIComponent(e)
-          +'&side='+side+'&modo='+elModo.value)
+          +'&side='+side+'&modo='+elModo.value
+          +(elData.value?('&data='+encodeURIComponent(elData.value)):''))
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
       .then(function(res){
         elLoad.style.display='none';
@@ -257,11 +264,20 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
       modoTxt=' · <strong style="color:#eab308;">variação de '+nd+'</strong>'+
               (d.data_base?(' (base '+dt(d.data_base)+')'):'');
     }
+    // Quando a data pedida não bate com a devolvida (ex.: fim de semana,
+    // feriado, ou dia sem snapshot ainda publicado), a BRAPI cai pro
+    // pregão disponível mais próximo — avisa pra não parecer que ignorou
+    // a data escolhida silenciosamente.
+    var avisoData='';
+    if(d.data_pedida && d.data_ref && d.data_pedida!==d.data_ref){
+      avisoData='<br><span style="color:#eab308;">⚠️ Sem snapshot em '+dt(d.data_pedida)+
+        ' — mostrando o pregão disponível mais próximo, '+dt(d.data_ref)+'.</span>';
+    }
     document.getElementById('mo-info').innerHTML=
       '<strong>'+d.ticker+'</strong> · '+lbl+' · vencimento '+(p[2]+'/'+p[1]+'/'+p[0])+
       (d.spot?(' · spot <strong>R$ '+Number(d.spot).toFixed(2).replace('.',',')+'</strong>'):'')+
       (d.data_ref?(' · posições de '+dt(d.data_ref)):'')+modoTxt+
-      (d.aviso?('<br><span style="color:#eab308;">⚠️ '+d.aviso+'</span>'):'');
+      (d.aviso?('<br><span style="color:#eab308;">⚠️ '+d.aviso+'</span>'):'')+avisoData;
 
     renderChart(d);
     renderCards(d);

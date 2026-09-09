@@ -6749,25 +6749,40 @@ def api_mapa_opcoes(ticker):
       side  call|put
       modo  abs | var1 | var2 | var5  — valores absolutos ou a variação
             das posições contra 1, 2 ou 5 pregões atrás.
+      data  YYYY-MM-DD (opcional) — pregão específico a consultar na BRAPI;
+            sem isso, ela devolve o snapshot mais recente publicado (padrão
+            de sempre). Como a B3 publica as posições em aberto só depois
+            do fechamento, um "data" de hoje antes da publicação cai no
+            mesmo caso de "sem dado" que qualquer outra data sem snapshot.
     """
     t = (ticker or '').strip().upper()
     exp = (request.args.get('exp') or '').strip()
     side = (request.args.get('side') or 'call').strip().lower()
     modo = (request.args.get('modo') or 'abs').strip().lower()
+    data_pedida = (request.args.get('data') or '').strip()
     if side not in ('call', 'put'):
         side = 'call'
     if modo not in ('abs', 'var1', 'var2', 'var5'):
         modo = 'abs'
     if not t or not exp:
         return jsonify({'error': 'Informe o ativo e o vencimento.'}), 400
+    if data_pedida:
+        try:
+            datetime.strptime(data_pedida, '%Y-%m-%d')
+        except ValueError:
+            return jsonify({'error': 'Data inválida.'}), 400
 
-    pos, err = _brapi_opt_get('/positions',
-                              {'underlying': t, 'expirationDate': exp}, current_user.id)
+    params_pos = {'underlying': t, 'expirationDate': exp}
+    if data_pedida:
+        params_pos['date'] = data_pedida
+    pos, err = _brapi_opt_get('/positions', params_pos, current_user.id)
     if err:
         return jsonify({'error': err}), 502
     todas = (pos or {}).get('positions') or []
     if not todas:
-        return jsonify({'error': f'Sem posições em aberto para {t} em {exp}.'}), 404
+        msg = (f'Sem posições em aberto para {t} em {exp}'
+               + (f' na data {data_pedida}.' if data_pedida else '.'))
+        return jsonify({'error': msg}), 404
 
     data_ref = (pos or {}).get('date')
 
@@ -6986,6 +7001,7 @@ def api_mapa_opcoes(ticker):
     return jsonify({
         'ticker': t, 'exp': exp, 'side': side, 'modo': modo,
         'data_ref': data_ref, 'data_base': data_base, 'aviso': aviso,
+        'data_pedida': data_pedida or None,
         'spot': spot,
         'barras': barras, 'rows': rows,
         'tot_coberto': tot_cob, 'tot_travado': tot_tra, 'tot_descoberto': tot_des,

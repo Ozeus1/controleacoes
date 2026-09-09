@@ -206,6 +206,25 @@
         </div><!-- /grid -->
     </div><!-- /OpLab section -->
 
+    <div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-bottom: 2rem;">
+        <h3>Gráfico Completo (acoes.receberbemevinhos.com.br)</h3>
+        <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size:.9rem;">
+            Número usado no link do gráfico completo (botão 📈) para evitar a tela de login do site.
+            Esse valor pode mudar periodicamente — se o gráfico voltar a pedir login, atualize-o aqui.
+        </p>
+        <form method="POST" action="{{ url_for('config') }}">
+            <input type="hidden" name="action" value="save_receberbem_num">
+            <div class="form-group">
+                <label for="receberbem_num">Número (parâmetro "num")</label>
+                <div style="display: flex; gap: 1rem;">
+                    <input type="text" id="receberbem_num" name="receberbem_num" value="{{ receberbem_num }}"
+                        placeholder="Ex: 741508" inputmode="numeric" style="flex: 1; max-width:200px; margin-bottom: 0;">
+                    <button type="submit" class="btn btn-primary">Salvar</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
     <div style="border-top: 1px solid var(--border-color); padding-top: 2rem;">
         <h3>Testar Conexão OpLab</h3>
         <p style="color: var(--text-secondary); margin-bottom: 1rem;">

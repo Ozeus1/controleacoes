@@ -121,10 +121,20 @@ var TV_CRYPTO_EXCHANGE = 'BINANCE';
 // mesmo padrão para B3, internacional e cripto: ?action=ticker&view=TICKER
 // usando o ticker como usado internamente (B3 sem sufixo, ex.: PETR4, XPLG11;
 // internacional puro, ex.: AAPL, SPY; cripto no formato "BTC-USD").
+// O sufixo "?num=NNNNNN" evita a tela de login do site — o número vem da
+// meta tag "receberbem-num" (configurável em Configuração > Gráfico
+// Completo, pois esse valor muda periodicamente do lado deles).
+function receberbemNum() {
+    var m = document.querySelector('meta[name="receberbem-num"]');
+    return m ? (m.content || '').trim() : '';
+}
 function grafUrl(ticker) {
     var tk = (ticker || '').toUpperCase().trim();
     if (!tk) return null;
-    return 'https://acoes.receberbemevinhos.com.br/?action=ticker&view=' + encodeURIComponent(tk);
+    var url = 'https://acoes.receberbemevinhos.com.br/?action=ticker&view=' + encodeURIComponent(tk);
+    var num = receberbemNum();
+    if (num) url += '?num=' + encodeURIComponent(num);
+    return url;
 }
 
 // Monta a URL da página do ativo no Investidor10 (investidor10.com.br/{categoria}/{ticker}/).

@@ -14093,6 +14093,14 @@ def config():
             label = 'ativada' if auto == 'true' else 'desativada'
             flash(f'Atualização automática OpLab {label} (intervalo: {interval} min).', 'success')
 
+        elif action == 'save_receberbem_num':
+            num = request.form.get('receberbem_num', '').strip()
+            if num.isdigit():
+                Settings.set_value('receberbem_num', num, user_id=current_user.id)
+                flash('Número salvo com sucesso!', 'success')
+            else:
+                flash('Informe apenas números.', 'warning')
+
         return redirect(url_for('config'))
 
     selic_rate      = float(Settings.get_value('selic_rate', user_id=current_user.id, default='14.5'))
@@ -14109,6 +14117,7 @@ def config():
     oplab_auto      = Settings.get_value('oplab_auto_update', user_id=current_user.id, default='false') == 'true'
     oplab_interval  = Settings.get_value('oplab_interval',    user_id=current_user.id, default='5')
     oplab_token_ok  = bool(Settings.get_value('oplab_token',  user_id=current_user.id))
+    receberbem_num  = Settings.get_value('receberbem_num', user_id=current_user.id, default='')
 
     uid = current_user.id
     _, _, ticker_map_text, option_map_text = _build_ticker_maps(uid)
@@ -14124,6 +14133,7 @@ def config():
                            oplab_auto=oplab_auto,
                            oplab_interval=oplab_interval,
                            oplab_token_ok=oplab_token_ok,
+                           receberbem_num=receberbem_num,
                            ticker_map_text=ticker_map_text,
                            option_map_text=option_map_text,
                            selic_rate=selic_rate,
@@ -17675,6 +17685,14 @@ def api_asset_dates(id):
 def inject_indices():
     indices = MarketIndex.query.all()
     return dict(market_indices=indices, SECTOR_GROUPS=SECTOR_GROUPS)
+
+@app.context_processor
+def inject_receberbem_num():
+    from flask_login import current_user as _cu
+    num = ''
+    if _cu.is_authenticated:
+        num = Settings.get_value('receberbem_num', user_id=_cu.id, default='') or ''
+    return dict(receberbem_num_global=num)
 
 @app.route('/config/debug_yahoo', methods=['GET', 'POST'])
 @login_required

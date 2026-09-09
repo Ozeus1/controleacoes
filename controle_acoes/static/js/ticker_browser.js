@@ -11,10 +11,22 @@ var _modal = null;
 var _iframe = null;
 var _titleEl = null;
 
+// O sufixo "?num=NNNNNN" evita a tela de login do site (a página exige
+// login e o cookie de sessão dela não é enviado dentro de um iframe de
+// outra origem — ver commit anterior). O número vem da meta tag
+// "receberbem-num", configurável em Configuração > Gráfico Completo,
+// porque esse valor muda periodicamente do lado deles.
+function receberbemNum() {
+    var m = document.querySelector('meta[name="receberbem-num"]');
+    return m ? (m.content || '').trim() : '';
+}
 function url(ticker) {
     var tk = (ticker || '').toUpperCase().trim();
     if (!tk) return null;
-    return 'https://acoes.receberbemevinhos.com.br/?action=ticker&view=' + encodeURIComponent(tk);
+    var u = 'https://acoes.receberbemevinhos.com.br/?action=ticker&view=' + encodeURIComponent(tk);
+    var num = receberbemNum();
+    if (num) u += '?num=' + encodeURIComponent(num);
+    return u;
 }
 
 function ensureModal() {

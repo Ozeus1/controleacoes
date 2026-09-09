@@ -7136,7 +7136,7 @@ def _gex_curva(series, spot, pontos=90, faixa=0.30):
     return curva, flip, mx, mn
 
 
-def _gama_series_fut(posicoes, precos_por_symbol, spot, T, r_cont):
+def _gama_series_fut(posicoes, precos_por_symbol, spot, T, r_cont, fator=1.0):
     """Monta a lista de séries para GEX a partir de /positions + /chain de
     futuros (IND/DOL) — usado tanto no vencimento principal quanto nos
     'próximos' dos Jumba Walls. A IV sai do preço de tela de cada série
@@ -7155,6 +7155,11 @@ def _gama_series_fut(posicoes, precos_por_symbol, spot, T, r_cont):
     'referencePrice' (o preço teórico/ajuste do dia), presente em 100% das
     séries no mesmo teste. Sem esse fallback, praticamente toda a cadeia de
     DOL era descartada por falta de preço, não por IV ruim.
+
+    `fator` converte o strike bruto (referenciado ao ativo à vista) para a
+    escala do futuro usado como `spot` — precisa ser aplicado antes do
+    cálculo de IV, senão strike e spot ficam em escalas diferentes dentro
+    do próprio Black-Scholes (não é só um problema de exibição das paredes).
     """
     def _iv_de(K, side, s):
         px = s.get('close') or s.get('referencePrice')
@@ -7167,6 +7172,7 @@ def _gama_series_fut(posicoes, precos_por_symbol, spot, T, r_cont):
         return iv if (iv and 0.02 <= iv <= 3.0) else None
 
     # Indexa os preços de tela por (strike, lado) para achar a ponta oposta
+    # (strike bruto, ainda não convertido — casa com o K0 abaixo).
     por_strike_lado = {}
     for sym, s in (precos_por_symbol or {}).items():
         K0 = s.get('strike')
@@ -7178,11 +7184,12 @@ def _gama_series_fut(posicoes, precos_por_symbol, spot, T, r_cont):
     for o in posicoes or []:
         sym = (o.get('symbol') or '').upper()
         s = precos_por_symbol.get(sym) or {}
-        K = o.get('strike')
+        Kbruto = o.get('strike')
         oi = o.get('openInterest') or 0
-        if not K or oi <= 0:
+        if not Kbruto or oi <= 0:
             continue
-        K = float(K)
+        Kbruto = float(Kbruto)
+        K = Kbruto * fator
         side = (o.get('side') or '').lower()
         if side not in ('call', 'put'):
             continue
@@ -7190,7 +7197,7 @@ def _gama_series_fut(posicoes, precos_por_symbol, spot, T, r_cont):
         iv = _iv_de(K, side, s)
         if iv is None:
             oposto = 'put' if side == 'call' else 'call'
-            s_op = por_strike_lado.get((round(K, 2), oposto))
+            s_op = por_strike_lado.get((round(Kbruto, 2), oposto))
             if s_op:
                 iv = _iv_de(K, oposto, s_op)
         if iv is None:
@@ -7605,6 +7612,35 @@ def api_trader_futuros(ativo):
             spot = x.get('close') or x.get('settlement') or x.get('referencePrice')
             break
 
+    # ── Fator de conversão dos strikes para a escala do futuro ───────
+    # As opções de IND/DOL são referenciadas ao ativo à vista (IBOV/dólar
+    # à vista), não ao futuro exibido como spot — então o strike bruto da
+    # BRAPI já vem nessa escala "à vista", tipicamente alguns % abaixo do
+    # futuro (base de juros). Sem converter, os strikes ficam deslocados
+    # em relação ao spot mostrado, e as "paredes" saem no strike errado
+    # (ex.: um muro real em 213.000 do futuro aparece plotado em 210.000).
+    # Convertido = strike_bruto × (spot_futuro / preço_à_vista no dia).
+    fator_strike = 1.0
+    proxy = _WALLS_PROXY.get(a)
+    if spot and proxy and data_ref:
+        cash, _ecash = _brapi_quote_candles_5m(proxy, 95, uid)
+        if cash:
+            try:
+                alvo_d = datetime.strptime(data_ref, '%Y-%m-%d').date()
+                melhor = None
+                for c in (cash.get('historicalDataPrice') or []):
+                    ts = c.get('date')
+                    px = c.get('close')
+                    if not ts or not px:
+                        continue
+                    d_c = datetime.utcfromtimestamp(ts).date()
+                    if d_c <= alvo_d and (melhor is None or d_c > melhor[0]):
+                        melhor = (d_c, float(px))
+                if melhor and melhor[1] > 0:
+                    fator_strike = spot / melhor[1]
+            except Exception:
+                fator_strike = 1.0
+
     # ── Base para as "Mudanças": snapshot anterior com conteúdo distinto
     def _assin(lst):
         return {(o.get('symbol') or '').upper(): (o.get('openInterest') or 0) for o in lst}
@@ -7635,13 +7671,13 @@ def api_trader_futuros(ativo):
         data_base = (cand or {}).get('date')
         break
 
-    # ── Agrega por strike ────────────────────────────────────────────
+    # ── Agrega por strike (convertido p/ escala do futuro, ver fator_strike) ──
     ag = {}
     for o in atuais:
         k = o.get('strike')
         if k is None:
             continue
-        k = float(k)
+        k = round(float(k) * fator_strike, 3)
         side = (o.get('side') or '').lower()
         oi = o.get('openInterest') or 0
         sym = (o.get('symbol') or '').upper()
@@ -7691,7 +7727,7 @@ def api_trader_futuros(ativo):
         except Exception:
             T = 30 / 365.0
 
-        series = _gama_series_fut(atuais, precos, spot, T, r_cont)
+        series = _gama_series_fut(atuais, precos, spot, T, r_cont, fator_strike)
         if series:
             curva, flip, mx, mn = _gex_curva(series, spot)
             gmax = {'s': mx['s'], 'v': mx['total']} if mx else None
@@ -7739,7 +7775,7 @@ def api_trader_futuros(ativo):
                 T2 = max((venc2 - ref2).days / 365.0, 1.0 / 365.0)
             except Exception:
                 T2 = 30 / 365.0
-            return _gama_series_fut(pos2, precos2, spot, T2, r_cont)
+            return _gama_series_fut(pos2, precos2, spot, T2, r_cont, fator_strike)
 
         series_walls = [dict(o, grupo='atual') for o in series]
         if vencs_extra:

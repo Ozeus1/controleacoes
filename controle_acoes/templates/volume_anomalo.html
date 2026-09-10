@@ -26,6 +26,8 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
 .va-call{color:#34d399;font-weight:600;}
 .va-put{color:#f87171;font-weight:600;}
 .va-acao{color:#60a5fa;font-weight:600;font-size:.72rem;letter-spacing:.03em;}
+.va-tick{color:inherit;text-decoration:none;border-bottom:1px dotted rgba(148,163,184,.55);}
+.va-tick:hover{color:#a78bfa;border-bottom-color:#a78bfa;}
 .va-flag{display:inline-block;padding:.05rem .4rem;border-radius:4px;font-size:.7rem;
   font-weight:700;background:rgba(234,179,8,.18);color:#eab308;margin-left:.3rem;}
 .va-par{display:inline-block;padding:.05rem .4rem;border-radius:4px;font-size:.7rem;
@@ -163,6 +165,35 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
   <div id="va-resumo"></div>
   <div id="va-estruturas"></div>
   <div id="va-results"></div>
+</div>
+
+<!-- ── Modal: evolução da opção ───────────────────────────────────── -->
+<div id="ev-modal" style="display:none;position:fixed;inset:0;z-index:19050;
+     background:rgba(0,0,0,.82);align-items:flex-start;justify-content:center;
+     overflow-y:auto;padding:2vh 1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,1000px);
+              border:1px solid var(--border-color);margin:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:.9rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <div>
+        <h3 id="ev-titulo" style="margin:0;font-size:1.05rem;"></h3>
+        <div id="ev-sub" style="font-size:.8rem;color:var(--text-secondary);margin-top:.15rem;"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:.6rem;">
+        <select id="ev-dias" onchange="evRecarregar()"
+                style="background:var(--hover-bg);color:var(--text-primary);
+                       border:1px solid var(--border-color);border-radius:5px;
+                       padding:.25rem .5rem;font-size:.8rem;">
+          <option value="15">15 pregões</option>
+          <option value="30" selected>30 pregões</option>
+          <option value="60">60 pregões</option>
+        </select>
+        <button onclick="evFechar()" style="background:none;border:none;font-size:1.4rem;
+                color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+      </div>
+    </div>
+    <div id="ev-corpo" style="padding:1rem 1.1rem;"></div>
+  </div>
 </div>
 
 <!-- ── Modal: seleção de ativos ───────────────────────────────────── -->
@@ -474,6 +505,137 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
   }
   document.getElementById('va-buscar').addEventListener('click', buscar);
 
+  // ── Evolução da opção ────────────────────────────────────────────
+  // Posição em aberto dia a dia, decomposta em coberto / travado /
+  // descoberto — os mesmos campos que o /options/positions publica.
+  var EV = null;   // {symbol, underlying, exp} da opção aberta
+
+  window.evAbrir = function(symbol, ativo, exp) {
+    EV = {symbol: symbol, underlying: ativo, exp: exp};
+    document.getElementById('ev-titulo').textContent = 'Evolução da ' + symbol;
+    document.getElementById('ev-sub').textContent = ativo + ' · vencimento ' + dateBR(exp);
+    document.getElementById('ev-modal').style.display = 'flex';
+    evRecarregar();
+  };
+  window.evFechar = function() {
+    document.getElementById('ev-modal').style.display = 'none';
+  };
+  document.addEventListener('keydown', function(e) {
+    var m = document.getElementById('ev-modal');
+    if (e.key === 'Escape' && m && m.style.display !== 'none') evFechar();
+  });
+
+  window.evRecarregar = function() {
+    if (!EV) return;
+    var corpo = document.getElementById('ev-corpo');
+    corpo.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-secondary);">'
+      + '⏳ Buscando posições dia a dia…</div>';
+    var q = new URLSearchParams({
+      underlying: EV.underlying, exp: EV.exp,
+      dias: document.getElementById('ev-dias').value,
+      ate: document.getElementById('va-data').value || ''
+    });
+    fetch('/api/opcao-evolucao/' + encodeURIComponent(EV.symbol) + '?' + q.toString())
+      .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+      .then(function(res) {
+        if (!res.ok || res.j.error) {
+          corpo.innerHTML = '<div style="padding:1.5rem;color:#f87171;">⚠️ '
+            + (res.j.error || 'Erro ao buscar a evolução.') + '</div>';
+          return;
+        }
+        evRender(res.j);
+      })
+      .catch(function(e) {
+        corpo.innerHTML = '<div style="padding:1.5rem;color:#f87171;">⚠️ Falha: ' + e + '</div>';
+      });
+  };
+
+  function evRender(d) {
+    var s = d.serie || [];
+    if (!s.length) {
+      document.getElementById('ev-corpo').innerHTML =
+        '<div style="padding:1.5rem;color:var(--text-secondary);">Sem histórico para esta série.</div>';
+      return;
+    }
+    var maxT = Math.max.apply(null, s.map(function(x) { return x.total; })) || 1;
+    var W = 920, H = 240, PL = 62, PR = 12, PT = 12, PB = 26;
+    var iw = W - PL - PR, ih = H - PT - PB;
+    var px = function(i) { return PL + (s.length < 2 ? iw / 2 : i * iw / (s.length - 1)); };
+    var py = function(v) { return PT + ih - (v / maxT) * ih; };
+    var linha = function(campo, cor) {
+      var pts = s.map(function(x, i) { return px(i) + ',' + py(x[campo]); }).join(' ');
+      return '<polyline points="' + pts + '" fill="none" stroke="' + cor
+           + '" stroke-width="2" stroke-linejoin="round"/>';
+    };
+    // Marca o pregão selecionado na busca, para achar o dia na série
+    var alvo = document.getElementById('va-data').value;
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;'
+      + 'background:var(--hover-bg);border:1px solid var(--border-color);border-radius:8px;">';
+    [0, 0.5, 1].forEach(function(f) {
+      var y = PT + ih * f, v = maxT * (1 - f);
+      svg += '<line x1="' + PL + '" y1="' + y + '" x2="' + (W - PR) + '" y2="' + y
+          + '" stroke="rgba(148,163,184,.18)" stroke-width="1"/>'
+          + '<text x="' + (PL - 6) + '" y="' + (y + 4) + '" text-anchor="end" '
+          + 'fill="#94a3b8" font-size="10">' + fmtCurto(v) + '</text>';
+    });
+    s.forEach(function(x, i) {
+      if (alvo && x.data === alvo) {
+        svg += '<line x1="' + px(i) + '" y1="' + PT + '" x2="' + px(i) + '" y2="' + (PT + ih)
+            + '" stroke="#eab308" stroke-width="1" stroke-dasharray="3,3"/>';
+      }
+    });
+    svg += linha('total', '#2dd4bf') + linha('trava', '#a78bfa')
+         + linha('descoberto', '#f87171') + linha('coberto', '#60a5fa');
+    [0, s.length - 1].forEach(function(i) {
+      if (i < 0) return;
+      svg += '<text x="' + px(i) + '" y="' + (H - 8) + '" text-anchor="'
+          + (i === 0 ? 'start' : 'end') + '" fill="#94a3b8" font-size="10">'
+          + dateBR(s[i].data) + '</text>';
+    });
+    svg += '</svg>';
+
+    var leg = [['Total', '#2dd4bf'], ['Travado', '#a78bfa'],
+               ['Descoberto', '#f87171'], ['Coberto', '#60a5fa']]
+      .map(function(l) {
+        return '<span style="display:inline-flex;align-items:center;gap:.3rem;margin-right:.9rem;">'
+          + '<span style="width:14px;height:3px;background:' + l[1] + ';display:inline-block;"></span>'
+          + l[0] + '</span>';
+      }).join('');
+
+    var tab = '<div style="max-height:320px;overflow-y:auto;margin-top:.8rem;">'
+      + '<table class="va-tab"><thead><tr><th>Data</th><th>Coberto</th><th>Travado</th>'
+      + '<th>Descoberto</th><th>Total</th><th title="Quantos detêm a opção comprada">Titulares</th>'
+      + '<th title="Quantos venderam a opção">Lançadores</th></tr></thead><tbody>';
+    s.slice().reverse().forEach(function(x) {
+      var hoje = (alvo && x.data === alvo);
+      tab += '<tr' + (hoje ? ' style="background:rgba(234,179,8,.10);"' : '') + '>'
+        + '<td>' + dateBR(x.data) + '</td>'
+        + '<td>' + num(x.coberto) + '</td>'
+        + '<td>' + num(x.trava) + '</td>'
+        + '<td>' + num(x.descoberto) + '</td>'
+        + '<td><strong>' + num(x.total) + '</strong></td>'
+        + '<td>' + num(x.titular) + '</td>'
+        + '<td>' + num(x.lancador) + '</td></tr>';
+    });
+    tab += '</tbody></table></div>';
+
+    document.getElementById('ev-corpo').innerHTML =
+      '<div style="font-size:.78rem;color:var(--text-secondary);margin-bottom:.5rem;">' + leg + '</div>'
+      + svg
+      + '<div style="font-size:.76rem;color:var(--text-secondary);margin-top:.6rem;">'
+      + '<strong>Travado</strong>: posição vendida com outra opção como garantia. '
+      + '<strong>Coberto</strong>: garantida pelo ativo. '
+      + '<strong>Descoberto</strong>: sem garantia — é a que exige margem e força recompra.'
+      + '</div>' + tab;
+  }
+
+  function fmtCurto(v) {
+    v = Number(v) || 0;
+    if (v >= 1e6) return (v / 1e6).toFixed(1).replace('.', ',') + 'M';
+    if (v >= 1e3) return Math.round(v / 1e3) + 'k';
+    return String(Math.round(v));
+  }
+
   var ESTS = [];   // estruturas do último resultado, p/ copiar/exportar
 
   // Monta o link para a aba Estruturas de Cálculos de Opções no modo
@@ -583,7 +745,10 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
         h += '<div class="va-est-perna">'
           + '<span class="' + (p.side === 'call' ? 'va-call' : 'va-put') + '">'
           +   (p.side === 'call' ? 'C' : 'P') + '</span> '
-          + '<strong style="color:var(--text-primary);">' + p.symbol + '</strong>'
+          + '<a href="#" class="va-tick" title="Ver evolução das posições em aberto"'
+          + ' onclick="evAbrir(\'' + p.symbol + '\',\'' + e.ativo + '\',\'' + e.exp
+          + '\');return false;"><strong style="color:var(--text-primary);">'
+          + p.symbol + '</strong></a>'
           + ' · K ' + brl(p.strike) + ' · ' + brl(p.preco)
           + ' · ' + num(p.qtd) + ' un.'
           + ' · ' + num(p.trades) + ' neg.'
@@ -656,8 +821,12 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
         ? '<span class="va-acao">À VISTA</span>'
         : '<span class="' + (r.side === 'call' ? 'va-call' : 'va-put') + '">'
           + (r.side === 'call' ? 'C' : 'P') + '</span> ' + r.ativo;
+      var tick = acao ? '<strong>' + r.symbol + '</strong>'
+        : '<a href="#" class="va-tick" title="Ver evolução das posições em aberto"'
+          + ' onclick="evAbrir(\'' + r.symbol + '\',\'' + r.ativo + '\',\'' + r.exp
+          + '\');return false;"><strong>' + r.symbol + '</strong></a>';
       h += '<tr' + (r.par_n ? ' class="va-tem-par"' : '') + '>'
-        + '<td><strong>' + r.symbol + '</strong>' + flag + '</td>'
+        + '<td>' + tick + flag + '</td>'
         + '<td>' + lado + '</td>'
         + '<td>' + (acao ? '—' : dateBR(r.exp)) + '</td>'
         + '<td>' + (acao ? '—' : brl(r.strike)) + '</td>'

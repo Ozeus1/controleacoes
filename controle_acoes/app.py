@@ -7378,6 +7378,93 @@ def _venc_mensal(exp_str):
     return False
 
 
+@app.route('/api/opcao-evolucao/<simbolo>')
+@login_required
+def api_opcao_evolucao(simbolo):
+    """História de uma série: posições em aberto dia a dia.
+
+    O /options/positions decompõe o open interest em coberto, travado e
+    descoberto, e traz quantos titulares e lançadores existem — os mesmos
+    campos da "Evolução da Opção" do Jumba, conferidos linha a linha
+    contra BOVAV187 em 28/08, 02/09, 04/09 e 08/09/2026 (batem exato).
+
+    Não existe endpoint que devolva a série histórica pronta: é uma
+    chamada por pregão, então `dias` limita quantos dias úteis buscar.
+
+    Query: underlying, exp (YYYY-MM-DD) e dias (padrão 30, teto 60).
+    """
+    uid = current_user.id
+    if not _brapi_opt_token(uid):
+        return jsonify({'error': 'Configure a chave BRAPI em Configuração.'}), 400
+
+    sym = (simbolo or '').strip().upper()
+    under = (request.args.get('underlying') or '').strip().upper()
+    exp = (request.args.get('exp') or '').strip()
+    if not sym or not under or not exp:
+        return jsonify({'error': 'Informe símbolo, ativo e vencimento.'}), 400
+    try:
+        dias = max(5, min(int(request.args.get('dias') or 30), 60))
+    except (TypeError, ValueError):
+        dias = 30
+
+    ate = (request.args.get('ate') or '').strip()
+    try:
+        cursor = datetime.strptime(ate, '%Y-%m-%d').date() if ate else date.today()
+    except ValueError:
+        cursor = date.today()
+
+    alvos = []
+    d = cursor
+    while len(alvos) < dias:
+        if d.weekday() < 5:
+            alvos.append(d.isoformat())
+        d -= timedelta(days=1)
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _dia(iso):
+        par = {'underlying': under, 'expirationDate': exp, 'date': iso}
+        with app.app_context():
+            dd, err = _brapi_opt_get('/positions', par, uid, timeout=15)
+        if err or not dd:
+            return None
+        for p in (dd.get('positions') or []):
+            if (p.get('symbol') or '').upper() == sym:
+                # Em feriado a BRAPI devolve o pregão anterior, mas o
+                # 'date' do topo ecoa a data PEDIDA — só o reportDate
+                # revela o dia real. Usa ele para não duplicar o ponto
+                # (07/09/2026 é feriado e repetia 04/09).
+                real = p.get('reportDate') or dd.get('date') or iso
+                return {
+                    'data':       real,
+                    'coberto':    p.get('coveredQuantity') or 0,
+                    'trava':      p.get('blockedQuantity') or 0,
+                    'descoberto': p.get('uncoveredQuantity') or 0,
+                    'total':      p.get('openInterest') or 0,
+                    'titular':    p.get('borrowerQuantity') or 0,
+                    'lancador':   p.get('lenderQuantity') or 0,
+                    'strike':     p.get('strike'),
+                }
+        return None
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        brutos = [x for x in pool.map(_dia, alvos) if x]
+
+    # A BRAPI devolve o último pregão publicado quando a data pedida ainda
+    # não existe, então dias diferentes podem vir com a mesma data —
+    # deduplica mantendo um ponto por pregão.
+    por_data = {}
+    for b in brutos:
+        por_data[b['data']] = b
+    serie = sorted(por_data.values(), key=lambda x: x['data'])
+    if not serie:
+        return jsonify({'error': f'Sem posições em aberto para {sym}.'}), 404
+
+    return jsonify({'symbol': sym, 'underlying': under, 'exp': exp,
+                    'strike': serie[-1].get('strike'),
+                    'serie': serie, 'n': len(serie)})
+
+
 def _pareia_estruturas(linhas, tol_qtd=0.10, tol_voi=0.45, min_medio=20000):
     """Acha pernas que provavelmente são a MESMA operação montada de uma vez.
 

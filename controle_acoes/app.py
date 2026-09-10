@@ -7378,7 +7378,7 @@ def _venc_mensal(exp_str):
     return False
 
 
-def _pareia_estruturas(linhas, tol_qtd=0.02, tol_voi=0.25, min_medio=20000):
+def _pareia_estruturas(linhas, tol_qtd=0.06, tol_voi=0.45, min_medio=20000):
     """Acha pernas que provavelmente são a MESMA operação montada de uma vez.
 
     Sem horário do negócio (a BRAPI só publica o fechado do pregão — nem
@@ -7402,52 +7402,88 @@ def _pareia_estruturas(linhas, tol_qtd=0.02, tol_voi=0.25, min_medio=20000):
        montada de uma vez. Exigir que as DUAS pernas tenham lote médio alto
        resolve: as reais tinham de 2 a 63 negócios movendo ~1 milhão.
 
+    As tolerâncias são folgadas de propósito (6% na quantidade, 45% no OI):
+    as pernas de uma estrutura real raramente saem com o número redondo
+    idêntico — parte é executada em lotes diferentes, e a variação de OI
+    ainda mistura o que outros participantes fizeram na mesma série no
+    mesmo dia. Com 2%/25% a busca achava 5 estruturas num pregão de 40
+    ativos; com estes valores acha 9, e as 4 novas são straddles de strike
+    igual (GGBR4, BBAS3, CSMG3) que não tinham como ser coincidência.
+
     Não é prova de que foi a mesma operação; é uma coincidência forte o
     bastante para valer o destaque, e por isso a tela usa "possível".
     """
     ops = [x for x in linhas if x.get('side') in ('call', 'put') and x.get('exp')
            and (x.get('medio') or 0) >= min_medio]
-    ops.sort(key=lambda x: -(x.get('qtd') or 0))
+    def _casa(a, b):
+        """Se as duas pernas podem ser a mesma operação, devolve o quão bem
+        elas casam (0 = idênticas); senão, None."""
+        if a['ativo'] != b['ativo'] or a['exp'] != b['exp']:
+            return None
+        qa, qb = a.get('qtd') or 0, b.get('qtd') or 0
+        mq = max(qa, qb)
+        if not mq:
+            return None
+        dq = abs(qa - qb) / mq
+        if dq > tol_qtd:
+            return None
+
+        va, vb = a.get('var_oi') or 0, b.get('var_oi') or 0
+        if va == 0 and vb == 0:
+            # A BRAPI às vezes não publica a variação de OI (vem 0 nas duas
+            # pernas). Sem esse dado o filtro principal some, então exige
+            # quantidade quase idêntica para compensar — foi o que estava
+            # descartando CSMG3 (1.000.600 x 1.000.800, straddle evidente).
+            return dq if dq <= 0.01 else None
+        if va * vb < 0:                 # OI em sentidos opostos: não é a mesma operação
+            return None
+        if va == 0 or vb == 0:          # uma perna sem dado de OI, a outra com
+            return None
+        mv = max(abs(va), abs(vb))
+        dv = abs(abs(va) - abs(vb)) / mv
+        if dv > tol_voi:
+            return None
+        return dq + dv
+
+    # Pareamento pela MELHOR combinação, não pela primeira encontrada: em
+    # BPAC11 havia três pernas concentradas no mesmo vencimento e a ordem
+    # casava V661 com J661 (qualidade 0,055) em vez da trava V661×V621
+    # (0,006), nove vezes melhor.
+    cands = []
+    for i, a in enumerate(ops):
+        for b in ops[i + 1:]:
+            q = _casa(a, b)
+            if q is not None:
+                cands.append((q, i, a, b))
+    cands.sort(key=lambda x: (x[0], x[1]))
 
     out, usados = [], set()
-    for i, a in enumerate(ops):
-        if a['symbol'] in usados:
+    for _q, _i, a, b in cands:
+        if a['symbol'] in usados or b['symbol'] in usados:
             continue
-        for b in ops[i + 1:]:
-            if b['symbol'] in usados:
-                continue
-            if a['ativo'] != b['ativo'] or a['exp'] != b['exp']:
-                continue
-            qa, qb = a.get('qtd') or 0, b.get('qtd') or 0
-            mq = max(qa, qb)
-            if not mq or abs(qa - qb) / mq > tol_qtd:
-                continue
-            va, vb = a.get('var_oi') or 0, b.get('var_oi') or 0
-            if va * vb <= 0:                       # sentidos opostos (ou algum zerado)
-                continue
-            mv = max(abs(va), abs(vb))
-            if not mv or abs(abs(va) - abs(vb)) / mv > tol_voi:
-                continue
 
-            if a['side'] != b['side']:
-                mesmo_k = a.get('strike') == b.get('strike')
-                tipo = ('Straddle / conversão' if mesmo_k
-                        else 'Collar / risk reversal')
-            else:
-                tipo = f"Trava vertical de {a['side'].upper()}"
-            out.append({
-                'ativo': a['ativo'], 'exp': a['exp'], 'tipo': tipo,
-                'abre': va > 0,
-                'qtd': max(qa, qb),
-                'pernas': [
-                    {k: p.get(k) for k in ('symbol', 'side', 'strike', 'preco',
-                                           'qtd', 'trades', 'var_oi')}
-                    for p in (a, b)
-                ],
-            })
-            usados.add(a['symbol'])
-            usados.add(b['symbol'])
-            break
+        if a['side'] != b['side']:
+            mesmo_k = a.get('strike') == b.get('strike')
+            tipo = ('Straddle / conversão' if mesmo_k
+                    else 'Collar / risk reversal')
+        else:
+            tipo = f"Trava vertical de {a['side'].upper()}"
+        va = a.get('var_oi') or 0
+        vb = b.get('var_oi') or 0
+        out.append({
+            'ativo': a['ativo'], 'exp': a['exp'], 'tipo': tipo,
+            # Sem dado de OI (as duas pernas em 0) não dá para dizer se a
+            # posição abriu ou encerrou — a tela omite o selo nesse caso.
+            'abre': None if (va == 0 and vb == 0) else (va + vb) > 0,
+            'qtd': max(a.get('qtd') or 0, b.get('qtd') or 0),
+            'pernas': [
+                {k: p.get(k) for k in ('symbol', 'side', 'strike', 'preco',
+                                       'qtd', 'trades', 'var_oi')}
+                for p in (a, b)
+            ],
+        })
+        usados.add(a['symbol'])
+        usados.add(b['symbol'])
     return out
 
 

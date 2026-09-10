@@ -507,7 +507,8 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
     var e = ESTS[parseInt(btn.dataset.est, 10)];
     if (!e) return;
     var linhas = [e.tipo + ' · ' + e.ativo + ' · venc. ' + dateBR(e.exp)
-                  + ' · ' + (e.abre ? 'abrindo posição' : 'encerrando posição')];
+                  + (e.abre == null ? ''
+                     : ' · ' + (e.abre ? 'abrindo posição' : 'encerrando posição'))];
     e.pernas.forEach(function(p) {
       linhas.push((p.side === 'call' ? 'CALL' : 'PUT') + ' ' + p.symbol
         + ' | strike ' + brl(p.strike) + ' | preço ' + brl(p.preco)
@@ -564,8 +565,9 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
         + ' · ' + dateBR(e.exp)
         + ' <span class="va-est-tag" style="background:rgba(124,58,237,.2);color:#a78bfa;">'
         +   e.tipo + '</span>'
-        + ' <span class="va-est-tag ' + (e.abre ? 'va-est-abre' : 'va-est-fecha') + '">'
-        +   (e.abre ? 'abrindo posição' : 'encerrando posição') + '</span>'
+        + (e.abre == null ? ''
+            : ' <span class="va-est-tag ' + (e.abre ? 'va-est-abre' : 'va-est-fecha') + '">'
+              + (e.abre ? 'abrindo posição' : 'encerrando posição') + '</span>')
         + '</div>';
       e.pernas.forEach(function(p) {
         h += '<div class="va-est-perna">'

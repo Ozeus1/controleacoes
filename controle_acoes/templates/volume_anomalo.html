@@ -197,55 +197,81 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
     {id: 'geral',    nome: 'Ranking · Geral',        itens: {{ grupo_geral | tojson }}},
     {id: 'carteira', nome: 'Minha carteira',         itens: {{ grupo_carteira | tojson }}}
   ];
-  var selecionados = new Set({{ selecionados | tojson }});
-  var extras = [];   // ativos digitados que não estão em nenhum grupo
+  // A seleção é POR SUBLISTA, não por ticker: a chave é "grupo\ticker".
+  // Um mesmo ativo aparece em mais de uma sublista (ABEV3 está no ranking
+  // geral e na carteira), e marcá-lo numa não pode acender a caixa da
+  // outra — senão "marcar todos" de um grupo respinga nos vizinhos. Só na
+  // hora de buscar/salvar é que os tickers são deduplicados.
+  var extras = [];             // ativos digitados fora de qualquer sublista
+  var marcados = new Set();    // chaves "grupo\ticker"
 
-  function todosConhecidos() {
-    var s = new Set();
-    GRUPOS.forEach(function(g) { g.itens.forEach(function(t) { s.add(t); }); });
-    return s;
+  function chave(gid, t) { return gid + ' ' + t; }
+
+  function listas() {
+    var out = GRUPOS.slice();
+    if (extras.length) out.push({id: 'extra', nome: 'Incluídos manualmente', itens: extras});
+    return out;
   }
-  function recalcExtras() {
-    var conhecidos = todosConhecidos();
-    extras = Array.from(selecionados).filter(function(t) { return !conhecidos.has(t); }).sort();
+
+  // Tickers únicos das sublistas — o que de fato vai para a busca.
+  function tickersSelecionados() {
+    var s = new Set();
+    listas().forEach(function(g) {
+      g.itens.forEach(function(t) { if (marcados.has(chave(g.id, t))) s.add(t); });
+    });
+    return Array.from(s).sort();
+  }
+
+  // Ao carregar (ou reabrir), a lista salva é só um conjunto de tickers:
+  // marca em toda sublista onde cada um aparece, e o que sobrar vira extra.
+  function semearDeTickers(tickers) {
+    marcados.clear();
+    var alvo = new Set(tickers);
+    var pendentes = new Set(tickers);
+    GRUPOS.forEach(function(g) {
+      g.itens.forEach(function(t) {
+        if (!alvo.has(t)) return;
+        marcados.add(chave(g.id, t));   // marca em TODAS as sublistas onde aparece
+        pendentes.delete(t);
+      });
+    });
+    extras = Array.from(pendentes).sort();
+    extras.forEach(function(t) { marcados.add(chave('extra', t)); });
   }
 
   function atualizaResumo() {
-    var n = selecionados.size;
+    var sel = tickersSelecionados();
     document.getElementById('va-sel-resumo').textContent =
-      n ? (n + ' ativo(s) selecionado(s): ' + Array.from(selecionados).slice(0, 8).join(', ')
-           + (n > 8 ? '…' : ''))
-        : 'nenhum ativo selecionado';
+      sel.length ? (sel.length + ' ativo(s) selecionado(s): ' + sel.slice(0, 8).join(', ')
+                    + (sel.length > 8 ? '…' : ''))
+                 : 'nenhum ativo selecionado';
   }
 
   function renderGrupos() {
-    recalcExtras();
     var filtro = (document.getElementById('va-filtro').value || '').trim().toUpperCase();
-    var listas = GRUPOS.slice();
-    if (extras.length) listas.push({id: 'extra', nome: 'Incluídos manualmente', itens: extras});
-
     var h = '';
-    listas.forEach(function(g) {
+    listas().forEach(function(g) {
       var itens = g.itens.filter(function(t) { return !filtro || t.indexOf(filtro) >= 0; });
       if (!itens.length) return;
-      var marcados = itens.filter(function(t) { return selecionados.has(t); }).length;
+      var nMarc = itens.filter(function(t) { return marcados.has(chave(g.id, t)); }).length;
       h += '<div style="margin-top:.9rem;">'
         + '<div style="font-size:.76rem;color:var(--text-secondary);font-weight:700;'
         + 'text-transform:uppercase;letter-spacing:.04em;margin-bottom:.4rem;'
         + 'display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">'
-        + g.nome + ' <span style="font-weight:400;">(' + marcados + '/' + itens.length + ')</span>'
+        + g.nome + ' <span style="font-weight:400;">(' + nMarc + '/' + itens.length + ')</span>'
         + '<a href="#" onclick="vaGrupo(\'' + g.id + '\',true);return false;" '
         + 'style="font-weight:400;text-transform:none;font-size:.75rem;">marcar todos</a>'
         + '<a href="#" onclick="vaGrupo(\'' + g.id + '\',false);return false;" '
         + 'style="font-weight:400;text-transform:none;font-size:.75rem;">limpar</a>'
         + '</div><div style="display:flex;flex-wrap:wrap;gap:.3rem;">';
       itens.forEach(function(t) {
-        var on = selecionados.has(t);
+        var on = marcados.has(chave(g.id, t));
         h += '<label style="display:inline-flex;align-items:center;gap:.3rem;cursor:pointer;'
           + 'padding:.2rem .5rem;border-radius:5px;font-size:.8rem;user-select:none;'
           + 'border:1px solid ' + (on ? '#7c3aed' : 'var(--border-color)') + ';'
           + 'background:' + (on ? 'rgba(124,58,237,.18)' : 'var(--hover-bg)') + ';">'
-          + '<input type="checkbox" data-t="' + t + '"' + (on ? ' checked' : '')
+          + '<input type="checkbox" data-t="' + t + '" data-g="' + g.id + '"'
+          + (on ? ' checked' : '')
           + ' onchange="vaTogglar(this)" style="cursor:pointer;margin:0;">' + t + '</label>';
       });
       h += '</div></div>';
@@ -253,34 +279,51 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
     document.getElementById('va-grupos').innerHTML =
       h || '<p style="color:var(--text-secondary);padding:1rem 0;">Nenhum ativo encontrado. '
          + 'Use o campo acima para incluir manualmente.</p>';
-    document.getElementById('va-modal-count').textContent = selecionados.size + ' selecionado(s)';
+    var n = tickersSelecionados().length;
+    document.getElementById('va-modal-count').textContent =
+      n + ' ativo(s) únicos selecionados';
   }
 
   window.vaTogglar = function(el) {
-    var t = el.dataset.t;
-    if (el.checked) selecionados.add(t); else selecionados.delete(t);
+    var k = chave(el.dataset.g, el.dataset.t);
+    if (el.checked) marcados.add(k); else marcados.delete(k);
     renderGrupos();
   };
+  // "marcar todos"/"limpar" do cabeçalho mexem SÓ na própria sublista —
+  // um ticker repetido em outro grupo fica como estava.
   window.vaGrupo = function(id, marcar) {
-    var g = GRUPOS.filter(function(x) { return x.id === id; })[0];
-    var itens = g ? g.itens : extras;
+    var g = listas().filter(function(x) { return x.id === id; })[0];
+    if (!g) return;
     var filtro = (document.getElementById('va-filtro').value || '').trim().toUpperCase();
-    itens.filter(function(t) { return !filtro || t.indexOf(filtro) >= 0; })
-         .forEach(function(t) { if (marcar) selecionados.add(t); else selecionados.delete(t); });
+    g.itens.filter(function(t) { return !filtro || t.indexOf(filtro) >= 0; })
+      .forEach(function(t) {
+        var k = chave(id, t);
+        if (marcar) marcados.add(k); else marcados.delete(k);
+      });
     renderGrupos();
   };
   window.vaMarcarVisiveis = function(marcar) {
     document.querySelectorAll('#va-grupos input[type=checkbox]').forEach(function(c) {
-      if (marcar) selecionados.add(c.dataset.t); else selecionados.delete(c.dataset.t);
+      var k = chave(c.dataset.g, c.dataset.t);
+      if (marcar) marcados.add(k); else marcados.delete(k);
     });
     renderGrupos();
   };
-  window.vaLimparTudo = function() { selecionados.clear(); renderGrupos(); };
+  window.vaLimparTudo = function() { marcados.clear(); renderGrupos(); };
   window.vaIncluirNovo = function() {
     var inp = document.getElementById('va-novo');
     (inp.value || '').toUpperCase().replace(/;/g, ',').split(',').forEach(function(t) {
       t = t.trim();
-      if (t) selecionados.add(t);
+      if (!t) return;
+      // Se já existe em alguma sublista, marca lá; senão entra em "extras".
+      var achou = false;
+      GRUPOS.forEach(function(g) {
+        if (g.itens.indexOf(t) >= 0) { marcados.add(chave(g.id, t)); achou = true; }
+      });
+      if (!achou) {
+        if (extras.indexOf(t) < 0) { extras.push(t); extras.sort(); }
+        marcados.add(chave('extra', t));
+      }
     });
     inp.value = '';
     document.getElementById('va-filtro').value = '';
@@ -309,12 +352,14 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
     atualizaResumo();
     fetch('/api/volume-anomalo/prefixos', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({prefixos: Array.from(selecionados).join(',')})
+      body: JSON.stringify({prefixos: tickersSelecionados().join(',')})
     }).then(function(r) { return r.json(); }).then(function(d) {
       st.textContent = d.ok ? '✓ lista salva' : 'erro ao salvar';
       setTimeout(function() { st.textContent = ''; }, 3000);
     }).catch(function() { st.textContent = 'falha de rede'; });
   };
+
+  semearDeTickers({{ selecionados | tojson }});
   atualizaResumo();
 
   // O seletor Call/Put só faz sentido quando há opções na busca.
@@ -327,8 +372,9 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
   syncTipo();
 
   function buscar() {
-    var ativos = Array.from(selecionados).join(',');
-    var nAtivos = selecionados.size;
+    var sel = tickersSelecionados();
+    var ativos = sel.join(',');
+    var nAtivos = sel.length;
     if (!nAtivos) {
       errBox.textContent = '⚠️ Escolha ao menos um ativo em "Escolher ativos".';
       errBox.style.display = 'block';

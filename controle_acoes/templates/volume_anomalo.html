@@ -157,6 +157,9 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
   <div id="va-loading">⏳ Varrendo a cadeia de opções… <span id="va-loading-det"></span></div>
   <div id="va-error"></div>
   <div id="va-hint">Ajuste os filtros e clique em <strong>Buscar</strong> para varrer a cadeia.</div>
+  <div id="va-aviso-data" style="display:none;margin:.4rem 0 .6rem;padding:.55rem .9rem;
+       background:rgba(234,179,8,.12);border-left:3px solid #eab308;border-radius:4px;
+       font-size:.83rem;color:var(--text-secondary);"></div>
   <div id="va-resumo"></div>
   <div id="va-estruturas"></div>
   <div id="va-results"></div>
@@ -605,6 +608,17 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
     var rows = (d.rows || []).filter(function(r) {
       return !lado || r.side === 'acao' || r.side === lado;
     });
+
+    var avisoData = document.getElementById('va-aviso-data');
+    if (d.data_defasada) {
+      avisoData.innerHTML = '⚠️ A BRAPI ainda não publicou o pregão de '
+        + dateBR(d.data_pedida) + ' — os dados abaixo são de <strong>'
+        + dateBR(d.data_ref) + '</strong>. A cadeia de opções costuma sair '
+        + 'só no dia seguinte, então o pregão de hoje raramente está disponível.';
+      avisoData.style.display = '';
+    } else {
+      avisoData.style.display = 'none';
+    }
 
     resumo.textContent = 'Pregão: ' + (d.data_ref === 'mais recente' ? 'mais recente' : dateBR(d.data_ref))
       + ' · ' + d.n_ativos + ' ativos · ' + d.n_chamadas + ' consultas · '

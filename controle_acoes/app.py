@@ -7557,6 +7557,7 @@ def api_volume_anomalo():
 
     linhas = []
     n_chamadas = 0
+    datas_vistas = set()      # datas que a BRAPI de fato devolveu
 
     # ── Ações/ETFs à vista ───────────────────────────────────────────
     # Muito mais barato que opções: /stocks/historical aceita até 20
@@ -7659,6 +7660,12 @@ def api_volume_anomalo():
             d, err = _brapi_opt_get('/chain', par, uid, timeout=20)
         if err or not d:
             return []
+        # A BRAPI ignora silenciosamente uma data que ela ainda não tem e
+        # devolve o último pregão publicado — a cadeia de opções costuma
+        # sair só no dia seguinte. Sem registrar a data que VEIO, a tela
+        # dizia "Pregão: 10/09" exibindo dados de 09/09.
+        if d.get('date'):
+            datas_vistas.add(d['date'])
         out = []
         for s in (d.get('series') or []):
             vol = s.get('volume') or 0
@@ -7706,8 +7713,13 @@ def api_volume_anomalo():
     # então entram ordenadas pelo financeiro, depois das opções.
     linhas.sort(key=lambda x: (0 if x['medio'] is not None else 1,
                                -(x['medio'] if x['medio'] is not None else (x['fin'] or 0))))
+    data_real = max(datas_vistas) if datas_vistas else None
     return jsonify({
-        'data_ref': data_pos or 'mais recente',
+        'data_ref': data_real or data_pos or 'mais recente',
+        'data_pedida': data_pos or None,
+        # Avisa quando a BRAPI serviu um pregão diferente do pedido: os
+        # dados de opções do próprio dia costumam sair só no dia seguinte.
+        'data_defasada': bool(data_pos and data_real and data_real != data_pos),
         'ativos': ativos, 'n_ativos': len(ativos),
         'n_chamadas': n_chamadas,
         'qtd_min': qtd_min, 'max_trades': max_trades, 'tipo': tipo_busca,

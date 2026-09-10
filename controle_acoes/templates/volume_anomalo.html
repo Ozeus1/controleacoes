@@ -129,8 +129,8 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
       <label for="va-vencs" title="Quantos vencimentos varrer por ativo, do mais próximo. A BRAPI limita 20 requisições/min e cobra 1 chamada por ativo+vencimento.">
         Vencimentos por ativo</label>
       <select id="va-vencs">
-        <option value="3">3 (mais rápido)</option>
-        <option value="6" selected>6</option>
+        <option value="3" selected>3 (mais rápido)</option>
+        <option value="6">6</option>
         <option value="9">9</option>
         <option value="12">12 (lento)</option>
       </select>
@@ -484,13 +484,20 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
     var lote = Math.max(100, Math.round(Math.min(a.qtd, b.qtd) / 100));
 
     // Numa trava as pernas são opostas (compra uma, vende a outra) — com
-    // ambas positivas o payoff sairia errado. Convenção: strike menor
-    // comprado, maior vendido (trava de alta em CALL, de baixa em PUT).
+    // ambas positivas o payoff sairia errado. Monta sempre A DÉBITO, que é
+    // como a trava costuma ser operada individualmente: compra a perna
+    // mais cara e vende a mais barata, pagando a diferença.
+    //
+    // Isso depende do tipo, não do strike: em CALL a mais cara é a de
+    // strike MENOR, em PUT é a de strike MAIOR. Usar "compra o strike
+    // menor" para os dois deixava as travas de PUT no crédito (era o caso
+    // do AURE3: comprava a de 9,04 a R$0,07 e vendia a de 10,19 a R$0,34).
+    // Comparar o prêmio resolve os dois casos de uma vez.
     // Nas de call+put as duas vão compradas, que é a leitura do OI abrindo
     // junto (straddle comprado / collar); quem vendeu é a contraparte.
     var sa = 1, sb = 1;
     if (a.side === b.side) {
-      if ((a.strike || 0) <= (b.strike || 0)) sb = -1; else sa = -1;
+      if ((a.preco || 0) >= (b.preco || 0)) sb = -1; else sa = -1;
     }
     var p = {
       st: '1', ativo: e.ativo, exp: e.exp, qty: lote, op: 'livre',

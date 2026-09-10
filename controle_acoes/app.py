@@ -7467,7 +7467,12 @@ def _pareia_estruturas(linhas, tol_qtd=0.06, tol_voi=0.45, min_medio=20000):
             tipo = ('Straddle / conversão' if mesmo_k
                     else 'Collar / risk reversal')
         else:
-            tipo = f"Trava vertical de {a['side'].upper()}"
+            # A tela monta a trava a débito (compra a perna mais cara), e a
+            # débito o sentido é dado pelo tipo: CALL vira trava de alta,
+            # PUT vira trava de baixa. Diz isso no rótulo em vez de só
+            # "trava vertical de PUT", que não informa a direção.
+            direcao = 'alta' if a['side'] == 'call' else 'baixa'
+            tipo = f"Trava de {direcao} ({a['side'].upper()}, débito)"
         va = a.get('var_oi') or 0
         vb = b.get('var_oi') or 0
         out.append({

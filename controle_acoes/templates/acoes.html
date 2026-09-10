@@ -53,6 +53,9 @@
                 </td>
                 <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                     <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView">📈</button>
+                    <button class="btn btn-sm" style="background:#7c3aed; color:white;"
+                        onclick="TickerBrowser.openFundamentos('{{ item.asset.ticker }}', 'technical')"
+                        title="Análise Técnica de {{ item.asset.ticker }}">🏛️</button>
                     <button class="btn btn-sm btn-violeta" onclick="openRadar('{{ item.asset.ticker }}')" title="Analise Radar" >&#128202;</button>
                     <a href="{{ url_for('buy_asset', id=item.asset.id) }}" class="btn btn-sm"
                         style="background:var(--success-color); color: white;" title="Registrar Nova Compra">➕</a>

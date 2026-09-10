@@ -25,6 +25,7 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
 .va-wrap{overflow-x:auto;max-height:70vh;overflow-y:auto;}
 .va-call{color:#34d399;font-weight:600;}
 .va-put{color:#f87171;font-weight:600;}
+.va-acao{color:#60a5fa;font-weight:600;font-size:.72rem;letter-spacing:.03em;}
 .va-flag{display:inline-block;padding:.05rem .4rem;border-radius:4px;font-size:.7rem;
   font-weight:700;background:rgba(234,179,8,.18);color:#eab308;margin-left:.3rem;}
 #va-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
@@ -50,7 +51,9 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
     <br><br>
     ⚠️ A BRAPI não publica <em>tape reading</em>, então não há como mostrar corretora
     compradora/vendedora, agressor ou horário — nem separar diretos de indiretos.
-    O dado é o agregado do dia por série.
+    O dado é o agregado do dia por série. Nas linhas de <strong>ação/ETF à vista</strong>
+    só existe o volume do dia (a BRAPI não informa a contagem de negócios do ativo),
+    então elas não têm média por negócio e são ordenadas pelo financeiro.
   </div>
 
   {% if not tem_token %}
@@ -72,6 +75,14 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
     <div class="va-campo">
       <label for="va-tipo">Tipo</label>
       <select id="va-tipo">
+        <option value="opcoes" selected>Opções</option>
+        <option value="acoes">Ações / ETFs</option>
+        <option value="ambos">Opções + Ações</option>
+      </select>
+    </div>
+    <div class="va-campo" id="va-campo-lado">
+      <label for="va-lado">Call / Put</label>
+      <select id="va-lado">
         <option value="">Calls e Puts</option>
         <option value="call">Apenas Calls</option>
         <option value="put">Apenas Puts</option>
@@ -104,16 +115,10 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
     </div>
   </div>
 
-  <div style="margin-bottom:.8rem;">
-    <label style="font-size:.75rem;color:var(--text-secondary);font-weight:600;
-                  text-transform:uppercase;letter-spacing:.03em;display:block;margin-bottom:.3rem;">
-      Ativos varridos (separados por vírgula)
-    </label>
-    <textarea id="va-prefixos" spellcheck="false">{{ prefixos }}</textarea>
-    <div style="display:flex;gap:.5rem;align-items:center;margin-top:.4rem;flex-wrap:wrap;">
-      <button class="btn btn-secondary btn-sm" id="va-salvar-prefixos">💾 Salvar lista</button>
-      <span id="va-prefixos-status" style="font-size:.8rem;color:var(--text-secondary);"></span>
-    </div>
+  <div style="margin-bottom:.8rem;display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;">
+    <button class="btn btn-secondary btn-sm" id="va-abrir-sel">☑️ Escolher ativos</button>
+    <span id="va-sel-resumo" style="font-size:.84rem;color:var(--text-secondary);"></span>
+    <span id="va-prefixos-status" style="font-size:.8rem;color:var(--text-secondary);"></span>
   </div>
 
   <div id="va-loading">⏳ Varrendo a cadeia de opções… <span id="va-loading-det"></span></div>
@@ -121,6 +126,50 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
   <div id="va-hint">Ajuste os filtros e clique em <strong>Buscar</strong> para varrer a cadeia.</div>
   <div id="va-resumo"></div>
   <div id="va-results"></div>
+</div>
+
+<!-- ── Modal: seleção de ativos ───────────────────────────────────── -->
+<div id="va-modal" style="display:none;position:fixed;inset:0;z-index:19000;
+     background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,860px);
+              max-height:92vh;display:flex;flex-direction:column;border:1px solid var(--border-color);">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:.9rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <h3 style="margin:0;font-size:1rem;">Ativos a varrer</h3>
+      <button onclick="vaFecharSel()" style="background:none;border:none;font-size:1.4rem;
+              color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+
+    <div style="padding:.8rem 1.1rem;border-bottom:1px solid var(--border-color);
+                display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;">
+      <input type="text" id="va-filtro" placeholder="Filtrar…" autocomplete="off"
+             style="flex:1;min-width:140px;background:var(--hover-bg);color:var(--text-primary);
+                    border:1px solid var(--border-color);border-radius:5px;padding:.35rem .6rem;font-size:.85rem;">
+      <button class="btn btn-secondary btn-sm" onclick="vaMarcarVisiveis(true)">Marcar visíveis</button>
+      <button class="btn btn-secondary btn-sm" onclick="vaMarcarVisiveis(false)">Limpar visíveis</button>
+      <button class="btn btn-secondary btn-sm" onclick="vaLimparTudo()">Limpar tudo</button>
+    </div>
+
+    <div style="padding:.7rem 1.1rem;border-bottom:1px solid var(--border-color);
+                display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
+      <input type="text" id="va-novo" placeholder="Incluir outro ativo (ex.: PETR4)" maxlength="12"
+             style="flex:1;min-width:180px;background:var(--hover-bg);color:var(--text-primary);
+                    border:1px solid var(--border-color);border-radius:5px;padding:.35rem .6rem;
+                    font-size:.85rem;text-transform:uppercase;">
+      <button class="btn btn-primary btn-sm" onclick="vaIncluirNovo()">+ Incluir</button>
+    </div>
+
+    <div id="va-grupos" style="flex:1;overflow-y:auto;padding:.5rem 1.1rem 1rem;"></div>
+
+    <div style="padding:.8rem 1.1rem;border-top:1px solid var(--border-color);
+                display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap;">
+      <span id="va-modal-count" style="font-size:.84rem;color:var(--text-secondary);"></span>
+      <div style="display:flex;gap:.5rem;">
+        <button class="btn btn-secondary btn-sm" onclick="vaFecharSel()">Cancelar</button>
+        <button class="btn btn-primary btn-sm" onclick="vaAplicarSel()">Aplicar e salvar</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -142,38 +191,167 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
     return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '—');
   }
 
-  // Salvar lista de ativos
-  document.getElementById('va-salvar-prefixos').addEventListener('click', function() {
-    var st = document.getElementById('va-prefixos-status');
-    st.textContent = 'salvando…';
-    fetch('/api/volume-anomalo/prefixos', {
-      method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({prefixos: document.getElementById('va-prefixos').value})
-    }).then(function(r) { return r.json(); }).then(function(d) {
-      if (d.ok) {
-        document.getElementById('va-prefixos').value = (d.prefixos || []).join(', ');
-        st.textContent = '✓ ' + (d.prefixos || []).length + ' ativo(s) salvos';
-        setTimeout(function() { st.textContent = ''; }, 3000);
-      } else { st.textContent = 'erro ao salvar'; }
-    }).catch(function() { st.textContent = 'falha de rede'; });
+  // ── Seleção de ativos ────────────────────────────────────────────
+  var GRUPOS = [
+    {id: 'liq',      nome: 'Ranking · Com liquidez', itens: {{ grupo_liq | tojson }}},
+    {id: 'geral',    nome: 'Ranking · Geral',        itens: {{ grupo_geral | tojson }}},
+    {id: 'carteira', nome: 'Minha carteira',         itens: {{ grupo_carteira | tojson }}}
+  ];
+  var selecionados = new Set({{ selecionados | tojson }});
+  var extras = [];   // ativos digitados que não estão em nenhum grupo
+
+  function todosConhecidos() {
+    var s = new Set();
+    GRUPOS.forEach(function(g) { g.itens.forEach(function(t) { s.add(t); }); });
+    return s;
+  }
+  function recalcExtras() {
+    var conhecidos = todosConhecidos();
+    extras = Array.from(selecionados).filter(function(t) { return !conhecidos.has(t); }).sort();
+  }
+
+  function atualizaResumo() {
+    var n = selecionados.size;
+    document.getElementById('va-sel-resumo').textContent =
+      n ? (n + ' ativo(s) selecionado(s): ' + Array.from(selecionados).slice(0, 8).join(', ')
+           + (n > 8 ? '…' : ''))
+        : 'nenhum ativo selecionado';
+  }
+
+  function renderGrupos() {
+    recalcExtras();
+    var filtro = (document.getElementById('va-filtro').value || '').trim().toUpperCase();
+    var listas = GRUPOS.slice();
+    if (extras.length) listas.push({id: 'extra', nome: 'Incluídos manualmente', itens: extras});
+
+    var h = '';
+    listas.forEach(function(g) {
+      var itens = g.itens.filter(function(t) { return !filtro || t.indexOf(filtro) >= 0; });
+      if (!itens.length) return;
+      var marcados = itens.filter(function(t) { return selecionados.has(t); }).length;
+      h += '<div style="margin-top:.9rem;">'
+        + '<div style="font-size:.76rem;color:var(--text-secondary);font-weight:700;'
+        + 'text-transform:uppercase;letter-spacing:.04em;margin-bottom:.4rem;'
+        + 'display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;">'
+        + g.nome + ' <span style="font-weight:400;">(' + marcados + '/' + itens.length + ')</span>'
+        + '<a href="#" onclick="vaGrupo(\'' + g.id + '\',true);return false;" '
+        + 'style="font-weight:400;text-transform:none;font-size:.75rem;">marcar todos</a>'
+        + '<a href="#" onclick="vaGrupo(\'' + g.id + '\',false);return false;" '
+        + 'style="font-weight:400;text-transform:none;font-size:.75rem;">limpar</a>'
+        + '</div><div style="display:flex;flex-wrap:wrap;gap:.3rem;">';
+      itens.forEach(function(t) {
+        var on = selecionados.has(t);
+        h += '<label style="display:inline-flex;align-items:center;gap:.3rem;cursor:pointer;'
+          + 'padding:.2rem .5rem;border-radius:5px;font-size:.8rem;user-select:none;'
+          + 'border:1px solid ' + (on ? '#7c3aed' : 'var(--border-color)') + ';'
+          + 'background:' + (on ? 'rgba(124,58,237,.18)' : 'var(--hover-bg)') + ';">'
+          + '<input type="checkbox" data-t="' + t + '"' + (on ? ' checked' : '')
+          + ' onchange="vaTogglar(this)" style="cursor:pointer;margin:0;">' + t + '</label>';
+      });
+      h += '</div></div>';
+    });
+    document.getElementById('va-grupos').innerHTML =
+      h || '<p style="color:var(--text-secondary);padding:1rem 0;">Nenhum ativo encontrado. '
+         + 'Use o campo acima para incluir manualmente.</p>';
+    document.getElementById('va-modal-count').textContent = selecionados.size + ' selecionado(s)';
+  }
+
+  window.vaTogglar = function(el) {
+    var t = el.dataset.t;
+    if (el.checked) selecionados.add(t); else selecionados.delete(t);
+    renderGrupos();
+  };
+  window.vaGrupo = function(id, marcar) {
+    var g = GRUPOS.filter(function(x) { return x.id === id; })[0];
+    var itens = g ? g.itens : extras;
+    var filtro = (document.getElementById('va-filtro').value || '').trim().toUpperCase();
+    itens.filter(function(t) { return !filtro || t.indexOf(filtro) >= 0; })
+         .forEach(function(t) { if (marcar) selecionados.add(t); else selecionados.delete(t); });
+    renderGrupos();
+  };
+  window.vaMarcarVisiveis = function(marcar) {
+    document.querySelectorAll('#va-grupos input[type=checkbox]').forEach(function(c) {
+      if (marcar) selecionados.add(c.dataset.t); else selecionados.delete(c.dataset.t);
+    });
+    renderGrupos();
+  };
+  window.vaLimparTudo = function() { selecionados.clear(); renderGrupos(); };
+  window.vaIncluirNovo = function() {
+    var inp = document.getElementById('va-novo');
+    (inp.value || '').toUpperCase().replace(/;/g, ',').split(',').forEach(function(t) {
+      t = t.trim();
+      if (t) selecionados.add(t);
+    });
+    inp.value = '';
+    document.getElementById('va-filtro').value = '';
+    renderGrupos();
+  };
+  document.getElementById('va-novo').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); vaIncluirNovo(); }
+  });
+  document.getElementById('va-filtro').addEventListener('input', renderGrupos);
+
+  var modal = document.getElementById('va-modal');
+  document.getElementById('va-abrir-sel').addEventListener('click', function() {
+    renderGrupos();
+    modal.style.display = 'flex';
+  });
+  window.vaFecharSel = function() { modal.style.display = 'none'; };
+  modal.addEventListener('click', function(e) { if (e.target === modal) vaFecharSel(); });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && modal.style.display !== 'none') vaFecharSel();
   });
 
+  window.vaAplicarSel = function() {
+    var st = document.getElementById('va-prefixos-status');
+    st.textContent = 'salvando…';
+    vaFecharSel();
+    atualizaResumo();
+    fetch('/api/volume-anomalo/prefixos', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prefixos: Array.from(selecionados).join(',')})
+    }).then(function(r) { return r.json(); }).then(function(d) {
+      st.textContent = d.ok ? '✓ lista salva' : 'erro ao salvar';
+      setTimeout(function() { st.textContent = ''; }, 3000);
+    }).catch(function() { st.textContent = 'falha de rede'; });
+  };
+  atualizaResumo();
+
+  // O seletor Call/Put só faz sentido quando há opções na busca.
+  var elTipo = document.getElementById('va-tipo');
+  function syncTipo() {
+    document.getElementById('va-campo-lado').style.display =
+      (elTipo.value === 'acoes') ? 'none' : '';
+  }
+  elTipo.addEventListener('change', syncTipo);
+  syncTipo();
+
   function buscar() {
-    var ativos = document.getElementById('va-prefixos').value || '';
-    var nAtivos = ativos.split(',').filter(function(x) { return x.trim(); }).length;
+    var ativos = Array.from(selecionados).join(',');
+    var nAtivos = selecionados.size;
+    if (!nAtivos) {
+      errBox.textContent = '⚠️ Escolha ao menos um ativo em "Escolher ativos".';
+      errBox.style.display = 'block';
+      hintBox.style.display = 'none';
+      return;
+    }
     var nVencs = document.getElementById('va-vencs').value;
+    var tipo = elTipo.value;
 
     var q = new URLSearchParams({
       data:       document.getElementById('va-data').value || '',
       qtd_min:    document.getElementById('va-qtd').value || '400000',
       vencs:      nVencs,
       max_trades: document.getElementById('va-maxtrades').value || '',
+      tipo:       tipo,
       ativos:     ativos
     });
 
     loading.style.display = 'block';
     document.getElementById('va-loading-det').textContent =
-      '(' + nAtivos + ' ativos × até ' + nVencs + ' vencimentos)';
+      (tipo === 'acoes')
+        ? '(' + nAtivos + ' ativos à vista)'
+        : '(' + nAtivos + ' ativos × até ' + nVencs + ' vencimentos)';
     errBox.style.display = 'none';
     hintBox.style.display = 'none';
     results.innerHTML = '';
@@ -199,8 +377,11 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
   document.getElementById('va-buscar').addEventListener('click', buscar);
 
   function render(d) {
-    var tipo = document.getElementById('va-tipo').value;
-    var rows = (d.rows || []).filter(function(r) { return !tipo || r.side === tipo; });
+    var lado = document.getElementById('va-lado').value;
+    // O filtro call/put nunca esconde as linhas de ação à vista.
+    var rows = (d.rows || []).filter(function(r) {
+      return !lado || r.side === 'acao' || r.side === lado;
+    });
 
     resumo.textContent = 'Pregão: ' + (d.data_ref === 'mais recente' ? 'mais recente' : dateBR(d.data_ref))
       + ' · ' + d.n_ativos + ' ativos · ' + d.n_chamadas + ' consultas · '
@@ -222,21 +403,27 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
       + '<th>Financeiro</th></tr></thead><tbody>';
 
     rows.forEach(function(r) {
+      var acao = (r.side === 'acao');
       // Destaque: negócio único ou quase — assinatura de direto institucional
-      var flag = (r.trades && r.trades <= 2) ? '<span class="va-flag">1 neg.</span>' : '';
-      if (r.trades > 2 && r.trades <= 5) flag = '<span class="va-flag">' + r.trades + ' neg.</span>';
+      var flag = '';
+      if (!acao && r.trades && r.trades <= 5) {
+        flag = '<span class="va-flag">' + r.trades + ' neg.</span>';
+      }
+      var lado = acao
+        ? '<span class="va-acao">À VISTA</span>'
+        : '<span class="' + (r.side === 'call' ? 'va-call' : 'va-put') + '">'
+          + (r.side === 'call' ? 'C' : 'P') + '</span> ' + r.ativo;
       h += '<tr>'
         + '<td><strong>' + r.symbol + '</strong>' + flag + '</td>'
-        + '<td><span class="' + (r.side === 'call' ? 'va-call' : 'va-put') + '">'
-        +   (r.side === 'call' ? 'C' : 'P') + '</span> ' + r.ativo + '</td>'
-        + '<td>' + dateBR(r.exp) + '</td>'
-        + '<td>' + brl(r.strike) + '</td>'
+        + '<td>' + lado + '</td>'
+        + '<td>' + (acao ? '—' : dateBR(r.exp)) + '</td>'
+        + '<td>' + (acao ? '—' : brl(r.strike)) + '</td>'
         + '<td>' + brl(r.preco) + '</td>'
         + '<td><strong>' + num(r.qtd) + '</strong></td>'
-        + '<td>' + num(r.trades) + '</td>'
-        + '<td>' + num(r.medio) + '</td>'
+        + '<td>' + (r.trades == null ? '—' : num(r.trades)) + '</td>'
+        + '<td>' + (r.medio == null ? '—' : num(r.medio)) + '</td>'
         + '<td class="' + (r.var_oi > 0 ? 'va-call' : (r.var_oi < 0 ? 'va-put' : '')) + '">'
-        +   (r.var_oi > 0 ? '+' : '') + num(r.var_oi) + '</td>'
+        +   (r.var_oi == null ? '—' : (r.var_oi > 0 ? '+' : '') + num(r.var_oi)) + '</td>'
         + '<td>' + brl(r.fin) + '</td>'
         + '</tr>';
     });

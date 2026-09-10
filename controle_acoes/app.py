@@ -7315,9 +7315,28 @@ def _vol_anomalo_prefixos(user_id):
 @login_required
 def volume_anomalo():
     """Página: busca de séries de opções com volume/negócios atípicos."""
+    uid = current_user.id
+    sel = _vol_anomalo_prefixos(uid)
+
+    # Fontes para os checkboxes do seletor: as duas listas do Ranking de
+    # Volatilidade e os ativos da carteira. Um mesmo ticker pode estar em
+    # mais de uma — o seletor mostra cada grupo separado e o JS deduplica.
+    def _rk(grupo):
+        q = RankingVol.query.filter_by(user_id=uid)
+        q = (q.filter(db.or_(RankingVol.grupo == 'LIQ', RankingVol.grupo.is_(None)))
+             if grupo == 'LIQ' else q.filter_by(grupo='GERAL'))
+        return sorted({(r.ticker or '').strip().upper() for r in q.all() if r.ticker})
+
+    carteira = sorted({(a.ticker or '').strip().upper()
+                       for a in Asset.query.filter_by(user_id=uid).all()
+                       if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
+
     return render_template('volume_anomalo.html',
-                           prefixos=','.join(_vol_anomalo_prefixos(current_user.id)),
-                           tem_token=bool(_brapi_opt_token(current_user.id)))
+                           selecionados=sel,
+                           grupo_liq=_rk('LIQ'),
+                           grupo_geral=_rk('GERAL'),
+                           grupo_carteira=carteira,
+                           tem_token=bool(_brapi_opt_token(uid)))
 
 
 @app.route('/api/volume-anomalo/prefixos', methods=['POST'])
@@ -7352,12 +7371,16 @@ def api_volume_anomalo():
       max_trades= se informado, só séries com até N negócios (o filtro de
                   "poucos negócios movendo muito volume")
       ativos    = lista separada por vírgula; vazio = a lista salva
+      tipo      = 'opcoes' (padrão), 'acoes' ou 'ambos'
     """
     uid = current_user.id
     if not _brapi_opt_token(uid):
         return jsonify({'error': 'Configure a chave BRAPI em Configuração.'}), 400
 
     data_pos = (request.args.get('data') or '').strip()
+    tipo_busca = (request.args.get('tipo') or 'opcoes').strip().lower()
+    if tipo_busca not in ('opcoes', 'acoes', 'ambos'):
+        tipo_busca = 'opcoes'
 
     def _int(name, default, lo, hi):
         try:
@@ -7391,6 +7414,83 @@ def api_volume_anomalo():
 
     from concurrent.futures import ThreadPoolExecutor
 
+    linhas = []
+    n_chamadas = 0
+
+    # ── Ações/ETFs à vista ───────────────────────────────────────────
+    # Muito mais barato que opções: /stocks/historical aceita até 20
+    # símbolos por requisição (o plano recusa acima disso), então a lista
+    # inteira sai em 2 ou 3 chamadas. Sem book por negócio aqui também —
+    # o dado é o volume do dia, sem contagem de negócios, então não há
+    # média por negócio para essas linhas.
+    if tipo_busca in ('acoes', 'ambos'):
+        from services import get_token as _svc_token
+        _tk = _svc_token(uid)
+
+        def _hist(lote):
+            par = {'symbols': ','.join(lote), 'range': '3mo', 'interval': '1d'}
+            if _tk:
+                par['token'] = _tk
+            try:
+                r = requests.get('https://brapi.dev/api/v2/stocks/historical',
+                                 params=par, timeout=25,
+                                 headers={'User-Agent': 'MyInvest/1.0'})
+                if r.status_code != 200:
+                    return []
+                return (r.json() or {}).get('results') or []
+            except requests.exceptions.RequestException:
+                return []
+
+        lotes = [ativos[i:i + 20] for i in range(0, len(ativos), 20)]
+        n_chamadas += len(lotes)
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            for res in pool.map(_hist, lotes):
+                for item in res:
+                    sym = (item.get('symbol') or '').upper()
+                    candles = ((item.get('data') or {}).get('historicalDataPrice') or [])
+                    if not candles:
+                        continue
+                    # Candle da data pedida; se aquele dia não existe na série
+                    # (a BRAPI tem buracos no histórico de ações que não tem no
+                    # de opções — 09/09/2026 é um caso real), cai no pregão
+                    # anterior mais próximo, como o resto do app já faz.
+                    alvo = None
+                    if data_pos:
+                        anteriores = [c for c in candles
+                                      if c.get('date')
+                                      and datetime.utcfromtimestamp(c['date']).date().isoformat() <= data_pos]
+                        if anteriores:
+                            alvo = max(anteriores, key=lambda c: c['date'])
+                    else:
+                        alvo = max(candles, key=lambda c: c.get('date') or 0)
+                    if not alvo:
+                        continue
+                    vol = alvo.get('volume') or 0
+                    if vol < qtd_min:
+                        continue
+                    px = alvo.get('close') or 0
+                    d_iso = (datetime.utcfromtimestamp(alvo['date']).date().isoformat()
+                             if alvo.get('date') else (data_pos or ''))
+                    linhas.append({
+                        'symbol': sym, 'ativo': sym, 'side': 'acao',
+                        'exp': None, 'strike': None,
+                        'preco': round(float(px), 2),
+                        'qtd': vol, 'trades': None,
+                        'fin': round(float(vol) * float(px), 2),
+                        'medio': None, 'var_oi': None, 'data': d_iso,
+                    })
+
+    if tipo_busca == 'acoes':
+        linhas.sort(key=lambda x: -(x['fin'] or 0))
+        return jsonify({
+            'data_ref': data_pos or 'mais recente',
+            'ativos': ativos, 'n_ativos': len(ativos),
+            'n_chamadas': n_chamadas,
+            'qtd_min': qtd_min, 'max_trades': max_trades, 'tipo': tipo_busca,
+            'rows': linhas[:400], 'total': len(linhas),
+        })
+
+    # ── Opções ───────────────────────────────────────────────────────
     def _vencs(t):
         with app.app_context():
             d, e = _brapi_opt_get('/expirations', {'underlying': t}, uid, timeout=12)
@@ -7402,8 +7502,9 @@ def api_volume_anomalo():
         exp_map = dict(pool.map(_vencs, ativos))
 
     tarefas = [(t, e) for t, es in exp_map.items() for e in es]
-    if not tarefas:
+    if not tarefas and not linhas:
         return jsonify({'error': 'Nenhum vencimento com opções para os ativos escolhidos.'}), 404
+    n_chamadas += len(tarefas)
 
     def _chain(arg):
         t, e = arg
@@ -7441,18 +7542,20 @@ def api_volume_anomalo():
             })
         return out
 
-    linhas, ref = [], None
     with ThreadPoolExecutor(max_workers=8) as pool:
         for parte in pool.map(_chain, tarefas):
             linhas.extend(parte)
 
-    # Assinatura de direto primeiro: maior volume por negócio no topo.
-    linhas.sort(key=lambda x: -x['medio'])
+    # Assinatura de direto primeiro: maior volume por negócio no topo. As
+    # linhas de ação não têm contagem de negócios (a BRAPI não publica),
+    # então entram ordenadas pelo financeiro, depois das opções.
+    linhas.sort(key=lambda x: (0 if x['medio'] is not None else 1,
+                               -(x['medio'] if x['medio'] is not None else (x['fin'] or 0))))
     return jsonify({
         'data_ref': data_pos or 'mais recente',
         'ativos': ativos, 'n_ativos': len(ativos),
-        'n_chamadas': len(tarefas),
-        'qtd_min': qtd_min, 'max_trades': max_trades,
+        'n_chamadas': n_chamadas,
+        'qtd_min': qtd_min, 'max_trades': max_trades, 'tipo': tipo_busca,
         'rows': linhas[:400], 'total': len(linhas),
     })
 

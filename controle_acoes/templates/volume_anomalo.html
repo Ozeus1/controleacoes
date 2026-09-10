@@ -30,7 +30,11 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
   font-weight:700;background:rgba(234,179,8,.18);color:#eab308;margin-left:.3rem;}
 .va-par{display:inline-block;padding:.05rem .4rem;border-radius:4px;font-size:.7rem;
   font-weight:700;background:rgba(124,58,237,.22);color:#a78bfa;margin-left:.3rem;cursor:help;}
-tr.va-tem-par td{background:rgba(124,58,237,.07);}
+/* Marcação do par tem que ser mais forte que o hover (.12), senão some
+   quando o mouse passa por cima — e a barra lateral dá o contraste que a
+   cor de fundo sozinha não dá. */
+tr.va-tem-par td{background:rgba(124,58,237,.20);}
+tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
 .va-est-card{border:1px solid rgba(124,58,237,.45);border-radius:8px;padding:.7rem .9rem;
   background:rgba(124,58,237,.07);margin-bottom:.5rem;}
 .va-est-head{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;
@@ -454,7 +458,17 @@ tr.va-tem-par td{background:rgba(124,58,237,.07);}
   // já que a BRAPI não informa a hora do negócio.
   function renderEstruturas(ests, lado) {
     var box = document.getElementById('va-estruturas');
-    if (!ests.length) { box.innerHTML = ''; return; }
+    // Sem par, avisa em vez de sumir: senão não dá para distinguir
+    // "não achou nada" de "a detecção não rodou".
+    if (!ests.length) {
+      box.innerHTML = '<div style="padding:.5rem .8rem;margin-bottom:.7rem;font-size:.82rem;'
+        + 'color:var(--text-secondary);background:var(--hover-bg);border-radius:6px;'
+        + 'border:1px dashed var(--border-color);">'
+        + '🔗 Nenhuma estrutura casada neste resultado — nenhuma dupla de pernas do mesmo '
+        + 'ativo e vencimento saiu com quantidade e variação de OI batendo. '
+        + 'Buscar mais de um ativo por vez aumenta a chance de encontrar.</div>';
+      return;
+    }
     var h = '<div style="margin:.2rem 0 .9rem;">'
       + '<div style="font-size:.8rem;color:var(--text-secondary);font-weight:600;'
       + 'text-transform:uppercase;letter-spacing:.03em;margin-bottom:.5rem;">'

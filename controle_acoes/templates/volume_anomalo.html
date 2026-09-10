@@ -59,7 +59,11 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
     <h2 style="margin:0;">🦈 Volume Anômalo — Opções</h2>
   </div>
 
-  <div class="va-nota">
+  <button type="button" id="va-toggle-ajuda" class="btn btn-secondary btn-sm"
+          style="margin-bottom:.7rem;font-size:.8rem;padding:.25rem .7rem;"
+          onclick="vaToggleAjuda()">❔ Como funciona</button>
+
+  <div class="va-nota" id="va-nota" style="display:none;">
     Varre a cadeia de opções procurando <strong>séries com giro fora do padrão</strong> no pregão.
     A ordenação padrão é pelo <strong>tamanho médio por negócio</strong> — volume alto com
     <em>poucos</em> negócios é a assinatura de institucional montando posição de uma vez,
@@ -204,6 +208,20 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
 
 <script>
 (function() {
+  // Aviso recolhido por padrão — é texto de referência, lido uma vez.
+  // A preferência fica no navegador para quem quiser deixá-lo aberto.
+  window.vaToggleAjuda = function(forcar) {
+    var n = document.getElementById('va-nota');
+    var abrir = (forcar != null) ? forcar : (n.style.display === 'none');
+    n.style.display = abrir ? '' : 'none';
+    document.getElementById('va-toggle-ajuda').textContent =
+      abrir ? '❔ Ocultar ajuda' : '❔ Como funciona';
+    if (forcar == null) {
+      try { localStorage.setItem('va_ajuda', abrir ? '1' : '0'); } catch (e) {}
+    }
+  };
+  try { if (localStorage.getItem('va_ajuda') === '1') vaToggleAjuda(true); } catch (e) {}
+
   var loading = document.getElementById('va-loading');
   var errBox  = document.getElementById('va-error');
   var hintBox = document.getElementById('va-hint');
@@ -453,10 +471,76 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
   }
   document.getElementById('va-buscar').addEventListener('click', buscar);
 
+  var ESTS = [];   // estruturas do último resultado, p/ copiar/exportar
+
+  // Monta o link para a aba Estruturas de Cálculos de Opções no modo
+  // "livre" (pernas arbitrárias), mesmo contrato que o FYT já usa.
+  // Como o OI abre nas duas pernas juntas, a leitura é de estrutura
+  // COMPRADA — quem vendeu é a contraparte, que não temos como saber.
+  function urlCalculo(e) {
+    var a = e.pernas[0], b = e.pernas[1];
+    // O volume da BRAPI vem em AÇÕES; a tela de cálculo trabalha em
+    // CONTRATOS (lote de 100). Sem dividir, "qty" ia como 1.000.700.
+    var lote = Math.max(100, Math.round(Math.min(a.qtd, b.qtd) / 100));
+
+    // Numa trava as pernas são opostas (compra uma, vende a outra) — com
+    // ambas positivas o payoff sairia errado. Convenção: strike menor
+    // comprado, maior vendido (trava de alta em CALL, de baixa em PUT).
+    // Nas de call+put as duas vão compradas, que é a leitura do OI abrindo
+    // junto (straddle comprado / collar); quem vendeu é a contraparte.
+    var sa = 1, sb = 1;
+    if (a.side === b.side) {
+      if ((a.strike || 0) <= (b.strike || 0)) sb = -1; else sa = -1;
+    }
+    var p = {
+      st: '1', ativo: e.ativo, exp: e.exp, qty: lote, op: 'livre',
+      livre_legs: (a.side === 'call' ? 'C' : 'P') + ':' + sa + '|'
+                + (b.side === 'call' ? 'C' : 'P') + ':' + sb,
+      livre_nome: e.tipo + ' ' + e.ativo,
+      at: a.symbol, ak: a.strike, ap: a.preco,
+      bt: b.symbol, bk: b.strike, bp: b.preco
+    };
+    return '/venda_puts?' + new URLSearchParams(p).toString() + '#estrutura';
+  }
+
+  window.vaCopiar = function(btn) {
+    var e = ESTS[parseInt(btn.dataset.est, 10)];
+    if (!e) return;
+    var linhas = [e.tipo + ' · ' + e.ativo + ' · venc. ' + dateBR(e.exp)
+                  + ' · ' + (e.abre ? 'abrindo posição' : 'encerrando posição')];
+    e.pernas.forEach(function(p) {
+      linhas.push((p.side === 'call' ? 'CALL' : 'PUT') + ' ' + p.symbol
+        + ' | strike ' + brl(p.strike) + ' | preço ' + brl(p.preco)
+        + ' | ' + num(p.qtd) + ' un. | ' + num(p.trades) + ' neg.'
+        + ' | ΔOI ' + (p.var_oi > 0 ? '+' : '') + num(p.var_oi));
+    });
+    var txt = linhas.join('\n');
+    var ok = function() {
+      var o = btn.textContent;
+      btn.textContent = '✓ Copiado';
+      setTimeout(function() { btn.textContent = o; }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(ok, function() { fallback(txt, ok); });
+    } else { fallback(txt, ok); }
+  };
+  function fallback(txt, ok) {
+    // navigator.clipboard exige HTTPS ou localhost; no acesso por IP da
+    // rede local ele não existe, então o textarea + execCommand cobre.
+    var ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.cssText = 'position:fixed;opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); ok(); } catch (err) { alert(txt); }
+    document.body.removeChild(ta);
+  }
+
   // Pernas que provavelmente são a mesma operação — pareadas por
   // coincidência de assinatura (quantidade + variação de OI casadas),
   // já que a BRAPI não informa a hora do negócio.
   function renderEstruturas(ests, lado) {
+    ESTS = ests || [];
     var box = document.getElementById('va-estruturas');
     // Sem par, avisa em vez de sumir: senão não dá para distinguir
     // "não achou nada" de "a detecção não rodou".
@@ -494,6 +578,13 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
           + ' · OI ' + (p.var_oi > 0 ? '+' : '') + num(p.var_oi)
           + '</div>';
       });
+      h += '<div style="display:flex;gap:.4rem;margin-top:.5rem;flex-wrap:wrap;">'
+        + '<button type="button" class="btn btn-secondary btn-sm" data-est="' + i + '"'
+        + ' onclick="vaCopiar(this)" style="font-size:.76rem;padding:.2rem .6rem;">'
+        + '📋 Copiar</button>'
+        + '<a class="btn btn-primary btn-sm" href="' + urlCalculo(e) + '" target="_blank"'
+        + ' style="font-size:.76rem;padding:.2rem .6rem;">🧮 Cálculo de Opções</a>'
+        + '</div>';
       h += '</div>';
     });
     box.innerHTML = h + '</div>';

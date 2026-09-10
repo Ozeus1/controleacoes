@@ -7378,7 +7378,7 @@ def _venc_mensal(exp_str):
     return False
 
 
-def _pareia_estruturas(linhas, tol_qtd=0.06, tol_voi=0.45, min_medio=20000):
+def _pareia_estruturas(linhas, tol_qtd=0.10, tol_voi=0.45, min_medio=20000):
     """Acha pernas que provavelmente são a MESMA operação montada de uma vez.
 
     Sem horário do negócio (a BRAPI só publica o fechado do pregão — nem
@@ -7402,7 +7402,14 @@ def _pareia_estruturas(linhas, tol_qtd=0.06, tol_voi=0.45, min_medio=20000):
        montada de uma vez. Exigir que as DUAS pernas tenham lote médio alto
        resolve: as reais tinham de 2 a 63 negócios movendo ~1 milhão.
 
-    As tolerâncias são folgadas de propósito (6% na quantidade, 45% no OI):
+    A tolerância de quantidade subiu para 10% depois de comparar com o
+    Shark Map do Jumba no mesmo pregão: a trava de PUT do B3SA3
+    (B3SAU157 x B3SAU170, 5.961.300 x 5.553.100) ficava de fora por 0,8
+    ponto percentual. Acima de 10% o número de estruturas para de crescer,
+    então não é folga que traz par novo — é folga que recupera o que a
+    execução em lotes diferentes tinha separado.
+
+    As tolerâncias são folgadas de propósito (10% na quantidade, 45% no OI):
     as pernas de uma estrutura real raramente saem com o número redondo
     idêntico — parte é executada em lotes diferentes, e a variação de OI
     ainda mistura o que outros participantes fizeram na mesma série no

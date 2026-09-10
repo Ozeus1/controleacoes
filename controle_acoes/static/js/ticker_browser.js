@@ -29,6 +29,20 @@ function url(ticker) {
     return u;
 }
 
+// URL da ferramenta de fundamentos (página "stocks" do mesmo site) — usa
+// o ticker em minúsculas e "?"-separado em vez de "&" entre os parâmetros,
+// no formato exato que o site espera para essa rota específica.
+function urlFundamentos(ticker, categoria) {
+    var tk = (ticker || '').toLowerCase().trim();
+    if (!tk) return null;
+    var cat = (categoria || 'fii').toLowerCase().trim();
+    var u = 'https://acoes.receberbemevinhos.com.br/?action=stocks&view=' + encodeURIComponent(cat)
+        + '?ticker=' + encodeURIComponent(tk);
+    var num = receberbemNum();
+    if (num) u += '?num=' + encodeURIComponent(num);
+    return u;
+}
+
 function ensureModal() {
     if (_modal) return;
 
@@ -83,14 +97,24 @@ function ensureModal() {
 
 var TickerBrowser = {};
 
-TickerBrowser.open = function(ticker) {
-    var u = url(ticker);
+function _openUrl(u, title) {
     if (!u) return;
     ensureModal();
-    _titleEl.textContent = (ticker || '').toUpperCase();
+    _titleEl.textContent = title || '';
     _iframe.setAttribute('data-url', u);
     _iframe.src = u;
     _modal.style.display = 'flex';
+}
+
+TickerBrowser.open = function(ticker) {
+    _openUrl(url(ticker), (ticker || '').toUpperCase());
+};
+
+// Ferramenta de dados de fundamento do fundo/ativo (página "stocks" do
+// mesmo site). categoria: 'fii' (padrão), 'acao', etc. — o que a rota
+// "view=" do site espera.
+TickerBrowser.openFundamentos = function(ticker, categoria) {
+    _openUrl(urlFundamentos(ticker, categoria), (ticker || '').toUpperCase() + ' — Fundamentos');
 };
 
 TickerBrowser._close = function() {

@@ -269,8 +269,11 @@
                 <td style="font-size: 0.8rem; color: var(--text-secondary);">
                     {{ item.asset.fii_type or '-' }}
                 </td>
-                <td style="text-align:center;">
+                <td style="text-align:center; white-space:nowrap;">
                     <button class="btn btn-sm btn-chart" onclick="openTVChart('{{ item.asset.ticker }}')" title="Gráfico TradingView">📈</button>
+                    <button class="btn btn-sm" style="background:#7c3aed; color:white;"
+                        onclick="TickerBrowser.openFundamentos('{{ item.asset.ticker }}', 'fii')"
+                        title="Dados Fundamentalistas do FII">🏛️</button>
                 </td>
                 <td class="actions" style="display: flex; gap: 5px; justify-content: center;">
                     <button class="btn btn-sm btn-dates btn-laranja" title="Datas de entrada/saída"

@@ -2462,6 +2462,24 @@ def simulacao_delete(id):
     return redirect(url_for('simulacao_opcoes'))
 
 
+@app.route('/api/simulacao_opcoes/bulk_delete', methods=['POST'])
+@login_required
+def api_simulacao_bulk_delete():
+    """Exclui várias simulações salvas de uma vez (seleção múltipla na
+    visualização em lista)."""
+    d = request.get_json(force=True) or {}
+    ids = [int(i) for i in (d.get('ids') or []) if str(i).isdigit()]
+    if not ids:
+        return jsonify({'error': 'Nenhuma simulação selecionada.'}), 400
+    sims = SimulacaoOpcoes.query.filter(
+        SimulacaoOpcoes.id.in_(ids), SimulacaoOpcoes.user_id == current_user.id).all()
+    n = len(sims)
+    for sim in sims:
+        db.session.delete(sim)
+    db.session.commit()
+    return jsonify({'ok': True, 'deleted': n})
+
+
 @app.route('/api/simulacao/save', methods=['POST'])
 @login_required
 def api_simulacao_save():

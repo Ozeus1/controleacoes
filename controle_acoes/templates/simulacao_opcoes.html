@@ -19,6 +19,25 @@
 .sim-item.active { background: var(--hover-bg); border-color: var(--accent-color); }
 .sim-item-name { flex: 1; font-weight: 500; }
 .sim-item-meta { font-size: .75rem; color: var(--text-secondary); white-space: nowrap; }
+/* Modo cartão (padrão): itens lado a lado, em grade */
+#sims-wrap.view-card { display: flex; flex-wrap: wrap; gap: .4rem; }
+#sims-wrap.view-card .sim-item { flex: 1; min-width: 200px; max-width: 320px; }
+/* Modo lista: um item por linha, com checkbox de seleção */
+#sims-wrap.view-list { display: flex; flex-direction: column; gap: .2rem; }
+#sims-wrap.view-list .sim-item { width: 100%; }
+.sim-check { display: none; width: 16px; height: 16px; cursor: pointer; flex: 0 0 auto; }
+#sims-wrap.view-list .sim-check { display: block; }
+.sim-view-toggle { display: inline-flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; }
+.sim-view-toggle button {
+    background: var(--card-bg); color: var(--text-secondary); border: none;
+    padding: .3rem .6rem; font-size: .8rem; cursor: pointer;
+}
+.sim-view-toggle button.active { background: var(--accent-color); color: var(--accent-contrast, #fff); }
+#sim-bulk-bar {
+    display: none; align-items: center; gap: .6rem; margin-bottom: .6rem;
+    font-size: .82rem; color: var(--text-secondary);
+}
+#sim-bulk-bar.show { display: flex; }
 /* ── Gráfico ── */
 #chart-wrap { position: relative; width: 100%; background: var(--hover-bg);
     border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; margin-top: 1rem; }
@@ -53,15 +72,33 @@
 {# ── 1. Lista de simulações salvas (topo, largura total) ── #}
 {% if sims %}
 <div class="card" style="padding:.9rem; margin-bottom:1.2rem;">
-    <div style="font-size:.8rem; color:var(--text-secondary); font-weight:600;
-                text-transform:uppercase; letter-spacing:.04em; margin-bottom:.6rem;">
-        Simulações Salvas
+    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.6rem; margin-bottom:.6rem;">
+        <div style="font-size:.8rem; color:var(--text-secondary); font-weight:600;
+                    text-transform:uppercase; letter-spacing:.04em;">
+            Simulações Salvas
+        </div>
+        <div class="sim-view-toggle">
+            <button type="button" id="sim-view-card-btn" class="active" onclick="simSetView('card')">🔳 Cartões</button>
+            <button type="button" id="sim-view-list-btn" onclick="simSetView('list')">☰ Lista</button>
+        </div>
     </div>
-    <div style="display:flex; flex-wrap:wrap; gap:.4rem;">
+
+    <div id="sim-bulk-bar">
+        <label style="display:flex; align-items:center; gap:.35rem; cursor:pointer;">
+            <input type="checkbox" id="sim-select-all" onchange="simToggleAll(this.checked)"> Selecionar todas
+        </label>
+        <span id="sim-selected-count">0 selecionada(s)</span>
+        <button type="button" class="btn btn-sm btn-danger" id="sim-bulk-delete-btn"
+                disabled onclick="simBulkDelete()">🗑️ Excluir selecionadas</button>
+    </div>
+
+    <div id="sims-wrap" class="view-card">
         {% for s in sims %}
-        <div class="sim-item {{ 'active' if sim and sim.id == s.id else '' }}"
-             style="flex:1; min-width:200px; max-width:320px;"
-             onclick="window.location='{{ url_for('simulacao_edit', id=s.id) }}'">
+        <div class="sim-item {{ 'active' if sim and sim.id == s.id else '' }}" data-id="{{ s.id }}"
+             data-href="{{ url_for('simulacao_edit', id=s.id) }}"
+             onclick="simItemClick(event, {{ s.id }})">
+            <input type="checkbox" class="sim-check" data-id="{{ s.id }}"
+                   onclick="event.stopPropagation(); simUpdateBulkBar();">
             <div style="flex:1; min-width:0;">
                 <div class="sim-item-name">{{ s.name }}</div>
                 <div class="sim-item-meta">{{ s.underlying or '—' }} · {{ s.created_at.strftime('%d/%m/%y') if s.created_at else '' }}</div>
@@ -81,6 +118,78 @@
         {% endfor %}
     </div>
 </div>
+<script>
+(function() {
+    var wrap = document.getElementById('sims-wrap');
+    var btnCard = document.getElementById('sim-view-card-btn');
+    var btnList = document.getElementById('sim-view-list-btn');
+    var bulkBar = document.getElementById('sim-bulk-bar');
+
+    window.simSetView = function(mode) {
+        wrap.className = mode === 'list' ? 'view-list' : 'view-card';
+        btnCard.classList.toggle('active', mode === 'card');
+        btnList.classList.toggle('active', mode === 'list');
+        bulkBar.classList.toggle('show', mode === 'list');
+        if (mode === 'card') {
+            // sai do modo lista: limpa seleção pendente
+            wrap.querySelectorAll('.sim-check').forEach(function(c) { c.checked = false; });
+            simUpdateBulkBar();
+        }
+        try { localStorage.setItem('sim_view_mode', mode); } catch (e) {}
+    };
+
+    window.simItemClick = function(ev, id) {
+        // No modo lista, clicar na linha alterna o checkbox em vez de navegar —
+        // navegar continua disponível pelo nome/duplo-clique não é necessário
+        // aqui pois o botão de gráfico e o de editar já cobrem a navegação.
+        if (wrap.classList.contains('view-list')) {
+            var chk = wrap.querySelector('.sim-check[data-id="' + id + '"]');
+            if (chk) { chk.checked = !chk.checked; simUpdateBulkBar(); }
+            return;
+        }
+        var el = wrap.querySelector('.sim-item[data-id="' + id + '"]');
+        if (el) window.location = el.dataset.href;
+    };
+
+    window.simToggleAll = function(checked) {
+        wrap.querySelectorAll('.sim-check').forEach(function(c) { c.checked = checked; });
+        simUpdateBulkBar();
+    };
+
+    window.simUpdateBulkBar = function() {
+        var checks = Array.prototype.slice.call(wrap.querySelectorAll('.sim-check'));
+        var n = checks.filter(function(c) { return c.checked; }).length;
+        document.getElementById('sim-selected-count').textContent = n + ' selecionada(s)';
+        document.getElementById('sim-bulk-delete-btn').disabled = n === 0;
+        document.getElementById('sim-select-all').checked = n > 0 && n === checks.length;
+    };
+
+    window.simBulkDelete = function() {
+        var ids = Array.prototype.slice.call(wrap.querySelectorAll('.sim-check'))
+            .filter(function(c) { return c.checked; })
+            .map(function(c) { return parseInt(c.dataset.id, 10); });
+        if (!ids.length) return;
+        if (!confirm('Excluir ' + ids.length + ' simulação(ões) selecionada(s)? Esta ação não pode ser desfeita.')) return;
+        var btn = document.getElementById('sim-bulk-delete-btn');
+        btn.disabled = true; btn.textContent = 'Excluindo...';
+        fetch('{{ url_for("api_simulacao_bulk_delete") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ids: ids })
+        }).then(function(r) { return r.json(); }).then(function(d) {
+            if (d.error) { alert(d.error); btn.disabled = false; btn.textContent = '🗑️ Excluir selecionadas'; return; }
+            window.location.reload();
+        }).catch(function() {
+            alert('Falha ao excluir. Tente novamente.');
+            btn.disabled = false; btn.textContent = '🗑️ Excluir selecionadas';
+        });
+    };
+
+    var saved = null;
+    try { saved = localStorage.getItem('sim_view_mode'); } catch (e) {}
+    simSetView(saved === 'list' ? 'list' : 'card');
+})();
+</script>
 {% endif %}
 
 {# ── 2. Formulário + gráfico (largura total) ── #}

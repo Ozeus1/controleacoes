@@ -7354,6 +7354,103 @@ def api_volume_anomalo_prefixos():
     return jsonify({'ok': True, 'prefixos': lista})
 
 
+def _venc_mensal(exp_str):
+    """True se o vencimento é o mensal (3ª sexta do mês, tolerando feriado).
+
+    As semanais (W1..W5) poluem a varredura: são muitas, consomem as
+    chamadas do rate limit e carregam pouca posição institucional.
+    """
+    try:
+        d = date.fromisoformat(exp_str)
+    except (TypeError, ValueError):
+        return False
+    count, dia = 0, 1
+    while dia <= 31:
+        try:
+            c = date(d.year, d.month, dia)
+        except ValueError:
+            break
+        if c.weekday() == 4:
+            count += 1
+            if count == 3:
+                return abs((d - c).days) <= 2
+        dia += 1
+    return False
+
+
+def _pareia_estruturas(linhas, tol_qtd=0.02, tol_voi=0.25, min_medio=20000):
+    """Acha pernas que provavelmente são a MESMA operação montada de uma vez.
+
+    Sem horário do negócio (a BRAPI só publica o fechado do pregão — nem
+    /options/historical com interval=5m devolve intradiário), não dá para
+    provar que duas pernas saíram no mesmo instante. O que dá é procurar
+    coincidência de assinatura: mesmo ativo, mesmo vencimento, quantidade
+    quase igual E variação de open interest casada — mesmo sentido e
+    magnitude parecida.
+
+    Dois filtros fazem o trabalho pesado, e os dois são necessários:
+
+    1. OI casado — só a quantidade produz muito falso positivo: em BOVA11
+       (série de varejo com 1.000+ negócios/dia) volumes de pernas
+       independentes batem por acaso o tempo todo. No pregão de 09/09/2026
+       esse critério derrubou 15 pares falsos.
+
+    2. Concentração (`min_medio`) — mesmo com o OI casado, duas séries
+       muito líquidas ainda coincidem: BOVAJ197 e BOVAJ37 saíram no mesmo
+       dia com ΔOI de 317.417 e 314.841 (0,8% de diferença), mas com 127 e
+       2.430 negócios — é volume pulverizado de varejo, não uma estrutura
+       montada de uma vez. Exigir que as DUAS pernas tenham lote médio alto
+       resolve: as reais tinham de 2 a 63 negócios movendo ~1 milhão.
+
+    Não é prova de que foi a mesma operação; é uma coincidência forte o
+    bastante para valer o destaque, e por isso a tela usa "possível".
+    """
+    ops = [x for x in linhas if x.get('side') in ('call', 'put') and x.get('exp')
+           and (x.get('medio') or 0) >= min_medio]
+    ops.sort(key=lambda x: -(x.get('qtd') or 0))
+
+    out, usados = [], set()
+    for i, a in enumerate(ops):
+        if a['symbol'] in usados:
+            continue
+        for b in ops[i + 1:]:
+            if b['symbol'] in usados:
+                continue
+            if a['ativo'] != b['ativo'] or a['exp'] != b['exp']:
+                continue
+            qa, qb = a.get('qtd') or 0, b.get('qtd') or 0
+            mq = max(qa, qb)
+            if not mq or abs(qa - qb) / mq > tol_qtd:
+                continue
+            va, vb = a.get('var_oi') or 0, b.get('var_oi') or 0
+            if va * vb <= 0:                       # sentidos opostos (ou algum zerado)
+                continue
+            mv = max(abs(va), abs(vb))
+            if not mv or abs(abs(va) - abs(vb)) / mv > tol_voi:
+                continue
+
+            if a['side'] != b['side']:
+                mesmo_k = a.get('strike') == b.get('strike')
+                tipo = ('Straddle / conversão' if mesmo_k
+                        else 'Collar / risk reversal')
+            else:
+                tipo = f"Trava vertical de {a['side'].upper()}"
+            out.append({
+                'ativo': a['ativo'], 'exp': a['exp'], 'tipo': tipo,
+                'abre': va > 0,
+                'qtd': max(qa, qb),
+                'pernas': [
+                    {k: p.get(k) for k in ('symbol', 'side', 'strike', 'preco',
+                                           'qtd', 'trades', 'var_oi')}
+                    for p in (a, b)
+                ],
+            })
+            usados.add(a['symbol'])
+            usados.add(b['symbol'])
+            break
+    return out
+
+
 @app.route('/api/volume-anomalo')
 @login_required
 def api_volume_anomalo():
@@ -7381,6 +7478,9 @@ def api_volume_anomalo():
     tipo_busca = (request.args.get('tipo') or 'opcoes').strip().lower()
     if tipo_busca not in ('opcoes', 'acoes', 'ambos'):
         tipo_busca = 'opcoes'
+    # Padrão: só vencimentos mensais. As semanais são muitas, gastam o
+    # rate limit e carregam pouca posição institucional.
+    so_mensais = (request.args.get('semanais') or '') != '1'
 
     def _int(name, default, lo, hi):
         try:
@@ -7496,7 +7596,10 @@ def api_volume_anomalo():
             d, e = _brapi_opt_get('/expirations', {'underlying': t}, uid, timeout=12)
         if e or not d:
             return t, []
-        return t, (d.get('expirations') or [])[:n_vencs]
+        todos = d.get('expirations') or []
+        if so_mensais:
+            todos = [e for e in todos if _venc_mensal(e)]
+        return t, todos[:n_vencs]
 
     with ThreadPoolExecutor(max_workers=8) as pool:
         exp_map = dict(pool.map(_vencs, ativos))
@@ -7546,6 +7649,17 @@ def api_volume_anomalo():
         for parte in pool.map(_chain, tarefas):
             linhas.extend(parte)
 
+    estruturas = _pareia_estruturas(linhas)
+    # Marca as pernas na tabela para o par saltar aos olhos (nº do par + a
+    # outra ponta), sem precisar caçá-las no meio das demais linhas.
+    for n, est in enumerate(estruturas, 1):
+        syms = [p['symbol'] for p in est['pernas']]
+        for ln in linhas:
+            if ln['symbol'] in syms:
+                ln['par_n'] = n
+                ln['par_tipo'] = est['tipo']
+                ln['par_com'] = syms[1] if ln['symbol'] == syms[0] else syms[0]
+
     # Assinatura de direto primeiro: maior volume por negócio no topo. As
     # linhas de ação não têm contagem de negócios (a BRAPI não publica),
     # então entram ordenadas pelo financeiro, depois das opções.
@@ -7557,6 +7671,7 @@ def api_volume_anomalo():
         'n_chamadas': n_chamadas,
         'qtd_min': qtd_min, 'max_trades': max_trades, 'tipo': tipo_busca,
         'rows': linhas[:400], 'total': len(linhas),
+        'estruturas': estruturas,
     })
 
 

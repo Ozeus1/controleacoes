@@ -28,6 +28,18 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
 .va-acao{color:#60a5fa;font-weight:600;font-size:.72rem;letter-spacing:.03em;}
 .va-flag{display:inline-block;padding:.05rem .4rem;border-radius:4px;font-size:.7rem;
   font-weight:700;background:rgba(234,179,8,.18);color:#eab308;margin-left:.3rem;}
+.va-par{display:inline-block;padding:.05rem .4rem;border-radius:4px;font-size:.7rem;
+  font-weight:700;background:rgba(124,58,237,.22);color:#a78bfa;margin-left:.3rem;cursor:help;}
+tr.va-tem-par td{background:rgba(124,58,237,.07);}
+.va-est-card{border:1px solid rgba(124,58,237,.45);border-radius:8px;padding:.7rem .9rem;
+  background:rgba(124,58,237,.07);margin-bottom:.5rem;}
+.va-est-head{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;
+  font-size:.86rem;font-weight:700;color:var(--text-primary);margin-bottom:.4rem;}
+.va-est-tag{padding:.08rem .45rem;border-radius:4px;font-size:.72rem;font-weight:700;}
+.va-est-abre{background:rgba(16,185,129,.18);color:#34d399;}
+.va-est-fecha{background:rgba(239,68,68,.18);color:#f87171;}
+.va-est-perna{font-size:.8rem;color:var(--text-secondary);
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;}
 #va-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
 #va-error{display:none;color:#f87171;padding:1rem;}
 #va-hint{padding:1.5rem;text-align:center;color:var(--text-secondary);font-size:.88rem;}
@@ -48,6 +60,12 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
     A ordenação padrão é pelo <strong>tamanho médio por negócio</strong> — volume alto com
     <em>poucos</em> negócios é a assinatura de institucional montando posição de uma vez,
     enquanto volume alto com muitos negócios é apenas a série líquida do dia.
+    <br><br>
+    Quando duas pernas do mesmo ativo e vencimento saem com <strong>quantidade e
+    variação de OI casadas</strong>, elas são destacadas como
+    <strong>possível estrutura</strong> (trava, straddle, collar…) — a BRAPI não
+    informa a hora do negócio, então não é prova de que foi a mesma operação,
+    mas em volumes grandes a coincidência é sugestiva.
     <br><br>
     ⚠️ A BRAPI não publica <em>tape reading</em>, então não há como mostrar corretora
     compradora/vendedora, agressor ou horário — nem separar diretos de indiretos.
@@ -103,11 +121,18 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
       <label for="va-vencs" title="Quantos vencimentos varrer por ativo, do mais próximo. A BRAPI limita 20 requisições/min e cobra 1 chamada por ativo+vencimento.">
         Vencimentos por ativo</label>
       <select id="va-vencs">
-        <option value="4">4 (mais rápido)</option>
-        <option value="8" selected>8</option>
-        <option value="12">12</option>
-        <option value="20">20 (lento)</option>
+        <option value="3">3 (mais rápido)</option>
+        <option value="6" selected>6</option>
+        <option value="9">9</option>
+        <option value="12">12 (lento)</option>
       </select>
+      <label style="display:flex;align-items:center;gap:.35rem;cursor:pointer;
+                    font-size:.75rem;color:var(--text-secondary);text-transform:none;
+                    letter-spacing:normal;font-weight:400;margin-top:.3rem;"
+             title="As semanais (W1..W5) são muitas, gastam o limite de requisições e carregam pouca posição institucional.">
+        <input type="checkbox" id="va-semanais" style="cursor:pointer;margin:0;">
+        incluir vencimentos semanais
+      </label>
     </div>
     <div class="va-campo">
       <label>&nbsp;</label>
@@ -125,6 +150,7 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
   <div id="va-error"></div>
   <div id="va-hint">Ajuste os filtros e clique em <strong>Buscar</strong> para varrer a cadeia.</div>
   <div id="va-resumo"></div>
+  <div id="va-estruturas"></div>
   <div id="va-results"></div>
 </div>
 
@@ -390,6 +416,7 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
       vencs:      nVencs,
       max_trades: document.getElementById('va-maxtrades').value || '',
       tipo:       tipo,
+      semanais:   document.getElementById('va-semanais').checked ? '1' : '',
       ativos:     ativos
     });
 
@@ -422,6 +449,42 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
   }
   document.getElementById('va-buscar').addEventListener('click', buscar);
 
+  // Pernas que provavelmente são a mesma operação — pareadas por
+  // coincidência de assinatura (quantidade + variação de OI casadas),
+  // já que a BRAPI não informa a hora do negócio.
+  function renderEstruturas(ests, lado) {
+    var box = document.getElementById('va-estruturas');
+    if (!ests.length) { box.innerHTML = ''; return; }
+    var h = '<div style="margin:.2rem 0 .9rem;">'
+      + '<div style="font-size:.8rem;color:var(--text-secondary);font-weight:600;'
+      + 'text-transform:uppercase;letter-spacing:.03em;margin-bottom:.5rem;">'
+      + '🔗 Possíveis estruturas casadas (' + ests.length + ')</div>';
+    ests.forEach(function(e, i) {
+      h += '<div class="va-est-card">'
+        + '<div class="va-est-head">'
+        + '<span style="color:#a78bfa;">#' + (i + 1) + '</span> ' + e.ativo
+        + ' · ' + dateBR(e.exp)
+        + ' <span class="va-est-tag" style="background:rgba(124,58,237,.2);color:#a78bfa;">'
+        +   e.tipo + '</span>'
+        + ' <span class="va-est-tag ' + (e.abre ? 'va-est-abre' : 'va-est-fecha') + '">'
+        +   (e.abre ? 'abrindo posição' : 'encerrando posição') + '</span>'
+        + '</div>';
+      e.pernas.forEach(function(p) {
+        h += '<div class="va-est-perna">'
+          + '<span class="' + (p.side === 'call' ? 'va-call' : 'va-put') + '">'
+          +   (p.side === 'call' ? 'C' : 'P') + '</span> '
+          + '<strong style="color:var(--text-primary);">' + p.symbol + '</strong>'
+          + ' · K ' + brl(p.strike) + ' · ' + brl(p.preco)
+          + ' · ' + num(p.qtd) + ' un.'
+          + ' · ' + num(p.trades) + ' neg.'
+          + ' · OI ' + (p.var_oi > 0 ? '+' : '') + num(p.var_oi)
+          + '</div>';
+      });
+      h += '</div>';
+    });
+    box.innerHTML = h + '</div>';
+  }
+
   function render(d) {
     var lado = document.getElementById('va-lado').value;
     // O filtro call/put nunca esconde as linhas de ação à vista.
@@ -433,6 +496,8 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
       + ' · ' + d.n_ativos + ' ativos · ' + d.n_chamadas + ' consultas · '
       + rows.length + ' série(s) acima de ' + num(d.qtd_min) + ' un.'
       + (d.total > d.rows.length ? ' (mostrando as ' + d.rows.length + ' maiores)' : '');
+
+    renderEstruturas(d.estruturas || [], lado);
 
     if (!rows.length) {
       results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">'
@@ -455,11 +520,15 @@ table.va-tab tr:hover{background:rgba(124,58,237,.12);}
       if (!acao && r.trades && r.trades <= 5) {
         flag = '<span class="va-flag">' + r.trades + ' neg.</span>';
       }
+      if (r.par_n) {
+        flag += '<span class="va-par" title="' + r.par_tipo
+             +  ' — outra perna: ' + r.par_com + '">🔗 #' + r.par_n + '</span>';
+      }
       var lado = acao
         ? '<span class="va-acao">À VISTA</span>'
         : '<span class="' + (r.side === 'call' ? 'va-call' : 'va-put') + '">'
           + (r.side === 'call' ? 'C' : 'P') + '</span> ' + r.ativo;
-      h += '<tr>'
+      h += '<tr' + (r.par_n ? ' class="va-tem-par"' : '') + '>'
         + '<td><strong>' + r.symbol + '</strong>' + flag + '</td>'
         + '<td>' + lado + '</td>'
         + '<td>' + (acao ? '—' : dateBR(r.exp)) + '</td>'

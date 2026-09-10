@@ -7276,6 +7276,187 @@ def _gex_walls(series, spot, faixa=0.30):
     return out
 
 
+# ══════════════════════════════════════════════════════════════════
+# VOLUME ANÔMALO — séries de opções com giro fora do padrão no dia
+# ══════════════════════════════════════════════════════════════════
+#
+# Inspirado no "Shark Map" do Jumba, mas com um dado diferente: a BRAPI
+# NÃO publica tape reading (negócio a negócio com corretora compradora,
+# vendedora e agressor) — nenhum endpoint devolve isso. O que existe é o
+# agregado do dia por série no /options/chain: trades, volume,
+# financialVolume e openInterestChange.
+#
+# Na prática o agregado revela o mesmo evento quando o negócio grande é
+# único no dia: conferido contra o Jumba de 09/09/2026, VBBRT370 sai com
+# trades=1 e volume=1.344.900 — o mesmo número que a tela do Jumba mostra
+# para aquele direto. O que não dá para saber é QUEM negociou.
+#
+# Por isso a leitura aqui é "poucos negócios movendo muito volume":
+# volume alto com trades baixo é a assinatura do institucional montando
+# posição de uma vez, enquanto volume alto com trades alto é só giro de
+# varejo/formador na série líquida do dia.
+
+_VOL_ANOM_PREFIX_KEY = 'vol_anomalo_prefixos'
+
+
+def _vol_anomalo_prefixos(user_id):
+    """Lista de ativos varridos. Começa com o mix das duas listas do
+    Ranking de Volatilidade (com liquidez + geral) e depois passa a valer
+    o que o usuário salvou na própria tela."""
+    salvo = Settings.get_value(_VOL_ANOM_PREFIX_KEY, user_id=user_id, default='')
+    if salvo:
+        return [p for p in (x.strip().upper() for x in salvo.split(',')) if p]
+    rk = {(r.ticker or '').strip().upper()
+          for r in RankingVol.query.filter_by(user_id=user_id).all() if r.ticker}
+    return sorted(rk)
+
+
+@app.route('/volume-anomalo')
+@login_required
+def volume_anomalo():
+    """Página: busca de séries de opções com volume/negócios atípicos."""
+    return render_template('volume_anomalo.html',
+                           prefixos=','.join(_vol_anomalo_prefixos(current_user.id)),
+                           tem_token=bool(_brapi_opt_token(current_user.id)))
+
+
+@app.route('/api/volume-anomalo/prefixos', methods=['POST'])
+@login_required
+def api_volume_anomalo_prefixos():
+    """Salva a lista de ativos varridos (editável pelo usuário)."""
+    d = request.get_json(force=True) or {}
+    raw = (d.get('prefixos') or '')
+    lista = []
+    for p in raw.replace(';', ',').replace(' ', ',').split(','):
+        p = p.strip().upper()
+        if p and p not in lista:
+            lista.append(p)
+    Settings.set_value(_VOL_ANOM_PREFIX_KEY, ','.join(lista), user_id=current_user.id)
+    return jsonify({'ok': True, 'prefixos': lista})
+
+
+@app.route('/api/volume-anomalo')
+@login_required
+def api_volume_anomalo():
+    """Varre a cadeia de opções dos ativos pedidos e devolve as séries que
+    passaram do volume mínimo no dia.
+
+    Query:
+      data      = YYYY-MM-DD (opcional; vazio = pregão mais recente)
+      qtd_min   = volume mínimo em ações/unidades (padrão 400.000)
+      vencs     = quantos vencimentos varrer por ativo, do mais próximo
+                  (padrão 8) — a BRAPI exige 1 chamada por ativo+vencimento
+                  e limita a 20 req/min, então varrer os 31 vencimentos de
+                  cada ativo estoura o limite sem trazer nada: o giro se
+                  concentra nos primeiros.
+      max_trades= se informado, só séries com até N negócios (o filtro de
+                  "poucos negócios movendo muito volume")
+      ativos    = lista separada por vírgula; vazio = a lista salva
+    """
+    uid = current_user.id
+    if not _brapi_opt_token(uid):
+        return jsonify({'error': 'Configure a chave BRAPI em Configuração.'}), 400
+
+    data_pos = (request.args.get('data') or '').strip()
+
+    def _int(name, default, lo, hi):
+        try:
+            v = int(float(request.args.get(name) or default))
+        except (TypeError, ValueError):
+            v = default
+        return max(lo, min(v, hi))
+
+    qtd_min  = _int('qtd_min', 400000, 0, 10**9)
+    n_vencs  = _int('vencs', 8, 1, 20)
+    raw_mt   = (request.args.get('max_trades') or '').strip()
+    max_trades = None
+    if raw_mt:
+        try:
+            max_trades = max(1, int(float(raw_mt)))
+        except ValueError:
+            max_trades = None
+
+    raw_at = (request.args.get('ativos') or '').strip()
+    if raw_at:
+        ativos = []
+        for p in raw_at.replace(';', ',').split(','):
+            p = p.strip().upper()
+            if p and p not in ativos:
+                ativos.append(p)
+    else:
+        ativos = _vol_anomalo_prefixos(uid)
+    if not ativos:
+        return jsonify({'error': 'Nenhum ativo na lista. Edite os prefixos e tente de novo.'}), 400
+    ativos = ativos[:40]        # teto de segurança para o rate limit da BRAPI
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _vencs(t):
+        with app.app_context():
+            d, e = _brapi_opt_get('/expirations', {'underlying': t}, uid, timeout=12)
+        if e or not d:
+            return t, []
+        return t, (d.get('expirations') or [])[:n_vencs]
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        exp_map = dict(pool.map(_vencs, ativos))
+
+    tarefas = [(t, e) for t, es in exp_map.items() for e in es]
+    if not tarefas:
+        return jsonify({'error': 'Nenhum vencimento com opções para os ativos escolhidos.'}), 404
+
+    def _chain(arg):
+        t, e = arg
+        par = {'underlying': t, 'expirationDate': e}
+        if data_pos:
+            par['date'] = data_pos
+        with app.app_context():
+            d, err = _brapi_opt_get('/chain', par, uid, timeout=20)
+        if err or not d:
+            return []
+        out = []
+        for s in (d.get('series') or []):
+            vol = s.get('volume') or 0
+            if vol < qtd_min:
+                continue
+            trades = s.get('trades') or 0
+            if max_trades is not None and trades > max_trades:
+                continue
+            fin = s.get('financialVolume') or 0
+            out.append({
+                'symbol':   (s.get('symbol') or '').upper(),
+                'ativo':    t,
+                'side':     s.get('side'),
+                'exp':      s.get('expirationDate'),
+                'strike':   round(float(s.get('strike') or 0), 2),
+                'preco':    round(float(s.get('close') or 0), 2),
+                'qtd':      vol,
+                'trades':   trades,
+                'fin':      round(float(fin), 2),
+                # Tamanho médio por negócio: é o que separa um direto
+                # institucional (poucos negócios enormes) do giro miúdo.
+                'medio':    round(vol / trades) if trades else vol,
+                'var_oi':   s.get('openInterestChange') or 0,
+                'data':     s.get('expirationDate'),
+            })
+        return out
+
+    linhas, ref = [], None
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for parte in pool.map(_chain, tarefas):
+            linhas.extend(parte)
+
+    # Assinatura de direto primeiro: maior volume por negócio no topo.
+    linhas.sort(key=lambda x: -x['medio'])
+    return jsonify({
+        'data_ref': data_pos or 'mais recente',
+        'ativos': ativos, 'n_ativos': len(ativos),
+        'n_chamadas': len(tarefas),
+        'qtd_min': qtd_min, 'max_trades': max_trades,
+        'rows': linhas[:400], 'total': len(linhas),
+    })
+
+
 @app.route('/market-gamma')
 @login_required
 def market_gamma():

@@ -558,7 +558,7 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
       return;
     }
     var maxT = Math.max.apply(null, s.map(function(x) { return x.total; })) || 1;
-    var W = 920, H = 240, PL = 62, PR = 12, PT = 12, PB = 26;
+    var W = 920, H = 250, PL = 62, PR = 14, PT = 12, PB = 32;
     var iw = W - PL - PR, ih = H - PT - PB;
     var px = function(i) { return PL + (s.length < 2 ? iw / 2 : i * iw / (s.length - 1)); };
     var py = function(v) { return PT + ih - (v / maxT) * ih; };
@@ -586,11 +586,24 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
     });
     svg += linha('total', '#2dd4bf') + linha('trava', '#a78bfa')
          + linha('descoberto', '#f87171') + linha('coberto', '#60a5fa');
-    [0, s.length - 1].forEach(function(i) {
-      if (i < 0) return;
-      svg += '<text x="' + px(i) + '" y="' + (H - 8) + '" text-anchor="'
-          + (i === 0 ? 'start' : 'end') + '" fill="#94a3b8" font-size="10">'
-          + dateBR(s[i].data) + '</text>';
+    // Datas ao longo do eixo, não só nas pontas: ~6 rótulos espaçados,
+    // no formato curto dd/mm para caberem sem se sobrepor. A última
+    // sempre entra, mesmo que caia fora do passo.
+    var passo = Math.max(1, Math.ceil(s.length / 6));
+    var idxs = [];
+    for (var k = 0; k < s.length; k += passo) idxs.push(k);
+    if (idxs[idxs.length - 1] !== s.length - 1) {
+      // evita rótulo colado no penúltimo quando a sobra é pequena
+      if (s.length - 1 - idxs[idxs.length - 1] < passo / 2) idxs.pop();
+      idxs.push(s.length - 1);
+    }
+    idxs.forEach(function(i) {
+      var x = px(i);
+      var anc = (i === 0) ? 'start' : (i === s.length - 1 ? 'end' : 'middle');
+      svg += '<line x1="' + x + '" y1="' + (PT + ih) + '" x2="' + x + '" y2="' + (PT + ih + 4)
+          + '" stroke="rgba(148,163,184,.45)" stroke-width="1"/>'
+          + '<text x="' + x + '" y="' + (H - 6) + '" text-anchor="' + anc
+          + '" fill="#94a3b8" font-size="10">' + dataCurta(s[i].data) + '</text>';
     });
     svg += '</svg>';
 
@@ -627,6 +640,12 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
       + '<strong>Coberto</strong>: garantida pelo ativo. '
       + '<strong>Descoberto</strong>: sem garantia — é a que exige margem e força recompra.'
       + '</div>' + tab;
+  }
+
+  // dd/mm — no eixo o ano é sempre o mesmo e só ocuparia espaço.
+  function dataCurta(iso) {
+    var p = (iso || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] : (iso || '');
   }
 
   function fmtCurto(v) {

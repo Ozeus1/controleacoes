@@ -17,6 +17,21 @@
 {% endif %}
 {%- endmacro %}
 <style>
+    .estruturada-nome {
+        cursor: pointer;
+        border-bottom: 1px dashed transparent;
+        transition: border-color .15s;
+    }
+    .estruturada-nome:hover, .estruturada-nome:focus {
+        border-bottom-color: var(--text-secondary);
+        outline: none;
+    }
+    .estruturada-nome-input {
+        background: var(--card-bg); color: var(--text-primary);
+        border: 1px solid var(--accent-color); border-radius: 4px;
+        padding: .1rem .4rem; font-size: 1em; font-weight: 700;
+        width: 100%; max-width: 220px;
+    }
     .profit-col-head {
         background: rgba(16, 185, 129, .18) !important;
         color: #d1fae5 !important;
@@ -675,7 +690,11 @@
             {% set op = item.op %}
             <tr>
                 <td><span class="ticker-badge">{{ op.underlying_asset or '—' }}</span></td>
-                <td><strong>{{ op.name }}</strong><br>
+                <td>
+                    <strong class="estruturada-nome" data-op-id="{{ op.id }}" tabindex="0"
+                            title="Clique para editar o nome"
+                            onclick="estruturadaNomeIniciar(this)"
+                            onkeydown="if(event.key==='Enter'){event.preventDefault();estruturadaNomeIniciar(this);}">{{ op.name }}</strong><br>
                     <small style="color:var(--text-secondary);">{{ op.created_at.strftime('%d/%m/%Y') if op.created_at else '' }}</small>
                 </td>
                 <td>
@@ -988,6 +1007,55 @@ function openRollSpread(id, underlying, type, longTk, longK, longP, shortTk, sho
     document.getElementById('roll-sp-new-short-p').value     = shortP.toString().replace('.', ',');
     document.getElementById('form-roll-spread').action       = '/roll_spread/' + id;
     document.getElementById('modal-roll-spread').style.display = 'flex';
+}
+
+// ── Edição inline do nome da operação estruturada ─────────────────────────────
+// Clique no <strong> da coluna Nome troca por um <input>; Enter ou perder o
+// foco salva via /api/estruturada/<id>/rename, Escape cancela sem salvar.
+function estruturadaNomeIniciar(el) {
+    if (el.querySelector('input')) return;   // já em edição
+    var opId = el.dataset.opId;
+    var nomeAtual = el.textContent.trim();
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'estruturada-nome-input';
+    input.value = nomeAtual;
+    input.maxLength = 100;
+    el.textContent = '';
+    el.appendChild(input);
+    input.focus();
+    input.select();
+
+    var salvo = false;
+    function commit() {
+        if (salvo) return;
+        salvo = true;
+        var novo = input.value.trim();
+        if (!novo || novo === nomeAtual) { el.textContent = nomeAtual; return; }
+        el.textContent = novo;   // otimista; reverte se o servidor recusar
+        fetch('/api/estruturada/' + opId + '/rename', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: novo})
+        }).then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+          .then(function(res) {
+            if (!res.ok || res.j.error) {
+                el.textContent = nomeAtual;
+                alert('⚠️ ' + (res.j.error || 'Não foi possível renomear.'));
+            } else {
+                el.textContent = res.j.name;
+            }
+        }).catch(function() {
+            el.textContent = nomeAtual;
+            alert('⚠️ Falha de rede ao renomear.');
+        });
+    }
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+        else if (e.key === 'Escape') { salvo = true; el.textContent = nomeAtual; }
+    });
+    input.addEventListener('blur', commit);
+    input.addEventListener('click', function(e) { e.stopPropagation(); });
 }
 
 // ── Rolagem de estruturada ───────────────────────────────────────────────────

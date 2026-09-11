@@ -1933,6 +1933,28 @@ def add_estruturada():
                            intl=request.args.get('intl') == '1')
 
 
+@app.route('/api/estruturada/<int:id>/rename', methods=['POST'])
+@login_required
+def api_estruturada_rename(id):
+    """Renomeia uma operação estruturada sem passar pelo form completo de
+    edição — usado pela edição inline (clique no nome) na tabela de
+    Operações Estruturadas."""
+    op = StructuredOp.query.get_or_404(id)
+    if op.user_id != current_user.id:
+        return jsonify({'error': 'Sem permissão.'}), 403
+
+    d = request.get_json(force=True) or {}
+    nome = (d.get('name') or '').strip()
+    if not nome:
+        return jsonify({'error': 'O nome não pode ficar vazio.'}), 400
+    if len(nome) > 100:
+        return jsonify({'error': 'Nome muito longo (máx. 100 caracteres).'}), 400
+
+    op.name = nome
+    db.session.commit()
+    return jsonify({'ok': True, 'name': op.name})
+
+
 @app.route('/estruturada/<int:id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_estruturada(id):

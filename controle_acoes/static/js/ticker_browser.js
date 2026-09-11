@@ -43,6 +43,20 @@ function urlFundamentos(ticker, categoria) {
     return u;
 }
 
+// URL da ferramenta de fundamentos para ativos internacionais — rota
+// "analyzer" do mesmo site, com parâmetros separados por "&" (padrão
+// normal de querystring) e o ticker em MAIÚSCULAS, diferente da rota
+// "stocks" nacional acima (minúsculas, separada por "?").
+function urlFundamentosIntl(ticker) {
+    var tk = (ticker || '').toUpperCase().trim();
+    if (!tk) return null;
+    var num = receberbemNum();
+    var params = ['action=stocks', 'view=us'];
+    if (num) params.push('num=' + encodeURIComponent(num));
+    params.push('analyzer=us', 'ticker=' + encodeURIComponent(tk));
+    return 'https://acoes.receberbemevinhos.com.br/?' + params.join('&');
+}
+
 function ensureModal() {
     if (_modal) return;
 
@@ -115,6 +129,11 @@ TickerBrowser.open = function(ticker) {
 // "view=" do site espera.
 TickerBrowser.openFundamentos = function(ticker, categoria) {
     _openUrl(urlFundamentos(ticker, categoria), (ticker || '').toUpperCase() + ' — Fundamentos');
+};
+
+// Análise técnica/fundamentos para ativos internacionais (rota "analyzer").
+TickerBrowser.openFundamentosIntl = function(ticker) {
+    _openUrl(urlFundamentosIntl(ticker), (ticker || '').toUpperCase() + ' — Fundamentos');
 };
 
 TickerBrowser._close = function() {

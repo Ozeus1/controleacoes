@@ -318,6 +318,9 @@
         <td class="actions" style="white-space:nowrap;">
           <button class="btn btn-sm btn-violeta" onclick="openRadarAndUpdate({{ ss.id }}, '{{ ss.ticker }}', 'intl')" title="Análise Radar + atualizar RSI/ATR" >📊</button>
           <button class="btn btn-sm btn-azul" onclick="openTVChart('{{ ss.ticker }}', true)" title="Gráfico TradingView" >📈</button>
+          <button class="btn btn-sm" style="background:#7c3aed; color:white;"
+            onclick="TickerBrowser.openFundamentosIntl('{{ ss.ticker }}')"
+            title="Dados Fundamentalistas de {{ ss.ticker }}">🏛️</button>
           <button class="btn btn-primary btn-sm"
             onclick="openEditIntlAcao({{ ss.id }}, '{{ ss.ticker }}',
               '{{ ss.trend or '' }}', '{{ ss.rsi or '' }}',

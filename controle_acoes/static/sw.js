@@ -3,7 +3,7 @@
    - Navegações e /api/: rede primeiro; sem rede, cai no cache (páginas) ou offline.html.
    - /static/ e CDNs: stale-while-revalidate (responde do cache e atualiza por trás).
    - Páginas centrais pré-cacheadas no install, pra funcionar offline já na 1ª visita. */
-var CACHE = 'myinvest-v212';
+var CACHE = 'myinvest-v213';
 var OFFLINE_URL = '/offline.html';
 
 // Essenciais (públicos, sempre existem) vão com addAll — se um falhar,
@@ -18,7 +18,7 @@ var ESSENCIAIS = [
   '/static/img/investimento.png',
   '/static/img/icon-192.png',
   '/static/js/mychart.js?v=2',
-  '/static/js/ticker_browser.js?v=2'
+  '/static/js/ticker_browser.js?v=3'
 ];
 var PRE_CACHE_OPCIONAL = ['/resumo', '/acoes'];
 

@@ -162,7 +162,14 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
   <div id="va-aviso-data" style="display:none;margin:.4rem 0 .6rem;padding:.55rem .9rem;
        background:rgba(234,179,8,.12);border-left:3px solid #eab308;border-radius:4px;
        font-size:.83rem;color:var(--text-secondary);"></div>
-  <div id="va-resumo"></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:.7rem;flex-wrap:wrap;">
+    <div id="va-resumo"></div>
+    <button type="button" id="va-export-btn" class="btn btn-secondary btn-sm"
+            style="display:none;font-size:.8rem;padding:.3rem .8rem;white-space:nowrap;"
+            title="Baixa o resultado atual em .xlsx (Opções, Ações e Estruturas Casadas em abas separadas)">
+      📊 Exportar Excel
+    </button>
+  </div>
   <div id="va-estruturas"></div>
   <div id="va-results"></div>
 </div>
@@ -485,6 +492,8 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
     hintBox.style.display = 'none';
     results.innerHTML = '';
     resumo.textContent = '';
+    exportBtn.style.display = 'none';
+    ULTIMO = null;
 
     fetch('/api/volume-anomalo?' + q.toString())
       .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
@@ -680,6 +689,43 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
 
   var ESTS = [];   // estruturas do último resultado, p/ copiar/exportar
 
+  // ── Exportação para Excel ────────────────────────────────────────
+  // Guarda o resultado da última busca já filtrado pelo Call/Put da tela
+  // (esse filtro é só client-side — o servidor não sabe dele), pra
+  // exportar exatamente o que está visível, sem gastar outra rodada de
+  // chamadas na BRAPI refazendo a busca.
+  var ULTIMO = null;   // {rows, estruturas, meta}
+
+  var exportBtn = document.getElementById('va-export-btn');
+  exportBtn.addEventListener('click', function() {
+    if (!ULTIMO) return;
+    var original = exportBtn.textContent;
+    exportBtn.disabled = true;
+    exportBtn.textContent = '⏳ Gerando…';
+    fetch('/api/volume-anomalo/export_excel', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(ULTIMO)
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(j) { throw new Error(j.error || 'Falha ao exportar.'); });
+      return r.blob();
+    }).then(function(blob) {
+      var a = document.createElement('a');
+      var url = URL.createObjectURL(blob);
+      a.href = url;
+      a.download = 'volume_anomalo.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }).catch(function(e) {
+      alert('⚠️ ' + (e.message || 'Falha ao exportar.'));
+    }).finally(function() {
+      exportBtn.disabled = false;
+      exportBtn.textContent = original;
+    });
+  });
+
   // Monta o link para a aba Estruturas de Cálculos de Opções no modo
   // "livre" (pernas arbitrárias), mesmo contrato que o FYT já usa.
   // Como o OI abre nas duas pernas juntas, a leitura é de estrutura
@@ -833,6 +879,18 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
       + (d.total > d.rows.length ? ' (mostrando as ' + d.rows.length + ' maiores)' : '');
 
     renderEstruturas(d.estruturas || [], lado);
+
+    // Guarda para exportação: exatamente o que a tela mostra (já com o
+    // filtro Call/Put aplicado), não a resposta bruta do servidor.
+    ULTIMO = {
+      rows: rows,
+      estruturas: d.estruturas || [],
+      meta: {
+        data_ref: d.data_ref, tipo: d.tipo,
+        qtd_min: d.qtd_min, max_trades: d.max_trades,
+      }
+    };
+    exportBtn.style.display = rows.length ? '' : 'none';
 
     if (!rows.length) {
       results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">'

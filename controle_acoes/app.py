@@ -7822,6 +7822,201 @@ def api_volume_anomalo():
     })
 
 
+@app.route('/api/volume-anomalo/export_excel', methods=['POST'])
+@login_required
+def api_volume_anomalo_export_excel():
+    """Exporta o resultado do Volume Anômalo para .xlsx.
+
+    Recebe no corpo (JSON) exatamente o que a tela já tem renderizado —
+    'rows', 'estruturas' e os metadados da busca — em vez de rebuscar na
+    BRAPI: assim a planilha reflete os filtros client-side (Call/Put) que
+    o servidor não vê, e não gasta mais chamadas do rate limit da BRAPI.
+
+    Quando há linhas de opção E de ação no mesmo resultado (tipo=ambos),
+    cada uma vai para uma aba própria — misturadas numa tabela só, os
+    campos que só existem num dos dois (strike, negócios, ΔOI) ficam
+    cheios de "—" pro outro tipo.
+    """
+    import io as _io
+    try:
+        import openpyxl
+        from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        return jsonify({'error': 'openpyxl não instalado no servidor.'}), 500
+
+    d = request.get_json(force=True) or {}
+    rows = d.get('rows') or []
+    estruturas = d.get('estruturas') or []
+    meta = d.get('meta') or {}
+
+    def _brl_str(v):
+        return None if v is None else round(float(v), 2)
+
+    def _data_br(iso):
+        if not iso:
+            return ''
+        p = str(iso).split('-')
+        return f'{p[2]}/{p[1]}/{p[0]}' if len(p) == 3 else iso
+
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)   # a 1ª aba real é criada abaixo, com nome próprio
+
+    hdr_fill  = PatternFill('solid', fgColor='1E293B')
+    hdr_font  = Font(bold=True, color='FFFFFF', size=10)
+    hdr_align = Alignment(horizontal='center', vertical='center')
+    pos_font  = Font(color='16A34A', size=10)
+    neg_font  = Font(color='DC2626', size=10)
+    border    = Border(bottom=Side(style='thin', color='E2E8F0'))
+
+    def _cabecalho(ws, headers, widths):
+        ws.append(headers)
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col)
+            cell.fill = hdr_fill
+            cell.font = hdr_font
+            cell.alignment = hdr_align
+        for i, w in enumerate(widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+        ws.freeze_panes = 'A2'
+
+    def _resumo_topo(ws, linhas_resumo):
+        # Bloco de contexto da busca (data, filtros) acima da tabela —
+        # sem isso a planilha perde a data do pregão assim que sai da tela.
+        for texto in linhas_resumo:
+            ws.append([texto])
+            ws.cell(ws.max_row, 1).font = Font(italic=True, size=9, color='64748B')
+        ws.append([])
+
+    # ── Aba: Opções ──────────────────────────────────────────────────
+    opc = [r for r in rows if r.get('side') in ('call', 'put')]
+    if opc or meta.get('tipo') != 'acoes':
+        ws = wb.create_sheet('Opções')
+        _resumo_topo(ws, [
+            f"Pregão: {_data_br(meta.get('data_ref')) or meta.get('data_ref') or '—'}",
+            f"Quantidade mínima: {meta.get('qtd_min') or 0:,}".replace(',', '.'),
+            f"Máx. de negócios: {meta.get('max_trades') or 'sem limite'}",
+        ])
+        r0 = ws.max_row + 1
+        headers = ['Ticker', 'Lado', 'Ativo', 'Vencimento', 'Strike', 'Preço',
+                   'Quantidade', 'Negócios', 'Méd./Negócio', 'Var. OI',
+                   'Financeiro', 'Estrutura casada']
+        ws.append(headers)
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=r0, column=col)
+            cell.fill = hdr_fill
+            cell.font = hdr_font
+            cell.alignment = hdr_align
+        widths = [12, 6, 9, 12, 10, 10, 14, 10, 13, 12, 15, 22]
+        for i, w in enumerate(widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+        ws.freeze_panes = f'A{r0 + 1}'
+
+        for r in opc:
+            par = ('#{} ({}, com {})'.format(r['par_n'], r.get('par_tipo') or '', r.get('par_com') or '')
+                   if r.get('par_n') else '')
+            ws.append([
+                r.get('symbol') or '',
+                'CALL' if r.get('side') == 'call' else 'PUT',
+                r.get('ativo') or '',
+                _data_br(r.get('exp')),
+                _brl_str(r.get('strike')),
+                _brl_str(r.get('preco')),
+                r.get('qtd') or 0,
+                r.get('trades') if r.get('trades') is not None else '',
+                r.get('medio') if r.get('medio') is not None else '',
+                r.get('var_oi') if r.get('var_oi') is not None else '',
+                _brl_str(r.get('fin')),
+                par,
+            ])
+            rr = ws.max_row
+            voi = r.get('var_oi')
+            if voi:
+                ws.cell(rr, 10).font = pos_font if voi > 0 else neg_font
+            for col in range(1, len(headers) + 1):
+                ws.cell(rr, col).border = border
+        if not opc:
+            ws.append(['(nenhuma série de opção no resultado)'])
+
+    # ── Aba: Ações / ETFs à vista ────────────────────────────────────
+    acoes = [r for r in rows if r.get('side') == 'acao']
+    if acoes or meta.get('tipo') in ('acoes', 'ambos'):
+        ws = wb.create_sheet('Ações')
+        _resumo_topo(ws, [
+            f"Pregão: {_data_br(meta.get('data_ref')) or meta.get('data_ref') or '—'}",
+            f"Quantidade mínima: {meta.get('qtd_min') or 0:,}".replace(',', '.'),
+        ])
+        r0 = ws.max_row + 1
+        headers = ['Ticker', 'Data', 'Preço', 'Quantidade', 'Financeiro']
+        ws.append(headers)
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=r0, column=col)
+            cell.fill = hdr_fill
+            cell.font = hdr_font
+            cell.alignment = hdr_align
+        widths = [12, 12, 10, 14, 16]
+        for i, w in enumerate(widths, 1):
+            ws.column_dimensions[get_column_letter(i)].width = w
+        ws.freeze_panes = f'A{r0 + 1}'
+
+        for r in acoes:
+            ws.append([
+                r.get('symbol') or '',
+                _data_br(r.get('data')),
+                _brl_str(r.get('preco')),
+                r.get('qtd') or 0,
+                _brl_str(r.get('fin')),
+            ])
+            rr = ws.max_row
+            for col in range(1, len(headers) + 1):
+                ws.cell(rr, col).border = border
+        if not acoes:
+            ws.append(['(nenhuma linha de ação no resultado)'])
+
+    # ── Aba: Estruturas casadas ──────────────────────────────────────
+    if estruturas:
+        ws = wb.create_sheet('Estruturas Casadas')
+        headers = ['#', 'Ativo', 'Vencimento', 'Tipo', 'Sinal', 'Perna',
+                   'Ticker', 'Strike', 'Preço', 'Quantidade', 'Negócios', 'Var. OI']
+        _cabecalho(ws, headers, [5, 9, 12, 22, 16, 8, 12, 10, 10, 14, 10, 12])
+
+        for i, e in enumerate(estruturas, 1):
+            sinal = ('abrindo posição' if e.get('abre') is True
+                     else 'encerrando posição' if e.get('abre') is False else '—')
+            for j, p in enumerate(e.get('pernas') or [], 1):
+                ws.append([
+                    i if j == 1 else '',
+                    e.get('ativo') if j == 1 else '',
+                    _data_br(e.get('exp')) if j == 1 else '',
+                    e.get('tipo') if j == 1 else '',
+                    sinal if j == 1 else '',
+                    f'Perna {j}',
+                    p.get('symbol') or '',
+                    _brl_str(p.get('strike')),
+                    _brl_str(p.get('preco')),
+                    p.get('qtd') or 0,
+                    p.get('trades') if p.get('trades') is not None else '',
+                    p.get('var_oi') if p.get('var_oi') is not None else '',
+                ])
+                rr = ws.max_row
+                for col in range(1, len(headers) + 1):
+                    ws.cell(rr, col).border = border
+            ws.append([])   # respiro visual entre estruturas
+
+    if not wb.sheetnames:
+        ws = wb.create_sheet('Resultado')
+        ws.append(['Sem dados para exportar.'])
+
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+
+    filename = f'volume_anomalo_{now_brt().strftime("%Y%m%d_%H%M")}.xlsx'
+    from flask import send_file
+    return send_file(buf, as_attachment=True, download_name=filename,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
 @app.route('/market-gamma')
 @login_required
 def market_gamma():

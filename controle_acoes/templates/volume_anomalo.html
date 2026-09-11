@@ -558,8 +558,16 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
       return;
     }
     var maxT = Math.max.apply(null, s.map(function(x) { return x.total; })) || 1;
-    var W = 920, H = 250, PL = 62, PR = 14, PT = 12, PB = 32;
-    var iw = W - PL - PR, ih = H - PT - PB;
+    var W = 920, PL = 62, PR = 14, PT = 12;
+    var iw = W - PL - PR;
+    // Rótulo inclinado precisa de mais base; decide antes de fechar a
+    // altura para o texto não vazar do viewBox.
+    var passoPrev = Math.max(1, Math.ceil(s.length / Math.max(2,
+      Math.min(s.length, Math.floor(iw / 44)))));
+    var espacPrev = (s.length > 1) ? (iw / (s.length - 1)) * passoPrev : iw;
+    var PB = (espacPrev < 38) ? 46 : 32;
+    var H = 218 + PB;
+    var ih = H - PT - PB;
     var px = function(i) { return PL + (s.length < 2 ? iw / 2 : i * iw / (s.length - 1)); };
     var py = function(v) { return PT + ih - (v / maxT) * ih; };
     var linha = function(campo, cor) {
@@ -586,10 +594,13 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
     });
     svg += linha('total', '#2dd4bf') + linha('trava', '#a78bfa')
          + linha('descoberto', '#f87171') + linha('coberto', '#60a5fa');
-    // Datas ao longo do eixo, não só nas pontas: ~6 rótulos espaçados,
-    // no formato curto dd/mm para caberem sem se sobrepor. A última
-    // sempre entra, mesmo que caia fora do passo.
-    var passo = Math.max(1, Math.ceil(s.length / 6));
+    // Datas ao longo do eixo. A quantidade vem da largura disponível, não
+    // de um número fixo: "dd/mm" a 10px ocupa ~32px, então com 44px de
+    // passo mínimo cabem ~19 rótulos nos 844px úteis — bem mais que os 6
+    // de antes, que deixavam o meio da série sem referência de tempo.
+    var LARG_ROTULO = 44;
+    var maxRot = Math.max(2, Math.min(s.length, Math.floor(iw / LARG_ROTULO)));
+    var passo = Math.max(1, Math.ceil(s.length / maxRot));
     var idxs = [];
     for (var k = 0; k < s.length; k += passo) idxs.push(k);
     if (idxs[idxs.length - 1] !== s.length - 1) {
@@ -597,13 +608,25 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
       if (s.length - 1 - idxs[idxs.length - 1] < passo / 2) idxs.pop();
       idxs.push(s.length - 1);
     }
+    // Espaçamento real entre rótulos; abaixo de ~38px o texto horizontal
+    // encostaria, então inclina 40° e ancora à direita (padrão de eixo
+    // temporal denso) em vez de remover datas.
+    var espac = (s.length > 1) ? (iw / (s.length - 1)) * passo : iw;
+    var inclina = espac < 38;
     idxs.forEach(function(i) {
       var x = px(i);
-      var anc = (i === 0) ? 'start' : (i === s.length - 1 ? 'end' : 'middle');
+      var txt = dataCurta(s[i].data);
       svg += '<line x1="' + x + '" y1="' + (PT + ih) + '" x2="' + x + '" y2="' + (PT + ih + 4)
-          + '" stroke="rgba(148,163,184,.45)" stroke-width="1"/>'
-          + '<text x="' + x + '" y="' + (H - 6) + '" text-anchor="' + anc
-          + '" fill="#94a3b8" font-size="10">' + dataCurta(s[i].data) + '</text>';
+          + '" stroke="rgba(148,163,184,.45)" stroke-width="1"/>';
+      if (inclina) {
+        svg += '<text x="' + x + '" y="' + (PT + ih + 14) + '" text-anchor="end" '
+            + 'transform="rotate(-40 ' + x + ',' + (PT + ih + 14) + ')" '
+            + 'fill="#94a3b8" font-size="9">' + txt + '</text>';
+      } else {
+        var anc = (i === 0) ? 'start' : (i === s.length - 1 ? 'end' : 'middle');
+        svg += '<text x="' + x + '" y="' + (H - 8) + '" text-anchor="' + anc
+            + '" fill="#94a3b8" font-size="10">' + txt + '</text>';
+      }
     });
     svg += '</svg>';
 

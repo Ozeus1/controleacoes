@@ -893,15 +893,105 @@ window.initLegHelpers = function (o) {
   applySameExp(null);
 };
 </script>
+<!-- PWA: banner de nova versão disponível -->
+<div id="pwa-update-banner" style="display:none;position:fixed;left:0;right:0;bottom:0;z-index:20000;
+     background:#7c3aed;color:#fff;padding:.75rem 1rem;align-items:center;
+     justify-content:center;gap:1rem;flex-wrap:wrap;font-size:.9rem;
+     box-shadow:0 -4px 16px rgba(0,0,0,.35);">
+  <span>🔄 Nova versão do MyInvest disponível.</span>
+  <button id="pwa-update-btn" style="background:#fff;color:#7c3aed;border:none;border-radius:6px;
+    padding:.4rem 1rem;font-weight:700;cursor:pointer;">Atualizar agora</button>
+</div>
+
+<!-- PWA: banner de instalação (Android/desktop — o beforeinstallprompt do Chrome) -->
+<div id="pwa-install-banner" style="display:none;position:fixed;left:0;right:0;bottom:0;z-index:19999;
+     background:#0f172a;color:#e2e8f0;padding:.7rem 1rem;align-items:center;
+     justify-content:center;gap:1rem;flex-wrap:wrap;font-size:.88rem;
+     border-top:1px solid #334155;box-shadow:0 -4px 16px rgba(0,0,0,.35);">
+  <span>📲 Instale o MyInvest na tela inicial para abrir como app.</span>
+  <button id="pwa-install-btn" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;
+    padding:.35rem .9rem;font-weight:600;cursor:pointer;">Instalar</button>
+  <button id="pwa-install-dismiss" style="background:none;color:#94a3b8;border:none;
+    cursor:pointer;font-size:1.1rem;line-height:1;padding:0 .3rem;">&times;</button>
+</div>
+
 <script>
-// PWA: registro do service worker (exige HTTPS ou localhost)
+// PWA: registro do service worker + aviso de nova versão (exige HTTPS ou localhost).
+// O sw.js não chama skipWaiting() sozinho — fica "waiting" até o usuário clicar
+// em "Atualizar agora", pra nunca trocar HTML/JS debaixo de uma aba aberta sem avisar.
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('/sw.js').catch(function (e) {
+    navigator.serviceWorker.register('/sw.js').then(function (reg) {
+      function mostrarBanner(worker) {
+        var banner = document.getElementById('pwa-update-banner');
+        banner.style.display = 'flex';
+        document.getElementById('pwa-update-btn').onclick = function () {
+          worker.postMessage('SKIP_WAITING');
+        };
+      }
+      // Já existe um SW esperando (ex.: usuário abriu esta aba depois que
+      // outra aba já baixou a atualização).
+      if (reg.waiting) mostrarBanner(reg.waiting);
+
+      reg.addEventListener('updatefound', function () {
+        var novo = reg.installing;
+        if (!novo) return;
+        novo.addEventListener('statechange', function () {
+          if (novo.state === 'installed' && navigator.serviceWorker.controller) {
+            mostrarBanner(novo);
+          }
+        });
+      });
+
+      // O browser só checa updates em navegações; num app que fica muitas
+      // horas aberto na mesma aba (comum em quem acompanha carteira), sem
+      // isso o usuário só veria a nova versão ao fechar e reabrir. Verifica
+      // de novo quando a aba volta ao foco, sem exagerar em polling.
+      document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') reg.update().catch(function () {});
+      });
+    }).catch(function (e) {
       console.warn('Service worker não registrado:', e);
+    });
+
+    // Quando o novo SW assume controle (após o clique em "Atualizar agora"),
+    // recarrega pra servir o HTML/JS/CSS novos de uma vez.
+    var jaRecarregou = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (jaRecarregou) return;
+      jaRecarregou = true;
+      window.location.reload();
     });
   });
 }
+
+// PWA: prompt de instalação customizado. Sem isso o usuário só instala se
+// souber achar "Adicionar à tela inicial" no menu do navegador sozinho —
+// o Chrome/Edge dispara este evento quando o app já é instalável.
+(function () {
+  var evtInstall = null;
+  window.addEventListener('beforeinstallprompt', function (e) {
+    e.preventDefault();
+    evtInstall = e;
+    var ja = false;
+    try { ja = localStorage.getItem('pwa_install_dismissed') === '1'; } catch (err) {}
+    if (!ja) document.getElementById('pwa-install-banner').style.display = 'flex';
+  });
+
+  document.getElementById('pwa-install-btn').addEventListener('click', function () {
+    document.getElementById('pwa-install-banner').style.display = 'none';
+    if (!evtInstall) return;
+    evtInstall.prompt();
+    evtInstall = null;
+  });
+  document.getElementById('pwa-install-dismiss').addEventListener('click', function () {
+    document.getElementById('pwa-install-banner').style.display = 'none';
+    try { localStorage.setItem('pwa_install_dismissed', '1'); } catch (err) {}
+  });
+  window.addEventListener('appinstalled', function () {
+    document.getElementById('pwa-install-banner').style.display = 'none';
+  });
+})();
 </script>
 </body>
 

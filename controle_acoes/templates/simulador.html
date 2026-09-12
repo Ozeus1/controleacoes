@@ -314,10 +314,39 @@ window.simAbreGrafico = function () {
     return false;
 };
 
+// Uma perna "tem dado preenchido" quando já foi montada de fato — strike
+// escolhido (opção) ou prêmio já buscado (ativo) — não basta ter sido
+// adicionada em branco.
+function simTemPernasPreenchidas() {
+    return Array.prototype.some.call(document.querySelectorAll('#sim-body tr.leg-row'), function (tr) {
+        var strikeSel = tr.querySelector('.leg-strike-sel');
+        if (strikeSel) return !!strikeSel.value;
+        var tipo = tr.querySelector('.leg-type').value;
+        if (tipo === 'STOCK') return parseVal(tr.querySelector('.leg-premium').value) > 0;
+        return false;
+    });
+}
+
 window.simCarregarCadeia = function () {
     var t = (document.getElementById('sim-ativo').value || '').trim().toUpperCase();
     var st = document.getElementById('sim-cadeia-status');
     if (!t) { st.textContent = ''; return; }
+    // Trocar de ativo com a planilha já montada invalidaria strikes/tickers
+    // da cadeia antiga — confirma antes de zerar tudo. Não pergunta quando é
+    // o mesmo ativo já carregado (ex.: botão "Atualizar cotação", trocar o
+    // prazo de busca ou o filtro de semanais).
+    if (CADEIA && CADEIA.ticker && CADEIA.ticker !== t && simTemPernasPreenchidas()) {
+        if (!confirm('Trocar para ' + t + ' vai limpar todas as pernas já preenchidas e começar uma nova simulação. Continuar?')) {
+            simSetAtivo(CADEIA.ticker);
+            return;
+        }
+        // Vira uma simulação nova: some com as pernas do ativo antigo e
+        // desvincula de uma simulação salva (id) — Salvar aqui cria uma
+        // simulação, não sobrescreve a que estava aberta antes da troca.
+        SIM_ID = null;
+        document.getElementById('sim-nome').value = '';
+        simLimpar();
+    }
     document.getElementById('sim-ativo').value = t;
     st.textContent = '⏳ buscando cadeia…';
     var q = 'n=40&weekly=' + (document.getElementById('sim-weekly').checked ? '1' : '0')

@@ -99,6 +99,8 @@
     <div class="sim-topbar-acoes">
       <button class="btn btn-secondary btn-sm" onclick="simCarregarModal()">📂 Abrir simulação</button>
       <button class="btn btn-primary btn-sm" onclick="simSalvar()">💾 Salvar</button>
+      <button class="btn btn-secondary btn-sm" onclick="simSalvarComo()"
+              title="Salva a planilha atual como uma nova simulação, sem alterar a que já estava aberta">💾 Salvar como…</button>
       <button class="btn btn-secondary btn-sm" onclick="simNova()">＋ Nova</button>
     </div>
   </div>
@@ -129,7 +131,7 @@
                style="display:none;background:var(--card-bg);color:var(--text-primary);
                       border:1px solid var(--border-color);border-radius:5px;
                       padding:.35rem .55rem;font-size:.85rem;width:110px;text-transform:uppercase;">
-        <button class="btn btn-primary btn-sm" onclick="simCarregarCadeia()">🔎 Buscar cadeia</button>
+        <button class="btn btn-primary btn-sm" onclick="simCarregarCadeia()">🔎 Buscar</button>
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:.25rem;">
@@ -214,15 +216,30 @@
     <div class="sim-met"><span class="lbl">Vencimento mais curto</span><span class="val" id="m-dte">—</span></div>
   </div>
 
-  <!-- Gráfico ----------------------------------------------------- -->
-  <div id="chart-wrap">
-    <canvas id="payoff-canvas"></canvas>
-    <div id="chart-tooltip"></div>
+  <!-- Gráfico de payoff --------------------------------------------- -->
+  <div style="display:flex;align-items:center;gap:.6rem;margin-top:.9rem;">
+    <button type="button" class="btn btn-secondary btn-sm" onclick="simTogglePayoff()" id="sim-toggle-payoff">
+      ▾ Ocultar payoff
+    </button>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="simToggleGraficoAtivo()" id="sim-toggle-ativo" style="display:none;">
+      ▾ Ocultar gráfico do ativo
+    </button>
   </div>
-  <p class="sim-hint" style="margin-top:.4rem;">
-    Roda do mouse para zoom · arraste para mover · duplo clique para resetar.
-    O gráfico mostra o payoff no vencimento mais curto.
-  </p>
+  <div id="chart-wrap-outer">
+    <div id="chart-wrap">
+      <canvas id="payoff-canvas"></canvas>
+      <div id="chart-tooltip"></div>
+    </div>
+    <p class="sim-hint" style="margin-top:.4rem;">
+      Roda do mouse para zoom · arraste para mover · duplo clique para resetar.
+      O gráfico mostra o payoff no vencimento mais curto.
+    </p>
+  </div>
+
+  <!-- Gráfico do ativo (embutido, mostrado ao clicar em "ver gráfico") -->
+  <div id="ativo-chart-wrap" style="display:none;margin-top:.9rem;">
+    <div id="ativo-chart-inline" style="min-height:220px;"></div>
+  </div>
 </div>
 
 <!-- ── Modal: abrir simulação salva ────────────────────────────────── -->
@@ -315,10 +332,33 @@ function simSetAtivo(t) {
     }
 }
 
+// "ver gráfico" mostra o gráfico do ativo embutido na própria página,
+// logo abaixo do payoff — não abre modal, para os dois gráficos ficarem
+// visíveis ao mesmo tempo (com toggle para ocultar qualquer um deles).
 window.simAbreGrafico = function () {
     var t = (document.getElementById('sim-ativo').value || '').trim().toUpperCase();
-    if (t && window.MyChart && MyChart.open) MyChart.open(t);
+    if (!t || !window.MyChart || !MyChart.openInline) return false;
+    document.getElementById('ativo-chart-wrap').style.display = '';
+    document.getElementById('sim-toggle-ativo').style.display = '';
+    document.getElementById('sim-toggle-ativo').textContent = '▾ Ocultar gráfico do ativo';
+    MyChart.openInline('ativo-chart-inline', t, false);
     return false;
+};
+
+window.simTogglePayoff = function () {
+    var wrap = document.getElementById('chart-wrap-outer');
+    var btn = document.getElementById('sim-toggle-payoff');
+    var oculto = wrap.style.display === 'none';
+    wrap.style.display = oculto ? '' : 'none';
+    btn.textContent = oculto ? '▾ Ocultar payoff' : '▸ Mostrar payoff';
+};
+
+window.simToggleGraficoAtivo = function () {
+    var wrap = document.getElementById('ativo-chart-wrap');
+    var btn = document.getElementById('sim-toggle-ativo');
+    var oculto = wrap.style.display === 'none';
+    wrap.style.display = oculto ? '' : 'none';
+    btn.textContent = oculto ? '▾ Ocultar gráfico do ativo' : '▸ Mostrar gráfico do ativo';
 };
 
 window.simCarregarCadeia = function () {
@@ -1047,13 +1087,14 @@ function desenha(legs) {
 window.addEventListener('resize', function () { desenha(lerPernas()); });
 
 // ── Salvar / abrir ────────────────────────────────────────────────
-window.simSalvar = function () {
-    var nome = (document.getElementById('sim-nome').value || '').trim();
-    if (!nome) { alert('Dê um nome à simulação antes de salvar.'); return; }
+// asNew=true força criar uma simulação nova (id null) mesmo que uma já
+// esteja aberta — usado pelo "Salvar como", que não deve sobrescrever a
+// simulação original.
+function simSalvarImpl(nome, asNew) {
     var legs = lerPernas();
     if (!legs.length) { alert('Adicione ao menos uma perna.'); return; }
     var body = {
-        id: SIM_ID,
+        id: asNew ? null : SIM_ID,
         name: nome,
         underlying: (document.getElementById('sim-ativo').value || '').trim().toUpperCase(),
         legs: legs.map(function (l) {
@@ -1069,8 +1110,26 @@ window.simSalvar = function () {
       .then(function (res) {
         if (!res.ok || res.j.error) { alert('⚠️ ' + (res.j.error || 'erro ao salvar')); return; }
         SIM_ID = res.j.id || SIM_ID;
+        document.getElementById('sim-nome').value = nome;
         alert('✓ Simulação salva.');
       }).catch(function (e) { alert('⚠️ falha de rede: ' + e); });
+}
+
+window.simSalvar = function () {
+    var nome = (document.getElementById('sim-nome').value || '').trim();
+    if (!nome) { alert('Dê um nome à simulação antes de salvar.'); return; }
+    simSalvarImpl(nome, false);
+};
+
+// "Salvar como": sempre cria uma simulação nova, sem alterar a que já
+// estava aberta (SIM_ID) — pede um nome novo, pré-preenchido a partir
+// do nome atual para facilitar variações ("... (cópia)").
+window.simSalvarComo = function () {
+    var atual = (document.getElementById('sim-nome').value || '').trim();
+    var sugestao = atual ? atual + ' (cópia)' : '';
+    var nome = (prompt('Nome da nova simulação:', sugestao) || '').trim();
+    if (!nome) return;
+    simSalvarImpl(nome, true);
 };
 
 window.simCarregarModal = function () {

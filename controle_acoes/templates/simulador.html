@@ -216,30 +216,15 @@
     <div class="sim-met"><span class="lbl">Vencimento mais curto</span><span class="val" id="m-dte">—</span></div>
   </div>
 
-  <!-- Gráfico de payoff --------------------------------------------- -->
-  <div style="display:flex;align-items:center;gap:.6rem;margin-top:.9rem;">
-    <button type="button" class="btn btn-secondary btn-sm" onclick="simTogglePayoff()" id="sim-toggle-payoff">
-      ▾ Ocultar payoff
-    </button>
-    <button type="button" class="btn btn-secondary btn-sm" onclick="simToggleGraficoAtivo()" id="sim-toggle-ativo" style="display:none;">
-      ▾ Ocultar gráfico do ativo
-    </button>
+  <!-- Gráfico ----------------------------------------------------- -->
+  <div id="chart-wrap">
+    <canvas id="payoff-canvas"></canvas>
+    <div id="chart-tooltip"></div>
   </div>
-  <div id="chart-wrap-outer">
-    <div id="chart-wrap">
-      <canvas id="payoff-canvas"></canvas>
-      <div id="chart-tooltip"></div>
-    </div>
-    <p class="sim-hint" style="margin-top:.4rem;">
-      Roda do mouse para zoom · arraste para mover · duplo clique para resetar.
-      O gráfico mostra o payoff no vencimento mais curto.
-    </p>
-  </div>
-
-  <!-- Gráfico do ativo (embutido, mostrado ao clicar em "ver gráfico") -->
-  <div id="ativo-chart-wrap" style="display:none;margin-top:.9rem;">
-    <div id="ativo-chart-inline" style="min-height:220px;"></div>
-  </div>
+  <p class="sim-hint" style="margin-top:.4rem;">
+    Roda do mouse para zoom · arraste para mover · duplo clique para resetar.
+    O gráfico mostra o payoff no vencimento mais curto.
+  </p>
 </div>
 
 <!-- ── Modal: abrir simulação salva ────────────────────────────────── -->
@@ -254,22 +239,8 @@
               style="background:none;border:none;font-size:1.4rem;
                      color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
     </div>
-    <div style="flex:1;overflow-y:auto;padding:.6rem 1.1rem 1rem;">
-      {% if sims %}
-        {% for s in sims %}
-        <div style="display:flex;align-items:center;gap:.6rem;padding:.45rem .2rem;
-                    border-bottom:1px solid rgba(255,255,255,.05);">
-          <div style="flex:1;min-width:0;">
-            <div style="font-weight:600;font-size:.88rem;">{{ s.name }}</div>
-            <div class="sim-hint">{{ s.underlying or '—' }} ·
-              {{ s.created_at.strftime('%d/%m/%Y') if s.created_at else '' }}</div>
-          </div>
-          <button class="btn btn-primary btn-sm" onclick="simAbrir({{ s.id }})">Abrir</button>
-        </div>
-        {% endfor %}
-      {% else %}
-        <p class="sim-hint" style="padding:1rem 0;">Nenhuma simulação salva ainda.</p>
-      {% endif %}
+    <div style="flex:1;overflow-y:auto;padding:.6rem 1.1rem 1rem;" id="open-modal-lista">
+      <p class="sim-hint" style="padding:1rem 0;">⏳ carregando…</p>
     </div>
   </div>
 </div>
@@ -293,6 +264,11 @@ function fmtNum(v, dec) {
         { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
 function fmtBRL(v) { return 'R$ ' + fmtNum(Math.abs(v || 0)); }
+function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
 function dataBR(iso) {
     var p = (iso || '').split('-');
     return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '');
@@ -332,33 +308,10 @@ function simSetAtivo(t) {
     }
 }
 
-// "ver gráfico" mostra o gráfico do ativo embutido na própria página,
-// logo abaixo do payoff — não abre modal, para os dois gráficos ficarem
-// visíveis ao mesmo tempo (com toggle para ocultar qualquer um deles).
 window.simAbreGrafico = function () {
     var t = (document.getElementById('sim-ativo').value || '').trim().toUpperCase();
-    if (!t || !window.MyChart || !MyChart.openInline) return false;
-    document.getElementById('ativo-chart-wrap').style.display = '';
-    document.getElementById('sim-toggle-ativo').style.display = '';
-    document.getElementById('sim-toggle-ativo').textContent = '▾ Ocultar gráfico do ativo';
-    MyChart.openInline('ativo-chart-inline', t, false);
+    if (t && window.MyChart && MyChart.open) MyChart.open(t);
     return false;
-};
-
-window.simTogglePayoff = function () {
-    var wrap = document.getElementById('chart-wrap-outer');
-    var btn = document.getElementById('sim-toggle-payoff');
-    var oculto = wrap.style.display === 'none';
-    wrap.style.display = oculto ? '' : 'none';
-    btn.textContent = oculto ? '▾ Ocultar payoff' : '▸ Mostrar payoff';
-};
-
-window.simToggleGraficoAtivo = function () {
-    var wrap = document.getElementById('ativo-chart-wrap');
-    var btn = document.getElementById('sim-toggle-ativo');
-    var oculto = wrap.style.display === 'none';
-    wrap.style.display = oculto ? '' : 'none';
-    btn.textContent = oculto ? '▾ Ocultar gráfico do ativo' : '▸ Mostrar gráfico do ativo';
 };
 
 window.simCarregarCadeia = function () {
@@ -1132,8 +1085,34 @@ window.simSalvarComo = function () {
     simSalvarImpl(nome, true);
 };
 
+// Busca a lista de simulações via API a cada abertura do modal — a lista
+// que vinha renderizada pelo servidor no carregamento da página ficava
+// desatualizada até um F5, mesmo depois de um Salvar/Salvar como.
 window.simCarregarModal = function () {
     document.getElementById('open-modal').style.display = 'flex';
+    var lista = document.getElementById('open-modal-lista');
+    lista.innerHTML = '<p class="sim-hint" style="padding:1rem 0;">⏳ carregando…</p>';
+    fetch('/api/simulacao/list')
+        .then(function (r) { return r.json(); })
+        .then(function (sims) {
+            if (!sims || !sims.length) {
+                lista.innerHTML = '<p class="sim-hint" style="padding:1rem 0;">Nenhuma simulação salva ainda.</p>';
+                return;
+            }
+            lista.innerHTML = sims.map(function (s) {
+                return '<div style="display:flex;align-items:center;gap:.6rem;padding:.45rem .2rem;'
+                     + 'border-bottom:1px solid rgba(255,255,255,.05);">'
+                     + '<div style="flex:1;min-width:0;">'
+                     + '<div style="font-weight:600;font-size:.88rem;">' + escHtml(s.name) + '</div>'
+                     + '<div class="sim-hint">' + escHtml(s.underlying || '—') + ' · ' + escHtml(s.created_at) + '</div>'
+                     + '</div>'
+                     + '<button class="btn btn-primary btn-sm" onclick="simAbrir(' + s.id + ')">Abrir</button>'
+                     + '</div>';
+            }).join('');
+        })
+        .catch(function () {
+            lista.innerHTML = '<p class="sim-hint" style="padding:1rem 0;">⚠️ falha ao carregar a lista.</p>';
+        });
 };
 
 window.simAbrir = function (id) {

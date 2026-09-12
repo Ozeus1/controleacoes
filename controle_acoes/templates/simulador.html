@@ -517,7 +517,7 @@ function lerPernas() {
             type:    tipo,
             side:    tr.querySelector('.leg-side').value,
             qty:     parseInt(tr.querySelector('.leg-qty').value, 10) || 0,
-            strike:  kEl ? parseVal(kEl.value) : 0,
+            strike:  kEl ? (parseFloat(kEl.value) || 0) : 0,
             premium: parseVal(tr.querySelector('.leg-premium').value),
             exp:     (eEl && eEl.value) ? eEl.value : null,
             iv:      ivEl ? (parseVal(ivEl.value) / 100) : 0,
@@ -587,28 +587,33 @@ function payoffAt(S, legs, multiExp, refDateStr) {
 window.simRecalc = function () {
     var legs = lerPernas();
 
-    // Entrada/saída por perna: compra sai caixa (negativo), venda entra.
+    // Entrada/Saída são colunas mutuamente exclusivas por perna: venda
+    // recebe agora (Entrada), compra paga agora (Saída). A outra coluna
+    // fica em branco na linha — não é "o mesmo valor com o sinal trocado".
+    // O total de cada coluna é a soma só do que pertence a ela.
     var totEnt = 0, totSai = 0;
     legs.forEach(function (l) {
         var fin = l.qty * l.premium;
-        var ent = (l.side === 'BUY' ? -1 : 1) * fin;
-        l._tr.querySelector('.leg-ent').innerHTML =
-            '<span class="' + (ent >= 0 ? 'positive' : 'negative') + '">'
-            + (ent < 0 ? '-' : '') + fmtBRL(ent) + '</span>';
-        l._tr.querySelector('.leg-sai').innerHTML =
-            '<span class="' + (ent >= 0 ? 'negative' : 'positive') + '">'
-            + (ent >= 0 ? '-' : '') + fmtBRL(ent) + '</span>';
-        totEnt += ent;
-        totSai -= ent;
+        var entCel = l._tr.querySelector('.leg-ent');
+        var saiCel = l._tr.querySelector('.leg-sai');
+        if (l.side === 'SELL') {
+            entCel.innerHTML = '<span class="positive">' + fmtBRL(fin) + '</span>';
+            saiCel.textContent = '—';
+            totEnt += fin;
+        } else {
+            entCel.textContent = '—';
+            saiCel.innerHTML = '<span class="negative">-' + fmtBRL(fin) + '</span>';
+            totSai += fin;
+        }
     });
+    // totEnt (recebido nas vendas) e totSai (pago nas compras) nunca são
+    // negativos aqui — cada perna contribui só para a coluna do seu lado.
     document.getElementById('sim-tot-ent').innerHTML =
-        '<span class="' + (totEnt >= 0 ? 'positive' : 'negative') + '">'
-        + (totEnt < 0 ? '-' : '') + fmtBRL(totEnt) + '</span>';
+        totEnt > 0 ? '<span class="positive">' + fmtBRL(totEnt) + '</span>' : '—';
     document.getElementById('sim-tot-sai').innerHTML =
-        '<span class="' + (totSai >= 0 ? 'positive' : 'negative') + '">'
-        + (totSai < 0 ? '-' : '') + fmtBRL(totSai) + '</span>';
-    document.getElementById('m-ent').textContent = (totEnt < 0 ? '-' : '') + fmtBRL(totEnt);
-    document.getElementById('m-sai').textContent = (totSai < 0 ? '-' : '') + fmtBRL(totSai);
+        totSai > 0 ? '<span class="negative">-' + fmtBRL(totSai) + '</span>' : '—';
+    document.getElementById('m-ent').textContent = totEnt > 0 ? fmtBRL(totEnt) : '—';
+    document.getElementById('m-sai').textContent = totSai > 0 ? '-' + fmtBRL(totSai) : '—';
 
     var exps = vencimentos(legs);
     var dte = exps.length ? diasAte(exps[0]) : null;
@@ -672,12 +677,10 @@ function desenha(legs) {
     var SminBase = Math.max(0.01, meio - span * 1.2);
     var SmaxBase = meio + span * 1.2;
     var Smin = SminBase, Smax = SmaxBase;
+    canvas._payoffView = canvas._payoffView || { zoom: 1, pan: 0 };
     try {
-        canvas._payoffView = canvas._payoffView || { zoom: 1, pan: 0 };
-        if (PayoffStyle.aplicaZoom) {
-            var z = PayoffStyle.aplicaZoom(SminBase, SmaxBase, canvas._payoffView);
-            Smin = z.min; Smax = z.max;
-        }
+        var z = PayoffStyle.aplicaZoom(SminBase, SmaxBase, canvas._payoffView);
+        Smin = Math.max(0.01, z.Smin); Smax = z.Smax;
     } catch (e) {}
 
     var N = 400, step = (Smax - Smin) / N;

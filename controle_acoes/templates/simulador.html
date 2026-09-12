@@ -196,30 +196,6 @@
   </p>
 </div>
 
-<!-- ── Modal: escolher vencimento / strike ─────────────────────────── -->
-<div id="sc-modal" style="display:none;position:fixed;inset:0;z-index:19000;
-     background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
-  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,760px);
-              max-height:90vh;display:flex;flex-direction:column;border:1px solid var(--border-color);">
-    <div style="display:flex;justify-content:space-between;align-items:center;
-                padding:.8rem 1.1rem;border-bottom:1px solid var(--border-color);">
-      <h3 id="sc-titulo" style="margin:0;font-size:1rem;"></h3>
-      <button onclick="scFecha()" style="background:none;border:none;font-size:1.4rem;
-              color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
-    </div>
-    <div style="padding:.7rem 1.1rem;border-bottom:1px solid var(--border-color);
-                display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;">
-      <label class="sim-hint">Vencimento</label>
-      <select id="sc-exp" onchange="scRenderStrikes()"
-              style="background:var(--hover-bg);color:var(--text-primary);
-                     border:1px solid var(--border-color);border-radius:5px;
-                     padding:.3rem .5rem;font-size:.85rem;"></select>
-      <span id="sc-dte" class="sim-hint"></span>
-    </div>
-    <div id="sc-lista" style="flex:1;overflow-y:auto;padding:.5rem 1.1rem 1rem;"></div>
-  </div>
-</div>
-
 <!-- ── Modal: abrir simulação salva ────────────────────────────────── -->
 <div id="open-modal" style="display:none;position:fixed;inset:0;z-index:19000;
      background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
@@ -260,7 +236,6 @@
 var SELIC_RATE = {{ selic }};
 var CADEIA = null;      // resposta de /api/cadeia
 var SIM_ID = null;      // id da simulação aberta (null = nova)
-var SC = { row: null }; // linha que abriu o modal de strike
 
 // ── Utilidades ────────────────────────────────────────────────────
 function parseVal(s) {
@@ -318,6 +293,9 @@ window.simCarregarCadeia = function () {
                     ? ' <span class="' + (ch >= 0 ? 'positive' : 'negative') + '" style="font-size:.82rem;">'
                       + (ch >= 0 ? '+' : '') + fmtNum(ch) + '%</span>' : ''))
                 : '';
+            simPreencheTodosVencimentos();
+            simAtualizaTodosAtivos();
+            simAplicaPendencias();
             simRecalc();
         })
         .catch(function (e) {
@@ -334,7 +312,7 @@ function novaLinha(tipo) {
     var isStock = tipo === 'STOCK';
     tr.innerHTML =
         '<td><input type="checkbox" class="leg-on" checked onchange="simRecalc()"></td>'
-      + '<td><select class="leg-side" onchange="simRecalc()">'
+      + '<td><select class="leg-side" onchange="simSideMudou(this)">'
       +   '<option value="BUY">C</option><option value="SELL">V</option></select></td>'
       + '<td><select class="leg-type" onchange="simTipoMudou(this)">'
       +   '<option value="CALL"' + (tipo === 'CALL' ? ' selected' : '') + '>CALL</option>'
@@ -342,16 +320,22 @@ function novaLinha(tipo) {
       +   '<option value="STOCK"' + (isStock ? ' selected' : '') + '>Ativo</option>'
       +   '</select></td>'
       + '<td><input type="number" class="leg-qty" value="100" min="1" step="100" onchange="simRecalc()"></td>'
+      // Vencimento: 1a lista simples — escolhido ele, popula a lista de strikes.
       + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
-          : '<button type="button" class="btn btn-secondary btn-sm leg-pick"'
-            + ' style="width:100%;font-size:.78rem;padding:.22rem .3rem;"'
-            + ' onclick="scAbre(this)">escolher…</button>'
-            + '<input type="hidden" class="leg-exp">') + '</td>'
+          : '<select class="leg-exp-sel" onchange="simVencMudou(this)">'
+            + '<option value="">selecione…</option></select>') + '</td>'
+      // Strike: 2a lista, só com dados depois do vencimento escolhido.
       + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
-          : '<input type="text" class="leg-strike" readonly placeholder="—">') + '</td>'
+          : '<select class="leg-strike-sel" onchange="simStrikeMudou(this)" disabled>'
+            + '<option value="">—</option></select>') + '</td>'
       + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
           : '<input type="text" class="leg-ticker" readonly placeholder="—">') + '</td>'
-      + '<td><input type="text" class="leg-premium" value="0,00" onchange="simRecalc()"></td>'
+      // Prêmio: para opção vem do strike escolhido (readonly); para Ativo é
+      // a cotação da ação buscada via OpLab (pregão aberto ou fechamento),
+      // também readonly — o usuário não digita esse valor.
+      + '<td><input type="text" class="leg-premium" value="0,00" readonly'
+      +   (isStock ? ' title="Cotação buscada via OpLab (pregão aberto ou último fechamento)"'
+                   : ' title="Preenchido ao escolher o strike"') + '></td>'
       + '<td class="leg-ent">—</td>'
       + '<td class="leg-sai">—</td>'
       + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
@@ -361,7 +345,10 @@ function novaLinha(tipo) {
 }
 
 window.simAddPerna = function (tipo) {
-    document.getElementById('sim-body').appendChild(novaLinha(tipo));
+    var tr = novaLinha(tipo);
+    document.getElementById('sim-body').appendChild(tr);
+    if (tipo === 'STOCK') simAtualizaCotacaoAtivo(tr);
+    else simPreencheVencimentos(tr);
     simRecalc();
 };
 
@@ -383,107 +370,134 @@ window.simTipoMudou = function (sel) {
     nova.querySelector('.leg-side').value = tr.querySelector('.leg-side').value;
     nova.querySelector('.leg-qty').value  = tr.querySelector('.leg-qty').value;
     nova.querySelector('.leg-on').checked = tr.querySelector('.leg-on').checked;
-    var pAnt = tr.querySelector('.leg-premium');
-    if (pAnt) nova.querySelector('.leg-premium').value = pAnt.value;
     tr.replaceWith(nova);
+    if (nova.querySelector('.leg-exp-sel')) simPreencheVencimentos(nova);
+    if (sel.value === 'STOCK') simAtualizaCotacaoAtivo(nova);
     simRecalc();
 };
 
-// ── Modal de vencimento + strike ──────────────────────────────────
-window.scAbre = function (btn) {
-    if (!CADEIA || !(CADEIA.expirations || []).length) {
-        alert('Busque a cadeia do ativo primeiro (informe o ativo e clique em "Buscar cadeia").');
+// Trocar compra/venda muda qual ponta do book é usada (compra=ask,
+// venda=bid) — se já havia strike escolhido, refaz a leitura do prêmio.
+window.simSideMudou = function (sel) {
+    var tr = sel.closest('tr');
+    var strikeSel = tr.querySelector('.leg-strike-sel');
+    if (strikeSel && strikeSel.value) simAplicaStrike(tr, strikeSel.value);
+    simRecalc();
+};
+
+// ── Cascata vencimento → strike → ticker/prêmio ────────────────────
+// Preenche a lista de vencimentos de uma linha com o que veio da cadeia.
+function simPreencheVencimentos(tr) {
+    var sel = tr.querySelector('.leg-exp-sel');
+    if (!sel) return;
+    var atual = sel.value;
+    sel.innerHTML = '<option value="">selecione…</option>' +
+        (CADEIA && CADEIA.expirations ? CADEIA.expirations.map(function (e) {
+            var d = diasAte(e.exp);
+            return '<option value="' + e.exp + '">' + dataBR(e.exp)
+                 + (d != null ? ' (' + d + 'd)' : '') + '</option>';
+        }).join('') : '');
+    if (atual && CADEIA && (CADEIA.expirations || []).some(function (e) { return e.exp === atual; })) {
+        sel.value = atual;
+    }
+}
+
+// Refaz TODAS as listas de vencimento já abertas na planilha — chamado
+// depois de uma busca de cadeia nova, pra linha não ficar com opções de
+// um ativo antigo.
+function simPreencheTodosVencimentos() {
+    document.querySelectorAll('#sim-body tr.leg-row').forEach(function (tr) {
+        if (tr.querySelector('.leg-exp-sel')) simPreencheVencimentos(tr);
+    });
+}
+
+window.simVencMudou = function (sel) {
+    var tr = sel.closest('tr');
+    var strikeSel = tr.querySelector('.leg-strike-sel');
+    var exp = sel.value;
+    // Vencimento trocado invalida o strike escolhido antes — evita a linha
+    // ficar com um ticker de um vencimento e strike de outro.
+    tr.querySelector('.leg-ticker').value = '';
+    tr.querySelector('.leg-premium').value = '0,00';
+    if (!exp) {
+        strikeSel.innerHTML = '<option value="">—</option>';
+        strikeSel.disabled = true;
+        simRecalc();
         return;
     }
-    SC.row = btn.closest('tr');
-    var tipo = SC.row.querySelector('.leg-type').value;
-    document.getElementById('sc-titulo').textContent =
-        'Escolher ' + (tipo === 'PUT' ? 'PUT' : 'CALL') + ' — ' + (CADEIA.ticker || '');
-    var sel = document.getElementById('sc-exp');
-    sel.innerHTML = (CADEIA.expirations || []).map(function (e) {
-        var d = diasAte(e.exp);
-        return '<option value="' + e.exp + '">' + dataBR(e.exp)
-             + (d != null ? ' (' + d + 'd)' : '') + '</option>';
-    }).join('');
-    // Mantém o vencimento já escolhido na linha, se houver
-    var jaExp = SC.row.querySelector('.leg-exp');
-    if (jaExp && jaExp.value) sel.value = jaExp.value;
-    scRenderStrikes();
-    document.getElementById('sc-modal').style.display = 'flex';
-};
-
-window.scFecha = function () { document.getElementById('sc-modal').style.display = 'none'; };
-document.getElementById('sc-modal').addEventListener('click', function (e) {
-    if (e.target === this) scFecha();
-});
-document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') {
-        scFecha();
-        document.getElementById('open-modal').style.display = 'none';
-    }
-});
-
-window.scRenderStrikes = function () {
-    var exp = document.getElementById('sc-exp').value;
-    var tipo = SC.row ? SC.row.querySelector('.leg-type').value : 'CALL';
+    var tipo = tr.querySelector('.leg-type').value;
     var bloco = (CADEIA.expirations || []).filter(function (e) { return e.exp === exp; })[0];
-    var d = diasAte(exp);
-    document.getElementById('sc-dte').textContent = d != null ? (d + ' dias corridos') : '';
-    if (!bloco) { document.getElementById('sc-lista').innerHTML = ''; return; }
-
-    var spot = CADEIA.spot || 0;
-    var h = '<table style="width:100%;border-collapse:collapse;font-size:.82rem;">'
-          + '<thead><tr>'
-          + '<th style="text-align:left;padding:.3rem;color:var(--text-secondary);">Ticker</th>'
-          + '<th style="text-align:right;padding:.3rem;color:var(--text-secondary);">Strike</th>'
-          + '<th style="text-align:right;padding:.3rem;color:var(--text-secondary);">Prêmio</th>'
-          + '<th style="text-align:right;padding:.3rem;color:var(--text-secondary);">Bid/Ask</th>'
-          + '<th style="text-align:right;padding:.3rem;color:var(--text-secondary);">Delta</th>'
-          + '</tr></thead><tbody>';
-
-    (bloco.rows || []).forEach(function (r) {
+    var spot = (CADEIA && CADEIA.spot) || 0;
+    var rows = (bloco && bloco.rows) || [];
+    strikeSel.innerHTML = '<option value="">selecione…</option>' + rows.map(function (r) {
         var o = (tipo === 'PUT') ? r.put : r.call;
-        if (!o) return;
-        // Prêmio executável: o mesmo critério da tela de cadeia — compra
-        // paga o ask, venda recebe o bid; sem book, cai no último negócio.
-        var lado = SC.row.querySelector('.leg-side').value;
-        var prem = (lado === 'SELL' ? (o.bid_eff || o.bid) : (o.ask_eff || o.ask)) || o.close || 0;
+        if (!o) return '';
         var perto = spot && Math.abs(r.strike - spot) / spot < 0.02;
-        h += '<tr class="sc-row" style="cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);'
-          +  (perto ? 'background:rgba(124,58,237,.12);' : '') + '"'
-          +  ' data-sym="' + o.symbol + '" data-k="' + r.strike + '" data-p="' + prem + '"'
-          +  ' data-delta="' + (o.delta == null ? '' : o.delta) + '">'
-          +  '<td style="padding:.3rem;">' + o.symbol + '</td>'
-          +  '<td style="padding:.3rem;text-align:right;font-weight:600;">' + fmtBRL(r.strike) + '</td>'
-          +  '<td style="padding:.3rem;text-align:right;color:#60a5fa;font-weight:700;">'
-          +     (prem ? fmtBRL(prem) : '—') + '</td>'
-          +  '<td style="padding:.3rem;text-align:right;opacity:.75;">'
-          +     fmtNum(o.bid) + ' / ' + fmtNum(o.ask) + '</td>'
-          +  '<td style="padding:.3rem;text-align:right;">'
-          +     (o.delta == null ? '—' : fmtNum(o.delta)) + '</td></tr>';
-    });
-    h += '</tbody></table>';
-    var lista = document.getElementById('sc-lista');
-    lista.innerHTML = h;
-    lista.querySelectorAll('.sc-row').forEach(function (tr) {
-        tr.addEventListener('click', function () {
-            scEscolhe(tr.dataset.sym, tr.dataset.k, tr.dataset.p, tr.dataset.delta);
-        });
-    });
+        return '<option value="' + r.strike + '"' + (perto ? ' data-perto="1"' : '') + '>'
+             + 'K ' + fmtBRL(r.strike) + (perto ? ' (próximo do spot)' : '') + '</option>';
+    }).join('');
+    strikeSel.disabled = rows.length === 0;
+    simRecalc();
 };
 
-function scEscolhe(sym, strike, premio, delta) {
-    var row = SC.row;
-    if (!row) return;
-    var exp = document.getElementById('sc-exp').value;
-    row.querySelector('.leg-ticker').value  = sym;
-    row.querySelector('.leg-strike').value  = fmtNum(parseFloat(strike));
-    row.querySelector('.leg-premium').value = fmtNum(parseFloat(premio));
-    row.querySelector('.leg-exp').value     = exp;
-    var btn = row.querySelector('.leg-pick');
-    if (btn) btn.textContent = dataBR(exp);
-    scFecha();
+window.simStrikeMudou = function (sel) {
+    var tr = sel.closest('tr');
+    simAplicaStrike(tr, sel.value);
     simRecalc();
+};
+
+// Localiza a opção (call/put) do vencimento+strike já escolhidos e
+// preenche ticker/prêmio. Prêmio executável: compra paga o ask, venda
+// recebe o bid — cai no último negócio quando não há book, mesmo
+// critério da tela de Cadeia de Opções.
+function simAplicaStrike(tr, strikeVal) {
+    var tickerEl = tr.querySelector('.leg-ticker');
+    var premioEl = tr.querySelector('.leg-premium');
+    if (!strikeVal) { tickerEl.value = ''; premioEl.value = '0,00'; return; }
+    var exp = tr.querySelector('.leg-exp-sel').value;
+    var tipo = tr.querySelector('.leg-type').value;
+    var lado = tr.querySelector('.leg-side').value;
+    var bloco = (CADEIA.expirations || []).filter(function (e) { return e.exp === exp; })[0];
+    var strikeNum = parseFloat(strikeVal);
+    var row = (bloco && bloco.rows || []).filter(function (r) {
+        return Math.abs(r.strike - strikeNum) < 0.001;
+    })[0];
+    var o = row && ((tipo === 'PUT') ? row.put : row.call);
+    if (!o) { tickerEl.value = ''; premioEl.value = '0,00'; return; }
+    var prem = (lado === 'SELL' ? (o.bid_eff || o.bid) : (o.ask_eff || o.ask)) || o.close || 0;
+    tickerEl.value = o.symbol;
+    premioEl.value = fmtNum(prem);
+}
+
+// ── Ativo: cotação buscada via OpLab (pregão aberto ou fechamento) ──
+// O usuário não digita esse valor — o simulador busca sozinho, igual à
+// tela "Gráficos-Simulações" faz para o spot. Usa a cadeia já carregada
+// quando disponível (mais barato, sem ida extra à rede); sem cadeia,
+// cai no /api/quote_hint (mesma fonte usada nas demais telas de opções).
+function simAtualizaCotacaoAtivo(tr) {
+    var ativo = (document.getElementById('sim-ativo').value || '').trim().toUpperCase();
+    if (!ativo) return;
+    var premioEl = tr.querySelector('.leg-premium');
+    if (CADEIA && CADEIA.ticker === ativo && CADEIA.spot) {
+        premioEl.value = fmtNum(CADEIA.spot);
+        return;
+    }
+    fetch('/api/quote_hint/' + encodeURIComponent(ativo))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            var p = Number(d.price || 0);
+            if (p > 0) premioEl.value = fmtNum(p);
+        })
+        .catch(function () {});
+}
+
+// Atualiza a cotação de TODAS as pernas de Ativo já na planilha —
+// chamado depois de "Buscar cadeia" (novo spot) e ao adicionar uma
+// perna de Ativo quando já há cadeia carregada.
+function simAtualizaTodosAtivos() {
+    document.querySelectorAll('#sim-body tr.leg-row').forEach(function (tr) {
+        if (tr.querySelector('.leg-type').value === 'STOCK') simAtualizaCotacaoAtivo(tr);
+    });
 }
 
 // ── Leitura das pernas ────────────────────────────────────────────
@@ -496,8 +510,8 @@ function lerPernas() {
         if (!on) { tr.querySelector('.leg-ent').textContent = '—';
                    tr.querySelector('.leg-sai').textContent = '—'; return; }
         var tipo = tr.querySelector('.leg-type').value;
-        var kEl  = tr.querySelector('.leg-strike');
-        var eEl  = tr.querySelector('.leg-exp');
+        var kEl  = tr.querySelector('.leg-strike-sel');
+        var eEl  = tr.querySelector('.leg-exp-sel');
         var ivEl = tr.querySelector('.leg-iv');
         legs.push({
             type:    tipo,
@@ -883,16 +897,18 @@ window.simAbrir = function (id) {
                 var tr = novaLinha(l.type);
                 tr.querySelector('.leg-side').value = l.side || 'BUY';
                 tr.querySelector('.leg-qty').value  = l.qty || 100;
-                tr.querySelector('.leg-premium').value = fmtNum(l.premium);
-                var kEl = tr.querySelector('.leg-strike');
-                if (kEl && l.strike) kEl.value = fmtNum(l.strike);
                 var tEl = tr.querySelector('.leg-ticker');
                 if (tEl && l.ticker) tEl.value = l.ticker;
-                var eEl = tr.querySelector('.leg-exp');
-                if (eEl && l.exp) {
-                    eEl.value = l.exp;
-                    var b = tr.querySelector('.leg-pick');
-                    if (b) b.textContent = dataBR(l.exp);
+                if (l.type === 'STOCK') {
+                    tr.querySelector('.leg-premium').value = fmtNum(l.premium);
+                } else {
+                    // Vencimento/strike da lista dependem da cadeia, que só
+                    // chega depois (fetch abaixo). Guarda o que a simulação
+                    // salvou pra aplicar assim que a cadeia estiver pronta —
+                    // sem isso o strike ficaria sem seleção nenhuma.
+                    tr.dataset.pendExp = l.exp || '';
+                    tr.dataset.pendStrike = l.strike || '';
+                    tr.querySelector('.leg-premium').value = fmtNum(l.premium);
                 }
                 var ivEl = tr.querySelector('.leg-iv');
                 if (ivEl && l.iv) ivEl.value = fmtNum(l.iv);
@@ -903,6 +919,30 @@ window.simAbrir = function (id) {
         })
         .catch(function (e) { alert('⚠️ falha de rede: ' + e); });
 };
+
+// Reaplica vencimento/strike pendentes (de uma simulação recém-aberta)
+// depois que a cadeia chega — sem sobrescrever o prêmio salvo se a opção
+// não existir mais na cadeia atual (vencimento vencido, por exemplo).
+function simAplicaPendencias() {
+    document.querySelectorAll('#sim-body tr.leg-row').forEach(function (tr) {
+        var expSel = tr.querySelector('.leg-exp-sel');
+        if (!expSel || !tr.dataset.pendExp) return;
+        simPreencheVencimentos(tr);
+        if (!(CADEIA.expirations || []).some(function (e) { return e.exp === tr.dataset.pendExp; })) {
+            delete tr.dataset.pendExp; delete tr.dataset.pendStrike;
+            return;
+        }
+        expSel.value = tr.dataset.pendExp;
+        simVencMudou(expSel);
+        var strikeSel = tr.querySelector('.leg-strike-sel');
+        var alvo = parseFloat(tr.dataset.pendStrike);
+        var opt = Array.prototype.filter.call(strikeSel.options, function (o) {
+            return Math.abs(parseFloat(o.value) - alvo) < 0.001;
+        })[0];
+        if (opt) { strikeSel.value = opt.value; simAplicaStrike(tr, opt.value); }
+        delete tr.dataset.pendExp; delete tr.dataset.pendStrike;
+    });
+}
 
 window.simNova = function () {
     SIM_ID = null;

@@ -4,32 +4,32 @@
 {% block extra_scripts %}
 <style>
 /* ── Planilha de pernas ─────────────────────────────────────────── */
-#sim-tab { width:100%; border-collapse:collapse; font-size:.83rem; }
+#sim-tab { width:100%; border-collapse:collapse; font-size:.88rem; min-width:920px; }
 #sim-tab th {
-    padding:.4rem .45rem; text-align:center; white-space:nowrap;
+    padding:.45rem .5rem; text-align:center; white-space:nowrap;
     background:var(--card-bg); color:var(--text-secondary); font-weight:600;
-    border-bottom:1px solid var(--border-color); font-size:.74rem;
+    border-bottom:1px solid var(--border-color); font-size:.78rem;
     text-transform:uppercase; letter-spacing:.03em;
 }
-#sim-tab td { padding:.3rem .35rem; text-align:center; white-space:nowrap;
+#sim-tab td { padding:.35rem .4rem; text-align:center; white-space:nowrap;
               border-bottom:1px solid rgba(255,255,255,.04); }
 #sim-tab tr.off td { opacity:.4; }
 #sim-tab select, #sim-tab input {
     background:var(--card-bg); color:var(--text-primary);
     border:1px solid var(--border-color); border-radius:4px;
-    padding:.25rem .35rem; font-size:.82rem; width:100%;
+    padding:.3rem .4rem; font-size:.87rem; width:100%;
 }
 #sim-tab input[readonly] { background:var(--hover-bg); color:var(--text-secondary); }
 .sim-cv-c { color:#34d399; font-weight:700; }
 .sim-cv-v { color:#f87171; font-weight:700; }
-.col-qtd    { width:74px; }
+.col-qtd    { width:78px; }
 .col-sel    { width:34px; }
-.col-tipo   { width:88px; }
-.col-cv     { width:74px; }
-.col-venc   { width:150px; }
-.col-strike { width:104px; }
-.col-tick   { width:104px; }
-.col-num    { width:96px; }
+.col-tipo   { width:92px; }
+.col-cv     { width:72px; }
+.col-venc   { width:158px; }
+.col-strike { width:132px; }
+.col-tick   { width:112px; }
+.col-num    { width:104px; }
 .col-x      { width:34px; }
 .sim-x {
     background:none; border:none; color:#f87171; cursor:pointer;
@@ -65,6 +65,16 @@
     display:none; margin-top:.7rem; padding:.55rem .9rem;
     border-radius:6px; font-size:.82rem; border:1px solid;
 }
+.sim-topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    gap:.7rem; flex-wrap:wrap; margin-bottom:.5rem;
+}
+.sim-topbar-info { display:flex; align-items:center; gap:.9rem; flex-wrap:wrap; }
+.sim-topbar-acoes { display:flex; gap:.4rem; flex-wrap:wrap; }
+.sim-chk-label {
+    display:flex; align-items:center; gap:.35rem; cursor:pointer;
+    font-size:.8rem; color:var(--text-secondary); white-space:nowrap;
+}
 .sim-tickers { display:flex; flex-wrap:wrap; gap:.3rem; }
 .sim-tbtn {
     padding:.2rem .5rem; border:1px solid var(--border-color); border-radius:5px;
@@ -78,12 +88,14 @@
 {% block content %}
 <div class="card" style="padding:1.1rem 1.3rem;">
 
-  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.5rem;">
-    <h2 style="margin:0;">🎯 Simulador</h2>
-    <span id="sim-spot" style="font-size:.95rem;font-weight:700;"></span>
-    <a id="sim-spot-chart" href="#" onclick="return simAbreGrafico();" style="display:none;
-       font-size:.8rem;color:#60a5fa;text-decoration:none;white-space:nowrap;">📈 ver gráfico</a>
-    <div style="margin-left:auto;display:flex;gap:.4rem;flex-wrap:wrap;">
+  <div class="sim-topbar">
+    <div class="sim-topbar-info">
+      <h2 style="margin:0;white-space:nowrap;">🎯 Simulador</h2>
+      <span id="sim-spot" style="font-size:.95rem;font-weight:700;white-space:nowrap;"></span>
+      <a id="sim-spot-chart" href="#" onclick="return simAbreGrafico();" style="display:none;
+         font-size:.8rem;color:#60a5fa;text-decoration:none;white-space:nowrap;">📈 ver gráfico</a>
+    </div>
+    <div class="sim-topbar-acoes">
       <button class="btn btn-secondary btn-sm" onclick="simCarregarModal()">📂 Abrir simulação</button>
       <button class="btn btn-primary btn-sm" onclick="simSalvar()">💾 Salvar</button>
       <button class="btn btn-secondary btn-sm" onclick="simNova()">＋ Nova</button>
@@ -130,18 +142,16 @@
         <option value="365">1 ano</option>
       </select>
     </div>
-    <label style="display:flex;align-items:center;gap:.35rem;cursor:pointer;font-size:.8rem;
-                  color:var(--text-secondary);">
+    <label class="sim-chk-label">
       <input type="checkbox" id="sim-weekly" style="cursor:pointer;margin:0;" onchange="simCarregarCadeia()">
-      incluir vencimentos semanais
+      incluir semanais
     </label>
-    <label style="display:flex;align-items:center;gap:.35rem;cursor:pointer;font-size:.8rem;
-                  color:var(--text-secondary);"
+    <label class="sim-chk-label"
            title="Marcado, toda nova perna de opção adicionada usa automaticamente o mesmo vencimento da 1ª perna já escolhida.">
       <input type="checkbox" id="sim-venc-unico" style="cursor:pointer;margin:0;">
       vencimento único
     </label>
-    <span id="sim-cadeia-status" class="sim-hint"></span>
+    <span id="sim-cadeia-status" class="sim-hint" style="white-space:nowrap;"></span>
   </div>
 
   <!-- Planilha de pernas ------------------------------------------ -->
@@ -149,6 +159,10 @@
     <button class="btn btn-secondary btn-sm" onclick="simAddPerna('CALL')">+ Call</button>
     <button class="btn btn-secondary btn-sm" onclick="simAddPerna('PUT')">+ Put</button>
     <button class="btn btn-secondary btn-sm" onclick="simAddPerna('STOCK')">+ Ativo</button>
+    <button class="btn btn-secondary btn-sm" onclick="simAtualizarCotacoes()"
+            title="Rebusca a cadeia e atualiza o prêmio de todas as pernas já escolhidas com o preço atual (bid/ask no pregão aberto, último fechamento fora dele)">
+      🔄 Atualizar cotação
+    </button>
     <button class="btn btn-secondary btn-sm" onclick="simLimpar()">🗑 Limpar</button>
   </div>
 
@@ -333,6 +347,7 @@ window.simCarregarCadeia = function () {
                 : '';
             document.getElementById('sim-spot-chart').style.display = spot ? '' : 'none';
             simPreencheTodosVencimentos();
+            simReaplicaStrikesEscolhidos();
             simAtualizaTodosAtivos();
             simAplicaPendencias();
             simRecalc();
@@ -343,6 +358,27 @@ window.simCarregarCadeia = function () {
             st.textContent = '⚠️ falha de rede: ' + e;
             document.getElementById('sim-spot-chart').style.display = 'none';
         });
+};
+
+// Refaz a leitura do prêmio de cada perna de opção já escolhida a partir
+// da cadeia recém-buscada — usado tanto no carregamento normal quanto no
+// botão "Atualizar cotação", para trazer bid/ask/close correntes (pregão
+// aberto) sem o usuário precisar reescolher vencimento e strike.
+function simReaplicaStrikesEscolhidos() {
+    document.querySelectorAll('#sim-body tr.leg-row').forEach(function (tr) {
+        var strikeSel = tr.querySelector('.leg-strike-sel');
+        if (strikeSel && strikeSel.value) simAplicaStrike(tr, strikeSel.value);
+    });
+}
+
+// Botão "Atualizar cotação": rebusca a cadeia do ativo atual e reaplica o
+// prêmio de cada perna já escolhida — no pregão aberto os valores de
+// bid/ask mudam a cada instante, e sem isso a planilha ficaria com o
+// preço do momento em que o strike foi escolhido.
+window.simAtualizarCotacoes = function () {
+    var t = (document.getElementById('sim-ativo').value || '').trim().toUpperCase();
+    if (!t) { alert('Escolha um ativo antes de atualizar a cotação.'); return; }
+    simCarregarCadeia();
 };
 
 // ── Linhas da planilha ────────────────────────────────────────────
@@ -509,7 +545,7 @@ window.simVencMudou = function (sel) {
         if (!o) return '';
         var perto = spot && Math.abs(r.strike - spot) / spot < 0.02;
         return '<option value="' + r.strike + '"' + (perto ? ' data-perto="1"' : '') + '>'
-             + 'K ' + fmtBRL(r.strike) + (perto ? ' (próximo do spot)' : '') + '</option>';
+             + fmtBRL(r.strike) + (perto ? ' (próximo do spot)' : '') + '</option>';
     }).join('');
     strikeSel.disabled = rows.length === 0;
     // "Vencimento único" marcado: escolher o vencimento nesta linha propaga
@@ -864,7 +900,11 @@ function desenha(legs) {
         maxLoss < -1e7 ? '-∞' : (maxLoss < 0 ? '-' : '') + fmtBRL(maxLoss);
     document.getElementById('m-be').textContent = bes.length ? bes.map(fmtBRL).join(' / ') : '—';
 
-    // POP — log-normal com a IV informada (ou estimada pelo prêmio)
+    // POP — integra a densidade log-normal de S_T sobre a região onde o
+    // payoff (já calculado em Parr/Sarr) é positivo. Funciona para qualquer
+    // formato de estrutura (lucro entre os BEs, fora deles, ou com 3+ BEs
+    // como condor/butterfly combinados) — não depende de assumir qual lado
+    // de cada breakeven é o lucrativo.
     (function () {
         var popEl = document.getElementById('m-pop');
         popEl.className = 'val';
@@ -882,12 +922,19 @@ function desenha(legs) {
         if (!sigmas.length) { popEl.textContent = '—'; return; }
         var sigma = sigmas.reduce(function (a, b) { return a + b; }, 0) / sigmas.length;
         var r = Math.log(1 + SELIC_RATE / 100);
-        function d2(B) { return (Math.log(stockRef / B) + (r - 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T)); }
-        var ord = bes.slice().sort(function (a, b) { return a - b; });
-        var pop = (ord.length === 1)
-            ? normCDF(d2(ord[0])) * 100
-            : (normCDF(d2(ord[ord.length - 1])) - normCDF(d2(ord[0]))) * 100;
-        pop = Math.max(0, Math.min(100, pop));
+        var mu = Math.log(stockRef) + (r - 0.5 * sigma * sigma) * T;
+        var sd = sigma * Math.sqrt(T);
+        // Densidade acumulada N((ln(S)-mu)/sd) already disponível via normCDF;
+        // soma a probabilidade de cada faixa [Sarr[i], Sarr[i+1]] onde o
+        // payoff médio da faixa é positivo.
+        var pop = 0;
+        for (var i = 0; i < Parr.length - 1; i++) {
+            if ((Parr[i] + Parr[i + 1]) / 2 <= 0) continue;
+            var z1 = (Math.log(Sarr[i])     - mu) / sd;
+            var z2 = (Math.log(Sarr[i + 1]) - mu) / sd;
+            pop += normCDF(z2) - normCDF(z1);
+        }
+        pop = Math.max(0, Math.min(100, pop * 100));
         popEl.textContent = fmtNum(pop, 1) + '%';
         popEl.className = 'val ' + (pop >= 50 ? 'positive' : 'negative');
     })();

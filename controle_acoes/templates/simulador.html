@@ -27,6 +27,7 @@
 .col-tipo   { width:92px; }
 .col-cv     { width:72px; }
 .col-venc   { width:158px; }
+.col-dte    { width:62px; }
 .col-strike { width:132px; }
 .col-tick   { width:112px; }
 .col-num    { width:104px; }
@@ -175,6 +176,7 @@
           <th class="col-tipo">Tipo</th>
           <th class="col-qtd">Qtde</th>
           <th class="col-venc">Vencimento</th>
+          <th class="col-dte" title="Dias até o vencimento desta perna">DTE</th>
           <th class="col-strike">Strike</th>
           <th class="col-tick">Ticker</th>
           <th class="col-num">Prêmio</th>
@@ -187,7 +189,7 @@
       <tbody id="sim-body"></tbody>
       <tfoot>
         <tr class="sim-tot">
-          <td colspan="8" style="text-align:right;">Total da operação</td>
+          <td colspan="9" style="text-align:right;">Total da operação</td>
           <td id="sim-tot-ent">—</td>
           <td id="sim-tot-sai">—</td>
           <td colspan="2"></td>
@@ -202,6 +204,8 @@
   <div class="sim-metrics">
     <div class="sim-met"><span class="lbl">Montagem</span><span class="val" id="m-net">—</span></div>
     <div class="sim-met"><span class="lbl">Lucro máximo</span><span class="val positive" id="m-gain">—</span></div>
+    <div class="sim-met"><span class="lbl" title="Lucro máximo ÷ custo de saída (desembolso das compras)">Lucro máx. % sobre investido</span><span class="val" id="m-gain-pct">—</span></div>
+    <div class="sim-met"><span class="lbl" title="Quanto o lucro máximo % representa em relação ao rendimento da Selic no mesmo prazo (DTE do vencimento mais curto)">Lucro máx. vs. Selic no período</span><span class="val" id="m-gain-selic">—</span></div>
     <div class="sim-met"><span class="lbl">Prejuízo máximo</span><span class="val negative" id="m-loss">—</span></div>
     <div class="sim-met"><span class="lbl">Breakeven(s)</span><span class="val" id="m-be">—</span></div>
     <div class="sim-met"><span class="lbl" title="Probability of Profit (Black-Scholes)">POP</span><span class="val" id="m-pop">—</span></div>
@@ -400,6 +404,9 @@ function novaLinha(tipo) {
       + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
           : '<select class="leg-exp-sel" onchange="simVencMudou(this)">'
             + '<option value="">selecione…</option></select>') + '</td>'
+      // DTE: dias até o vencimento desta perna — só leitura, calculado
+      // a partir do vencimento escolhido.
+      + '<td class="leg-dte sim-hint">—</td>'
       // Strike: 2a lista, só com dados depois do vencimento escolhido.
       + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
           : '<select class="leg-strike-sel" onchange="simStrikeMudou(this)" disabled>'
@@ -511,6 +518,11 @@ function simPreencheVencimentos(tr) {
     if (atual && CADEIA && (CADEIA.expirations || []).some(function (e) { return e.exp === atual; })) {
         sel.value = atual;
     }
+    var dteEl = tr.querySelector('.leg-dte');
+    if (dteEl) {
+        var dd = sel.value ? diasAte(sel.value) : null;
+        dteEl.textContent = dd != null ? dd + 'd' : '—';
+    }
 }
 
 // Refaz TODAS as listas de vencimento já abertas na planilha — chamado
@@ -530,6 +542,11 @@ window.simVencMudou = function (sel) {
     // ficar com um ticker de um vencimento e strike de outro.
     tr.querySelector('.leg-ticker').value = '';
     tr.querySelector('.leg-premium').value = '0,00';
+    var dteEl = tr.querySelector('.leg-dte');
+    if (dteEl) {
+        var d = exp ? diasAte(exp) : null;
+        dteEl.textContent = d != null ? d + 'd' : '—';
+    }
     if (!exp) {
         strikeSel.innerHTML = '<option value="">—</option>';
         strikeSel.disabled = true;
@@ -780,7 +797,7 @@ function desenha(legs) {
         ctx.fillStyle = 'rgba(148,163,184,.7)'; ctx.font = '13px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('Adicione pernas para ver o payoff.', W / 2, H / 2);
-        ['m-net','m-gain','m-loss','m-be','m-pop'].forEach(function (id) {
+        ['m-net','m-gain','m-gain-pct','m-gain-selic','m-loss','m-be','m-pop'].forEach(function (id) {
             document.getElementById(id).textContent = '—';
         });
         document.getElementById('sim-aviso').style.display = 'none';
@@ -899,6 +916,40 @@ function desenha(legs) {
     document.getElementById('m-loss').textContent =
         maxLoss < -1e7 ? '-∞' : (maxLoss < 0 ? '-' : '') + fmtBRL(maxLoss);
     document.getElementById('m-be').textContent = bes.length ? bes.map(fmtBRL).join(' / ') : '—';
+
+    // Lucro máximo em % sobre o valor investido (custo de saída — o
+    // desembolso das pernas compradas) e o quanto isso representa frente
+    // ao rendimento da Selic no mesmo prazo (DTE do vencimento mais
+    // curto). Estrutura 100% a crédito (sem nenhuma compra) não tem uma
+    // base de investimento para o % — fica "—".
+    (function () {
+        var pctEl = document.getElementById('m-gain-pct');
+        var selicEl = document.getElementById('m-gain-selic');
+        var custoSaida = uteis.reduce(function (acc, l) {
+            return acc + (l.side === 'BUY' ? l.qty * l.premium : 0);
+        }, 0);
+        if (custoSaida <= 0 || maxGain > 1e7 || !refDateStr) {
+            pctEl.textContent = '—'; pctEl.className = 'val';
+            selicEl.textContent = '—'; selicEl.className = 'val';
+            return;
+        }
+        var pctGain = maxGain / custoSaida * 100;
+        pctEl.textContent = fmtNum(pctGain, 1) + '%';
+        pctEl.className = 'val ' + (pctGain >= 0 ? 'positive' : 'negative');
+
+        var dteGain = diasAte(refDateStr);
+        if (dteGain == null || dteGain <= 0) {
+            selicEl.textContent = '—'; selicEl.className = 'val';
+            return;
+        }
+        // Selic proporcional ao prazo (juros compostos, mesma base a.a. da tela).
+        var selicPeriodo = (Math.pow(1 + SELIC_RATE / 100, dteGain / 365.25) - 1) * 100;
+        var vsSelic = selicPeriodo > 0 ? (pctGain / selicPeriodo) * 100 : null;
+        selicEl.textContent = vsSelic != null
+            ? fmtNum(vsSelic, 0) + '% da Selic (' + fmtNum(selicPeriodo, 2) + '% em ' + dteGain + 'd)'
+            : '—';
+        selicEl.className = 'val ' + (vsSelic != null && vsSelic >= 100 ? 'positive' : 'negative');
+    })();
 
     // POP — integra a densidade log-normal de S_T sobre a região onde o
     // payoff (já calculado em Parr/Sarr) é positivo. Funciona para qualquer

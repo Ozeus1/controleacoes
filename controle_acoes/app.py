@@ -14874,6 +14874,18 @@ def config():
             label = 'ativada' if auto == 'true' else 'desativada'
             flash(f'Atualização automática OpLab {label} (intervalo: {interval} min).', 'success')
 
+        elif action == 'save_opt_source':
+            # Plano B para quando a OpLab cai (costuma ficar fora à noite):
+            # a atualização de OPÇÕES passa a vir da BRAPI. Ações continuam
+            # no fluxo normal (Yahoo/BRAPI/MT5) — só a parte de opções muda.
+            usar = 'true' if request.form.get('opt_fallback_brapi') == 'true' else 'false'
+            Settings.set_value('opt_fallback_brapi', usar, user_id=current_user.id)
+            if usar == 'true':
+                flash('Opções passarão a ser atualizadas pela BRAPI (dados de fechamento, '
+                      'para estudo/simulação). Desmarque para voltar à OpLab.', 'success')
+            else:
+                flash('Atualização de opções de volta à OpLab.', 'success')
+
         elif action == 'save_receberbem_num':
             num = request.form.get('receberbem_num', '').strip()
             if num.isdigit():
@@ -14898,6 +14910,8 @@ def config():
     oplab_auto      = Settings.get_value('oplab_auto_update', user_id=current_user.id, default='false') == 'true'
     oplab_interval  = Settings.get_value('oplab_interval',    user_id=current_user.id, default='5')
     oplab_token_ok  = bool(Settings.get_value('oplab_token',  user_id=current_user.id))
+    opt_fallback_brapi = Settings.get_value('opt_fallback_brapi',
+                                            user_id=current_user.id, default='false') == 'true'
     receberbem_num  = Settings.get_value('receberbem_num', user_id=current_user.id, default='')
 
     uid = current_user.id
@@ -14914,6 +14928,7 @@ def config():
                            oplab_auto=oplab_auto,
                            oplab_interval=oplab_interval,
                            oplab_token_ok=oplab_token_ok,
+                           opt_fallback_brapi=opt_fallback_brapi,
                            receberbem_num=receberbem_num,
                            ticker_map_text=ticker_map_text,
                            option_map_text=option_map_text,
@@ -15978,7 +15993,19 @@ def update_quotes():
         final_msg = ''
         errs = []
 
-        if oplab_token:
+        usar_brapi_opcoes = Settings.get_value(
+            'opt_fallback_brapi', user_id=current_user.id, default='false') == 'true'
+
+        if usar_brapi_opcoes:
+            # OpLab fora do ar: opções vêm da BRAPI (fechamento do dia).
+            # oplab_covered fica vazio de propósito — as AÇÕES continuam indo
+            # ao Yahoo/BRAPI no passo seguinte, que é o fluxo normal delas.
+            o_ok, op_err = _brapi_options_bulk_update(current_user.id)
+            if op_err:
+                final_msg += f'BRAPI (opções): {op_err}. '
+            else:
+                final_msg += f'BRAPI (opções, fechamento): {o_ok} atualizada(s). '
+        elif oplab_token:
             # Sem probe prévio: a própria primeira chamada do bulk detecta se a
             # OpLab está fora. O probe era uma ida à rede extra e um ponto único
             # de falha — bastava ele falhar uma vez para a OpLab inteira ser
@@ -16046,7 +16073,18 @@ def update_quotes_async():
                 errs = []
 
                 # ── 1. OpLab: ações B3 + opções ───────────────────────────────
-                if oplab_token:
+                usar_brapi_opcoes = Settings.get_value(
+                    'opt_fallback_brapi', user_id=user_id, default='false') == 'true'
+
+                if usar_brapi_opcoes:
+                    # OpLab fora do ar: opções pela BRAPI (fechamento do dia).
+                    # oplab_covered segue vazio — ações continuam no Yahoo/BRAPI.
+                    o_ok, op_err = _brapi_options_bulk_update(user_id)
+                    if op_err:
+                        final_msg += f'BRAPI (opções): {op_err}. '
+                    else:
+                        final_msg += f'BRAPI (opções, fechamento): {o_ok} atualizada(s). '
+                elif oplab_token:
                     # Sem probe: a 1ª chamada do bulk já detecta OpLab fora.
                     # deadline total de 25s para toda a operação OpLab
                     a_ok, o_ok, oplab_covered, op_err = _do_oplab_bulk_update_safe(
@@ -18205,6 +18243,18 @@ def api_oplab_greeks():
 @app.route('/atualizar_oplab', methods=['POST'])
 @login_required
 def atualizar_oplab():
+    # Com o fallback ligado, este botão também usa a BRAPI — senão ele
+    # continuaria batendo na OpLab fora do ar e não atualizaria nada.
+    if Settings.get_value('opt_fallback_brapi',
+                          user_id=current_user.id, default='false') == 'true':
+        ok, err = _brapi_options_bulk_update(current_user.id)
+        _oplab_last_update[current_user.id] = datetime.now()
+        if err:
+            flash(f'BRAPI (opções): {err}', 'warning')
+        else:
+            flash(f'BRAPI (opções, fechamento): {ok} atualizada(s).', 'success')
+        return redirect(url_for('profile'))
+
     token = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
         flash('Token OpLab não configurado. Configure em Perfil.', 'danger')
@@ -20696,6 +20746,189 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
     return assets_ok, options_ok, oplab_covered_assets
 
 
+# ══════════════════════════════════════════════════════════════════════
+# Fallback de opções pela BRAPI (quando a OpLab está fora do ar)
+# ══════════════════════════════════════════════════════════════════════
+#
+# A OpLab costuma ficar indisponível à noite. Com o checkbox "usar BRAPI
+# como fallback" ligado em Configuração, a atualização de opções passa a
+# vir da BRAPI enquanto isso durar.
+#
+# LIMITAÇÃO ACEITA (é por isso que o padrão é desligado): a BRAPI publica
+# a cadeia de opções só no fim do dia, e o preço é o ÚLTIMO NEGÓCIO do
+# pregão. Séries ilíquidas podem ter negociado de manhã, longe do valor
+# justo no fechamento — ou não ter negociado, e aí o preço é de dias
+# atrás. Serve para estudo/simulação, não para marcar posição real.
+#
+# O endpoint /analytics entrega preço, delta e o preço do subjacente numa
+# única chamada por (subjacente, vencimento) — por isso ele, e não /chain,
+# que traria só o preço e exigiria uma segunda volta para os gregos.
+
+
+def _brapi_options_bulk_update(uid: int, budget_secs: float = 40.0):
+    """Atualiza opções/pernas/subjacentes do usuário usando a BRAPI.
+
+    Espelha o que _do_oplab_bulk_update faz com as opções, mas NÃO mexe
+    em cotação de ação da carteira: ações continuam vindo de
+    Yahoo/BRAPI/MT5 pelo fluxo normal (o pedido foi trocar só a parte de
+    opções).
+
+    Consulta apenas os vencimentos que o usuário realmente tem em
+    carteira — varrer todos os ~30 vencimentos de cada subjacente
+    estouraria o limite de 20 req/min da BRAPI sem trazer nada de útil.
+
+    Retorna (options_ok, err_msg).
+    """
+    t0 = time.monotonic()
+
+    def _left(reserve=2.0):
+        return max(0.0, budget_secs - (time.monotonic() - t0) - reserve)
+
+    options       = Option.query.filter_by(user_id=uid).all()
+    study_options = StudyOption.query.filter_by(user_id=uid).all()
+    spreads       = OptionSpread.query.filter_by(user_id=uid).all()
+    put_sales     = PutSale.query.filter_by(user_id=uid).all()
+    struct_legs   = StructuredLeg.query.join(StructuredOp).filter(
+        StructuredOp.user_id == uid, StructuredOp.status == 'OPEN'
+    ).all()
+    struct_ops    = StructuredOp.query.filter_by(user_id=uid, status='OPEN').all()
+
+    # (subjacente, vencimento) → o par que a BRAPI precisa para /analytics.
+    # Sem um dos dois não há como consultar, então a entrada é descartada.
+    pares: set = set()
+
+    def _add(under, exp):
+        if not under or not exp:
+            return
+        u = str(under).strip().upper()
+        e = exp.isoformat() if hasattr(exp, 'isoformat') else str(exp).strip()
+        if u and e:
+            pares.add((u, e))
+
+    for o in options:
+        _add(o.underlying_asset, o.expiration_date)
+    for so in study_options:
+        _add(so.underlying_asset, so.expiration_date)
+    for sp in spreads:
+        _add(sp.underlying_asset, sp.expiration_date)
+    for ps in put_sales:
+        _add(ps.underlying_asset, ps.expiration_date)
+    for leg in struct_legs:
+        if getattr(leg.operation, 'intl', False):
+            continue      # Tastytrade: prêmios são manuais, BRAPI não cobre
+        _add(leg.operation.underlying_asset, leg.expiration_date)
+
+    if not pares:
+        return 0, 'Nenhuma opção com subjacente e vencimento para consultar.'
+
+    precos: dict = {}      # símbolo da opção → preço (último negócio)
+    deltas: dict = {}      # símbolo da opção → delta
+    und_px: dict = {}      # subjacente → preço no fechamento
+    erros:  list = []
+
+    # Sequencial de propósito: a BRAPI limita a 20 req/min e responde 429
+    # quando várias chamadas saem juntas. Como são poucos pares (só os
+    # vencimentos em carteira), o custo em tempo é aceitável.
+    for u, e in sorted(pares):
+        if _left() <= 0:
+            erros.append('tempo esgotado antes de consultar todos os vencimentos')
+            break
+        d, err = _brapi_opt_get('/analytics',
+                                {'underlying': u, 'expirationDate': e},
+                                uid, timeout=20)
+        if err:
+            if err not in erros:
+                erros.append(err)
+            continue
+        for it in ((d or {}).get('analytics') or []):
+            sym = str(it.get('symbol') or '').upper()
+            if not sym:
+                continue
+            px = it.get('optionPrice')
+            if px is not None and float(px) > 0:
+                precos[sym] = float(px)
+            dl = it.get('delta')
+            if dl is not None:
+                deltas[sym] = float(dl)
+            up = it.get('underlyingPrice')
+            if up is not None and float(up) > 0:
+                und_px[u] = float(up)
+
+    if not precos:
+        return 0, (erros[0] if erros else 'A BRAPI não retornou preços de opções.')
+
+    now = now_brt()
+    ok = 0
+
+    # ── Options (/opcoes) ────────────────────────────────────────────
+    for o in options:
+        k = (o.ticker or '').upper()
+        if k in precos:
+            o.current_option_price = precos[k]
+            o.last_update = now
+            ok += 1
+        if k in deltas:
+            o.delta = deltas[k]
+        uk = (o.underlying_asset or '').upper()
+        if uk in und_px:
+            o.underlying_price = und_px[uk]
+
+    # ── Pernas de estruturadas ───────────────────────────────────────
+    for leg in struct_legs:
+        if getattr(leg.operation, 'intl', False):
+            continue
+        k = (leg.ticker or '').upper()
+        if k in precos:
+            leg.current_price = precos[k]
+            leg.last_update   = now
+            ok += 1
+
+    for sop in struct_ops:
+        if getattr(sop, 'intl', False):
+            continue
+        uk = (sop.underlying_asset or '').upper()
+        if uk in und_px:
+            sop.underlying_price = und_px[uk]
+
+    # ── Spreads (/spreads) ───────────────────────────────────────────
+    for sp in spreads:
+        k = (sp.leg_long_ticker or '').upper()
+        if k in precos:
+            sp.leg_long_current = precos[k]
+            ok += 1
+        k = (sp.leg_short_ticker or '').upper()
+        if k in precos:
+            sp.leg_short_current = precos[k]
+            ok += 1
+        uk = (sp.underlying_asset or '').upper()
+        if uk in und_px:
+            sp.underlying_price = und_px[uk]
+
+    # ── StudyOptions (/estudos) ──────────────────────────────────────
+    for so in study_options:
+        k = (so.ticker or '').upper()
+        if k in precos:
+            so.option_price = precos[k]
+            ok += 1
+        uk = (so.underlying_asset or '').upper()
+        if uk in und_px:
+            so.underlying_price = und_px[uk]
+
+    # ── PutSales ─────────────────────────────────────────────────────
+    for ps in put_sales:
+        uk = (ps.underlying_asset or '').upper()
+        if uk in und_px:
+            ps.underlying_price = und_px[uk]
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return 0, 'Erro ao gravar as cotações da BRAPI.'
+
+    return ok, (erros[0] if erros and ok == 0 else None)
+
+
 _snapshot_last_day = {}   # {user_id: 'YYYY-MM-DD'} — garante 1 snapshot/dia por usuário
 
 
@@ -20725,12 +20958,22 @@ def _oplab_scheduler_loop():
                 rows = Settings.query.filter_by(key='oplab_auto_update', value='true').all()
                 for s in rows:
                     uid   = s.user_id
+                    usar_brapi = Settings.get_value(
+                        'opt_fallback_brapi', user_id=uid, default='false') == 'true'
                     token = Settings.get_value('oplab_token', user_id=uid)
-                    if not token:
+                    if not token and not usar_brapi:
                         continue
                     interval_min = int(Settings.get_value('oplab_interval', user_id=uid, default='5'))
                     last = _oplab_last_update.get(uid)
                     if last and (now - last).total_seconds() < interval_min * 60:
+                        continue
+                    if usar_brapi:
+                        # A cadeia da BRAPI é publicada 1×/dia e o _brapi_opt_get
+                        # tem cache até o corte das 19h30 — rodar no intervalo
+                        # normal não gera tráfego extra, serve só para propagar
+                        # a publicação do dia assim que ela sai.
+                        _brapi_options_bulk_update(uid, budget_secs=40)
+                        _oplab_last_update[uid] = now
                         continue
                     if not _oplab_is_available(token, timeout=4):
                         continue   # OpLab fora do ar — tenta no próximo ciclo

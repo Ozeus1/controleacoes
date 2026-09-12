@@ -204,6 +204,48 @@
             {% endif %}
         </form>
         </div><!-- /grid -->
+
+        <!-- Fallback BRAPI para opções (OpLab fora do ar) -->
+        <form method="POST" action="{{ url_for('config') }}"
+              style="margin-top:1.5rem; padding:.9rem 1.1rem; border-radius:8px;
+                     border:1px solid {% if opt_fallback_brapi %}#f59e0b{% else %}var(--border-color){% endif %};
+                     background:{% if opt_fallback_brapi %}rgba(245,158,11,.10){% else %}transparent{% endif %};">
+            <input type="hidden" name="action" value="save_opt_source">
+
+            <div class="form-check form-switch" style="font-size:1rem;">
+                <input class="form-check-input" type="checkbox" role="switch"
+                       name="opt_fallback_brapi" value="true" id="opt_fallback_toggle"
+                       {% if opt_fallback_brapi %}checked{% endif %}
+                       style="width:3em;height:1.5em;cursor:pointer;">
+                <label class="form-check-label ms-2" for="opt_fallback_toggle"
+                       style="cursor:pointer;line-height:1.8;font-weight:600;">
+                    Usar BRAPI para opções enquanto a OpLab estiver fora do ar
+                </label>
+            </div>
+
+            <p style="color:var(--text-secondary); font-size:.83rem; margin:.6rem 0 .75rem;">
+                A OpLab costuma ficar indisponível à noite. Com esta opção marcada, a atualização
+                de <strong>opções</strong> (preço, delta e subjacente) passa a vir da BRAPI.
+                A atualização de <strong>ações, FIIs e ETFs não muda</strong> — continua pela fonte
+                escolhida acima.
+                <br><br>
+                <strong style="color:#f59e0b;">⚠ Use apenas para estudo e simulação.</strong>
+                A BRAPI publica a cadeia de opções só no <strong>fim do dia</strong>, e o preço é o
+                <strong>último negócio</strong> do pregão — em séries de baixa liquidez isso pode
+                estar longe do valor justo, ou ser de dias atrás. Desmarque para voltar à OpLab.
+            </p>
+
+            <button type="submit" class="btn btn-primary btn-sm">Salvar fonte das opções</button>
+
+            {% if opt_fallback_brapi %}
+            <div style="margin-top:.75rem;padding:.5rem .9rem;background:rgba(245,158,11,.15);border-radius:8px;
+                        border:1px solid #f59e0b;font-size:.82rem;color:#f59e0b;">
+                ⚠ Opções sendo atualizadas pela <strong>BRAPI</strong> (fechamento do dia).
+                A OpLab está sendo ignorada.
+            </div>
+            {% endif %}
+        </form>
+
     </div><!-- /OpLab section -->
 
     <div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-bottom: 2rem;">

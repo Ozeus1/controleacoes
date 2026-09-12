@@ -2609,6 +2609,44 @@ def cadeia_opcoes():
     return render_template('cadeia_opcoes.html', ranking_vol=ranking_vol, selic=_selic())
 
 
+@app.route('/simulador')
+@login_required
+def simulador():
+    """Simulador de opções em formato de planilha (linha = perna).
+
+    Mesma engenharia de cálculo da tela "Gráficos-Simulações"; muda só a
+    entrada de dados: aqui a perna é montada escolhendo vencimento e
+    strike em listas vindas da cadeia, e o prêmio vem preenchido.
+    """
+    sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id)                                .order_by(SimulacaoOpcoes.created_at.desc()).all()
+    ranking_vol = _ranking_liq_filter(
+        RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    return render_template('simulador.html', sims=sims,
+                           ranking_vol=ranking_vol, selic=_selic())
+
+
+@app.route('/api/simulacao/<int:sim_id>')
+@login_required
+def api_simulacao_get(sim_id):
+    """Devolve uma simulação salva (cabeçalho + pernas) para carregar na tela."""
+    sim = SimulacaoOpcoes.query.filter_by(id=sim_id, user_id=current_user.id).first()
+    if not sim:
+        return jsonify({'error': 'Simulação não encontrada.'}), 404
+    return jsonify({
+        'id': sim.id, 'name': sim.name, 'underlying': sim.underlying or '',
+        'legs': [{
+            'type':    l.leg_type,
+            'side':    l.side,
+            'qty':     l.quantity,
+            'strike':  l.strike,
+            'premium': l.premium,
+            'ticker':  l.ticker or '',
+            'exp':     l.expiration.isoformat() if l.expiration else '',
+            'iv':      l.iv or 0,
+        } for l in sim.legs],
+    })
+
+
 def _bs_price_opt(S, K, T, r, sigma, option_type='CALL'):
     """
     Black-Scholes price (European) com option_type como string ('CALL'/'PUT').

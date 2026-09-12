@@ -249,9 +249,9 @@
                 </div>
 
                 {# ── Opções (dropdown com Estudos e Simulação) ── #}
-                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','trader_futuros','ajuda_operacoes'] else '' }}">
+                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','simulador','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','trader_futuros','ajuda_operacoes'] else '' }}">
                     <a href="{{ url_for('opcoes') }}"
-                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','trader_futuros','ajuda_operacoes'] else '' }}"
+                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','simulador','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','trader_futuros','ajuda_operacoes'] else '' }}"
                        onclick="toggleNavDrop(this,event)">
                         Opções <span class="nav-caret">▾</span>
                     </a>
@@ -261,8 +261,8 @@
                         <a href="{{ url_for('estudos') }}"
                            class="{{ 'active' if request.endpoint == 'estudos' else '' }}">📚 Estudos</a>
                         {# Simulador: item pai com submenu Gráfico (simulacao_opcoes) / Com Liquidez (simulador_liquidez) / Com Cadeia de Opções (cadeia_opcoes) #}
-                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['simulacao_opcoes','simulador_liquidez','cadeia_opcoes'] else '' }}">
-                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['simulacao_opcoes','simulador_liquidez','cadeia_opcoes'] else '' }}"
+                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['simulacao_opcoes','simulador_liquidez','cadeia_opcoes','simulador'] else '' }}">
+                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['simulacao_opcoes','simulador_liquidez','cadeia_opcoes','simulador'] else '' }}"
                                onclick="toggleNavDrop(this,event)">
                                 📈 Simulador <span class="nav-caret nav-caret-sub">▸</span>
                             </a>
@@ -273,6 +273,8 @@
                                    class="{{ 'active' if request.endpoint == 'simulador_liquidez' else '' }}">📈 Com Liquidez</a>
                                 <a href="{{ url_for('cadeia_opcoes') }}"
                                    class="{{ 'active' if request.endpoint == 'cadeia_opcoes' else '' }}">🔗 Com Cadeia de Opções</a>
+                                <a href="{{ url_for('simulador') }}"
+                                   class="{{ 'active' if request.endpoint == 'simulador' else '' }}">🎯 Simulador</a>
                             </div>
                         </div>
                         <a href="{{ url_for('rolagem_opcoes') }}"

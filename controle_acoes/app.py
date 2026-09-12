@@ -3508,6 +3508,23 @@ def api_cadeia(ticker):
                     _b_eff, _b_src = _last_ok, 'último'
                     _a_eff, _a_src = _last_ok, 'último'
 
+        # Fallback: quando a OpLab não traz a VI pronta (plano/endpoint sem o
+        # campo), estima por bissecção a partir do prêmio executável — mesma
+        # técnica já usada no quote_hint de opção individual.
+        if iv_pct is None and spot and strike > 0:
+            _prem_iv = _last_ok if _last_ok else ((bid + ask) / 2 if (bid or ask) else 0)
+            if _prem_iv and _prem_iv > 0:
+                try:
+                    _dc = (_date.fromisoformat(due_date) - _date.today()).days
+                except ValueError:
+                    _dc = 0
+                if _dc > 0:
+                    _T = _dc / 365.25
+                    _is_call = not ('PUT' in cat or cat == 'P')
+                    _sigma = _implied_vol(spot, strike, _T, _selic() / 100, _prem_iv, _is_call)
+                    if 0.005 < _sigma < 4.9:
+                        iv_pct = _sigma * 100
+
         row = {
             'symbol':   sym,
             'strike':   round(strike, 2),

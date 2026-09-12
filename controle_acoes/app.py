@@ -3482,6 +3482,9 @@ def api_cadeia(ticker):
         delta    = o.get('delta') or (o.get('greeks') or {}).get('delta') if isinstance(o.get('greeks'), dict) else o.get('delta')
         teorico  = float(o.get('theoretical_price') or o.get('theo') or 0)
         liquidez = float(o.get('liquidity') or o.get('liquidity_score') or 0)
+        _iv_raw  = o.get('implied_volatility') or o.get('iv') or {}
+        _iv_data = _iv_raw if isinstance(_iv_raw, dict) else {'iv': _iv_raw}
+        iv_pct   = _iv_data.get('iv') or _iv_data.get('current')
         due_date = str(o.get('due_date') or o.get('expiration_date') or '')
         if 'T' in due_date:
             due_date = due_date.split('T')[0]
@@ -3516,6 +3519,7 @@ def api_cadeia(ticker):
             'delta':    round(float(delta), 2) if delta is not None else None,
             'teorico':  round(teorico, 2),
             'liquidez': round(liquidez, 2),
+            'iv':       round(float(iv_pct), 2) if iv_pct is not None else None,
             'mid':      round((bid + ask) / 2, 2) if (bid or ask) else 0,
             # Preços executáveis + a origem de cada um, para a tela poder dizer
             # ao usuário se o número veio do book ou do último negócio.

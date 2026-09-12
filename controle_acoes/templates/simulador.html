@@ -81,6 +81,8 @@
   <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.5rem;">
     <h2 style="margin:0;">🎯 Simulador</h2>
     <span id="sim-spot" style="font-size:.95rem;font-weight:700;"></span>
+    <a id="sim-spot-chart" href="#" onclick="return simAbreGrafico();" style="display:none;
+       font-size:.8rem;color:#60a5fa;text-decoration:none;white-space:nowrap;">📈 ver gráfico</a>
     <div style="margin-left:auto;display:flex;gap:.4rem;flex-wrap:wrap;">
       <button class="btn btn-secondary btn-sm" onclick="simCarregarModal()">📂 Abrir simulação</button>
       <button class="btn btn-primary btn-sm" onclick="simSalvar()">💾 Salvar</button>
@@ -100,8 +102,18 @@
     <div style="display:flex;flex-direction:column;gap:.25rem;">
       <label class="sim-hint">Ativo</label>
       <div style="display:flex;gap:.4rem;">
-        <input type="text" id="sim-ativo" placeholder="PETR4" maxlength="10"
-               style="background:var(--card-bg);color:var(--text-primary);
+        <select id="sim-ativo-sel" onchange="simSelAtivoMudou(this)"
+                style="background:var(--card-bg);color:var(--text-primary);
+                       border:1px solid var(--border-color);border-radius:5px;
+                       padding:.35rem .5rem;font-size:.85rem;">
+          <option value="">selecione…</option>
+          {% for rv in ranking_vol %}
+          <option value="{{ rv.ticker }}">{{ rv.ticker }}</option>
+          {% endfor %}
+          <option value="__outro__">— outro ativo… —</option>
+        </select>
+        <input type="text" id="sim-ativo" placeholder="Digite o ticker" maxlength="10"
+               style="display:none;background:var(--card-bg);color:var(--text-primary);
                       border:1px solid var(--border-color);border-radius:5px;
                       padding:.35rem .55rem;font-size:.85rem;width:110px;text-transform:uppercase;">
         <button class="btn btn-primary btn-sm" onclick="simCarregarCadeia()">🔎 Buscar cadeia</button>
@@ -123,14 +135,13 @@
       <input type="checkbox" id="sim-weekly" style="cursor:pointer;margin:0;" onchange="simCarregarCadeia()">
       incluir vencimentos semanais
     </label>
+    <label style="display:flex;align-items:center;gap:.35rem;cursor:pointer;font-size:.8rem;
+                  color:var(--text-secondary);"
+           title="Marcado, toda nova perna de opção adicionada usa automaticamente o mesmo vencimento da 1ª perna já escolhida.">
+      <input type="checkbox" id="sim-venc-unico" style="cursor:pointer;margin:0;">
+      vencimento único
+    </label>
     <span id="sim-cadeia-status" class="sim-hint"></span>
-  </div>
-
-  <div class="sim-tickers" id="sim-tickers" style="margin-bottom:.8rem;">
-    {% for rv in ranking_vol %}
-    <button type="button" class="sim-tbtn" data-t="{{ rv.ticker }}"
-            onclick="simEscolheAtivo('{{ rv.ticker }}')">{{ rv.ticker }}</button>
-    {% endfor %}
   </div>
 
   <!-- Planilha de pernas ------------------------------------------ -->
@@ -258,12 +269,38 @@ function diasAte(iso) {
 }
 
 // ── Ativo / cadeia ────────────────────────────────────────────────
-window.simEscolheAtivo = function (t) {
-    document.getElementById('sim-ativo').value = t;
-    document.querySelectorAll('.sim-tbtn').forEach(function (b) {
-        b.classList.toggle('active', b.dataset.t === t);
-    });
-    simCarregarCadeia();
+// Seleção do ativo: dropdown com sugestões do Ranking de Volatilidade +
+// carteira, igual ao Mapa de Opções — "— outro ativo… —" revela o campo
+// de texto livre para digitar um ticker fora da lista.
+window.simSelAtivoMudou = function (sel) {
+    var livre = sel.value === '__outro__';
+    var txt = document.getElementById('sim-ativo');
+    txt.style.display = livre ? '' : 'none';
+    if (livre) { txt.value = ''; txt.focus(); return; }
+    txt.value = sel.value;
+    if (sel.value) simCarregarCadeia();
+};
+
+// Aplica um ticker vindo de fora (abrir simulação salva): usa a opção do
+// dropdown quando ela existe na lista de sugestões, senão cai no campo
+// livre — mesmo comportamento de quando o usuário escolhe manualmente.
+function simSetAtivo(t) {
+    t = (t || '').trim().toUpperCase();
+    var sel = document.getElementById('sim-ativo-sel');
+    var txt = document.getElementById('sim-ativo');
+    var opt = Array.prototype.filter.call(sel.options, function (o) { return o.value === t; })[0];
+    if (opt) {
+        sel.value = t; txt.value = t; txt.style.display = 'none';
+    } else {
+        sel.value = t ? '__outro__' : '';
+        txt.value = t; txt.style.display = t ? '' : 'none';
+    }
+}
+
+window.simAbreGrafico = function () {
+    var t = (document.getElementById('sim-ativo').value || '').trim().toUpperCase();
+    if (t && window.MyChart && MyChart.open) MyChart.open(t);
+    return false;
 };
 
 window.simCarregarCadeia = function () {
@@ -281,6 +318,7 @@ window.simCarregarCadeia = function () {
                 CADEIA = null;
                 st.textContent = '⚠️ ' + (res.j.error || 'falha ao buscar a cadeia');
                 st.style.color = '#f87171';
+                document.getElementById('sim-spot-chart').style.display = 'none';
                 return;
             }
             CADEIA = res.j;
@@ -293,6 +331,7 @@ window.simCarregarCadeia = function () {
                     ? ' <span class="' + (ch >= 0 ? 'positive' : 'negative') + '" style="font-size:.82rem;">'
                       + (ch >= 0 ? '+' : '') + fmtNum(ch) + '%</span>' : ''))
                 : '';
+            document.getElementById('sim-spot-chart').style.display = spot ? '' : 'none';
             simPreencheTodosVencimentos();
             simAtualizaTodosAtivos();
             simAplicaPendencias();
@@ -302,6 +341,7 @@ window.simCarregarCadeia = function () {
             CADEIA = null;
             st.style.color = '#f87171';
             st.textContent = '⚠️ falha de rede: ' + e;
+            document.getElementById('sim-spot-chart').style.display = 'none';
         });
 };
 
@@ -319,7 +359,7 @@ function novaLinha(tipo) {
       +   '<option value="PUT"'  + (tipo === 'PUT'  ? ' selected' : '') + '>PUT</option>'
       +   '<option value="STOCK"' + (isStock ? ' selected' : '') + '>Ativo</option>'
       +   '</select></td>'
-      + '<td><input type="number" class="leg-qty" value="100" min="1" step="100" onchange="simRecalc()"></td>'
+      + '<td><input type="number" class="leg-qty" value="100" min="100" step="100" onchange="simQtyMudou(this)"></td>'
       // Vencimento: 1a lista simples — escolhido ele, popula a lista de strikes.
       + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
           : '<select class="leg-exp-sel" onchange="simVencMudou(this)">'
@@ -348,9 +388,34 @@ window.simAddPerna = function (tipo) {
     var tr = novaLinha(tipo);
     document.getElementById('sim-body').appendChild(tr);
     if (tipo === 'STOCK') simAtualizaCotacaoAtivo(tr);
-    else simPreencheVencimentos(tr);
+    else {
+        simPreencheVencimentos(tr);
+        simAplicaVencimentoUnico(tr);
+    }
     simRecalc();
 };
+
+// "Vencimento único": com o checkbox marcado, toda perna de opção nova
+// (ou que trocou de tipo) já nasce no mesmo vencimento da 1ª perna de
+// opção já escolhida na planilha — evita ter que reescolher toda vez.
+function simVencimentoComum() {
+    var linhas = document.querySelectorAll('#sim-body tr.leg-row');
+    for (var i = 0; i < linhas.length; i++) {
+        var sel = linhas[i].querySelector('.leg-exp-sel');
+        if (sel && sel.value) return sel.value;
+    }
+    return null;
+}
+function simAplicaVencimentoUnico(tr) {
+    if (!document.getElementById('sim-venc-unico').checked) return;
+    var exp = simVencimentoComum();
+    var sel = tr.querySelector('.leg-exp-sel');
+    if (!exp || !sel) return;
+    var temOpcao = Array.prototype.some.call(sel.options, function (o) { return o.value === exp; });
+    if (!temOpcao) return;
+    sel.value = exp;
+    simVencMudou(sel);
+}
 
 window.simRemove = function (btn) {
     btn.closest('tr').remove();
@@ -371,8 +436,18 @@ window.simTipoMudou = function (sel) {
     nova.querySelector('.leg-qty').value  = tr.querySelector('.leg-qty').value;
     nova.querySelector('.leg-on').checked = tr.querySelector('.leg-on').checked;
     tr.replaceWith(nova);
-    if (nova.querySelector('.leg-exp-sel')) simPreencheVencimentos(nova);
+    if (nova.querySelector('.leg-exp-sel')) {
+        simPreencheVencimentos(nova);
+        simAplicaVencimentoUnico(nova);
+    }
     if (sel.value === 'STOCK') simAtualizaCotacaoAtivo(nova);
+    simRecalc();
+};
+
+// Quantidade sempre em lotes de 100 (padrão de mercado de opções na B3).
+window.simQtyMudou = function (input) {
+    var v = Math.round((parseInt(input.value, 10) || 100) / 100) * 100;
+    input.value = Math.max(100, v);
     simRecalc();
 };
 
@@ -437,6 +512,19 @@ window.simVencMudou = function (sel) {
              + 'K ' + fmtBRL(r.strike) + (perto ? ' (próximo do spot)' : '') + '</option>';
     }).join('');
     strikeSel.disabled = rows.length === 0;
+    // "Vencimento único" marcado: escolher o vencimento nesta linha propaga
+    // para as demais pernas de opção da planilha, poupando o usuário de
+    // repetir a escolha em cada uma.
+    if (document.getElementById('sim-venc-unico').checked) {
+        document.querySelectorAll('#sim-body tr.leg-row').forEach(function (outro) {
+            var outroSel = outro.querySelector('.leg-exp-sel');
+            if (!outroSel || outro === tr || outroSel.value === exp) return;
+            var temOpcao = Array.prototype.some.call(outroSel.options, function (o) { return o.value === exp; });
+            if (!temOpcao) return;
+            outroSel.value = exp;
+            simVencMudou(outroSel);
+        });
+    }
     simRecalc();
 };
 
@@ -467,6 +555,12 @@ function simAplicaStrike(tr, strikeVal) {
     var prem = (lado === 'SELL' ? (o.bid_eff || o.bid) : (o.ask_eff || o.ask)) || o.close || 0;
     tickerEl.value = o.symbol;
     premioEl.value = fmtNum(prem);
+    // VI da opção escolhida, já vinda da cadeia (OpLab) — só é obrigatória
+    // para o cálculo quando há vencimentos diferentes na estrutura (a perna
+    // mais longa precisa de Black-Scholes), mas preenche sempre que houver
+    // o dado, poupando o usuário de digitar.
+    var ivEl = tr.querySelector('.leg-iv');
+    if (ivEl && o.iv != null) ivEl.value = fmtNum(o.iv);
 }
 
 // ── Ativo: cotação buscada via OpLab (pregão aberto ou fechamento) ──
@@ -893,7 +987,7 @@ window.simAbrir = function (id) {
             var d = res.j;
             SIM_ID = d.id;
             document.getElementById('sim-nome').value  = d.name || '';
-            document.getElementById('sim-ativo').value = d.underlying || '';
+            simSetAtivo(d.underlying);
             var body = document.getElementById('sim-body');
             body.innerHTML = '';
             (d.legs || []).forEach(function (l) {
@@ -950,7 +1044,11 @@ function simAplicaPendencias() {
 window.simNova = function () {
     SIM_ID = null;
     document.getElementById('sim-nome').value = '';
+    simSetAtivo('');
+    document.getElementById('sim-spot').innerHTML = '';
+    document.getElementById('sim-spot-chart').style.display = 'none';
     document.getElementById('sim-body').innerHTML = '';
+    CADEIA = null;
     simRecalc();
 };
 

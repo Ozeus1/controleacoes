@@ -8460,8 +8460,16 @@ def api_bgt_bands(ticker):
             # afasta muito do strike a BRAPI para de calcular a IV
             # ("iv_not_converged"), e sem esse filtro o buraco ficaria
             # mascarado com um dia "presente" mas sem dado utilizável.
-            if dt and a.get('impliedVolatility') is not None:
-                out[dt] = a
+            if not dt or a.get('impliedVolatility') is None:
+                continue
+            # As entradas diárias de /analytics/history não trazem 'strike'
+            # (só o objeto 'option' pai tem) — carimba aqui, porque quando o
+            # ciclo troca de opção no meio do caminho (checkpoint de ATM), o
+            # strike correto de CADA dia depende de qual chamada o trouxe,
+            # não de um único valor fixo para a série toda.
+            a = dict(a)
+            a['strike'] = strike
+            out[dt] = a
         return out, None
 
     def _um_ciclo(exp):

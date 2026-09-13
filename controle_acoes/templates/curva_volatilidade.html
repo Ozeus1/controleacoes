@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+{% block title %}Curva de Volatilidade{% endblock %}
+{% block extra_scripts %}
+<style>
+.cv-filtros{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:.9rem;
+  background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);border-radius:8px;
+  padding:.9rem 1rem;margin:.6rem 0 .8rem;}
+.cv-campo{display:flex;flex-direction:column;gap:.3rem;}
+.cv-campo label{font-size:.75rem;color:var(--text-secondary);font-weight:600;
+  text-transform:uppercase;letter-spacing:.03em;}
+.cv-campo select,.cv-campo input{background:var(--card-bg);color:var(--text-primary);
+  border:1px solid var(--border-color);border-radius:5px;padding:.35rem .5rem;font-size:.85rem;}
+.cv-campo input{text-transform:uppercase;}
+
+#cv-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
+#cv-error{display:none;color:#f87171;padding:1rem;background:rgba(239,68,68,.08);
+  border:1px solid rgba(239,68,68,.25);border-radius:6px;margin:.6rem 0;}
+#cv-hint{padding:1.5rem;text-align:center;color:var(--text-secondary);font-size:.88rem;}
+#cv-res{display:none;}
+
+.cv-chart-wrap{position:relative;height:340px;background:var(--card-bg);
+  border:1px solid var(--border-color);border-radius:8px;padding:.6rem;margin-bottom:.4rem;}
+.cv-legenda{display:flex;gap:1.2rem;justify-content:center;flex-wrap:wrap;
+  font-size:.8rem;color:var(--text-secondary);margin:.5rem 0 .3rem;}
+.cv-nota{font-size:.78rem;color:var(--text-secondary);margin:.5rem 0;}
+
+.cv-tab-wrap{overflow-x:auto;margin-top:1rem;}
+#cv-tab{width:100%;border-collapse:collapse;font-size:.8rem;}
+#cv-tab th{padding:.4rem .45rem;text-align:right;white-space:nowrap;
+  background:var(--card-bg);color:var(--text-secondary);font-weight:600;
+  border-bottom:1px solid var(--border-color);font-size:.7rem;
+  text-transform:uppercase;letter-spacing:.02em;}
+#cv-tab td{padding:.32rem .45rem;text-align:right;white-space:nowrap;
+  border-bottom:1px solid rgba(255,255,255,.04);}
+#cv-tab td.sym{color:var(--text-secondary);font-size:.72rem;}
+#cv-tab .strike-col{background:var(--hover-bg);font-weight:700;text-align:center;}
+#cv-tab .div-col{width:2px;padding:0;background:var(--border-color);}
+.cv-teo{font-weight:600;}
+.cv-teo.fora{color:#f87171;}
+.cv-abas{display:flex;gap:.4rem;flex-wrap:wrap;border-bottom:1px solid var(--border-color);
+  margin-bottom:.8rem;}
+.cv-aba{padding:.4rem .8rem;font-size:.85rem;cursor:pointer;color:var(--text-secondary);
+  border-bottom:2px solid transparent;}
+.cv-aba.on{color:var(--text-primary);border-bottom-color:#7c3aed;font-weight:600;}
+.cv-painel{display:none;font-size:.86rem;line-height:1.6;color:var(--text-secondary);}
+.cv-painel.on{display:block;}
+.cv-painel strong{color:var(--text-primary);}
+@media (max-width:640px){.cv-filtros{grid-template-columns:1fr;} .cv-chart-wrap{height:260px;}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
+    <h2 style="margin:0;">📈 Curva de Volatilidade</h2>
+    <span class="cv-nota" style="margin:0;">Smile de IV por strike — fonte BRAPI / B3</span>
+  </div>
+
+  {% if not tem_token %}
+  <div style="margin:.7rem 0;padding:.6rem .9rem;background:rgba(234,179,8,.1);
+              border-left:3px solid #eab308;border-radius:4px;font-size:.83rem;color:var(--text-secondary);">
+    ⚠️ Sem chave BRAPI cadastrada: a API libera apenas <strong>PETR4</strong> (sandbox).
+    Para os demais ativos, cadastre sua chave do plano Pro em
+    <a href="{{ url_for('config') }}">Configuração</a>.
+  </div>
+  {% endif %}
+
+  <div class="cv-filtros">
+    <div class="cv-campo">
+      <label>Ativo</label>
+      <select id="cv-ticker">
+        {% for t in sugestoes %}<option value="{{ t }}" {{ 'selected' if t == 'PETR4' else '' }}>{{ t }}</option>{% endfor %}
+        <option value="__outro__">— outro ativo… —</option>
+      </select>
+      <input id="cv-ticker-livre" placeholder="Digite o ticker" maxlength="10"
+             style="display:none;margin-top:.3rem;">
+    </div>
+    <div class="cv-campo">
+      <label>Vencimento</label>
+      <select id="cv-exp"><option value="">— escolha o ativo —</option></select>
+    </div>
+    <div class="cv-campo">
+      <label>&nbsp;</label>
+      <button type="button" id="cv-buscar" class="btn btn-primary" style="padding:.4rem;">Gerar curva</button>
+    </div>
+  </div>
+
+  <div id="cv-error"></div>
+  <div id="cv-loading">⏳ Ajustando a curva de volatilidade…</div>
+  <div id="cv-hint">Escolha o ativo e o vencimento e clique em <strong>Gerar curva</strong>.</div>
+
+  <div id="cv-res">
+    <div id="cv-info" class="cv-nota"></div>
+    <div class="cv-legenda">
+      <span>🔴 Volatilidade Implícita (interpolada, spline monotônico)</span>
+    </div>
+    <div class="cv-chart-wrap"><canvas id="cv-canvas"></canvas></div>
+    <p class="cv-nota">
+      Pontos sem informação de mercado suficiente (baixa confiança, prêmio no tick mínimo,
+      ou IV fora de 5%-150%) são descartados antes do ajuste da curva.
+    </p>
+
+    <div class="cv-tab-wrap">
+      <table id="cv-tab">
+        <thead>
+          <tr>
+            <th>Ticker</th><th>Último</th><th class="cv-teo-th">Preço teórico</th>
+            <th class="strike-col">Strike</th>
+            <th class="cv-teo-th">Preço teórico</th><th>Último</th><th>Ticker</th>
+          </tr>
+        </thead>
+        <tbody id="cv-tab-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1.2rem;">
+  <h3 style="margin-top:0;">Curva de Volatilidade Implícita (Smile)</h3>
+  <div class="cv-abas">
+    <span class="cv-aba on" data-p="conceito">Conceito</span>
+    <span class="cv-aba" data-p="preco">Preço Teórico</span>
+    <span class="cv-aba" data-p="skew">Formato (Skew)</span>
+  </div>
+  <div class="cv-painel on" id="cvp-conceito">
+    <p>A <strong>Curva de Volatilidade Implícita</strong> (ou "Smile") mapeia a volatilidade que o
+    mercado está precificando para cada preço de exercício (Strike) de um determinado vencimento.</p>
+    <p>Essa curva é a base para o cálculo do <strong>Preço Teórico</strong> de cada opção. A partir
+    da volatilidade interpolada na curva, o Black-Scholes é aplicado para derivar o preço que cada
+    opção deveria ter dado o cenário atual de mercado.</p>
+  </div>
+  <div class="cv-painel" id="cvp-preco">
+    <p><strong>Como é calculado:</strong> para cada opção, o strike é localizado na curva de
+    volatilidade, a IV correspondente é interpolada (spline cúbico monotônico) e alimenta o modelo
+    Black-Scholes junto com os parâmetros atuais (spot, taxa de juros, tempo até o vencimento). O
+    resultado é o preço teórico.</p>
+    <p><strong>Comparação com o preço de mercado:</strong> quando o preço teórico aparece destacado
+    em vermelho na tabela, ele está bem distante do último preço negociado — pode indicar que a
+    opção está pouco líquida naquele strike (o "último" está desatualizado) ou uma divergência real
+    entre o modelo e o mercado.</p>
+    <p><strong>Utilidade prática:</strong> use o preço teórico como referência de valor justo ao
+    montar ou desmontar posições. Se o mercado está oferecendo uma opção significativamente abaixo
+    do preço teórico, pode haver uma oportunidade; se está acima, pode ser mais interessante vender.</p>
+  </div>
+  <div class="cv-painel" id="cvp-skew">
+    <p>O formato típico em "sorriso" (smile) ou "sorriso torto" (skew) reflete que o mercado
+    precifica opções fora do dinheiro (OTM) — tanto calls quanto puts — com volatilidade implícita
+    mais alta que as opções no dinheiro (ATM). Em ações, é comum um skew mais acentuado do lado das
+    puts (proteção contra quedas custa mais caro que a simetria sugeriria).</p>
+    <p>A curva mais estreitada perto do ATM (onde há mais liquidez e mais pontos de mercado) tende a
+    ser mais confiável que as pontas, onde poucos negócios sustentam a IV — por isso pontos de baixa
+    confiança são descartados antes do ajuste.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+var elT = document.getElementById('cv-ticker'), elTL = document.getElementById('cv-ticker-livre');
+var elExp = document.getElementById('cv-exp');
+var elErr = document.getElementById('cv-error'), elLoad = document.getElementById('cv-loading');
+var elHint = document.getElementById('cv-hint'), elRes = document.getElementById('cv-res');
+
+function fmtNum(v, dec) {
+    dec = dec == null ? 2 : dec;
+    return Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+function fmtBRL(v) { return v == null ? '—' : 'R$ ' + fmtNum(v); }
+function dataBR(iso) {
+    var p = (iso || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '');
+}
+function showErr(m) { elErr.textContent = m; elErr.style.display = 'block'; }
+function clearErr() { elErr.style.display = 'none'; }
+
+function tickerAtual() {
+    if (elT.value === '__outro__') return (elTL.value || '').trim().toUpperCase();
+    return (elT.value || '').trim().toUpperCase();
+}
+elT.addEventListener('change', function () {
+    var livre = elT.value === '__outro__';
+    elTL.style.display = livre ? '' : 'none';
+    if (livre) { elTL.focus(); return; }
+    carregarVencimentos();
+});
+elTL.addEventListener('change', carregarVencimentos);
+elTL.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); carregarVencimentos(); } });
+
+function carregarVencimentos() {
+    var t = tickerAtual();
+    if (!t) return;
+    elExp.innerHTML = '<option value="">— carregando —</option>';
+    clearErr();
+    fetch('/api/curva-volatilidade/vencimentos/' + encodeURIComponent(t))
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            if (!res.ok || res.j.error) {
+                elExp.innerHTML = '<option value="">—</option>';
+                showErr(res.j.error || 'Erro ao buscar vencimentos.');
+                return;
+            }
+            var exps = res.j.expirations || [];
+            elExp.innerHTML = exps.map(function (e) {
+                return '<option value="' + e + '">' + dataBR(e) + '</option>';
+            }).join('');
+        })
+        .catch(function (e) { showErr('Falha de rede: ' + e); });
+}
+carregarVencimentos();
+
+document.getElementById('cv-buscar').addEventListener('click', buscar);
+
+var CURVA = [], SPOT = 0;
+
+function buscar() {
+    var t = tickerAtual(), exp = elExp.value;
+    if (!t || !exp) { showErr('Escolha o ativo e o vencimento.'); return; }
+    clearErr();
+    elHint.style.display = 'none';
+    elRes.style.display = 'none';
+    elLoad.style.display = 'block';
+    fetch('/api/curva-volatilidade/' + encodeURIComponent(t) + '?exp=' + encodeURIComponent(exp))
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            elLoad.style.display = 'none';
+            if (!res.ok || res.j.error) { showErr(res.j.error || 'Erro ao gerar a curva.'); return; }
+            var d = res.j;
+            elRes.style.display = 'block';
+            CURVA = d.curva || [];
+            SPOT = d.spot || 0;
+            document.getElementById('cv-info').textContent =
+                t + ' · spot ' + fmtBRL(SPOT) + ' · vencimento ' + dataBR(exp) +
+                ' · ' + d.n_pontos_iv + '/' + d.n_strikes_total + ' strikes com IV válida' +
+                (d.date ? ' · dados de ' + dataBR(d.date) : '');
+            preencheTabela(d.linhas || []);
+            desenha();
+        })
+        .catch(function (e) { elLoad.style.display = 'none'; showErr('Falha de rede: ' + e); });
+}
+
+function preencheTabela(linhas) {
+    var body = document.getElementById('cv-tab-body');
+    body.innerHTML = linhas.map(function (l) {
+        var c = l.call || {}, p = l.put || {};
+        function teoCell(entry) {
+            if (entry.preco_teorico == null) return '<td class="cv-teo">—</td>';
+            var fora = entry.last != null && Math.abs(entry.preco_teorico - entry.last) > Math.max(0.05, entry.last * 0.25);
+            return '<td class="cv-teo' + (fora ? ' fora' : '') + '">' + fmtBRL(entry.preco_teorico) + '</td>';
+        }
+        return '<tr>'
+            + '<td class="sym">' + (c.symbol || '—') + '</td>'
+            + '<td>' + fmtBRL(c.last) + '</td>'
+            + teoCell(c)
+            + '<td class="strike-col">' + fmtBRL(l.strike) + '</td>'
+            + teoCell(p)
+            + '<td>' + fmtBRL(p.last) + '</td>'
+            + '<td class="sym">' + (p.symbol || '—') + '</td>'
+            + '</tr>';
+    }).join('');
+}
+
+// ── Gráfico da curva (canvas) ──
+var canvas = document.getElementById('cv-canvas');
+var ctx = canvas.getContext('2d');
+var PAD = { top: 20, right: 20, bottom: 34, left: 60 };
+
+function desenha() {
+    if (!CURVA.length) return;
+    var wrap = canvas.parentElement;
+    var W = wrap.clientWidth || 900, H = 300;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    var xs = CURVA.map(function (p) { return p.strike; });
+    var ys = CURVA.map(function (p) { return p.iv; });
+    var xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs);
+    var yMin = Math.min.apply(null, ys), yMax = Math.max.apply(null, ys);
+    var ySpan = (yMax - yMin) || 0.05;
+    yMin -= ySpan * 0.1; yMax += ySpan * 0.1;
+    var cW = W - PAD.left - PAD.right, cH = H - PAD.top - PAD.bottom;
+    function xPx(x) { return PAD.left + (x - xMin) / (xMax - xMin) * cW; }
+    function yPx(y) { return PAD.top + (1 - (y - yMin) / (yMax - yMin)) * cH; }
+
+    ctx.strokeStyle = 'rgba(148,163,184,.12)'; ctx.lineWidth = 1;
+    for (var gy = 0; gy <= 4; gy++) {
+        var yv = yMin + gy * (yMax - yMin) / 4;
+        var py = yPx(yv);
+        ctx.beginPath(); ctx.moveTo(PAD.left, py); ctx.lineTo(W - PAD.right, py); ctx.stroke();
+        ctx.fillStyle = 'rgba(148,163,184,.85)'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+        ctx.fillText(fmtNum(yv * 100, 0) + '%', PAD.left - 6, py + 3);
+    }
+    ctx.fillStyle = 'rgba(148,163,184,.85)'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+    for (var gx = 0; gx <= 6; gx++) {
+        var xv = xMin + gx * (xMax - xMin) / 6;
+        ctx.fillText(fmtBRL(xv), xPx(xv), H - PAD.bottom + 16);
+    }
+
+    ctx.beginPath(); ctx.strokeStyle = '#f87171'; ctx.lineWidth = 2;
+    CURVA.forEach(function (p, i) {
+        var x = xPx(p.strike), y = yPx(p.iv);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    if (SPOT >= xMin && SPOT <= xMax) {
+        var xs2 = xPx(SPOT);
+        ctx.strokeStyle = 'rgba(96,165,250,.6)'; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(xs2, PAD.top); ctx.lineTo(xs2, H - PAD.bottom); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(96,165,250,.9)'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText('spot', xs2, PAD.top - 6);
+    }
+
+    ctx.strokeStyle = 'rgba(148,163,184,.25)'; ctx.strokeRect(PAD.left, PAD.top, cW, cH);
+}
+window.addEventListener('resize', function () { if (CURVA.length) desenha(); });
+
+// ── Abas de explicação ──
+document.querySelectorAll('.cv-aba').forEach(function (aba) {
+    aba.addEventListener('click', function () {
+        document.querySelectorAll('.cv-aba').forEach(function (a) { a.classList.remove('on'); });
+        document.querySelectorAll('.cv-painel').forEach(function (p) { p.classList.remove('on'); });
+        aba.classList.add('on');
+        document.getElementById('cvp-' + aba.dataset.p).classList.add('on');
+    });
+});
+})();
+</script>
+{% endblock %}

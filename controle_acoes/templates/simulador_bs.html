@@ -1,0 +1,258 @@
+{% extends "base.html" %}
+{% block title %}Simulador BS{% endblock %}
+{% block extra_scripts %}
+<style>
+.sbs-modo{display:flex;gap:.4rem;margin:.6rem 0 .9rem;}
+.sbs-modo button{flex:1;padding:.5rem;border-radius:6px;border:1px solid var(--border-color);
+  background:var(--hover-bg);color:var(--text-secondary);cursor:pointer;font-size:.85rem;font-weight:600;}
+.sbs-modo button.on{background:#7c3aed;border-color:#7c3aed;color:#fff;}
+
+.sbs-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.9rem;
+  background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);border-radius:8px;
+  padding:.9rem 1rem;margin-bottom:.9rem;}
+.sbs-campo{display:flex;flex-direction:column;gap:.3rem;}
+.sbs-campo label{font-size:.75rem;color:var(--text-secondary);font-weight:600;
+  text-transform:uppercase;letter-spacing:.03em;}
+.sbs-campo select,.sbs-campo input{background:var(--card-bg);color:var(--text-primary);
+  border:1px solid var(--border-color);border-radius:5px;padding:.35rem .5rem;font-size:.85rem;}
+.sbs-campo input[type=text]{text-transform:uppercase;}
+
+#sbs-ticker-block{display:none;}
+#sbs-ticker-status{font-size:.78rem;color:var(--text-secondary);margin-top:.3rem;}
+
+.sbs-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:.6rem;margin-top:.9rem;}
+.sbs-met{background:var(--hover-bg);border:1px solid var(--border-color);border-radius:8px;
+  padding:.6rem .8rem;text-align:center;}
+.sbs-met .lbl{font-size:.7rem;color:var(--text-secondary);display:block;}
+.sbs-met .val{font-size:1.15rem;font-weight:700;}
+#sbs-error{display:none;color:#f87171;padding:1rem;background:rgba(239,68,68,.08);
+  border:1px solid rgba(239,68,68,.25);border-radius:6px;margin:.6rem 0;}
+
+.sbs-abas{display:flex;gap:.4rem;flex-wrap:wrap;border-bottom:1px solid var(--border-color);
+  margin-bottom:.8rem;}
+.sbs-aba{padding:.4rem .8rem;font-size:.85rem;cursor:pointer;color:var(--text-secondary);
+  border-bottom:2px solid transparent;}
+.sbs-aba.on{color:var(--text-primary);border-bottom-color:#7c3aed;font-weight:600;}
+.sbs-painel{display:none;font-size:.86rem;line-height:1.6;color:var(--text-secondary);}
+.sbs-painel.on{display:block;}
+.sbs-painel strong{color:var(--text-primary);}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
+    <h2 style="margin:0;">🧮 Simulador BS</h2>
+    <span style="font-size:.82rem;color:var(--text-secondary);">Calculadora Black-Scholes — preço e gregas</span>
+  </div>
+
+  {% if not tem_token %}
+  <div style="margin:.7rem 0;padding:.6rem .9rem;background:rgba(234,179,8,.1);
+              border-left:3px solid #eab308;border-radius:4px;font-size:.83rem;color:var(--text-secondary);">
+    ⚠️ Sem chave BRAPI cadastrada: o botão "Buscar dados" só funciona para <strong>PETR4</strong> (sandbox).
+    Para os demais ativos, cadastre sua chave do plano Pro em
+    <a href="{{ url_for('config') }}">Configuração</a>. O cálculo manual funciona sem token.
+  </div>
+  {% endif %}
+
+  <div class="sbs-modo">
+    <button type="button" id="sbs-modo-manual" class="on">✏️ Ativo + Strike + Vencimento</button>
+    <button type="button" id="sbs-modo-ticker">🔎 Ticker da opção</button>
+  </div>
+
+  <div id="sbs-ticker-block">
+    <div class="sbs-form" style="grid-template-columns:1fr auto;">
+      <div class="sbs-campo">
+        <label>Ticker da opção</label>
+        <input type="text" id="sbs-ticker" placeholder="Ex.: PETRJ500" maxlength="12">
+      </div>
+      <div class="sbs-campo">
+        <label>&nbsp;</label>
+        <button type="button" id="sbs-buscar-ticker" class="btn btn-primary">Buscar dados</button>
+      </div>
+    </div>
+    <div id="sbs-ticker-status"></div>
+  </div>
+
+  <div class="sbs-form">
+    <div class="sbs-campo">
+      <label>Ativo</label>
+      <select id="sbs-ativo-sel">
+        {% for t in sugestoes %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        <option value="__outro__" selected>— outro / manual —</option>
+      </select>
+      <input type="text" id="sbs-ativo" placeholder="Ex.: PETR4" maxlength="10">
+    </div>
+    <div class="sbs-campo">
+      <label title="Preço à vista do ativo">Spot (S)</label>
+      <input type="number" id="sbs-spot" step="0.01" placeholder="Ex.: 49,00">
+    </div>
+    <div class="sbs-campo">
+      <label title="Preço de exercício">Strike (K)</label>
+      <input type="number" id="sbs-strike" step="0.01" placeholder="Ex.: 48,86">
+    </div>
+    <div class="sbs-campo">
+      <label>Vencimento</label>
+      <input type="date" id="sbs-exp">
+    </div>
+    <div class="sbs-campo">
+      <label title="Volatilidade implícita anualizada, em %">IV (σ) %</label>
+      <input type="number" id="sbs-iv" step="0.01" placeholder="Ex.: 39,74">
+    </div>
+    <div class="sbs-campo">
+      <label>Tipo</label>
+      <select id="sbs-side">
+        <option value="CALL">CALL</option>
+        <option value="PUT">PUT</option>
+      </select>
+    </div>
+    <div class="sbs-campo">
+      <label title="Taxa livre de risco anualizada, em %. Deixe em branco para usar a Selic cadastrada.">Taxa (r) % — opcional</label>
+      <input type="number" id="sbs-r" step="0.01" placeholder="Selic: {{ '%.2f'|format(selic) }}%">
+    </div>
+    <div class="sbs-campo">
+      <label>&nbsp;</label>
+      <button type="button" id="sbs-calcular" class="btn btn-primary">Calcular</button>
+    </div>
+  </div>
+
+  <div id="sbs-error"></div>
+
+  <div class="sbs-metrics">
+    <div class="sbs-met"><span class="lbl">Preço teórico</span><span class="val" id="m-preco">—</span></div>
+    <div class="sbs-met"><span class="lbl">Valor intrínseco</span><span class="val" id="m-intrinsico">—</span></div>
+    <div class="sbs-met"><span class="lbl">Valor extrínseco</span><span class="val" id="m-extrinsico">—</span></div>
+    <div class="sbs-met"><span class="lbl">Delta</span><span class="val" id="m-delta">—</span></div>
+    <div class="sbs-met"><span class="lbl">Gamma</span><span class="val" id="m-gamma">—</span></div>
+    <div class="sbs-met"><span class="lbl" title="Perda de valor por dia">Theta (dia)</span><span class="val" id="m-theta">—</span></div>
+    <div class="sbs-met"><span class="lbl" title="Sensibilidade por 1 ponto percentual de IV">Vega</span><span class="val" id="m-vega">—</span></div>
+    <div class="sbs-met"><span class="lbl">Rho</span><span class="val" id="m-rho">—</span></div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1.2rem;">
+  <h3 style="margin-top:0;">Sobre o Simulador BS</h3>
+  <div class="sbs-abas">
+    <span class="sbs-aba on" data-p="conceito">Conceito</span>
+    <span class="sbs-aba" data-p="gregas">Gregas</span>
+  </div>
+  <div class="sbs-painel on" id="sbsp-conceito">
+    <p>Calcula o preço teórico de uma opção europeia pelo modelo de <strong>Black-Scholes</strong> e
+    as gregas (Delta, Gamma, Theta, Vega, Rho) a partir de 5 parâmetros: preço do ativo (Spot),
+    preço de exercício (Strike), tempo até o vencimento, volatilidade implícita e taxa de juros
+    livre de risco.</p>
+    <p>Use o modo <strong>Ativo + Strike + Vencimento</strong> para preencher manualmente, ou
+    <strong>Ticker da opção</strong> para buscar automaticamente os dados de mercado (spot, IV e
+    prêmio atual) de uma opção já negociada na B3, via BRAPI.</p>
+  </div>
+  <div class="sbs-painel" id="sbsp-gregas">
+    <p><strong>Delta:</strong> variação do preço da opção para cada R$1 de variação do ativo.</p>
+    <p><strong>Gamma:</strong> variação do Delta para cada R$1 de variação do ativo — mede a
+    "aceleração" da exposição.</p>
+    <p><strong>Theta:</strong> perda de valor da opção por dia, mantido tudo o mais constante
+    (decaimento temporal).</p>
+    <p><strong>Vega:</strong> variação do preço da opção para cada 1 ponto percentual de mudança
+    na volatilidade implícita.</p>
+    <p><strong>Rho:</strong> variação do preço da opção para cada 1 ponto percentual de mudança
+    na taxa de juros.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+function fmtNum(v, dec) {
+    if (v == null) return '—';
+    dec = dec == null ? 4 : dec;
+    return Number(v).toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+function fmtBRL(v) { return v == null ? '—' : 'R$ ' + fmtNum(v, 2); }
+function showErr(m) { var el = document.getElementById('sbs-error'); el.textContent = m; el.style.display = 'block'; }
+function clearErr() { document.getElementById('sbs-error').style.display = 'none'; }
+
+// ── Alternância de modo ──
+var btnManual = document.getElementById('sbs-modo-manual');
+var btnTicker = document.getElementById('sbs-modo-ticker');
+var blocoTicker = document.getElementById('sbs-ticker-block');
+btnManual.addEventListener('click', function () {
+    btnManual.classList.add('on'); btnTicker.classList.remove('on');
+    blocoTicker.style.display = 'none';
+});
+btnTicker.addEventListener('click', function () {
+    btnTicker.classList.add('on'); btnManual.classList.remove('on');
+    blocoTicker.style.display = 'block';
+});
+
+// ── Campo Ativo: select + campo livre, como nas outras telas ──
+var elSel = document.getElementById('sbs-ativo-sel'), elAtivo = document.getElementById('sbs-ativo');
+elSel.addEventListener('change', function () {
+    if (elSel.value === '__outro__') { elAtivo.value = ''; elAtivo.focus(); return; }
+    elAtivo.value = elSel.value;
+});
+
+// ── Buscar por ticker da opção ──
+document.getElementById('sbs-buscar-ticker').addEventListener('click', function () {
+    var sym = (document.getElementById('sbs-ticker').value || '').trim().toUpperCase();
+    var status = document.getElementById('sbs-ticker-status');
+    if (!sym) { status.textContent = 'Digite o ticker da opção.'; return; }
+    status.textContent = '⏳ procurando…';
+    fetch('/api/simulador-bs/resolver-ticker/' + encodeURIComponent(sym))
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            if (!res.ok || res.j.error) { status.textContent = '⚠️ ' + (res.j.error || 'não encontrado'); return; }
+            var d = res.j;
+            status.textContent = '✓ ' + d.underlying + ' · encontrado';
+            elAtivo.value = d.underlying;
+            elSel.value = Array.prototype.some.call(elSel.options, function (o) { return o.value === d.underlying; })
+                ? d.underlying : '__outro__';
+            document.getElementById('sbs-spot').value = d.spot != null ? d.spot : '';
+            document.getElementById('sbs-strike').value = d.strike != null ? d.strike : '';
+            document.getElementById('sbs-exp').value = d.exp || '';
+            document.getElementById('sbs-iv').value = d.iv != null ? (d.iv * 100).toFixed(2) : '';
+            document.getElementById('sbs-side').value = d.side || 'CALL';
+        })
+        .catch(function (e) { status.textContent = '⚠️ falha de rede: ' + e; });
+});
+
+// ── Calcular ──
+document.getElementById('sbs-calcular').addEventListener('click', function () {
+    clearErr();
+    var body = {
+        spot: document.getElementById('sbs-spot').value,
+        strike: document.getElementById('sbs-strike').value,
+        exp: document.getElementById('sbs-exp').value,
+        iv: document.getElementById('sbs-iv').value,
+        side: document.getElementById('sbs-side').value,
+        r: document.getElementById('sbs-r').value,
+    };
+    fetch('/api/simulador-bs/calcular', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || res.j.error) { showErr(res.j.error || 'Erro ao calcular.'); return; }
+        var d = res.j;
+        document.getElementById('m-preco').textContent = fmtBRL(d.preco);
+        document.getElementById('m-intrinsico').textContent = fmtBRL(d.intrinsico);
+        document.getElementById('m-extrinsico').textContent = fmtBRL(d.extrinsico);
+        document.getElementById('m-delta').textContent = fmtNum(d.delta, 4);
+        document.getElementById('m-gamma').textContent = fmtNum(d.gamma, 4);
+        document.getElementById('m-theta').textContent = d.theta != null ? fmtBRL(d.theta) : '—';
+        document.getElementById('m-vega').textContent = d.vega != null ? fmtBRL(d.vega) : '—';
+        document.getElementById('m-rho').textContent = d.rho != null ? fmtBRL(d.rho) : '—';
+      }).catch(function (e) { showErr('Falha de rede: ' + e); });
+});
+
+// ── Abas de explicação ──
+document.querySelectorAll('.sbs-aba').forEach(function (aba) {
+    aba.addEventListener('click', function () {
+        document.querySelectorAll('.sbs-aba').forEach(function (a) { a.classList.remove('on'); });
+        document.querySelectorAll('.sbs-painel').forEach(function (p) { p.classList.remove('on'); });
+        aba.classList.add('on');
+        document.getElementById('sbsp-' + aba.dataset.p).classList.add('on');
+    });
+});
+})();
+</script>
+{% endblock %}

@@ -8594,6 +8594,292 @@ def api_bgt_bands(ticker):
 
 
 # ══════════════════════════════════════════════════════════════════
+# CURVA DE VOLATILIDADE — smile de IV por strike, com spline cúbico
+# ══════════════════════════════════════════════════════════════════
+#
+# A BRAPI retorna impliedVolatility nula pra boa parte dos strikes mais
+# distantes do dinheiro (~30-50% conforme o ativo, "iv_not_converged" —
+# o mesmo problema já mapeado no BGT Bands). Em vez de descartar esses
+# pontos, a curva usa spline cúbico monotônico sobre os strikes com IV
+# válida para estimar a IV nos demais, e o preço teórico (Black-Scholes)
+# de CADA opção é calculado com a IV interpolada naquele strike — não
+# com a IV própria da opção (que pode ser nula) nem com uma vol única
+# para a cadeia inteira, que ignoraria o skew.
+
+def _spline_monotono(xs, ys):
+    """Interpolação PCHIP (monótona por trechos) — evita os overshoots
+    de um spline cúbico comum, que criaria vales/picos artificiais na
+    curva de IV entre dois pontos de mercado (ruim para um "smile" que
+    é fisicamente suave e não deveria oscilar entre strikes vizinhos).
+
+    Retorna uma função f(x) -> y; xs precisa estar ordenado.
+    """
+    n = len(xs)
+    if n == 0:
+        return lambda x: None
+    if n == 1:
+        return lambda x: ys[0]
+    h = [xs[i + 1] - xs[i] for i in range(n - 1)]
+    delta = [(ys[i + 1] - ys[i]) / h[i] for i in range(n - 1)]
+    d = [0.0] * n
+    d[0] = delta[0]
+    d[-1] = delta[-1]
+    for i in range(1, n - 1):
+        if delta[i - 1] == 0 or delta[i] == 0 or (delta[i - 1] > 0) != (delta[i] > 0):
+            d[i] = 0.0
+        else:
+            w1 = 2 * h[i] + h[i - 1]
+            w2 = h[i] + 2 * h[i - 1]
+            d[i] = (w1 + w2) / (w1 / delta[i - 1] + w2 / delta[i])
+
+    def f(x):
+        if x <= xs[0]:
+            return ys[0]
+        if x >= xs[-1]:
+            return ys[-1]
+        i = 0
+        while i < n - 2 and x > xs[i + 1]:
+            i += 1
+        t = (x - xs[i]) / h[i]
+        h00 = 2 * t**3 - 3 * t**2 + 1
+        h10 = t**3 - 2 * t**2 + t
+        h01 = -2 * t**3 + 3 * t**2
+        h11 = t**3 - t**2
+        return h00 * ys[i] + h10 * h[i] * d[i] + h01 * ys[i + 1] + h11 * h[i] * d[i + 1]
+    return f
+
+
+@app.route('/curva-volatilidade')
+@login_required
+def curva_volatilidade():
+    """Página Curva de Volatilidade: smile de IV por strike de um vencimento."""
+    ativos = sorted({(a.ticker or '').strip().upper()
+                     for a in Asset.query.filter_by(user_id=current_user.id).all()
+                     if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
+    rk = sorted({(r.ticker or '').strip().upper()
+                 for r in _ranking_liq_filter(
+                     RankingVol.query.filter_by(user_id=current_user.id)).all()
+                 if r.ticker})
+    return render_template('curva_volatilidade.html',
+                           sugestoes=sorted(set(ativos) | set(rk)),
+                           tem_token=bool(_brapi_opt_token(current_user.id)))
+
+
+@app.route('/api/curva-volatilidade/vencimentos/<ticker>')
+@login_required
+def api_curva_vol_vencimentos(ticker):
+    t = (ticker or '').strip().upper()
+    d, err = _brapi_opt_get('/expirations', {'underlying': t}, current_user.id)
+    if err:
+        return jsonify({'error': err}), 502
+    return jsonify({'expirations': sorted((d or {}).get('expirations') or [])})
+
+
+@app.route('/api/curva-volatilidade/<ticker>')
+@login_required
+def api_curva_volatilidade(ticker):
+    """Curva de IV (smile) por strike + preço teórico BS de cada opção.
+
+    Query: exp = vencimento (YYYY-MM-DD), obrigatório.
+    """
+    t = (ticker or '').strip().upper()
+    exp = (request.args.get('exp') or '').strip()
+    if not t or not exp:
+        return jsonify({'error': 'Informe o ativo e o vencimento.'}), 400
+
+    uid = current_user.id
+    try:
+        r_cont = math.log(1 + _selic() / 100.0)
+    except Exception:
+        r_cont = math.log(1.14)
+
+    d, err = _brapi_opt_get('/analytics', {'underlying': t, 'expirationDate': exp}, uid, timeout=20)
+    if err:
+        return jsonify({'error': err}), 502
+    opts = (d or {}).get('analytics') or []
+    if not opts:
+        return jsonify({'error': f'Sem opções para {t} no vencimento {exp}.'}), 404
+
+    spot = next((float(o['underlyingPrice']) for o in opts if o.get('underlyingPrice')), 0)
+    if not spot:
+        return jsonify({'error': 'Sem preço do ativo nesse snapshot.'}), 502
+    T = next((float(o['timeToExpirationYears']) for o in opts if o.get('timeToExpirationYears')), 0)
+    data_ref = next((o.get('date') for o in opts if o.get('date')), None)
+
+    # Curva ajustada com os pontos de IV válida de calls + puts do mesmo
+    # strike (mais pontos = spline mais estável) — put-call parity garante
+    # que a IV "de mercado" de um strike é a mesma dos dois lados em teoria;
+    # na prática pequenas diferenças existem, então usa a média quando os
+    # dois convergem.
+    por_strike = {}
+    for o in opts:
+        iv = o.get('impliedVolatility')
+        k = o.get('strike')
+        conf = (o.get('confidence') or '').lower()
+        preco = o.get('optionPrice') or 0
+        # Descarta 'low'/'none' (confiança baixa) e prêmios no tick mínimo
+        # (R$0,01-0,02, deep OTM praticamente sem liquidez): a IV implícita
+        # de um prêmio residual é ruído — visto na prática com uma PUT a
+        # R$0,01 "convergindo" para IV=128% isolada, puxando a ponta da
+        # curva pra um valor sem sentido de mercado. Fora do range 5%-150%
+        # também é descartado por segurança, mesmo com confiança alta.
+        if (iv is None or not k or conf in ('low', 'none', '')
+                or preco < 0.03 or not (0.05 <= iv <= 1.5)):
+            continue
+        por_strike.setdefault(float(k), []).append(float(iv))
+    pontos = sorted((k, sum(vs) / len(vs)) for k, vs in por_strike.items())
+    if len(pontos) < 3:
+        return jsonify({'error': 'Poucos pontos de IV válida para montar a curva.'}), 502
+    xs = [p[0] for p in pontos]
+    ys = [p[1] for p in pontos]
+    curva_fn = _spline_monotono(xs, ys)
+
+    # Curva de exibição: um ponto a cada strike real + densificação entre
+    # eles para o gráfico ficar suave (mesmo com poucos strikes cotados).
+    curva = []
+    lo, hi = xs[0], xs[-1]
+    n_pts = 80
+    for i in range(n_pts + 1):
+        k = lo + (hi - lo) * i / n_pts
+        iv = curva_fn(k)
+        if iv is not None:
+            curva.append({'strike': round(k, 4), 'iv': round(iv, 6)})
+
+    # Linhas da tabela: calls à esquerda, puts à direita, pareadas por
+    # strike — preço teórico de CADA opção usa a IV interpolada na curva
+    # NAQUELE strike (não a IV própria, que pode ser nula).
+    linhas_por_strike = {}
+    for o in opts:
+        k = o.get('strike')
+        if not k:
+            continue
+        k = float(k)
+        side = (o.get('side') or '').lower()
+        iv_curva = curva_fn(k)
+        preco_teorico = _bs_price_opt(spot, k, T, r_cont, iv_curva,
+                                      'CALL' if side == 'call' else 'PUT') if (T > 0 and iv_curva) else None
+        entry = {
+            # A BRAPI não traz bid/ask nesse endpoint — só o último preço
+            # (optionPrice, priceSource 'close'/'trade' conforme o horário).
+            'symbol': o.get('symbol'), 'last': o.get('optionPrice'),
+            'preco_teorico': round(preco_teorico, 2) if preco_teorico is not None else None,
+        }
+        linhas_por_strike.setdefault(k, {'strike': k, 'call': None, 'put': None})
+        linhas_por_strike[k]['call' if side == 'call' else 'put'] = entry
+
+    linhas = [linhas_por_strike[k] for k in sorted(linhas_por_strike.keys())]
+
+    return jsonify({
+        'ticker': t, 'exp': exp, 'spot': spot, 'date': data_ref,
+        'curva': curva, 'linhas': linhas,
+        'n_pontos_iv': len(pontos), 'n_strikes_total': len(linhas_por_strike),
+    })
+
+
+# ══════════════════════════════════════════════════════════════════
+# SIMULADOR BS — calculadora Black-Scholes (preço + gregas)
+# ══════════════════════════════════════════════════════════════════
+
+@app.route('/simulador-bs')
+@login_required
+def simulador_bs():
+    """Página Simulador BS: calculadora de preço/gregas por Black-Scholes."""
+    ativos = sorted({(a.ticker or '').strip().upper()
+                     for a in Asset.query.filter_by(user_id=current_user.id).all()
+                     if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
+    rk = sorted({(r.ticker or '').strip().upper()
+                 for r in _ranking_liq_filter(
+                     RankingVol.query.filter_by(user_id=current_user.id)).all()
+                 if r.ticker})
+    return render_template('simulador_bs.html',
+                           sugestoes=sorted(set(ativos) | set(rk)),
+                           selic=_selic(),
+                           tem_token=bool(_brapi_opt_token(current_user.id)))
+
+
+@app.route('/api/simulador-bs/resolver-ticker/<symbol>')
+@login_required
+def api_simulador_bs_resolver_ticker(symbol):
+    """Dado um ticker de opção (ex.: PETRJ500), tenta achar o underlying,
+    strike, vencimento e side percorrendo os vencimentos do ativo cuja
+    raiz de 4 letras bate com o prefixo do ticker.
+
+    A BRAPI não tem lookup reverso por symbol de opção — só dá pra achar
+    varrendo /analytics dos vencimentos de um underlying conhecido. Sem
+    um mapeamento oficial raiz→ticker(s) do site, tenta as combinações
+    mais comuns da B3 (raiz + 3/4) e para na primeira que encontrar o
+    symbol pedido.
+    """
+    sym = (symbol or '').strip().upper()
+    if len(sym) < 5:
+        return jsonify({'error': 'Ticker de opção inválido.'}), 400
+    raiz = sym[:4]
+    uid = current_user.id
+
+    candidatos = [raiz + '3', raiz + '4', raiz + '11', raiz + '5', raiz + '6']
+    for underlying in candidatos:
+        ex_data, ex_err = _brapi_opt_get('/expirations', {'underlying': underlying}, uid, timeout=10)
+        if ex_err or not ex_data:
+            continue
+        for exp in sorted((ex_data.get('expirations') or [])):
+            d, err = _brapi_opt_get('/analytics', {'underlying': underlying, 'expirationDate': exp}, uid, timeout=15)
+            if err or not d:
+                continue
+            for o in (d.get('analytics') or []):
+                if (o.get('symbol') or '').upper() == sym:
+                    return jsonify({
+                        'underlying': underlying, 'strike': o.get('strike'),
+                        'exp': exp, 'side': (o.get('side') or '').upper(),
+                        'spot': o.get('underlyingPrice'), 'iv': o.get('impliedVolatility'),
+                        'price': o.get('optionPrice'),
+                    })
+    return jsonify({'error': f'Não encontrei {sym} nos vencimentos abertos de {", ".join(candidatos)}. '
+                             'Tente informar o ativo manualmente.'}), 404
+
+
+@app.route('/api/simulador-bs/calcular', methods=['POST'])
+@login_required
+def api_simulador_bs_calcular():
+    """Calcula preço + gregas Black-Scholes a partir de S, K, T (ou data de
+    vencimento), r (Selic por padrão) e sigma — entrada 100% manual, sem
+    depender da BRAPI (o botão "resolver ticker" só preenche os campos)."""
+    body = request.get_json(silent=True) or {}
+    try:
+        S = float(body.get('spot'))
+        K = float(body.get('strike'))
+        sigma = float(body.get('iv')) / 100.0
+        side = str(body.get('side') or 'CALL').upper()
+        r_pct = body.get('r')
+        r = (float(r_pct) if r_pct not in (None, '') else _selic()) / 100.0
+        r_cont = math.log(1 + r)
+
+        if body.get('exp'):
+            from datetime import date as _date
+            dc = (_date.fromisoformat(body['exp']) - _date.today()).days
+            T = max(dc, 0) / 365.25
+        else:
+            T = float(body.get('T_years') or 0)
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Preencha spot, strike, IV e vencimento/prazo corretamente.'}), 400
+
+    if S <= 0 or K <= 0 or sigma <= 0:
+        return jsonify({'error': 'Spot, strike e IV devem ser maiores que zero.'}), 400
+
+    preco = _bs_price_opt(S, K, T, r_cont, sigma, side)
+    gregas = _bs_greeks(S, K, T, r_cont, sigma, side) if T > 0 else {}
+    intrinsico = max(0.0, (S - K) if side == 'CALL' else (K - S))
+    extrinsico = (preco - intrinsico) if preco is not None else None
+
+    return jsonify({
+        'preco': preco, 'intrinsico': round(intrinsico, 4),
+        'extrinsico': round(extrinsico, 4) if extrinsico is not None else None,
+        'delta': gregas.get('delta'), 'gamma': gregas.get('gamma'),
+        'theta': gregas.get('theta'), 'vega': gregas.get('vega'), 'rho': gregas.get('rho'),
+        'T_years': round(T, 6), 'r_usado': round(r * 100, 4),
+    })
+
+
+# ══════════════════════════════════════════════════════════════════
 # TRADER FUTUROS — posições em aberto de opções de índice e dólar
 # ══════════════════════════════════════════════════════════════════
 #

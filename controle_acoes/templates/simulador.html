@@ -296,6 +296,7 @@ var SELIC_RATE = {{ selic }};
 var CADEIA = null;      // resposta de /api/cadeia
 var SIM_ID = null;      // id da simulação aberta (null = nova)
 var SIM_NOTES = '';     // anotações da simulação aberta — não fazem parte da estrutura
+var SIM_RESTAURANDO = false;   // true enquanto simAplicaPendencias reaplica uma simulação salva
 
 function simAtualizaBotaoObs() {
     document.getElementById('sim-obs-btn').classList.toggle('tem-obs', !!SIM_NOTES.trim());
@@ -636,8 +637,10 @@ window.simVencMudou = function (sel) {
     strikeSel.disabled = rows.length === 0;
     // "Vencimento único" marcado: escolher o vencimento nesta linha propaga
     // para as demais pernas de opção da planilha, poupando o usuário de
-    // repetir a escolha em cada uma.
-    if (document.getElementById('sim-venc-unico').checked) {
+    // repetir a escolha em cada uma. Não propaga durante a restauração de
+    // uma simulação salva (simAplicaPendencias) — cada perna já traz seu
+    // próprio vencimento gravado, inclusive quando é diferente das demais.
+    if (!SIM_RESTAURANDO && document.getElementById('sim-venc-unico').checked) {
         document.querySelectorAll('#sim-body tr.leg-row').forEach(function (outro) {
             var outroSel = outro.querySelector('.leg-exp-sel');
             if (!outroSel || outro === tr || outroSel.value === exp) return;
@@ -1174,6 +1177,20 @@ window.addEventListener('resize', function () { desenha(lerPernas()); });
 function simSalvarImpl(nome, asNew) {
     var legs = lerPernas();
     if (!legs.length) { alert('Adicione ao menos uma perna.'); return; }
+    // Perna de opção sem vencimento/strike escolhido (select ainda em
+    // "selecione..." ou aguardando a cadeia terminar de carregar) não pode
+    // ser salva como está — gravaria exp/strike vazios e destruiria a
+    // estrutura já montada. Bloqueia e avisa em vez de salvar dado zerado.
+    var pendente = legs.some(function (l) {
+        if (l.type === 'STOCK') return false;
+        if (l._tr && (l._tr.dataset.pendExp || l._tr.dataset.pendStrike)) return true;
+        return !l.exp || !l.strike;
+    });
+    if (pendente) {
+        alert('⚠️ Há uma perna sem vencimento/strike selecionado (ou aguardando a cadeia carregar).\n'
+            + 'Aguarde a cotação carregar e escolha vencimento/strike em todas as pernas antes de salvar.');
+        return;
+    }
     var body = {
         id: asNew ? null : SIM_ID,
         name: nome,
@@ -1327,24 +1344,29 @@ window.simAbrir = function (id) {
 // depois que a cadeia chega — sem sobrescrever o prêmio salvo se a opção
 // não existir mais na cadeia atual (vencimento vencido, por exemplo).
 function simAplicaPendencias() {
-    document.querySelectorAll('#sim-body tr.leg-row').forEach(function (tr) {
-        var expSel = tr.querySelector('.leg-exp-sel');
-        if (!expSel || !tr.dataset.pendExp) return;
-        simPreencheVencimentos(tr);
-        if (!(CADEIA.expirations || []).some(function (e) { return e.exp === tr.dataset.pendExp; })) {
+    SIM_RESTAURANDO = true;
+    try {
+        document.querySelectorAll('#sim-body tr.leg-row').forEach(function (tr) {
+            var expSel = tr.querySelector('.leg-exp-sel');
+            if (!expSel || !tr.dataset.pendExp) return;
+            simPreencheVencimentos(tr);
+            if (!(CADEIA.expirations || []).some(function (e) { return e.exp === tr.dataset.pendExp; })) {
+                delete tr.dataset.pendExp; delete tr.dataset.pendStrike;
+                return;
+            }
+            expSel.value = tr.dataset.pendExp;
+            simVencMudou(expSel);
+            var strikeSel = tr.querySelector('.leg-strike-sel');
+            var alvo = parseFloat(tr.dataset.pendStrike);
+            var opt = Array.prototype.filter.call(strikeSel.options, function (o) {
+                return Math.abs(parseFloat(o.value) - alvo) < 0.001;
+            })[0];
+            if (opt) { strikeSel.value = opt.value; simAplicaStrike(tr, opt.value); }
             delete tr.dataset.pendExp; delete tr.dataset.pendStrike;
-            return;
-        }
-        expSel.value = tr.dataset.pendExp;
-        simVencMudou(expSel);
-        var strikeSel = tr.querySelector('.leg-strike-sel');
-        var alvo = parseFloat(tr.dataset.pendStrike);
-        var opt = Array.prototype.filter.call(strikeSel.options, function (o) {
-            return Math.abs(parseFloat(o.value) - alvo) < 0.001;
-        })[0];
-        if (opt) { strikeSel.value = opt.value; simAplicaStrike(tr, opt.value); }
-        delete tr.dataset.pendExp; delete tr.dataset.pendStrike;
-    });
+        });
+    } finally {
+        SIM_RESTAURANDO = false;
+    }
 }
 
 window.simNova = function () {

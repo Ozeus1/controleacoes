@@ -8723,7 +8723,19 @@ def api_curva_volatilidade(ticker):
         side = (o.get('side') or '').lower()
         conf = (o.get('confidence') or '').lower()
         preco = o.get('optionPrice') or 0
-        if iv is None or not k or conf in ('low', 'none', '') or preco < 0.03 or not (0.05 <= iv <= 1.5):
+        vega = o.get('vega') or 0
+        # Vega mínimo: em opções deep OTM/ITM com pouco tempo até o
+        # vencimento, o preço fica hipersensível à IV — testado com PETR4 a
+        # 7 dias do vencimento: IV=27% e IV=48% dão o MESMO preço arredon-
+        # dado (R$0,05), então a IV "implícita" de um centavo de diferença
+        # no book é ruído puro, não informação de mercado (confirmado: o
+        # Jumba mostra ~27% onde a BRAPI reportava 48% nesse strike, mesmo
+        # com confidence 'high' e preço/OI aparentemente normais — o
+        # problema não é liquidez, é a matemática da IV ficar mal-condicio-
+        # nada quando vega -> 0). Abaixo de vega=1,0 a IV implícita deixa
+        # de ser confiável mesmo com todos os outros filtros passando.
+        if (iv is None or not k or conf in ('low', 'none', '')
+                or preco < 0.03 or not (0.05 <= iv <= 1.5) or vega < 1.0):
             continue
         k = float(k)
         otm = (side == 'call' and k >= spot) or (side == 'put' and k <= spot)

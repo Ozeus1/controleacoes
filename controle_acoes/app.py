@@ -8346,12 +8346,18 @@ def bgt_bands():
                            tem_token=bool(_brapi_opt_token(current_user.id)))
 
 
-def _bgt_strike_atm(underlying, exp, user_id):
-    """Acha o strike/symbol da CALL mais próxima do spot para um vencimento,
-    no snapshot mais recente disponível (usado só para decidir QUAL opção
-    seguir durante o ciclo — o histórico em si vem de /analytics/history)."""
-    d, err = _brapi_opt_get('/analytics', {'underlying': underlying, 'expirationDate': exp},
-                            user_id, timeout=15)
+def _bgt_strike_atm(underlying, exp, user_id, on_date=None):
+    """Acha o strike/symbol da CALL mais próxima do spot para um vencimento.
+
+    `on_date` (YYYY-MM-DD) faz a escolha usar o preço do ativo NAQUELE dia
+    — o 1º pregão do ciclo, quando ele de fato é o ATM — em vez do snapshot
+    mais recente (hoje), que já teria o preço bem diferente para ciclos
+    antigos e faria o "ATM" escolhido não ser ATM de verdade na época.
+    """
+    params = {'underlying': underlying, 'expirationDate': exp}
+    if on_date:
+        params['date'] = on_date
+    d, err = _brapi_opt_get('/analytics', params, user_id, timeout=15)
     if err or not d:
         return None, (err or 'sem dados')
     opts = [o for o in (d.get('analytics') or []) if (o.get('side') or '').lower() == 'call']
@@ -8370,18 +8376,23 @@ def _bgt_strike_atm(underlying, exp, user_id):
 @app.route('/api/bgt-bands/<ticker>')
 @login_required
 def api_bgt_bands(ticker):
-    """Série diária de BGT Move (banda superior/inferior) dos últimos N meses.
+    """Série diária de BGT Move (banda superior/inferior) dos últimos N dias.
 
-    Query: months = 3 (padrão) a 24.
+    Query: days = 30 (padrão, 1 mês) a 730 (24 meses). Mínimo de 1 mês: com
+    janelas menores o "ciclo vigente" às vezes usa um strike ATM escolhido
+    há muitas semanas, e conforme o preço se afasta dele a BRAPI para de
+    convergir a IV dessa série ("iv_not_converged") — os dias mais recentes
+    ficariam sem dado. Com 1 mês o strike ATM tende a ter sido escolhido
+    recentemente o bastante para não esbarrar nisso.
     """
     t = (ticker or '').strip().upper()
     if not t:
         return jsonify({'error': 'Informe o ativo.'}), 400
     try:
-        months = int(request.args.get('months', 3))
+        days_back = int(request.args.get('days', 30))
     except (TypeError, ValueError):
-        months = 3
-    months = max(1, min(24, months))
+        days_back = 30
+    days_back = max(30, min(24 * 31, days_back))
 
     uid = current_user.id
     try:
@@ -8409,7 +8420,7 @@ def api_bgt_bands(ticker):
     if not mensais:
         return jsonify({'error': f'Sem vencimentos mensais para {t}.'}), 404
 
-    cutoff = (_date.today() - _td(days=months * 31)).isoformat()
+    cutoff = (_date.today() - _td(days=days_back)).isoformat()
     # Vencimentos cujo CICLO (mês anterior até o próprio vencimento) toca a
     # janela pedida — inclui o mensal imediatamente anterior ao cutoff, cujo
     # ciclo começa antes dele mas continua dentro da janela.
@@ -8422,17 +8433,83 @@ def api_bgt_bands(ticker):
     if not ciclos:
         return jsonify({'error': f'Sem vencimentos mensais no período para {t}.'}), 404
 
-    def _um_ciclo(exp):
-        atm, err = _bgt_strike_atm(t, exp, uid)
-        if err or not atm:
-            return exp, None, (err or 'sem strike ATM')
+    # Data de início de cada ciclo = 1º dia útil após o vencimento mensal
+    # anterior — é o preço desse dia (não o de hoje) que decide qual strike
+    # era de fato ATM naquele ciclo. Sem isso, ciclos antigos escolheriam o
+    # "ATM" com base no preço atual, quase sempre bem diferente do preço da
+    # época, e a série toda ficaria descolada do gráfico real (ex.: Jumba).
+    inicio_ciclo = {}
+    for i, exp in enumerate(ciclos):
+        idx_global = idx0 + i
+        if idx_global > 0:
+            anterior = mensais[idx_global - 1]
+            inicio_ciclo[exp] = (_date.fromisoformat(anterior) + _td(days=1)).isoformat()
+        else:
+            inicio_ciclo[exp] = None   # sem vencimento anterior conhecido: usa o snapshot mais recente
+
+    def _hist_de(symbol, exp, strike):
         hist, herr = _brapi_opt_get(
-            '/analytics/history',
-            {'symbol': atm['symbol'], 'expirationDate': exp, 'strike': atm['strike']},
+            '/analytics/history', {'symbol': symbol, 'expirationDate': exp, 'strike': strike},
             uid, timeout=20)
-        if herr or not hist:
-            return exp, None, (herr or 'sem histórico')
-        return exp, (hist.get('option') or {}), None
+        if herr:
+            return {}, herr
+        out = {}
+        for a in ((hist or {}).get('option') or {}).get('analytics') or []:
+            dt = a.get('date')
+            # Só entra se a IV convergiu naquele dia — quando o preço se
+            # afasta muito do strike a BRAPI para de calcular a IV
+            # ("iv_not_converged"), e sem esse filtro o buraco ficaria
+            # mascarado com um dia "presente" mas sem dado utilizável.
+            if dt and a.get('impliedVolatility') is not None:
+                out[dt] = a
+        return out, None
+
+    def _um_ciclo(exp):
+        atm0, err = _bgt_strike_atm(t, exp, uid, on_date=inicio_ciclo.get(exp))
+        if err or not atm0:
+            return exp, None, (err or 'sem strike ATM')
+
+        dias_opt, herr = _hist_de(atm0['symbol'], exp, atm0['strike'])
+        herr_final = herr
+
+        # O strike ATM escolhido no início do ciclo pode ficar muito
+        # ITM/OTM se o preço andar bastante dentro do próprio ciclo — a
+        # BRAPI para de convergir a IV dessa série a partir de certo ponto
+        # ("iv_not_converged"), deixando os dias mais recentes sem dado
+        # utilizável mesmo que a opção ainda exista. Isso só importa para
+        # o CICLO VIGENTE (exp ainda não venceu): nos ciclos já fechados
+        # o vencimento "resolve" a janela inteira, então correr atrás de
+        # novos strikes ali só multiplicaria chamadas à BRAPI sem
+        # melhorar o resultado (~26 ciclos × +6 chamadas em 24 meses
+        # estourava o tempo de resposta).
+        hoje_str = _date.today().isoformat()
+        if exp > hoje_str:
+            alvo = hoje_str
+            # Cursor de busca independente do último dia já coberto: avança
+            # sempre +7 dias corridos a cada tentativa. O próprio strike ATM
+            # não muda todo dia, então pedir o snapshot do dia seguinte ao
+            # último coberto costuma repetir o mesmo symbol e a mesma
+            # lacuna de IV; um salto maior tem mais chance de já cair num
+            # strike novo, mais próximo do dinheiro no momento do salto.
+            cursor = inicio_ciclo.get(exp) or alvo
+            for _ in range(6):
+                ultimo = max(dias_opt.keys()) if dias_opt else None
+                if ultimo and ultimo >= alvo:
+                    break
+                cursor = min(alvo, (_date.fromisoformat(max(cursor, ultimo or cursor)) + _td(days=7)).isoformat())
+                atm_n, _ = _bgt_strike_atm(t, exp, uid, on_date=cursor)
+                if atm_n:
+                    novos, herr2 = _hist_de(atm_n['symbol'], exp, atm_n['strike'])
+                    herr_final = herr_final or herr2
+                    if novos:
+                        dias_opt.update(novos)
+                if cursor >= alvo:
+                    break
+
+        if not dias_opt:
+            return exp, None, (herr_final or 'sem histórico')
+        option = {'analytics': list(dias_opt.values()), 'strike': atm0['strike'], 'side': 'call'}
+        return exp, option, None
 
     # Sequencial: a BRAPI limita ~20 req/min e um ciclo por vencimento
     # mensal mantém isso longe do limite mesmo em 24 meses (~24 chamadas).
@@ -8482,10 +8559,26 @@ def api_bgt_bands(ticker):
     if not dias:
         return jsonify({'error': avisos[0] if avisos else f'Sem dados de BGT para {t}.'}), 502
 
+    # Abertura/máxima/mínima do dia — /analytics/history só traz o
+    # underlyingPrice (fechamento) usado no cálculo do BGT; o OHLC vem à
+    # parte do mesmo candle diário que já alimenta o gráfico de preço do
+    # site (mesma fonte, cache próprio).
+    try:
+        candles = _brapi_chart_fetch(t, uid, start_date=cutoff)
+        ohlc_por_dia = {c['t']: c for c in candles}
+    except Exception:
+        ohlc_por_dia = {}
+    for dt, row in dias.items():
+        c = ohlc_por_dia.get(dt)
+        if c:
+            row['open'] = c['o']; row['high'] = c['h']; row['low'] = c['l']
+        else:
+            row['open'] = row['high'] = row['low'] = None
+
     serie = [dias[k] for k in sorted(dias.keys())]
     return jsonify({
         'ticker': t,
-        'months': months,
+        'days': days_back,
         'monthly_expirations_used': ciclos,
         'series': serie,
         'avisos': avisos[:3],

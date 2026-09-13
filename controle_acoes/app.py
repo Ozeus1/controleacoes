@@ -8706,32 +8706,47 @@ def api_curva_volatilidade(ticker):
     T = next((float(o['timeToExpirationYears']) for o in opts if o.get('timeToExpirationYears')), 0)
     data_ref = next((o.get('date') for o in opts if o.get('date')), None)
 
-    # Curva ajustada com os pontos de IV válida de calls + puts do mesmo
-    # strike (mais pontos = spline mais estável) — put-call parity garante
-    # que a IV "de mercado" de um strike é a mesma dos dois lados em teoria;
-    # na prática pequenas diferenças existem, então usa a média quando os
-    # dois convergem.
+    # Curva ajustada só com o lado OTM (fora do dinheiro) de cada strike —
+    # calls para K >= spot, puts para K <= spot — que é o lado líquido e
+    # informativo do book em cada ponta; o lado ITM correspondente tem
+    # pouquíssimo giro e sua IV, quando "converge", costuma ser ruído (visto
+    # na prática: puts deep ITM oscilando entre IV=25% e IV=104% strike a
+    # strike, e média com a call ITM do mesmo strike — que tinha problema
+    # igual do lado oposto — produzia serrilhado no meio da curva em vez do
+    # smile suave). Mistura calls e puts só na fronteira (K perto do spot),
+    # e cada strike entra com um único ponto, não uma média de dois lados
+    # com liquidez muito diferente.
     por_strike = {}
     for o in opts:
         iv = o.get('impliedVolatility')
         k = o.get('strike')
+        side = (o.get('side') or '').lower()
         conf = (o.get('confidence') or '').lower()
         preco = o.get('optionPrice') or 0
-        # Descarta 'low'/'none' (confiança baixa) e prêmios no tick mínimo
-        # (R$0,01-0,02, deep OTM praticamente sem liquidez): a IV implícita
-        # de um prêmio residual é ruído — visto na prática com uma PUT a
-        # R$0,01 "convergindo" para IV=128% isolada, puxando a ponta da
-        # curva pra um valor sem sentido de mercado. Fora do range 5%-150%
-        # também é descartado por segurança, mesmo com confiança alta.
-        if (iv is None or not k or conf in ('low', 'none', '')
-                or preco < 0.03 or not (0.05 <= iv <= 1.5)):
+        if iv is None or not k or conf in ('low', 'none', '') or preco < 0.03 or not (0.05 <= iv <= 1.5):
             continue
-        por_strike.setdefault(float(k), []).append(float(iv))
+        k = float(k)
+        otm = (side == 'call' and k >= spot) or (side == 'put' and k <= spot)
+        if not otm:
+            continue
+        por_strike.setdefault(k, []).append(float(iv))
     pontos = sorted((k, sum(vs) / len(vs)) for k, vs in por_strike.items())
     if len(pontos) < 3:
         return jsonify({'error': 'Poucos pontos de IV válida para montar a curva.'}), 502
     xs = [p[0] for p in pontos]
-    ys = [p[1] for p in pontos]
+    ys_brutos = [p[1] for p in pontos]
+    # Suaviza com média móvel de 3 pontos antes do spline: mesmo já filtrado
+    # por confiança/liquidez, o mercado tem micro-ondulações de décimos de
+    # ponto percentual entre strikes vizinhos (ruído de cotação/arredonda-
+    # mento) que o PCHIP segue fielmente por ser monotônico só POR TRECHO —
+    # cada pequena inversão de tendência vira uma inflexão visível na curva
+    # (visto na prática: BOVA11 com 13 "dentes de serra" entre pontos que já
+    # tinham confiança alta e preço líquido). Extremos ficam sem suavizar
+    # (não têm vizinho dos dois lados) — normalmente onde o smile já sobe/
+    # desce mais devagar de qualquer forma.
+    ys = list(ys_brutos)
+    for i in range(1, len(ys_brutos) - 1):
+        ys[i] = (ys_brutos[i - 1] + 2 * ys_brutos[i] + ys_brutos[i + 1]) / 4
     curva_fn = _spline_monotono(xs, ys)
 
     # Curva de exibição: um ponto a cada strike real + densificação entre

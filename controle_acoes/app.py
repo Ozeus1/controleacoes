@@ -8994,7 +8994,6 @@ def api_put_call_ratio(ticker):
 
     uid = current_user.id
     from datetime import date as _date, timedelta as _td
-    from concurrent.futures import ThreadPoolExecutor
 
     hoje = _date.today()
     inicio = hoje - _td(days=31)
@@ -9004,15 +9003,17 @@ def api_put_call_ratio(ticker):
     if ex_err:
         return jsonify({'error': ex_err}), 502
     todos_vencs = sorted((ex_data or {}).get('expirations') or [])
-    # Só os 3 próximos vencimentos MENSAIS (3ª sexta-feira, mesmo critério
-    # do BGT Bands) contam no OI — ignora semanais e vencimentos distantes.
-    # Isso mantém o volume de chamadas tratável (3 vencimentos × ~21 dias
-    # úteis do mês, em vez de dezenas de vencimentos simultâneos que a B3
-    # sempre tem em aberto).
-    mensais_futuros = [e for e in todos_vencs if _is_monthly_exp(e) and e >= inicio.isoformat()]
+    # Só os 3 PRÓXIMOS vencimentos MENSAIS (3ª sexta-feira, ainda não
+    # vencidos — não os que já venceram dentro do mês de histórico, que
+    # não têm OI relevante nos dias mais recentes) contam no OI. Ignora
+    # semanais e vencimentos distantes — mantém o volume de chamadas
+    # tratável (3 vencimentos × ~21 dias úteis, em vez de dezenas de
+    # vencimentos simultâneos que a B3 sempre tem em aberto).
+    hoje_str = hoje.isoformat()
+    mensais_futuros = [e for e in todos_vencs if _is_monthly_exp(e) and e >= hoje_str]
     vencs_janela = mensais_futuros[:3]
     if not vencs_janela:
-        return jsonify({'error': f'Sem vencimentos mensais no período para {t}.'}), 404
+        return jsonify({'error': f'Sem vencimentos mensais futuros para {t}.'}), 404
 
     # Um dia útil por vez (aproximação seg-sex; feriados sem pregão vêm
     # com analytics vazio e são descartados na agregação).
@@ -9027,21 +9028,26 @@ def api_put_call_ratio(ticker):
 
     def _um(par):
         dia, exp = par
-        # _brapi_opt_get não tem retry para 429 — a BRAPI limita ~20 req/min
-        # e um lote de dezenas de chamadas em paralelo estoura isso direto
-        # (confirmado: sem retry, a maioria dos dias voltava zerada). Repete
-        # com backoff curto só nesse erro específico.
-        for tentativa in range(3):
+        # Testado isoladamente: 25 chamadas SEQUENCIAIS (1 por vez, sem
+        # nenhuma concorrência) não bateram 429 nenhuma vez, ~0,7s cada —
+        # o que dispara o limite da BRAPI é CONCORRÊNCIA alta, não o total
+        # de chamadas por minuto. Um retry curto fica só como rede de
+        # segurança para um 429 pontual, sem apostar nele como estratégia
+        # principal (backoff agressivo é o que deixava isso demorar
+        # minutos quando várias tarefas em paralelo ficavam re-tentando
+        # ao mesmo tempo).
+        d, err = None, None
+        for tentativa in range(2):
             d, err = _brapi_opt_get(
                 '/analytics', {'underlying': t, 'expirationDate': exp, 'date': dia}, uid, timeout=15)
             if not err:
                 break
-            if '429' in str(err) and tentativa < 2:
-                time.sleep(1.5 * (tentativa + 1))
+            if '429' in str(err) and tentativa == 0:
+                time.sleep(1.0)
                 continue
             break
         if err or not d:
-            return dia, 0, 0
+            return dia, exp, 0, 0, err
         oi_call = oi_put = 0
         for o in (d.get('analytics') or []):
             oi = o.get('openInterest') or 0
@@ -9050,17 +9056,28 @@ def api_put_call_ratio(ticker):
                 oi_call += oi
             elif side == 'put':
                 oi_put += oi
-        return dia, oi_call, oi_put
+        return dia, exp, oi_call, oi_put, None
 
-    # max_workers baixo: a BRAPI limita ~20 req/min, então poucas chamadas
-    # concorrentes já bastam para não estourar o limite (com o retry acima
-    # como rede de segurança para picos breves).
+    # Sequencial (sem ThreadPoolExecutor): a concorrência é o que disparava
+    # 429 em cascata. ~63 chamadas × ~0,7s ≈ 45s no pior caso (sem cache),
+    # bem mais lento que paralelo teórico mas SEM os minutos de retry que
+    # a concorrência causava na prática.
     oi_por_dia = {}
-    with ThreadPoolExecutor(max_workers=4) as pool:
-        for dia, oi_call, oi_put in pool.map(_um, tarefas):
-            acc = oi_por_dia.setdefault(dia, {'call': 0, 'put': 0})
-            acc['call'] += oi_call
-            acc['put'] += oi_put
+    falhas_por_dia = {}
+    for par in tarefas:
+        dia, exp, oi_call, oi_put, err = _um(par)
+        acc = oi_por_dia.setdefault(dia, {'call': 0, 'put': 0})
+        acc['call'] += oi_call
+        acc['put'] += oi_put
+        if err:
+            falhas_por_dia.setdefault(dia, []).append(exp)
+
+    # Um dia com algum vencimento que falhou mesmo após os retries fica
+    # sub-contado (soma parcial dos vencimentos que responderam) — melhor
+    # descartar esse dia da série do que mostrar um PCR calculado sobre
+    # uma base incompleta e enganosa.
+    for dia in list(falhas_por_dia.keys()):
+        oi_por_dia.pop(dia, None)
 
     # Preço de fechamento do ativo em cada dia, para o eixo comparativo —
     # mesma fonte/cache do gráfico de preço do site.

@@ -3387,6 +3387,26 @@ def api_rolagem_cadeia(ticker):
     })
 
 
+def _is_monthly_exp(exp_str):
+    """True se a data é a 3ª sexta-feira do mês (±2 dias p/ feriado).
+
+    Usada para filtrar só vencimentos mensais (ignorando os semanais) em
+    /api/cadeia e no BGT Bands.
+    """
+    from datetime import date as _date
+    dd = _date.fromisoformat(exp_str)
+    day, count = 1, 0
+    while True:
+        d = _date(dd.year, dd.month, day)
+        if d.weekday() == 4:
+            count += 1
+            if count == 3:
+                tf = d
+                break
+        day += 1
+    return abs((dd - tf).days) <= 2
+
+
 @app.route('/api/cadeia/<ticker>')
 @login_required
 def api_cadeia(ticker):
@@ -3436,20 +3456,6 @@ def api_cadeia(ticker):
             if m > 12:
                 m = 1; y += 1
         return result[:n]
-
-    def _is_monthly_exp(exp_str):
-        """True se a data é a 3ª sexta-feira do mês (±2 dias p/ feriado)."""
-        dd = _date.fromisoformat(exp_str)
-        day, count = 1, 0
-        while True:
-            d = _date(dd.year, dd.month, day)
-            if d.weekday() == 4:
-                count += 1
-                if count == 3:
-                    tf = d
-                    break
-            day += 1
-        return abs((dd - tf).days) <= 2
 
     # Parâmetros de janela (iguais aos da Busca de Operações):
     # weekly=1 inclui semanais; days = prazo máximo (60/90/120/180/210).
@@ -8294,6 +8300,195 @@ def api_market_gamma(ticker):
         'score': score,
         'n_series': len(series),
         'avisos': erros[:2],
+    })
+
+
+# ══════════════════════════════════════════════════════════════════
+# BGT BANDS — Break-Even Gamma-Theta (bandas diárias)
+# ══════════════════════════════════════════════════════════════════
+#
+# BGT Move = sqrt(2 * |Theta_R$| / Gamma_R$): a variação diária de preço
+# que faz o ganho de Gamma (2ª ordem, sensibilidade do delta ao preço)
+# empatar com a perda de Theta (decaimento temporal) de uma posição
+# comprada em opção. Rompeu a banda = dia favorável a quem está comprado
+# em volatilidade (long gamma); ficou dentro = dia favorável a quem
+# vendeu (short gamma), o Theta "ganhou" do movimento.
+#
+# Só vencimentos MENSAIS entram (3ª sexta-feira, mesmo critério de
+# _is_monthly_exp) — evita a complexidade de rolar strike toda semana.
+# Uma única opção ATM por ciclo mensal, escolhida no 1º pregão após a
+# rolagem do vencimento anterior e mantida fixa até o vencimento
+# seguinte, mantém o número de chamadas à BRAPI baixo (1 requisição por
+# vencimento, via /analytics/history, não 1 por dia — a BRAPI limita
+# 20 req/min e uma chamada por pregão estouraria esse limite em ranges
+# longos).
+#
+# Gamma e Theta NÃO usam os campos brutos da BRAPI: o mesmo problema já
+# mapeado em _gamma_series (campos nulos/inconsistentes em parte das
+# séries) se aplica aqui, então ambos são recalculados localmente via
+# Black-Scholes (_bs_greeks) a partir da IV histórica retornada —
+# conferido manualmente que o Theta bate (~2% de diferença), e o Gamma
+# bruto da BRAPI diverge sistematicamente do BS padrão.
+
+@app.route('/walls')
+@login_required
+def bgt_bands():
+    """Página BGT Bands: bandas de Break-Even Gamma-Theta por ativo."""
+    ativos = sorted({(a.ticker or '').strip().upper()
+                     for a in Asset.query.filter_by(user_id=current_user.id).all()
+                     if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
+    rk = sorted({(r.ticker or '').strip().upper()
+                 for r in _ranking_liq_filter(
+                     RankingVol.query.filter_by(user_id=current_user.id)).all()
+                 if r.ticker})
+    return render_template('bgt_bands.html',
+                           sugestoes=sorted(set(ativos) | set(rk)),
+                           tem_token=bool(_brapi_opt_token(current_user.id)))
+
+
+def _bgt_strike_atm(underlying, exp, user_id):
+    """Acha o strike/symbol da CALL mais próxima do spot para um vencimento,
+    no snapshot mais recente disponível (usado só para decidir QUAL opção
+    seguir durante o ciclo — o histórico em si vem de /analytics/history)."""
+    d, err = _brapi_opt_get('/analytics', {'underlying': underlying, 'expirationDate': exp},
+                            user_id, timeout=15)
+    if err or not d:
+        return None, (err or 'sem dados')
+    opts = [o for o in (d.get('analytics') or []) if (o.get('side') or '').lower() == 'call']
+    if not opts:
+        return None, 'sem calls nesse vencimento'
+    spot = None
+    for o in opts:
+        if o.get('underlyingPrice'):
+            spot = float(o['underlyingPrice']); break
+    if not spot:
+        return None, 'sem preço do ativo'
+    atm = min(opts, key=lambda o: abs(float(o.get('strike') or 0) - spot))
+    return {'symbol': atm.get('symbol'), 'strike': float(atm['strike'])}, None
+
+
+@app.route('/api/bgt-bands/<ticker>')
+@login_required
+def api_bgt_bands(ticker):
+    """Série diária de BGT Move (banda superior/inferior) dos últimos N meses.
+
+    Query: months = 3 (padrão) a 24.
+    """
+    t = (ticker or '').strip().upper()
+    if not t:
+        return jsonify({'error': 'Informe o ativo.'}), 400
+    try:
+        months = int(request.args.get('months', 3))
+    except (TypeError, ValueError):
+        months = 3
+    months = max(1, min(24, months))
+
+    uid = current_user.id
+    try:
+        r_cont = math.log(1 + _selic() / 100.0)
+    except Exception:
+        r_cont = math.log(1.14)
+
+    from datetime import date as _date, timedelta as _td
+
+    # includeExpired=true é obrigatório aqui: sem ele a BRAPI só lista
+    # vencimentos futuros, e o BGT Bands olha pra trás no tempo — sem
+    # vencimentos vencidos não haveria histórico nenhum pra buscar.
+    ex_data, ex_err = _brapi_opt_get(
+        '/expirations', {'underlying': t, 'includeExpired': 'true'}, uid)
+    if ex_err:
+        return jsonify({'error': ex_err}), 502
+    todos_vencs = sorted((ex_data or {}).get('expirations') or [])
+    hoje = _date.today().isoformat()
+    mensais_passados = [e for e in todos_vencs if _is_monthly_exp(e) and e <= hoje]
+    mensais_futuros  = [e for e in todos_vencs if _is_monthly_exp(e) and e > hoje]
+    # O ciclo vigente (próximo vencimento mensal, ainda não ocorrido) já tem
+    # histórico diário até hoje — sem incluí-lo, os dias mais recentes
+    # ficariam de fora do gráfico.
+    mensais = mensais_passados + (mensais_futuros[:1] if mensais_futuros else [])
+    if not mensais:
+        return jsonify({'error': f'Sem vencimentos mensais para {t}.'}), 404
+
+    cutoff = (_date.today() - _td(days=months * 31)).isoformat()
+    # Vencimentos cujo CICLO (mês anterior até o próprio vencimento) toca a
+    # janela pedida — inclui o mensal imediatamente anterior ao cutoff, cujo
+    # ciclo começa antes dele mas continua dentro da janela.
+    idx0 = len(mensais) - 1
+    for i, e in enumerate(mensais):
+        if e >= cutoff:
+            idx0 = max(0, i - 1)
+            break
+    ciclos = mensais[idx0:]
+    if not ciclos:
+        return jsonify({'error': f'Sem vencimentos mensais no período para {t}.'}), 404
+
+    def _um_ciclo(exp):
+        atm, err = _bgt_strike_atm(t, exp, uid)
+        if err or not atm:
+            return exp, None, (err or 'sem strike ATM')
+        hist, herr = _brapi_opt_get(
+            '/analytics/history',
+            {'symbol': atm['symbol'], 'expirationDate': exp, 'strike': atm['strike']},
+            uid, timeout=20)
+        if herr or not hist:
+            return exp, None, (herr or 'sem histórico')
+        return exp, (hist.get('option') or {}), None
+
+    # Sequencial: a BRAPI limita ~20 req/min e um ciclo por vencimento
+    # mensal mantém isso longe do limite mesmo em 24 meses (~24 chamadas).
+    dias = {}   # data ISO -> {open, high, low, close(underlying), bgt_up, bgt_down, move}
+    avisos = []
+    for exp in ciclos:
+        exp, option, err = _um_ciclo(exp)
+        if err:
+            avisos.append(f'{exp}: {err}')
+            continue
+        for a in (option.get('analytics') or []):
+            try:
+                dt = a.get('date')
+                S  = float(a.get('underlyingPrice') or 0)
+                iv = a.get('impliedVolatility')
+                T  = float(a.get('timeToExpirationYears') or 0)
+                K  = float(a.get('strike') or option.get('strike') or 0)
+                is_call = (a.get('side') or option.get('side') or 'call').lower() == 'call'
+                if not dt or dt < cutoff or S <= 0 or not iv or T <= 0 or K <= 0:
+                    continue
+                gk = _bs_greeks(S, K, T, r_cont, float(iv), 'CALL' if is_call else 'PUT')
+                if not gk or not gk.get('gamma') or not gk.get('theta'):
+                    continue
+                # Gamma/Theta "em ações" (não em % do BS puro): converte para
+                # a variação em R$ do valor da opção por movimento de R$1 no
+                # spot (gamma) e por 1 dia (theta) — já vem nessa unidade de
+                # _bs_greeks (theta dividido por 365, gamma por unidade de S).
+                theta_rs = abs(gk['theta'])
+                gamma_rs = gk['gamma']
+                if gamma_rs <= 0:
+                    continue
+                move = math.sqrt(2 * theta_rs / gamma_rs)
+                # Um mesmo dia pode aparecer em dois ciclos na borda da
+                # rolagem — fica o cálculo do vencimento mais próximo
+                # (ciclos são processados em ordem cronológica, então o
+                # último a escrever é sempre o vencimento vigente naquele
+                # dia... na prática cada dia só existe em 1 ciclo).
+                dias[dt] = {
+                    'date': dt, 'close': round(S, 4),
+                    'bgt_up': round(S + move, 4),
+                    'bgt_down': round(max(0.01, S - move), 4),
+                    'move': round(move, 4),
+                }
+            except Exception:
+                continue
+
+    if not dias:
+        return jsonify({'error': avisos[0] if avisos else f'Sem dados de BGT para {t}.'}), 502
+
+    serie = [dias[k] for k in sorted(dias.keys())]
+    return jsonify({
+        'ticker': t,
+        'months': months,
+        'monthly_expirations_used': ciclos,
+        'series': serie,
+        'avisos': avisos[:3],
     })
 
 

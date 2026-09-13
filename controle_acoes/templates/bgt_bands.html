@@ -1,0 +1,446 @@
+{% extends "base.html" %}
+{% block title %}BGT Bands{% endblock %}
+{% block extra_scripts %}
+<style>
+.bgt-filtros{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:.9rem;
+  background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);border-radius:8px;
+  padding:.9rem 1rem;margin:.6rem 0 .8rem;}
+.bgt-campo{display:flex;flex-direction:column;gap:.3rem;}
+.bgt-campo label{font-size:.75rem;color:var(--text-secondary);font-weight:600;
+  text-transform:uppercase;letter-spacing:.03em;}
+.bgt-campo select,.bgt-campo input{background:var(--card-bg);color:var(--text-primary);
+  border:1px solid var(--border-color);border-radius:5px;padding:.35rem .5rem;font-size:.85rem;}
+.bgt-campo input{text-transform:uppercase;}
+
+#bgt-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
+#bgt-error{display:none;color:#f87171;padding:1rem;background:rgba(239,68,68,.08);
+  border:1px solid rgba(239,68,68,.25);border-radius:6px;margin:.6rem 0;}
+#bgt-hint{padding:1.5rem;text-align:center;color:var(--text-secondary);font-size:.88rem;}
+#bgt-res{display:none;}
+#bgt-avisos{display:none;font-size:.78rem;color:#ca8a04;background:rgba(234,179,8,.1);
+  border:1px solid rgba(234,179,8,.3);border-radius:6px;padding:.5rem .8rem;margin:.5rem 0;}
+
+.bgt-chart-wrap{position:relative;height:460px;background:var(--card-bg);
+  border:1px solid var(--border-color);border-radius:8px;padding:.6rem;margin-bottom:.4rem;}
+.bgt-legenda{display:flex;gap:1.2rem;justify-content:center;flex-wrap:wrap;
+  font-size:.8rem;color:var(--text-secondary);margin:.5rem 0 .3rem;}
+.bgt-legenda span{display:inline-flex;align-items:center;gap:.35rem;}
+.bgt-dot{width:12px;height:12px;border-radius:50%;display:inline-block;}
+.bgt-nota{font-size:.78rem;color:var(--text-secondary);margin:.5rem 0;}
+
+.bgt-tab-wrap{overflow-x:auto;margin-top:1rem;}
+#bgt-tab{width:100%;border-collapse:collapse;font-size:.83rem;}
+#bgt-tab th{padding:.45rem .5rem;text-align:right;white-space:nowrap;cursor:pointer;
+  background:var(--card-bg);color:var(--text-secondary);font-weight:600;
+  border-bottom:1px solid var(--border-color);font-size:.72rem;
+  text-transform:uppercase;letter-spacing:.03em;}
+#bgt-tab th:first-child{text-align:left;}
+#bgt-tab td{padding:.35rem .5rem;text-align:right;white-space:nowrap;
+  border-bottom:1px solid rgba(255,255,255,.04);}
+#bgt-tab td:first-child{text-align:left;}
+.bgt-up{color:#34d399;font-weight:600;}
+.bgt-down{color:#f87171;font-weight:600;}
+.bgt-move{color:#facc15;font-weight:600;}
+
+.bgt-abas{display:flex;gap:.4rem;flex-wrap:wrap;border-bottom:1px solid var(--border-color);
+  margin-bottom:.8rem;}
+.bgt-aba{padding:.4rem .8rem;font-size:.85rem;cursor:pointer;color:var(--text-secondary);
+  border-bottom:2px solid transparent;}
+.bgt-aba.on{color:var(--text-primary);border-bottom-color:#7c3aed;font-weight:600;}
+.bgt-painel{display:none;font-size:.86rem;line-height:1.6;color:var(--text-secondary);}
+.bgt-painel.on{display:block;}
+.bgt-painel strong{color:var(--text-primary);}
+.bgt-painel ul{margin:.3rem 0;padding-left:1.3rem;}
+.bgt-painel li{margin:.4rem 0;}
+@media (max-width:640px){.bgt-filtros{grid-template-columns:1fr;} .bgt-chart-wrap{height:320px;}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
+    <h2 style="margin:0;">🧱 BGT Bands</h2>
+    <span class="bgt-nota" style="margin:0;">Bandas do Break-Even Gamma-Theta — fonte BRAPI / B3</span>
+  </div>
+
+  {% if not tem_token %}
+  <div style="margin:.7rem 0;padding:.6rem .9rem;background:rgba(234,179,8,.1);
+              border-left:3px solid #eab308;border-radius:4px;font-size:.83rem;color:var(--text-secondary);">
+    ⚠️ Sem chave BRAPI cadastrada: a API libera apenas <strong>PETR4</strong> (sandbox).
+    Para os demais ativos, cadastre sua chave do plano Pro em
+    <a href="{{ url_for('config') }}">Configuração</a>.
+  </div>
+  {% endif %}
+
+  <div class="bgt-filtros">
+    <div class="bgt-campo">
+      <label>Ativo</label>
+      <select id="bgt-ticker">
+        {% for t in sugestoes %}<option value="{{ t }}" {{ 'selected' if t == 'PETR4' else '' }}>{{ t }}</option>{% endfor %}
+        <option value="__outro__">— outro ativo… —</option>
+      </select>
+      <input id="bgt-ticker-livre" placeholder="Digite o ticker" maxlength="10"
+             style="display:none;margin-top:.3rem;">
+    </div>
+    <div class="bgt-campo">
+      <label title="Só vencimentos mensais (3ª sexta-feira) entram no cálculo">Período</label>
+      <select id="bgt-months">
+        <option value="3" selected>3 meses</option>
+        <option value="6">6 meses</option>
+        <option value="12">12 meses</option>
+        <option value="18">18 meses</option>
+        <option value="24">24 meses</option>
+      </select>
+    </div>
+    <div class="bgt-campo">
+      <label>&nbsp;</label>
+      <button type="button" id="bgt-buscar" class="btn btn-primary" style="padding:.4rem;">Gerar gráfico</button>
+    </div>
+  </div>
+
+  <div id="bgt-error"></div>
+  <div id="bgt-loading">⏳ Calculando as bandas BGT (pode levar até 1 minuto em períodos longos)…</div>
+  <div id="bgt-hint">Escolha o ativo e o período e clique em <strong>Gerar gráfico</strong>.</div>
+
+  <div id="bgt-res">
+    <div id="bgt-info" class="bgt-nota"></div>
+    <div id="bgt-avisos"></div>
+
+    <div class="bgt-legenda">
+      <span><i class="bgt-dot" style="background:#34d399;"></i> Candle (fechamento diário)</span>
+      <span><i class="bgt-dot" style="background:#34d399;height:3px;border-radius:0;"></i> BGT ▲ (banda superior)</span>
+      <span><i class="bgt-dot" style="background:#f87171;height:3px;border-radius:0;"></i> BGT ▼ (banda inferior)</span>
+      <span><i class="bgt-dot" style="background:#facc15;"></i> Vencimento mensal</span>
+    </div>
+    <div class="bgt-chart-wrap">
+      <canvas id="bgt-canvas"></canvas>
+      <div id="bgt-tooltip" style="display:none;position:absolute;background:var(--card-bg,#1e293b);
+           border:1px solid var(--border-color);border-radius:6px;padding:.4rem .7rem;
+           font-size:.78rem;pointer-events:none;white-space:nowrap;z-index:10;"></div>
+    </div>
+    <p class="bgt-nota">Roda do mouse para zoom · arraste para mover · duplo clique para resetar.</p>
+
+    <div class="bgt-tab-wrap">
+      <table id="bgt-tab">
+        <thead>
+          <tr>
+            <th data-s="date">Data</th>
+            <th data-s="close">Fechamento</th>
+            <th data-s="bgt_up">BGT ▲</th>
+            <th data-s="bgt_down">BGT ▼</th>
+            <th data-s="move">BGT Move</th>
+          </tr>
+        </thead>
+        <tbody id="bgt-tab-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1.2rem;">
+  <h3 style="margin-top:0;">BGT — Break-Even Gamma-Theta</h3>
+  <div class="bgt-abas">
+    <span class="bgt-aba on" data-p="conceito">Conceito</span>
+    <span class="bgt-aba" data-p="bandas">As Bandas</span>
+    <span class="bgt-aba" data-p="leitura">Leitura Prática</span>
+  </div>
+  <div class="bgt-painel on" id="bgtp-conceito">
+    <p><strong>BGT (Break-Even Gamma-Theta)</strong> é o movimento diário que o preço do ativo
+    precisa fazer para que os ganhos de <strong>Gamma</strong> (sensibilidade do Delta ao movimento
+    do preço) compensem exatamente as perdas de <strong>Theta</strong> (decaimento temporal das opções).</p>
+    <p>Em termos práticos: quem mantém uma posição comprada em opções (long gamma) perde dinheiro
+    a cada dia que passa por causa do Theta. Se o preço do ativo se mover além do BGT, o ganho de
+    Gamma supera essa perda. Se o preço ficar dentro das bandas, o Theta vence.</p>
+  </div>
+  <div class="bgt-painel" id="bgtp-bandas">
+    <ul>
+      <li><strong>Banda Superior (BGT ▲):</strong> Preço de fechamento + BGT Move. Representa o
+      nível acima do qual o movimento de alta foi suficiente para compensar o Theta. Quando o preço
+      rompe esta banda, compradores de opções (long gamma) tiveram um dia lucrativo.</li>
+      <li><strong>Banda Inferior (BGT ▼):</strong> Preço de fechamento − BGT Move. Mesmo conceito
+      aplicado à queda. Quando o preço rompe para baixo da banda, o movimento foi grande o suficiente
+      para gerar lucro via Gamma.</li>
+      <li><strong>BGT Move (±):</strong> A largura da banda em reais. Quanto maior o BGT Move, mais
+      caro está o "seguro" (IV alta → Theta maior → precisa de mais movimento). Quando o BGT Move é
+      pequeno, pouco movimento já basta para gerar lucro.</li>
+    </ul>
+  </div>
+  <div class="bgt-painel" id="bgtp-leitura">
+    <ul>
+      <li><strong>Preço dentro das bandas:</strong> dias em que o preço permanece entre as bandas
+      favorecem <strong>vendedores de volatilidade</strong> (short gamma) — o Theta corroeu o prêmio
+      que os compradores pagaram.</li>
+      <li><strong>Preço fora das bandas:</strong> dias em que o preço rompe as bandas favorecem
+      <strong>compradores de volatilidade</strong> (long gamma) — o movimento superou o custo do Theta.</li>
+      <li><strong>Largura das bandas ao longo do tempo:</strong> bandas se alargando indicam aumento
+      da volatilidade implícita; bandas estreitando sugerem compressão de volatilidade.</li>
+      <li><strong>BGT como gatilho de manejo:</strong> para quem mantém um lado exposto (não travado),
+      o BGT do dia serve como referência para iniciar o hedge ou manejo ativo da posição.</li>
+    </ul>
+    <p class="bgt-nota">Cálculo: apenas vencimentos <strong>mensais</strong> (3ª sexta-feira) entram —
+    a cada ciclo, a opção CALL mais próxima do dinheiro (ATM) no início do ciclo é usada como
+    referência até o vencimento seguinte. Gamma e Theta são recalculados via Black-Scholes a partir
+    da volatilidade implícita histórica (mais confiável que os campos brutos da BRAPI).</p>
+  </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+var elT = document.getElementById('bgt-ticker'), elTL = document.getElementById('bgt-ticker-livre');
+var elMonths = document.getElementById('bgt-months');
+var elErr = document.getElementById('bgt-error'), elLoad = document.getElementById('bgt-loading');
+var elHint = document.getElementById('bgt-hint'), elRes = document.getElementById('bgt-res');
+var elAvisos = document.getElementById('bgt-avisos');
+var SERIE = [];
+
+function fmtNum(v, dec) {
+    dec = dec == null ? 2 : dec;
+    return Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+function fmtBRL(v) { return 'R$ ' + fmtNum(v); }
+function dataBR(iso) {
+    var p = (iso || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '');
+}
+function showErr(m) { elErr.textContent = m; elErr.style.display = 'block'; }
+function clearErr() { elErr.style.display = 'none'; }
+
+function tickerAtual() {
+    if (elT.value === '__outro__') return (elTL.value || '').trim().toUpperCase();
+    return (elT.value || '').trim().toUpperCase();
+}
+elT.addEventListener('change', function () {
+    var livre = elT.value === '__outro__';
+    elTL.style.display = livre ? '' : 'none';
+    if (livre) elTL.focus();
+});
+
+document.getElementById('bgt-buscar').addEventListener('click', buscar);
+
+function buscar() {
+    var t = tickerAtual();
+    if (!t) { showErr('Escolha um ativo.'); return; }
+    clearErr();
+    elHint.style.display = 'none';
+    elRes.style.display = 'none';
+    elLoad.style.display = 'block';
+    var months = elMonths.value;
+    fetch('/api/bgt-bands/' + encodeURIComponent(t) + '?months=' + encodeURIComponent(months))
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            elLoad.style.display = 'none';
+            if (!res.ok || res.j.error) {
+                showErr(res.j.error || 'Erro ao buscar as bandas BGT.');
+                return;
+            }
+            SERIE = res.j.series || [];
+            if (!SERIE.length) { showErr('Sem dados para ' + t + ' no período escolhido.'); return; }
+            elRes.style.display = 'block';
+            document.getElementById('bgt-info').textContent =
+                t + ' · ' + SERIE.length + ' pregões · ' +
+                (res.j.monthly_expirations_used || []).length + ' vencimento(s) mensal(is) usado(s)';
+            if (res.j.avisos && res.j.avisos.length) {
+                elAvisos.style.display = 'block';
+                elAvisos.innerHTML = '⚠️ Alguns vencimentos ficaram fora (sem histórico na BRAPI): ' +
+                    res.j.avisos.map(function (a) { return String(a); }).join(' · ');
+            } else {
+                elAvisos.style.display = 'none';
+            }
+            preencheTabela(SERIE);
+            view = null;
+            desenha();
+        })
+        .catch(function (e) {
+            elLoad.style.display = 'none';
+            showErr('Falha de rede: ' + e);
+        });
+}
+
+function preencheTabela(serie) {
+    var body = document.getElementById('bgt-tab-body');
+    var rows = serie.slice().reverse();
+    body.innerHTML = rows.map(function (d) {
+        return '<tr>'
+            + '<td>' + dataBR(d.date) + '</td>'
+            + '<td>' + fmtBRL(d.close) + '</td>'
+            + '<td class="bgt-up">' + fmtBRL(d.bgt_up) + '</td>'
+            + '<td class="bgt-down">' + fmtBRL(d.bgt_down) + '</td>'
+            + '<td class="bgt-move">' + fmtBRL(d.move) + '</td>'
+            + '</tr>';
+    }).join('');
+}
+
+// ── Ordenação da tabela ──
+(function () {
+    var asc = {};
+    document.querySelectorAll('#bgt-tab th').forEach(function (th) {
+        th.addEventListener('click', function () {
+            var key = th.dataset.s;
+            asc[key] = !asc[key];
+            var sorted = SERIE.slice().sort(function (a, b) {
+                var va = a[key], vb = b[key];
+                if (typeof va === 'string') return asc[key] ? va.localeCompare(vb) : vb.localeCompare(va);
+                return asc[key] ? va - vb : vb - va;
+            });
+            preencheTabela(sorted.slice().reverse());
+        });
+    });
+})();
+
+// ── Gráfico: candles (fechamento) + bandas BGT + zoom/pan ──
+var canvas = document.getElementById('bgt-canvas');
+var ctx = canvas.getContext('2d');
+var tip = document.getElementById('bgt-tooltip');
+var PAD = { top: 20, right: 16, bottom: 34, left: 76 };
+var view = null; // { zoom, pan }
+
+function desenha() {
+    if (!SERIE.length) return;
+    var wrap = canvas.parentElement;
+    var W = wrap.clientWidth || 900, H = 440;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    view = view || { zoom: 1, pan: 0 };
+    var n = SERIE.length;
+    var visCount = Math.max(10, Math.round(n / view.zoom));
+    var maxStart = Math.max(0, n - visCount);
+    var start = Math.round(maxStart * (0.5 + view.pan)); // pan em [-0.5, 0.5] desloca de ponta a ponta
+    start = Math.max(0, Math.min(maxStart, start));
+    var dados = SERIE.slice(start, start + visCount);
+    if (!dados.length) dados = SERIE.slice(-10);
+
+    var lo = Math.min.apply(null, dados.map(function (d) { return d.bgt_down; }));
+    var hi = Math.max.apply(null, dados.map(function (d) { return d.bgt_up; }));
+    var span = (hi - lo) || 1;
+    var yMin = lo - span * 0.08, yMax = hi + span * 0.08;
+    var cW = W - PAD.left - PAD.right, cH = H - PAD.top - PAD.bottom;
+    function xPx(i) { return PAD.left + (dados.length <= 1 ? cW / 2 : i / (dados.length - 1) * cW); }
+    function yPx(v) { return PAD.top + (1 - (v - yMin) / (yMax - yMin)) * cH; }
+
+    // grade
+    ctx.strokeStyle = 'rgba(148,163,184,.12)'; ctx.lineWidth = 1;
+    for (var gy = 0; gy <= 5; gy++) {
+        var yv = yMin + gy * (yMax - yMin) / 5;
+        var py = yPx(yv);
+        ctx.beginPath(); ctx.moveTo(PAD.left, py); ctx.lineTo(W - PAD.right, py); ctx.stroke();
+        ctx.fillStyle = 'rgba(148,163,184,.85)'; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+        ctx.fillText(fmtBRL(yv), PAD.left - 6, py + 3);
+    }
+
+    // banda superior/inferior (linhas)
+    function linha(campo, cor) {
+        ctx.beginPath(); ctx.strokeStyle = cor; ctx.lineWidth = 1.6;
+        dados.forEach(function (d, i) {
+            var x = xPx(i), y = yPx(d[campo]);
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+    }
+    linha('bgt_up', 'rgba(52,211,153,.9)');
+    linha('bgt_down', 'rgba(248,113,113,.9)');
+
+    // preenchimento entre bandas
+    ctx.beginPath();
+    dados.forEach(function (d, i) { var x = xPx(i), y = yPx(d.bgt_up); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); });
+    for (var i2 = dados.length - 1; i2 >= 0; i2--) { ctx.lineTo(xPx(i2), yPx(dados[i2].bgt_down)); }
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(96,165,250,.06)';
+    ctx.fill();
+
+    // fechamento (linha fina + pontos)
+    ctx.beginPath(); ctx.strokeStyle = 'rgba(226,232,240,.85)'; ctx.lineWidth = 1.3;
+    dados.forEach(function (d, i) {
+        var x = xPx(i), y = yPx(d.close);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // marca de rompimento: ponto verde se close >= bgt_up do dia anterior, vermelho se <= bgt_down anterior
+    dados.forEach(function (d, i) {
+        if (i === 0) return;
+        var prev = dados[i - 1];
+        var x = xPx(i), y = yPx(d.close);
+        var rompeuCima = d.close >= prev.bgt_up;
+        var rompeuBaixo = d.close <= prev.bgt_down;
+        if (rompeuCima || rompeuBaixo) {
+            ctx.beginPath();
+            ctx.fillStyle = rompeuCima ? '#34d399' : '#f87171';
+            ctx.arc(x, y, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+    });
+
+    // eixo X (datas)
+    ctx.fillStyle = 'rgba(148,163,184,.85)'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+    var step = Math.max(1, Math.round(dados.length / 8));
+    dados.forEach(function (d, i) {
+        if (i % step !== 0 && i !== dados.length - 1) return;
+        ctx.fillText(dataBR(d.date).slice(0, 5), xPx(i), H - PAD.bottom + 16);
+    });
+
+    ctx.strokeStyle = 'rgba(148,163,184,.25)'; ctx.strokeRect(PAD.left, PAD.top, cW, cH);
+
+    canvas._geo = { dados: dados, xPx: xPx, yPx: yPx, PAD: PAD, W: W };
+}
+
+// zoom (roda do mouse) / pan (arrastar) / reset (duplo clique)
+(function () {
+    var arrastando = false, startX = 0, startPan = 0;
+    canvas.addEventListener('wheel', function (ev) {
+        ev.preventDefault();
+        view = view || { zoom: 1, pan: 0 };
+        var novo = view.zoom * (ev.deltaY < 0 ? 1.15 : 1 / 1.15);
+        view.zoom = Math.max(1, Math.min(20, novo));
+        desenha();
+    }, { passive: false });
+    canvas.addEventListener('mousedown', function (ev) {
+        arrastando = true; startX = ev.clientX; startPan = (view && view.pan) || 0;
+    });
+    window.addEventListener('mousemove', function (ev) {
+        if (arrastando) {
+            var dx = (ev.clientX - startX) / (canvas.clientWidth || 900);
+            view.pan = Math.max(-0.5, Math.min(0.5, startPan - dx));
+            desenha();
+        }
+        var geo = canvas._geo;
+        if (!geo || arrastando) { tip.style.display = 'none'; return; }
+        var rect = canvas.getBoundingClientRect();
+        var x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+        if (x < geo.PAD.left || x > geo.W - geo.PAD.right) { tip.style.display = 'none'; return; }
+        var idx = Math.round((x - geo.PAD.left) / (geo.W - geo.PAD.left - geo.PAD.right) * (geo.dados.length - 1));
+        idx = Math.max(0, Math.min(geo.dados.length - 1, idx));
+        var d = geo.dados[idx];
+        if (!d) { tip.style.display = 'none'; return; }
+        tip.innerHTML = '<strong>' + dataBR(d.date) + '</strong><br>'
+            + 'Fechamento: ' + fmtBRL(d.close) + '<br>'
+            + '<span class="bgt-up">BGT ▲ ' + fmtBRL(d.bgt_up) + '</span><br>'
+            + '<span class="bgt-down">BGT ▼ ' + fmtBRL(d.bgt_down) + '</span><br>'
+            + '<span class="bgt-move">Move ± ' + fmtBRL(d.move) + '</span>';
+        tip.style.display = 'block';
+        tip.style.left = Math.min(x + 14, (canvas.clientWidth || 900) - 160) + 'px';
+        tip.style.top = Math.max(0, y - 60) + 'px';
+    });
+    window.addEventListener('mouseup', function () { arrastando = false; });
+    canvas.addEventListener('mouseleave', function () { tip.style.display = 'none'; });
+    canvas.addEventListener('dblclick', function () { view = { zoom: 1, pan: 0 }; desenha(); });
+})();
+window.addEventListener('resize', function () { if (SERIE.length) desenha(); });
+
+// ── Abas de explicação ──
+document.querySelectorAll('.bgt-aba').forEach(function (aba) {
+    aba.addEventListener('click', function () {
+        document.querySelectorAll('.bgt-aba').forEach(function (a) { a.classList.remove('on'); });
+        document.querySelectorAll('.bgt-painel').forEach(function (p) { p.classList.remove('on'); });
+        aba.classList.add('on');
+        document.getElementById('bgtp-' + aba.dataset.p).classList.add('on');
+    });
+});
+})();
+</script>
+{% endblock %}

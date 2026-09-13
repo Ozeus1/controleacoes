@@ -8954,6 +8954,159 @@ def api_simulador_bs_calcular():
 
 
 # ══════════════════════════════════════════════════════════════════
+# PUT/CALL RATIO — sentimento de mercado via posições em aberto
+# ══════════════════════════════════════════════════════════════════
+#
+# PCR = OI total de PUTs ÷ OI total de CALLs, por pregão. Fonte: BRAPI
+# /analytics?date=X — cada chamada já soma o OI de TODAS as opções de
+# UM vencimento numa data específica (não precisa opção por opção).
+# Mesmo assim, para reconstruir a série diária é preciso somar os
+# vencimentos ativos em CADA dia do período. Só os 3 próximos vencimentos
+# MENSAIS entram (ignora semanais e vencimentos distantes) e o período é
+# fixo em 1 mês (não configurável como o BGT Bands) — ativos como PETR4
+# têm dezenas de vencimentos simultâneos em aberto (inclusive 2+ anos no
+# futuro), e sem esse recorte o volume de chamadas fica impraticável numa
+# requisição síncrona.
+
+@app.route('/put-call-ratio')
+@login_required
+def put_call_ratio():
+    """Página Put/Call Ratio: sentimento de mercado via OI de puts vs calls."""
+    ativos = sorted({(a.ticker or '').strip().upper()
+                     for a in Asset.query.filter_by(user_id=current_user.id).all()
+                     if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
+    rk = sorted({(r.ticker or '').strip().upper()
+                 for r in _ranking_liq_filter(
+                     RankingVol.query.filter_by(user_id=current_user.id)).all()
+                 if r.ticker})
+    return render_template('put_call_ratio.html',
+                           sugestoes=sorted(set(ativos) | set(rk)),
+                           tem_token=bool(_brapi_opt_token(current_user.id)))
+
+
+@app.route('/api/put-call-ratio/<ticker>')
+@login_required
+def api_put_call_ratio(ticker):
+    """Série diária de PCR (OI puts / OI calls) do último mês."""
+    t = (ticker or '').strip().upper()
+    if not t:
+        return jsonify({'error': 'Informe o ativo.'}), 400
+
+    uid = current_user.id
+    from datetime import date as _date, timedelta as _td
+    from concurrent.futures import ThreadPoolExecutor
+
+    hoje = _date.today()
+    inicio = hoje - _td(days=31)
+
+    ex_data, ex_err = _brapi_opt_get(
+        '/expirations', {'underlying': t, 'includeExpired': 'true'}, uid)
+    if ex_err:
+        return jsonify({'error': ex_err}), 502
+    todos_vencs = sorted((ex_data or {}).get('expirations') or [])
+    # Só os 3 próximos vencimentos MENSAIS (3ª sexta-feira, mesmo critério
+    # do BGT Bands) contam no OI — ignora semanais e vencimentos distantes.
+    # Isso mantém o volume de chamadas tratável (3 vencimentos × ~21 dias
+    # úteis do mês, em vez de dezenas de vencimentos simultâneos que a B3
+    # sempre tem em aberto).
+    mensais_futuros = [e for e in todos_vencs if _is_monthly_exp(e) and e >= inicio.isoformat()]
+    vencs_janela = mensais_futuros[:3]
+    if not vencs_janela:
+        return jsonify({'error': f'Sem vencimentos mensais no período para {t}.'}), 404
+
+    # Um dia útil por vez (aproximação seg-sex; feriados sem pregão vêm
+    # com analytics vazio e são descartados na agregação).
+    dias = []
+    cursor = inicio
+    while cursor <= hoje:
+        if cursor.weekday() < 5:
+            dias.append(cursor.isoformat())
+        cursor += _td(days=1)
+
+    tarefas = [(dia, exp) for dia in dias for exp in vencs_janela if exp >= dia]
+
+    def _um(par):
+        dia, exp = par
+        # _brapi_opt_get não tem retry para 429 — a BRAPI limita ~20 req/min
+        # e um lote de dezenas de chamadas em paralelo estoura isso direto
+        # (confirmado: sem retry, a maioria dos dias voltava zerada). Repete
+        # com backoff curto só nesse erro específico.
+        for tentativa in range(3):
+            d, err = _brapi_opt_get(
+                '/analytics', {'underlying': t, 'expirationDate': exp, 'date': dia}, uid, timeout=15)
+            if not err:
+                break
+            if '429' in str(err) and tentativa < 2:
+                time.sleep(1.5 * (tentativa + 1))
+                continue
+            break
+        if err or not d:
+            return dia, 0, 0
+        oi_call = oi_put = 0
+        for o in (d.get('analytics') or []):
+            oi = o.get('openInterest') or 0
+            side = (o.get('side') or '').lower()
+            if side == 'call':
+                oi_call += oi
+            elif side == 'put':
+                oi_put += oi
+        return dia, oi_call, oi_put
+
+    # max_workers baixo: a BRAPI limita ~20 req/min, então poucas chamadas
+    # concorrentes já bastam para não estourar o limite (com o retry acima
+    # como rede de segurança para picos breves).
+    oi_por_dia = {}
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        for dia, oi_call, oi_put in pool.map(_um, tarefas):
+            acc = oi_por_dia.setdefault(dia, {'call': 0, 'put': 0})
+            acc['call'] += oi_call
+            acc['put'] += oi_put
+
+    # Preço de fechamento do ativo em cada dia, para o eixo comparativo —
+    # mesma fonte/cache do gráfico de preço do site.
+    try:
+        candles = _brapi_chart_fetch(t, uid, start_date=inicio.isoformat())
+        preco_por_dia = {c['t']: c['c'] for c in candles}
+    except Exception:
+        preco_por_dia = {}
+
+    # Sentimento por faixa de PCR — o Z-Score do Jumba (que normaliza contra
+    # a distribuição histórica de cada ativo) exige um histórico bem mais
+    # longo do que a janela de 1 mês desta página; usa direto a leitura
+    # "de manual" do PCR (>1 = mais proteção com puts = pessimismo, <1 =
+    # mais calls = otimismo), com uma faixa neutra ao redor de 1,0.
+    def _sentimento(pcr):
+        if pcr is None:
+            return None
+        if pcr >= 1.15:
+            return 'Pessimismo'
+        if pcr <= 0.85:
+            return 'Otimismo'
+        return 'Neutro'
+
+    serie = []
+    for dia in sorted(oi_por_dia.keys()):
+        acc = oi_por_dia[dia]
+        if acc['call'] <= 0 and acc['put'] <= 0:
+            continue
+        pcr = (acc['put'] / acc['call']) if acc['call'] > 0 else None
+        serie.append({
+            'date': dia, 'oi_call': acc['call'], 'oi_put': acc['put'],
+            'pcr': round(pcr, 4) if pcr is not None else None,
+            'sentimento': _sentimento(pcr),
+            'close': preco_por_dia.get(dia),
+        })
+
+    if not serie:
+        return jsonify({'error': f'Sem dados de posições em aberto para {t} no período.'}), 502
+
+    return jsonify({
+        'ticker': t, 'series': serie,
+        'expirations_used': vencs_janela,
+    })
+
+
+# ══════════════════════════════════════════════════════════════════
 # TRADER FUTUROS — posições em aberto de opções de índice e dólar
 # ══════════════════════════════════════════════════════════════════
 #

@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+{% block title %}Put/Call Ratio{% endblock %}
+{% block extra_scripts %}
+<style>
+.pcr-filtros{display:grid;grid-template-columns:repeat(auto-fit,minmax(165px,1fr));gap:.9rem;
+  background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);border-radius:8px;
+  padding:.9rem 1rem;margin:.6rem 0 .8rem;}
+.pcr-campo{display:flex;flex-direction:column;gap:.3rem;}
+.pcr-campo label{font-size:.75rem;color:var(--text-secondary);font-weight:600;
+  text-transform:uppercase;letter-spacing:.03em;}
+.pcr-campo select,.pcr-campo input{background:var(--card-bg);color:var(--text-primary);
+  border:1px solid var(--border-color);border-radius:5px;padding:.35rem .5rem;font-size:.85rem;}
+.pcr-campo input{text-transform:uppercase;}
+
+#pcr-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
+#pcr-error{display:none;color:#f87171;padding:1rem;background:rgba(239,68,68,.08);
+  border:1px solid rgba(239,68,68,.25);border-radius:6px;margin:.6rem 0;}
+#pcr-hint{padding:1.5rem;text-align:center;color:var(--text-secondary);font-size:.88rem;}
+#pcr-res{display:none;}
+
+.pcr-gauge-wrap{text-align:center;margin:1rem 0 1.3rem;}
+.pcr-gauge-lbl{font-size:.8rem;color:var(--text-secondary);}
+.pcr-gauge-val{font-size:1.5rem;font-weight:700;margin:.2rem 0 .8rem;}
+.pcr-gauge-track{position:relative;height:10px;border-radius:6px;max-width:640px;margin:0 auto;
+  background:linear-gradient(90deg,#f87171,#eab308,#34d399);}
+.pcr-gauge-thumb{position:absolute;top:-5px;width:4px;height:20px;background:#fff;
+  border-radius:2px;transform:translateX(-50%);box-shadow:0 0 4px rgba(0,0,0,.5);}
+.pcr-gauge-ends{display:flex;justify-content:space-between;max-width:640px;margin:.4rem auto 0;
+  font-size:.72rem;color:var(--text-secondary);}
+
+.pcr-chart-wrap{position:relative;height:340px;background:var(--card-bg);
+  border:1px solid var(--border-color);border-radius:8px;padding:.6rem;margin-bottom:.4rem;}
+.pcr-legenda{display:flex;gap:1.2rem;justify-content:center;flex-wrap:wrap;
+  font-size:.8rem;color:var(--text-secondary);margin:.5rem 0 .3rem;}
+.pcr-nota{font-size:.78rem;color:var(--text-secondary);margin:.5rem 0;text-align:center;}
+
+.pcr-tab-wrap{overflow-x:auto;margin-top:1rem;}
+#pcr-tab{width:100%;border-collapse:collapse;font-size:.83rem;}
+#pcr-tab th{padding:.45rem .5rem;text-align:left;white-space:nowrap;
+  background:var(--card-bg);color:var(--text-secondary);font-weight:600;
+  border-bottom:1px solid var(--border-color);font-size:.72rem;
+  text-transform:uppercase;letter-spacing:.02em;}
+#pcr-tab td{padding:.35rem .5rem;text-align:left;white-space:nowrap;
+  border-bottom:1px solid rgba(255,255,255,.04);}
+.pcr-sent-otimismo{color:#34d399;font-weight:600;}
+.pcr-sent-neutro{color:#eab308;font-weight:600;}
+.pcr-sent-pessimismo{color:#f87171;font-weight:600;}
+
+.pcr-abas{display:flex;gap:.4rem;flex-wrap:wrap;border-bottom:1px solid var(--border-color);
+  margin-bottom:.8rem;}
+.pcr-aba{padding:.4rem .8rem;font-size:.85rem;cursor:pointer;color:var(--text-secondary);
+  border-bottom:2px solid transparent;}
+.pcr-aba.on{color:var(--text-primary);border-bottom-color:#7c3aed;font-weight:600;}
+.pcr-painel{display:none;font-size:.86rem;line-height:1.6;color:var(--text-secondary);}
+.pcr-painel.on{display:block;}
+.pcr-painel strong{color:var(--text-primary);}
+.pcr-painel code{background:var(--hover-bg);padding:.1rem .4rem;border-radius:4px;}
+@media (max-width:640px){.pcr-filtros{grid-template-columns:1fr;} .pcr-chart-wrap{height:260px;}}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
+    <h2 style="margin:0;">⚖️ Put/Call Ratio</h2>
+    <span class="pcr-nota" style="margin:0;">Sentimento via posições em aberto — fonte BRAPI / B3</span>
+  </div>
+
+  {% if not tem_token %}
+  <div style="margin:.7rem 0;padding:.6rem .9rem;background:rgba(234,179,8,.1);
+              border-left:3px solid #eab308;border-radius:4px;font-size:.83rem;color:var(--text-secondary);">
+    ⚠️ Sem chave BRAPI cadastrada: a API libera apenas <strong>PETR4</strong> (sandbox).
+    Para os demais ativos, cadastre sua chave do plano Pro em
+    <a href="{{ url_for('config') }}">Configuração</a>.
+  </div>
+  {% endif %}
+
+  <div class="pcr-filtros">
+    <div class="pcr-campo">
+      <label>Ativo</label>
+      <select id="pcr-ticker">
+        {% for t in sugestoes %}<option value="{{ t }}" {{ 'selected' if t == 'PETR4' else '' }}>{{ t }}</option>{% endfor %}
+        <option value="__outro__">— outro ativo… —</option>
+      </select>
+      <input id="pcr-ticker-livre" placeholder="Digite o ticker" maxlength="10"
+             style="display:none;margin-top:.3rem;">
+    </div>
+    <div class="pcr-campo">
+      <label>&nbsp;</label>
+      <button type="button" id="pcr-buscar" class="btn btn-primary" style="padding:.4rem;">Gerar gráfico</button>
+    </div>
+  </div>
+
+  <div id="pcr-error"></div>
+  <div id="pcr-loading">⏳ Somando posições em aberto de calls e puts (pode levar até 1 minuto)…</div>
+  <div id="pcr-hint">Escolha o ativo e clique em <strong>Gerar gráfico</strong>. Últimos 3 vencimentos mensais, ~1 mês de histórico.</div>
+
+  <div id="pcr-res">
+    <div id="pcr-info" class="pcr-nota"></div>
+
+    <div class="pcr-gauge-wrap">
+      <div class="pcr-gauge-lbl">Sentimento Atual</div>
+      <div class="pcr-gauge-val" id="pcr-gauge-val">—</div>
+      <div class="pcr-gauge-track"><div class="pcr-gauge-thumb" id="pcr-gauge-thumb" style="left:50%;"></div></div>
+      <div class="pcr-gauge-ends"><span>Pessimismo</span><span>Otimismo</span></div>
+    </div>
+
+    <div class="pcr-legenda">
+      <span><i style="display:inline-block;width:20px;height:3px;background:#eab308;vertical-align:middle;"></i> PCR</span>
+      <span><i style="display:inline-block;width:20px;height:3px;background:#e2e8f0;vertical-align:middle;"></i> Preço do ativo</span>
+    </div>
+    <div class="pcr-chart-wrap">
+      <canvas id="pcr-canvas"></canvas>
+      <div id="pcr-tooltip" style="display:none;position:absolute;background:var(--card-bg,#1e293b);
+           border:1px solid var(--border-color);border-radius:6px;padding:.4rem .7rem;
+           font-size:.78rem;pointer-events:none;white-space:nowrap;z-index:10;"></div>
+    </div>
+
+    <div class="pcr-tab-wrap">
+      <table id="pcr-tab">
+        <thead><tr><th>Data</th><th>OI Calls</th><th>OI Puts</th><th>PCR</th><th>Sentimento</th></tr></thead>
+        <tbody id="pcr-tab-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:1.2rem;">
+  <h3 style="margin-top:0;">Put/Call Ratio (PCR)</h3>
+  <div class="pcr-abas">
+    <span class="pcr-aba on" data-p="conceito">Conceito</span>
+    <span class="pcr-aba" data-p="contrario">Indicador Contrário</span>
+    <span class="pcr-aba" data-p="grafico">Gráfico e Tabela</span>
+  </div>
+  <div class="pcr-painel on" id="pcrp-conceito">
+    <p>O <strong>Put/Call Ratio (PCR)</strong> é um indicador de sentimento de mercado amplamente
+    utilizado. Ele compara a quantidade de opções de venda (Puts) com opções de compra (Calls) em
+    aberto (Open Interest) para um determinado ativo.</p>
+    <p>Fórmula: <code>PCR = Puts em Aberto ÷ Calls em Aberto</code></p>
+    <p><strong>PCR &gt; 1:</strong> mais Puts do que Calls em aberto. Indica que o mercado está
+    posicionado de forma pessimista — há mais proteção ou aposta na queda.</p>
+    <p><strong>PCR &lt; 1:</strong> mais Calls do que Puts em aberto. Indica otimismo predominante —
+    os participantes estão posicionados esperando alta.</p>
+  </div>
+  <div class="pcr-painel" id="pcrp-contrario">
+    <p>O PCR é classicamente tratado como um <strong>indicador contrário</strong> (contrarian). A
+    lógica: quando a maioria do mercado se posiciona excessivamente em uma direção, o movimento
+    oposto tende a ocorrer.</p>
+    <p><strong>Pessimismo/Medo elevado:</strong> o mercado está excessivamente protegido com Puts.
+    Como o consenso extremo costuma estar errado, extremos de pessimismo frequentemente sinalizam
+    fundos de mercado ou repiques de alta.</p>
+    <p><strong>Otimismo/Ganância:</strong> excesso desproporcional de Calls em relação a Puts —
+    extrema euforia direcional. Essas zonas costumam anteceder topos de mercado ou correções de
+    preço.</p>
+  </div>
+  <div class="pcr-painel" id="pcrp-grafico">
+    <p><strong>Linha amarela (PCR):</strong> evolução do Put/Call Ratio no período. Valores
+    crescentes indicam aumento de pessimismo; valores decrescentes, aumento de otimismo.</p>
+    <p><strong>Linha branca (Ativo):</strong> preço do ativo-objeto, para comparação visual direta.
+    Procure divergências — PCR subindo enquanto o ativo sobe pode indicar proteção antecipada.</p>
+    <p><strong>Sentimento:</strong> classificação direta pelo valor do PCR (não pelo Z-Score
+    estatístico — esta página cobre só ~1 mês de histórico, curto demais para uma normalização
+    contra a distribuição histórica do ativo). PCR ≥ 1,15 = Pessimismo; PCR ≤ 0,85 = Otimismo;
+    entre esses valores, Neutro.</p>
+  </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+var elT = document.getElementById('pcr-ticker'), elTL = document.getElementById('pcr-ticker-livre');
+var elErr = document.getElementById('pcr-error'), elLoad = document.getElementById('pcr-loading');
+var elHint = document.getElementById('pcr-hint'), elRes = document.getElementById('pcr-res');
+var SERIE = [];
+
+function fmtNum(v, dec) {
+    dec = dec == null ? 2 : dec;
+    return Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+function fmtBRL(v) { return v == null ? '—' : 'R$ ' + fmtNum(v); }
+function fmtInt(v) { return Number(v || 0).toLocaleString('pt-BR'); }
+function dataBR(iso) {
+    var p = (iso || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '');
+}
+function showErr(m) { elErr.textContent = m; elErr.style.display = 'block'; }
+function clearErr() { elErr.style.display = 'none'; }
+
+function tickerAtual() {
+    if (elT.value === '__outro__') return (elTL.value || '').trim().toUpperCase();
+    return (elT.value || '').trim().toUpperCase();
+}
+elT.addEventListener('change', function () {
+    var livre = elT.value === '__outro__';
+    elTL.style.display = livre ? '' : 'none';
+    if (livre) elTL.focus();
+});
+
+document.getElementById('pcr-buscar').addEventListener('click', buscar);
+
+function buscar() {
+    var t = tickerAtual();
+    if (!t) { showErr('Escolha um ativo.'); return; }
+    clearErr();
+    elHint.style.display = 'none';
+    elRes.style.display = 'none';
+    elLoad.style.display = 'block';
+    fetch('/api/put-call-ratio/' + encodeURIComponent(t))
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            elLoad.style.display = 'none';
+            if (!res.ok || res.j.error) { showErr(res.j.error || 'Erro ao buscar o PCR.'); return; }
+            var d = res.j;
+            SERIE = d.series || [];
+            if (!SERIE.length) { showErr('Sem dados para ' + t + '.'); return; }
+            elRes.style.display = 'block';
+            document.getElementById('pcr-info').textContent =
+                t + ' · ' + SERIE.length + ' pregões · vencimentos: ' +
+                (d.expirations_used || []).map(dataBR).join(', ');
+            atualizaGauge(SERIE[SERIE.length - 1]);
+            preencheTabela(SERIE);
+            desenha();
+        })
+        .catch(function (e) { elLoad.style.display = 'none'; showErr('Falha de rede: ' + e); });
+}
+
+function atualizaGauge(ultimo) {
+    var pcr = ultimo.pcr;
+    var val = document.getElementById('pcr-gauge-val');
+    var thumb = document.getElementById('pcr-gauge-thumb');
+    if (pcr == null) { val.textContent = '—'; return; }
+    val.textContent = (ultimo.sentimento || '—') + ' (PCR ' + fmtNum(pcr, 3) + ')';
+    // Mapeia PCR (tipicamente 0,4 a 1,8) para posição 0-100% na barra —
+    // clampa nas pontas para PCRs extremos não saírem da barra.
+    var pos = 50 + (1 - pcr) * 60;
+    pos = Math.max(2, Math.min(98, pos));
+    thumb.style.left = pos + '%';
+}
+
+function sentClass(s) {
+    if (s === 'Otimismo') return 'pcr-sent-otimismo';
+    if (s === 'Pessimismo') return 'pcr-sent-pessimismo';
+    return 'pcr-sent-neutro';
+}
+
+function preencheTabela(serie) {
+    var body = document.getElementById('pcr-tab-body');
+    var rows = serie.slice().reverse();
+    body.innerHTML = rows.map(function (d) {
+        return '<tr>'
+            + '<td>' + dataBR(d.date) + '</td>'
+            + '<td>' + fmtInt(d.oi_call) + '</td>'
+            + '<td>' + fmtInt(d.oi_put) + '</td>'
+            + '<td>' + (d.pcr != null ? fmtNum(d.pcr, 3) : '—') + '</td>'
+            + '<td class="' + sentClass(d.sentimento) + '">' + (d.sentimento || '—') + '</td>'
+            + '</tr>';
+    }).join('');
+}
+
+// ── Gráfico: PCR (eixo esquerdo) + preço do ativo (eixo direito) ──
+var canvas = document.getElementById('pcr-canvas');
+var ctx = canvas.getContext('2d');
+var tip = document.getElementById('pcr-tooltip');
+var PAD = { top: 20, right: 50, bottom: 34, left: 50 };
+var GEO = null;
+
+function desenha() {
+    if (!SERIE.length) return;
+    var wrap = canvas.parentElement;
+    var W = wrap.clientWidth || 900, H = 300;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    var pcrs = SERIE.map(function (d) { return d.pcr; }).filter(function (v) { return v != null; });
+    var precos = SERIE.map(function (d) { return d.close; }).filter(function (v) { return v != null; });
+    var pMin = Math.min.apply(null, pcrs), pMax = Math.max.apply(null, pcrs);
+    var pSpan = (pMax - pMin) || 0.1; pMin -= pSpan * 0.1; pMax += pSpan * 0.1;
+    var cMin = precos.length ? Math.min.apply(null, precos) : 0;
+    var cMax = precos.length ? Math.max.apply(null, precos) : 1;
+    var cSpan = (cMax - cMin) || 1; cMin -= cSpan * 0.1; cMax += cSpan * 0.1;
+
+    var cW = W - PAD.left - PAD.right, cH = H - PAD.top - PAD.bottom;
+    function xPx(i) { return PAD.left + (SERIE.length <= 1 ? cW / 2 : i / (SERIE.length - 1) * cW); }
+    function yPcr(v) { return PAD.top + (1 - (v - pMin) / (pMax - pMin)) * cH; }
+    function yPreco(v) { return PAD.top + (1 - (v - cMin) / (cMax - cMin)) * cH; }
+
+    ctx.strokeStyle = 'rgba(148,163,184,.12)'; ctx.lineWidth = 1;
+    for (var gy = 0; gy <= 4; gy++) {
+        var py = PAD.top + gy * cH / 4;
+        ctx.beginPath(); ctx.moveTo(PAD.left, py); ctx.lineTo(W - PAD.right, py); ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(234,179,8,.85)'; ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+    for (var gy2 = 0; gy2 <= 4; gy2++) {
+        var yv = pMax - gy2 * (pMax - pMin) / 4;
+        ctx.fillText(fmtNum(yv, 2), W - PAD.right + 4, PAD.top + gy2 * cH / 4 + 3);
+    }
+    ctx.fillStyle = 'rgba(226,232,240,.75)'; ctx.textAlign = 'right';
+    for (var gy3 = 0; gy3 <= 4; gy3++) {
+        var yv2 = cMax - gy3 * (cMax - cMin) / 4;
+        ctx.fillText(fmtBRL(yv2), PAD.left - 4, PAD.top + gy3 * cH / 4 + 3);
+    }
+    ctx.fillStyle = 'rgba(148,163,184,.85)'; ctx.textAlign = 'center';
+    var step = Math.max(1, Math.round(SERIE.length / 8));
+    SERIE.forEach(function (d, i) {
+        if (i % step !== 0 && i !== SERIE.length - 1) return;
+        ctx.fillText(dataBR(d.date).slice(0, 5), xPx(i), H - PAD.bottom + 16);
+    });
+
+    // linha branca: preço do ativo
+    ctx.beginPath(); ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 1.5;
+    var iniciou = false;
+    SERIE.forEach(function (d, i) {
+        if (d.close == null) return;
+        var x = xPx(i), y = yPreco(d.close);
+        if (!iniciou) { ctx.moveTo(x, y); iniciou = true; } else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    // linha amarela: PCR
+    ctx.beginPath(); ctx.strokeStyle = '#eab308'; ctx.lineWidth = 2;
+    var iniciou2 = false;
+    SERIE.forEach(function (d, i) {
+        if (d.pcr == null) return;
+        var x = xPx(i), y = yPcr(d.pcr);
+        if (!iniciou2) { ctx.moveTo(x, y); iniciou2 = true; } else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(148,163,184,.25)'; ctx.strokeRect(PAD.left, PAD.top, cW, cH);
+
+    GEO = { xPx: xPx, yPcr: yPcr, PAD: PAD, W: W, H: H, cW: cW };
+}
+window.addEventListener('resize', function () { if (SERIE.length) desenha(); });
+
+canvas.addEventListener('mousemove', function (ev) {
+    if (!GEO || !SERIE.length) { tip.style.display = 'none'; return; }
+    var rect = canvas.getBoundingClientRect();
+    var x = ev.clientX - rect.left;
+    if (x < GEO.PAD.left || x > GEO.W - GEO.PAD.right) { tip.style.display = 'none'; return; }
+    var idx = Math.round((x - GEO.PAD.left) / GEO.cW * (SERIE.length - 1));
+    idx = Math.max(0, Math.min(SERIE.length - 1, idx));
+    var d = SERIE[idx];
+    tip.innerHTML = '<strong>' + dataBR(d.date) + '</strong><br>'
+        + 'PCR: ' + (d.pcr != null ? fmtNum(d.pcr, 3) : '—') + ' · <span class="' + sentClass(d.sentimento) + '">' + (d.sentimento || '—') + '</span><br>'
+        + 'Preço: ' + fmtBRL(d.close) + '<br>'
+        + 'OI Calls: ' + fmtInt(d.oi_call) + ' · OI Puts: ' + fmtInt(d.oi_put);
+    tip.style.display = 'block';
+    tip.style.left = Math.min(x + 14, (canvas.clientWidth || 900) - 200) + 'px';
+    tip.style.top = Math.max(0, GEO.yPcr(d.pcr != null ? d.pcr : 1) - 60) + 'px';
+});
+canvas.addEventListener('mouseleave', function () { tip.style.display = 'none'; });
+
+// ── Abas de explicação ──
+document.querySelectorAll('.pcr-aba').forEach(function (aba) {
+    aba.addEventListener('click', function () {
+        document.querySelectorAll('.pcr-aba').forEach(function (a) { a.classList.remove('on'); });
+        document.querySelectorAll('.pcr-painel').forEach(function (p) { p.classList.remove('on'); });
+        aba.classList.add('on');
+        document.getElementById('pcrp-' + aba.dataset.p).classList.add('on');
+    });
+});
+})();
+</script>
+{% endblock %}

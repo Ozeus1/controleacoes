@@ -249,9 +249,9 @@
                 </div>
 
                 {# ── Opções (dropdown com Estudos e Simulação) ── #}
-                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','simulador','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','trader_futuros','ajuda_operacoes'] else '' }}">
+                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','simulador','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','put_call_ratio','trader_futuros','ajuda_operacoes'] else '' }}">
                     <a href="{{ url_for('opcoes') }}"
-                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','simulador','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','trader_futuros','ajuda_operacoes'] else '' }}"
+                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','simulador','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','put_call_ratio','trader_futuros','ajuda_operacoes'] else '' }}"
                        onclick="toggleNavDrop(this,event)">
                         Opções <span class="nav-caret">▾</span>
                     </a>
@@ -327,8 +327,8 @@
                             </div>
                         </div>
                         {# Walls: item pai com submenu FYT / Mapa de Opções / Market Gamma / BGT Bands / Trader IND/DOL #}
-                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','trader_futuros','volume_anomalo'] else '' }}">
-                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','trader_futuros','volume_anomalo'] else '' }}"
+                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','put_call_ratio','trader_futuros','volume_anomalo'] else '' }}">
+                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','put_call_ratio','trader_futuros','volume_anomalo'] else '' }}"
                                onclick="toggleNavDrop(this,event)">
                                 🧱 Walls <span class="nav-caret nav-caret-sub">▸</span>
                             </a>
@@ -345,6 +345,8 @@
                                    class="{{ 'active' if request.endpoint == 'curva_volatilidade' else '' }}">📈 Curva de Volatilidade</a>
                                 <a href="{{ url_for('simulador_bs') }}"
                                    class="{{ 'active' if request.endpoint == 'simulador_bs' else '' }}">🧮 Simulador BS</a>
+                                <a href="{{ url_for('put_call_ratio') }}"
+                                   class="{{ 'active' if request.endpoint == 'put_call_ratio' else '' }}">⚖️ Put/Call Ratio</a>
                                 <a href="{{ url_for('volume_anomalo') }}"
                                    class="{{ 'active' if request.endpoint == 'volume_anomalo' else '' }}">🦈 Volume Anômalo</a>
                                 <a href="{{ url_for('trader_futuros') }}"

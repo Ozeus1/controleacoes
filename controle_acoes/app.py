@@ -8597,14 +8597,22 @@ def api_bgt_bands(ticker):
 # CURVA DE VOLATILIDADE — smile de IV por strike, com spline cúbico
 # ══════════════════════════════════════════════════════════════════
 #
-# A BRAPI retorna impliedVolatility nula pra boa parte dos strikes mais
-# distantes do dinheiro (~30-50% conforme o ativo, "iv_not_converged" —
-# o mesmo problema já mapeado no BGT Bands). Em vez de descartar esses
-# pontos, a curva usa spline cúbico monotônico sobre os strikes com IV
-# válida para estimar a IV nos demais, e o preço teórico (Black-Scholes)
-# de CADA opção é calculado com a IV interpolada naquele strike — não
-# com a IV própria da opção (que pode ser nula) nem com uma vol única
-# para a cadeia inteira, que ignoraria o skew.
+# Fonte: OpLab (/market/options/{ticker}), não a BRAPI. Comparado ponto
+# a ponto com o Jumba (referência do usuário): a BRAPI ora reportava
+# 'confidence: high' em pontos com IV claramente errada, ora 'low' em
+# pontos corretos — o campo de confiança dela não é um sinal confiável
+# de qualidade. A OpLab traz o book (bid/ask) E o preço de fechamento
+# real negociado (close/volume) por opção; testado que o CLOSE sozinho
+# (não o mid bid/ask, que tem spreads às vezes absurdos em opções pouco
+# negociadas no instante da consulta — ex. bid=1,12/ask=5,00 na mesma
+# opção com volume de 162 mil no dia) dá uma curva de IV monotônica e
+# suave sem precisar de outlier-removal nem suavização agressiva.
+#
+# A IV de cada opção é calculada localmente via _implied_vol (bissecção
+# a partir do close), não vem pronta da OpLab. O preço teórico de CADA
+# opção da cadeia usa a IV interpolada (spline monotônico) no strike
+# dela — não a IV própria (que pode faltar) nem uma vol única pra
+# cadeia inteira, que ignoraria o skew.
 
 def _spline_monotono(xs, ys):
     """Interpolação PCHIP (monótona por trechos) — evita os overshoots
@@ -8662,17 +8670,39 @@ def curva_volatilidade():
                  if r.ticker})
     return render_template('curva_volatilidade.html',
                            sugestoes=sorted(set(ativos) | set(rk)),
-                           tem_token=bool(_brapi_opt_token(current_user.id)))
+                           tem_token=bool(Settings.get_value('oplab_token', user_id=current_user.id)))
+
+
+def _oplab_options_chain(ticker, user_id):
+    """Busca a cadeia completa de opções (todos os vencimentos) via OpLab,
+    com o mesmo cache/tratamento de erro já usado no resto do site."""
+    token = Settings.get_value('oplab_token', user_id=user_id)
+    if not token:
+        return None, 'Token OpLab não configurado'
+    try:
+        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+    except OplabApiError as e:
+        return None, str(e)
+    except Exception:
+        app.logger.exception('_oplab_options_chain error for %s', ticker)
+        return None, 'Erro inesperado ao buscar a cadeia de opções.'
+    opts = data if isinstance(data, list) else (
+        data.get('options') or data.get('calls', []) + data.get('puts', []) or [])
+    return opts, None
 
 
 @app.route('/api/curva-volatilidade/vencimentos/<ticker>')
 @login_required
 def api_curva_vol_vencimentos(ticker):
     t = (ticker or '').strip().upper()
-    d, err = _brapi_opt_get('/expirations', {'underlying': t}, current_user.id)
+    opts, err = _oplab_options_chain(t, current_user.id)
     if err:
         return jsonify({'error': err}), 502
-    return jsonify({'expirations': sorted((d or {}).get('expirations') or [])})
+    from datetime import date as _date
+    hoje = _date.today().isoformat()
+    dues = sorted({str(o.get('due_date') or '')[:10] for o in (opts or [])
+                  if o.get('due_date') and str(o['due_date'])[:10] >= hoje})
+    return jsonify({'expirations': dues})
 
 
 @app.route('/api/curva-volatilidade/<ticker>')
@@ -8693,55 +8723,63 @@ def api_curva_volatilidade(ticker):
     except Exception:
         r_cont = math.log(1.14)
 
-    d, err = _brapi_opt_get('/analytics', {'underlying': t, 'expirationDate': exp}, uid, timeout=20)
+    todos, err = _oplab_options_chain(t, uid)
     if err:
         return jsonify({'error': err}), 502
-    opts = (d or {}).get('analytics') or []
+    opts = [o for o in (todos or []) if str(o.get('due_date') or '')[:10] == exp]
     if not opts:
         return jsonify({'error': f'Sem opções para {t} no vencimento {exp}.'}), 404
 
-    spot = next((float(o['underlyingPrice']) for o in opts if o.get('underlyingPrice')), 0)
+    spot = next((float(o['spot_price']) for o in opts if o.get('spot_price')), 0)
     if not spot:
         return jsonify({'error': 'Sem preço do ativo nesse snapshot.'}), 502
-    T = next((float(o['timeToExpirationYears']) for o in opts if o.get('timeToExpirationYears')), 0)
-    data_ref = next((o.get('date') for o in opts if o.get('date')), None)
+    from datetime import date as _date
+    try:
+        dc = (_date.fromisoformat(exp) - _date.today()).days
+    except ValueError:
+        dc = 0
+    T = max(dc, 0) / 365.25
+    data_ref = next((str(o.get('updated_at') or '')[:10] for o in opts if o.get('updated_at')), None)
 
-    # Curva ajustada só com o lado OTM (fora do dinheiro) de cada strike —
-    # calls para K >= spot, puts para K <= spot — que é o lado líquido e
-    # informativo do book em cada ponta; o lado ITM correspondente tem
-    # pouquíssimo giro e sua IV, quando "converge", costuma ser ruído (visto
-    # na prática: puts deep ITM oscilando entre IV=25% e IV=104% strike a
-    # strike, e média com a call ITM do mesmo strike — que tinha problema
-    # igual do lado oposto — produzia serrilhado no meio da curva em vez do
-    # smile suave). Mistura calls e puts só na fronteira (K perto do spot),
-    # e cada strike entra com um único ponto, não uma média de dois lados
-    # com liquidez muito diferente.
+    # IV de cada opção calculada localmente via bissecção a partir do
+    # CLOSE (não do mid bid/ask — testado que o book instantâneo às vezes
+    # tem spreads absurdos numa opção com volume alto no dia, ex. bid=1,12/
+    # ask=5,00; o close é o preço realmente negociado, mais estável). Só o
+    # lado OTM de cada strike entra na curva (call para K>=spot, put para
+    # K<=spot) — é o lado líquido/informativo em mercado real.
     por_strike = {}
     for o in opts:
-        iv = o.get('impliedVolatility')
         k = o.get('strike')
-        side = (o.get('side') or '').lower()
-        conf = (o.get('confidence') or '').lower()
-        preco = o.get('optionPrice') or 0
-        vega = o.get('vega') or 0
-        # Vega mínimo: em opções deep OTM/ITM com pouco tempo até o
-        # vencimento, o preço fica hipersensível à IV — testado com PETR4 a
-        # 7 dias do vencimento: IV=27% e IV=48% dão o MESMO preço arredon-
-        # dado (R$0,05), então a IV "implícita" de um centavo de diferença
-        # no book é ruído puro, não informação de mercado (confirmado: o
-        # Jumba mostra ~27% onde a BRAPI reportava 48% nesse strike, mesmo
-        # com confidence 'high' e preço/OI aparentemente normais — o
-        # problema não é liquidez, é a matemática da IV ficar mal-condicio-
-        # nada quando vega -> 0). Abaixo de vega=1,0 a IV implícita deixa
-        # de ser confiável mesmo com todos os outros filtros passando.
-        if (iv is None or not k or conf in ('low', 'none', '')
-                or preco < 0.03 or not (0.05 <= iv <= 1.5) or vega < 1.0):
+        side = (o.get('category') or o.get('type') or '').upper()
+        close = o.get('close') or 0
+        vol = o.get('volume') or 0
+        # close < R$0,02: prêmio no tick mínimo (não distingue mais nada
+        # da IV verdadeira, mesmo com volume real negociado) — testado
+        # com uma put deep OTM de PETR4 a R$0,01: IV implícita saltou pra
+        # 159%, isolada, enquanto os vizinhos com preço >=R$0,02 mantêm
+        # uma curva suave e coerente (73%→...→44%).
+        if not k or close < 0.02 or vol <= 0 or side not in ('CALL', 'PUT'):
             continue
         k = float(k)
-        otm = (side == 'call' and k >= spot) or (side == 'put' and k <= spot)
-        if not otm:
+        otm = (side == 'CALL' and k >= spot) or (side == 'PUT' and k <= spot)
+        if not otm or T <= 0:
             continue
-        por_strike.setdefault(k, []).append(float(iv))
+        try:
+            iv = _implied_vol(spot, k, T, r_cont, float(close), side == 'CALL')
+        except Exception:
+            continue
+        if not (0.05 <= iv <= 2.0):
+            continue
+        # Sem filtro de vega aqui: diferente da BRAPI (cujo optionPrice em
+        # opções pouco negociadas podia ser um valor sintético/travado), o
+        # 'close' da OpLab com volume>0 é o preço realmente negociado — a
+        # IV derivada dele continua informativa mesmo em opções bem OTM
+        # (testado: sequência suave e monotônica de 73% a 51% do strike
+        # 22 ao 49, mesmo com vega baixíssimo nas pontas). O ruído
+        # residual (micro-ondulação entre strikes vizinhos) é tratado
+        # abaixo por outlier-removal + suavização, igual ao resto da
+        # curva.
+        por_strike.setdefault(k, []).append(iv)
     pontos = sorted((k, sum(vs) / len(vs)) for k, vs in por_strike.items())
     if len(pontos) < 3:
         return jsonify({'error': 'Poucos pontos de IV válida para montar a curva.'}), 502
@@ -8749,9 +8787,7 @@ def api_curva_volatilidade(ticker):
     ys_brutos = [p[1] for p in pontos]
 
     # Remove outliers isolados ANTES de suavizar: um ponto que destoa muito
-    # dos dois vizinhos mais próximos (visto na prática: BBAS3 com IV=54%
-    # cravado entre vizinhos de 39% e 39%, mesmo já filtrado por confiança
-    # 'high' e preço líquido) é substituído pela média dos vizinhos — a
+    # dos dois vizinhos mais próximos é substituído pela média deles — a
     # suavização por média móvel sozinha não é suficiente porque um
     # outlier isolado ainda contamina os pontos ao redor dele.
     ys_sem_outlier = list(ys_brutos)
@@ -8762,52 +8798,48 @@ def api_curva_volatilidade(ticker):
         if desvio > max(0.04, viz_dist * 1.5):
             ys_sem_outlier[i] = viz_media
 
-    # Suaviza com média móvel de 3 pontos antes do spline: mesmo já filtrado
-    # por confiança/liquidez, o mercado tem micro-ondulações de décimos de
-    # ponto percentual entre strikes vizinhos (ruído de cotação/arredonda-
-    # mento) que o PCHIP segue fielmente por ser monotônico só POR TRECHO —
-    # cada pequena inversão de tendência vira uma inflexão visível na curva
-    # (visto na prática: BOVA11 com 13 "dentes de serra" entre pontos que já
-    # tinham confiança alta e preço líquido). Extremos ficam sem suavizar
-    # (não têm vizinho dos dois lados) — normalmente onde o smile já sobe/
-    # desce mais devagar de qualquer forma.
+    # Suaviza com média móvel de 3 pontos antes do spline: mesmo com dados
+    # de preço real negociado, o mercado tem micro-ondulações de décimos
+    # de ponto percentual entre strikes vizinhos que o PCHIP (monotônico
+    # só POR TRECHO) segue fielmente, virando pequenas inflexões visíveis.
     ys = list(ys_sem_outlier)
     for i in range(1, len(ys_sem_outlier) - 1):
         ys[i] = (ys_sem_outlier[i - 1] + 2 * ys_sem_outlier[i] + ys_sem_outlier[i + 1]) / 4
     curva_fn = _spline_monotono(xs, ys)
 
-    # Curva de exibição: um ponto a cada strike real + densificação entre
-    # eles para o gráfico ficar suave (mesmo com poucos strikes cotados).
+    # Curva de exibição: densifica entre os strikes reais para o gráfico
+    # ficar suave — o hint de cada ponto (preço de call/put) vem de
+    # 'linhas', casado pelo strike real mais próximo no frontend.
     curva = []
     lo, hi = xs[0], xs[-1]
     n_pts = 80
     for i in range(n_pts + 1):
         k = lo + (hi - lo) * i / n_pts
         iv = curva_fn(k)
-        if iv is not None:
-            curva.append({'strike': round(k, 4), 'iv': round(iv, 6)})
+        if iv is None:
+            continue
+        curva.append({'strike': round(k, 4), 'iv': round(iv, 6)})
 
     # Linhas da tabela: calls à esquerda, puts à direita, pareadas por
     # strike — preço teórico de CADA opção usa a IV interpolada na curva
-    # NAQUELE strike (não a IV própria, que pode ser nula).
+    # NAQUELE strike (não a IV própria, que pode ter dado ruim/faltando).
     linhas_por_strike = {}
     for o in opts:
         k = o.get('strike')
         if not k:
             continue
         k = float(k)
-        side = (o.get('side') or '').lower()
+        side = (o.get('category') or o.get('type') or '').upper()
         iv_curva = curva_fn(k)
-        preco_teorico = _bs_price_opt(spot, k, T, r_cont, iv_curva,
-                                      'CALL' if side == 'call' else 'PUT') if (T > 0 and iv_curva) else None
+        preco_teorico = _bs_price_opt(spot, k, T, r_cont, iv_curva, side) if (T > 0 and iv_curva) else None
         entry = {
-            # A BRAPI não traz bid/ask nesse endpoint — só o último preço
-            # (optionPrice, priceSource 'close'/'trade' conforme o horário).
-            'symbol': o.get('symbol'), 'last': o.get('optionPrice'),
+            'symbol': o.get('symbol'), 'last': o.get('close'),
+            'bid': o.get('bid') or None, 'ask': o.get('ask') or None,
+            'volume': o.get('volume'),
             'preco_teorico': round(preco_teorico, 2) if preco_teorico is not None else None,
         }
         linhas_por_strike.setdefault(k, {'strike': k, 'call': None, 'put': None})
-        linhas_por_strike[k]['call' if side == 'call' else 'put'] = entry
+        linhas_por_strike[k]['call' if side == 'CALL' else 'put'] = entry
 
     linhas = [linhas_por_strike[k] for k in sorted(linhas_por_strike.keys())]
 

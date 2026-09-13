@@ -53,15 +53,14 @@
 <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
     <h2 style="margin:0;">📈 Curva de Volatilidade</h2>
-    <span class="cv-nota" style="margin:0;">Smile de IV por strike — fonte BRAPI / B3</span>
+    <span class="cv-nota" style="margin:0;">Smile de IV por strike — fonte OpLab / B3</span>
   </div>
 
   {% if not tem_token %}
   <div style="margin:.7rem 0;padding:.6rem .9rem;background:rgba(234,179,8,.1);
               border-left:3px solid #eab308;border-radius:4px;font-size:.83rem;color:var(--text-secondary);">
-    ⚠️ Sem chave BRAPI cadastrada: a API libera apenas <strong>PETR4</strong> (sandbox).
-    Para os demais ativos, cadastre sua chave do plano Pro em
-    <a href="{{ url_for('config') }}">Configuração</a>.
+    ⚠️ Sem token OpLab cadastrado. Cadastre em
+    <a href="{{ url_for('config') }}">Configuração</a> para usar esta página.
   </div>
   {% endif %}
 
@@ -94,10 +93,16 @@
     <div class="cv-legenda">
       <span>🔴 Volatilidade Implícita (interpolada, spline monotônico)</span>
     </div>
-    <div class="cv-chart-wrap"><canvas id="cv-canvas"></canvas></div>
+    <div class="cv-chart-wrap">
+      <canvas id="cv-canvas"></canvas>
+      <div id="cv-tooltip" style="display:none;position:absolute;background:var(--card-bg,#1e293b);
+           border:1px solid var(--border-color);border-radius:6px;padding:.4rem .7rem;
+           font-size:.78rem;pointer-events:none;white-space:nowrap;z-index:10;"></div>
+    </div>
     <p class="cv-nota">
-      Pontos sem informação de mercado suficiente (baixa confiança, prêmio no tick mínimo,
-      ou IV fora de 5%-150%) são descartados antes do ajuste da curva.
+      Pontos sem informação de mercado suficiente (sem negociação no dia, prêmio abaixo de
+      R$0,02, ou IV fora de 5%-200%) são descartados antes do ajuste da curva.
+      Passe o mouse sobre a curva para ver o strike, a VI e o preço de call/put.
     </p>
 
     <div class="cv-tab-wrap">
@@ -211,7 +216,7 @@ carregarVencimentos();
 
 document.getElementById('cv-buscar').addEventListener('click', buscar);
 
-var CURVA = [], SPOT = 0;
+var CURVA = [], SPOT = 0, LINHAS = [];
 
 function buscar() {
     var t = tickerAtual(), exp = elExp.value;
@@ -229,6 +234,7 @@ function buscar() {
             elRes.style.display = 'block';
             CURVA = d.curva || [];
             SPOT = d.spot || 0;
+            LINHAS = d.linhas || [];
             document.getElementById('cv-info').textContent =
                 t + ' · spot ' + fmtBRL(SPOT) + ' · vencimento ' + dataBR(exp) +
                 ' · ' + d.n_pontos_iv + '/' + d.n_strikes_total + ' strikes com IV válida' +
@@ -263,7 +269,22 @@ function preencheTabela(linhas) {
 // ── Gráfico da curva (canvas) ──
 var canvas = document.getElementById('cv-canvas');
 var ctx = canvas.getContext('2d');
+var tip = document.getElementById('cv-tooltip');
 var PAD = { top: 20, right: 20, bottom: 34, left: 60 };
+var GEO = null;
+
+// IV amostrada da curva no strike mais próximo (para posicionar o marcador
+// de um strike real, que pode não coincidir exatamente com um dos pontos
+// densificados que vieram da API).
+function curvaEm(strike) {
+    if (!CURVA.length) return 0;
+    var melhor = CURVA[0], melhorDist = Math.abs(CURVA[0].strike - strike);
+    for (var i = 1; i < CURVA.length; i++) {
+        var dist = Math.abs(CURVA[i].strike - strike);
+        if (dist < melhorDist) { melhor = CURVA[i]; melhorDist = dist; }
+    }
+    return melhor.iv;
+}
 
 function desenha() {
     if (!CURVA.length) return;
@@ -306,6 +327,15 @@ function desenha() {
     });
     ctx.stroke();
 
+    // Pontos nos strikes reais (com dado de mercado) — mesmo padrão do
+    // Jumba: cada strike cotado vira um marcador clicável/hover na curva.
+    ctx.fillStyle = '#f87171';
+    LINHAS.forEach(function (l) {
+        if (l.strike < xMin || l.strike > xMax) return;
+        var x = xPx(l.strike), y = yPx(curvaEm(l.strike));
+        ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+    });
+
     if (SPOT >= xMin && SPOT <= xMax) {
         var xs2 = xPx(SPOT);
         ctx.strokeStyle = 'rgba(96,165,250,.6)'; ctx.setLineDash([4, 4]); ctx.lineWidth = 1;
@@ -316,8 +346,34 @@ function desenha() {
     }
 
     ctx.strokeStyle = 'rgba(148,163,184,.25)'; ctx.strokeRect(PAD.left, PAD.top, cW, cH);
+
+    GEO = { xMin: xMin, xMax: xMax, xPx: xPx, yPx: yPx, W: W, H: H, PAD: PAD };
 }
 window.addEventListener('resize', function () { if (CURVA.length) desenha(); });
+
+// ── Tooltip: mostra strike/VOL/CALL/PUT do ponto real mais próximo do
+// mouse — mesmo padrão do Jumba (fig2 do pedido do usuário).
+canvas.addEventListener('mousemove', function (ev) {
+    if (!GEO || !LINHAS.length) { tip.style.display = 'none'; return; }
+    var rect = canvas.getBoundingClientRect();
+    var x = ev.clientX - rect.left, y = ev.clientY - rect.top;
+    if (x < GEO.PAD.left || x > GEO.W - GEO.PAD.right) { tip.style.display = 'none'; return; }
+    var strikeAlvo = GEO.xMin + (x - GEO.PAD.left) / (GEO.W - GEO.PAD.left - GEO.PAD.right) * (GEO.xMax - GEO.xMin);
+    var melhor = LINHAS[0], melhorDist = Math.abs(LINHAS[0].strike - strikeAlvo);
+    for (var i = 1; i < LINHAS.length; i++) {
+        var dist = Math.abs(LINHAS[i].strike - strikeAlvo);
+        if (dist < melhorDist) { melhor = LINHAS[i]; melhorDist = dist; }
+    }
+    var iv = curvaEm(melhor.strike);
+    var c = melhor.call || {}, p = melhor.put || {};
+    tip.innerHTML = '<strong>Strike: ' + fmtBRL(melhor.strike) + '</strong><br>'
+        + 'VOL: ' + fmtNum(iv * 100, 2) + '% · '
+        + 'CALL: ' + fmtBRL(c.last) + ' · PUT: ' + fmtBRL(p.last);
+    tip.style.display = 'block';
+    tip.style.left = Math.min(x + 14, (canvas.clientWidth || 900) - 220) + 'px';
+    tip.style.top = Math.max(0, GEO.yPx(iv) - 50) + 'px';
+});
+canvas.addEventListener('mouseleave', function () { tip.style.display = 'none'; });
 
 // ── Abas de explicação ──
 document.querySelectorAll('.cv-aba').forEach(function (aba) {

@@ -213,6 +213,8 @@
     <div class="sim-met"><span class="lbl" title="Probability of Profit (Black-Scholes)">POP</span><span class="val" id="m-pop">—</span></div>
     <div class="sim-met"><span class="lbl">Custo de entrada</span><span class="val" id="m-ent">—</span></div>
     <div class="sim-met"><span class="lbl">Custo de saída</span><span class="val" id="m-sai">—</span></div>
+    <div class="sim-met"><span class="lbl" title="Delta líquido da estrutura hoje, no preço atual do ativo — soma de delta(Black-Scholes) × quantidade × sinal C/V de cada perna (1.0 por ação na perna de Ativo). Mede a quantas ações a posição equivale no preço atual.">Delta estrutural</span><span class="val" id="m-delta-estrutural">—</span></div>
+    <div class="sim-met"><span class="lbl" title="Diferença entre o delta estrutural hoje e o delta estrutural no vencimento mais curto (só valor intrínseco) — mostra como a exposição da estrutura muda conforme o tempo passa até lá.">Delta de transição</span><span class="val" id="m-delta-transicao">—</span></div>
     <div class="sim-met"><span class="lbl">Vencimento mais curto</span><span class="val" id="m-dte">—</span></div>
   </div>
 
@@ -716,6 +718,33 @@ function blackScholes(S, K, T, r, sigma, isCall) {
     if (isCall) return S * normCDF(d1) - K * Math.exp(-r * T) * normCDF(d2);
     return K * Math.exp(-r * T) * normCDF(-d2) - S * normCDF(-d1);
 }
+// Delta Black-Scholes de uma opção. Com T<=0 (no vencimento) usa o delta
+// intrínseco (0 ou 1/-1, conforme dentro/fora do dinheiro) em vez de d1,
+// que não é definido nesse limite.
+function bsDelta(S, K, T, r, sigma, isCall) {
+    if (T <= 0 || sigma <= 0 || S <= 0 || K <= 0) {
+        var itm = isCall ? S > K : S < K;
+        return itm ? (isCall ? 1 : -1) : 0;
+    }
+    var d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
+    return isCall ? normCDF(d1) : normCDF(d1) - 1;
+}
+// Delta líquido da estrutura (em "ações equivalentes") no instante T
+// (anos até o vencimento de cada perna — 0 para o cálculo no vencimento
+// mais curto). Cada perna de opção contribui delta(BS) × qty × sinal
+// C/V; a perna de Ativo contribui 1.0 × qty × sinal (comprado = +1).
+function deltaEstrutural(legs, S, TporExp) {
+    var r = SELIC_RATE / 100;
+    return legs.reduce(function (acc, l) {
+        var sign = l.side === 'BUY' ? 1 : -1;
+        if (l.type === 'STOCK') return acc + sign * l.qty;
+        if (l.strike <= 0) return acc;
+        var T = TporExp(l.exp);
+        var sigma = l.iv > 0 ? l.iv : 0.30;
+        var d = bsDelta(S, l.strike, T, r, sigma, l.type === 'CALL');
+        return acc + sign * l.qty * d;
+    }, 0);
+}
 
 function vencimentos(legs) {
     var out = [];
@@ -819,7 +848,7 @@ function desenha(legs) {
         ctx.fillStyle = 'rgba(148,163,184,.7)'; ctx.font = '13px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('Adicione pernas para ver o payoff.', W / 2, H / 2);
-        ['m-net','m-gain','m-gain-pct','m-gain-selic','m-loss','m-be','m-pop'].forEach(function (id) {
+        ['m-net','m-gain','m-gain-pct','m-gain-selic','m-loss','m-be','m-pop','m-delta-estrutural','m-delta-transicao'].forEach(function (id) {
             document.getElementById(id).textContent = '—';
         });
         document.getElementById('sim-aviso').style.display = 'none';
@@ -1010,6 +1039,31 @@ function desenha(legs) {
         pop = Math.max(0, Math.min(100, pop * 100));
         popEl.textContent = fmtNum(pop, 1) + '%';
         popEl.className = 'val ' + (pop >= 50 ? 'positive' : 'negative');
+    })();
+
+    // Delta estrutural (hoje) e delta de transição (hoje vs. vencimento
+    // mais curto) — em "ações equivalentes": positivo = comportamento de
+    // comprado, negativo = comportamento de vendido no ativo.
+    (function () {
+        var estEl = document.getElementById('m-delta-estrutural');
+        var transEl = document.getElementById('m-delta-transicao');
+        if (!stockRef || stockRef <= 0) {
+            estEl.textContent = '—'; estEl.className = 'val';
+            transEl.textContent = '—'; transEl.className = 'val';
+            return;
+        }
+        function Thoje(exp) {
+            if (!exp) return 0;
+            var d = diasAte(exp);
+            return d != null ? Math.max(d, 0) / 365.25 : 0;
+        }
+        var deltaHoje = deltaEstrutural(uteis, stockRef, Thoje);
+        var deltaVenc = deltaEstrutural(uteis, stockRef, function () { return 0; });
+        estEl.textContent = fmtNum(deltaHoje, 0);
+        estEl.className = 'val ' + (deltaHoje >= 0 ? 'positive' : 'negative');
+        var transicao = deltaHoje - deltaVenc;
+        transEl.textContent = fmtNum(transicao, 0);
+        transEl.className = 'val ' + (transicao >= 0 ? 'positive' : 'negative');
     })();
 
     canvas._ser = { Sarr: Sarr, Parr: Parr, Smin: Smin, Smax: Smax };

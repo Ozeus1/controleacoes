@@ -8735,6 +8735,21 @@ def api_curva_volatilidade(ticker):
         return jsonify({'error': 'Poucos pontos de IV válida para montar a curva.'}), 502
     xs = [p[0] for p in pontos]
     ys_brutos = [p[1] for p in pontos]
+
+    # Remove outliers isolados ANTES de suavizar: um ponto que destoa muito
+    # dos dois vizinhos mais próximos (visto na prática: BBAS3 com IV=54%
+    # cravado entre vizinhos de 39% e 39%, mesmo já filtrado por confiança
+    # 'high' e preço líquido) é substituído pela média dos vizinhos — a
+    # suavização por média móvel sozinha não é suficiente porque um
+    # outlier isolado ainda contamina os pontos ao redor dele.
+    ys_sem_outlier = list(ys_brutos)
+    for i in range(1, len(ys_brutos) - 1):
+        viz_media = (ys_brutos[i - 1] + ys_brutos[i + 1]) / 2
+        viz_dist = abs(ys_brutos[i + 1] - ys_brutos[i - 1])
+        desvio = abs(ys_brutos[i] - viz_media)
+        if desvio > max(0.04, viz_dist * 1.5):
+            ys_sem_outlier[i] = viz_media
+
     # Suaviza com média móvel de 3 pontos antes do spline: mesmo já filtrado
     # por confiança/liquidez, o mercado tem micro-ondulações de décimos de
     # ponto percentual entre strikes vizinhos (ruído de cotação/arredonda-
@@ -8744,9 +8759,9 @@ def api_curva_volatilidade(ticker):
     # tinham confiança alta e preço líquido). Extremos ficam sem suavizar
     # (não têm vizinho dos dois lados) — normalmente onde o smile já sobe/
     # desce mais devagar de qualquer forma.
-    ys = list(ys_brutos)
-    for i in range(1, len(ys_brutos) - 1):
-        ys[i] = (ys_brutos[i - 1] + 2 * ys_brutos[i] + ys_brutos[i + 1]) / 4
+    ys = list(ys_sem_outlier)
+    for i in range(1, len(ys_sem_outlier) - 1):
+        ys[i] = (ys_sem_outlier[i - 1] + 2 * ys_sem_outlier[i] + ys_sem_outlier[i + 1]) / 4
     curva_fn = _spline_monotono(xs, ys)
 
     # Curva de exibição: um ponto a cada strike real + densificação entre

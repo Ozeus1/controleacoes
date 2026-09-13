@@ -443,6 +443,7 @@ class SimulacaoOpcoes(db.Model):
     user_id      = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     name         = db.Column(db.String(120), default='')
     underlying   = db.Column(db.String(15), default='')
+    notes        = db.Column(db.Text, default='')   # anotações do usuário — não faz parte da estrutura, não vai para produção
     created_at   = db.Column(db.DateTime, default=datetime.now)
     legs = db.relationship('SimulacaoLeg', backref='simulacao', lazy=True,
                            cascade='all, delete-orphan',

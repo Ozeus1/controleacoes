@@ -72,6 +72,13 @@
 }
 .sim-topbar-info { display:flex; align-items:center; gap:.9rem; flex-wrap:wrap; }
 .sim-topbar-acoes { display:flex; gap:.4rem; flex-wrap:wrap; }
+.sim-obs-btn {
+    background:none; border:1px solid transparent; color:var(--text-secondary);
+    font-size:.78rem; padding:.3rem .55rem; border-radius:5px; cursor:pointer;
+    white-space:nowrap;
+}
+.sim-obs-btn:hover { border-color:var(--border-color); color:var(--text-primary); }
+.sim-obs-btn.tem-obs { color:#eab308; }
 .sim-chk-label {
     display:flex; align-items:center; gap:.35rem; cursor:pointer;
     font-size:.8rem; color:var(--text-secondary); white-space:nowrap;
@@ -97,6 +104,8 @@
          font-size:.8rem;color:#60a5fa;text-decoration:none;white-space:nowrap;">📈 ver gráfico</a>
     </div>
     <div class="sim-topbar-acoes">
+      <button type="button" id="sim-obs-btn" class="sim-obs-btn" onclick="simAbreObs()"
+              title="Anotações desta simulação — material de estudo, não faz parte da estrutura">📝 Obs.</button>
       <button class="btn btn-secondary btn-sm" onclick="simCarregarModal()">📂 Abrir simulação</button>
       <button class="btn btn-primary btn-sm" onclick="simSalvar()">💾 Salvar</button>
       <button class="btn btn-secondary btn-sm" onclick="simSalvarComo()"
@@ -247,6 +256,37 @@
   </div>
 </div>
 
+<!-- ── Modal: observações da simulação ─────────────────────────────── -->
+<div id="obs-modal" style="display:none;position:fixed;inset:0;z-index:19100;
+     background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,560px);
+              max-height:88vh;display:flex;flex-direction:column;border:1px solid var(--border-color);">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:.8rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <h3 style="margin:0;font-size:1rem;">📝 Observações</h3>
+      <button onclick="document.getElementById('obs-modal').style.display='none'"
+              style="background:none;border:none;font-size:1.4rem;
+                     color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:.8rem 1.1rem;display:flex;flex-direction:column;gap:.5rem;">
+      <p class="sim-hint" style="margin:0;">
+        Anotações livres desta simulação (material de estudo) — não fazem parte da estrutura
+        e não são enviadas se a operação for salva em produção.
+      </p>
+      <textarea id="obs-textarea" rows="10" placeholder="Ex.: por que montei esta estrutura, cenário esperado, o que observar…"
+                style="width:100%;resize:vertical;background:var(--hover-bg);color:var(--text-primary);
+                       border:1px solid var(--border-color);border-radius:6px;padding:.6rem .7rem;
+                       font-size:.88rem;font-family:inherit;box-sizing:border-box;"></textarea>
+      <div id="obs-status" class="sim-hint" style="min-height:1.2em;"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;padding:.7rem 1.1rem;
+                border-top:1px solid var(--border-color);">
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('obs-modal').style.display='none'">Fechar</button>
+      <button class="btn btn-primary btn-sm" onclick="simSalvarObs()">💾 Salvar observações</button>
+    </div>
+  </div>
+</div>
+
 <script src="{{ url_for('static', filename='js/payoff_style.js') }}"></script>
 <script>
 (function () {
@@ -255,6 +295,11 @@
 var SELIC_RATE = {{ selic }};
 var CADEIA = null;      // resposta de /api/cadeia
 var SIM_ID = null;      // id da simulação aberta (null = nova)
+var SIM_NOTES = '';     // anotações da simulação aberta — não fazem parte da estrutura
+
+function simAtualizaBotaoObs() {
+    document.getElementById('sim-obs-btn').classList.toggle('tem-obs', !!SIM_NOTES.trim());
+}
 
 // ── Utilidades ────────────────────────────────────────────────────
 function parseVal(s) {
@@ -1145,8 +1190,13 @@ function simSalvarImpl(nome, asNew) {
     }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         if (!res.ok || res.j.error) { alert('⚠️ ' + (res.j.error || 'erro ao salvar')); return; }
+        var idAntigo = SIM_ID;
         SIM_ID = res.j.id || SIM_ID;
         document.getElementById('sim-nome').value = nome;
+        // "Salvar como" abre uma simulação NOVA (id diferente da que estava
+        // sendo editada) — sem notas próprias ainda, mesmo que a original
+        // tivesse (observações não são copiadas automaticamente).
+        if (asNew && SIM_ID !== idAntigo) { SIM_NOTES = ''; simAtualizaBotaoObs(); }
         alert('✓ Simulação salva.');
       }).catch(function (e) { alert('⚠️ falha de rede: ' + e); });
 }
@@ -1155,6 +1205,40 @@ window.simSalvar = function () {
     var nome = (document.getElementById('sim-nome').value || '').trim();
     if (!nome) { alert('Dê um nome à simulação antes de salvar.'); return; }
     simSalvarImpl(nome, false);
+};
+
+// ── Observações: anotações livres por simulação, sem relação com a
+// estrutura (pernas) em si — nunca são lidas por quem envia a operação
+// pra produção. Guardadas em memória (SIM_NOTES) enquanto a tela está
+// aberta e persistidas via endpoint próprio, sem precisar resalvar toda
+// a planilha só para atualizar uma anotação.
+window.simAbreObs = function () {
+    document.getElementById('obs-textarea').value = SIM_NOTES;
+    document.getElementById('obs-status').textContent = SIM_ID
+        ? '' : 'Salve a simulação primeiro para poder guardar observações.';
+    document.getElementById('obs-modal').style.display = 'flex';
+};
+
+window.simSalvarObs = function () {
+    var texto = document.getElementById('obs-textarea').value;
+    var status = document.getElementById('obs-status');
+    if (!SIM_ID) {
+        SIM_NOTES = texto;
+        simAtualizaBotaoObs();
+        status.textContent = 'Guardado nesta sessão — salve a simulação para persistir.';
+        return;
+    }
+    status.textContent = '⏳ salvando…';
+    fetch('/api/simulacao/' + SIM_ID + '/notes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: texto })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || res.j.error) { status.textContent = '⚠️ ' + (res.j.error || 'erro ao salvar'); return; }
+        SIM_NOTES = texto;
+        simAtualizaBotaoObs();
+        status.textContent = '✓ observações salvas.';
+      }).catch(function (e) { status.textContent = '⚠️ falha de rede: ' + e; });
 };
 
 // "Salvar como": sempre cria uma simulação nova, sem alterar a que já
@@ -1186,7 +1270,8 @@ window.simCarregarModal = function () {
                 return '<div style="display:flex;align-items:center;gap:.6rem;padding:.45rem .2rem;'
                      + 'border-bottom:1px solid rgba(255,255,255,.05);">'
                      + '<div style="flex:1;min-width:0;">'
-                     + '<div style="font-weight:600;font-size:.88rem;">' + escHtml(s.name) + '</div>'
+                     + '<div style="font-weight:600;font-size:.88rem;">' + escHtml(s.name)
+                     +   (s.has_notes ? ' <span title="Tem observações" style="color:#eab308;">📝</span>' : '') + '</div>'
                      + '<div class="sim-hint">' + escHtml(s.underlying || '—') + ' · ' + escHtml(s.created_at) + '</div>'
                      + '</div>'
                      + '<button class="btn btn-primary btn-sm" onclick="simAbrir(' + s.id + ')">Abrir</button>'
@@ -1205,6 +1290,8 @@ window.simAbrir = function (id) {
             if (!res.ok || res.j.error) { alert('⚠️ ' + (res.j.error || 'erro ao abrir')); return; }
             var d = res.j;
             SIM_ID = d.id;
+            SIM_NOTES = d.notes || '';
+            simAtualizaBotaoObs();
             document.getElementById('sim-nome').value  = d.name || '';
             simSetAtivo(d.underlying);
             var body = document.getElementById('sim-body');
@@ -1262,6 +1349,8 @@ function simAplicaPendencias() {
 
 window.simNova = function () {
     SIM_ID = null;
+    SIM_NOTES = '';
+    simAtualizaBotaoObs();
     document.getElementById('sim-nome').value = '';
     simSetAtivo('');
     document.getElementById('sim-spot').innerHTML = '';

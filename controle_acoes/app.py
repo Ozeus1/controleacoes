@@ -789,6 +789,14 @@ def run_migrations():
             FOREIGN KEY (user_id) REFERENCES user(id)
         )
     """)
+    # Add notes column to simulacao_opcoes if missing — anotações livres do
+    # usuário sobre a simulação, não fazem parte da estrutura (não vão pra
+    # produção nem para o payload de legs).
+    cursor.execute("PRAGMA table_info(simulacao_opcoes)")
+    sim_opcoes_cols = {row[1] for row in cursor.fetchall()}
+    if 'notes' not in sim_opcoes_cols and sim_opcoes_cols:
+        cursor.execute("ALTER TABLE simulacao_opcoes ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
+
     # Add iv column to simulacao_leg if missing
     cursor.execute("PRAGMA table_info(simulacao_leg)")
     sim_leg_cols = {row[1] for row in cursor.fetchall()}
@@ -2511,6 +2519,9 @@ def api_simulacao_save():
     name       = (d.get('name') or '').strip()
     underlying = (d.get('underlying') or '').strip().upper()
     legs_data  = d.get('legs', [])
+    # Anotações do usuário sobre a simulação — material de estudo, não faz
+    # parte da estrutura em si (nunca é lido por _sim_to_producao).
+    notes      = d.get('notes')
 
     if not name:
         return jsonify({'error': 'Informe um nome'}), 400
@@ -2520,12 +2531,15 @@ def api_simulacao_save():
         if not sim:
             return jsonify({'error': 'Não encontrado'}), 404
         sim.name = name; sim.underlying = underlying
+        if notes is not None:
+            sim.notes = notes
         for leg in list(sim.legs):
             db.session.delete(leg)
         db.session.flush()
     else:
         sim = SimulacaoOpcoes(user_id=current_user.id, name=name,
-                              underlying=underlying, created_at=datetime.now())
+                              underlying=underlying, notes=notes or '',
+                              created_at=datetime.now())
         db.session.add(sim); db.session.flush()
 
     for l in legs_data:
@@ -2574,12 +2588,27 @@ def api_simulacao_list():
         result.append({
             'id': s.id, 'name': s.name, 'underlying': s.underlying,
             'created_at': s.created_at.strftime('%d/%m/%y') if s.created_at else '',
+            'has_notes': bool((s.notes or '').strip()),
             'legs': [{'type': l.leg_type, 'side': l.side, 'qty': l.quantity,
                       'ticker': l.ticker, 'premium': l.premium,
                       'strike': l.strike, 'exp': l.expiration.isoformat() if l.expiration else '',
                       'iv': l.iv or 0} for l in s.legs],
         })
     return jsonify(result)
+
+
+@app.route('/api/simulacao/<int:sim_id>/notes', methods=['POST'])
+@login_required
+def api_simulacao_notes(sim_id):
+    """Salva só as anotações de uma simulação já existente — material de
+    estudo do usuário, independente da estrutura (pernas) em si."""
+    sim = SimulacaoOpcoes.query.filter_by(id=sim_id, user_id=current_user.id).first()
+    if not sim:
+        return jsonify({'error': 'Simulação não encontrada.'}), 404
+    d = request.get_json(force=True) or {}
+    sim.notes = (d.get('notes') or '')
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 @app.route('/api/simulacao/<int:sim_id>/delete', methods=['POST'])
@@ -2634,6 +2663,7 @@ def api_simulacao_get(sim_id):
         return jsonify({'error': 'Simulação não encontrada.'}), 404
     return jsonify({
         'id': sim.id, 'name': sim.name, 'underlying': sim.underlying or '',
+        'notes': sim.notes or '',
         'legs': [{
             'type':    l.leg_type,
             'side':    l.side,

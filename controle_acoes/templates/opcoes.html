@@ -810,6 +810,8 @@
                     {% if roll_legs %}
                     {{ roll_sim_link(roll_legs|join('|'), op.underlying_asset, 'Rolagem ' ~ op.name, 'est:' ~ op.id) }}
                     {% endif %}
+                    <a href="{{ url_for('manejo_grafico') }}?est={{ op.id }}" class="btn btn-sm btn-teal"
+                       title="Manejo gráfico (payoff)">📈</a>
                     {% if op.roll_history %}
                     <button class="btn btn-sm btn-violeta" title="Histórico de rolagens"
                             data-roll="{{ op.roll_history|e }}" data-roll-title="{{ op.name }}"

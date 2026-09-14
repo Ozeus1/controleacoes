@@ -1,0 +1,1502 @@
+{% extends "base.html" %}
+{% block title %}Manejo Gráfico{% endblock %}
+
+{% block extra_scripts %}
+<style>
+/* ── Planilha de braços (baseada no Simulador) ──────────────────── */
+#mg-tab { width:100%; border-collapse:collapse; font-size:.88rem; min-width:980px; }
+#mg-tab th {
+    padding:.45rem .5rem; text-align:center; white-space:nowrap;
+    background:var(--card-bg); color:var(--text-secondary); font-weight:600;
+    border-bottom:1px solid var(--border-color); font-size:.78rem;
+    text-transform:uppercase; letter-spacing:.03em;
+}
+#mg-tab td { padding:.35rem .4rem; text-align:center; white-space:nowrap;
+              border-bottom:1px solid rgba(255,255,255,.04); }
+#mg-tab tr.off td { opacity:.4; }
+#mg-tab tr.fechada td { opacity:.45; text-decoration:line-through; }
+#mg-tab tr.fechada select, #mg-tab tr.fechada input { text-decoration:none; }
+#mg-tab tr.origem-nova { box-shadow:inset 3px 0 0 #34d399; }
+#mg-tab select, #mg-tab input {
+    background:var(--card-bg); color:var(--text-primary);
+    border:1px solid var(--border-color); border-radius:4px;
+    padding:.3rem .4rem; font-size:.87rem; width:100%;
+}
+#mg-tab input[readonly] { background:var(--hover-bg); color:var(--text-secondary); }
+.col-qtd    { width:78px; }
+.col-sel    { width:34px; }
+.col-tipo   { width:92px; }
+.col-cv     { width:72px; }
+.col-venc   { width:158px; }
+.col-dte    { width:62px; }
+.col-strike { width:132px; }
+.col-tick   { width:112px; }
+.col-num    { width:104px; }
+.col-x      { width:60px; }
+.mg-x, .mg-lock {
+    background:none; border:none; cursor:pointer;
+    font-size:1rem; line-height:1; padding:.1rem .3rem;
+}
+.mg-x { color:#f87171; }
+.mg-lock { color:#eab308; }
+.mg-lock:disabled { color:var(--text-secondary); opacity:.3; cursor:default; }
+.mg-tot td { font-weight:700; border-top:1px solid var(--border-color); }
+
+/* ── Painel de métricas ─────────────────────────────────────────── */
+.mg-metrics {
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+    gap:.55rem; margin-top:.9rem;
+}
+.mg-met {
+    background:var(--hover-bg); border:1px solid var(--border-color);
+    border-radius:8px; padding:.55rem .8rem;
+}
+.mg-met .lbl { font-size:.72rem; color:var(--text-secondary); display:block; }
+.mg-met .val { font-size:1rem; font-weight:700; }
+
+#mg-payoff-canvas { display:block; width:100%; }
+#mg-chart-wrap {
+    position:relative; width:100%; background:var(--hover-bg);
+    border:1px solid var(--border-color); border-radius:8px;
+    overflow:hidden; margin-top:1rem;
+}
+#mg-chart-tooltip {
+    display:none; position:absolute; background:var(--card-bg,#1e293b);
+    border:1px solid var(--border-color); border-radius:6px; padding:.35rem .65rem;
+    font-size:.82rem; pointer-events:none; white-space:nowrap; z-index:10;
+}
+.mg-hint { color:var(--text-secondary); font-size:.78rem; }
+#mg-aviso {
+    display:none; margin-top:.7rem; padding:.55rem .9rem;
+    border-radius:6px; font-size:.82rem; border:1px solid;
+}
+.mg-topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    gap:.7rem; flex-wrap:wrap; margin-bottom:.5rem;
+}
+.mg-topbar-info { display:flex; align-items:center; gap:.9rem; flex-wrap:wrap; }
+.mg-topbar-acoes { display:flex; gap:.4rem; flex-wrap:wrap; }
+.mg-chk-label {
+    display:flex; align-items:center; gap:.35rem; cursor:pointer;
+    font-size:.8rem; color:var(--text-secondary); white-space:nowrap;
+}
+
+/* ── Demonstrativo financeiro do manejo ─────────────────────────── */
+.mg-detail { margin-top:1rem; border:1px solid var(--border-color); background:var(--hover-bg);
+    border-radius:8px; padding:.75rem; overflow-x:auto; }
+.mg-detail table { width:100%; border-collapse:collapse; font-size:.82rem; }
+.mg-detail th { color:var(--text-secondary); text-align:right; padding:.35rem .5rem;
+    border-bottom:1px solid var(--border-color); white-space:nowrap; }
+.mg-detail th:first-child, .mg-detail td:first-child { text-align:left; }
+.mg-detail td { text-align:right; padding:.35rem .5rem; border-bottom:1px solid rgba(255,255,255,.05); white-space:nowrap; }
+.mg-detail tfoot td { font-weight:700; border-top:2px solid var(--border-color); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="padding:1.1rem 1.3rem;">
+
+  <div class="mg-topbar">
+    <div class="mg-topbar-info">
+      <h2 style="margin:0;white-space:nowrap;">📈 Manejo Gráfico</h2>
+      <span id="mg-op-nome" style="font-size:.95rem;font-weight:700;white-space:nowrap;"></span>
+      <span id="mg-spot" style="font-size:.95rem;font-weight:700;white-space:nowrap;"></span>
+      <a id="mg-spot-chart" href="#" onclick="return mgAbreGrafico();" style="display:none;
+         font-size:.8rem;color:#60a5fa;text-decoration:none;white-space:nowrap;">📈 ver gráfico</a>
+    </div>
+    <div class="mg-topbar-acoes">
+      <button class="btn btn-secondary btn-sm" onclick="mgCarregarModal()">📂 Abrir simulação</button>
+      <button class="btn btn-primary btn-sm" onclick="mgSalvar()">💾 Salvar simulação</button>
+      <button class="btn btn-warning btn-sm" onclick="mgSalvarProducao()"
+              title="Grava de fato o manejo na operação estruturada — encerra braços fechados, atualiza os rolados e inclui os novos">🚀 Salvar em produção</button>
+      <button class="btn btn-secondary btn-sm" onclick="mgNova()">＋ Nova</button>
+    </div>
+  </div>
+
+  <!-- Ativo ------------------------------------------------------- -->
+  <div style="display:flex;gap:.9rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.7rem;">
+    <div style="display:flex;flex-direction:column;gap:.25rem;">
+      <label class="mg-hint">Nome da simulação</label>
+      <input type="text" id="mg-nome" placeholder="Ex.: Manejo PETR4 outubro"
+             style="background:var(--card-bg);color:var(--text-primary);
+                    border:1px solid var(--border-color);border-radius:5px;
+                    padding:.35rem .55rem;font-size:.85rem;min-width:230px;">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.25rem;">
+      <label class="mg-hint">Ativo</label>
+      <div style="display:flex;gap:.4rem;">
+        <input type="text" id="mg-ativo" placeholder="Ticker" maxlength="10" readonly
+               style="background:var(--hover-bg);color:var(--text-primary);
+                      border:1px solid var(--border-color);border-radius:5px;
+                      padding:.35rem .55rem;font-size:.85rem;width:110px;text-transform:uppercase;"
+               title="Herdado da operação estruturada carregada">
+        <button class="btn btn-primary btn-sm" onclick="mgAtualizarCotacoes()"
+                title="Rebusca a cadeia e atualiza os prêmios">🔄 Atualizar</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.25rem;">
+      <label class="mg-hint">Prazo máx. da busca</label>
+      <select id="mg-days" onchange="mgCarregarCadeia()"
+              style="background:var(--card-bg);color:var(--text-primary);
+                     border:1px solid var(--border-color);border-radius:5px;
+                     padding:.35rem .5rem;font-size:.85rem;">
+        <option value="90">90 dias</option>
+        <option value="180">180 dias</option>
+        <option value="365">1 ano</option>
+      </select>
+    </div>
+    <label class="mg-chk-label">
+      <input type="checkbox" id="mg-weekly" style="cursor:pointer;margin:0;" onchange="mgCarregarCadeia()">
+      incluir semanais
+    </label>
+    <label class="mg-chk-label"
+           title="Marcado, toda nova perna de opção adicionada usa automaticamente o mesmo vencimento da 1ª perna já escolhida.">
+      <input type="checkbox" id="mg-venc-unico" style="cursor:pointer;margin:0;">
+      vencimento único
+    </label>
+    <span id="mg-cadeia-status" class="mg-hint" style="white-space:nowrap;"></span>
+  </div>
+
+  <!-- Planilha de braços -------------------------------------------- -->
+  <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.5rem;">
+    <button class="btn btn-secondary btn-sm" onclick="mgAddPerna('CALL')">+ Call</button>
+    <button class="btn btn-secondary btn-sm" onclick="mgAddPerna('PUT')">+ Put</button>
+    <button class="btn btn-secondary btn-sm" onclick="mgAddPerna('STOCK')">+ Ativo</button>
+  </div>
+
+  <div style="overflow-x:auto;">
+    <table id="mg-tab">
+      <thead>
+        <tr>
+          <th class="col-sel" title="Marque para incluir o braço no cálculo">✓</th>
+          <th class="col-cv">C/V</th>
+          <th class="col-tipo">Tipo</th>
+          <th class="col-qtd">Qtde</th>
+          <th class="col-venc">Vencimento</th>
+          <th class="col-dte" title="Dias até o vencimento deste braço">DTE</th>
+          <th class="col-strike">Strike</th>
+          <th class="col-tick">Ticker</th>
+          <th class="col-num">Prêmio</th>
+          <th class="col-num">Entrada</th>
+          <th class="col-num">Saída</th>
+          <th class="col-num" title="Volatilidade implícita — usada no cálculo de travas com vencimentos diferentes">VI %</th>
+          <th class="col-x"></th>
+        </tr>
+      </thead>
+      <tbody id="mg-body"></tbody>
+      <tfoot>
+        <tr class="mg-tot">
+          <td colspan="9" style="text-align:right;">Total da operação</td>
+          <td id="mg-tot-ent">—</td>
+          <td id="mg-tot-sai">—</td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  <p class="mg-hint" style="margin-top:.35rem;">
+    🔒 fecha um braço da estrutura original (pede o valor da transação) · ✕ remove a linha da tela
+    (braço novo: só remove; braço da estrutura: use 🔒 antes) ·
+    braços com barra verde à esquerda são novos, ainda não existem na operação real.
+  </p>
+
+  <div id="mg-aviso"></div>
+
+  <!-- Métricas ------------------------------------------------------ -->
+  <div class="mg-metrics">
+    <div class="mg-met"><span class="lbl">Montagem</span><span class="val" id="mg-m-net">—</span></div>
+    <div class="mg-met"><span class="lbl">Lucro máximo</span><span class="val positive" id="mg-m-gain">—</span></div>
+    <div class="mg-met"><span class="lbl" title="Lucro máximo ÷ custo de saída (desembolso das compras)">Lucro máx. % sobre investido</span><span class="val" id="mg-m-gain-pct">—</span></div>
+    <div class="mg-met"><span class="lbl" title="Quanto o lucro máximo % representa em relação ao rendimento da Selic no mesmo prazo">Lucro máx. vs. Selic no período</span><span class="val" id="mg-m-gain-selic">—</span></div>
+    <div class="mg-met"><span class="lbl">Prejuízo máximo</span><span class="val negative" id="mg-m-loss">—</span></div>
+    <div class="mg-met"><span class="lbl">Breakeven(s)</span><span class="val" id="mg-m-be">—</span></div>
+    <div class="mg-met"><span class="lbl" title="Probability of Profit (Black-Scholes)">POP</span><span class="val" id="mg-m-pop">—</span></div>
+    <div class="mg-met"><span class="lbl">Custo de entrada</span><span class="val" id="mg-m-ent">—</span></div>
+    <div class="mg-met"><span class="lbl">Custo de saída</span><span class="val" id="mg-m-sai">—</span></div>
+    <div class="mg-met"><span class="lbl" title="Delta líquido da estrutura resultante hoje">Delta estrutural</span><span class="val" id="mg-m-delta-estrutural">—</span></div>
+    <div class="mg-met"><span class="lbl" title="Diferença entre o delta estrutural hoje e no vencimento mais curto">Delta de transição</span><span class="val" id="mg-m-delta-transicao">—</span></div>
+    <div class="mg-met"><span class="lbl">Vencimento mais curto</span><span class="val" id="mg-m-dte">—</span></div>
+  </div>
+
+  <!-- Gráfico --------------------------------------------------------- -->
+  <div id="mg-chart-wrap">
+    <canvas id="mg-payoff-canvas"></canvas>
+    <div id="mg-chart-tooltip"></div>
+  </div>
+  <p class="mg-hint" style="margin-top:.4rem;">
+    Roda do mouse para zoom · arraste para mover · duplo clique para resetar.
+    O gráfico mostra o payoff da estrutura resultante do manejo, no vencimento mais curto.
+  </p>
+
+  <!-- Demonstrativo financeiro do manejo ------------------------------ -->
+  <div style="margin-top:1.3rem;">
+    <h3 style="margin:0 0 .5rem;font-size:1.05rem;">Demonstrativo financeiro do manejo</h3>
+    <p class="mg-hint" style="margin:0 0 .5rem;">
+      Só entram aqui os braços da operação original que foram <strong>fechados</strong> (🔒) e os braços
+      <strong>novos</strong> incluídos — braços mantidos sem alteração não aparecem, pois não geram caixa.
+    </p>
+    <div class="mg-metrics">
+      <div class="mg-met"><span class="lbl">Total crédito/débito</span><span class="val" id="mg-fin-total">—</span></div>
+      <div class="mg-met"><span class="lbl">Fechamento de braços</span><span class="val" id="mg-fin-close">—</span></div>
+      <div class="mg-met"><span class="lbl">Abertura de braços novos</span><span class="val" id="mg-fin-open">—</span></div>
+      <div class="mg-met"><span class="lbl">Entrada original (braços mexidos)</span><span class="val" id="mg-fin-initial">—</span></div>
+      <div class="mg-met"><span class="lbl">Total financeiro (c/ entrada original)</span><span class="val" id="mg-fin-grand">—</span></div>
+      <div class="mg-met"><span class="lbl">Linhas</span><span class="val" id="mg-fin-lines">0</span></div>
+    </div>
+    <div id="mg-detail" class="mg-detail"></div>
+  </div>
+</div>
+
+<!-- ── Modal: fechar braço ─────────────────────────────────────────── -->
+<div id="mg-fecha-modal" style="display:none;position:fixed;inset:0;z-index:19200;
+     background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,420px);
+              border:1px solid var(--border-color);">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:.8rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <h3 style="margin:0;font-size:1rem;">🔒 Fechar braço — <span id="mg-fecha-ticker"></span></h3>
+      <button onclick="mgFechaCancelar()"
+              style="background:none;border:none;font-size:1.4rem;
+                     color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="padding:1rem 1.1rem;display:flex;flex-direction:column;gap:.7rem;">
+      <div style="display:flex;flex-direction:column;gap:.25rem;">
+        <label class="mg-hint">Valor da transação (prêmio de fechamento, R$)</label>
+        <input type="text" id="mg-fecha-valor" placeholder="0,00"
+               style="background:var(--hover-bg);color:var(--text-primary);
+                      border:1px solid var(--border-color);border-radius:5px;
+                      padding:.4rem .6rem;font-size:.9rem;">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:.25rem;">
+        <label class="mg-hint">Liquidação</label>
+        <div style="display:flex;gap:.6rem;">
+          <label class="mg-chk-label"><input type="radio" name="mg-fecha-tipo" value="TOTAL" checked> Total</label>
+          <label class="mg-chk-label"><input type="radio" name="mg-fecha-tipo" value="PARCIAL"> Parcial</label>
+        </div>
+      </div>
+      <p class="mg-hint" style="margin:0;">
+        O braço sai do payoff e entra no demonstrativo financeiro com este valor. Só é aplicado de fato
+        na operação real quando você clicar em "Salvar em produção".
+      </p>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;padding:.7rem 1.1rem;
+                border-top:1px solid var(--border-color);">
+      <button class="btn btn-secondary btn-sm" onclick="mgFechaCancelar()">Cancelar</button>
+      <button class="btn btn-primary btn-sm" onclick="mgFechaConfirmar()">Confirmar fechamento</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: abrir simulação salva ────────────────────────────────── -->
+<div id="mg-open-modal" style="display:none;position:fixed;inset:0;z-index:19000;
+     background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,560px);
+              max-height:88vh;display:flex;flex-direction:column;border:1px solid var(--border-color);">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:.8rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <h3 style="margin:0;font-size:1rem;">Manejos salvos</h3>
+      <button onclick="document.getElementById('mg-open-modal').style.display='none'"
+              style="background:none;border:none;font-size:1.4rem;
+                     color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:.6rem 1.1rem 1rem;" id="mg-open-modal-lista">
+      <p class="mg-hint" style="padding:1rem 0;">⏳ carregando…</p>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/payoff_style.js') }}"></script>
+<script>
+(function () {
+'use strict';
+
+var SELIC_RATE = {{ selic }};
+var CADEIA = null;       // resposta de /api/cadeia
+var MG_SIM_ID = null;    // id da OptionRollSimulation aberta (null = nova/rascunho)
+var MG_OP_ID = {{ op.id if op else 'null' }};    // id da StructuredOp em manejo (null = nenhuma)
+var MG_OP_NOME = {{ (op.name or '')|tojson if op else 'null' }};
+var MG_ATIVO = {{ (op.underlying_asset or '')|tojson if op else "''" }};
+// Braços reais da StructuredOp, injetados pelo servidor — usados para
+// montar a tabela inicial e para saber o preço médio original de cada
+// braço (mg-fecha usa isso no cálculo do demonstrativo financeiro).
+var OP_LEGS = {{ (op.legs|map(attribute='id')|list) if op else [] }};
+{% if op %}
+var OP_LEGS_DATA = [
+  {% for l in op.legs %}
+  { legId: {{ l.id }}, ticker: {{ (l.ticker or '')|tojson }}, side: {{ (l.side or 'SELL')|tojson }},
+    optType: {{ (l.opt_type or 'CALL')|tojson }}, qty: {{ l.quantity or 1 }},
+    strike: {{ l.strike or 0 }}, premium: {{ l.entry_price or 0 }},
+    exp: {{ (l.expiration_date.isoformat() if l.expiration_date else '')|tojson }} }{{ ',' if not loop.last }}
+  {% endfor %}
+];
+{% else %}
+var OP_LEGS_DATA = [];
+{% endif %}
+
+// ── Utilidades (mesmas do Simulador) ───────────────────────────────
+function parseVal(s) {
+    return parseFloat((s || '0').toString().replace(/\./g, '').replace(',', '.')) || 0;
+}
+function fmtNum(v, dec) {
+    dec = dec == null ? 2 : dec;
+    return Number(v || 0).toLocaleString('pt-BR',
+        { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+function fmtBRL(v) { return 'R$ ' + fmtNum(Math.abs(v || 0)); }
+function fmtBRLSigned(v) { return (v < 0 ? '-' : '') + fmtBRL(v); }
+function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+function dataBR(iso) {
+    var p = (iso || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '');
+}
+function diasAte(iso) {
+    if (!iso) return null;
+    var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    return Math.round((new Date(iso + 'T00:00:00') - hoje) / 86400000);
+}
+
+document.getElementById('mg-ativo').value = MG_ATIVO;
+if (MG_OP_NOME) {
+    document.getElementById('mg-op-nome').textContent = '· estrutura: ' + MG_OP_NOME;
+    document.getElementById('mg-nome').value = 'Manejo ' + MG_OP_NOME;
+}
+
+window.mgAbreGrafico = function () {
+    var t = (document.getElementById('mg-ativo').value || '').trim().toUpperCase();
+    if (t && window.MyChart && MyChart.open) MyChart.open(t);
+    return false;
+};
+
+// ── Cadeia de opções ────────────────────────────────────────────────
+window.mgCarregarCadeia = function () {
+    var t = (document.getElementById('mg-ativo').value || '').trim().toUpperCase();
+    var st = document.getElementById('mg-cadeia-status');
+    if (!t) { st.textContent = ''; return; }
+    st.textContent = '⏳ buscando cadeia…';
+    var q = 'n=40&weekly=' + (document.getElementById('mg-weekly').checked ? '1' : '0')
+          + '&days=' + document.getElementById('mg-days').value;
+    fetch('/api/cadeia/' + encodeURIComponent(t) + '?' + q)
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            if (!res.ok || res.j.error) {
+                CADEIA = null;
+                st.textContent = '⚠️ ' + (res.j.error || 'falha ao buscar a cadeia');
+                st.style.color = '#f87171';
+                document.getElementById('mg-spot-chart').style.display = 'none';
+                return;
+            }
+            CADEIA = res.j;
+            st.style.color = '';
+            st.textContent = '✓ ' + (CADEIA.expirations || []).length + ' vencimento(s)';
+            var spot = CADEIA.spot || 0;
+            var ch = CADEIA.spot_change;
+            document.getElementById('mg-spot').innerHTML = spot
+                ? (t + ' ' + fmtBRL(spot) + (ch != null
+                    ? ' <span class="' + (ch >= 0 ? 'positive' : 'negative') + '" style="font-size:.82rem;">'
+                      + (ch >= 0 ? '+' : '') + fmtNum(ch) + '%</span>' : ''))
+                : '';
+            document.getElementById('mg-spot-chart').style.display = spot ? '' : 'none';
+            mgPreencheTodosVencimentos();
+            mgReaplicaStrikesEscolhidos();
+            mgAtualizaTodosAtivos();
+            mgAplicaPendencias();
+            mgRecalc();
+        })
+        .catch(function (e) {
+            CADEIA = null;
+            st.style.color = '#f87171';
+            st.textContent = '⚠️ falha de rede: ' + e;
+            document.getElementById('mg-spot-chart').style.display = 'none';
+        });
+};
+
+function mgReaplicaStrikesEscolhidos() {
+    document.querySelectorAll('#mg-body tr.leg-row').forEach(function (tr) {
+        var strikeSel = tr.querySelector('.leg-strike-sel');
+        if (strikeSel && strikeSel.value) mgAplicaStrike(tr, strikeSel.value);
+    });
+}
+
+window.mgAtualizarCotacoes = function () {
+    var t = (document.getElementById('mg-ativo').value || '').trim().toUpperCase();
+    if (!t) { alert('Nenhum ativo carregado.'); return; }
+    mgCarregarCadeia();
+};
+
+// ── Linhas da planilha ────────────────────────────────────────────
+// origem: 'estrutura' (braço real, tem legId) | 'nova' (braço incluído na tela)
+function novaLinha(tipo, origem) {
+    var tr = document.createElement('tr');
+    tr.className = 'leg-row' + (origem === 'nova' ? ' origem-nova' : '');
+    tr.dataset.origem = origem || 'nova';
+    var isStock = tipo === 'STOCK';
+    tr.innerHTML =
+        '<td><input type="checkbox" class="leg-on" checked onchange="mgRecalc()"></td>'
+      + '<td><select class="leg-side" onchange="mgSideMudou(this)">'
+      +   '<option value="BUY">C</option><option value="SELL">V</option></select></td>'
+      + '<td><select class="leg-type" onchange="mgTipoMudou(this)">'
+      +   '<option value="CALL"' + (tipo === 'CALL' ? ' selected' : '') + '>CALL</option>'
+      +   '<option value="PUT"'  + (tipo === 'PUT'  ? ' selected' : '') + '>PUT</option>'
+      +   '<option value="STOCK"' + (isStock ? ' selected' : '') + '>Ativo</option>'
+      +   '</select></td>'
+      + '<td><input type="number" class="leg-qty" value="100" min="100" step="100" onchange="mgQtyMudou(this)"></td>'
+      + '<td>' + (isStock ? '<span class="mg-hint">—</span>'
+          : '<select class="leg-exp-sel" onchange="mgVencMudou(this)">'
+            + '<option value="">selecione…</option></select>') + '</td>'
+      + '<td class="leg-dte mg-hint">—</td>'
+      + '<td>' + (isStock ? '<span class="mg-hint">—</span>'
+          : '<select class="leg-strike-sel" onchange="mgStrikeMudou(this)" disabled>'
+            + '<option value="">—</option></select>') + '</td>'
+      + '<td>' + (isStock ? '<span class="mg-hint">—</span>'
+          : '<input type="text" class="leg-ticker" readonly placeholder="—">') + '</td>'
+      + '<td><input type="text" class="leg-premium" value="0,00" readonly'
+      +   (isStock ? ' title="Cotação buscada via OpLab"' : ' title="Preenchido ao escolher o strike"') + '></td>'
+      + '<td class="leg-ent">—</td>'
+      + '<td class="leg-sai">—</td>'
+      + '<td>' + (isStock ? '<span class="mg-hint">—</span>'
+          : '<input type="text" class="leg-iv" placeholder="—" onchange="mgRecalc()">') + '</td>'
+      + '<td>'
+      +   '<button type="button" class="mg-lock" onclick="mgFechaBraco(this)" title="Fechar este braço (informar valor da transação)"'
+      +     (origem === 'nova' ? ' disabled' : '') + '>🔒</button>'
+      +   '<button type="button" class="mg-x" onclick="mgRemove(this)" title="Remover linha">✕</button>'
+      + '</td>';
+    return tr;
+}
+
+window.mgAddPerna = function (tipo) {
+    var tr = novaLinha(tipo, 'nova');
+    document.getElementById('mg-body').appendChild(tr);
+    if (tipo === 'STOCK') mgAtualizaCotacaoAtivo(tr);
+    else {
+        mgPreencheVencimentos(tr);
+        mgAplicaVencimentoUnico(tr);
+    }
+    mgRecalc();
+};
+
+function mgVencimentoComum() {
+    var linhas = document.querySelectorAll('#mg-body tr.leg-row');
+    for (var i = 0; i < linhas.length; i++) {
+        var sel = linhas[i].querySelector('.leg-exp-sel');
+        if (sel && sel.value) return sel.value;
+    }
+    return null;
+}
+function mgAplicaVencimentoUnico(tr) {
+    if (!document.getElementById('mg-venc-unico').checked) return;
+    var exp = mgVencimentoComum();
+    var sel = tr.querySelector('.leg-exp-sel');
+    if (!exp || !sel) return;
+    var temOpcao = Array.prototype.some.call(sel.options, function (o) { return o.value === exp; });
+    if (!temOpcao) return;
+    sel.value = exp;
+    mgVencMudou(sel);
+}
+
+window.mgRemove = function (btn) {
+    btn.closest('tr').remove();
+    mgRecalc();
+};
+
+// Trocar o tipo só é permitido em braços novos — um braço da estrutura
+// original não pode virar outro tipo de opção sem passar por um fechamento
+// explícito primeiro (o botão 🔒 já cobre esse caso).
+window.mgTipoMudou = function (sel) {
+    var tr = sel.closest('tr');
+    var nova = novaLinha(sel.value, tr.dataset.origem);
+    nova.querySelector('.leg-side').value = tr.querySelector('.leg-side').value;
+    nova.querySelector('.leg-qty').value  = tr.querySelector('.leg-qty').value;
+    nova.querySelector('.leg-on').checked = tr.querySelector('.leg-on').checked;
+    if (tr.dataset.legId) nova.dataset.legId = tr.dataset.legId;
+    if (tr.dataset.entryPrice) nova.dataset.entryPrice = tr.dataset.entryPrice;
+    tr.replaceWith(nova);
+    if (nova.querySelector('.leg-exp-sel')) {
+        mgPreencheVencimentos(nova);
+        mgAplicaVencimentoUnico(nova);
+    }
+    if (sel.value === 'STOCK') mgAtualizaCotacaoAtivo(nova);
+    mgRecalc();
+};
+
+window.mgQtyMudou = function (input) {
+    var v = Math.round((parseInt(input.value, 10) || 100) / 100) * 100;
+    input.value = Math.max(100, v);
+    mgRecalc();
+};
+
+window.mgSideMudou = function (sel) {
+    var tr = sel.closest('tr');
+    var strikeSel = tr.querySelector('.leg-strike-sel');
+    if (strikeSel && strikeSel.value) mgAplicaStrike(tr, strikeSel.value);
+    mgRecalc();
+};
+
+// ── Cascata vencimento → strike → ticker/prêmio (igual ao Simulador) ──
+function mgPreencheVencimentos(tr) {
+    var sel = tr.querySelector('.leg-exp-sel');
+    if (!sel) return;
+    var atual = sel.value;
+    sel.innerHTML = '<option value="">selecione…</option>' +
+        (CADEIA && CADEIA.expirations ? CADEIA.expirations.map(function (e) {
+            var d = diasAte(e.exp);
+            return '<option value="' + e.exp + '">' + dataBR(e.exp)
+                 + (d != null ? ' (' + d + 'd)' : '') + '</option>';
+        }).join('') : '');
+    if (atual && CADEIA && (CADEIA.expirations || []).some(function (e) { return e.exp === atual; })) {
+        sel.value = atual;
+    }
+    var dteEl = tr.querySelector('.leg-dte');
+    if (dteEl) {
+        var dd = sel.value ? diasAte(sel.value) : null;
+        dteEl.textContent = dd != null ? dd + 'd' : '—';
+    }
+}
+
+function mgPreencheTodosVencimentos() {
+    document.querySelectorAll('#mg-body tr.leg-row').forEach(function (tr) {
+        if (tr.querySelector('.leg-exp-sel')) mgPreencheVencimentos(tr);
+    });
+}
+
+var MG_RESTAURANDO = false;
+
+window.mgVencMudou = function (sel) {
+    var tr = sel.closest('tr');
+    var strikeSel = tr.querySelector('.leg-strike-sel');
+    var exp = sel.value;
+    tr.querySelector('.leg-ticker').value = '';
+    tr.querySelector('.leg-premium').value = '0,00';
+    var dteEl = tr.querySelector('.leg-dte');
+    if (dteEl) {
+        var d = exp ? diasAte(exp) : null;
+        dteEl.textContent = d != null ? d + 'd' : '—';
+    }
+    if (!exp) {
+        strikeSel.innerHTML = '<option value="">—</option>';
+        strikeSel.disabled = true;
+        mgRecalc();
+        return;
+    }
+    var tipo = tr.querySelector('.leg-type').value;
+    var bloco = (CADEIA.expirations || []).filter(function (e) { return e.exp === exp; })[0];
+    var spot = (CADEIA && CADEIA.spot) || 0;
+    var rows = (bloco && bloco.rows) || [];
+    strikeSel.innerHTML = '<option value="">selecione…</option>' + rows.map(function (r) {
+        var o = (tipo === 'PUT') ? r.put : r.call;
+        if (!o) return '';
+        var perto = spot && Math.abs(r.strike - spot) / spot < 0.02;
+        return '<option value="' + r.strike + '"' + (perto ? ' data-perto="1"' : '') + '>'
+             + fmtBRL(r.strike) + (perto ? ' (próximo do spot)' : '') + '</option>';
+    }).join('');
+    strikeSel.disabled = rows.length === 0;
+    if (!MG_RESTAURANDO && document.getElementById('mg-venc-unico').checked) {
+        document.querySelectorAll('#mg-body tr.leg-row').forEach(function (outro) {
+            var outroSel = outro.querySelector('.leg-exp-sel');
+            if (!outroSel || outro === tr || outroSel.value === exp) return;
+            var temOpcao = Array.prototype.some.call(outroSel.options, function (o) { return o.value === exp; });
+            if (!temOpcao) return;
+            outroSel.value = exp;
+            mgVencMudou(outroSel);
+        });
+    }
+    mgRecalc();
+};
+
+window.mgStrikeMudou = function (sel) {
+    var tr = sel.closest('tr');
+    mgAplicaStrike(tr, sel.value);
+    mgRecalc();
+};
+
+function mgAplicaStrike(tr, strikeVal) {
+    var tickerEl = tr.querySelector('.leg-ticker');
+    var premioEl = tr.querySelector('.leg-premium');
+    if (!strikeVal) { tickerEl.value = ''; premioEl.value = '0,00'; return; }
+    var exp = tr.querySelector('.leg-exp-sel').value;
+    var tipo = tr.querySelector('.leg-type').value;
+    var lado = tr.querySelector('.leg-side').value;
+    var bloco = (CADEIA.expirations || []).filter(function (e) { return e.exp === exp; })[0];
+    var strikeNum = parseFloat(strikeVal);
+    var row = (bloco && bloco.rows || []).filter(function (r) {
+        return Math.abs(r.strike - strikeNum) < 0.001;
+    })[0];
+    var o = row && ((tipo === 'PUT') ? row.put : row.call);
+    if (!o) { tickerEl.value = ''; premioEl.value = '0,00'; return; }
+    var prem = (lado === 'SELL' ? (o.bid_eff || o.bid) : (o.ask_eff || o.ask)) || o.close || 0;
+    tickerEl.value = o.symbol;
+    premioEl.value = fmtNum(prem);
+    var ivEl = tr.querySelector('.leg-iv');
+    if (ivEl && o.iv != null) ivEl.value = fmtNum(o.iv);
+}
+
+function mgAtualizaCotacaoAtivo(tr) {
+    var ativo = (document.getElementById('mg-ativo').value || '').trim().toUpperCase();
+    if (!ativo) return;
+    var premioEl = tr.querySelector('.leg-premium');
+    if (CADEIA && CADEIA.ticker === ativo && CADEIA.spot) {
+        premioEl.value = fmtNum(CADEIA.spot);
+        return;
+    }
+    fetch('/api/quote_hint/' + encodeURIComponent(ativo))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            var p = Number(d.price || 0);
+            if (p > 0) premioEl.value = fmtNum(p);
+        })
+        .catch(function () {});
+}
+
+function mgAtualizaTodosAtivos() {
+    document.querySelectorAll('#mg-body tr.leg-row').forEach(function (tr) {
+        if (tr.querySelector('.leg-type').value === 'STOCK') mgAtualizaCotacaoAtivo(tr);
+    });
+}
+
+// ── Fechar braço (🔒) ───────────────────────────────────────────────
+var MG_FECHA_TR = null;
+window.mgFechaBraco = function (btn) {
+    var tr = btn.closest('tr');
+    if (tr.dataset.origem !== 'estrutura') return;
+    MG_FECHA_TR = tr;
+    document.getElementById('mg-fecha-ticker').textContent = (tr.querySelector('.leg-ticker') || {}).value || tr.dataset.tickerOriginal || '';
+    document.getElementById('mg-fecha-valor').value = tr.dataset.fechaValor || '';
+    var tipoSalvo = tr.dataset.fechaTipo || 'TOTAL';
+    document.querySelectorAll('input[name=mg-fecha-tipo]').forEach(function (r) { r.checked = r.value === tipoSalvo; });
+    document.getElementById('mg-fecha-modal').style.display = 'flex';
+};
+window.mgFechaCancelar = function () {
+    MG_FECHA_TR = null;
+    document.getElementById('mg-fecha-modal').style.display = 'none';
+};
+window.mgFechaConfirmar = function () {
+    if (!MG_FECHA_TR) return;
+    var valor = parseVal(document.getElementById('mg-fecha-valor').value);
+    var tipo = (document.querySelector('input[name=mg-fecha-tipo]:checked') || {}).value || 'TOTAL';
+    var tr = MG_FECHA_TR;
+    tr.dataset.fechada = '1';
+    tr.dataset.fechaValor = valor;
+    tr.dataset.fechaTipo = tipo;
+    tr.classList.add('fechada');
+    tr.querySelector('.leg-on').checked = false;
+    tr.querySelector('.leg-on').disabled = true;
+    [].slice.call(tr.querySelectorAll('select,input')).forEach(function (el) {
+        if (!el.classList.contains('leg-on')) el.disabled = true;
+    });
+    document.getElementById('mg-fecha-modal').style.display = 'none';
+    MG_FECHA_TR = null;
+    mgRecalc();
+};
+
+// Reabre um braço fechado (desfaz antes de salvar) — clique no ícone de
+// novo mostra "reabrir" quando a linha já está fechada.
+function mgReabreBraco(tr) {
+    delete tr.dataset.fechada;
+    delete tr.dataset.fechaValor;
+    delete tr.dataset.fechaTipo;
+    tr.classList.remove('fechada');
+    var onEl = tr.querySelector('.leg-on');
+    onEl.checked = true;
+    onEl.disabled = false;
+    [].slice.call(tr.querySelectorAll('select,input')).forEach(function (el) { el.disabled = false; });
+    mgRecalc();
+}
+
+// ── Leitura das pernas para o payoff (igual ao Simulador, mas pula
+// braços fechados — eles não entram no payoff resultante) ───────────
+function lerPernas() {
+    var legs = [];
+    document.querySelectorAll('#mg-body tr.leg-row').forEach(function (tr) {
+        if (tr.dataset.fechada === '1') return;
+        var on = tr.querySelector('.leg-on').checked;
+        tr.classList.toggle('off', !on);
+        if (!on) { tr.querySelector('.leg-ent').textContent = '—';
+                   tr.querySelector('.leg-sai').textContent = '—'; return; }
+        var tipo = tr.querySelector('.leg-type').value;
+        var kEl  = tr.querySelector('.leg-strike-sel');
+        var eEl  = tr.querySelector('.leg-exp-sel');
+        var ivEl = tr.querySelector('.leg-iv');
+        legs.push({
+            type:    tipo,
+            side:    tr.querySelector('.leg-side').value,
+            qty:     parseInt(tr.querySelector('.leg-qty').value, 10) || 0,
+            strike:  kEl ? (parseFloat(kEl.value) || 0) : 0,
+            premium: parseVal(tr.querySelector('.leg-premium').value),
+            exp:     (eEl && eEl.value) ? eEl.value : null,
+            iv:      ivEl ? (parseVal(ivEl.value) / 100) : 0,
+            ticker:  (tr.querySelector('.leg-ticker') || {}).value || '',
+            _tr:     tr
+        });
+    });
+    return legs;
+}
+
+// ── Black-Scholes (mesma implementação do Simulador) ────────────────
+function normCDF(x) {
+    var a = [0.319381530, -0.356563782, 1.781477937, -1.821255978, 1.330274429];
+    var L = Math.abs(x);
+    var k = 1 / (1 + 0.2316419 * L);
+    var w = 1 - (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-L * L / 2) *
+            (a[0]*k + a[1]*k*k + a[2]*k*k*k + a[3]*k*k*k*k + a[4]*k*k*k*k*k);
+    return x < 0 ? 1 - w : w;
+}
+function blackScholes(S, K, T, r, sigma, isCall) {
+    if (T <= 0 || sigma <= 0 || S <= 0 || K <= 0) {
+        return isCall ? Math.max(0, S - K) : Math.max(0, K - S);
+    }
+    var sqrtT = Math.sqrt(T);
+    var d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrtT);
+    var d2 = d1 - sigma * sqrtT;
+    if (isCall) return S * normCDF(d1) - K * Math.exp(-r * T) * normCDF(d2);
+    return K * Math.exp(-r * T) * normCDF(-d2) - S * normCDF(-d1);
+}
+function bsDelta(S, K, T, r, sigma, isCall) {
+    if (T <= 0 || sigma <= 0 || S <= 0 || K <= 0) {
+        var itm = isCall ? S > K : S < K;
+        return itm ? (isCall ? 1 : -1) : 0;
+    }
+    var d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
+    return isCall ? normCDF(d1) : normCDF(d1) - 1;
+}
+function deltaEstrutural(legs, S, TporExp) {
+    var r = SELIC_RATE / 100;
+    return legs.reduce(function (acc, l) {
+        var sign = l.side === 'BUY' ? 1 : -1;
+        if (l.type === 'STOCK') return acc + sign * l.qty;
+        if (l.strike <= 0) return acc;
+        var T = TporExp(l.exp);
+        var sigma = l.iv > 0 ? l.iv : 0.30;
+        var d = bsDelta(S, l.strike, T, r, sigma, l.type === 'CALL');
+        return acc + sign * l.qty * d;
+    }, 0);
+}
+
+function vencimentos(legs) {
+    var out = [];
+    legs.forEach(function (l) {
+        if (l.type !== 'STOCK' && l.exp && out.indexOf(l.exp) < 0) out.push(l.exp);
+    });
+    return out.sort();
+}
+
+function netPremium(legs) {
+    return legs.reduce(function (acc, l) {
+        if (l.type === 'STOCK') return acc;
+        return acc + (l.side === 'SELL' ? 1 : -1) * l.qty * l.premium;
+    }, 0);
+}
+
+function payoffAt(S, legs, multiExp, refDateStr) {
+    var total = netPremium(legs);
+    var r = SELIC_RATE / 100;
+    var refDate = refDateStr ? new Date(refDateStr) : null;
+    legs.forEach(function (l) {
+        var sign = l.side === 'BUY' ? 1 : -1;
+        if (l.type === 'STOCK') { total += sign * l.qty * (S - l.premium); return; }
+        if (multiExp && refDate && l.exp && l.exp > refDateStr && l.iv > 0) {
+            var T = (new Date(l.exp) - refDate) / (365.25 * 24 * 3600 * 1000);
+            total += sign * l.qty * blackScholes(S, l.strike, T, r, l.iv, l.type === 'CALL');
+        } else {
+            if (l.strike <= 0) return;
+            if (l.type === 'CALL') total += sign * l.qty * Math.max(0, S - l.strike);
+            else                   total += sign * l.qty * Math.max(0, l.strike - S);
+        }
+    });
+    return total;
+}
+
+// ── Demonstrativo financeiro do manejo ──────────────────────────────
+// Cada braço fechado (🔒) vira uma linha de "fechamento"; cada braço novo
+// (origem='nova' preenchido) vira uma linha de "abertura". Diferente da
+// Rolagem clássica (que casa fechamento+abertura numa única linha por
+// braço substituído), aqui as duas ações do usuário são independentes —
+// ele pode fechar 2 braços e abrir só 1, por exemplo — então o
+// demonstrativo soma cada lado separadamente, sempre correto.
+function mgLinhasFinanceiras() {
+    var fechamentos = [], aberturas = [];
+    document.querySelectorAll('#mg-body tr.leg-row').forEach(function (tr) {
+        if (tr.dataset.origem === 'estrutura' && tr.dataset.fechada === '1') {
+            var side = tr.dataset.sideOriginal || 'SELL';
+            var qty = parseInt(tr.dataset.qtyOriginal || tr.querySelector('.leg-qty').value, 10) || 0;
+            var avg = parseFloat(tr.dataset.entryPrice || 0) || 0;
+            var closeVal = parseFloat(tr.dataset.fechaValor || 0) || 0;
+            var cash = (side === 'SELL' ? -1 : 1) * qty * closeVal;
+            var initial = (side === 'SELL' ? 1 : -1) * qty * avg;
+            fechamentos.push({
+                ticker: tr.dataset.tickerOriginal || (tr.querySelector('.leg-ticker') || {}).value || '',
+                side: side, qty: qty, avg: avg, closeVal: closeVal,
+                cash: cash, initial: initial,
+                parcial: tr.dataset.fechaTipo === 'PARCIAL'
+            });
+        }
+        if (tr.dataset.origem === 'nova') {
+            var tipo = tr.querySelector('.leg-type').value;
+            var ticker = (tr.querySelector('.leg-ticker') || {}).value || '';
+            var premEl = tr.querySelector('.leg-premium');
+            var premium = premEl ? parseVal(premEl.value) : 0;
+            var qtyN = parseInt(tr.querySelector('.leg-qty').value, 10) || 0;
+            var sideN = tr.querySelector('.leg-side').value;
+            var on = tr.querySelector('.leg-on').checked;
+            var filled = tipo === 'STOCK' ? premium > 0 : !!ticker;
+            if (!on || !filled || !qtyN) return;
+            var cashN = (sideN === 'SELL' ? 1 : -1) * qtyN * premium;
+            aberturas.push({ ticker: ticker || '(ativo)', side: sideN, qty: qtyN, premium: premium, cash: cashN });
+        }
+    });
+    return { fechamentos: fechamentos, aberturas: aberturas };
+}
+
+function mgRenderFinanceiro() {
+    var linhas = mgLinhasFinanceiras();
+    var closeTotal = linhas.fechamentos.reduce(function (s, l) { return s + l.cash; }, 0);
+    var openTotal  = linhas.aberturas.reduce(function (s, l) { return s + l.cash; }, 0);
+    var initialTotal = linhas.fechamentos.reduce(function (s, l) { return s + l.initial; }, 0);
+    var total = closeTotal + openTotal;
+    var grand = initialTotal + total;
+    var nLinhas = linhas.fechamentos.length + linhas.aberturas.length;
+
+    document.getElementById('mg-fin-total').textContent = fmtBRLSigned(total);
+    document.getElementById('mg-fin-total').className = 'val ' + (total >= 0 ? 'positive' : 'negative');
+    document.getElementById('mg-fin-close').textContent = fmtBRLSigned(closeTotal);
+    document.getElementById('mg-fin-open').textContent = fmtBRLSigned(openTotal);
+    document.getElementById('mg-fin-initial').textContent = fmtBRLSigned(initialTotal);
+    document.getElementById('mg-fin-grand').textContent = fmtBRLSigned(grand);
+    document.getElementById('mg-fin-grand').className = 'val ' + (grand >= 0 ? 'positive' : 'negative');
+    document.getElementById('mg-fin-lines').textContent = nLinhas;
+
+    var rows = '';
+    linhas.fechamentos.forEach(function (l) {
+        rows += '<tr><td>🔒 ' + escHtml(l.ticker) + (l.parcial ? ' (parcial)' : '') + '</td>'
+              + '<td>Fecha ' + (l.side === 'SELL' ? 'venda' : 'compra') + '</td>'
+              + '<td>' + l.qty + '</td>'
+              + '<td>' + fmtBRL(l.avg) + '</td>'
+              + '<td>' + fmtBRL(l.closeVal) + '</td>'
+              + '<td class="' + (l.cash >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(l.cash) + '</td></tr>';
+    });
+    linhas.aberturas.forEach(function (l) {
+        rows += '<tr><td>＋ ' + escHtml(l.ticker) + '</td>'
+              + '<td>Abre ' + (l.side === 'SELL' ? 'venda' : 'compra') + '</td>'
+              + '<td>' + l.qty + '</td>'
+              + '<td>—</td>'
+              + '<td>' + fmtBRL(l.premium) + '</td>'
+              + '<td class="' + (l.cash >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(l.cash) + '</td></tr>';
+    });
+    var html = nLinhas
+        ? '<table><thead><tr><th>Braço</th><th>Ação</th><th>Qtd</th><th>Médio</th><th>Valor</th><th>Caixa</th></tr></thead>'
+          + '<tbody>' + rows + '</tbody>'
+          + '<tfoot><tr><td colspan="5">Total</td><td class="' + (total >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(total) + '</td></tr></tfoot></table>'
+        : '<p class="mg-hint" style="margin:0;padding:.5rem 0;">Nenhum braço fechado ou novo ainda — feche um braço (🔒) ou inclua um novo para ver o demonstrativo.</p>';
+    document.getElementById('mg-detail').innerHTML = html;
+}
+
+// ── Recalcula tudo ────────────────────────────────────────────────
+window.mgRecalc = function () {
+    var legs = lerPernas();
+
+    var totEnt = 0, totSai = 0;
+    legs.forEach(function (l) {
+        var fin = l.qty * l.premium;
+        var entCel = l._tr.querySelector('.leg-ent');
+        var saiCel = l._tr.querySelector('.leg-sai');
+        if (l.side === 'SELL') {
+            entCel.innerHTML = '<span class="positive">' + fmtBRL(fin) + '</span>';
+            saiCel.textContent = '—';
+            totEnt += fin;
+        } else {
+            entCel.textContent = '—';
+            saiCel.innerHTML = '<span class="negative">-' + fmtBRL(fin) + '</span>';
+            totSai += fin;
+        }
+    });
+    document.getElementById('mg-tot-ent').innerHTML =
+        totEnt > 0 ? '<span class="positive">' + fmtBRL(totEnt) + '</span>' : '—';
+    document.getElementById('mg-tot-sai').innerHTML =
+        totSai > 0 ? '<span class="negative">-' + fmtBRL(totSai) + '</span>' : '—';
+    document.getElementById('mg-m-ent').textContent = totEnt > 0 ? fmtBRL(totEnt) : '—';
+    document.getElementById('mg-m-sai').textContent = totSai > 0 ? '-' + fmtBRL(totSai) : '—';
+
+    var exps = vencimentos(legs);
+    var dte = exps.length ? diasAte(exps[0]) : null;
+    document.getElementById('mg-m-dte').textContent =
+        exps.length ? (dataBR(exps[0]) + (dte != null ? ' (' + dte + 'd)' : '')) : '—';
+
+    desenha(legs);
+    mgRenderFinanceiro();
+};
+
+// ── Gráfico + métricas (idêntico ao Simulador, prefixo mg-) ─────────
+var PAD = { top: 28, right: 16, bottom: 54, left: 96 };
+
+function desenha(legs) {
+    var canvas = document.getElementById('mg-payoff-canvas');
+    var ctx = canvas.getContext('2d');
+    var wrap = document.getElementById('mg-chart-wrap');
+    var W = wrap.clientWidth || 900, H = 420;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    try {
+        if (PayoffStyle.ligaZoom && !canvas._zoomOn) {
+            PayoffStyle.ligaZoom(canvas, canvas._payoffView || (canvas._payoffView = { zoom: 1, pan: 0 }),
+                function () { desenha(lerPernas()); });
+            canvas._zoomOn = true;
+        }
+    } catch (e) {}
+
+    var uteis = legs.filter(function (l) { return l.qty > 0; });
+    if (!uteis.length) {
+        ctx.fillStyle = 'rgba(148,163,184,.7)'; ctx.font = '13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Nenhum braço ativo no payoff.', W / 2, H / 2);
+        ['mg-m-net','mg-m-gain','mg-m-gain-pct','mg-m-gain-selic','mg-m-loss','mg-m-be','mg-m-pop','mg-m-delta-estrutural','mg-m-delta-transicao'].forEach(function (id) {
+            document.getElementById(id).textContent = '—';
+        });
+        document.getElementById('mg-aviso').style.display = 'none';
+        return;
+    }
+
+    var exps = vencimentos(uteis);
+    var multiExp = exps.length > 1;
+    var refDateStr = exps.length ? exps[0] : null;
+
+    var strikes = uteis.filter(function (l) { return l.type !== 'STOCK' && l.strike > 0; })
+                       .map(function (l) { return l.strike; });
+    var stockRef = (CADEIA && CADEIA.spot) ? CADEIA.spot : 0;
+    if (!stockRef) {
+        var st = uteis.filter(function (l) { return l.type === 'STOCK'; })[0];
+        stockRef = st ? st.premium : (strikes.length ? strikes[0] : 0);
+    }
+
+    var base = strikes.concat(stockRef > 0 ? [stockRef] : []);
+    if (!base.length) base = [10];
+    var lo = Math.min.apply(null, base), hi = Math.max.apply(null, base);
+    var meio = (lo + hi) / 2 || 10;
+    var span = Math.max(hi - lo, meio * 0.25) || 10;
+    var SminBase = Math.max(0.01, meio - span * 1.2);
+    var SmaxBase = meio + span * 1.2;
+    var Smin = SminBase, Smax = SmaxBase;
+    canvas._payoffView = canvas._payoffView || { zoom: 1, pan: 0 };
+    try {
+        var z = PayoffStyle.aplicaZoom(SminBase, SmaxBase, canvas._payoffView);
+        Smin = Math.max(0.01, z.Smin); Smax = z.Smax;
+    } catch (e) {}
+
+    var N = 400, step = (Smax - Smin) / N;
+    var Sarr = [], Parr = [];
+    for (var i = 0; i <= N; i++) {
+        var S = Smin + i * step;
+        Sarr.push(S); Parr.push(payoffAt(S, uteis, multiExp, refDateStr));
+    }
+
+    var maxGain = Math.max.apply(null, Parr);
+    var maxLoss = Math.min.apply(null, Parr);
+    var ySpan = Math.max(Math.abs(maxGain), Math.abs(maxLoss)) * 1.15 || 100;
+    var yMin = -ySpan, yMax = ySpan;
+    var cW = W - PAD.left - PAD.right, cH = H - PAD.top - PAD.bottom;
+    function xPx(S) { return PAD.left + (S - Smin) / (Smax - Smin) * cW; }
+    function yPx(P) { return PAD.top + (1 - (P - yMin) / (yMax - yMin)) * cH; }
+    var y0 = yPx(0);
+    var geo = { W: W, H: H, PAD: PAD, cW: cW, cH: cH };
+
+    PayoffStyle.grade(ctx, geo);
+    PayoffStyle.eixoZero(ctx, geo, y0);
+
+    strikes.forEach(function (K) {
+        var xk = xPx(K);
+        PayoffStyle.marco(ctx, geo, xk, PayoffStyle.CORES.strike, [4, 4]);
+        PayoffStyle.pilula(ctx, 'K ' + fmtNum(K), xk, PAD.top - 9,
+            'rgba(30,41,59,.92)', 'rgba(203,213,225,.95)',
+            { borda: 'rgba(148,163,184,.35)', limites: { min: PAD.left, max: W - PAD.right } });
+    });
+
+    var bes = [];
+    if (maxGain - maxLoss > 0.01) {
+        for (var j = 0; j < Parr.length - 1; j++) {
+            var p1 = Parr[j], p2 = Parr[j + 1];
+            if (p1 * p2 < 0) {
+                bes.push(Math.round((Sarr[j] + (-p1) * (Sarr[j + 1] - Sarr[j]) / (p2 - p1)) * 100) / 100);
+            }
+        }
+    }
+    if (stockRef > 0 && bes.length) {
+        var beProx = bes.reduce(function (a, b) {
+            return Math.abs(b - stockRef) < Math.abs(a - stockRef) ? b : a; });
+        PayoffStyle.faixa(ctx, geo, xPx(stockRef), xPx(beProx));
+    }
+
+    PayoffStyle.areas(ctx, geo, Sarr, Parr, xPx, yPx, y0);
+    PayoffStyle.curva(ctx, Sarr, Parr, xPx, yPx, PayoffStyle.CORES.venc, 2);
+
+    if (stockRef > 0 && stockRef >= Smin && stockRef <= Smax) {
+        var xs = xPx(stockRef);
+        PayoffStyle.marco(ctx, geo, xs, PayoffStyle.CORES.spot, [2, 3]);
+        PayoffStyle.pilula(ctx, 'S ' + fmtNum(stockRef), xs, H - PAD.bottom + 14,
+            'rgba(37,99,235,.92)', '#fff',
+            { limites: { min: PAD.left, max: W - PAD.right } });
+    }
+    bes.forEach(function (b) {
+        if (b < Smin || b > Smax) return;
+        PayoffStyle.pilula(ctx, 'BE ' + fmtNum(b), xPx(b), y0 - 10,
+            'rgba(234,179,8,.92)', '#1e293b',
+            { limites: { min: PAD.left, max: W - PAD.right } });
+    });
+
+    ctx.fillStyle = 'rgba(148,163,184,0.85)'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+    for (var xi = 0; xi <= 8; xi++) {
+        var sv = Smin + xi * (Smax - Smin) / 8;
+        ctx.fillText(fmtNum(sv), xPx(sv), H - PAD.bottom + 28);
+    }
+    ctx.fillStyle = 'rgba(148,163,184,0.7)'; ctx.font = '10px sans-serif';
+    ctx.fillText('Preço do Ativo no Vencimento (R$)', PAD.left + cW / 2, H - 4);
+    ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(148,163,184,0.85)'; ctx.font = '11px sans-serif';
+    for (var yi = 0; yi <= 6; yi++) {
+        var yv = yMin + yi * (yMax - yMin) / 6;
+        ctx.fillText((yv >= 0 ? '' : '-') + fmtBRL(yv), PAD.left - 6, yPx(yv) + 4);
+    }
+    PayoffStyle.borda(ctx, geo);
+
+    var net = netPremium(uteis);
+    var netEl = document.getElementById('mg-m-net');
+    netEl.textContent = fmtBRL(net) + (net >= 0 ? ' (crédito)' : ' (débito)');
+    netEl.className = 'val ' + (net >= 0 ? 'positive' : 'negative');
+    document.getElementById('mg-m-gain').textContent = maxGain > 1e7 ? '∞' : fmtBRL(maxGain);
+    document.getElementById('mg-m-loss').textContent =
+        maxLoss < -1e7 ? '-∞' : (maxLoss < 0 ? '-' : '') + fmtBRL(maxLoss);
+    document.getElementById('mg-m-be').textContent = bes.length ? bes.map(fmtBRL).join(' / ') : '—';
+
+    (function () {
+        var pctEl = document.getElementById('mg-m-gain-pct');
+        var selicEl = document.getElementById('mg-m-gain-selic');
+        var custoSaida = uteis.reduce(function (acc, l) {
+            return acc + (l.side === 'BUY' ? l.qty * l.premium : 0);
+        }, 0);
+        if (custoSaida <= 0 || maxGain > 1e7 || !refDateStr) {
+            pctEl.textContent = '—'; pctEl.className = 'val';
+            selicEl.textContent = '—'; selicEl.className = 'val';
+            return;
+        }
+        var pctGain = maxGain / custoSaida * 100;
+        pctEl.textContent = fmtNum(pctGain, 1) + '%';
+        pctEl.className = 'val ' + (pctGain >= 0 ? 'positive' : 'negative');
+
+        var dteGain = diasAte(refDateStr);
+        if (dteGain == null || dteGain <= 0) {
+            selicEl.textContent = '—'; selicEl.className = 'val';
+            return;
+        }
+        var selicPeriodo = (Math.pow(1 + SELIC_RATE / 100, dteGain / 365.25) - 1) * 100;
+        var vsSelic = selicPeriodo > 0 ? (pctGain / selicPeriodo) * 100 : null;
+        selicEl.textContent = vsSelic != null
+            ? fmtNum(vsSelic, 0) + '% da Selic (' + fmtNum(selicPeriodo, 2) + '% em ' + dteGain + 'd)'
+            : '—';
+        selicEl.className = 'val ' + (vsSelic != null && vsSelic >= 100 ? 'positive' : 'negative');
+    })();
+
+    (function () {
+        var popEl = document.getElementById('mg-m-pop');
+        popEl.className = 'val';
+        if (!bes.length || !stockRef || stockRef <= 0 || !refDateStr) { popEl.textContent = '—'; return; }
+        var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+        var T = Math.max((new Date(refDateStr + 'T00:00:00') - hoje) / (365.25 * 86400000), 1 / 365);
+        var sigmas = [];
+        uteis.forEach(function (l) {
+            if (l.type === 'STOCK') return;
+            if (l.iv > 0) { sigmas.push(l.iv); return; }
+            if (l.premium > 0 && l.strike > 0) {
+                sigmas.push(Math.min(l.premium / l.strike * Math.sqrt(252 / Math.max(T * 252, 1)), 2));
+            }
+        });
+        if (!sigmas.length) { popEl.textContent = '—'; return; }
+        var sigma = sigmas.reduce(function (a, b) { return a + b; }, 0) / sigmas.length;
+        var r = Math.log(1 + SELIC_RATE / 100);
+        var mu = Math.log(stockRef) + (r - 0.5 * sigma * sigma) * T;
+        var sd = sigma * Math.sqrt(T);
+        var pop = 0;
+        for (var i = 0; i < Parr.length - 1; i++) {
+            if ((Parr[i] + Parr[i + 1]) / 2 <= 0) continue;
+            var z1 = (Math.log(Sarr[i])     - mu) / sd;
+            var z2 = (Math.log(Sarr[i + 1]) - mu) / sd;
+            pop += normCDF(z2) - normCDF(z1);
+        }
+        pop = Math.max(0, Math.min(100, pop * 100));
+        popEl.textContent = fmtNum(pop, 1) + '%';
+        popEl.className = 'val ' + (pop >= 50 ? 'positive' : 'negative');
+    })();
+
+    (function () {
+        var estEl = document.getElementById('mg-m-delta-estrutural');
+        var transEl = document.getElementById('mg-m-delta-transicao');
+        if (!stockRef || stockRef <= 0) {
+            estEl.textContent = '—'; estEl.className = 'val';
+            transEl.textContent = '—'; transEl.className = 'val';
+            return;
+        }
+        function Thoje(exp) {
+            if (!exp) return 0;
+            var d = diasAte(exp);
+            return d != null ? Math.max(d, 0) / 365.25 : 0;
+        }
+        var deltaHoje = deltaEstrutural(uteis, stockRef, Thoje);
+        var deltaVenc = deltaEstrutural(uteis, stockRef, function () { return 0; });
+        estEl.textContent = fmtNum(deltaHoje, 0);
+        estEl.className = 'val ' + (deltaHoje >= 0 ? 'positive' : 'negative');
+        var transicao = deltaHoje - deltaVenc;
+        transEl.textContent = fmtNum(transicao, 0);
+        transEl.className = 'val ' + (transicao >= 0 ? 'positive' : 'negative');
+    })();
+
+    canvas._ser = { Sarr: Sarr, Parr: Parr, Smin: Smin, Smax: Smax };
+
+    var aviso = document.getElementById('mg-aviso');
+    if (multiExp) {
+        var temIV = uteis.some(function (l) {
+            return l.type !== 'STOCK' && l.exp && l.exp > refDateStr && l.iv > 0; });
+        aviso.style.display = 'block';
+        if (temIV) {
+            aviso.style.background = 'rgba(16,185,129,.10)';
+            aviso.style.borderColor = 'rgba(16,185,129,.4)';
+            aviso.style.color = '#10b981';
+            aviso.innerHTML = '✅ <strong>Vencimentos diferentes:</strong> as pernas mais longas são '
+                + 'avaliadas por Black-Scholes (Selic ' + fmtNum(SELIC_RATE) + '% a.a.) na data do '
+                + 'vencimento mais curto (' + dataBR(refDateStr) + ').';
+        } else {
+            aviso.style.background = 'rgba(234,179,8,.12)';
+            aviso.style.borderColor = 'rgba(234,179,8,.4)';
+            aviso.style.color = '#ca8a04';
+            aviso.innerHTML = '⚠️ <strong>Vencimentos diferentes:</strong> preencha a <strong>VI %</strong> '
+                + 'das pernas mais longas para o cálculo usar Black-Scholes. Sem VI, o gráfico mostra '
+                + 'apenas o payoff intrínseco.';
+        }
+    } else {
+        aviso.style.display = 'none';
+    }
+}
+
+(function () {
+    var canvas = document.getElementById('mg-payoff-canvas');
+    var tip = document.getElementById('mg-chart-tooltip');
+    canvas.addEventListener('mousemove', function (ev) {
+        var s = canvas._ser;
+        if (!s) { tip.style.display = 'none'; return; }
+        try { if (PayoffStyle.ligaZoom && canvas._payoffZoomCtrl
+                  && canvas._payoffZoomCtrl.estaArrastando()) { tip.style.display = 'none'; return; } } catch (e) {}
+        var rect = canvas.getBoundingClientRect();
+        var x = ev.clientX - rect.left;
+        var W = rect.width, cW = W - PAD.left - PAD.right;
+        if (x < PAD.left || x > W - PAD.right) { tip.style.display = 'none'; return; }
+        var S = s.Smin + (x - PAD.left) / cW * (s.Smax - s.Smin);
+        var idx = Math.round((S - s.Smin) / (s.Smax - s.Smin) * (s.Parr.length - 1));
+        idx = Math.max(0, Math.min(s.Parr.length - 1, idx));
+        var P = s.Parr[idx];
+        tip.innerHTML = 'S: <strong>' + fmtBRL(S) + '</strong><br>Resultado: <strong class="'
+            + (P >= 0 ? 'positive' : 'negative') + '">' + (P < 0 ? '-' : '') + fmtBRL(P) + '</strong>';
+        tip.style.display = 'block';
+        tip.style.left = Math.min(x + 14, rect.width - 150) + 'px';
+        tip.style.top = (ev.clientY - rect.top + 12) + 'px';
+    });
+    canvas.addEventListener('mouseleave', function () { tip.style.display = 'none'; });
+})();
+
+window.addEventListener('resize', function () { desenha(lerPernas()); });
+
+// ── Salvar simulação (rascunho, OptionRollSimulation) ───────────────
+function mgColetaLinhasParaPayload() {
+    var linhas = [];
+    document.querySelectorAll('#mg-body tr.leg-row').forEach(function (tr) {
+        var eEl = tr.querySelector('.leg-exp-sel');
+        var kEl = tr.querySelector('.leg-strike-sel');
+        var ivEl = tr.querySelector('.leg-iv');
+        linhas.push({
+            origem:     tr.dataset.origem || 'nova',
+            legId:      tr.dataset.legId ? parseInt(tr.dataset.legId, 10) : null,
+            type:       tr.querySelector('.leg-type').value,
+            side:       tr.querySelector('.leg-side').value,
+            qty:        parseInt(tr.querySelector('.leg-qty').value, 10) || 0,
+            strike:     kEl ? (parseFloat(kEl.value) || 0) : 0,
+            premium:    parseVal(tr.querySelector('.leg-premium').value),
+            exp:        (eEl && eEl.value) ? eEl.value : '',
+            ticker:     (tr.querySelector('.leg-ticker') || {}).value || '',
+            iv:         ivEl ? parseVal(ivEl.value) : 0,
+            on:         tr.querySelector('.leg-on').checked,
+            fechada:    tr.dataset.fechada === '1',
+            fechaValor: tr.dataset.fechaValor ? parseFloat(tr.dataset.fechaValor) : null,
+            fechaTipo:  tr.dataset.fechaTipo || null,
+            entryPrice: tr.dataset.entryPrice ? parseFloat(tr.dataset.entryPrice) : null,
+            sideOriginal: tr.dataset.sideOriginal || null,
+            qtyOriginal:  tr.dataset.qtyOriginal ? parseInt(tr.dataset.qtyOriginal, 10) : null,
+            tickerOriginal: tr.dataset.tickerOriginal || null,
+            strikeOriginal: tr.dataset.strikeOriginal != null ? parseFloat(tr.dataset.strikeOriginal) : null,
+            expOriginal:    tr.dataset.expOriginal != null ? tr.dataset.expOriginal : null,
+            typeOriginal:   tr.dataset.typeOriginal || null
+        });
+    });
+    return linhas;
+}
+
+window.mgSalvar = function () {
+    var nome = (document.getElementById('mg-nome').value || '').trim();
+    if (!nome) { alert('Dê um nome ao manejo antes de salvar.'); return; }
+    var payload = {
+        ui: 'grafico',
+        roll_type: 'MANEJO',
+        underlying: (document.getElementById('mg-ativo').value || '').trim().toUpperCase(),
+        op_id: MG_OP_ID,
+        op_name: MG_OP_NOME,
+        lines: mgColetaLinhasParaPayload()
+    };
+    fetch('/api/rolagem-opcoes/save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: MG_SIM_ID, name: nome, payload: payload })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || res.j.error) { alert('⚠️ ' + (res.j.error || 'erro ao salvar')); return; }
+        MG_SIM_ID = res.j.id || MG_SIM_ID;
+        document.getElementById('mg-nome').value = nome;
+        alert('✓ Manejo salvo como rascunho.');
+      }).catch(function (e) { alert('⚠️ falha de rede: ' + e); });
+};
+
+window.mgNova = function () {
+    if (!confirm('Começar um novo manejo do zero? A tela atual será limpa.')) return;
+    MG_SIM_ID = null;
+    document.getElementById('mg-nome').value = '';
+    document.getElementById('mg-body').innerHTML = '';
+    document.getElementById('mg-spot').innerHTML = '';
+    document.getElementById('mg-spot-chart').style.display = 'none';
+    CADEIA = null;
+    mgRecalc();
+};
+
+window.mgCarregarModal = function () {
+    document.getElementById('mg-open-modal').style.display = 'flex';
+    var lista = document.getElementById('mg-open-modal-lista');
+    lista.innerHTML = '<p class="mg-hint" style="padding:1rem 0;">⏳ carregando…</p>';
+    fetch('/api/rolagem-opcoes/list?mode=manejo')
+        .then(function (r) { return r.json(); })
+        .then(function (sims) {
+            if (!sims || !sims.length) {
+                lista.innerHTML = '<p class="mg-hint" style="padding:1rem 0;">Nenhum manejo salvo ainda.</p>';
+                return;
+            }
+            lista.innerHTML = sims.map(function (s) {
+                var isGrafico = s.payload && s.payload.ui === 'grafico';
+                return '<div style="display:flex;align-items:center;gap:.6rem;padding:.45rem .2rem;'
+                     + 'border-bottom:1px solid rgba(255,255,255,.05);">'
+                     + '<div style="flex:1;min-width:0;">'
+                     + '<div style="font-weight:600;font-size:.88rem;">' + escHtml(s.name)
+                     +   (isGrafico ? '' : ' <span class="mg-hint">(tela clássica)</span>') + '</div>'
+                     + '<div class="mg-hint">' + escHtml(s.underlying || '—') + ' · ' + escHtml(s.updated_at || s.created_at) + '</div>'
+                     + '</div>'
+                     + '<button class="btn btn-primary btn-sm" onclick="mgAbrir(' + s.id + ')">Abrir</button>'
+                     + '</div>';
+            }).join('');
+        })
+        .catch(function () {
+            lista.innerHTML = '<p class="mg-hint" style="padding:1rem 0;">⚠️ falha ao carregar a lista.</p>';
+        });
+};
+
+window.mgAbrir = function (id) {
+    fetch('/api/rolagem-opcoes/list?mode=manejo')
+        .then(function (r) { return r.json(); })
+        .then(function (sims) {
+            var s = (sims || []).filter(function (x) { return x.id === id; })[0];
+            if (!s) { alert('⚠️ manejo não encontrado.'); return; }
+            var payload = s.payload || {};
+            if (payload.ui !== 'grafico') {
+                alert('Este manejo foi criado na tela clássica de Rolagem/Manejo — abra em "Manejo de Opções" (menu Opções → Manejo → Geral).');
+                return;
+            }
+            MG_SIM_ID = s.id;
+            document.getElementById('mg-nome').value = s.name || '';
+            MG_OP_ID = payload.op_id || null;
+            MG_OP_NOME = payload.op_name || null;
+            document.getElementById('mg-op-nome').textContent = MG_OP_NOME ? '· estrutura: ' + MG_OP_NOME : '';
+            document.getElementById('mg-ativo').value = (s.underlying || '').toUpperCase();
+
+            var body = document.getElementById('mg-body');
+            body.innerHTML = '';
+            (payload.lines || []).forEach(function (l) {
+                var tr = novaLinha(l.type, l.origem || 'nova');
+                tr.querySelector('.leg-side').value = l.side || 'BUY';
+                tr.querySelector('.leg-qty').value  = l.qty || 100;
+                tr.querySelector('.leg-on').checked = l.on !== false;
+                var tEl = tr.querySelector('.leg-ticker');
+                if (tEl && l.ticker) tEl.value = l.ticker;
+                if (l.type === 'STOCK') {
+                    tr.querySelector('.leg-premium').value = fmtNum(l.premium);
+                } else {
+                    tr.dataset.pendExp = l.exp || '';
+                    tr.dataset.pendStrike = l.strike || '';
+                    tr.querySelector('.leg-premium').value = fmtNum(l.premium);
+                }
+                var ivEl = tr.querySelector('.leg-iv');
+                if (ivEl && l.iv) ivEl.value = fmtNum(l.iv);
+                if (l.legId) tr.dataset.legId = l.legId;
+                if (l.entryPrice != null) tr.dataset.entryPrice = l.entryPrice;
+                if (l.sideOriginal) tr.dataset.sideOriginal = l.sideOriginal;
+                if (l.qtyOriginal) tr.dataset.qtyOriginal = l.qtyOriginal;
+                if (l.tickerOriginal) tr.dataset.tickerOriginal = l.tickerOriginal;
+                if (l.strikeOriginal != null) tr.dataset.strikeOriginal = l.strikeOriginal;
+                if (l.expOriginal != null) tr.dataset.expOriginal = l.expOriginal;
+                if (l.typeOriginal) tr.dataset.typeOriginal = l.typeOriginal;
+                body.appendChild(tr);
+                if (l.fechada) {
+                    tr.dataset.fechaValor = l.fechaValor || 0;
+                    tr.dataset.fechaTipo = l.fechaTipo || 'TOTAL';
+                    // Reaplica o estado "fechada" visualmente (sem reabrir o modal)
+                    tr.dataset.fechada = '1';
+                    tr.classList.add('fechada');
+                    tr.querySelector('.leg-on').checked = false;
+                    tr.querySelector('.leg-on').disabled = true;
+                    [].slice.call(tr.querySelectorAll('select,input')).forEach(function (el) {
+                        if (!el.classList.contains('leg-on')) el.disabled = true;
+                    });
+                }
+            });
+            document.getElementById('mg-open-modal').style.display = 'none';
+            if (document.getElementById('mg-ativo').value) mgCarregarCadeia(); else mgRecalc();
+        })
+        .catch(function (e) { alert('⚠️ falha de rede: ' + e); });
+};
+
+function mgAplicaPendencias() {
+    MG_RESTAURANDO = true;
+    try {
+        document.querySelectorAll('#mg-body tr.leg-row').forEach(function (tr) {
+            var expSel = tr.querySelector('.leg-exp-sel');
+            if (!expSel || !tr.dataset.pendExp) return;
+            mgPreencheVencimentos(tr);
+            if (!(CADEIA.expirations || []).some(function (e) { return e.exp === tr.dataset.pendExp; })) {
+                delete tr.dataset.pendExp; delete tr.dataset.pendStrike;
+                return;
+            }
+            expSel.value = tr.dataset.pendExp;
+            mgVencMudou(expSel);
+            var strikeSel = tr.querySelector('.leg-strike-sel');
+            var alvo = parseFloat(tr.dataset.pendStrike);
+            var opt = Array.prototype.filter.call(strikeSel.options, function (o) {
+                return Math.abs(parseFloat(o.value) - alvo) < 0.001;
+            })[0];
+            if (opt) { strikeSel.value = opt.value; mgAplicaStrike(tr, opt.value); }
+            delete tr.dataset.pendExp; delete tr.dataset.pendStrike;
+        });
+    } finally {
+        MG_RESTAURANDO = false;
+    }
+}
+
+// ── Salvar em produção (POST /roll_estruturada/<id>) ────────────────
+window.mgSalvarProducao = function () {
+    if (!MG_OP_ID) {
+        alert('Esta tela não está associada a nenhuma operação estruturada — abra pelo botão 📈 na listagem de Operações Estruturadas (página Opções).');
+        return;
+    }
+    var linhas = mgColetaLinhasParaPayload();
+    var mexidas = linhas.filter(function (l) {
+        return (l.origem === 'estrutura' && l.fechada) || (l.origem === 'nova' && (l.ticker || (l.type === 'STOCK' && l.premium > 0)));
+    });
+    if (!mexidas.length) {
+        alert('Nenhum braço foi fechado ou incluído — não há manejo para gravar.');
+        return;
+    }
+    if (!confirm('Gravar este manejo na operação estruturada real? Isso encerra os braços fechados e cria os braços novos na carteira.')) return;
+
+    var form = document.createElement('form');
+    form.method = 'POST';
+    form.action = '/roll_estruturada/' + MG_OP_ID;
+
+    function addField(name, value) {
+        var inp = document.createElement('input');
+        inp.type = 'hidden'; inp.name = name; inp.value = value == null ? '' : value;
+        form.appendChild(inp);
+    }
+    addField('roll_type', 'MANEJO');
+    addField('roll_date', new Date().toISOString().slice(0, 10));
+    addField('notes', 'Manejo gráfico');
+    addField('next', '/opcoes');
+
+    // Braços da estrutura original: cada um vira uma linha leg_id (kept,
+    // dropped ou trocado) — o backend só marca "changed" se algo mudou.
+    // Braço NÃO fechado sempre reenvia os dados ORIGINAIS gravados no
+    // carregamento (tickerOriginal/entryPrice/strike/exp do dataset), nunca
+    // os campos ao vivo do select — evita gravar strike/exp zerados se a
+    // cadeia ainda não tiver carregado quando o usuário clicar em salvar
+    // (o mesmo braço "mantido" nunca é editado in-line nesta tela: editar
+    // um braço da estrutura sempre passa pelo fechamento explícito 🔒).
+    linhas.filter(function (l) { return l.origem === 'estrutura' && l.legId; }).forEach(function (l) {
+        if (l.fechada) {
+            addField('leg_drop', l.legId);
+            return;
+        }
+        addField('leg_id', l.legId);
+        addField('leg_close_price', '');
+        addField('leg_new_ticker', l.tickerOriginal || l.ticker || '');
+        addField('leg_new_strike', l.strikeOriginal != null ? l.strikeOriginal : (l.strike || 0));
+        addField('leg_new_premium', l.entryPrice != null ? l.entryPrice : (l.premium || 0));
+        addField('leg_new_exp', l.expOriginal || l.exp || '');
+        addField('leg_new_type', l.typeOriginal || l.type);
+        addField('leg_new_side', l.sideOriginal || l.side);
+    });
+
+    // Braços novos (sem legId): entram como new_leg_* — o backend cria
+    // StructuredLeg novas para eles.
+    linhas.filter(function (l) { return l.origem === 'nova'; }).forEach(function (l) {
+        var temDado = l.type === 'STOCK' ? l.premium > 0 : !!l.ticker;
+        if (!temDado) return;
+        addField('new_leg_ticker', l.ticker || (l.type === 'STOCK' ? MG_ATIVO : ''));
+        addField('new_leg_strike', l.strike || 0);
+        addField('new_leg_premium', l.premium || 0);
+        addField('new_leg_exp', l.exp || '');
+        addField('new_leg_type', l.type);
+        addField('new_leg_side', l.side);
+        addField('new_leg_qty', l.qty || 100);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
+};
+
+// ── Carregamento inicial: pré-popula com os braços reais da StructuredOp ──
+(function mgInit() {
+    var body = document.getElementById('mg-body');
+    if (OP_LEGS_DATA.length) {
+        OP_LEGS_DATA.forEach(function (l) {
+            var tr = novaLinha(l.optType === 'STOCK' ? 'STOCK' : l.optType, 'estrutura');
+            tr.dataset.legId = l.legId;
+            tr.dataset.entryPrice = l.premium;
+            tr.dataset.sideOriginal = l.side;
+            tr.dataset.qtyOriginal = l.qty;
+            tr.dataset.tickerOriginal = l.ticker;
+            tr.dataset.strikeOriginal = l.strike || 0;
+            tr.dataset.expOriginal = l.exp || '';
+            tr.dataset.typeOriginal = l.optType;
+            tr.querySelector('.leg-side').value = l.side;
+            tr.querySelector('.leg-qty').value = l.qty;
+            var tEl = tr.querySelector('.leg-ticker');
+            if (tEl) tEl.value = l.ticker;
+            if (l.optType === 'STOCK') {
+                tr.querySelector('.leg-premium').value = fmtNum(l.premium);
+            } else {
+                tr.dataset.pendExp = l.exp || '';
+                tr.dataset.pendStrike = l.strike || '';
+                tr.querySelector('.leg-premium').value = fmtNum(l.premium);
+            }
+            body.appendChild(tr);
+        });
+        if (MG_ATIVO) mgCarregarCadeia(); else mgRecalc();
+    } else {
+        // Sem estrutura associada: começa com uma linha de CALL em branco,
+        // igual ao Simulador — útil para montar um manejo hipotético.
+        mgAddPerna('CALL');
+    }
+})();
+})();
+</script>
+{% endblock %}

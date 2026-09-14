@@ -3282,6 +3282,21 @@ def manejo_opcoes():
     return render_template('rolagem_opcoes.html', ranking_vol=ranking_vol, manejo_mode=True)
 
 
+@app.route('/manejo-grafico')
+@login_required
+def manejo_grafico():
+    """Manejo de operação estruturada com a interface de seleção do Simulador
+    (cascata vencimento→strike→prêmio + payoff), em vez do formulário clássico
+    de /manejo-opcoes. Carrega as pernas reais da StructuredOp quando vem de
+    /opcoes com ?est=<id>."""
+    est_id = request.args.get('est', type=int)
+    op = None
+    if est_id:
+        op = StructuredOp.query.filter_by(id=est_id, user_id=current_user.id, status='OPEN').first()
+    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    return render_template('manejo_grafico.html', op=op, selic=_selic(), ranking_vol=ranking_vol)
+
+
 @app.route('/api/rolagem-opcoes/list')
 @login_required
 def api_rolagem_list():
@@ -12674,6 +12689,18 @@ def roll_estruturada(id):
     # desabilitados no formulário, então não deslocam as listas paralelas acima.
     drop_ids        = {int(x) for x in request.form.getlist('leg_drop') if str(x).strip().isdigit()}
 
+    # Pernas NOVAS puras (sem leg_id correspondente): braço adicional à
+    # estrutura, não substituição de um existente — usado pelo Manejo Gráfico
+    # quando o usuário inclui uma perna do zero (ex.: comprar uma proteção
+    # nova) em vez de rolar uma perna já existente.
+    new_leg_tickers = request.form.getlist('new_leg_ticker')
+    new_leg_strikes = request.form.getlist('new_leg_strike')
+    new_leg_premiums = request.form.getlist('new_leg_premium')
+    new_leg_exps    = request.form.getlist('new_leg_exp')
+    new_leg_types   = request.form.getlist('new_leg_type')
+    new_leg_sides   = request.form.getlist('new_leg_side')
+    new_leg_qtys    = request.form.getlist('new_leg_qty')
+
     try:
         roll_entry = {
             'roll_type': roll_type,
@@ -12810,10 +12837,56 @@ def roll_estruturada(id):
                 except ValueError:
                     pass
 
+        # ── Pernas NOVAS puras: não substituem braço nenhum, só somam à
+        # estrutura (ex.: comprar uma proteção nova durante o manejo). Entram
+        # 100% como abertura no caixa — sem fechamento correspondente.
+        legs_novas = []
+        for i, nt in enumerate(new_leg_tickers):
+            nt = (nt or '').upper().strip()
+            if not nt:
+                continue
+            nk  = float(new_leg_strikes[i].replace(',', '.'))  if i < len(new_leg_strikes)  and new_leg_strikes[i]  else 0.0
+            np_ = float(new_leg_premiums[i].replace(',', '.')) if i < len(new_leg_premiums) and new_leg_premiums[i] else 0.0
+            ne  = new_leg_exps[i]    if i < len(new_leg_exps)    and new_leg_exps[i]    else ''
+            ntp = (new_leg_types[i].upper().strip() if i < len(new_leg_types) and new_leg_types[i] else 'CALL')
+            nsd = (new_leg_sides[i].upper().strip() if i < len(new_leg_sides) and new_leg_sides[i] else 'BUY')
+            nqty = int(new_leg_qtys[i]) if i < len(new_leg_qtys) and new_leg_qtys[i] else 1
+            if ntp not in ('CALL', 'PUT', 'STOCK'):
+                ntp = 'CALL'
+            if nsd not in ('BUY', 'SELL'):
+                nsd = 'BUY'
+
+            if nsd == 'SELL':
+                net_roll += np_ * nqty       # vende a nova: recebe
+            else:
+                net_roll -= np_ * nqty       # compra a nova: paga
+
+            new_leg = StructuredLeg(op_id=op.id, ticker=nt, side=nsd, opt_type=ntp,
+                                    quantity=nqty, strike=nk, entry_price=np_,
+                                    current_price=np_, last_update=now_brt())
+            if ne:
+                try:
+                    new_leg.expiration_date = datetime.strptime(ne, '%Y-%m-%d').date()
+                except ValueError:
+                    pass
+            db.session.add(new_leg)
+            legs_novas.append(f'{nt} ({nqty}×)')
+
+            roll_entry['legs'].append({
+                'old_ticker': None, 'old_strike': None, 'old_exp': None, 'old_premium': None,
+                'close_price': None,
+                'new_ticker': nt, 'new_strike': nk, 'new_premium': np_, 'new_exp': ne,
+                'new_type': ntp, 'new_side': nsd, 'quantity': nqty,
+                'new_leg': True,          # braço adicionado, não substituição
+                'realized_pnl': None,
+            })
+
         roll_entry['net_roll'] = round(net_roll, 4)
         roll_entry['realized_pnl'] = round(realized, 2)
         if legs_encerradas:
             roll_entry['closed_legs'] = legs_encerradas
+        if legs_novas:
+            roll_entry['new_legs'] = legs_novas
         # Marca: manejo do NOVO modelo (não gerou TradeHistory) — o encerramento
         # soma este realized_pnl. Manejos antigos (sem a flag) já viraram
         # TradeHistory e NÃO são somados de novo, evitando dupla contagem.
@@ -12833,6 +12906,8 @@ def roll_estruturada(id):
             if not restantes:
                 msg += (' Não restam pernas de opção: use ENCERRAR para apurar o '
                         'resultado e mover a operação para o Histórico.')
+        if legs_novas:
+            msg += f" Braço(s) novo(s): {', '.join(legs_novas)}."
         flash(msg, 'success')
     except Exception as e:
         db.session.rollback()

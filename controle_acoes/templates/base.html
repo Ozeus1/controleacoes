@@ -249,9 +249,9 @@
                 </div>
 
                 {# ── Opções (dropdown com Estudos e Simulação) ── #}
-                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','simulador','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','put_call_ratio','trader_futuros','ajuda_operacoes'] else '' }}">
+                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','simulador','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_grafico','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','put_call_ratio','trader_futuros','ajuda_operacoes'] else '' }}">
                     <a href="{{ url_for('opcoes') }}"
-                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','simulador','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','put_call_ratio','trader_futuros','ajuda_operacoes'] else '' }}"
+                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','simulador','rolagem_opcoes','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_grafico','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','put_call_ratio','trader_futuros','ajuda_operacoes'] else '' }}"
                        onclick="toggleNavDrop(this,event)">
                         Opções <span class="nav-caret">▾</span>
                     </a>
@@ -279,15 +279,17 @@
                         </div>
                         <a href="{{ url_for('rolagem_opcoes') }}"
                            class="{{ 'active' if request.endpoint == 'rolagem_opcoes' else '' }}">🔁 Rolagem de Opções</a>
-                        {# Manejo: item pai com submenu Geral (manejo_opcoes) / Put (manejo_put) #}
-                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['manejo_opcoes','manejo_put'] else '' }}">
-                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['manejo_opcoes','manejo_put'] else '' }}"
+                        {# Manejo: item pai com submenu Geral (manejo_opcoes) / Gráfico (manejo_grafico) / Put (manejo_put) #}
+                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['manejo_opcoes','manejo_grafico','manejo_put'] else '' }}">
+                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['manejo_opcoes','manejo_grafico','manejo_put'] else '' }}"
                                onclick="toggleNavDrop(this,event)">
                                 🔧 Manejo <span class="nav-caret nav-caret-sub">▸</span>
                             </a>
                             <div class="nav-dropdown-menu nav-submenu">
                                 <a href="{{ url_for('manejo_opcoes') }}"
                                    class="{{ 'active' if request.endpoint == 'manejo_opcoes' else '' }}">🔧 Geral</a>
+                                <a href="{{ url_for('manejo_grafico') }}"
+                                   class="{{ 'active' if request.endpoint == 'manejo_grafico' else '' }}">📈 Gráfico</a>
                                 <a href="{{ url_for('manejo_put') }}"
                                    class="{{ 'active' if request.endpoint == 'manejo_put' else '' }}">🛟 Put</a>
                             </div>

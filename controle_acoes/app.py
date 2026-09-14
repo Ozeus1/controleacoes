@@ -21254,7 +21254,13 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
             if i == 0 and r.status_code >= 500:
                 oplab_online = False   # servidor com problema: só o que der no lote
             if r.status_code == 200:
-                for item in r.json():
+                data = r.json()
+                # Defesa: se a resposta é um dict em vez de lista, pega a chave de lista mais comum
+                if isinstance(data, dict):
+                    data = data.get('quotes') or data.get('data') or data.get('items') or data.get('results') or []
+                if not isinstance(data, list):
+                    data = []
+                for item in data:
                     sym   = str(item.get('symbol', '')).upper()
                     close = item.get('close')
                     # Tenta múltiplos nomes de campo para variação diária %

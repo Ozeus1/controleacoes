@@ -12688,6 +12688,14 @@ def roll_estruturada(id):
     # contrato. Vem como lista de leg_id — os campos da nova perna ficam
     # desabilitados no formulário, então não deslocam as listas paralelas acima.
     drop_ids        = {int(x) for x in request.form.getlist('leg_drop') if str(x).strip().isdigit()}
+    # Fechamento PARCIAL: leg_id -> quantidade fechada agora (< quantidade
+    # total do braço). O restante da posição continua aberto com a mesma
+    # entrada — só a fração indicada entra no caixa/P&L deste manejo. Sem
+    # entrada aqui para um leg_id em drop_ids, o fechamento é total (padrão).
+    drop_qty_by_leg = {}
+    for lid, qtx in zip(request.form.getlist('leg_drop_id'), request.form.getlist('leg_drop_qty')):
+        if str(lid).strip().isdigit() and str(qtx).strip().isdigit():
+            drop_qty_by_leg[int(lid)] = int(qtx)
 
     # Pernas NOVAS puras (sem leg_id correspondente): braço adicional à
     # estrutura, não substituição de um existente — usado pelo Manejo Gráfico
@@ -12728,18 +12736,23 @@ def roll_estruturada(id):
                 continue
 
             cp  = float(close_prices[i].replace(',','.'))  if i < len(close_prices)  and close_prices[i]  else leg.current_price or leg.entry_price
-            qty = leg.quantity or 1
+            qty_total = leg.quantity or 1
 
-            # ── Encerrar a perna: zera o braço e ele sai da estrutura ─────────
+            # ── Encerrar a perna (total ou parcial): a parte fechada sai da
+            # estrutura; se parcial, o restante continua aberto com a mesma
+            # entrada/vencimento, só reduzindo a quantidade do braço. ─────────
             if leg.id in drop_ids:
+                qty_fechada = drop_qty_by_leg.get(leg.id, qty_total)
+                qty_fechada = max(1, min(qty_fechada, qty_total))
+                parcial = qty_fechada < qty_total
                 # Só o fluxo de fechamento entra no caixa: SELL recompra (paga),
                 # BUY vende (recebe). Não há prêmio novo porque não há nova perna.
                 if leg.side == 'SELL':
-                    net_roll -= cp * qty
-                    pnl = ((leg.entry_price or 0) - cp) * qty
+                    net_roll -= cp * qty_fechada
+                    pnl = ((leg.entry_price or 0) - cp) * qty_fechada
                 else:
-                    net_roll += cp * qty
-                    pnl = (cp - (leg.entry_price or 0)) * qty
+                    net_roll += cp * qty_fechada
+                    pnl = (cp - (leg.entry_price or 0)) * qty_fechada
                 realized += pnl
                 roll_entry['legs'].append({
                     'old_ticker':   leg.ticker,
@@ -12752,12 +12765,19 @@ def roll_estruturada(id):
                     'new_premium':  None,
                     'new_exp':      None,
                     'side':         leg.side,
-                    'quantity':     qty,
-                    'closed_leg':   True,          # marca a saída definitiva do braço
+                    'quantity':     qty_fechada,
+                    'closed_leg':   not parcial,   # só marca saída definitiva se fechou tudo
+                    'partial_close': parcial,
+                    'remaining_qty': (qty_total - qty_fechada) if parcial else None,
                     'realized_pnl': round(pnl, 2),
                 })
-                legs_encerradas.append(f'{leg.ticker} ({qty}×)')
-                db.session.delete(leg)
+                if parcial:
+                    leg.quantity = qty_total - qty_fechada
+                    leg.last_update = now_brt()
+                    legs_encerradas.append(f'{leg.ticker} ({qty_fechada}× de {qty_total}×, parcial)')
+                else:
+                    legs_encerradas.append(f'{leg.ticker} ({qty_fechada}×)')
+                    db.session.delete(leg)
                 continue
 
             nt  = new_tickers[j].upper().strip()            if j < len(new_tickers)   and new_tickers[j]   else leg.ticker

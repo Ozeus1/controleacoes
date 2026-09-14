@@ -165,7 +165,7 @@
   </div>
 
   <div style="overflow-x:auto;">
-    <table id="mg-tab">
+    <table id="mg-tab" class="no-datatable">
       <thead>
         <tr>
           <th class="col-sel" title="Marque para incluir o braço no cálculo">✓</th>
@@ -270,9 +270,38 @@
       <div style="display:flex;flex-direction:column;gap:.25rem;">
         <label class="mg-hint">Liquidação</label>
         <div style="display:flex;gap:.6rem;">
-          <label class="mg-chk-label"><input type="radio" name="mg-fecha-tipo" value="TOTAL" checked> Total</label>
-          <label class="mg-chk-label"><input type="radio" name="mg-fecha-tipo" value="PARCIAL"> Parcial</label>
+          <label class="mg-chk-label"><input type="radio" name="mg-fecha-tipo" value="TOTAL" checked onchange="mgFechaTipoMudou()"> Total</label>
+          <label class="mg-chk-label"><input type="radio" name="mg-fecha-tipo" value="PARCIAL" onchange="mgFechaTipoMudou()"> Parcial</label>
         </div>
+      </div>
+      <div id="mg-fecha-qtd-wrap" style="display:none;flex-direction:column;gap:.25rem;">
+        <label class="mg-hint">Quantidade fechada (do total do braço)</label>
+        <input type="number" id="mg-fecha-qtd" min="1" step="100" placeholder="100"
+               style="background:var(--hover-bg);color:var(--text-primary);
+                      border:1px solid var(--border-color);border-radius:5px;
+                      padding:.4rem .6rem;font-size:.9rem;">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:.25rem;">
+        <label class="mg-hint" title="Importante para o controle de lucro/prejuízo: um encerramento puro apura resultado sozinho; uma substituição só realiza o resultado da troca em conjunto com o braço que entra no lugar.">Motivo do fechamento</label>
+        <select id="mg-fecha-motivo" onchange="mgFechaMotivoMudou()"
+                style="background:var(--hover-bg);color:var(--text-primary);
+                       border:1px solid var(--border-color);border-radius:5px;
+                       padding:.4rem .6rem;font-size:.9rem;">
+          <option value="ENCERRAMENTO">Encerramento — não será substituído</option>
+          <option value="SUBSTITUICAO">Substituição — outro braço entra no lugar</option>
+        </select>
+      </div>
+      <div id="mg-fecha-sub-wrap" style="display:none;flex-direction:column;gap:.25rem;">
+        <label class="mg-hint">Braço substituto</label>
+        <select id="mg-fecha-sub-braco"
+                style="background:var(--hover-bg);color:var(--text-primary);
+                       border:1px solid var(--border-color);border-radius:5px;
+                       padding:.4rem .6rem;font-size:.9rem;">
+        </select>
+        <p class="mg-hint" style="margin:0;">
+          Escolha um braço já incluído com "+ Call / + Put / + Ativo" abaixo. Se ainda não incluiu,
+          cancele, inclua o braço novo primeiro e depois volte a fechar este.
+        </p>
       </div>
       <p class="mg-hint" style="margin:0;">
         O braço sai do payoff e entra no demonstrativo financeiro com este valor. Só é aplicado de fato
@@ -315,7 +344,7 @@ var CADEIA = null;       // resposta de /api/cadeia
 var MG_SIM_ID = null;    // id da OptionRollSimulation aberta (null = nova/rascunho)
 var MG_OP_ID = {{ op.id if op else 'null' }};    // id da StructuredOp em manejo (null = nenhuma)
 var MG_OP_NOME = {{ (op.name or '')|tojson if op else 'null' }};
-var MG_ATIVO = {{ (op.underlying_asset or '')|tojson if op else "''" }};
+var MG_ATIVO = {{ (op.underlying_asset if op else '')|tojson }};
 // Braços reais da StructuredOp, injetados pelo servidor — usados para
 // montar a tabela inicial e para saber o preço médio original de cada
 // braço (mg-fecha usa isso no cálculo do demonstrativo financeiro).
@@ -460,7 +489,7 @@ function novaLinha(tipo, origem) {
       + '<td>' + (isStock ? '<span class="mg-hint">—</span>'
           : '<input type="text" class="leg-iv" placeholder="—" onchange="mgRecalc()">') + '</td>'
       + '<td>'
-      +   '<button type="button" class="mg-lock" onclick="mgFechaBraco(this)" title="Fechar este braço (informar valor da transação)"'
+      +   '<button type="button" class="mg-lock" onclick="mgFechaClique(this)" title="Fechar este braço (informar valor da transação)"'
       +     (origem === 'nova' ? ' disabled' : '') + '>🔒</button>'
       +   '<button type="button" class="mg-x" onclick="mgRemove(this)" title="Remover linha">✕</button>'
       + '</td>';
@@ -656,31 +685,118 @@ function mgAtualizaTodosAtivos() {
     });
 }
 
-// ── Fechar braço (🔒) ───────────────────────────────────────────────
+// ── Fechar / reabrir braço (🔒 / 🔓) ─────────────────────────────────
+// Um clique no botão da linha decide sozinho: braço ainda aberto → abre o
+// modal de fechamento; braço já fechado → reabre direto (desfaz), sem
+// precisar de outro controle — pedido do usuário: "não há possibilidade
+// de se desfazer a exclusão".
 var MG_FECHA_TR = null;
-window.mgFechaBraco = function (btn) {
+
+window.mgFechaClique = function (btn) {
     var tr = btn.closest('tr');
     if (tr.dataset.origem !== 'estrutura') return;
+    if (tr.dataset.fechada === '1') { mgReabreBraco(tr); return; }
+    mgFechaBraco(tr);
+};
+
+// Braços "novos" (origem='nova') disponíveis como substituto — só os que já
+// têm ticker/prêmio preenchido (senão não haveria o que registrar como
+// substituição ainda).
+function mgBracosNovosDisponiveis(excetoTr) {
+    var out = [];
+    document.querySelectorAll('#mg-body tr.leg-row').forEach(function (tr) {
+        if (tr === excetoTr || tr.dataset.origem !== 'nova') return;
+        var tipo = tr.querySelector('.leg-type').value;
+        var ticker = (tr.querySelector('.leg-ticker') || {}).value || '';
+        var filled = tipo === 'STOCK'
+            ? parseVal(tr.querySelector('.leg-premium').value) > 0
+            : !!ticker;
+        if (!filled) return;
+        out.push({ tr: tr, label: (ticker || (tipo === 'STOCK' ? 'Ativo' : tipo)) + ' · ' + tr.querySelector('.leg-qty').value + 'x' });
+    });
+    return out;
+}
+
+function mgFechaBraco(tr) {
     MG_FECHA_TR = tr;
     document.getElementById('mg-fecha-ticker').textContent = (tr.querySelector('.leg-ticker') || {}).value || tr.dataset.tickerOriginal || '';
     document.getElementById('mg-fecha-valor').value = tr.dataset.fechaValor || '';
     var tipoSalvo = tr.dataset.fechaTipo || 'TOTAL';
     document.querySelectorAll('input[name=mg-fecha-tipo]').forEach(function (r) { r.checked = r.value === tipoSalvo; });
+    document.getElementById('mg-fecha-qtd').value = tr.dataset.fechaQtd || tr.dataset.qtyOriginal || '';
+
+    var motivoSalvo = tr.dataset.fechaMotivo || 'ENCERRAMENTO';
+    document.getElementById('mg-fecha-motivo').value = motivoSalvo;
+
+    var subSel = document.getElementById('mg-fecha-sub-braco');
+    var opcoes = mgBracosNovosDisponiveis(tr);
+    subSel.innerHTML = opcoes.length
+        ? opcoes.map(function (o, i) { return '<option value="' + i + '">' + escHtml(o.label) + '</option>'; }).join('')
+        : '<option value="">— nenhum braço novo incluído ainda —</option>';
+    subSel._opcoes = opcoes;
+    if (tr.dataset.fechaSubTicker) {
+        var idxSalvo = opcoes.findIndex(function (o) { return (o.tr.querySelector('.leg-ticker') || {}).value === tr.dataset.fechaSubTicker; });
+        if (idxSalvo >= 0) subSel.value = String(idxSalvo);
+    }
+
+    mgFechaTipoMudou();
+    mgFechaMotivoMudou();
     document.getElementById('mg-fecha-modal').style.display = 'flex';
+}
+
+window.mgFechaTipoMudou = function () {
+    var tipo = (document.querySelector('input[name=mg-fecha-tipo]:checked') || {}).value || 'TOTAL';
+    document.getElementById('mg-fecha-qtd-wrap').style.display = tipo === 'PARCIAL' ? 'flex' : 'none';
 };
+
+window.mgFechaMotivoMudou = function () {
+    var motivo = document.getElementById('mg-fecha-motivo').value;
+    document.getElementById('mg-fecha-sub-wrap').style.display = motivo === 'SUBSTITUICAO' ? 'flex' : 'none';
+};
+
 window.mgFechaCancelar = function () {
     MG_FECHA_TR = null;
     document.getElementById('mg-fecha-modal').style.display = 'none';
 };
+
 window.mgFechaConfirmar = function () {
     if (!MG_FECHA_TR) return;
+    var tr = MG_FECHA_TR;
     var valor = parseVal(document.getElementById('mg-fecha-valor').value);
     var tipo = (document.querySelector('input[name=mg-fecha-tipo]:checked') || {}).value || 'TOTAL';
-    var tr = MG_FECHA_TR;
+    var qtdTotal = parseInt(tr.dataset.qtyOriginal || tr.querySelector('.leg-qty').value, 10) || 0;
+    var qtd = qtdTotal;
+    if (tipo === 'PARCIAL') {
+        qtd = parseInt(document.getElementById('mg-fecha-qtd').value, 10) || 0;
+        if (qtd <= 0 || qtd > qtdTotal) {
+            alert('Informe uma quantidade parcial válida (entre 1 e ' + qtdTotal + ').');
+            return;
+        }
+    }
+    var motivo = document.getElementById('mg-fecha-motivo').value;
+    var subTicker = null, subLabel = null;
+    if (motivo === 'SUBSTITUICAO') {
+        var subSel = document.getElementById('mg-fecha-sub-braco');
+        var opcoes = subSel._opcoes || [];
+        var idx = subSel.value !== '' ? parseInt(subSel.value, 10) : -1;
+        if (idx < 0 || !opcoes[idx]) {
+            alert('Escolha o braço substituto, ou mude o motivo para "Encerramento" se não houver substituição.');
+            return;
+        }
+        subTicker = (opcoes[idx].tr.querySelector('.leg-ticker') || {}).value || '';
+        subLabel = opcoes[idx].label;
+    }
+
     tr.dataset.fechada = '1';
     tr.dataset.fechaValor = valor;
     tr.dataset.fechaTipo = tipo;
+    tr.dataset.fechaQtd = qtd;
+    tr.dataset.fechaMotivo = motivo;
+    if (subTicker) { tr.dataset.fechaSubTicker = subTicker; tr.dataset.fechaSubLabel = subLabel; }
+    else { delete tr.dataset.fechaSubTicker; delete tr.dataset.fechaSubLabel; }
     tr.classList.add('fechada');
+    tr.querySelector('.mg-lock').textContent = '🔓';
+    tr.querySelector('.mg-lock').title = 'Reabrir este braço (desfazer o fechamento)';
     tr.querySelector('.leg-on').checked = false;
     tr.querySelector('.leg-on').disabled = true;
     [].slice.call(tr.querySelectorAll('select,input')).forEach(function (el) {
@@ -691,13 +807,18 @@ window.mgFechaConfirmar = function () {
     mgRecalc();
 };
 
-// Reabre um braço fechado (desfaz antes de salvar) — clique no ícone de
-// novo mostra "reabrir" quando a linha já está fechada.
+// Reabre um braço fechado (desfaz antes de salvar).
 function mgReabreBraco(tr) {
     delete tr.dataset.fechada;
     delete tr.dataset.fechaValor;
     delete tr.dataset.fechaTipo;
+    delete tr.dataset.fechaQtd;
+    delete tr.dataset.fechaMotivo;
+    delete tr.dataset.fechaSubTicker;
+    delete tr.dataset.fechaSubLabel;
     tr.classList.remove('fechada');
+    tr.querySelector('.mg-lock').textContent = '🔒';
+    tr.querySelector('.mg-lock').title = 'Fechar este braço (informar valor da transação)';
     var onEl = tr.querySelector('.leg-on');
     onEl.checked = true;
     onEl.disabled = false;
@@ -820,16 +941,23 @@ function mgLinhasFinanceiras() {
     document.querySelectorAll('#mg-body tr.leg-row').forEach(function (tr) {
         if (tr.dataset.origem === 'estrutura' && tr.dataset.fechada === '1') {
             var side = tr.dataset.sideOriginal || 'SELL';
-            var qty = parseInt(tr.dataset.qtyOriginal || tr.querySelector('.leg-qty').value, 10) || 0;
+            var qtyTotal = parseInt(tr.dataset.qtyOriginal || tr.querySelector('.leg-qty').value, 10) || 0;
+            // Parcial: só a quantidade informada entra no caixa/lucro deste
+            // fechamento — o restante da posição continua aberta.
+            var qty = tr.dataset.fechaTipo === 'PARCIAL'
+                ? (parseInt(tr.dataset.fechaQtd, 10) || 0)
+                : qtyTotal;
             var avg = parseFloat(tr.dataset.entryPrice || 0) || 0;
             var closeVal = parseFloat(tr.dataset.fechaValor || 0) || 0;
             var cash = (side === 'SELL' ? -1 : 1) * qty * closeVal;
             var initial = (side === 'SELL' ? 1 : -1) * qty * avg;
             fechamentos.push({
                 ticker: tr.dataset.tickerOriginal || (tr.querySelector('.leg-ticker') || {}).value || '',
-                side: side, qty: qty, avg: avg, closeVal: closeVal,
+                side: side, qty: qty, qtyTotal: qtyTotal, avg: avg, closeVal: closeVal,
                 cash: cash, initial: initial,
-                parcial: tr.dataset.fechaTipo === 'PARCIAL'
+                parcial: tr.dataset.fechaTipo === 'PARCIAL',
+                motivo: tr.dataset.fechaMotivo || 'ENCERRAMENTO',
+                subLabel: tr.dataset.fechaSubLabel || null
             });
         }
         if (tr.dataset.origem === 'nova') {
@@ -869,7 +997,11 @@ function mgRenderFinanceiro() {
 
     var rows = '';
     linhas.fechamentos.forEach(function (l) {
-        rows += '<tr><td>🔒 ' + escHtml(l.ticker) + (l.parcial ? ' (parcial)' : '') + '</td>'
+        var motivoTxt = l.motivo === 'SUBSTITUICAO'
+            ? ' — substituído por ' + escHtml(l.subLabel || '?')
+            : ' — encerramento';
+        rows += '<tr><td>🔒 ' + escHtml(l.ticker) + (l.parcial ? ' (parcial ' + l.qty + '/' + l.qtyTotal + ')' : '')
+              +   '<div class="mg-hint" style="font-weight:400;">' + motivoTxt + '</div></td>'
               + '<td>Fecha ' + (l.side === 'SELL' ? 'venda' : 'compra') + '</td>'
               + '<td>' + l.qty + '</td>'
               + '<td>' + fmtBRL(l.avg) + '</td>'
@@ -1227,6 +1359,10 @@ function mgColetaLinhasParaPayload() {
             fechada:    tr.dataset.fechada === '1',
             fechaValor: tr.dataset.fechaValor ? parseFloat(tr.dataset.fechaValor) : null,
             fechaTipo:  tr.dataset.fechaTipo || null,
+            fechaQtd:   tr.dataset.fechaQtd ? parseInt(tr.dataset.fechaQtd, 10) : null,
+            fechaMotivo: tr.dataset.fechaMotivo || null,
+            fechaSubTicker: tr.dataset.fechaSubTicker || null,
+            fechaSubLabel:  tr.dataset.fechaSubLabel || null,
             entryPrice: tr.dataset.entryPrice ? parseFloat(tr.dataset.entryPrice) : null,
             sideOriginal: tr.dataset.sideOriginal || null,
             qtyOriginal:  tr.dataset.qtyOriginal ? parseInt(tr.dataset.qtyOriginal, 10) : null,
@@ -1302,6 +1438,48 @@ window.mgCarregarModal = function () {
         });
 };
 
+// Converte o formato de linha da tela clássica (rolagem_opcoes.html:
+// {current_symbol, current_strike, current_exp, opt_type, side, avg, qty,
+// close_price, new_symbol, new_strike, new_exp, open_price}) para o formato
+// de linhas do Manejo Gráfico — cada linha clássica vira um braço
+// "estrutura" (a perna atual) e, se tiver destino preenchido (new_symbol),
+// mais um braço "nova" representando a opção de entrada. Sem leg_id (a
+// tela clássica não guarda o StructuredLeg.id no payload), então essas
+// linhas convertidas não podem ser gravadas em produção diretamente —
+// servem para estudo/continuidade do manejo nesta UI.
+function mgConverteLinhasClassicas(classicLines) {
+    var out = [];
+    (classicLines || []).forEach(function (l) {
+        out.push({
+            origem: 'estrutura', legId: null,
+            type: l.opt_type || 'CALL', side: l.side || 'SELL',
+            qty: l.qty || 100, strike: l.current_strike || 0,
+            premium: l.avg || 0, exp: l.current_exp || '',
+            ticker: (l.current_symbol || '').toUpperCase(), iv: 0, on: true,
+            fechada: !!(l.close_price != null && l.close_price > 0),
+            fechaValor: l.close_price || null, fechaTipo: 'TOTAL', fechaQtd: l.qty || null,
+            fechaMotivo: l.new_symbol ? 'SUBSTITUICAO' : 'ENCERRAMENTO',
+            fechaSubTicker: l.new_symbol ? (l.new_symbol || '').toUpperCase() : null,
+            fechaSubLabel: l.new_symbol ? (l.new_symbol || '').toUpperCase() + ' · ' + (l.qty || 100) + 'x' : null,
+            entryPrice: l.avg || 0, sideOriginal: l.side || 'SELL', qtyOriginal: l.qty || 100,
+            tickerOriginal: (l.current_symbol || '').toUpperCase(),
+            strikeOriginal: l.current_strike || 0, expOriginal: l.current_exp || '',
+            typeOriginal: l.opt_type || 'CALL'
+        });
+        if (l.new_symbol) {
+            out.push({
+                origem: 'nova', legId: null,
+                type: l.opt_type || 'CALL', side: l.side || 'SELL',
+                qty: l.qty || 100, strike: l.new_strike || 0,
+                premium: l.open_price || 0, exp: l.new_exp || '',
+                ticker: (l.new_symbol || '').toUpperCase(), iv: 0, on: true,
+                fechada: false
+            });
+        }
+    });
+    return out;
+}
+
 window.mgAbrir = function (id) {
     fetch('/api/rolagem-opcoes/list?mode=manejo')
         .then(function (r) { return r.json(); })
@@ -1309,20 +1487,25 @@ window.mgAbrir = function (id) {
             var s = (sims || []).filter(function (x) { return x.id === id; })[0];
             if (!s) { alert('⚠️ manejo não encontrado.'); return; }
             var payload = s.payload || {};
-            if (payload.ui !== 'grafico') {
-                alert('Este manejo foi criado na tela clássica de Rolagem/Manejo — abra em "Manejo de Opções" (menu Opções → Manejo → Geral).');
+            var isClassico = payload.ui !== 'grafico';
+            if (isClassico && !confirm('Este manejo foi criado na tela clássica de Rolagem/Manejo.\n\n'
+                + 'Posso importar os braços para continuar aqui, mas como a tela clássica não guarda o '
+                + 'vínculo com a operação estruturada real, "Salvar em produção" não vai funcionar para os '
+                + 'braços importados — grave pela tela clássica (menu Opções → Manejo → Geral) ou refaça a '
+                + 'seleção usando o botão 📈 na listagem de Operações Estruturadas.\n\nImportar mesmo assim?')) {
                 return;
             }
-            MG_SIM_ID = s.id;
-            document.getElementById('mg-nome').value = s.name || '';
-            MG_OP_ID = payload.op_id || null;
-            MG_OP_NOME = payload.op_name || null;
+            MG_SIM_ID = isClassico ? null : s.id;   // clássico vira rascunho novo, não sobrescreve o original
+            document.getElementById('mg-nome').value = (s.name || '') + (isClassico ? ' (importado)' : '');
+            MG_OP_ID = isClassico ? null : (payload.op_id || null);
+            MG_OP_NOME = isClassico ? null : (payload.op_name || null);
             document.getElementById('mg-op-nome').textContent = MG_OP_NOME ? '· estrutura: ' + MG_OP_NOME : '';
-            document.getElementById('mg-ativo').value = (s.underlying || '').toUpperCase();
+            document.getElementById('mg-ativo').value = (s.underlying || payload.underlying || '').toUpperCase();
 
             var body = document.getElementById('mg-body');
             body.innerHTML = '';
-            (payload.lines || []).forEach(function (l) {
+            var linhasPayload = isClassico ? mgConverteLinhasClassicas(payload.lines) : (payload.lines || []);
+            linhasPayload.forEach(function (l) {
                 var tr = novaLinha(l.type, l.origem || 'nova');
                 tr.querySelector('.leg-side').value = l.side || 'BUY';
                 tr.querySelector('.leg-qty').value  = l.qty || 100;
@@ -1350,9 +1533,15 @@ window.mgAbrir = function (id) {
                 if (l.fechada) {
                     tr.dataset.fechaValor = l.fechaValor || 0;
                     tr.dataset.fechaTipo = l.fechaTipo || 'TOTAL';
+                    if (l.fechaQtd != null) tr.dataset.fechaQtd = l.fechaQtd;
+                    tr.dataset.fechaMotivo = l.fechaMotivo || 'ENCERRAMENTO';
+                    if (l.fechaSubTicker) tr.dataset.fechaSubTicker = l.fechaSubTicker;
+                    if (l.fechaSubLabel) tr.dataset.fechaSubLabel = l.fechaSubLabel;
                     // Reaplica o estado "fechada" visualmente (sem reabrir o modal)
                     tr.dataset.fechada = '1';
                     tr.classList.add('fechada');
+                    tr.querySelector('.mg-lock').textContent = '🔓';
+                    tr.querySelector('.mg-lock').title = 'Reabrir este braço (desfazer o fechamento)';
                     tr.querySelector('.leg-on').checked = false;
                     tr.querySelector('.leg-on').disabled = true;
                     [].slice.call(tr.querySelectorAll('select,input')).forEach(function (el) {
@@ -1430,12 +1619,24 @@ window.mgSalvarProducao = function () {
     // cadeia ainda não tiver carregado quando o usuário clicar em salvar
     // (o mesmo braço "mantido" nunca é editado in-line nesta tela: editar
     // um braço da estrutura sempre passa pelo fechamento explícito 🔒).
+    // Contrato de /roll_estruturada: leg_id[i] <-> leg_close_price[i] pela
+    // MESMA posição em `leg_ids` (percorre TODA perna, inclusive dropada) —
+    // mas leg_new_*[j] usa um índice PRÓPRIO que só avança para pernas NÃO
+    // dropadas (o backend pula o "continue" antes de ler leg_new_* quando a
+    // perna está em drop_ids). Por isso leg_new_* só pode ser enviado para
+    // braços mantidos — enviá-lo também para os fechados desalinharia o
+    // índice das pernas seguintes.
     linhas.filter(function (l) { return l.origem === 'estrutura' && l.legId; }).forEach(function (l) {
+        addField('leg_id', l.legId);
         if (l.fechada) {
             addField('leg_drop', l.legId);
+            addField('leg_close_price', l.fechaValor || 0);
+            if (l.fechaTipo === 'PARCIAL' && l.fechaQtd) {
+                addField('leg_drop_id', l.legId);
+                addField('leg_drop_qty', l.fechaQtd);
+            }
             return;
         }
-        addField('leg_id', l.legId);
         addField('leg_close_price', '');
         addField('leg_new_ticker', l.tickerOriginal || l.ticker || '');
         addField('leg_new_strike', l.strikeOriginal != null ? l.strikeOriginal : (l.strike || 0));

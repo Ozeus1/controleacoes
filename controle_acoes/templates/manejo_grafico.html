@@ -738,10 +738,13 @@ function mgFechaBraco(tr) {
     MG_FECHA_TR = tr;
     document.getElementById('mg-fecha-ticker').textContent = (tr.querySelector('.leg-ticker') || {}).value || tr.dataset.tickerOriginal || '';
     // Sugere o valor já salvo; sem isso, usa a Saída da linha (se o usuário
-    // já tiver editado/conferido ali o valor real da transação).
+    // já tiver editado/conferido ali o valor real da transação) — a Saída
+    // guarda o total (qty × prêmio unitário), então divide pela qtd para
+    // sugerir o prêmio UNITÁRIO, que é o que este campo espera.
     var saiEl = tr.querySelector('.leg-sai');
-    var saiVal = saiEl ? parseVal(saiEl.value) : 0;
-    document.getElementById('mg-fecha-valor').value = tr.dataset.fechaValor || (saiVal > 0 ? fmtNum(saiVal) : '');
+    var qtyLinha = parseInt(tr.querySelector('.leg-qty').value, 10) || 0;
+    var saiUnit = (saiEl && qtyLinha > 0) ? (parseVal(saiEl.value) / qtyLinha) : 0;
+    document.getElementById('mg-fecha-valor').value = tr.dataset.fechaValor || (saiUnit > 0 ? fmtNum(saiUnit) : '');
     var tipoSalvo = tr.dataset.fechaTipo || 'TOTAL';
     document.querySelectorAll('input[name=mg-fecha-tipo]').forEach(function (r) { r.checked = r.value === tipoSalvo; });
     document.getElementById('mg-fecha-qtd').value = tr.dataset.fechaQtd || tr.dataset.qtyOriginal || '';

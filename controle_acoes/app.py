@@ -3992,6 +3992,19 @@ def api_cadeia(ticker):
     if max_days not in (60, 90, 120, 180, 210):
         max_days = 60
 
+    # n_meses (1 a 12, opcional — usado pelo Simulador): em vez de um prazo
+    # máximo em dias, escolhe direto a quantidade de vencimentos MENSAIS a
+    # trazer. Com weekly=1, inclui também os semanais que caem ENTRE hoje e
+    # o último desses mensais (não um número fixo de semanais).
+    n_meses_raw = request.args.get('n_meses')
+    n_meses = None
+    if n_meses_raw is not None:
+        try:
+            n_meses = int(n_meses_raw)
+        except (TypeError, ValueError):
+            n_meses = 3
+        n_meses = max(1, min(12, n_meses))
+
     # Opções na B3: seg–sex, 10h às 16h30 (Brasília).
     _now_cad = now_brt()
     _market_open_cadeia = (_now_cad.weekday() < 5
@@ -4086,26 +4099,49 @@ def api_cadeia(ticker):
     all_exp_keys = sorted(set(list(calls_by_exp.keys()) + list(puts_by_exp.keys())))
 
     today = _date.today()
-    # Vencimentos dentro da janela de prazo escolhida
-    within = []
-    for e in all_exp_keys:
-        try:
-            dc = (_date.fromisoformat(e) - today).days
-        except ValueError:
-            continue
-        if 0 < dc <= max_days:
-            within.append(e)
 
-    if include_weekly:
-        # todos os vencimentos (semanais + mensais) na janela — até 8
-        selected_exps = within[:8]
+    if n_meses is not None:
+        # Modo Simulador: N vencimentos MENSAIS futuros (não limitado por
+        # dias) + os semanais entre hoje e o último mensal escolhido, se
+        # weekly=1.
+        futuros = []
+        for e in all_exp_keys:
+            try:
+                if (_date.fromisoformat(e) - today).days > 0:
+                    futuros.append(e)
+            except ValueError:
+                continue
+        futuros.sort()
+        monthly_all = [e for e in futuros if _is_monthly_exp(e)][:n_meses]
+        if include_weekly and monthly_all:
+            last_monthly = monthly_all[-1]
+            weeklies = [e for e in futuros if e <= last_monthly and not _is_monthly_exp(e)]
+            selected_exps = sorted(set(monthly_all) | set(weeklies))
+        else:
+            selected_exps = monthly_all
+        if not selected_exps:
+            selected_exps = futuros[:n_meses]
     else:
-        # apenas mensais na janela — até 3
-        selected_exps = [e for e in within if _is_monthly_exp(e)][:3]
+        # Vencimentos dentro da janela de prazo escolhida
+        within = []
+        for e in all_exp_keys:
+            try:
+                dc = (_date.fromisoformat(e) - today).days
+            except ValueError:
+                continue
+            if 0 < dc <= max_days:
+                within.append(e)
 
-    # Fallback: sem nada na janela, usa os 3 vencimentos mais próximos
-    if not selected_exps:
-        selected_exps = within[:3] or all_exp_keys[:3]
+        if include_weekly:
+            # todos os vencimentos (semanais + mensais) na janela — até 8
+            selected_exps = within[:8]
+        else:
+            # apenas mensais na janela — até 3
+            selected_exps = [e for e in within if _is_monthly_exp(e)][:3]
+
+        # Fallback: sem nada na janela, usa os 3 vencimentos mais próximos
+        if not selected_exps:
+            selected_exps = within[:3] or all_exp_keys[:3]
 
     # Quantidade de strikes exibidos abaixo/acima do spot (10 padrão; 20/30/40 opcionais)
     try:

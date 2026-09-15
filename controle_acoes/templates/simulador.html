@@ -327,6 +327,41 @@ function diasAte(iso) {
     return Math.round((new Date(iso + 'T00:00:00') - hoje) / 86400000);
 }
 
+// Letras de série B3 por mês (1=jan..12=dez): [CALL, PUT].
+var SERIE_LETRAS = [
+    ['A', 'M'], ['B', 'N'], ['C', 'O'], ['D', 'P'], ['E', 'Q'], ['F', 'R'],
+    ['G', 'S'], ['H', 'T'], ['I', 'U'], ['J', 'V'], ['K', 'W'], ['L', 'X']
+];
+function isVencMensal(iso) {
+    // 3ª sexta-feira do mês, tolerando ±2 dias (feriado antecipa/atrasa o
+    // vencimento na B3) — mesma regra usada no backend (_is_monthly_exp).
+    var p = (iso || '').split('-');
+    if (p.length !== 3) return false;
+    var y = +p[0], m = +p[1];
+    var sextas = 0, terceiraSexta = null, d;
+    for (d = 1; d <= 31; d++) {
+        var dt = new Date(y, m - 1, d);
+        if (dt.getMonth() !== m - 1) break;
+        if (dt.getDay() === 5) {
+            sextas++;
+            if (sextas === 3) { terceiraSexta = dt; break; }
+        }
+    }
+    if (!terceiraSexta) return false;
+    var alvo = new Date(y, m - 1, +p[2]);
+    var diffDias = Math.round((alvo - terceiraSexta) / 86400000);
+    return Math.abs(diffDias) <= 2;
+}
+// Label no formato do Profit: "18/09/2026 (M) - I/U" (M=mensal, S=semanal).
+function labelVenc(iso) {
+    var p = (iso || '').split('-');
+    if (p.length !== 3) return dataBR(iso);
+    var m = +p[1];
+    var letras = SERIE_LETRAS[m - 1] || ['?', '?'];
+    var tag = isVencMensal(iso) ? 'M' : 'S';
+    return dataBR(iso) + ' (' + tag + ') - ' + letras[0] + '/' + letras[1];
+}
+
 // ── Ativo / cadeia ────────────────────────────────────────────────
 // Seleção do ativo: dropdown com sugestões do Ranking de Volatilidade +
 // carteira, igual ao Mapa de Opções — "— outro ativo… —" revela o campo
@@ -581,9 +616,7 @@ function simPreencheVencimentos(tr) {
     var atual = sel.value;
     sel.innerHTML = '<option value="">selecione…</option>' +
         (CADEIA && CADEIA.expirations ? CADEIA.expirations.map(function (e) {
-            var d = diasAte(e.exp);
-            return '<option value="' + e.exp + '">' + dataBR(e.exp)
-                 + (d != null ? ' (' + d + 'd)' : '') + '</option>';
+            return '<option value="' + e.exp + '">' + labelVenc(e.exp) + '</option>';
         }).join('') : '');
     if (atual && CADEIA && (CADEIA.expirations || []).some(function (e) { return e.exp === atual; })) {
         sel.value = atual;

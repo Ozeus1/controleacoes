@@ -260,9 +260,9 @@
                            class="{{ 'active' if request.endpoint == 'opcoes' else '' }}">📋 Operações</a>
                         <a href="{{ url_for('estudos') }}"
                            class="{{ 'active' if request.endpoint == 'estudos' else '' }}">📚 Estudos</a>
-                        {# Simulador: item pai com submenu Gráfico (simulacao_opcoes) / Com Liquidez (simulador_liquidez) / Com Cadeia de Opções (cadeia_opcoes) #}
-                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['simulacao_opcoes','simulador_liquidez','cadeia_opcoes','simulador'] else '' }}">
-                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['simulacao_opcoes','simulador_liquidez','cadeia_opcoes','simulador'] else '' }}"
+                        {# Simulador: item pai com submenu Gráfico (simulacao_opcoes) / Com Liquidez (simulador_liquidez) / Com Cadeia de Opções (cadeia_opcoes) / BS (simulador_bs) #}
+                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['simulacao_opcoes','simulador_liquidez','cadeia_opcoes','simulador','simulador_bs'] else '' }}">
+                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['simulacao_opcoes','simulador_liquidez','cadeia_opcoes','simulador','simulador_bs'] else '' }}"
                                onclick="toggleNavDrop(this,event)">
                                 📈 Simulador <span class="nav-caret nav-caret-sub">▸</span>
                             </a>
@@ -275,12 +275,23 @@
                                    class="{{ 'active' if request.endpoint == 'cadeia_opcoes' else '' }}">🔗 Com Cadeia de Opções</a>
                                 <a href="{{ url_for('simulador') }}"
                                    class="{{ 'active' if request.endpoint == 'simulador' else '' }}">🎯 Simulador</a>
+                                <a href="{{ url_for('simulador_bs') }}"
+                                   class="{{ 'active' if request.endpoint == 'simulador_bs' else '' }}">🧮 BS</a>
                             </div>
                         </div>
-                        <a href="{{ url_for('rolagem_opcoes') }}"
-                           class="{{ 'active' if request.endpoint == 'rolagem_opcoes' else '' }}">🔁 Rolagem de Opções</a>
-                        <a href="{{ url_for('busca_rolagem_automatica') }}"
-                           class="{{ 'active' if request.endpoint == 'busca_rolagem_automatica' else '' }}">🔍 Busca de Rolagem Automática</a>
+                        {# Rolagem: item pai com submenu Busca Manual (rolagem_opcoes) / Busca Automática (busca_rolagem_automatica) #}
+                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['rolagem_opcoes','busca_rolagem_automatica'] else '' }}">
+                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['rolagem_opcoes','busca_rolagem_automatica'] else '' }}"
+                               onclick="toggleNavDrop(this,event)">
+                                🔁 Rolagem <span class="nav-caret nav-caret-sub">▸</span>
+                            </a>
+                            <div class="nav-dropdown-menu nav-submenu">
+                                <a href="{{ url_for('rolagem_opcoes') }}"
+                                   class="{{ 'active' if request.endpoint == 'rolagem_opcoes' else '' }}">🔁 Busca Manual</a>
+                                <a href="{{ url_for('busca_rolagem_automatica') }}"
+                                   class="{{ 'active' if request.endpoint == 'busca_rolagem_automatica' else '' }}">🔍 Busca Automática</a>
+                            </div>
+                        </div>
                         {# Manejo: item pai com submenu Geral (manejo_opcoes) / Gráfico (manejo_grafico) / Put (manejo_put) #}
                         <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['manejo_opcoes','manejo_grafico','manejo_put'] else '' }}">
                             <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['manejo_opcoes','manejo_grafico','manejo_put'] else '' }}"
@@ -300,39 +311,48 @@
                            class="{{ 'active' if request.endpoint in ['venda_puts','collar_edit'] else '' }}">🧮 Cálculos de Opções</a>
                         <a href="{{ url_for('ranking_volatilidade') }}"
                            class="{{ 'active' if request.endpoint == 'ranking_volatilidade' and not request.args.get('busca_liquidez') else '' }}">📊 Ranking de Volatilidade</a>
-                        <a href="{{ url_for('ranking_volatilidade', busca_liquidez=1) }}"
-                           class="{{ 'active' if request.endpoint == 'ranking_volatilidade' and request.args.get('busca_liquidez') else '' }}">💧 Busca Liquidez</a>
-                        <a href="{{ url_for('busca_opcao') }}"
-                           class="{{ 'active' if request.endpoint == 'busca_opcao' else '' }}">🔍 Busca de Opção</a>
-                        {# Busca de Estruturas: item pai com submenu Comuns (busca_operacoes) / Avançadas (busca_operacoes_avancadas) #}
-                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['busca_operacoes','busca_operacoes_avancadas'] else '' }}">
-                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['busca_operacoes','busca_operacoes_avancadas'] else '' }}"
+                        {# Busca: item pai agrupando Liquidez / Opções / Estruturas / Longas #}
+                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['busca_opcao','busca_operacoes','busca_operacoes_avancadas','lancamento_coberto','venda_put_longa'] or (request.endpoint == 'ranking_volatilidade' and request.args.get('busca_liquidez')) else '' }}">
+                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['busca_opcao','busca_operacoes','busca_operacoes_avancadas','lancamento_coberto','venda_put_longa'] or (request.endpoint == 'ranking_volatilidade' and request.args.get('busca_liquidez')) else '' }}"
                                onclick="toggleNavDrop(this,event)">
-                                🎯 Busca de Estruturas <span class="nav-caret nav-caret-sub">▸</span>
+                                🔍 Busca <span class="nav-caret nav-caret-sub">▸</span>
                             </a>
                             <div class="nav-dropdown-menu nav-submenu">
-                                <a href="{{ url_for('busca_operacoes') }}"
-                                   class="{{ 'active' if request.endpoint == 'busca_operacoes' else '' }}">🎯 Comuns</a>
-                                <a href="{{ url_for('busca_operacoes_avancadas') }}"
-                                   class="{{ 'active' if request.endpoint == 'busca_operacoes_avancadas' else '' }}">🚀 Avançadas</a>
-                            </div>
-                        </div>
-                        {# Busca de Longas: item pai com submenu Lançamento Coberto / Venda de Put #}
-                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['lancamento_coberto','venda_put_longa'] else '' }}">
-                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['lancamento_coberto','venda_put_longa'] else '' }}"
-                               onclick="toggleNavDrop(this,event)">
-                                🛡️ Busca de Longas <span class="nav-caret nav-caret-sub">▸</span>
-                            </a>
-                            <div class="nav-dropdown-menu nav-submenu">
-                                <a href="{{ url_for('lancamento_coberto') }}"
-                                   class="{{ 'active' if request.endpoint == 'lancamento_coberto' else '' }}">📋 Lançamento Coberto</a>
-                                <a href="{{ url_for('venda_put_longa') }}"
-                                   class="{{ 'active' if request.endpoint == 'venda_put_longa' else '' }}">🛡️ Venda de Put</a>
+                                <a href="{{ url_for('ranking_volatilidade', busca_liquidez=1) }}"
+                                   class="{{ 'active' if request.endpoint == 'ranking_volatilidade' and request.args.get('busca_liquidez') else '' }}">💧 Liquidez</a>
+                                <a href="{{ url_for('busca_opcao') }}"
+                                   class="{{ 'active' if request.endpoint == 'busca_opcao' else '' }}">🔍 Opções</a>
+                                {# Estruturas: sub-submenu Comuns (busca_operacoes) / Avançadas (busca_operacoes_avancadas) #}
+                                <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['busca_operacoes','busca_operacoes_avancadas'] else '' }}">
+                                    <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['busca_operacoes','busca_operacoes_avancadas'] else '' }}"
+                                       onclick="toggleNavDrop(this,event)">
+                                        🎯 Estruturas <span class="nav-caret nav-caret-sub">▸</span>
+                                    </a>
+                                    <div class="nav-dropdown-menu nav-submenu">
+                                        <a href="{{ url_for('busca_operacoes') }}"
+                                           class="{{ 'active' if request.endpoint == 'busca_operacoes' else '' }}">🎯 Comuns</a>
+                                        <a href="{{ url_for('busca_operacoes_avancadas') }}"
+                                           class="{{ 'active' if request.endpoint == 'busca_operacoes_avancadas' else '' }}">🚀 Avançadas</a>
+                                    </div>
+                                </div>
+                                {# Longas: sub-submenu Lançamento Coberto / Venda de Put #}
+                                <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['lancamento_coberto','venda_put_longa'] else '' }}">
+                                    <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['lancamento_coberto','venda_put_longa'] else '' }}"
+                                       onclick="toggleNavDrop(this,event)">
+                                        🛡️ Longas <span class="nav-caret nav-caret-sub">▸</span>
+                                    </a>
+                                    <div class="nav-dropdown-menu nav-submenu">
+                                        <a href="{{ url_for('lancamento_coberto') }}"
+                                           class="{{ 'active' if request.endpoint == 'lancamento_coberto' else '' }}">📋 Lançamento Coberto</a>
+                                        <a href="{{ url_for('venda_put_longa') }}"
+                                           class="{{ 'active' if request.endpoint == 'venda_put_longa' else '' }}">🛡️ Venda de Put</a>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         {# Walls: item pai com submenu FYT / Mapa de Opções / Market Gamma / BGT Bands / Trader IND/DOL #}
-                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','put_call_ratio','trader_futuros','volume_anomalo'] else '' }}">
-                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','put_call_ratio','trader_futuros','volume_anomalo'] else '' }}"
+                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','put_call_ratio','trader_futuros','volume_anomalo'] else '' }}">
+                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','put_call_ratio','trader_futuros','volume_anomalo'] else '' }}"
                                onclick="toggleNavDrop(this,event)">
                                 🧱 Walls <span class="nav-caret nav-caret-sub">▸</span>
                             </a>
@@ -347,8 +367,6 @@
                                    class="{{ 'active' if request.endpoint == 'bgt_bands' else '' }}">🧱 BGT Bands</a>
                                 <a href="{{ url_for('curva_volatilidade') }}"
                                    class="{{ 'active' if request.endpoint == 'curva_volatilidade' else '' }}">📈 Curva de Volatilidade</a>
-                                <a href="{{ url_for('simulador_bs') }}"
-                                   class="{{ 'active' if request.endpoint == 'simulador_bs' else '' }}">🧮 Simulador BS</a>
                                 <a href="{{ url_for('put_call_ratio') }}"
                                    class="{{ 'active' if request.endpoint == 'put_call_ratio' else '' }}">⚖️ Put/Call Ratio</a>
                                 <a href="{{ url_for('volume_anomalo') }}"

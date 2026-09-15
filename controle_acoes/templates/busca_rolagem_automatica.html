@@ -199,17 +199,30 @@
       <div style="font-size:.8rem;font-weight:700;color:var(--text-secondary);margin:.6rem 0 .3rem;">Operações Estruturadas</div>
       {% if estruturas_abertas %}
         {% for e in estruturas_abertas %}
-          {% for leg in e.legs %}
-          {% if leg.opt_type != 'STOCK' %}
-          <div style="display:flex;align-items:center;gap:.6rem;padding:.4rem .2rem;border-bottom:1px solid rgba(255,255,255,.05);">
+        {% set pernas_opcao = e.legs | rejectattr('opt_type', 'equalto', 'STOCK') | list %}
+        {% if pernas_opcao %}
+        <div style="border:1px solid var(--border-color);border-radius:6px;padding:.5rem .6rem;margin-bottom:.6rem;">
+          <div style="display:flex;align-items:center;gap:.6rem;margin-bottom:.35rem;">
             <div style="flex:1;min-width:0;">
-              <div style="font-weight:600;font-size:.85rem;">{{ leg.ticker }} <span class="br-hint">({{ e.name }})</span></div>
+              <div style="font-weight:700;font-size:.88rem;">{{ e.name or ('Estruturada #' ~ e.id) }}</div>
+              <div class="br-hint">{{ e.underlying_asset }} · {{ pernas_opcao|length }} perna(s) de opção</div>
+            </div>
+            {# Adiciona TODAS as pernas de uma vez: para gravar o manejo em
+               produção, /roll_estruturada precisa receber a estrutura toda,
+               não só a perna que se quer rolar. #}
+            <button class="btn btn-primary btn-sm" onclick='brAdicionaEstruturaInteira({{ e.id }}, {{ pernas_opcao | map(attribute="id") | list | tojson }})'>+ Estrutura inteira</button>
+          </div>
+          {% for leg in pernas_opcao %}
+          <div style="display:flex;align-items:center;gap:.6rem;padding:.3rem .2rem;border-top:1px solid rgba(255,255,255,.05);">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:.84rem;">{{ leg.ticker }}</div>
               <div class="br-hint">{{ leg.side }} {{ leg.opt_type }} K={{ '%.2f'|format(leg.strike or 0)|replace('.', ',') }} · {{ leg.quantity }}x</div>
             </div>
-            <button class="btn btn-primary btn-sm" onclick='brAdicionaPosicao("estruturada", {{ leg.id }}, {{ leg.ticker|tojson }}, {{ leg.side|tojson }}, {{ leg.opt_type|tojson }}, {{ leg.strike or 0 }}, {{ (leg.expiration_date.isoformat() if leg.expiration_date else "")|tojson }}, {{ leg.quantity or 0 }}, {{ leg.entry_price or 0 }}, {{ e.underlying_asset|tojson }})'>Adicionar</button>
+            <button class="btn btn-secondary btn-sm" onclick='brAdicionaPosicao("estruturada", {{ leg.id }}, {{ leg.ticker|tojson }}, {{ leg.side|tojson }}, {{ leg.opt_type|tojson }}, {{ leg.strike or 0 }}, {{ (leg.expiration_date.isoformat() if leg.expiration_date else "")|tojson }}, {{ leg.quantity or 0 }}, {{ leg.entry_price or 0 }}, {{ e.underlying_asset|tojson }}, null, null, null, null, {{ e.id }})'>só esta perna</button>
           </div>
-          {% endif %}
           {% endfor %}
+        </div>
+        {% endif %}
         {% endfor %}
       {% else %}
       <p class="br-hint" style="padding:.4rem 0;">Nenhuma operação estruturada aberta.</p>
@@ -326,7 +339,11 @@ window.brAbrePosicaoModal = function () {
 };
 
 window.brAdicionaPosicao = function (tipo, id, ticker, side, optType, strike, exp, qty, avgPrice, underlying,
-                                     lado, irmaTicker, irmaStrike, irmaPremium) {
+                                     lado, irmaTicker, irmaStrike, irmaPremium, opId) {
+    if (BR_INPUTS.some(function (x) { return x.tipo === tipo && x.id === id && x.lado === lado; })) {
+        document.getElementById('br-posicao-modal').style.display = 'none';
+        return;   // já está na lista — evita duplicar a mesma perna
+    }
     var item = { origem: 'posicao', tipo: tipo, id: id, ticker: ticker, side: side, opt_type: optType,
                  strike: strike, exp: exp, qty: qty, avg_price: avgPrice, underlying: underlying };
     if (lado) {
@@ -337,9 +354,32 @@ window.brAdicionaPosicao = function (tipo, id, ticker, side, optType, strike, ex
         // como fechamento fictício dela). Ver brMontaFormData.
         item.irma_ticker = irmaTicker; item.irma_strike = irmaStrike; item.irma_premium = irmaPremium;
     }
+    if (opId) item.op_id = opId;
     BR_INPUTS.push(item);
     document.getElementById('br-posicao-modal').style.display = 'none';
     brRenderInputs();
+};
+
+// Carrega TODAS as pernas de opção de uma estruturada de uma vez. Sem isso
+// dá para buscar rolagem de uma perna só, mas a gravação em produção de um
+// manejo multi-perna exige a estrutura inteira carregada (o usuário escolhe
+// alternativa em quantas pernas quiser e grava tudo num manejo só).
+window.brAdicionaEstruturaInteira = function (opId, legIds) {
+    fetch('/api/estruturada/' + opId + '/legs')
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            if (d.error) { alert('⚠️ ' + d.error); return; }
+            var permitidas = legIds || [];
+            (d.legs || []).forEach(function (l) {
+                if (l.opt_type === 'STOCK') return;
+                if (permitidas.length && permitidas.indexOf(l.leg_id) < 0) return;
+                brAdicionaPosicao('estruturada', l.leg_id, l.ticker, l.side, l.opt_type,
+                                  l.strike, l.exp, l.quantity, l.premium, d.underlying,
+                                  null, null, null, null, opId);
+            });
+            document.getElementById('br-posicao-modal').style.display = 'none';
+        })
+        .catch(function (e) { alert('⚠️ falha de rede: ' + e); });
 };
 
 window.brRemoveInput = function (idx) {
@@ -466,7 +506,9 @@ window.brEscolheAlternativa = function (ri, ai) {
     BR_LINHAS = BR_LINHAS.filter(function (l) { return l._ri !== ri; });
     BR_LINHAS.push({
         _ri: ri, _ai: ai,
-        origem: perna.origem, tipo: perna.tipo, id: perna.id, lado: perna.lado, op_id: perna.op_id,
+        origem: perna.origem, tipo: perna.tipo, id: perna.id, lado: perna.lado,
+        op_id: perna.op_id || inputOriginal.op_id,
+        opt_type: perna.opt_type,
         current_ticker: perna.ticker, side: perna.side, qty: perna.qty, avg_price: perna.avg_price,
         current_strike: perna.strike, current_exp: perna.exp,
         new_ticker: alt.ticker, new_strike: alt.strike, new_exp: alt.exp,
@@ -660,19 +702,47 @@ function brMontaFormData(l) {
         fd.append('leg_new_strike', l.irma_strike || '');
         fd.append('leg_new_premium', l.irma_premium || '');
         fd.append('leg_new_exp', '');
-    } else if (l.tipo === 'estruturada') {
-        url = '/roll_estruturada/' + l.op_id;
+    } else {
+        return null;   // 'estruturada' é tratada em grupo — ver brMontaEnvios
+    }
+    return { url: url, fd: fd, rotulo: l.current_ticker };
+}
+
+// Um manejo de estruturada é UM POST por operação, com todas as pernas
+// roladas juntas (/roll_estruturada itera leg_id[] e monta um único evento
+// no roll_history). Enviar uma perna por vez geraria vários manejos
+// separados na mesma operação, cada um com uma perna — por isso as linhas
+// de estruturada são agrupadas por op_id aqui.
+function brMontaEnvios() {
+    var envios = [];
+    var porOperacao = {};
+    BR_LINHAS.forEach(function (l) {
+        if (l.tipo === 'estruturada') {
+            (porOperacao[l.op_id] = porOperacao[l.op_id] || []).push(l);
+        } else {
+            var m = brMontaFormData(l);
+            if (m) envios.push(m);
+        }
+    });
+    var hoje = new Date().toISOString().slice(0, 10);
+    Object.keys(porOperacao).forEach(function (opId) {
+        var linhas = porOperacao[opId];
+        var fd = new FormData();
         fd.set('roll_type', 'MANEJO'); fd.set('roll_date', hoje);
         fd.set('notes', 'Busca de rolagem automática'); fd.set('next', '/opcoes');
-        fd.append('leg_id', l.id);
-        fd.append('leg_close_price', l.close_price);
-        fd.append('leg_new_ticker', l.new_ticker); fd.append('leg_new_strike', l.new_strike);
-        fd.append('leg_new_premium', l.open_price); fd.append('leg_new_exp', l.new_exp);
-        fd.append('leg_new_type', l.opt_type || ''); fd.append('leg_new_side', l.side);
-    } else {
-        return null;
-    }
-    return { url: url, fd: fd };
+        linhas.forEach(function (l) {
+            fd.append('leg_id', l.id);
+            fd.append('leg_close_price', l.close_price);
+            fd.append('leg_new_ticker', l.new_ticker); fd.append('leg_new_strike', l.new_strike);
+            fd.append('leg_new_premium', l.open_price); fd.append('leg_new_exp', l.new_exp);
+            fd.append('leg_new_type', l.opt_type || ''); fd.append('leg_new_side', l.side);
+        });
+        envios.push({
+            url: '/roll_estruturada/' + opId, fd: fd,
+            rotulo: linhas.map(function (l) { return l.current_ticker; }).join(' + '),
+        });
+    });
+    return envios;
 }
 
 window.brSalvarProducao = function () {
@@ -683,30 +753,31 @@ window.brSalvarProducao = function () {
             + 'existente correspondente antes de salvar em produção. Linhas manuais servem só para estudo.');
         return;
     }
-    if (!confirm('Gravar ' + BR_LINHAS.length + ' rolagem(ns) nas posições reais? Esta ação atualiza a carteira.')) return;
+    var envios = brMontaEnvios();
+    if (!envios.length) { alert('Nenhuma linha válida para gravar.'); return; }
+    if (!confirm('Gravar ' + BR_LINHAS.length + ' rolagem(ns) em ' + envios.length
+        + ' operação(ões) real(is)? Esta ação atualiza a carteira.')) return;
 
     // Grava sequencialmente via fetch (não form.submit — isso navegaria a
     // página embora depois do 1º envio, cancelando os demais) e reporta o
     // resultado ao final.
-    var pendentes = BR_LINHAS.slice();
+    var pendentes = envios.slice();
     var ok = 0, falhas = [];
     function proxima() {
         if (!pendentes.length) {
-            alert('Gravação concluída: ' + ok + ' de ' + BR_LINHAS.length + ' rolagem(ns) com sucesso.'
+            alert('Gravação concluída: ' + ok + ' de ' + envios.length + ' operação(ões) com sucesso.'
                 + (falhas.length ? '\nFalhas: ' + falhas.join('; ') : ''));
             if (ok) window.location.href = '/opcoes';
             return;
         }
-        var l = pendentes.shift();
-        var montado = brMontaFormData(l);
-        if (!montado) { falhas.push(l.current_ticker + ' (tipo desconhecido)'); proxima(); return; }
-        fetch(montado.url, { method: 'POST', body: montado.fd })
+        var env = pendentes.shift();
+        fetch(env.url, { method: 'POST', body: env.fd })
             .then(function (r) {
                 if (r.ok || (r.status >= 300 && r.status < 400)) ok++;
-                else falhas.push(l.current_ticker + ' (HTTP ' + r.status + ')');
+                else falhas.push(env.rotulo + ' (HTTP ' + r.status + ')');
                 proxima();
             })
-            .catch(function (e) { falhas.push(l.current_ticker + ' (' + e + ')'); proxima(); });
+            .catch(function (e) { falhas.push(env.rotulo + ' (' + e + ')'); proxima(); });
     }
     proxima();
 };

@@ -10442,10 +10442,13 @@ def api_fyt_thl(ticker):
                  proximos (0 a 11), ou 'all' para varrer TODOS os mensais
                  possiveis (qualquer um que vença depois da vendida) — a
                  comprada e a perna de prazo LONGO
-      exp_v    = indice do vencimento da VENDIDA entre os 2 mensais mais
-                 proximos (0 = proximo mensal, 1 = proximo + 1 mes) — a
+      exp_v    = indice do vencimento da VENDIDA entre os vencimentos mais
+                 proximos (0 = proximo, 1 = +1, 2 = +2 — só com weekly=1) — a
                  vendida e a perna de prazo CURTO e tem de vencer ANTES
                  (ou no mesmo mes) da comprada
+      weekly   = '1' para a VENDIDA varrer vencimentos SEMANAIS (Próximo
+                 Semanal / Semanal +1 / Semanal +2) em vez dos mensais.
+                 A comprada continua sempre mensal.
       max_px   = preco maximo (custo liquido da montagem); vazio = sem limite
     Strikes: ambas as pernas varrem de 20% ITM a 20% OTM do spot.
 
@@ -10466,6 +10469,7 @@ def api_fyt_thl(ticker):
 
     raw_exp_c = (request.args.get('exp_c') or '').strip().lower()
     exp_c_all = raw_exp_c in ('all', 'todos', 'todas', '-1')
+    weekly = (request.args.get('weekly') or '').strip() in ('1', 'true', 'on')
 
     def _idx(name, default, hi):
         try:
@@ -10474,8 +10478,8 @@ def api_fyt_thl(ticker):
             v = default
         return v if 0 <= v <= hi else default
 
-    exp_c_i = None if exp_c_all else _idx('exp_c', 2, 11)  # comprada: prazo LONGO
-    exp_v_i = _idx('exp_v', 0, 1)                          # vendida: prazo CURTO
+    exp_c_i = None if exp_c_all else _idx('exp_c', 2, 11)         # comprada: prazo LONGO
+    exp_v_i = _idx('exp_v', 0, 2 if weekly else 1)                # vendida: prazo CURTO
 
     max_px = None
     raw_max = (request.args.get('max_px') or '').strip()
@@ -10554,27 +10558,51 @@ def api_fyt_thl(ticker):
                  'label': ('Próximo mensal' if i == 0 else f'Mensal +{i}')}
                 for i, e in enumerate(monthlies)]
 
-    exp_v_i = min(exp_v_i, len(monthlies) - 1)
-
-    if exp_c_all:
-        # Todos os mensais que vencem DEPOIS da vendida escolhida.
-        exp_c_candidates = list(range(exp_v_i + 1, len(monthlies)))
-        if not exp_c_candidates:
-            return jsonify({'error': f'{ticker} não tem vencimento mensal posterior '
-                            'ao da vendida escolhida.', 'expirations': exps_out}), 404
+    if weekly:
+        # Vendida varre TODOS os vencimentos (semanais + mensais) mais
+        # próximos — a comprada (longa) continua restrita aos mensais.
+        weeklies = sorted(calls_by_exp.keys())[:3]
+        if len(weeklies) < 1:
+            return jsonify({'error': f'Nenhum vencimento semanal com CALLs para {ticker}.',
+                            'expirations': exps_out}), 404
+        exp_v_i = min(exp_v_i, len(weeklies) - 1)
+        exp_v = weeklies[exp_v_i]
+        # Comprada: todos os mensais que vencem DEPOIS da vendida escolhida.
+        exp_c_candidates = [i for i, e in enumerate(monthlies) if e > exp_v]
+        if exp_c_all:
+            if not exp_c_candidates:
+                return jsonify({'error': f'{ticker} não tem vencimento mensal posterior '
+                                'ao da vendida escolhida.', 'expirations': exps_out}), 404
+        else:
+            exp_c_i = min(exp_c_i, len(monthlies) - 1)
+            if monthlies[exp_c_i] <= exp_v:
+                if not exp_c_candidates:
+                    return jsonify({'error': f'{ticker} não tem vencimento mensal posterior '
+                                    'ao da vendida escolhida.', 'expirations': exps_out}), 404
+                exp_c_i = exp_c_candidates[0]
+            exp_c_candidates = [exp_c_i]
     else:
-        exp_c_i = min(exp_c_i, len(monthlies) - 1)
-        if exp_v_i >= exp_c_i:
-            # A vendida (prazo curto) precisa vencer ANTES da comprada (prazo
-            # longo) — corrige em vez de devolver uma montagem sem sentido
-            # (a "curta" vencendo depois da "longa").
-            exp_v_i = max(0, exp_c_i - 1)
-        if exp_v_i >= exp_c_i:
-            return jsonify({'error': f'{ticker} não tem 2 vencimentos mensais distintos '
-                            'suficientes para montar o THL.', 'expirations': exps_out}), 404
-        exp_c_candidates = [exp_c_i]
+        exp_v_i = min(exp_v_i, len(monthlies) - 1)
 
-    exp_v = monthlies[exp_v_i]
+        if exp_c_all:
+            # Todos os mensais que vencem DEPOIS da vendida escolhida.
+            exp_c_candidates = list(range(exp_v_i + 1, len(monthlies)))
+            if not exp_c_candidates:
+                return jsonify({'error': f'{ticker} não tem vencimento mensal posterior '
+                                'ao da vendida escolhida.', 'expirations': exps_out}), 404
+        else:
+            exp_c_i = min(exp_c_i, len(monthlies) - 1)
+            if exp_v_i >= exp_c_i:
+                # A vendida (prazo curto) precisa vencer ANTES da comprada
+                # (prazo longo) — corrige em vez de devolver uma montagem sem
+                # sentido (a "curta" vencendo depois da "longa").
+                exp_v_i = max(0, exp_c_i - 1)
+            if exp_v_i >= exp_c_i:
+                return jsonify({'error': f'{ticker} não tem 2 vencimentos mensais distintos '
+                                'suficientes para montar o THL.', 'expirations': exps_out}), 404
+            exp_c_candidates = [exp_c_i]
+
+        exp_v = monthlies[exp_v_i]
 
     # ── Preço efetivo (book no pregão, último fora dele) ──────────────────
     _now_b = now_brt()

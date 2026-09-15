@@ -83,6 +83,14 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
            style="display:none;margin-top:.3rem;">
   </div>
 
+  <!-- Vendida semanal (só THL) -->
+  <div class="fyt-campo" id="fyt-thl-weekly-wrap" style="display:none;flex-direction:row;align-items:center;gap:.4rem;margin-bottom:.9rem;">
+    <input type="checkbox" id="fyt-thl-weekly" style="width:auto;">
+    <label for="fyt-thl-weekly" style="text-transform:none;font-size:.85rem;cursor:pointer;"
+           title="Varre vencimentos semanais para a perna vendida (curta) em vez dos mensais">
+      Vencimento da vendida em semanais</label>
+  </div>
+
   <!-- Filtros -->
   <div class="fyt-filtros">
     <div class="fyt-campo">
@@ -439,6 +447,9 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
 
   // ── Alterna o painel de filtros conforme a estrutura escolhida ─────────
   var opSel = document.getElementById('fyt-op');
+  var thlWeeklyWrap  = document.getElementById('fyt-thl-weekly-wrap');
+  var thlWeeklyChk   = document.getElementById('fyt-thl-weekly');
+  var thlExpVSel     = document.getElementById('fyt-thl-exp-v');
   function syncFiltrosEstrutura() {
     var v = opSel.value;
     document.getElementById('fyt-filtros-booster').style.display = (v === 'booster') ? 'contents' : 'none';
@@ -446,9 +457,30 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('fyt-filtros-mann').style.display    = (v === 'mannerheim') ? 'contents' : 'none';
     document.getElementById('fyt-filtros-trava').style.display   = (v === 'trava_alta') ? 'contents' : 'none';
     document.getElementById('fyt-filtros-travabaixa').style.display = (v === 'trava_baixa') ? 'contents' : 'none';
+    thlWeeklyWrap.style.display = (v === 'thl') ? 'flex' : 'none';
   }
   opSel.addEventListener('change', syncFiltrosEstrutura);
   syncFiltrosEstrutura();
+
+  // ── Checkbox "vendida em semanais" (só THL) ─────────────────────────────
+  function syncThlExpV() {
+    var atual = thlExpVSel.value;
+    if (thlWeeklyChk.checked) {
+      thlExpVSel.innerHTML =
+        '<option value="0" selected>Próximo semanal</option>' +
+        '<option value="1">Semanal +1</option>' +
+        '<option value="2">Semanal +2</option>';
+    } else {
+      thlExpVSel.innerHTML =
+        '<option value="0" selected>Próximo mensal</option>' +
+        '<option value="1">Mensal +1</option>';
+    }
+    // preserva o índice escolhido quando ainda existe na nova lista
+    if ([].slice.call(thlExpVSel.options).some(function(o) { return o.value === atual; })) {
+      thlExpVSel.value = atual;
+    }
+  }
+  thlWeeklyChk.addEventListener('change', syncThlExpV);
 
   // ── Busca (só no clique do botão) ─────────────────────────────────────
   function tickerAtual() {
@@ -469,7 +501,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       q = new URLSearchParams({
         exp_c:  document.getElementById('fyt-thl-exp-c').value,
         exp_v:  document.getElementById('fyt-thl-exp-v').value,
-        max_px: document.getElementById('fyt-thl-max-px').value || ''
+        max_px: document.getElementById('fyt-thl-max-px').value || '',
+        weekly: thlWeeklyChk.checked ? '1' : ''
       });
       url = '/api/fyt-thl/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'mannerheim') {

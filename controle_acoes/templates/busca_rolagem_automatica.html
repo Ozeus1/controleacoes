@@ -206,7 +206,7 @@
               <div style="font-weight:600;font-size:.85rem;">{{ leg.ticker }} <span class="br-hint">({{ e.name }})</span></div>
               <div class="br-hint">{{ leg.side }} {{ leg.opt_type }} K={{ '%.2f'|format(leg.strike or 0)|replace('.', ',') }} · {{ leg.quantity }}x</div>
             </div>
-            <button class="btn btn-primary btn-sm" onclick="brAdicionaPosicao('estruturada', {{ leg.id }}, {{ leg.ticker|tojson }}, {{ leg.side|tojson }}, {{ leg.opt_type|tojson }}, {{ leg.strike or 0 }}, {{ (leg.expiration_date.isoformat() if leg.expiration_date else '')|tojson }}, {{ leg.quantity or 0 }}, {{ leg.entry_price or 0 }}, {{ e.underlying_asset|tojson }})">Adicionar</button>
+            <button class="btn btn-primary btn-sm" onclick='brAdicionaPosicao("estruturada", {{ leg.id }}, {{ leg.ticker|tojson }}, {{ leg.side|tojson }}, {{ leg.opt_type|tojson }}, {{ leg.strike or 0 }}, {{ (leg.expiration_date.isoformat() if leg.expiration_date else "")|tojson }}, {{ leg.quantity or 0 }}, {{ leg.entry_price or 0 }}, {{ e.underlying_asset|tojson }})'>Adicionar</button>
           </div>
           {% endif %}
           {% endfor %}
@@ -223,8 +223,8 @@
             <div style="font-weight:600;font-size:.85rem;">{{ s.leg_long_ticker }} / {{ s.leg_short_ticker }}</div>
             <div class="br-hint">{{ s.spread_type|replace('_',' ')|title }} · {{ s.underlying_asset }}</div>
           </div>
-          <button class="btn btn-secondary btn-sm" onclick="brAdicionaPosicao('spread', {{ s.id }}, {{ s.leg_long_ticker|tojson }}, 'BUY', {{ ('PUT' if 'PUT' in s.spread_type else 'CALL')|tojson }}, {{ s.leg_long_strike or 0 }}, {{ (s.expiration_date.isoformat() if s.expiration_date else '')|tojson }}, {{ s.quantity or 0 }}, {{ s.leg_long_price or 0 }}, {{ s.underlying_asset|tojson }}, 'long', {{ s.leg_short_ticker|tojson }}, {{ s.leg_short_strike or 0 }}, {{ s.leg_short_price or 0 }})">+ Long</button>
-          <button class="btn btn-primary btn-sm" onclick="brAdicionaPosicao('spread', {{ s.id }}, {{ s.leg_short_ticker|tojson }}, 'SELL', {{ ('PUT' if 'PUT' in s.spread_type else 'CALL')|tojson }}, {{ s.leg_short_strike or 0 }}, {{ (s.expiration_date.isoformat() if s.expiration_date else '')|tojson }}, {{ s.quantity or 0 }}, {{ s.leg_short_price or 0 }}, {{ s.underlying_asset|tojson }}, 'short', {{ s.leg_long_ticker|tojson }}, {{ s.leg_long_strike or 0 }}, {{ s.leg_long_price or 0 }})">+ Short</button>
+          <button class="btn btn-secondary btn-sm" onclick='brAdicionaPosicao("spread", {{ s.id }}, {{ s.leg_long_ticker|tojson }}, "BUY", {{ ("PUT" if "PUT" in s.spread_type else "CALL")|tojson }}, {{ s.leg_long_strike or 0 }}, {{ (s.expiration_date.isoformat() if s.expiration_date else "")|tojson }}, {{ s.quantity or 0 }}, {{ s.leg_long_price or 0 }}, {{ s.underlying_asset|tojson }}, "long", {{ s.leg_short_ticker|tojson }}, {{ s.leg_short_strike or 0 }}, {{ s.leg_short_price or 0 }})'>+ Long</button>
+          <button class="btn btn-primary btn-sm" onclick='brAdicionaPosicao("spread", {{ s.id }}, {{ s.leg_short_ticker|tojson }}, "SELL", {{ ("PUT" if "PUT" in s.spread_type else "CALL")|tojson }}, {{ s.leg_short_strike or 0 }}, {{ (s.expiration_date.isoformat() if s.expiration_date else "")|tojson }}, {{ s.quantity or 0 }}, {{ s.leg_short_price or 0 }}, {{ s.underlying_asset|tojson }}, "short", {{ s.leg_long_ticker|tojson }}, {{ s.leg_long_strike or 0 }}, {{ s.leg_long_price or 0 }})'>+ Short</button>
         </div>
         {% endfor %}
       {% else %}
@@ -239,7 +239,7 @@
             <div style="font-weight:600;font-size:.85rem;">{{ o.ticker }}</div>
             <div class="br-hint">{{ o.option_type }} K={{ '%.2f'|format(o.strike_price or 0)|replace('.', ',') }} · {{ o.quantity }}x</div>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="brAdicionaPosicao('option', {{ o.id }}, {{ o.ticker|tojson }}, {{ ('SELL' if 'VENDA' in o.option_type else 'BUY')|tojson }}, {{ ('PUT' if 'PUT' in o.option_type else 'CALL')|tojson }}, {{ o.strike_price or 0 }}, {{ (o.expiration_date.isoformat() if o.expiration_date else '')|tojson }}, {{ o.quantity or 0 }}, {{ o.sale_price or 0 }}, {{ o.underlying_asset|tojson }})">Adicionar</button>
+          <button class="btn btn-primary btn-sm" onclick='brAdicionaPosicao("option", {{ o.id }}, {{ o.ticker|tojson }}, {{ ("SELL" if "VENDA" in o.option_type else "BUY")|tojson }}, {{ ("PUT" if "PUT" in o.option_type else "CALL")|tojson }}, {{ o.strike_price or 0 }}, {{ (o.expiration_date.isoformat() if o.expiration_date else "")|tojson }}, {{ o.quantity or 0 }}, {{ o.sale_price or 0 }}, {{ o.underlying_asset|tojson }})'>Adicionar</button>
         </div>
         {% endfor %}
       {% else %}
@@ -254,7 +254,7 @@
             <div style="font-weight:600;font-size:.85rem;">{{ p.ticker }}</div>
             <div class="br-hint">V PUT K={{ '%.2f'|format(p.strike or 0)|replace('.', ',') }} · {{ p.quantity }}x</div>
           </div>
-          <button class="btn btn-primary btn-sm" onclick="brAdicionaPosicao('put_sale', {{ p.id }}, {{ p.ticker|tojson }}, 'SELL', 'PUT', {{ p.strike or 0 }}, {{ (p.expiration_date.isoformat() if p.expiration_date else '')|tojson }}, {{ p.quantity or 0 }}, {{ p.premium or 0 }}, {{ p.underlying_asset|tojson }})">Adicionar</button>
+          <button class="btn btn-primary btn-sm" onclick='brAdicionaPosicao("put_sale", {{ p.id }}, {{ p.ticker|tojson }}, "SELL", "PUT", {{ p.strike or 0 }}, {{ (p.expiration_date.isoformat() if p.expiration_date else "")|tojson }}, {{ p.quantity or 0 }}, {{ p.premium or 0 }}, {{ p.underlying_asset|tojson }})'>Adicionar</button>
         </div>
         {% endfor %}
       {% else %}

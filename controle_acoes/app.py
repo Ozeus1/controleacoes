@@ -3294,14 +3294,46 @@ def manejo_grafico():
     op = None
     sp = None
     roll_adjustment = 0.0
+    roll_extrato = []
     if est_id:
         op = StructuredOp.query.filter_by(id=est_id, user_id=current_user.id, status='OPEN').first()
         if op:
-            roll_adjustment, _ = _estruturada_roll_adjustment(op)
+            # _estruturada_roll_adjustment já devolve o extrato formatado
+            # (data/ticker/tipo/entrada/saida/novo/pnl/saldo) usado pela
+            # tabela "Histórico de manejos" — mesmo formato de payoff.html.
+            roll_adjustment, roll_extrato = _estruturada_roll_adjustment(op)
     elif spread_id:
         sp = OptionSpread.query.filter_by(id=spread_id, user_id=current_user.id).first()
         if sp:
-            roll_adjustment, _ = _spread_roll_adjustment(sp)
+            # _spread_roll_adjustment devolve o histórico CRU (formato
+            # old_long_*/close_long_price, 1 evento = as 2 pernas juntas),
+            # diferente do extrato por perna das Estruturadas — convertido
+            # abaixo para o mesmo formato de exibição da tabela.
+            roll_adjustment, roll_history_sp = _spread_roll_adjustment(sp)
+            for ev in roll_history_sp:
+                if not isinstance(ev, dict):
+                    continue
+                data = ev.get('rolled_at') or ev.get('roll_date') or ''
+                qty = ev.get('quantity') or sp.quantity or 0
+                for lado, side in (('long', 'BUY'), ('short', 'SELL')):
+                    old_p = ev.get(f'old_{lado}_price')
+                    close_p = ev.get(f'close_{lado}_price')
+                    if old_p is None or close_p is None:
+                        continue
+                    pnl = (float(old_p) - float(close_p)) * qty if side == 'SELL' \
+                        else (float(close_p) - float(old_p)) * qty
+                    roll_extrato.append({
+                        'data': data, 'ticker': ev.get(f'old_{lado}_ticker') or '',
+                        'tipo': 'Substituída', 'side': side, 'quantity': qty,
+                        'entrada': old_p, 'saida': close_p,
+                        'novo': ev.get(f'new_{lado}_ticker') or '',
+                        'novo_premio': ev.get(f'new_{lado}_price'),
+                        'pnl': round(pnl, 2),
+                    })
+            acc = 0.0
+            for mov in roll_extrato:
+                acc += mov['pnl']
+                mov['saldo'] = round(acc, 2)
 
     # Estruturas abertas do usuário, para o seletor dentro da própria tela —
     # sem precisar voltar a /opcoes para trocar de operação em manejo.
@@ -3312,6 +3344,7 @@ def manejo_grafico():
 
     ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
     return render_template('manejo_grafico.html', op=op, sp=sp, roll_adjustment=roll_adjustment,
+                           roll_extrato=roll_extrato,
                            estruturas_abertas=estruturas_abertas, travas_abertas=travas_abertas,
                            selic=_selic(), ranking_vol=ranking_vol)
 

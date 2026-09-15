@@ -176,9 +176,10 @@
           <th class="col-dte" title="Dias até o vencimento deste braço">DTE</th>
           <th class="col-strike">Strike</th>
           <th class="col-tick">Ticker</th>
-          <th class="col-num">Prêmio</th>
+          <th class="col-num" title="Preço médio de entrada original do braço — só se aplica a braços já existentes na estrutura">PM</th>
+          <th class="col-num" title="Cotação atual de mercado do ticker">Prêmio</th>
           <th class="col-num">Entrada</th>
-          <th class="col-num">Saída</th>
+          <th class="col-num" title="Pré-preenchida a partir do prêmio atual — pode ser editada com o valor real da transação">Saída</th>
           <th class="col-num" title="Volatilidade implícita — usada no cálculo de travas com vencimentos diferentes">VI %</th>
           <th class="col-x"></th>
         </tr>
@@ -186,7 +187,7 @@
       <tbody id="mg-body"></tbody>
       <tfoot>
         <tr class="mg-tot">
-          <td colspan="9" style="text-align:right;">Total da operação</td>
+          <td colspan="10" style="text-align:right;">Total da operação</td>
           <td id="mg-tot-ent">—</td>
           <td id="mg-tot-sai">—</td>
           <td colspan="2"></td>
@@ -482,10 +483,13 @@ function novaLinha(tipo, origem) {
             + '<option value="">—</option></select>') + '</td>'
       + '<td>' + (isStock ? '<span class="mg-hint">—</span>'
           : '<input type="text" class="leg-ticker" readonly placeholder="—">') + '</td>'
+      + '<td><input type="text" class="leg-pm" value="' + (origem === 'estrutura' ? '0,00' : '—') + '" readonly'
+      +   ' title="Preço médio de entrada original do braço"' + (origem !== 'estrutura' ? ' disabled' : '') + '></td>'
       + '<td><input type="text" class="leg-premium" value="0,00" readonly'
       +   (isStock ? ' title="Cotação buscada via OpLab"' : ' title="Preenchido ao escolher o strike"') + '></td>'
       + '<td class="leg-ent">—</td>'
-      + '<td class="leg-sai">—</td>'
+      + '<td><input type="text" class="leg-sai" value="—" onchange="mgSaiEditada(this)"'
+      +   ' title="Pré-preenchida a partir do prêmio atual — edite com o valor real da transação, se diferente"></td>'
       + '<td>' + (isStock ? '<span class="mg-hint">—</span>'
           : '<input type="text" class="leg-iv" placeholder="—" onchange="mgRecalc()">') + '</td>'
       + '<td>'
@@ -561,8 +565,20 @@ window.mgSideMudou = function (sel) {
     var tr = sel.closest('tr');
     var strikeSel = tr.querySelector('.leg-strike-sel');
     if (strikeSel && strikeSel.value) mgAplicaStrike(tr, strikeSel.value);
+    mgResetSaiEditada(tr);
     mgRecalc();
 };
+
+// Marca a Saída como editada manualmente — mgRecalc para de sobrescrevê-la
+// com o valor calculado a partir do Prêmio até o campo ser resetado (troca
+// de vencimento/strike/tipo/lado, que invalida o valor antigo).
+window.mgSaiEditada = function (input) {
+    input.dataset.editado = '1';
+};
+function mgResetSaiEditada(tr) {
+    var saiEl = tr.querySelector('.leg-sai');
+    if (saiEl) delete saiEl.dataset.editado;
+}
 
 // ── Cascata vencimento → strike → ticker/prêmio (igual ao Simulador) ──
 function mgPreencheVencimentos(tr) {
@@ -599,6 +615,7 @@ window.mgVencMudou = function (sel) {
     var exp = sel.value;
     tr.querySelector('.leg-ticker').value = '';
     tr.querySelector('.leg-premium').value = '0,00';
+    mgResetSaiEditada(tr);
     var dteEl = tr.querySelector('.leg-dte');
     if (dteEl) {
         var d = exp ? diasAte(exp) : null;
@@ -720,7 +737,11 @@ function mgBracosNovosDisponiveis(excetoTr) {
 function mgFechaBraco(tr) {
     MG_FECHA_TR = tr;
     document.getElementById('mg-fecha-ticker').textContent = (tr.querySelector('.leg-ticker') || {}).value || tr.dataset.tickerOriginal || '';
-    document.getElementById('mg-fecha-valor').value = tr.dataset.fechaValor || '';
+    // Sugere o valor já salvo; sem isso, usa a Saída da linha (se o usuário
+    // já tiver editado/conferido ali o valor real da transação).
+    var saiEl = tr.querySelector('.leg-sai');
+    var saiVal = saiEl ? parseVal(saiEl.value) : 0;
+    document.getElementById('mg-fecha-valor').value = tr.dataset.fechaValor || (saiVal > 0 ? fmtNum(saiVal) : '');
     var tipoSalvo = tr.dataset.fechaTipo || 'TOTAL';
     document.querySelectorAll('input[name=mg-fecha-tipo]').forEach(function (r) { r.checked = r.value === tipoSalvo; });
     document.getElementById('mg-fecha-qtd').value = tr.dataset.fechaQtd || tr.dataset.qtyOriginal || '';
@@ -835,7 +856,7 @@ function lerPernas() {
         var on = tr.querySelector('.leg-on').checked;
         tr.classList.toggle('off', !on);
         if (!on) { tr.querySelector('.leg-ent').textContent = '—';
-                   tr.querySelector('.leg-sai').textContent = '—'; return; }
+                   tr.querySelector('.leg-sai').value = '—'; return; }
         var tipo = tr.querySelector('.leg-type').value;
         var kEl  = tr.querySelector('.leg-strike-sel');
         var eEl  = tr.querySelector('.leg-exp-sel');
@@ -1032,15 +1053,22 @@ window.mgRecalc = function () {
     legs.forEach(function (l) {
         var fin = l.qty * l.premium;
         var entCel = l._tr.querySelector('.leg-ent');
-        var saiCel = l._tr.querySelector('.leg-sai');
+        var saiEl = l._tr.querySelector('.leg-sai');
         if (l.side === 'SELL') {
             entCel.innerHTML = '<span class="positive">' + fmtBRL(fin) + '</span>';
-            saiCel.textContent = '—';
+            // Saída não se aplica a uma perna vendida (ela gera entrada, não
+            // saída) — mas se o usuário já tinha digitado algo manualmente
+            // (ex.: trocou o lado depois de editar), preserva o valor.
+            if (saiEl.dataset.editado !== '1') saiEl.value = '—';
             totEnt += fin;
         } else {
             entCel.textContent = '—';
-            saiCel.innerHTML = '<span class="negative">-' + fmtBRL(fin) + '</span>';
-            totSai += fin;
+            // Saída pré-preenchida com o prêmio atual (valor teórico de
+            // fechamento/compra) — editável, pois a transação real pode
+            // divergir da cotação mostrada. Só repreenche automaticamente
+            // enquanto o usuário não tiver editado o campo manualmente.
+            if (saiEl.dataset.editado !== '1') saiEl.value = fmtNum(fin);
+            totSai += parseVal(saiEl.value) || fin;
         }
     });
     document.getElementById('mg-tot-ent').innerHTML =
@@ -1682,6 +1710,9 @@ window.mgSalvarProducao = function () {
             tr.querySelector('.leg-qty').value = l.qty;
             var tEl = tr.querySelector('.leg-ticker');
             if (tEl) tEl.value = l.ticker;
+            // PM (preço médio de entrada original) fica fixo — nunca é
+            // sobrescrito pela cotação de mercado, diferente do Prêmio.
+            tr.querySelector('.leg-pm').value = fmtNum(l.premium);
             if (l.optType === 'STOCK') {
                 tr.querySelector('.leg-premium').value = fmtNum(l.premium);
             } else {

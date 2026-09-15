@@ -16,6 +16,10 @@
 .sbs-campo select,.sbs-campo input{background:var(--card-bg);color:var(--text-primary);
   border:1px solid var(--border-color);border-radius:5px;padding:.35rem .5rem;font-size:.85rem;}
 .sbs-campo input[type=text]{text-transform:uppercase;}
+.sbs-volbtn{border:1px solid var(--border-color);background:var(--card-bg);color:var(--text-secondary);
+  border-radius:4px;padding:.15rem .45rem;font-size:.72rem;cursor:pointer;white-space:nowrap;}
+.sbs-volbtn:hover{border-color:#7c3aed;color:var(--text-primary);}
+.sbs-volbtn.ativo{background:#7c3aed;border-color:#7c3aed;color:#fff;font-weight:700;}
 
 #sbs-ticker-block{display:none;}
 #sbs-ticker-status{font-size:.78rem;color:var(--text-secondary);margin-top:.3rem;}
@@ -96,8 +100,18 @@
       <input type="date" id="sbs-exp">
     </div>
     <div class="sbs-campo">
-      <label title="Volatilidade implícita anualizada, em %">IV (σ) %</label>
+      <label title="Volatilidade anualizada usada no cálculo, em %">Volatilidade (σ) %</label>
       <input type="number" id="sbs-iv" step="0.01" placeholder="Ex.: 39,74">
+      <div style="display:flex;gap:.3rem;align-items:center;margin-top:.25rem;flex-wrap:wrap;">
+        {# A IV da opção precifica "a mercado"; a volatilidade histórica do
+           ativo dá o preço justo pelo comportamento passado — é a convenção
+           que o Profit usa na coluna "Preço Teórico". #}
+        <button type="button" id="sbs-usar-iv" class="sbs-volbtn ativo"
+                title="Volatilidade implícita da própria opção (preço a mercado)">IV da opção</button>
+        <button type="button" id="sbs-usar-hv" class="sbs-volbtn"
+                title="Volatilidade histórica do ativo (preço justo pelo comportamento passado) — mesma base do Preço Teórico do Profit">VH do ativo</button>
+        <span id="sbs-vol-status" style="font-size:.72rem;color:var(--text-secondary);"></span>
+      </div>
     </div>
     <div class="sbs-campo">
       <label>Tipo</label>
@@ -189,7 +203,16 @@ var elSel = document.getElementById('sbs-ativo-sel'), elAtivo = document.getElem
 elSel.addEventListener('change', function () {
     if (elSel.value === '__outro__') { elAtivo.value = ''; elAtivo.focus(); return; }
     elAtivo.value = elSel.value;
+    sbsInvalidaHV();
 });
+// Trocar de ativo invalida a VH em cache — senão o papel novo herdaria a
+// volatilidade do anterior.
+elAtivo.addEventListener('change', sbsInvalidaHV);
+function sbsInvalidaHV() {
+    SBS_HV_ATIVO = null;
+    var st = document.getElementById('sbs-vol-status');
+    if (st && st.textContent.indexOf('VH de') === 0) st.textContent = '';
+}
 
 // ── Buscar por ticker da opção ──
 document.getElementById('sbs-buscar-ticker').addEventListener('click', function () {
@@ -211,8 +234,57 @@ document.getElementById('sbs-buscar-ticker').addEventListener('click', function 
             document.getElementById('sbs-exp').value = d.exp || '';
             document.getElementById('sbs-iv').value = d.iv != null ? (d.iv * 100).toFixed(2) : '';
             document.getElementById('sbs-side').value = d.side || 'CALL';
+            SBS_IV_OPCAO = d.iv != null ? +(d.iv * 100).toFixed(2) : null;
+            SBS_HV_ATIVO = null;   // HV é do ativo: recarrega ao trocar de opção
+            sbsMarcaFonte('iv');
         })
         .catch(function (e) { status.textContent = '⚠️ falha de rede: ' + e; });
+});
+
+// ── Fonte da volatilidade: IV da opção × VH do ativo ──
+// A IV precifica a mercado (o que o book está cobrando). A VH precifica
+// pelo comportamento passado do ativo — é a base do "Preço Teórico" do
+// Profit, usada como baliza para operar.
+var SBS_IV_OPCAO = null;   // última IV vinda do ticker resolvido
+var SBS_HV_ATIVO = null;   // HV do ativo, buscada sob demanda
+
+function sbsMarcaFonte(fonte) {
+    document.getElementById('sbs-usar-iv').classList.toggle('ativo', fonte === 'iv');
+    document.getElementById('sbs-usar-hv').classList.toggle('ativo', fonte === 'hv');
+}
+
+document.getElementById('sbs-usar-iv').addEventListener('click', function () {
+    var st = document.getElementById('sbs-vol-status');
+    if (SBS_IV_OPCAO == null) {
+        st.textContent = 'busque o ticker da opção para trazer a IV';
+        return;
+    }
+    document.getElementById('sbs-iv').value = SBS_IV_OPCAO;
+    st.textContent = 'IV da opção: ' + SBS_IV_OPCAO.toFixed(2) + '%';
+    sbsMarcaFonte('iv');
+});
+
+document.getElementById('sbs-usar-hv').addEventListener('click', function () {
+    var ativo = (elAtivo.value || '').trim().toUpperCase();
+    var st = document.getElementById('sbs-vol-status');
+    if (!ativo) { st.textContent = 'informe o ativo primeiro'; return; }
+    if (SBS_HV_ATIVO != null) {
+        document.getElementById('sbs-iv').value = SBS_HV_ATIVO;
+        st.textContent = 'VH de ' + ativo + ': ' + SBS_HV_ATIVO.toFixed(2) + '% (25 pregões)';
+        sbsMarcaFonte('hv');
+        return;
+    }
+    st.textContent = '⏳ calculando VH…';
+    fetch('/api/vol-historica/' + encodeURIComponent(ativo))
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            if (!res.ok || res.j.error) { st.textContent = '⚠️ ' + (res.j.error || 'falha ao calcular a VH'); return; }
+            SBS_HV_ATIVO = res.j.hv;
+            document.getElementById('sbs-iv').value = SBS_HV_ATIVO;
+            st.textContent = 'VH de ' + ativo + ': ' + SBS_HV_ATIVO.toFixed(2) + '% (' + res.j.janela + ' pregões)';
+            sbsMarcaFonte('hv');
+        })
+        .catch(function (e) { st.textContent = '⚠️ falha de rede: ' + e; });
 });
 
 // ── Calcular ──

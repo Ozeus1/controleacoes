@@ -21132,6 +21132,68 @@ def _sanitize_chart_candles(candles):
     return robust
 
 
+def _hv_atual(ticker, janela=25):
+    """Volatilidade histórica ANUALIZADA (%) mais recente de um papel, ou None.
+
+    Mesma definição usada na série do gráfico de volatilidade
+    (_vol_hist_series): desvio-padrão dos log-retornos dos últimos `janela`
+    pregões, anualizado por sqrt(252), com descarte de saltos de provento/
+    desdobramento pela mediana da janela. A janela de 25 pregões foi
+    calibrada contra 8 referências do Opções.Net.
+
+    Diferente de _vol_hist_series, não toca na OpLab nem monta série
+    histórica — devolve só o número de hoje, para precificar no Simulador BS.
+    """
+    import math as _math, gzip as _gzip2, json as _json2, statistics as _stats
+    from models import ChartCache
+    from datetime import date as _d2
+    try:
+        candles = []
+        _cc = ChartCache.query.get(ticker)
+        if _cc:
+            candles = _json2.loads(_gzip2.decompress(_cc.candles_gz).decode())
+        _ult = candles[-1]['t'] if candles else None
+        if (not _ult) or (_d2.today() - _d2.fromisoformat(_ult)).days > 4:
+            yf_t = ticker + '.SA' if _is_b3_yahoo_ticker(ticker) else ticker
+            frescos = _sanitize_chart_candles(_yahoo_fetch(yf_t)) or []
+            if frescos:
+                vistos = {c['t'] for c in frescos}
+                candles = [c for c in candles if c.get('t') not in vistos] + frescos
+                candles.sort(key=lambda c: c.get('t') or '')
+        closes = sorted((c.get('t'), float(c.get('c'))) for c in candles
+                        if c.get('t') and c.get('c'))
+        if len(closes) < janela + 1:
+            return None
+        ult = closes[-(janela + 1):]
+        rets = [_math.log(ult[k][1] / ult[k - 1][1])
+                for k in range(1, len(ult)) if ult[k - 1][1] > 0]
+        if len(rets) < 5:
+            return None
+        med_abs = _stats.median([abs(x) for x in rets]) or 1e-9
+        limpos = [x for x in rets if abs(x) <= 5 * med_abs]
+        if len(limpos) >= 5:
+            rets = limpos
+        m = sum(rets) / len(rets)
+        var = sum((x - m) ** 2 for x in rets) / (len(rets) - 1)
+        return round(_math.sqrt(var) * _math.sqrt(252) * 100, 2)
+    except Exception:
+        app.logger.exception('_hv_atual: falha ao calcular HV de %s', ticker)
+        return None
+
+
+@app.route('/api/vol-historica/<ticker>')
+@login_required
+def api_vol_historica(ticker):
+    """Volatilidade histórica atual de um papel (%), para o Simulador BS."""
+    t = (ticker or '').strip().upper()
+    if not t:
+        return jsonify({'error': 'Informe o ativo.'}), 400
+    hv = _hv_atual(t)
+    if hv is None:
+        return jsonify({'error': f'Não foi possível calcular a volatilidade histórica de {t}.'}), 404
+    return jsonify({'ticker': t, 'hv': hv, 'janela': 25})
+
+
 def _vol_hist_series(ticker, token, meses=12):
     """Série diária de volatilidade implícita (ATM) e histórica de um papel.
 

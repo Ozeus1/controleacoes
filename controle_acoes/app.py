@@ -3716,8 +3716,7 @@ def _busca_rolagem_resolve_perna(inp, user_id):
                 'origem': 'posicao', 'tipo': 'spread', 'id': sp.id, 'lado': 'short'}
 
     if tipo == 'estruturada':
-        leg_id = inp.get('leg_id')
-        leg = StructuredLeg.query.get(leg_id)
+        leg = StructuredLeg.query.get(rid)
         if not leg or leg.operation.user_id != user_id:
             return None
         return {'ticker': leg.ticker, 'underlying': leg.operation.underlying_asset, 'side': leg.side,

@@ -13358,13 +13358,13 @@ def roll_estruturada(id):
             # troca de lado (ex.: fecha PUT vendida e abre CALL comprada, dois
             # desembolsos). Usar um lado só distorceria o net do manejo.
             if leg.side == 'SELL':
-                net_roll -= cp * qty        # recompra a vendida: paga
+                net_roll -= cp * qty_total        # recompra a vendida: paga
             else:
-                net_roll += cp * qty        # vende a comprada: recebe
+                net_roll += cp * qty_total        # vende a comprada: recebe
             if nsd == 'SELL':
-                net_roll += np_ * qty       # vende a nova: recebe
+                net_roll += np_ * qty_total       # vende a nova: recebe
             else:
-                net_roll -= np_ * qty       # compra a nova: paga
+                net_roll -= np_ * qty_total       # compra a nova: paga
 
             # A perna foi de fato manejada? (ticker/strike/prêmio/venc/tipo/lado)
             old_exp_iso = leg.expiration_date.isoformat() if leg.expiration_date else ''
@@ -13381,9 +13381,9 @@ def roll_estruturada(id):
             # no ENCERRAMENTO, com o cômputo geral de entradas e saídas.
             if changed:
                 if leg.side == 'SELL':
-                    pnl = ((leg.entry_price or 0) - cp) * qty   # vendeu, recomprou
+                    pnl = ((leg.entry_price or 0) - cp) * qty_total   # vendeu, recomprou
                 else:
-                    pnl = (cp - (leg.entry_price or 0)) * qty   # comprou, vendeu
+                    pnl = (cp - (leg.entry_price or 0)) * qty_total   # comprou, vendeu
                 realized += pnl
 
             roll_entry['legs'].append({
@@ -13400,9 +13400,9 @@ def roll_estruturada(id):
                 'old_type':      leg.opt_type,
                 'new_type':      ntp,
                 'new_side':      nsd,
-                'quantity':      qty,
-                'realized_pnl':  round(((leg.entry_price or 0) - cp) * qty if leg.side == 'SELL'
-                                       else (cp - (leg.entry_price or 0)) * qty, 2) if changed else None,
+                'quantity':      qty_total,
+                'realized_pnl':  round(((leg.entry_price or 0) - cp) * qty_total if leg.side == 'SELL'
+                                       else (cp - (leg.entry_price or 0)) * qty_total, 2) if changed else None,
             })
 
             # Atualiza a perna

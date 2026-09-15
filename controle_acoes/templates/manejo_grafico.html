@@ -243,6 +243,7 @@
       <div class="mg-met"><span class="lbl">Abertura de braços novos</span><span class="val" id="mg-fin-open">—</span></div>
       <div class="mg-met"><span class="lbl">Entrada original (braços mexidos)</span><span class="val" id="mg-fin-initial">—</span></div>
       <div class="mg-met"><span class="lbl">Total financeiro (c/ entrada original)</span><span class="val" id="mg-fin-grand">—</span></div>
+      <div class="mg-met"><span class="lbl" title="Soma do lucro/prejuízo realizado só dos braços fechados (médio de entrada vs. valor de fechamento)">Lucro realizado (fechamentos)</span><span class="val" id="mg-fin-lucro">—</span></div>
       <div class="mg-met"><span class="lbl">Linhas</span><span class="val" id="mg-fin-lines">0</span></div>
     </div>
     <div id="mg-detail" class="mg-detail"></div>
@@ -739,14 +740,19 @@ function mgBracosNovosDisponiveis(excetoTr) {
 function mgFechaBraco(tr) {
     MG_FECHA_TR = tr;
     document.getElementById('mg-fecha-ticker').textContent = (tr.querySelector('.leg-ticker') || {}).value || tr.dataset.tickerOriginal || '';
-    // Sugere o valor já salvo; sem isso, usa a Saída da linha (se o usuário
-    // já tiver editado/conferido ali o valor real da transação) — a Saída
-    // guarda o total (qty × prêmio unitário), então divide pela qtd para
-    // sugerir o prêmio UNITÁRIO, que é o que este campo espera.
+    // Sugere o valor já salvo; sem isso, usa a Saída da linha se o usuário
+    // já tiver editado/conferido ali o valor real da transação (a Saída
+    // guarda o total, então divide pela qtd para o prêmio UNITÁRIO). A
+    // Saída só é preenchida para pernas COMPRADAS (numa vendida ela fica
+    // "—", pois ali quem recebe é a Entrada) — nesse caso cai para o
+    // Prêmio (última cotação de mercado do ticker), que é sempre um bom
+    // ponto de partida para o valor de fechamento.
     var saiEl = tr.querySelector('.leg-sai');
     var qtyLinha = parseInt(tr.querySelector('.leg-qty').value, 10) || 0;
     var saiUnit = (saiEl && qtyLinha > 0) ? (parseVal(saiEl.value) / qtyLinha) : 0;
-    document.getElementById('mg-fecha-valor').value = tr.dataset.fechaValor || (saiUnit > 0 ? fmtNum(saiUnit) : '');
+    var premioAtual = parseVal(tr.querySelector('.leg-premium').value);
+    var sugestao = saiUnit > 0 ? saiUnit : premioAtual;
+    document.getElementById('mg-fecha-valor').value = tr.dataset.fechaValor || (sugestao > 0 ? fmtNum(sugestao) : '');
     var tipoSalvo = tr.dataset.fechaTipo || 'TOTAL';
     document.querySelectorAll('input[name=mg-fecha-tipo]').forEach(function (r) { r.checked = r.value === tipoSalvo; });
     document.getElementById('mg-fecha-qtd').value = tr.dataset.fechaQtd || tr.dataset.qtyOriginal || '';
@@ -977,10 +983,15 @@ function mgLinhasFinanceiras() {
             var closeVal = parseFloat(tr.dataset.fechaValor || 0) || 0;
             var cash = (side === 'SELL' ? -1 : 1) * qty * closeVal;
             var initial = (side === 'SELL' ? 1 : -1) * qty * avg;
+            // Lucro realizado do fechamento: venda lucra recomprando mais
+            // barato que o médio, compra lucra vendendo mais caro — sempre
+            // igual a cash + initial (o caixa da saída somado à entrada
+            // original, que já tem o sinal certo por lado).
+            var lucro = cash + initial;
             fechamentos.push({
                 ticker: tr.dataset.tickerOriginal || (tr.querySelector('.leg-ticker') || {}).value || '',
                 side: side, qty: qty, qtyTotal: qtyTotal, avg: avg, closeVal: closeVal,
-                cash: cash, initial: initial,
+                cash: cash, initial: initial, lucro: lucro,
                 parcial: tr.dataset.fechaTipo === 'PARCIAL',
                 motivo: tr.dataset.fechaMotivo || 'ENCERRAMENTO',
                 subLabel: tr.dataset.fechaSubLabel || null
@@ -1008,6 +1019,7 @@ function mgRenderFinanceiro() {
     var closeTotal = linhas.fechamentos.reduce(function (s, l) { return s + l.cash; }, 0);
     var openTotal  = linhas.aberturas.reduce(function (s, l) { return s + l.cash; }, 0);
     var initialTotal = linhas.fechamentos.reduce(function (s, l) { return s + l.initial; }, 0);
+    var lucroTotal = linhas.fechamentos.reduce(function (s, l) { return s + l.lucro; }, 0);
     var total = closeTotal + openTotal;
     var grand = initialTotal + total;
     var nLinhas = linhas.fechamentos.length + linhas.aberturas.length;
@@ -1020,6 +1032,11 @@ function mgRenderFinanceiro() {
     document.getElementById('mg-fin-grand').textContent = fmtBRLSigned(grand);
     document.getElementById('mg-fin-grand').className = 'val ' + (grand >= 0 ? 'positive' : 'negative');
     document.getElementById('mg-fin-lines').textContent = nLinhas;
+    var lucroEl = document.getElementById('mg-fin-lucro');
+    if (lucroEl) {
+        lucroEl.textContent = fmtBRLSigned(lucroTotal);
+        lucroEl.className = 'val ' + (lucroTotal >= 0 ? 'positive' : 'negative');
+    }
 
     var rows = '';
     linhas.fechamentos.forEach(function (l) {
@@ -1032,7 +1049,8 @@ function mgRenderFinanceiro() {
               + '<td>' + l.qty + '</td>'
               + '<td>' + fmtBRL(l.avg) + '</td>'
               + '<td>' + fmtBRL(l.closeVal) + '</td>'
-              + '<td class="' + (l.cash >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(l.cash) + '</td></tr>';
+              + '<td class="' + (l.cash >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(l.cash) + '</td>'
+              + '<td class="' + (l.lucro >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(l.lucro) + '</td></tr>';
     });
     linhas.aberturas.forEach(function (l) {
         rows += '<tr><td>＋ ' + escHtml(l.ticker) + '</td>'
@@ -1040,12 +1058,15 @@ function mgRenderFinanceiro() {
               + '<td>' + l.qty + '</td>'
               + '<td>—</td>'
               + '<td>' + fmtBRL(l.premium) + '</td>'
-              + '<td class="' + (l.cash >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(l.cash) + '</td></tr>';
+              + '<td class="' + (l.cash >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(l.cash) + '</td>'
+              + '<td class="mg-hint">—</td></tr>';
     });
     var html = nLinhas
-        ? '<table><thead><tr><th>Braço</th><th>Ação</th><th>Qtd</th><th>Médio</th><th>Valor</th><th>Caixa</th></tr></thead>'
+        ? '<table><thead><tr><th>Braço</th><th>Ação</th><th>Qtd</th><th>Médio</th><th>Valor</th><th>Caixa</th><th>Lucro</th></tr></thead>'
           + '<tbody>' + rows + '</tbody>'
-          + '<tfoot><tr><td colspan="5">Total</td><td class="' + (total >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(total) + '</td></tr></tfoot></table>'
+          + '<tfoot><tr><td colspan="5">Total</td>'
+          +   '<td class="' + (total >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(total) + '</td>'
+          +   '<td class="' + (lucroTotal >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(lucroTotal) + '</td></tr></tfoot></table>'
         : '<p class="mg-hint" style="margin:0;padding:.5rem 0;">Nenhum braço fechado ou novo ainda — feche um braço (🔒) ou inclua um novo para ver o demonstrativo.</p>';
     document.getElementById('mg-detail').innerHTML = html;
 }

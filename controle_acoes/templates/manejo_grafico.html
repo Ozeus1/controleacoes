@@ -178,6 +178,7 @@
           <th class="col-tick">Ticker</th>
           <th class="col-num" title="Preço médio de entrada original do braço — só se aplica a braços já existentes na estrutura">PM</th>
           <th class="col-num" title="Cotação atual de mercado do ticker">Prêmio</th>
+          <th class="col-num" title="Lucro/prejuízo mark-to-market do braço: (Prêmio atual − PM) × qtd, ajustado por C/V — só se aplica a braços já existentes na estrutura">Lucro</th>
           <th class="col-num">Entrada</th>
           <th class="col-num" title="Pré-preenchida a partir do prêmio atual — pode ser editada com o valor real da transação">Saída</th>
           <th class="col-num" title="Volatilidade implícita — usada no cálculo de travas com vencimentos diferentes">VI %</th>
@@ -187,7 +188,7 @@
       <tbody id="mg-body"></tbody>
       <tfoot>
         <tr class="mg-tot">
-          <td colspan="10" style="text-align:right;">Total da operação</td>
+          <td colspan="11" style="text-align:right;">Total da operação</td>
           <td id="mg-tot-ent">—</td>
           <td id="mg-tot-sai">—</td>
           <td colspan="2"></td>
@@ -487,6 +488,7 @@ function novaLinha(tipo, origem) {
       +   ' title="Preço médio de entrada original do braço"' + (origem !== 'estrutura' ? ' disabled' : '') + '></td>'
       + '<td><input type="text" class="leg-premium" value="0,00" readonly'
       +   (isStock ? ' title="Cotação buscada via OpLab"' : ' title="Preenchido ao escolher o strike"') + '></td>'
+      + '<td class="leg-lucro mg-hint" title="Lucro/prejuízo mark-to-market: (Prêmio atual − PM) × qtd, ajustado por C/V">—</td>'
       + '<td class="leg-ent">—</td>'
       + '<td><input type="text" class="leg-sai" value="—" onchange="mgSaiEditada(this)"'
       +   ' title="Pré-preenchida a partir do prêmio atual — edite com o valor real da transação, se diferente"></td>'
@@ -1057,6 +1059,23 @@ window.mgRecalc = function () {
         var fin = l.qty * l.premium;
         var entCel = l._tr.querySelector('.leg-ent');
         var saiEl = l._tr.querySelector('.leg-sai');
+
+        // Lucro mark-to-market do braço: só se aplica a braços já existentes
+        // na estrutura (têm PM) — venda lucra quando o prêmio atual cai
+        // abaixo do PM, compra lucra quando sobe acima dele.
+        var lucroCel = l._tr.querySelector('.leg-lucro');
+        if (lucroCel) {
+            var pmVal = l._tr.dataset.origem === 'estrutura' ? parseVal(l._tr.querySelector('.leg-pm').value) : 0;
+            if (pmVal > 0 && l.premium > 0) {
+                var sinal = l.side === 'SELL' ? 1 : -1;
+                var lucro = sinal * (pmVal - l.premium) * l.qty;
+                lucroCel.innerHTML = '<span class="' + (lucro >= 0 ? 'positive' : 'negative') + '">'
+                    + fmtBRLSigned(lucro) + '</span>';
+            } else {
+                lucroCel.textContent = '—';
+            }
+        }
+
         if (l.side === 'SELL') {
             entCel.innerHTML = '<span class="positive">' + fmtBRL(fin) + '</span>';
             // Saída não se aplica a uma perna vendida (ela gera entrada, não

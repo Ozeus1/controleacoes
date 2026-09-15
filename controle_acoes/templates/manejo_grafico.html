@@ -105,6 +105,8 @@
          font-size:.8rem;color:#60a5fa;text-decoration:none;white-space:nowrap;">📈 ver gráfico</a>
     </div>
     <div class="mg-topbar-acoes">
+      <button class="btn btn-secondary btn-sm" onclick="mgAbreEstruturaModal()"
+              title="Escolha qualquer Operação Estruturada ou Trava aberta para manejar aqui">📋 Abrir estrutura</button>
       <button class="btn btn-secondary btn-sm" onclick="mgCarregarModal()">📂 Abrir simulação</button>
       <button class="btn btn-primary btn-sm" onclick="mgSalvar()">💾 Salvar simulação</button>
       <button class="btn btn-warning btn-sm" onclick="mgSalvarProducao()"
@@ -207,6 +209,8 @@
   <!-- Métricas ------------------------------------------------------ -->
   <div class="mg-metrics">
     <div class="mg-met"><span class="lbl">Montagem</span><span class="val" id="mg-m-net">—</span></div>
+    <div class="mg-met" id="mg-m-rolladj-wrap" style="display:none;"><span class="lbl" title="P&amp;L já realizado em manejos anteriores desta operação — somado à montagem para o payoff refletir o resultado acumulado real">Resultado carregado das rolagens</span><span class="val" id="mg-m-rolladj">—</span></div>
+    <div class="mg-met" id="mg-m-totalcarry-wrap" style="display:none;"><span class="lbl">Saldo total considerado no payoff</span><span class="val" id="mg-m-totalcarry">—</span></div>
     <div class="mg-met"><span class="lbl">Lucro máximo</span><span class="val positive" id="mg-m-gain">—</span></div>
     <div class="mg-met"><span class="lbl" title="Lucro máximo ÷ custo de saída (desembolso das compras)">Lucro máx. % sobre investido</span><span class="val" id="mg-m-gain-pct">—</span></div>
     <div class="mg-met"><span class="lbl" title="Quanto o lucro máximo % representa em relação ao rendimento da Selic no mesmo prazo">Lucro máx. vs. Selic no período</span><span class="val" id="mg-m-gain-selic">—</span></div>
@@ -320,6 +324,54 @@
 </div>
 
 <!-- ── Modal: abrir simulação salva ────────────────────────────────── -->
+<!-- ── Modal: escolher Operação Estruturada / Trava para manejar ─────── -->
+<div id="mg-estrutura-modal" style="display:none;position:fixed;inset:0;z-index:19050;
+     background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,620px);
+              max-height:88vh;display:flex;flex-direction:column;border:1px solid var(--border-color);">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:.8rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <h3 style="margin:0;font-size:1rem;">Abrir estrutura para manejo</h3>
+      <button onclick="document.getElementById('mg-estrutura-modal').style.display='none'"
+              style="background:none;border:none;font-size:1.4rem;
+                     color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:.6rem 1.1rem 1rem;">
+      <p class="mg-hint" style="margin:.2rem 0 .6rem;">Trocar de estrutura com braços já preenchidos na tela substitui a simulação atual.</p>
+      <div style="font-size:.8rem;font-weight:700;color:var(--text-secondary);margin:.6rem 0 .3rem;">Operações Estruturadas</div>
+      {% if estruturas_abertas %}
+      {% for e in estruturas_abertas %}
+      <div style="display:flex;align-items:center;gap:.6rem;padding:.45rem .2rem;
+                  border-bottom:1px solid rgba(255,255,255,.05);">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:.88rem;">{{ e.name or ('Estruturada #' ~ e.id) }}</div>
+          <div class="mg-hint">{{ e.underlying_asset or '—' }} · {{ e.legs|length }} braço(s)</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="mgEscolheEstrutura('est', {{ e.id }})">Abrir</button>
+      </div>
+      {% endfor %}
+      {% else %}
+      <p class="mg-hint" style="padding:.4rem 0;">Nenhuma operação estruturada aberta.</p>
+      {% endif %}
+      <div style="font-size:.8rem;font-weight:700;color:var(--text-secondary);margin:1rem 0 .3rem;">Travas</div>
+      {% if travas_abertas %}
+      {% for s in travas_abertas %}
+      <div style="display:flex;align-items:center;gap:.6rem;padding:.45rem .2rem;
+                  border-bottom:1px solid rgba(255,255,255,.05);">
+        <div style="flex:1;min-width:0;">
+          <div style="font-weight:600;font-size:.88rem;">{{ s.spread_type|replace('_',' ')|title }}</div>
+          <div class="mg-hint">{{ s.underlying_asset }} · {{ s.leg_long_ticker }} / {{ s.leg_short_ticker }}</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="mgEscolheEstrutura('spread', {{ s.id }})">Abrir</button>
+      </div>
+      {% endfor %}
+      {% else %}
+      <p class="mg-hint" style="padding:.4rem 0;">Nenhuma trava aberta.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
 <div id="mg-open-modal" style="display:none;position:fixed;inset:0;z-index:19000;
      background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
   <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,560px);
@@ -347,11 +399,18 @@ var CADEIA = null;       // resposta de /api/cadeia
 var MG_SIM_ID = null;    // id da OptionRollSimulation aberta (null = nova/rascunho)
 var MG_OP_ID = {{ op.id if op else 'null' }};    // id da StructuredOp em manejo (null = nenhuma)
 var MG_OP_NOME = {{ (op.name or '')|tojson if op else 'null' }};
-var MG_ATIVO = {{ (op.underlying_asset if op else '')|tojson }};
-// Braços reais da StructuredOp, injetados pelo servidor — usados para
-// montar a tabela inicial e para saber o preço médio original de cada
-// braço (mg-fecha usa isso no cálculo do demonstrativo financeiro).
-var OP_LEGS = {{ (op.legs|map(attribute='id')|list) if op else [] }};
+var MG_SPREAD_ID = {{ sp.id if sp else 'null' }};   // id da OptionSpread (trava) em manejo (null = nenhuma)
+var MG_ATIVO = {{ (op.underlying_asset if op else (sp.underlying_asset if sp else ''))|tojson }};
+// P&L já realizado em manejos anteriores desta operação (roll_history) —
+// sem somar isso no payoff, um braço zerado com lucro/prejuízo real some
+// do gráfico e as métricas de lucro/perda máxima ficam erradas.
+var MG_ROLL_ADJ = {{ roll_adjustment|default(0) }};
+// Braços reais da StructuredOp/OptionSpread, injetados pelo servidor —
+// usados para montar a tabela inicial e para saber o preço médio original
+// de cada braço (mg-fecha usa isso no cálculo do demonstrativo financeiro).
+// Travas não têm StructuredLeg.id — usam os identificadores sintéticos
+// 'long'/'short', tratados à parte na hora de gravar em produção
+// (POST /roll_spread/<id>, contrato diferente de /roll_estruturada).
 {% if op %}
 var OP_LEGS_DATA = [
   {% for l in op.legs %}
@@ -360,6 +419,17 @@ var OP_LEGS_DATA = [
     strike: {{ l.strike or 0 }}, premium: {{ l.entry_price or 0 }},
     exp: {{ (l.expiration_date.isoformat() if l.expiration_date else '')|tojson }} }{{ ',' if not loop.last }}
   {% endfor %}
+];
+{% elif sp %}
+var OP_LEGS_DATA = [
+  { legId: 'long', ticker: {{ (sp.leg_long_ticker or '')|tojson }}, side: 'BUY',
+    optType: {{ ('PUT' if 'PUT' in sp.spread_type else 'CALL')|tojson }}, qty: {{ sp.quantity or 1 }},
+    strike: {{ sp.leg_long_strike or 0 }}, premium: {{ sp.leg_long_price or 0 }},
+    exp: {{ (sp.expiration_date.isoformat() if sp.expiration_date else '')|tojson }} },
+  { legId: 'short', ticker: {{ (sp.leg_short_ticker or '')|tojson }}, side: 'SELL',
+    optType: {{ ('PUT' if 'PUT' in sp.spread_type else 'CALL')|tojson }}, qty: {{ sp.quantity or 1 }},
+    strike: {{ sp.leg_short_strike or 0 }}, premium: {{ sp.leg_short_price or 0 }},
+    exp: {{ (sp.expiration_date.isoformat() if sp.expiration_date else '')|tojson }} }
 ];
 {% else %}
 var OP_LEGS_DATA = [];
@@ -943,7 +1013,12 @@ function netPremium(legs) {
 }
 
 function payoffAt(S, legs, multiExp, refDateStr) {
-    var total = netPremium(legs);
+    // Base do payoff = prêmio líquido das pernas ATUAIS + o que já foi
+    // realizado em manejos anteriores desta operação (MG_ROLL_ADJ) — sem
+    // isso, fechar um braço com lucro/prejuízo desaparece do gráfico assim
+    // que a próxima rodada de manejo é aberta (mesmo problema que
+    // payoff.html já resolve para a tela de payoff).
+    var total = netPremium(legs) + MG_ROLL_ADJ;
     var r = SELIC_RATE / 100;
     var refDate = refDateStr ? new Date(refDateStr) : null;
     legs.forEach(function (l) {
@@ -1268,6 +1343,19 @@ function desenha(legs) {
     var netEl = document.getElementById('mg-m-net');
     netEl.textContent = fmtBRL(net) + (net >= 0 ? ' (crédito)' : ' (débito)');
     netEl.className = 'val ' + (net >= 0 ? 'positive' : 'negative');
+
+    if (MG_ROLL_ADJ) {
+        var totalCarry = net + MG_ROLL_ADJ;
+        document.getElementById('mg-m-rolladj-wrap').style.display = '';
+        document.getElementById('mg-m-totalcarry-wrap').style.display = '';
+        var adjEl = document.getElementById('mg-m-rolladj');
+        adjEl.textContent = fmtBRL(MG_ROLL_ADJ) + (MG_ROLL_ADJ >= 0 ? ' (crédito)' : ' (débito)');
+        adjEl.className = 'val ' + (MG_ROLL_ADJ >= 0 ? 'positive' : 'negative');
+        var carryEl = document.getElementById('mg-m-totalcarry');
+        carryEl.textContent = fmtBRL(totalCarry) + (totalCarry >= 0 ? ' (crédito)' : ' (débito)');
+        carryEl.className = 'val ' + (totalCarry >= 0 ? 'positive' : 'negative');
+    }
+
     document.getElementById('mg-m-gain').textContent = maxGain > 1e7 ? '∞' : fmtBRL(maxGain);
     document.getElementById('mg-m-loss').textContent =
         maxLoss < -1e7 ? '-∞' : (maxLoss < 0 ? '-' : '') + fmtBRL(maxLoss);
@@ -1417,7 +1505,12 @@ function mgColetaLinhasParaPayload() {
         var ivEl = tr.querySelector('.leg-iv');
         linhas.push({
             origem:     tr.dataset.origem || 'nova',
-            legId:      tr.dataset.legId ? parseInt(tr.dataset.legId, 10) : null,
+            // legId é numérico para StructuredLeg (Operações Estruturadas) ou
+            // as strings 'long'/'short' para OptionSpread (Travas, que não
+            // têm um id de perna real) — parseInt('long') vira NaN (falsy) e
+            // descartaria a linha nos filtros, então preserva a string quando
+            // não é um número puro.
+            legId:      tr.dataset.legId ? (/^\d+$/.test(tr.dataset.legId) ? parseInt(tr.dataset.legId, 10) : tr.dataset.legId) : null,
             type:       tr.querySelector('.leg-type').value,
             side:       tr.querySelector('.leg-side').value,
             qty:        parseInt(tr.querySelector('.leg-qty').value, 10) || 0,
@@ -1478,6 +1571,22 @@ window.mgNova = function () {
     document.getElementById('mg-spot-chart').style.display = 'none';
     CADEIA = null;
     mgRecalc();
+};
+
+// ── Trocar de estrutura/trava a manejar ─────────────────────────────
+// Recarrega a página com ?est=<id> ou ?spread=<id> — mais simples e
+// confiável que remontar tudo via fetch, já que a rota /manejo-grafico
+// já sabe ler qualquer um dos dois e injetar as pernas certas.
+window.mgAbreEstruturaModal = function () {
+    document.getElementById('mg-estrutura-modal').style.display = 'flex';
+};
+window.mgEscolheEstrutura = function (tipo, id) {
+    if (document.querySelectorAll('#mg-body tr.leg-row').length
+        && !confirm('Trocar de estrutura vai substituir os braços já preenchidos na tela. Continuar?')) {
+        return;
+    }
+    var param = tipo === 'spread' ? 'spread' : 'est';
+    window.location.href = '/manejo-grafico?' + param + '=' + encodeURIComponent(id);
 };
 
 window.mgCarregarModal = function () {
@@ -1654,23 +1763,32 @@ function mgAplicaPendencias() {
 
 // ── Salvar em produção (POST /roll_estruturada/<id>) ────────────────
 window.mgSalvarProducao = function () {
-    if (!MG_OP_ID) {
-        alert('Esta tela não está associada a nenhuma operação estruturada — abra pelo botão 📈 na listagem de Operações Estruturadas (página Opções).');
+    if (!MG_OP_ID && !MG_SPREAD_ID) {
+        alert('Esta tela não está associada a nenhuma operação real — abra pelo botão 📈 na listagem de Operações Estruturadas/Travas (página Opções), ou pelo botão "📋 Abrir estrutura" acima.');
         return;
     }
     var linhas = mgColetaLinhasParaPayload();
+    var bracosNovos = linhas.filter(function (l) {
+        return l.origem === 'nova' && (l.ticker || (l.type === 'STOCK' && l.premium > 0));
+    });
+    if (MG_SPREAD_ID && bracosNovos.length) {
+        alert('Uma trava sempre tem exatamente 2 pernas (compra e venda) — não é possível incluir um braço novo. '
+            + 'Remova o(s) braço(s) novo(s) ou feche/substitua uma das duas pernas existentes (🔒).');
+        return;
+    }
     var mexidas = linhas.filter(function (l) {
-        return (l.origem === 'estrutura' && l.fechada) || (l.origem === 'nova' && (l.ticker || (l.type === 'STOCK' && l.premium > 0)));
+        return (l.origem === 'estrutura' && l.fechada) || bracosNovos.indexOf(l) >= 0;
     });
     if (!mexidas.length) {
         alert('Nenhum braço foi fechado ou incluído — não há manejo para gravar.');
         return;
     }
-    if (!confirm('Gravar este manejo na operação estruturada real? Isso encerra os braços fechados e cria os braços novos na carteira.')) return;
+    if (!confirm('Gravar este manejo na operação real? Isso encerra os braços fechados e' +
+        (MG_SPREAD_ID ? ' atualiza a trava.' : ' cria os braços novos na carteira.'))) return;
 
     var form = document.createElement('form');
     form.method = 'POST';
-    form.action = '/roll_estruturada/' + MG_OP_ID;
+    form.action = MG_SPREAD_ID ? ('/roll_spread/' + MG_SPREAD_ID) : ('/roll_estruturada/' + MG_OP_ID);
 
     function addField(name, value) {
         var inp = document.createElement('input');

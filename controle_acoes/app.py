@@ -3288,13 +3288,32 @@ def manejo_grafico():
     """Manejo de operação estruturada com a interface de seleção do Simulador
     (cascata vencimento→strike→prêmio + payoff), em vez do formulário clássico
     de /manejo-opcoes. Carrega as pernas reais da StructuredOp quando vem de
-    /opcoes com ?est=<id>."""
+    /opcoes com ?est=<id>, ou de uma trava (OptionSpread) com ?spread=<id>."""
     est_id = request.args.get('est', type=int)
+    spread_id = request.args.get('spread', type=int)
     op = None
+    sp = None
+    roll_adjustment = 0.0
     if est_id:
         op = StructuredOp.query.filter_by(id=est_id, user_id=current_user.id, status='OPEN').first()
+        if op:
+            roll_adjustment, _ = _estruturada_roll_adjustment(op)
+    elif spread_id:
+        sp = OptionSpread.query.filter_by(id=spread_id, user_id=current_user.id).first()
+        if sp:
+            roll_adjustment, _ = _spread_roll_adjustment(sp)
+
+    # Estruturas abertas do usuário, para o seletor dentro da própria tela —
+    # sem precisar voltar a /opcoes para trocar de operação em manejo.
+    estruturas_abertas = StructuredOp.query.filter_by(
+        user_id=current_user.id, status='OPEN').order_by(StructuredOp.name).all()
+    travas_abertas = OptionSpread.query.filter_by(user_id=current_user.id).order_by(
+        OptionSpread.underlying_asset).all()
+
     ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
-    return render_template('manejo_grafico.html', op=op, selic=_selic(), ranking_vol=ranking_vol)
+    return render_template('manejo_grafico.html', op=op, sp=sp, roll_adjustment=roll_adjustment,
+                           estruturas_abertas=estruturas_abertas, travas_abertas=travas_abertas,
+                           selic=_selic(), ranking_vol=ranking_vol)
 
 
 @app.route('/api/rolagem-opcoes/list')
@@ -12578,7 +12597,20 @@ def api_payoff_leg_current_price():
 @app.route('/roll_spread/<int:id>', methods=['POST'])
 @login_required
 def roll_spread(id):
-    """Rola trava (strike ou tempo). Atualiza ambas as pernas."""
+    """Rola trava (strike ou tempo). Atualiza ambas as pernas.
+
+    Aceita dois formatos de formulário:
+    - Clássico (tela de Rolagem): new_long_*/new_short_*/close_long_price/
+      close_short_price, sempre as 2 pernas juntas.
+    - Manejo Gráfico: leg_id[]/leg_drop[]/leg_close_price[]/new_leg_*[] —
+      o mesmo contrato de /roll_estruturada, com leg_id 'long'/'short' (a
+      trava não tem StructuredLeg.id real). Convertido para o formato
+      clássico antes de gravar, para manter _spread_roll_adjustment e o
+      histórico funcionando sem mudança de schema. Como a trava só tem 2
+      pernas fixas, não há onde guardar um braço extra — 'new_leg_*' sem
+      leg_id correspondente é REJEITADO aqui (diferente de /roll_estruturada,
+      que aceita braço novo puro).
+    """
     sp = OptionSpread.query.get_or_404(id)
     if sp.user_id != current_user.id:
         return {'error': 'Sem permissão'}, 403
@@ -12587,19 +12619,87 @@ def roll_spread(id):
     roll_date = request.form.get('roll_date', date.today().isoformat())
     notes     = request.form.get('notes', '')
 
-    # Perna long (comprada)
-    new_long_ticker  = request.form.get('new_long_ticker', '').upper().strip()
-    new_long_strike  = request.form.get('new_long_strike', '').replace(',', '.')
-    new_long_price   = request.form.get('new_long_price',  '').replace(',', '.')
-    close_long_price = request.form.get('close_long_price','').replace(',', '.')
+    leg_ids_mg = request.form.getlist('leg_id')
+    if leg_ids_mg:
+        # Formato do Manejo Gráfico — rejeita braço novo puro (sem espaço
+        # numa trava de 2 pernas fixas) antes de processar qualquer coisa.
+        if request.form.getlist('new_leg_ticker'):
+            flash('Trava não suporta incluir um braço novo — ela sempre tem exatamente 2 pernas '
+                  '(compra e venda). Feche/substitua uma das duas pernas existentes em vez de adicionar uma terceira.', 'danger')
+            next_url = request.form.get('next', '')
+            return redirect(next_url if next_url.startswith('/') else url_for('opcoes'))
 
-    # Perna short (vendida)
-    new_short_ticker  = request.form.get('new_short_ticker', '').upper().strip()
-    new_short_strike  = request.form.get('new_short_strike', '').replace(',', '.')
-    new_short_price   = request.form.get('new_short_price',  '').replace(',', '.')
-    close_short_price = request.form.get('close_short_price','').replace(',', '.')
+        drop_ids_mg = set(request.form.getlist('leg_drop'))
+        close_prices_mg = request.form.getlist('leg_close_price')
+        new_tickers_mg  = request.form.getlist('leg_new_ticker')
+        new_strikes_mg  = request.form.getlist('leg_new_strike')
+        new_premiums_mg = request.form.getlist('leg_new_premium')
+        new_exps_mg     = request.form.getlist('leg_new_exp')
 
-    new_exp = request.form.get('new_exp', '')
+        by_leg = {}
+        for i, lid in enumerate(leg_ids_mg):
+            by_leg[lid] = {
+                'close': close_prices_mg[i] if i < len(close_prices_mg) else '',
+                'dropped': lid in drop_ids_mg,
+                'new_ticker': new_tickers_mg[i] if i < len(new_tickers_mg) else '',
+                'new_strike': new_strikes_mg[i] if i < len(new_strikes_mg) else '',
+                'new_premium': new_premiums_mg[i] if i < len(new_premiums_mg) else '',
+                'new_exp': new_exps_mg[i] if i < len(new_exps_mg) else '',
+            }
+        long_data  = by_leg.get('long', {})
+        short_data = by_leg.get('short', {})
+
+        # Fechamento parcial (leg_drop_qty) não se aplica a trava — ela não
+        # tem um conceito de "quantidade restante" por perna separada da
+        # operação inteira. Se o usuário tentou, avisa e trata como total.
+        if request.form.getlist('leg_drop_qty'):
+            flash('Fechamento parcial não é suportado em travas — tratado como fechamento total da perna.', 'warning')
+
+        # A perna do Manejo Gráfico "mexida de fato" é a que foi fechada
+        # (drop) ou trocou de ticker/strike/prêmio (substituição) — uma
+        # perna "mantida" sempre reenvia seus PRÓPRIOS dados originais como
+        # leg_new_* (ver comentário em mgSalvarProducao no template), então
+        # comparar contra sp.leg_*_price identifica se algo mudou de fato.
+        # Sem essa checagem, o close_price de uma perna intocada cairia no
+        # fallback sp.leg_*_current (cotação de MERCADO) e geraria
+        # lucro/prejuízo fictício numa perna que o usuário nunca tocou.
+        def _mudou(data, cur_ticker, cur_strike, cur_price):
+            if not data or data.get('dropped'):
+                return True
+            try:
+                return (data.get('new_ticker', '').upper().strip() not in ('', cur_ticker.upper())
+                        or (data.get('new_strike') and abs(float(data['new_strike'].replace(',', '.')) - cur_strike) > 0.001)
+                        or (data.get('new_premium') and abs(float(data['new_premium'].replace(',', '.')) - cur_price) > 0.001))
+            except (TypeError, ValueError):
+                return True
+        long_mudou  = _mudou(long_data, sp.leg_long_ticker, sp.leg_long_strike, sp.leg_long_price)
+        short_mudou = _mudou(short_data, sp.leg_short_ticker, sp.leg_short_strike, sp.leg_short_price)
+
+        close_long_price  = long_data.get('close', '') if long_mudou else str(sp.leg_long_price)
+        new_long_ticker   = ('' if long_data.get('dropped') else long_data.get('new_ticker', '')).upper().strip()
+        new_long_strike   = long_data.get('new_strike', '')
+        new_long_price    = long_data.get('new_premium', '')
+        close_short_price = short_data.get('close', '') if short_mudou else str(sp.leg_short_price)
+        new_short_ticker  = ('' if short_data.get('dropped') else short_data.get('new_ticker', '')).upper().strip()
+        new_short_strike  = short_data.get('new_strike', '')
+        new_short_price   = short_data.get('new_premium', '')
+        # A trava sempre tem as 2 pernas no mesmo vencimento — pega de
+        # qualquer uma das linhas que trouxer o campo preenchido.
+        new_exp = long_data.get('new_exp') or short_data.get('new_exp') or ''
+    else:
+        # Perna long (comprada)
+        new_long_ticker  = request.form.get('new_long_ticker', '').upper().strip()
+        new_long_strike  = request.form.get('new_long_strike', '').replace(',', '.')
+        new_long_price   = request.form.get('new_long_price',  '').replace(',', '.')
+        close_long_price = request.form.get('close_long_price','').replace(',', '.')
+
+        # Perna short (vendida)
+        new_short_ticker  = request.form.get('new_short_ticker', '').upper().strip()
+        new_short_strike  = request.form.get('new_short_strike', '').replace(',', '.')
+        new_short_price   = request.form.get('new_short_price',  '').replace(',', '.')
+        close_short_price = request.form.get('close_short_price','').replace(',', '.')
+
+        new_exp = request.form.get('new_exp', '')
 
     try:
         cl_long  = float(close_long_price)  if close_long_price  else sp.leg_long_current

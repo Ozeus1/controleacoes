@@ -3273,6 +3273,22 @@ def rolagem_opcoes():
     return render_template('rolagem_opcoes.html', ranking_vol=ranking_vol, manejo_mode=False)
 
 
+@app.route('/busca-rolagem-automatica')
+@login_required
+def busca_rolagem_automatica():
+    """Busca automática de alternativas de rolagem para 1 ou mais posições."""
+    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    # Posições abertas do usuário, para o seletor "usar posição existente"
+    # (mesmo padrão de manejo_grafico()).
+    opcoes_abertas = Option.query.filter_by(user_id=current_user.id).order_by(Option.ticker).all()
+    put_sales_abertas = PutSale.query.filter_by(user_id=current_user.id).order_by(PutSale.ticker).all()
+    estruturas_abertas = StructuredOp.query.filter_by(user_id=current_user.id, status='OPEN').order_by(StructuredOp.name).all()
+    travas_abertas = OptionSpread.query.filter_by(user_id=current_user.id).order_by(OptionSpread.underlying_asset).all()
+    return render_template('busca_rolagem_automatica.html', selic=_selic(), ranking_vol=ranking_vol,
+                           opcoes_abertas=opcoes_abertas, put_sales_abertas=put_sales_abertas,
+                           estruturas_abertas=estruturas_abertas, travas_abertas=travas_abertas)
+
+
 @app.route('/manejo-opcoes')
 @login_required
 def manejo_opcoes():
@@ -3384,7 +3400,7 @@ def api_rolagem_save():
 
     underlying = (payload.get('underlying') or data.get('underlying') or '').strip().upper()
     roll_type = (payload.get('roll_type') or data.get('roll_type') or 'TIME').strip().upper()
-    if roll_type not in ('TIME', 'STRIKE', 'TIME_STRIKE', 'MANEJO'):
+    if roll_type not in ('TIME', 'STRIKE', 'TIME_STRIKE', 'MANEJO', 'AUTO'):
         roll_type = 'TIME'
 
     if sim_id:
@@ -3502,6 +3518,419 @@ def _is_monthly_exp(exp_str):
                 break
         day += 1
     return abs((dd - tf).days) <= 2
+
+
+class _BuscaRolagemError(Exception):
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.message = message
+        self.status = status
+
+
+def _busca_cadeia_flat(ticker, user_id):
+    """Cadeia completa de um ticker, lista PLANA (todos vencimentos/strikes,
+    sem cortar 'N ao redor do spot' como /api/cadeia faz para exibição em
+    grade) — usada pelo motor de Busca de Rolagem Automática, que decide o
+    próprio corte de vencimento/strike por perna.
+
+    Reaproveita o mesmo parsing OpLab + preço executável + fallback de IV de
+    api_cadeia (app.py, rota /api/cadeia/<ticker>) — só muda o que é feito
+    com os dados normalizados no final.
+    """
+    ticker = ticker.strip().upper()
+    token = Settings.get_value('oplab_token', user_id=user_id)
+    if not token:
+        raise _BuscaRolagemError('Token OpLab não configurado', 400)
+
+    spot, spot_change = _get_underlying_quote(ticker, user_id)
+
+    try:
+        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=15)
+    except OplabApiError as e:
+        raise _BuscaRolagemError(str(e), 503)
+    except Exception:
+        app.logger.exception('_busca_cadeia_flat error for %s', ticker)
+        raise _BuscaRolagemError('Erro inesperado ao buscar a cadeia de opções.', 500)
+
+    opt_list = data if isinstance(data, list) else (
+        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+    )
+
+    from datetime import date as _date
+
+    _now_cad = now_brt()
+    _market_open = (_now_cad.weekday() < 5 and (10, 0) <= (_now_cad.hour, _now_cad.minute) < (16, 30))
+
+    options = []
+    for o in opt_list:
+        sym = str(o.get('symbol') or o.get('ticker') or '').upper()
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        strike = float(o.get('strike') or 0)
+        close = float(o.get('close') or 0)
+        bid = float(o.get('bid') or 0)
+        ask = float(o.get('ask') or 0)
+        var_pct = float(o.get('variation') or 0)
+        vol_fin = float(o.get('financial_volume') or o.get('volume_financial') or 0)
+        _iv_raw = o.get('implied_volatility') or o.get('iv') or {}
+        _iv_data = _iv_raw if isinstance(_iv_raw, dict) else {'iv': _iv_raw}
+        iv_pct = _iv_data.get('iv') or _iv_data.get('current')
+        due_date = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due_date:
+            due_date = due_date.split('T')[0]
+        if not due_date or strike <= 0 or not sym:
+            continue
+
+        _last_ok = close if close >= 0.05 else None
+        if not _market_open:
+            _b_eff, _b_src = _last_ok, 'último'
+            _a_eff, _a_src = _last_ok, 'último'
+        else:
+            _b_eff, _b_src = (bid, 'bid') if bid >= 0.05 else (_last_ok, 'último')
+            _a_eff, _a_src = (ask, 'ask') if ask >= 0.05 else (_last_ok, 'último')
+            if bid >= 0.05 and ask >= 0.05 and _last_ok:
+                _mid = (bid + ask) / 2
+                if (ask - bid) > max(0.10, 0.25 * _mid):
+                    _b_eff, _b_src = _last_ok, 'último'
+                    _a_eff, _a_src = _last_ok, 'último'
+
+        is_put = 'PUT' in cat or cat == 'P'
+        if iv_pct is None and spot and strike > 0:
+            _prem_iv = _last_ok if _last_ok else ((bid + ask) / 2 if (bid or ask) else 0)
+            if _prem_iv and _prem_iv > 0:
+                try:
+                    _dc = (_date.fromisoformat(due_date) - _date.today()).days
+                except ValueError:
+                    _dc = 0
+                if _dc > 0:
+                    _T = _dc / 365.25
+                    _sigma = _implied_vol(spot, strike, _T, _selic() / 100, _prem_iv, not is_put)
+                    if 0.005 < _sigma < 4.9:
+                        iv_pct = _sigma * 100
+
+        try:
+            is_monthly = _is_monthly_exp(due_date)
+        except ValueError:
+            is_monthly = True
+
+        options.append({
+            'symbol': sym,
+            'kind': 'PUT' if is_put else 'CALL',
+            'strike': round(strike, 2),
+            'exp': due_date,
+            'is_monthly': is_monthly,
+            'close': round(close, 2),
+            'bid': round(bid, 2),
+            'ask': round(ask, 2),
+            'bid_eff': round(_b_eff, 2) if _b_eff else 0,
+            'ask_eff': round(_a_eff, 2) if _a_eff else 0,
+            'mid': round((bid + ask) / 2, 2) if (bid or ask) else 0,
+            'iv': round(float(iv_pct), 2) if iv_pct is not None else None,
+            'var_pct': round(var_pct, 2),
+            'vol_fin': round(vol_fin, 2),
+        })
+
+    return {
+        'ticker': ticker,
+        'spot': spot,
+        'spot_change': spot_change,
+        'market_open': _market_open,
+        'options': sorted(options, key=lambda x: (x['exp'], x['kind'], x['strike'])),
+    }
+
+
+@app.route('/api/busca-rolagem/cadeia/<ticker>')
+@login_required
+def api_busca_rolagem_cadeia(ticker):
+    """Cadeia plana e completa de um ticker, para a Busca de Rolagem Automática."""
+    try:
+        return jsonify(_busca_cadeia_flat(ticker, current_user.id))
+    except _BuscaRolagemError as e:
+        return jsonify({'error': e.message}), e.status
+
+
+def _busca_rolagem_resolve_perna(inp, user_id):
+    """Resolve os dados da perna ATUAL de um item de busca (input do form).
+
+    origem='manual': o próprio ticker é a opção atual — não há registro
+    vinculado (side/qty/avg ficam com valor neutro, pedidos ao usuário na UI
+    quando fizer sentido calcular crédito/débito).
+    origem='posicao': busca o registro real do tipo indicado, já checando
+    posse (user_id). Retorna None se não encontrar/não pertencer ao usuário.
+
+    Retorna dict: {ticker, underlying, side, opt_type, strike, exp, qty,
+    avg_price, origem, tipo, id (do registro, quando houver)}.
+    """
+    origem = inp.get('origem')
+    if origem == 'manual':
+        ticker = (inp.get('ticker') or '').strip().upper()
+        if not ticker:
+            return None
+        return {
+            'ticker': ticker, 'underlying': (inp.get('underlying') or '').strip().upper(),
+            'side': (inp.get('side') or 'SELL').upper(), 'opt_type': None,
+            'strike': 0.0, 'exp': '', 'qty': int(inp.get('qty') or 100),
+            'avg_price': float(inp.get('avg_price') or 0), 'origem': 'manual',
+            'tipo': None, 'id': None,
+        }
+
+    tipo = inp.get('tipo')
+    rid = inp.get('id')
+    if tipo == 'option':
+        o = Option.query.filter_by(id=rid, user_id=user_id).first()
+        if not o:
+            return None
+        side = 'SELL' if o.option_type in ('VENDA_CALL', 'VENDA_PUT') else 'BUY'
+        opt_type = 'PUT' if 'PUT' in o.option_type else 'CALL'
+        return {'ticker': o.ticker, 'underlying': o.underlying_asset, 'side': side,
+                'opt_type': opt_type, 'strike': o.strike_price,
+                'exp': o.expiration_date.isoformat() if o.expiration_date else '',
+                'qty': o.quantity, 'avg_price': o.sale_price,
+                'origem': 'posicao', 'tipo': 'option', 'id': o.id}
+
+    if tipo == 'put_sale':
+        ps = PutSale.query.filter_by(id=rid, user_id=user_id).first()
+        if not ps:
+            return None
+        return {'ticker': ps.ticker, 'underlying': ps.underlying_asset, 'side': 'SELL',
+                'opt_type': 'PUT', 'strike': ps.strike,
+                'exp': ps.expiration_date.isoformat() if ps.expiration_date else '',
+                'qty': ps.quantity, 'avg_price': ps.premium,
+                'origem': 'posicao', 'tipo': 'put_sale', 'id': ps.id}
+
+    if tipo == 'spread':
+        sp = OptionSpread.query.filter_by(id=rid, user_id=user_id).first()
+        if not sp:
+            return None
+        lado = inp.get('lado')  # 'long' | 'short' — a trava tem 2 pernas, escolhe qual rolar
+        is_put = 'PUT' in sp.spread_type
+        if lado == 'long':
+            return {'ticker': sp.leg_long_ticker, 'underlying': sp.underlying_asset, 'side': 'BUY',
+                    'opt_type': 'PUT' if is_put else 'CALL', 'strike': sp.leg_long_strike,
+                    'exp': sp.expiration_date.isoformat() if sp.expiration_date else '',
+                    'qty': sp.quantity, 'avg_price': sp.leg_long_price,
+                    'origem': 'posicao', 'tipo': 'spread', 'id': sp.id, 'lado': 'long'}
+        return {'ticker': sp.leg_short_ticker, 'underlying': sp.underlying_asset, 'side': 'SELL',
+                'opt_type': 'PUT' if is_put else 'CALL', 'strike': sp.leg_short_strike,
+                'exp': sp.expiration_date.isoformat() if sp.expiration_date else '',
+                'qty': sp.quantity, 'avg_price': sp.leg_short_price,
+                'origem': 'posicao', 'tipo': 'spread', 'id': sp.id, 'lado': 'short'}
+
+    if tipo == 'estruturada':
+        leg_id = inp.get('leg_id')
+        leg = StructuredLeg.query.get(leg_id)
+        if not leg or leg.operation.user_id != user_id:
+            return None
+        return {'ticker': leg.ticker, 'underlying': leg.operation.underlying_asset, 'side': leg.side,
+                'opt_type': leg.opt_type, 'strike': leg.strike,
+                'exp': leg.expiration_date.isoformat() if leg.expiration_date else '',
+                'qty': leg.quantity, 'avg_price': leg.entry_price,
+                'origem': 'posicao', 'tipo': 'estruturada', 'id': leg.id, 'op_id': leg.operation.id}
+
+    return None
+
+
+def _busca_rolagem_vencimentos_elegiveis(cadeia_options, incluir_semanais, profundidades, exp_referencia=None):
+    """Lista de datas de vencimento elegíveis pela cadeia, conforme os
+    critérios de mensal/semanal e profundidade (1ª, 2ª, 3ª... à frente).
+
+    profundidades: lista de inteiros 1-based (ex. [1,3] = só o 1º e o 3º
+    vencimento elegível À FRENTE DA REFERÊNCIA, pulando o 2º).
+    exp_referencia: vencimento da perna ATUAL (ISO date) — "atual+1" conta a
+    partir daqui, não a partir de hoje (uma perna já pode estar num
+    vencimento distante de hoje; "atual+1" é sempre o próximo vencimento
+    elegível DEPOIS do vencimento em que a perna já está). Sem referência
+    (perna manual sem vencimento resolvido ainda), cai para hoje.
+    """
+    from datetime import date as _date
+    try:
+        referencia = _date.fromisoformat(exp_referencia) if exp_referencia else _date.today()
+    except ValueError:
+        referencia = _date.today()
+    exps = sorted({o['exp'] for o in cadeia_options})
+    futuros = [e for e in exps if _date.fromisoformat(e) > referencia]
+    if not incluir_semanais:
+        futuros = [e for e in futuros if _is_monthly_exp(e)]
+    # profundidade 1-based: futuros[0] = "atual+1" (o próximo vencimento após o atual)
+    out = []
+    for p in sorted(set(profundidades)):
+        idx = p - 1
+        if 0 <= idx < len(futuros):
+            out.append(futuros[idx])
+    return out
+
+
+def _busca_rolagem_calcula_alternativa(perna, exp, strike, cadeia_by_key):
+    """Monta 1 alternativa de rolagem (perna atual -> vencimento/strike
+    alvo), calculando prêmio de fechamento (perna atual, preço de mercado
+    corrente) e abertura (perna alvo), e o crédito/débito líquido.
+
+    cadeia_by_key: dict {(exp, kind, strike): row} de toda a cadeia do
+    ticker, para lookup O(1).
+    """
+    kind = perna['opt_type']
+    alvo = cadeia_by_key.get((exp, kind, round(strike, 2)))
+    atual = cadeia_by_key.get((perna['exp'], kind, round(perna['strike'], 2)))
+    if not alvo:
+        return None
+
+    side = perna['side']
+    # Fechar a perna atual: vendida recompra (paga ask), comprada vende (recebe bid).
+    if atual:
+        close_price = (atual.get('ask_eff') or atual.get('ask') or atual.get('close') or 0) if side == 'SELL' \
+            else (atual.get('bid_eff') or atual.get('bid') or atual.get('close') or 0)
+    else:
+        # Perna atual não encontrada na cadeia (ex.: vencimento já muito
+        # próximo/sem book) — usa o preço médio de entrada como referência
+        # neutra, mantendo o cálculo executável mesmo sem cotação fresca.
+        close_price = perna['avg_price']
+
+    # Abrir a nova perna no MESMO lado da atual: vendida vende de novo
+    # (recebe bid), comprada compra de novo (paga ask).
+    open_price = (alvo.get('bid_eff') or alvo.get('bid') or alvo.get('close') or 0) if side == 'SELL' \
+        else (alvo.get('ask_eff') or alvo.get('ask') or alvo.get('close') or 0)
+
+    qty = perna['qty']
+    if side == 'SELL':
+        net_roll = open_price - close_price      # crédito adicional se positivo
+    else:
+        net_roll = close_price - open_price      # análogo para perna comprada
+
+    return {
+        'exp': exp, 'strike': round(strike, 2), 'ticker': alvo['symbol'],
+        'close_price': round(close_price, 2), 'open_price': round(open_price, 2),
+        'net_roll_unit': round(net_roll, 4), 'net_roll_total': round(net_roll * qty, 2),
+        'dif_strike': round(strike - perna['strike'], 2),
+        'iv': alvo.get('iv'),
+    }
+
+
+def _busca_rolagem_alternativas(perna, cadeia, criterios):
+    """Gera as alternativas de rolagem de UMA perna, conforme os critérios
+    (vencimentos mensais/semanais, profundidade, modo Tempo/Strike/Tempo+Strike)."""
+    options = cadeia['options']
+    kind = perna['opt_type'] or 'CALL'
+    mesmo_kind = [o for o in options if o['kind'] == kind]
+    cadeia_by_key = {(o['exp'], o['kind'], o['strike']): o for o in options}
+
+    incluir_semanais = criterios.get('vencimentos') == 'mensal_semanal'
+    profundidades = criterios.get('profundidade') or [1]
+    modo = criterios.get('modo') or 'TEMPO'
+
+    vencs = _busca_rolagem_vencimentos_elegiveis(mesmo_kind, incluir_semanais, profundidades, perna['exp'])
+    strikes_por_exp = {}
+    for o in mesmo_kind:
+        strikes_por_exp.setdefault(o['exp'], set()).add(o['strike'])
+
+    alternativas = []
+
+    if modo == 'TEMPO':
+        for exp in vencs:
+            strikes_disp = strikes_por_exp.get(exp) or set()
+            # mesmo strike da perna atual — pega o mais próximo disponível
+            if not strikes_disp:
+                continue
+            alvo_strike = min(strikes_disp, key=lambda s: abs(s - perna['strike']))
+            alt = _busca_rolagem_calcula_alternativa(perna, exp, alvo_strike, cadeia_by_key)
+            if alt:
+                alternativas.append(alt)
+
+    elif modo == 'STRIKE':
+        max_dist = int(criterios.get('strike_max_distancia') or 1)
+        exp_atual = perna['exp'] or (vencs[0] if vencs else None)
+        strikes_disp = sorted(strikes_por_exp.get(exp_atual) or [])
+        if strikes_disp:
+            abaixo = sorted([s for s in strikes_disp if s < perna['strike']], reverse=True)[:max_dist]
+            acima = sorted([s for s in strikes_disp if s > perna['strike']])[:max_dist]
+            for s in sorted(abaixo + acima):
+                alt = _busca_rolagem_calcula_alternativa(perna, exp_atual, s, cadeia_by_key)
+                if alt:
+                    alternativas.append(alt)
+
+    elif modo == 'TEMPO_STRIKE':
+        # Para cada vencimento elegível, acha o strike mais distante (na
+        # direção que aumenta prêmio recebido) cujo crédito/débito ainda
+        # seja >= 0 — "o quanto dá pra subir sem pagar pra rolar".
+        for exp in vencs:
+            strikes_disp = sorted(strikes_por_exp.get(exp) or [])
+            if not strikes_disp:
+                continue
+            # Direção: CALL vendida sobe strike (mais OTM = mais caro de comprar de volta,
+            # mas queremos o MELHOR ainda com crédito >= 0) — testa do mais
+            # próximo ao mais distante na direção favorável e para no último com crédito.
+            is_call = kind == 'CALL'
+            candidatos = [s for s in strikes_disp if (s >= perna['strike'] if is_call else s <= perna['strike'])]
+            candidatos.sort(reverse=not is_call)  # mais próximo do strike atual primeiro
+            melhor = None
+            for s in candidatos:
+                alt = _busca_rolagem_calcula_alternativa(perna, exp, s, cadeia_by_key)
+                if not alt:
+                    continue
+                if alt['net_roll_total'] >= 0:
+                    melhor = alt   # continua tentando ir mais longe (loop já ordenado do mais próx. ao mais distante)
+                else:
+                    break
+            if melhor:
+                alternativas.append(melhor)
+
+    alternativas.sort(key=lambda a: a['net_roll_total'], reverse=True)
+    return alternativas
+
+
+@app.route('/api/busca-rolagem/buscar', methods=['POST'])
+@login_required
+def api_busca_rolagem_buscar():
+    """Motor da Busca de Rolagem Automática: para cada posição de entrada,
+    varre a cadeia do respectivo subjacente e devolve as alternativas
+    viáveis já com o crédito/débito calculado, conforme os critérios."""
+    data = request.get_json(force=True) or {}
+    inputs = data.get('inputs') or []
+    criterios = data.get('criterios') or {}
+    if not inputs:
+        return jsonify({'error': 'Informe ao menos uma posição para buscar.'}), 400
+
+    resultados = []
+    cadeia_cache = {}
+    for inp in inputs:
+        perna = _busca_rolagem_resolve_perna(inp, current_user.id)
+        if not perna:
+            resultados.append({'input': inp, 'error': 'Posição não encontrada ou sem permissão.'})
+            continue
+
+        underlying = perna['underlying']
+        if not underlying:
+            # Ticker manual sem subjacente informado — tenta inferir pela raiz B3.
+            underlying = perna['ticker'][:4]
+
+        if underlying not in cadeia_cache:
+            try:
+                cadeia_cache[underlying] = _busca_cadeia_flat(underlying, current_user.id)
+            except _BuscaRolagemError as e:
+                cadeia_cache[underlying] = {'error': e.message}
+        cadeia = cadeia_cache[underlying]
+        if 'error' in cadeia:
+            resultados.append({'input': inp, 'perna_atual': perna, 'error': cadeia['error']})
+            continue
+
+        # Ticker manual: descobre strike/exp/opt_type reais a partir da cadeia
+        # (o usuário só informou o ticker da opção, não os detalhes).
+        if perna['origem'] == 'manual' and not perna['exp']:
+            achado = next((o for o in cadeia['options'] if o['symbol'] == perna['ticker']), None)
+            if achado:
+                perna['strike'] = achado['strike']
+                perna['exp'] = achado['exp']
+                perna['opt_type'] = achado['kind']
+                if not perna['avg_price']:
+                    perna['avg_price'] = achado.get('close') or 0
+
+        if not perna['opt_type']:
+            resultados.append({'input': inp, 'perna_atual': perna,
+                               'error': 'Não foi possível identificar essa opção na cadeia.'})
+            continue
+
+        alternativas = _busca_rolagem_alternativas(perna, cadeia, criterios)
+        resultados.append({'input': inp, 'perna_atual': perna, 'alternativas': alternativas})
+
+    return jsonify({'resultados': resultados})
 
 
 @app.route('/api/cadeia/<ticker>')

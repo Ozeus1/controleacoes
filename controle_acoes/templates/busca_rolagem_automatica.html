@@ -1,0 +1,717 @@
+{% extends "base.html" %}
+{% block title %}Busca de Rolagem Automática{% endblock %}
+
+{% block extra_scripts %}
+<style>
+.br-hint { color:var(--text-secondary); font-size:.78rem; }
+.br-topbar { display:flex; align-items:center; justify-content:space-between;
+    gap:.7rem; flex-wrap:wrap; margin-bottom:.9rem; }
+.br-topbar-acoes { display:flex; gap:.4rem; flex-wrap:wrap; }
+.br-chk-label { display:flex; align-items:center; gap:.35rem; cursor:pointer;
+    font-size:.85rem; color:var(--text-primary); white-space:nowrap; }
+
+.br-inputs { display:flex; flex-direction:column; gap:.4rem; margin-bottom:.6rem; }
+.br-input-row { display:flex; align-items:center; gap:.6rem; padding:.5rem .7rem;
+    background:var(--hover-bg); border:1px solid var(--border-color); border-radius:6px;
+    font-size:.85rem; flex-wrap:wrap; }
+.br-input-row .tag { padding:.05rem .4rem; border-radius:4px; font-weight:700; font-size:.78rem; }
+.br-input-row .tag-sell { background:rgba(239,68,68,.15); color:var(--danger-color); }
+.br-input-row .tag-buy  { background:rgba(16,185,129,.15); color:var(--success-color); }
+.br-input-row .origem { color:var(--text-secondary); font-size:.76rem; }
+.br-input-row .rm { margin-left:auto; background:none; border:none; color:#f87171;
+    cursor:pointer; font-size:1rem; }
+
+.br-criterios { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+    gap:1rem; margin:.8rem 0; padding:.9rem; background:var(--hover-bg);
+    border:1px solid var(--border-color); border-radius:8px; }
+.br-criterio-grupo { display:flex; flex-direction:column; gap:.4rem; }
+.br-criterio-grupo > label.titulo { font-size:.78rem; font-weight:700; color:var(--text-secondary);
+    text-transform:uppercase; letter-spacing:.02em; margin-bottom:.15rem; }
+.br-modo-tabs { display:flex; gap:.4rem; flex-wrap:wrap; }
+.br-modo-tab { border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-primary);
+    border-radius:6px; padding:.35rem .7rem; cursor:pointer; font-size:.82rem; font-weight:600; }
+.br-modo-tab.active { background:#0ea5e9; border-color:#0ea5e9; color:#fff; }
+
+.br-results { display:flex; flex-direction:column; gap:1rem; margin-top:1rem; }
+.br-result-card { border:1px solid var(--border-color); border-radius:8px; padding:.8rem .9rem;
+    background:var(--hover-bg); }
+.br-result-head { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin-bottom:.5rem; }
+.br-alt-table { width:100%; border-collapse:collapse; font-size:.82rem; }
+.br-alt-table th { color:var(--text-secondary); text-align:right; padding:.3rem .5rem;
+    border-bottom:1px solid var(--border-color); white-space:nowrap; }
+.br-alt-table th:first-child, .br-alt-table td:first-child,
+.br-alt-table th:nth-child(2), .br-alt-table td:nth-child(2) { text-align:left; }
+.br-alt-table td { text-align:right; padding:.3rem .5rem; border-bottom:1px solid rgba(255,255,255,.05);
+    white-space:nowrap; }
+.br-alt-table tr.escolhida td { background:rgba(14,165,233,.12); }
+.br-pick-btn { border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-primary);
+    border-radius:5px; padding:.2rem .55rem; font-size:.78rem; cursor:pointer; }
+.br-pick-btn:hover { border-color:#0ea5e9; background:rgba(14,165,233,.14); }
+.br-pick-btn.escolhida { background:#0ea5e9; border-color:#0ea5e9; color:#fff; font-weight:700; }
+
+.br-linhas { margin-top:1rem; }
+.br-tab { width:100%; border-collapse:collapse; font-size:.85rem; }
+.br-tab th { padding:.4rem .5rem; text-align:center; white-space:nowrap;
+    background:var(--card-bg); color:var(--text-secondary); font-weight:600;
+    border-bottom:1px solid var(--border-color); font-size:.76rem;
+    text-transform:uppercase; letter-spacing:.02em; }
+.br-tab td { padding:.35rem .4rem; text-align:center; white-space:nowrap;
+    border-bottom:1px solid rgba(255,255,255,.04); }
+.br-tab input { background:var(--card-bg); color:var(--text-primary); border:1px solid var(--border-color);
+    border-radius:4px; padding:.25rem .4rem; font-size:.85rem; width:100%; }
+.br-tab .rm { background:none; border:none; color:#f87171; cursor:pointer; font-size:1rem; }
+.br-tot td { font-weight:700; border-top:1px solid var(--border-color); }
+
+.br-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+    gap:.55rem; margin-top:.9rem; }
+.br-met { background:var(--hover-bg); border:1px solid var(--border-color); border-radius:8px; padding:.55rem .8rem; }
+.br-met .lbl { font-size:.72rem; color:var(--text-secondary); display:block; }
+.br-met .val { font-size:1rem; font-weight:700; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="padding:1.1rem 1.3rem;">
+
+  <div class="br-topbar">
+    <h2 style="margin:0;">🔍 Busca de Rolagem Automática</h2>
+    <div class="br-topbar-acoes">
+      <button class="btn btn-secondary btn-sm" onclick="brAbrirModal()">📂 Abrir simulação</button>
+      <button class="btn btn-primary btn-sm" onclick="brSalvar()">💾 Salvar simulação</button>
+      <button class="btn btn-secondary btn-sm" onclick="brAtualizarCotacoes()">🔄 Atualizar cotações</button>
+      <button class="btn btn-secondary btn-sm" onclick="brNova()">＋ Nova</button>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:.25rem;margin-bottom:.8rem;max-width:420px;">
+    <label class="br-hint">Nome da simulação</label>
+    <input type="text" id="br-nome" placeholder="Ex.: Rolagem outubro — carteira toda"
+           style="background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
+                  border-radius:5px;padding:.35rem .55rem;font-size:.85rem;">
+  </div>
+
+  <!-- Entrada de posições ------------------------------------------- -->
+  <h3 style="margin:0 0 .4rem;font-size:1.02rem;">Posições a rolar</h3>
+  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.6rem;">
+    <input type="text" id="br-ticker-manual" placeholder="Ticker da opção (ex.: PETRJ305)" maxlength="12"
+           style="background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
+                  border-radius:5px;padding:.35rem .55rem;font-size:.85rem;width:210px;text-transform:uppercase;">
+    <button class="btn btn-secondary btn-sm" onclick="brAdicionaManual()">+ Adicionar por ticker</button>
+    <button class="btn btn-secondary btn-sm" onclick="brAbrePosicaoModal()">+ Adicionar posição existente</button>
+  </div>
+  <div id="br-inputs" class="br-inputs">
+    <p class="br-hint" id="br-inputs-vazio">Nenhuma posição adicionada ainda.</p>
+  </div>
+
+  <!-- Critérios de busca ---------------------------------------------- -->
+  <h3 style="margin:1rem 0 .4rem;font-size:1.02rem;">Critérios de busca</h3>
+  <div class="br-criterios">
+    <div class="br-criterio-grupo">
+      <label class="titulo">Vencimentos</label>
+      <label class="br-chk-label"><input type="radio" name="br-venc" value="mensal" checked> Mensais</label>
+      <label class="br-chk-label"><input type="radio" name="br-venc" value="mensal_semanal"> Mensais + semanais</label>
+    </div>
+    <div class="br-criterio-grupo">
+      <label class="titulo">Quantos vencimentos à frente (marque 1 ou mais)</label>
+      <label class="br-chk-label"><input type="checkbox" class="br-prof" value="1" checked> Atual + 1</label>
+      <label class="br-chk-label"><input type="checkbox" class="br-prof" value="2"> Atual + 2</label>
+      <label class="br-chk-label"><input type="checkbox" class="br-prof" value="3"> Atual + 3</label>
+    </div>
+    <div class="br-criterio-grupo">
+      <label class="titulo">Tipo de rolagem</label>
+      <div class="br-modo-tabs">
+        <button type="button" class="br-modo-tab active" data-modo="TEMPO" onclick="brModoMudou(this)">Tempo</button>
+        <button type="button" class="br-modo-tab" data-modo="STRIKE" onclick="brModoMudou(this)">Strike</button>
+        <button type="button" class="br-modo-tab" data-modo="TEMPO_STRIKE" onclick="brModoMudou(this)">Tempo + Strike</button>
+      </div>
+      <div id="br-strike-dist-wrap" style="display:none;margin-top:.3rem;">
+        <label class="br-hint">Até quantos strikes de distância</label>
+        <select id="br-strike-dist" style="background:var(--card-bg);color:var(--text-primary);
+                border:1px solid var(--border-color);border-radius:5px;padding:.3rem .5rem;font-size:.85rem;">
+          <option value="1">1</option><option value="2">2</option>
+          <option value="3">3</option><option value="4">4</option>
+        </select>
+      </div>
+      <p class="br-hint" id="br-modo-explica" style="margin:.3rem 0 0;">
+        Mantém o strike da perna atual, buscando o mesmo strike nos próximos vencimentos elegíveis.
+      </p>
+    </div>
+  </div>
+  <button class="btn btn-primary btn-sm" onclick="brBuscar()">🔎 Buscar alternativas</button>
+  <span id="br-busca-status" class="br-hint" style="margin-left:.6rem;"></span>
+
+  <!-- Resultados -------------------------------------------------------- -->
+  <div id="br-results" class="br-results"></div>
+
+  <!-- Linhas confirmadas -------------------------------------------------- -->
+  <div class="br-linhas">
+    <h3 style="margin:0 0 .5rem;font-size:1.02rem;">Linhas confirmadas</h3>
+    <p class="br-hint" style="margin:0 0 .5rem;">
+      Escolha uma alternativa em cada posição acima para adicioná-la aqui. Os valores de fechamento/abertura
+      podem ser ajustados antes de salvar ou gravar em produção.
+    </p>
+    <div style="overflow-x:auto;">
+      <table id="br-tab" class="br-tab no-datatable">
+        <thead>
+          <tr>
+            <th>Origem</th><th>Atual</th><th>C/V</th><th>Fechamento</th>
+            <th>Nova opção</th><th>Abertura</th><th>Qtd</th><th>Crédito/débito</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="br-linhas-body"></tbody>
+        <tfoot>
+          <tr class="br-tot">
+            <td colspan="7" style="text-align:right;">Total</td>
+            <td id="br-tot-net">—</td><td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  <!-- Resumo financeiro ---------------------------------------------- -->
+  <div class="br-metrics">
+    <div class="br-met"><span class="lbl">Total crédito/débito</span><span class="val" id="br-m-total">—</span></div>
+    <div class="br-met"><span class="lbl">Fechamento das pernas atuais</span><span class="val" id="br-m-close">—</span></div>
+    <div class="br-met"><span class="lbl">Abertura das pernas novas</span><span class="val" id="br-m-open">—</span></div>
+    <div class="br-met"><span class="lbl">Linhas</span><span class="val" id="br-m-lines">0</span></div>
+  </div>
+
+  <div style="margin-top:1rem;">
+    <button class="btn btn-warning btn-sm" onclick="brSalvarProducao()"
+            title="Grava de fato cada linha confirmada na posição real correspondente">🚀 Salvar em produção</button>
+  </div>
+</div>
+
+<!-- ── Modal: adicionar posição existente ──────────────────────────── -->
+<div id="br-posicao-modal" style="display:none;position:fixed;inset:0;z-index:19050;
+     background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,640px);
+              max-height:88vh;display:flex;flex-direction:column;border:1px solid var(--border-color);">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:.8rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <h3 style="margin:0;font-size:1rem;">Adicionar posição existente</h3>
+      <button onclick="document.getElementById('br-posicao-modal').style.display='none'"
+              style="background:none;border:none;font-size:1.4rem;
+                     color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:.6rem 1.1rem 1rem;">
+      <div style="font-size:.8rem;font-weight:700;color:var(--text-secondary);margin:.6rem 0 .3rem;">Operações Estruturadas</div>
+      {% if estruturas_abertas %}
+        {% for e in estruturas_abertas %}
+          {% for leg in e.legs %}
+          {% if leg.opt_type != 'STOCK' %}
+          <div style="display:flex;align-items:center;gap:.6rem;padding:.4rem .2rem;border-bottom:1px solid rgba(255,255,255,.05);">
+            <div style="flex:1;min-width:0;">
+              <div style="font-weight:600;font-size:.85rem;">{{ leg.ticker }} <span class="br-hint">({{ e.name }})</span></div>
+              <div class="br-hint">{{ leg.side }} {{ leg.opt_type }} K={{ '%.2f'|format(leg.strike or 0)|replace('.', ',') }} · {{ leg.quantity }}x</div>
+            </div>
+            <button class="btn btn-primary btn-sm" onclick="brAdicionaPosicao('estruturada', {{ leg.id }}, {{ leg.ticker|tojson }}, {{ leg.side|tojson }}, {{ leg.opt_type|tojson }}, {{ leg.strike or 0 }}, {{ (leg.expiration_date.isoformat() if leg.expiration_date else '')|tojson }}, {{ leg.quantity or 0 }}, {{ leg.entry_price or 0 }}, {{ e.underlying_asset|tojson }})">Adicionar</button>
+          </div>
+          {% endif %}
+          {% endfor %}
+        {% endfor %}
+      {% else %}
+      <p class="br-hint" style="padding:.4rem 0;">Nenhuma operação estruturada aberta.</p>
+      {% endif %}
+
+      <div style="font-size:.8rem;font-weight:700;color:var(--text-secondary);margin:1rem 0 .3rem;">Travas</div>
+      {% if travas_abertas %}
+        {% for s in travas_abertas %}
+        <div style="display:flex;align-items:center;gap:.6rem;padding:.4rem .2rem;border-bottom:1px solid rgba(255,255,255,.05);">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:.85rem;">{{ s.leg_long_ticker }} / {{ s.leg_short_ticker }}</div>
+            <div class="br-hint">{{ s.spread_type|replace('_',' ')|title }} · {{ s.underlying_asset }}</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="brAdicionaPosicao('spread', {{ s.id }}, {{ s.leg_long_ticker|tojson }}, 'BUY', {{ ('PUT' if 'PUT' in s.spread_type else 'CALL')|tojson }}, {{ s.leg_long_strike or 0 }}, {{ (s.expiration_date.isoformat() if s.expiration_date else '')|tojson }}, {{ s.quantity or 0 }}, {{ s.leg_long_price or 0 }}, {{ s.underlying_asset|tojson }}, 'long', {{ s.leg_short_ticker|tojson }}, {{ s.leg_short_strike or 0 }}, {{ s.leg_short_price or 0 }})">+ Long</button>
+          <button class="btn btn-primary btn-sm" onclick="brAdicionaPosicao('spread', {{ s.id }}, {{ s.leg_short_ticker|tojson }}, 'SELL', {{ ('PUT' if 'PUT' in s.spread_type else 'CALL')|tojson }}, {{ s.leg_short_strike or 0 }}, {{ (s.expiration_date.isoformat() if s.expiration_date else '')|tojson }}, {{ s.quantity or 0 }}, {{ s.leg_short_price or 0 }}, {{ s.underlying_asset|tojson }}, 'short', {{ s.leg_long_ticker|tojson }}, {{ s.leg_long_strike or 0 }}, {{ s.leg_long_price or 0 }})">+ Short</button>
+        </div>
+        {% endfor %}
+      {% else %}
+      <p class="br-hint" style="padding:.4rem 0;">Nenhuma trava aberta.</p>
+      {% endif %}
+
+      <div style="font-size:.8rem;font-weight:700;color:var(--text-secondary);margin:1rem 0 .3rem;">Opções avulsas</div>
+      {% if opcoes_abertas %}
+        {% for o in opcoes_abertas %}
+        <div style="display:flex;align-items:center;gap:.6rem;padding:.4rem .2rem;border-bottom:1px solid rgba(255,255,255,.05);">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:.85rem;">{{ o.ticker }}</div>
+            <div class="br-hint">{{ o.option_type }} K={{ '%.2f'|format(o.strike_price or 0)|replace('.', ',') }} · {{ o.quantity }}x</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="brAdicionaPosicao('option', {{ o.id }}, {{ o.ticker|tojson }}, {{ ('SELL' if 'VENDA' in o.option_type else 'BUY')|tojson }}, {{ ('PUT' if 'PUT' in o.option_type else 'CALL')|tojson }}, {{ o.strike_price or 0 }}, {{ (o.expiration_date.isoformat() if o.expiration_date else '')|tojson }}, {{ o.quantity or 0 }}, {{ o.sale_price or 0 }}, {{ o.underlying_asset|tojson }})">Adicionar</button>
+        </div>
+        {% endfor %}
+      {% else %}
+      <p class="br-hint" style="padding:.4rem 0;">Nenhuma opção avulsa aberta.</p>
+      {% endif %}
+
+      <div style="font-size:.8rem;font-weight:700;color:var(--text-secondary);margin:1rem 0 .3rem;">Vendas de Put</div>
+      {% if put_sales_abertas %}
+        {% for p in put_sales_abertas %}
+        <div style="display:flex;align-items:center;gap:.6rem;padding:.4rem .2rem;border-bottom:1px solid rgba(255,255,255,.05);">
+          <div style="flex:1;min-width:0;">
+            <div style="font-weight:600;font-size:.85rem;">{{ p.ticker }}</div>
+            <div class="br-hint">V PUT K={{ '%.2f'|format(p.strike or 0)|replace('.', ',') }} · {{ p.quantity }}x</div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="brAdicionaPosicao('put_sale', {{ p.id }}, {{ p.ticker|tojson }}, 'SELL', 'PUT', {{ p.strike or 0 }}, {{ (p.expiration_date.isoformat() if p.expiration_date else '')|tojson }}, {{ p.quantity or 0 }}, {{ p.premium or 0 }}, {{ p.underlying_asset|tojson }})">Adicionar</button>
+        </div>
+        {% endfor %}
+      {% else %}
+      <p class="br-hint" style="padding:.4rem 0;">Nenhuma venda de put aberta.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: abrir simulação salva ────────────────────────────────── -->
+<div id="br-open-modal" style="display:none;position:fixed;inset:0;z-index:19000;
+     background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,560px);
+              max-height:88vh;display:flex;flex-direction:column;border:1px solid var(--border-color);">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:.8rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <h3 style="margin:0;font-size:1rem;">Buscas salvas</h3>
+      <button onclick="document.getElementById('br-open-modal').style.display='none'"
+              style="background:none;border:none;font-size:1.4rem;
+                     color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:.6rem 1.1rem 1rem;" id="br-open-modal-lista">
+      <p class="br-hint" style="padding:1rem 0;">⏳ carregando…</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+var SELIC_RATE = {{ selic }};
+var BR_SIM_ID = null;
+var BR_INPUTS = [];       // {origem, tipo, id, ticker, side, opt_type, strike, exp, qty, avg_price, underlying, lado?}
+var BR_RESULTADOS = [];   // último resultado de /api/busca-rolagem/buscar
+var BR_LINHAS = [];       // linhas confirmadas (escolhidas dentre as alternativas)
+
+function parseVal(s) {
+    return parseFloat((s || '0').toString().replace(/\./g, '').replace(',', '.')) || 0;
+}
+function fmtNum(v, dec) {
+    dec = dec == null ? 2 : dec;
+    return Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+function fmtBRL(v) { return 'R$ ' + fmtNum(Math.abs(v || 0)); }
+function fmtBRLSigned(v) { return (v < 0 ? '-' : '+') + fmtBRL(v); }
+function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+function dataBR(iso) {
+    var p = (iso || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '—');
+}
+
+// ── Entrada de posições ──────────────────────────────────────────────
+window.brAdicionaManual = function () {
+    var t = (document.getElementById('br-ticker-manual').value || '').trim().toUpperCase();
+    if (!t) return;
+    BR_INPUTS.push({ origem: 'manual', ticker: t, side: 'SELL', opt_type: null,
+                     strike: 0, exp: '', qty: 100, avg_price: 0, underlying: '' });
+    document.getElementById('br-ticker-manual').value = '';
+    brRenderInputs();
+};
+
+window.brAbrePosicaoModal = function () {
+    document.getElementById('br-posicao-modal').style.display = 'flex';
+};
+
+window.brAdicionaPosicao = function (tipo, id, ticker, side, optType, strike, exp, qty, avgPrice, underlying,
+                                     lado, irmaTicker, irmaStrike, irmaPremium) {
+    var item = { origem: 'posicao', tipo: tipo, id: id, ticker: ticker, side: side, opt_type: optType,
+                 strike: strike, exp: exp, qty: qty, avg_price: avgPrice, underlying: underlying };
+    if (lado) {
+        item.lado = lado;
+        // Dados da OUTRA perna da trava — necessários na hora de gravar em
+        // produção: /roll_spread precisa reenviar a perna não mexida com
+        // seus próprios dados (senão o backend usaria a cotação de mercado
+        // como fechamento fictício dela). Ver brMontaFormData.
+        item.irma_ticker = irmaTicker; item.irma_strike = irmaStrike; item.irma_premium = irmaPremium;
+    }
+    BR_INPUTS.push(item);
+    document.getElementById('br-posicao-modal').style.display = 'none';
+    brRenderInputs();
+};
+
+window.brRemoveInput = function (idx) {
+    BR_INPUTS.splice(idx, 1);
+    brRenderInputs();
+};
+
+function brRenderInputs() {
+    var wrap = document.getElementById('br-inputs');
+    var vazio = document.getElementById('br-inputs-vazio');
+    if (!BR_INPUTS.length) {
+        wrap.innerHTML = '';
+        wrap.appendChild(vazio);
+        return;
+    }
+    wrap.innerHTML = BR_INPUTS.map(function (inp, idx) {
+        var tagCls = inp.side === 'SELL' ? 'tag-sell' : 'tag-buy';
+        var tagTxt = inp.side === 'SELL' ? 'V' : 'C';
+        var origemTxt = inp.origem === 'manual' ? 'ticker manual'
+            : { option: 'opção avulsa', put_sale: 'venda de put', estruturada: 'estruturada', spread: 'trava (' + (inp.lado || '') + ')' }[inp.tipo] || inp.tipo;
+        var detalhe = inp.opt_type
+            ? (inp.opt_type + (inp.strike ? ' K=' + fmtBRL(inp.strike) : '') + (inp.exp ? ' · ' + dataBR(inp.exp) : ''))
+            : 'detectado na busca';
+        return '<div class="br-input-row">'
+             + '<span class="tag ' + tagCls + '">' + tagTxt + '</span>'
+             + '<strong>' + escHtml(inp.ticker) + '</strong>'
+             + '<span class="br-hint">' + escHtml(detalhe) + '</span>'
+             + '<span class="origem">— ' + escHtml(origemTxt) + '</span>'
+             + '<button class="rm" onclick="brRemoveInput(' + idx + ')" title="Remover">✕</button>'
+             + '</div>';
+    }).join('');
+}
+
+// ── Critérios ─────────────────────────────────────────────────────
+window.brModoMudou = function (btn) {
+    document.querySelectorAll('.br-modo-tab').forEach(function (b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    var modo = btn.dataset.modo;
+    document.getElementById('br-strike-dist-wrap').style.display = modo === 'STRIKE' ? 'block' : 'none';
+    var explicacoes = {
+        TEMPO: 'Mantém o strike da perna atual, buscando o mesmo strike nos próximos vencimentos elegíveis.',
+        STRIKE: 'Mantém o vencimento da perna atual, buscando strikes mais próximos até a distância escolhida.',
+        TEMPO_STRIKE: 'Para cada vencimento elegível, encontra o strike mais distante que ainda pode ser aberto sem pagar para rolar (crédito ≥ 0).'
+    };
+    document.getElementById('br-modo-explica').textContent = explicacoes[modo] || '';
+};
+
+function brCriterios() {
+    var modo = (document.querySelector('.br-modo-tab.active') || {}).dataset.modo || 'TEMPO';
+    var profundidade = Array.prototype.filter.call(document.querySelectorAll('.br-prof'), function (c) { return c.checked; })
+        .map(function (c) { return parseInt(c.value, 10); });
+    return {
+        vencimentos: (document.querySelector('input[name=br-venc]:checked') || {}).value || 'mensal',
+        profundidade: profundidade.length ? profundidade : [1],
+        modo: modo,
+        strike_max_distancia: parseInt(document.getElementById('br-strike-dist').value, 10) || 1,
+    };
+}
+
+// ── Busca ─────────────────────────────────────────────────────────
+window.brBuscar = function () {
+    if (!BR_INPUTS.length) { alert('Adicione ao menos uma posição para buscar.'); return; }
+    var status = document.getElementById('br-busca-status');
+    status.textContent = '⏳ buscando…';
+    fetch('/api/busca-rolagem/buscar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: BR_INPUTS, criterios: brCriterios() })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || res.j.error) { status.textContent = '⚠️ ' + (res.j.error || 'erro na busca'); return; }
+        BR_RESULTADOS = res.j.resultados || [];
+        status.textContent = '✓ busca concluída';
+        brRenderResultados();
+      }).catch(function (e) { status.textContent = '⚠️ falha de rede: ' + e; });
+};
+
+function brRenderResultados() {
+    var wrap = document.getElementById('br-results');
+    if (!BR_RESULTADOS.length) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = BR_RESULTADOS.map(function (res, ri) {
+        var perna = res.perna_atual || {};
+        var head = '<div class="br-result-head"><strong>' + escHtml(perna.ticker || '?') + '</strong>'
+            + '<span class="br-hint">' + (perna.side === 'SELL' ? 'Vendida' : 'Comprada') + ' '
+            + escHtml(perna.opt_type || '') + (perna.strike ? ' K=' + fmtBRL(perna.strike) : '')
+            + (perna.exp ? ' · vence ' + dataBR(perna.exp) : '') + '</span></div>';
+        if (res.error) {
+            return '<div class="br-result-card">' + head + '<p class="br-hint">⚠️ ' + escHtml(res.error) + '</p></div>';
+        }
+        var alts = res.alternativas || [];
+        if (!alts.length) {
+            return '<div class="br-result-card">' + head + '<p class="br-hint">Nenhuma alternativa encontrada com os critérios escolhidos.</p></div>';
+        }
+        var rows = alts.map(function (a, ai) {
+            var jaEscolhida = BR_LINHAS.some(function (l) { return l._ri === ri && l._ai === ai; });
+            return '<tr' + (jaEscolhida ? ' class="escolhida"' : '') + '>'
+                 + '<td>' + dataBR(a.exp) + '</td>'
+                 + '<td>' + escHtml(a.ticker) + '</td>'
+                 + '<td>' + fmtBRL(a.strike) + '</td>'
+                 + '<td>' + (a.dif_strike >= 0 ? '+' : '') + fmtNum(a.dif_strike) + '</td>'
+                 + '<td>' + fmtBRL(a.close_price) + '</td>'
+                 + '<td>' + fmtBRL(a.open_price) + '</td>'
+                 + '<td class="' + (a.net_roll_total >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(a.net_roll_total) + '</td>'
+                 + '<td><button class="br-pick-btn' + (jaEscolhida ? ' escolhida' : '') + '" onclick="brEscolheAlternativa(' + ri + ',' + ai + ')">'
+                 + (jaEscolhida ? '✓ Escolhida' : 'Escolher') + '</button></td></tr>';
+        }).join('');
+        return '<div class="br-result-card">' + head
+             + '<div style="overflow-x:auto;"><table class="br-alt-table"><thead><tr>'
+             + '<th>Vencimento</th><th>Ticker</th><th>Strike</th><th>Dif.</th><th>Fecha</th><th>Abre</th><th>Crédito/déb.</th><th></th>'
+             + '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+    }).join('');
+}
+
+window.brEscolheAlternativa = function (ri, ai) {
+    var res = BR_RESULTADOS[ri];
+    var alt = res.alternativas[ai];
+    var perna = res.perna_atual;
+    // A ordem de BR_RESULTADOS espelha a de BR_INPUTS (o backend processa
+    // `inputs` em ordem e devolve `resultados` na mesma ordem) — usa o
+    // input original (não o perna_atual devolvido pelo backend) para
+    // recuperar os dados extras só existentes no client, como a perna
+    // irmã de uma trava.
+    var inputOriginal = BR_INPUTS[ri] || {};
+    // Remove escolha anterior desta MESMA posição de origem (só 1 alternativa por posição)
+    BR_LINHAS = BR_LINHAS.filter(function (l) { return l._ri !== ri; });
+    BR_LINHAS.push({
+        _ri: ri, _ai: ai,
+        origem: perna.origem, tipo: perna.tipo, id: perna.id, lado: perna.lado, op_id: perna.op_id,
+        current_ticker: perna.ticker, side: perna.side, qty: perna.qty, avg_price: perna.avg_price,
+        current_strike: perna.strike, current_exp: perna.exp,
+        new_ticker: alt.ticker, new_strike: alt.strike, new_exp: alt.exp,
+        close_price: alt.close_price, open_price: alt.open_price,
+        irma_ticker: inputOriginal.irma_ticker, irma_strike: inputOriginal.irma_strike,
+        irma_premium: inputOriginal.irma_premium,
+    });
+    brRenderResultados();
+    brRenderLinhas();
+};
+
+// ── Linhas confirmadas ────────────────────────────────────────────
+function brRenderLinhas() {
+    var body = document.getElementById('br-linhas-body');
+    body.innerHTML = BR_LINHAS.map(function (l, i) {
+        var origemTxt = l.origem === 'manual' ? 'manual'
+            : { option: 'opção', put_sale: 'put', estruturada: 'estrut.', spread: 'trava' }[l.tipo] || l.tipo;
+        return '<tr>'
+            + '<td>' + escHtml(origemTxt) + '</td>'
+            + '<td>' + escHtml(l.current_ticker) + '</td>'
+            + '<td>' + (l.side === 'SELL' ? 'V' : 'C') + '</td>'
+            + '<td><input type="text" class="br-close" data-i="' + i + '" value="' + fmtNum(l.close_price) + '" onchange="brLinhaEditada(' + i + ',\'close_price\',this.value)"></td>'
+            + '<td>' + escHtml(l.new_ticker) + ' <span class="br-hint">' + dataBR(l.new_exp) + ' K=' + fmtBRL(l.new_strike) + '</span></td>'
+            + '<td><input type="text" class="br-open" data-i="' + i + '" value="' + fmtNum(l.open_price) + '" onchange="brLinhaEditada(' + i + ',\'open_price\',this.value)"></td>'
+            + '<td>' + l.qty + '</td>'
+            + '<td class="' + (brLinhaNet(l) >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(brLinhaNet(l)) + '</td>'
+            + '<td><button class="rm" onclick="brRemoveLinha(' + i + ')">✕</button></td></tr>';
+    }).join('');
+    brRecalcResumo();
+}
+
+function brLinhaNet(l) {
+    var sign = l.side === 'SELL' ? 1 : -1;
+    return sign * (l.open_price - l.close_price) * l.qty;
+}
+
+window.brLinhaEditada = function (i, campo, valor) {
+    BR_LINHAS[i][campo] = parseVal(valor);
+    brRenderLinhas();
+};
+
+window.brRemoveLinha = function (i) {
+    BR_LINHAS.splice(i, 1);
+    brRenderLinhas();
+    brRenderResultados();
+};
+
+function brRecalcResumo() {
+    var totClose = 0, totOpen = 0, totNet = 0;
+    BR_LINHAS.forEach(function (l) {
+        var sign = l.side === 'SELL' ? 1 : -1;
+        totClose += -sign * l.close_price * l.qty;
+        totOpen  += sign * l.open_price * l.qty;
+        totNet   += brLinhaNet(l);
+    });
+    document.getElementById('br-tot-net').innerHTML = BR_LINHAS.length
+        ? '<span class="' + (totNet >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(totNet) + '</span>' : '—';
+    document.getElementById('br-m-total').textContent = BR_LINHAS.length ? fmtBRLSigned(totNet) : '—';
+    document.getElementById('br-m-total').className = 'val ' + (totNet >= 0 ? 'positive' : 'negative');
+    document.getElementById('br-m-close').textContent = BR_LINHAS.length ? fmtBRLSigned(totClose) : '—';
+    document.getElementById('br-m-open').textContent = BR_LINHAS.length ? fmtBRLSigned(totOpen) : '—';
+    document.getElementById('br-m-lines').textContent = BR_LINHAS.length;
+}
+
+// ── Atualizar cotações ────────────────────────────────────────────
+window.brAtualizarCotacoes = function () {
+    if (BR_RESULTADOS.length) brBuscar();
+};
+
+// ── Salvar / abrir simulação ──────────────────────────────────────
+window.brSalvar = function () {
+    var nome = (document.getElementById('br-nome').value || '').trim();
+    if (!nome) { alert('Dê um nome à busca antes de salvar.'); return; }
+    var payload = {
+        ui: 'busca_automatica', roll_type: 'AUTO',
+        underlying: (BR_INPUTS[0] || {}).underlying || '',
+        criterios: brCriterios(), inputs: BR_INPUTS, linhas: BR_LINHAS,
+    };
+    fetch('/api/rolagem-opcoes/save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: BR_SIM_ID, name: nome, payload: payload })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || res.j.error) { alert('⚠️ ' + (res.j.error || 'erro ao salvar')); return; }
+        BR_SIM_ID = res.j.id || BR_SIM_ID;
+        alert('✓ Busca salva.');
+      }).catch(function (e) { alert('⚠️ falha de rede: ' + e); });
+};
+
+window.brAbrirModal = function () {
+    document.getElementById('br-open-modal').style.display = 'flex';
+    var lista = document.getElementById('br-open-modal-lista');
+    lista.innerHTML = '<p class="br-hint" style="padding:1rem 0;">⏳ carregando…</p>';
+    fetch('/api/rolagem-opcoes/list?mode=rolagem')
+        .then(function (r) { return r.json(); })
+        .then(function (sims) {
+            var minhas = (sims || []).filter(function (s) { return s.payload && s.payload.ui === 'busca_automatica'; });
+            if (!minhas.length) {
+                lista.innerHTML = '<p class="br-hint" style="padding:1rem 0;">Nenhuma busca salva ainda.</p>';
+                return;
+            }
+            lista.innerHTML = minhas.map(function (s) {
+                return '<div style="display:flex;align-items:center;gap:.6rem;padding:.45rem .2rem;border-bottom:1px solid rgba(255,255,255,.05);">'
+                     + '<div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:.88rem;">' + escHtml(s.name) + '</div>'
+                     + '<div class="br-hint">' + escHtml(s.updated_at || s.created_at) + '</div></div>'
+                     + '<button class="btn btn-primary btn-sm" onclick="brAbrirSim(' + s.id + ')">Abrir</button></div>';
+            }).join('');
+        })
+        .catch(function () { lista.innerHTML = '<p class="br-hint" style="padding:1rem 0;">⚠️ falha ao carregar.</p>'; });
+};
+
+window.brAbrirSim = function (id) {
+    fetch('/api/rolagem-opcoes/list?mode=rolagem')
+        .then(function (r) { return r.json(); })
+        .then(function (sims) {
+            var s = (sims || []).filter(function (x) { return x.id === id; })[0];
+            if (!s || !s.payload || s.payload.ui !== 'busca_automatica') { alert('⚠️ busca não encontrada.'); return; }
+            BR_SIM_ID = s.id;
+            document.getElementById('br-nome').value = s.name || '';
+            BR_INPUTS = s.payload.inputs || [];
+            BR_LINHAS = s.payload.linhas || [];
+            var crit = s.payload.criterios || {};
+            if (crit.vencimentos) {
+                var r = document.querySelector('input[name=br-venc][value="' + crit.vencimentos + '"]');
+                if (r) r.checked = true;
+            }
+            document.querySelectorAll('.br-prof').forEach(function (c) {
+                c.checked = (crit.profundidade || [1]).indexOf(parseInt(c.value, 10)) >= 0;
+            });
+            if (crit.modo) {
+                var tab = document.querySelector('.br-modo-tab[data-modo="' + crit.modo + '"]');
+                if (tab) brModoMudou(tab);
+            }
+            if (crit.strike_max_distancia) document.getElementById('br-strike-dist').value = crit.strike_max_distancia;
+            BR_RESULTADOS = [];
+            brRenderInputs();
+            brRenderResultados();
+            brRenderLinhas();
+            document.getElementById('br-open-modal').style.display = 'none';
+        })
+        .catch(function (e) { alert('⚠️ falha de rede: ' + e); });
+};
+
+window.brNova = function () {
+    if ((BR_INPUTS.length || BR_LINHAS.length) && !confirm('Começar uma nova busca do zero? A tela atual será limpa.')) return;
+    BR_SIM_ID = null;
+    document.getElementById('br-nome').value = '';
+    BR_INPUTS = []; BR_RESULTADOS = []; BR_LINHAS = [];
+    brRenderInputs(); brRenderResultados(); brRenderLinhas();
+};
+
+// ── Salvar em produção ────────────────────────────────────────────
+// Monta o FormData de gravação para 1 linha confirmada, conforme o tipo de
+// posição de origem — cada rota espera um contrato de campos diferente
+// (roll_option/roll_put_sale: escalares; roll_spread/roll_estruturada:
+// arrays leg_id[]/leg_new_*[]).
+function brMontaFormData(l) {
+    var fd = new FormData();
+    var hoje = new Date().toISOString().slice(0, 10);
+    var url;
+    if (l.tipo === 'option') {
+        url = '/roll_option/' + l.id;
+        fd.set('roll_type', 'AMBOS');
+        fd.set('new_ticker', l.new_ticker); fd.set('new_strike', l.new_strike);
+        fd.set('new_exp', l.new_exp); fd.set('new_premium', l.open_price);
+        fd.set('close_premium', l.close_price);
+        fd.set('roll_date', hoje); fd.set('notes', 'Busca de rolagem automática');
+    } else if (l.tipo === 'put_sale') {
+        url = '/roll_put_sale/' + l.id;
+        fd.set('roll_type', 'AMBOS');
+        fd.set('new_ticker', l.new_ticker); fd.set('new_strike', l.new_strike);
+        fd.set('new_exp', l.new_exp); fd.set('new_premium', l.open_price);
+        fd.set('close_premium', l.close_price);
+        fd.set('roll_date', hoje); fd.set('notes', 'Busca de rolagem automática');
+    } else if (l.tipo === 'spread') {
+        url = '/roll_spread/' + l.id;
+        fd.set('roll_type', 'MANEJO'); fd.set('roll_date', hoje);
+        fd.set('notes', 'Busca de rolagem automática');
+        // Contrato do Manejo Gráfico: leg_id[] precisa cobrir AS DUAS pernas
+        // da trava (long/short) — a perna não mexida reenvia seus PRÓPRIOS
+        // dados como leg_new_* (senão o backend usaria a cotação de mercado
+        // como fechamento fictício da perna intocada).
+        fd.append('leg_id', l.lado);
+        fd.append('leg_close_price', l.close_price);
+        fd.append('leg_new_ticker', l.new_ticker); fd.append('leg_new_strike', l.new_strike);
+        fd.append('leg_new_premium', l.open_price); fd.append('leg_new_exp', l.new_exp);
+        var outroLado = l.lado === 'long' ? 'short' : 'long';
+        fd.append('leg_id', outroLado);
+        fd.append('leg_close_price', '');
+        fd.append('leg_new_ticker', l.irma_ticker || '');
+        fd.append('leg_new_strike', l.irma_strike || '');
+        fd.append('leg_new_premium', l.irma_premium || '');
+        fd.append('leg_new_exp', '');
+    } else if (l.tipo === 'estruturada') {
+        url = '/roll_estruturada/' + l.op_id;
+        fd.set('roll_type', 'MANEJO'); fd.set('roll_date', hoje);
+        fd.set('notes', 'Busca de rolagem automática'); fd.set('next', '/opcoes');
+        fd.append('leg_id', l.id);
+        fd.append('leg_close_price', l.close_price);
+        fd.append('leg_new_ticker', l.new_ticker); fd.append('leg_new_strike', l.new_strike);
+        fd.append('leg_new_premium', l.open_price); fd.append('leg_new_exp', l.new_exp);
+        fd.append('leg_new_type', l.opt_type || ''); fd.append('leg_new_side', l.side);
+    } else {
+        return null;
+    }
+    return { url: url, fd: fd };
+}
+
+window.brSalvarProducao = function () {
+    if (!BR_LINHAS.length) { alert('Nenhuma linha confirmada para gravar.'); return; }
+    var manuais = BR_LINHAS.filter(function (l) { return l.origem === 'manual'; });
+    if (manuais.length) {
+        alert('Há linha(s) de ticker manual (sem posição real vinculada) — remova-as ou adicione a posição '
+            + 'existente correspondente antes de salvar em produção. Linhas manuais servem só para estudo.');
+        return;
+    }
+    if (!confirm('Gravar ' + BR_LINHAS.length + ' rolagem(ns) nas posições reais? Esta ação atualiza a carteira.')) return;
+
+    // Grava sequencialmente via fetch (não form.submit — isso navegaria a
+    // página embora depois do 1º envio, cancelando os demais) e reporta o
+    // resultado ao final.
+    var pendentes = BR_LINHAS.slice();
+    var ok = 0, falhas = [];
+    function proxima() {
+        if (!pendentes.length) {
+            alert('Gravação concluída: ' + ok + ' de ' + BR_LINHAS.length + ' rolagem(ns) com sucesso.'
+                + (falhas.length ? '\nFalhas: ' + falhas.join('; ') : ''));
+            if (ok) window.location.href = '/opcoes';
+            return;
+        }
+        var l = pendentes.shift();
+        var montado = brMontaFormData(l);
+        if (!montado) { falhas.push(l.current_ticker + ' (tipo desconhecido)'); proxima(); return; }
+        fetch(montado.url, { method: 'POST', body: montado.fd })
+            .then(function (r) {
+                if (r.ok || (r.status >= 300 && r.status < 400)) ok++;
+                else falhas.push(l.current_ticker + ' (HTTP ' + r.status + ')');
+                proxima();
+            })
+            .catch(function (e) { falhas.push(l.current_ticker + ' (' + e + ')'); proxima(); });
+    }
+    proxima();
+};
+
+brRenderInputs();
+})();
+</script>
+{% endblock %}

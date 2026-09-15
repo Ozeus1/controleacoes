@@ -5,10 +5,21 @@
 <style>
 .br-hint { color:var(--text-secondary); font-size:.78rem; }
 .br-topbar { display:flex; align-items:center; justify-content:space-between;
-    gap:.7rem; flex-wrap:wrap; margin-bottom:.9rem; }
+    gap:.7rem; flex-wrap:wrap; margin-bottom:1rem;
+    padding-bottom:.8rem; border-bottom:1px solid var(--border-color); }
+.br-topbar h2 { margin:0; font-size:1.25rem; }
 .br-topbar-acoes { display:flex; gap:.4rem; flex-wrap:wrap; }
-.br-chk-label { display:flex; align-items:center; gap:.35rem; cursor:pointer;
-    font-size:.85rem; color:var(--text-primary); white-space:nowrap; }
+/* display/margin explícitos: o style.css global tem `label{display:block;
+   margin-bottom:.5rem}`, que empilhava o controle acima do texto. */
+.br-chk-label { display:flex !important; align-items:center; gap:.45rem; cursor:pointer;
+    font-size:.85rem; color:var(--text-primary); white-space:nowrap; margin:0 !important; }
+.br-chk-label input { margin:0; flex:0 0 auto; width:auto; cursor:pointer; }
+
+/* Seções da página */
+.br-sec { margin-top:1.4rem; }
+.br-sec:first-of-type { margin-top:0; }
+.br-sec > h3 { margin:0 0 .5rem; font-size:1rem; display:flex; align-items:center; gap:.5rem; }
+.br-sec > h3 .br-hint { font-weight:400; }
 
 .br-inputs { display:flex; flex-direction:column; gap:.4rem; margin-bottom:.6rem; }
 .br-input-row { display:flex; align-items:center; gap:.6rem; padding:.5rem .7rem;
@@ -21,21 +32,29 @@
 .br-input-row .rm { margin-left:auto; background:none; border:none; color:#f87171;
     cursor:pointer; font-size:1rem; }
 
-.br-criterios { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
-    gap:1rem; margin:.8rem 0; padding:.9rem; background:var(--hover-bg);
-    border:1px solid var(--border-color); border-radius:8px; }
-.br-criterio-grupo { display:flex; flex-direction:column; gap:.4rem; }
-.br-criterio-grupo > label.titulo { font-size:.78rem; font-weight:700; color:var(--text-secondary);
-    text-transform:uppercase; letter-spacing:.02em; margin-bottom:.15rem; }
-.br-modo-tabs { display:flex; gap:.4rem; flex-wrap:wrap; }
+.br-criterios { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+    gap:1.4rem; margin:0 0 .9rem; padding:1rem 1.1rem; background:var(--hover-bg);
+    border:1px solid var(--border-color); border-radius:8px; align-items:start; }
+.br-criterio-grupo { display:flex; flex-direction:column; gap:.5rem; min-width:0; }
+.br-criterio-grupo > label.titulo { display:block !important; font-size:.72rem; font-weight:700;
+    color:var(--text-secondary); text-transform:uppercase; letter-spacing:.04em;
+    margin:0 0 .1rem !important; line-height:1.3; }
+.br-modo-tabs { display:flex; gap:.35rem; flex-wrap:wrap; }
 .br-modo-tab { border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-primary);
-    border-radius:6px; padding:.35rem .7rem; cursor:pointer; font-size:.82rem; font-weight:600; }
+    border-radius:6px; padding:.35rem .65rem; cursor:pointer; font-size:.8rem; font-weight:600;
+    white-space:nowrap; }
+.br-modo-tab:hover { border-color:#0ea5e9; }
 .br-modo-tab.active { background:#0ea5e9; border-color:#0ea5e9; color:#fff; }
+/* Ação principal da busca — destaque, mas sem ocupar a largura toda */
+.br-buscar-linha { display:flex; align-items:center; gap:.7rem; flex-wrap:wrap; margin-bottom:.4rem; }
 
-.br-results { display:flex; flex-direction:column; gap:1rem; margin-top:1rem; }
-.br-result-card { border:1px solid var(--border-color); border-radius:8px; padding:.8rem .9rem;
+.br-results { display:flex; flex-direction:column; gap:.9rem; margin-top:1.2rem; }
+.br-results:empty { margin-top:0; }
+.br-result-card { border:1px solid var(--border-color); border-radius:8px; padding:.85rem 1rem;
     background:var(--hover-bg); }
-.br-result-head { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; margin-bottom:.5rem; }
+.br-result-head { display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap;
+    margin-bottom:.6rem; padding-bottom:.5rem; border-bottom:1px solid rgba(255,255,255,.06); }
+.br-result-head strong { font-size:.95rem; }
 .br-alt-table { width:100%; border-collapse:collapse; font-size:.82rem; }
 .br-alt-table th { color:var(--text-secondary); text-align:right; padding:.3rem .5rem;
     border-bottom:1px solid var(--border-color); white-space:nowrap; }
@@ -83,28 +102,31 @@
     </div>
   </div>
 
-  <div style="display:flex;flex-direction:column;gap:.25rem;margin-bottom:.8rem;max-width:420px;">
-    <label class="br-hint">Nome da simulação</label>
+  <div style="display:flex;flex-direction:column;gap:.3rem;margin-bottom:1.2rem;max-width:420px;">
+    <label class="br-hint" style="margin:0;">Nome da simulação</label>
     <input type="text" id="br-nome" placeholder="Ex.: Rolagem outubro — carteira toda"
            style="background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
-                  border-radius:5px;padding:.35rem .55rem;font-size:.85rem;">
+                  border-radius:5px;padding:.4rem .6rem;font-size:.85rem;">
   </div>
 
-  <!-- Entrada de posições ------------------------------------------- -->
-  <h3 style="margin:0 0 .4rem;font-size:1.02rem;">Posições a rolar</h3>
-  <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.6rem;">
-    <input type="text" id="br-ticker-manual" placeholder="Ticker da opção (ex.: PETRJ305)" maxlength="12"
-           style="background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
-                  border-radius:5px;padding:.35rem .55rem;font-size:.85rem;width:210px;text-transform:uppercase;">
-    <button class="btn btn-secondary btn-sm" onclick="brAdicionaManual()">+ Adicionar por ticker</button>
-    <button class="btn btn-secondary btn-sm" onclick="brAbrePosicaoModal()">+ Adicionar posição existente</button>
-  </div>
-  <div id="br-inputs" class="br-inputs">
-    <p class="br-hint" id="br-inputs-vazio">Nenhuma posição adicionada ainda.</p>
+  <!-- 1. Entrada de posições ---------------------------------------- -->
+  <div class="br-sec">
+    <h3>1. Posições a rolar</h3>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.6rem;">
+      <input type="text" id="br-ticker-manual" placeholder="Ticker da opção (ex.: PETRJ305)" maxlength="12"
+             style="background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
+                    border-radius:5px;padding:.4rem .6rem;font-size:.85rem;width:230px;text-transform:uppercase;">
+      <button class="btn btn-secondary btn-sm" onclick="brAdicionaManual()">+ Adicionar por ticker</button>
+      <button class="btn btn-secondary btn-sm" onclick="brAbrePosicaoModal()">+ Adicionar posição existente</button>
+    </div>
+    <div id="br-inputs" class="br-inputs">
+      <p class="br-hint" id="br-inputs-vazio">Nenhuma posição adicionada ainda.</p>
+    </div>
   </div>
 
-  <!-- Critérios de busca ---------------------------------------------- -->
-  <h3 style="margin:1rem 0 .4rem;font-size:1.02rem;">Critérios de busca</h3>
+  <!-- 2. Critérios de busca ------------------------------------------ -->
+  <div class="br-sec">
+  <h3>2. Critérios de busca</h3>
   <div class="br-criterios">
     <div class="br-criterio-grupo">
       <label class="titulo">Vencimentos</label>
@@ -137,15 +159,18 @@
       </p>
     </div>
   </div>
-  <button class="btn btn-primary btn-sm" onclick="brBuscar()">🔎 Buscar alternativas</button>
-  <span id="br-busca-status" class="br-hint" style="margin-left:.6rem;"></span>
+  <div class="br-buscar-linha">
+    <button class="btn btn-primary" onclick="brBuscar()">🔎 Buscar alternativas</button>
+    <span id="br-busca-status" class="br-hint"></span>
+  </div>
+  </div>
 
-  <!-- Resultados -------------------------------------------------------- -->
+  <!-- 3. Resultados ---------------------------------------------------- -->
   <div id="br-results" class="br-results"></div>
 
-  <!-- Linhas confirmadas -------------------------------------------------- -->
-  <div class="br-linhas">
-    <h3 style="margin:0 0 .5rem;font-size:1.02rem;">Linhas confirmadas</h3>
+  <!-- 4. Linhas confirmadas -------------------------------------------- -->
+  <div class="br-sec br-linhas">
+    <h3>3. Linhas confirmadas</h3>
     <p class="br-hint" style="margin:0 0 .5rem;">
       Escolha uma alternativa em cada posição acima para adicioná-la aqui. Os valores de fechamento/abertura
       podem ser ajustados antes de salvar ou gravar em produção.
@@ -177,9 +202,11 @@
     <div class="br-met"><span class="lbl">Linhas</span><span class="val" id="br-m-lines">0</span></div>
   </div>
 
-  <div style="margin-top:1rem;">
-    <button class="btn btn-warning btn-sm" onclick="brSalvarProducao()"
+  <div style="margin-top:1.2rem;padding-top:1rem;border-top:1px solid var(--border-color);
+              display:flex;align-items:center;gap:.7rem;flex-wrap:wrap;">
+    <button class="btn btn-warning" onclick="brSalvarProducao()"
             title="Grava de fato cada linha confirmada na posição real correspondente">🚀 Salvar em produção</button>
+    <span class="br-hint">Atualiza a carteira: encerra/substitui as pernas roladas nas operações reais.</span>
   </div>
 </div>
 

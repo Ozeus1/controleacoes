@@ -13899,20 +13899,33 @@ def _pm_state(user_id, ticker):
     evs = (PMEvent.query.filter_by(user_id=user_id, ticker=ticker)
            .order_by(PMEvent.created_at, PMEvent.id).all())
     used_keys  = {e.source_key for e in evs if e.source_key}
-    used_total = round(sum(e.valor or 0 for e in evs), 2)
-    # Pool = créditos varridos (dividendos/opções) − usos; lançamentos MANUAIS
-    # (lucro avulso) abatem o custo mas NÃO consomem o pool de créditos.
-    used_pool  = round(sum(e.valor or 0 for e in evs if e.kind != 'MANUAL'), 2)
     # Créditos marcados IGNORADO (ex.: evento anterior à posição atual) saem
     # completamente da varredura: não contam como ganhos, pool nem pendência.
     ignored_keys = {e.source_key for e in evs if e.kind == 'IGNORADO' and e.source_key}
     earned  = [i for i in _pm_earned_items(user_id, ticker)
                if i['key'] not in ignored_keys]
     pending = [i for i in earned if i['key'] not in used_keys]
-    # Nunca exibe/usa pool negativo (créditos já aplicados que depois tiveram
-    # a origem reduzida/excluída) — trata como zero: não há mais crédito
-    # disponível pra aplicar, mas o PM já abatido no passado continua válido.
-    pool = max(0.0, round(sum(i['valor'] for i in earned) - used_pool, 2))
+
+    # Evento aplicado × origem atual. Um trade editado depois de aplicado (ou
+    # que virou prejuízo) deixava o evento congelado no valor antigo: o custo
+    # seguia abatido por um crédito que não existe mais. O cálculo usa o valor
+    # de HOJE da origem — a gravação fica para /preco-medio/reconciliar, que
+    # esta função não faz por rodar também na exibição da página.
+    valor_atual = {i['key']: i['valor'] for i in earned}
+    used_total = used_pool = 0.0
+    for e in evs:
+        v = e.valor or 0
+        if e.kind not in ('MANUAL', 'IGNORADO', 'COMPRA_LUCRO') and e.source_key:
+            v = valor_atual.get(e.source_key, v)
+        used_total += v
+        if e.kind != 'MANUAL':
+            used_pool += v
+    used_total = round(used_total, 2)
+    used_pool  = round(used_pool, 2)
+
+    # Pool negativo NÃO é mascarado: significa custo abatido além dos créditos
+    # existentes, e escondê-lo fazia crédito novo sumir atrás do débito.
+    pool = round(sum(i['valor'] for i in earned) - used_pool, 2)
     custo_of = (a.quantity * (a.avg_price or 0)) if a else 0.0
     custo_aj = custo_of - used_total
     return a, evs, earned, pending, pool, custo_of, custo_aj
@@ -13965,7 +13978,8 @@ def preco_medio():
     rows = _pm_rows(current_user.id)
     return render_template('preco_medio.html', acoes=rows['ACAO'], fiis=rows['FII'],
                            today=date.today(),
-                           indevidos=_pm_creditos_indevidos(current_user.id))
+                           indevidos=_pm_creditos_indevidos(current_user.id),
+                           divergentes=len(_pm_eventos_divergentes(current_user.id)))
 
 
 @app.route('/preco-medio/aplicar/<ticker>', methods=['POST'])
@@ -14173,6 +14187,51 @@ def pm_evento_delete(id):
     _pm_rebuild_chain(current_user.id, tk)
     db.session.commit()
     return jsonify({'ok': True})
+
+
+def _pm_eventos_divergentes(user_id):
+    """Eventos aplicados cujo valor não bate mais com a origem: [(evento,
+    valor atual)]. Acontece quando o trade/provento é editado depois de
+    aplicado — o evento fica congelado no valor antigo."""
+    fora = []
+    for tk in {e.ticker for e in PMEvent.query.filter_by(user_id=user_id).all()}:
+        evs = PMEvent.query.filter_by(user_id=user_id, ticker=tk).all()
+        ignor = {e.source_key for e in evs if e.kind == 'IGNORADO' and e.source_key}
+        atual = {i['key']: i['valor'] for i in _pm_earned_items(user_id, tk)
+                 if i['key'] not in ignor}
+        for e in evs:
+            if e.kind in ('MANUAL', 'IGNORADO', 'COMPRA_LUCRO') or not e.source_key:
+                continue
+            novo = atual.get(e.source_key)
+            if novo is not None and abs(round(novo, 2) - round(e.valor or 0, 2)) > 0.005:
+                fora.append((e, round(novo, 2)))
+    return fora
+
+
+@app.route('/preco-medio/reconciliar', methods=['POST'])
+@login_required
+def pm_reconciliar():
+    """Alinha os créditos já aplicados com o valor atual da origem.
+
+    Um trade aplicado como lucro que depois virou prejuízo (ou foi editado)
+    deixava o evento congelado: o custo seguia abatido por um crédito que não
+    existe mais, e o excesso ainda escondia créditos novos no pool."""
+    fora = _pm_eventos_divergentes(current_user.id)
+    tickers = set()
+    for e, novo in fora:
+        e.ref = (f'[ajustado de R$ {e.valor:.2f} para R$ {novo:.2f}] '
+                 + (e.ref or ''))[:200]
+        e.valor = novo
+        tickers.add(e.ticker)
+    for tk in tickers:
+        _pm_rebuild_chain(current_user.id, tk)
+    db.session.commit()
+    if fora:
+        flash(f'{len(fora)} crédito(s) realinhados com a origem em '
+              f'{len(tickers)} ativo(s).', 'success')
+    else:
+        flash('Todos os créditos aplicados já batem com a origem.', 'info')
+    return redirect(url_for('preco_medio'))
 
 
 @app.route('/preco-medio/limpar-anteriores', methods=['POST'])

@@ -132,6 +132,21 @@
 </div>
 {% endmacro %}
 
+{% if divergentes %}
+<div style="background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.4);
+            border-radius:8px;padding:.8rem 1rem;margin-bottom:1rem;
+            display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
+  <span style="color:#f87171;font-size:.88rem;flex:1;min-width:280px;">
+    ⚠️ <strong>{{ divergentes }} crédito(s) aplicado(s) fora de sincronia</strong> com a
+    origem — um resultado editado depois de aplicado (ex.: trade que virou
+    prejuízo) continua abatendo o valor antigo e pode esconder créditos novos.
+  </span>
+  <form method="POST" action="{{ url_for('pm_reconciliar') }}" style="margin:0;">
+    <button type="submit" class="btn btn-primary btn-sm">Realinhar créditos</button>
+  </form>
+</div>
+{% endif %}
+
 {% if indevidos %}
 <div style="background:rgba(234,179,8,.12);border:1px solid rgba(234,179,8,.4);
             border-radius:8px;padding:.8rem 1rem;margin-bottom:1rem;

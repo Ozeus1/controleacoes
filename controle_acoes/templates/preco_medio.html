@@ -132,6 +132,21 @@
 </div>
 {% endmacro %}
 
+{% if indevidos %}
+<div style="background:rgba(234,179,8,.12);border:1px solid rgba(234,179,8,.4);
+            border-radius:8px;padding:.8rem 1rem;margin-bottom:1rem;
+            display:flex;gap:1rem;align-items:center;flex-wrap:wrap;">
+  <span style="color:#ca8a04;font-size:.88rem;flex:1;min-width:280px;">
+    ⚠️ <strong>{{ indevidos }} provento(s) anteriores à compra</strong> ainda estão
+    abatendo o PM. Proventos com data-com antes da entrada do papel pertencem a
+    quem o tinha na época — remova-os para o PM ajustado ficar correto.
+  </span>
+  <form method="POST" action="{{ url_for('pm_limpar_anteriores') }}" style="margin:0;">
+    <button type="submit" class="btn btn-primary btn-sm">Remover do PM</button>
+  </form>
+</div>
+{% endif %}
+
 {{ pm_table(acoes, '📈 Ações — Preço Médio Ajustado') }}
 {{ pm_table(fiis,  '🏢 FIIs — Preço Médio Ajustado') }}
 

@@ -13818,6 +13818,8 @@ def _pm_earned_items(user_id, ticker):
             Asset.user_id == user_id, Dividend.ticker == ticker).all():
         if not d.amount or d.amount <= 0:
             continue
+        if not _dividend_owned(d):
+            continue          # data-com antes da compra: provento de outro dono
         dt = d.payment_date or d.ex_date
         qtd_info = (f' ({d.qty_used}× R$ {d.per_share:.4f}/ação)'
                     if d.qty_used and d.per_share else '')
@@ -13921,12 +13923,23 @@ def _pm_rows(user_id):
     return rows
 
 
+def _pm_creditos_indevidos(user_id):
+    """Nº de créditos já aplicados ao PM vindos de proventos anteriores à
+    compra do papel — resíduo de antes do filtro de titularidade."""
+    divs = {f'div:{d.id}': d for d in Dividend.query.join(Asset).filter(
+            Asset.user_id == user_id).all()}
+    return sum(1 for e in PMEvent.query.filter_by(user_id=user_id).all()
+               if e.kind == 'DIVIDENDO' and e.source_key
+               and e.source_key in divs and not _dividend_owned(divs[e.source_key]))
+
+
 @app.route('/preco-medio')
 @login_required
 def preco_medio():
     rows = _pm_rows(current_user.id)
     return render_template('preco_medio.html', acoes=rows['ACAO'], fiis=rows['FII'],
-                           today=date.today())
+                           today=date.today(),
+                           indevidos=_pm_creditos_indevidos(current_user.id))
 
 
 @app.route('/preco-medio/aplicar/<ticker>', methods=['POST'])
@@ -14134,6 +14147,40 @@ def pm_evento_delete(id):
     _pm_rebuild_chain(current_user.id, tk)
     db.session.commit()
     return jsonify({'ok': True})
+
+
+@app.route('/preco-medio/limpar-anteriores', methods=['POST'])
+@login_required
+def pm_limpar_anteriores():
+    """Remove do PM os créditos de proventos anteriores à compra do papel.
+
+    O filtro de titularidade (_dividend_owned) impede que esses proventos
+    entrem na varredura, mas os que JÁ tinham sido aplicados continuavam
+    abatendo o custo — viraram PMEvent. Aqui eles viram IGNORADO (valor 0,
+    origem preservada), o mesmo estado que o botão de ignorar produz."""
+    divs = {f'div:{d.id}': d for d in Dividend.query.join(Asset).filter(
+            Asset.user_id == current_user.id).all()}
+    tickers, n = set(), 0
+    for e in PMEvent.query.filter_by(user_id=current_user.id).all():
+        if e.kind != 'DIVIDENDO' or not e.source_key:
+            continue
+        d = divs.get(e.source_key)
+        if d and not _dividend_owned(d):
+            e.kind = 'IGNORADO'
+            e.valor = 0.0
+            e.ref = ('Ignorado (anterior à compra): ' + (e.ref or ''))[:200]
+            tickers.add(e.ticker)
+            n += 1
+    for tk in tickers:
+        _pm_rebuild_chain(current_user.id, tk)
+    db.session.commit()
+    if n:
+        flash(f'{n} crédito(s) de proventos anteriores à compra saíram do PM '
+              f'em {len(tickers)} ativo(s). O PM ajustado voltou ao valor correto.',
+              'success')
+    else:
+        flash('Nenhum crédito anterior à compra estava aplicado ao PM.', 'info')
+    return redirect(url_for('preco_medio'))
 
 
 @app.route('/dividendos/<int:id>/qtd', methods=['POST'])
@@ -15490,6 +15537,23 @@ def record_portfolio_snapshot(user_id):
         app.logger.exception('record_portfolio_snapshot falhou (user %s)', user_id)
 
 
+def _dividend_owned(d, asset=None):
+    """True se o provento pertence ao usuário: a data-com (ex_date; sem ela, o
+    pagamento) tem de cair dentro da janela de posse do ativo. Proventos de
+    antes da compra são de quem tinha o papel na data-com, não nossos."""
+    a = asset or d.asset
+    if not a:
+        return False
+    own_date = d.ex_date or d.payment_date
+    if not own_date:
+        return True                                   # sem data, não dá pra excluir
+    if a.entry_date and own_date < a.entry_date:
+        return False                                  # comprou depois da data-com
+    if a.exit_date and own_date > a.exit_date:
+        return False                                  # já tinha vendido na data-com
+    return True
+
+
 def _dividends_owned(user_id, today):
     """Dividendos efetivamente recebidos, filtrados pelo PERÍODO DE POSSE do ativo.
     Um dividendo só conta se a data-com (ex_date; se faltar, payment_date) estava
@@ -15504,12 +15568,8 @@ def _dividends_owned(user_id, today):
         if not d.payment_date or d.payment_date > today:
             continue
         a = d.asset
-        # Data que define a titularidade: data-com (preferida) ou pagamento
-        own_date = d.ex_date or d.payment_date
-        if a.entry_date and own_date < a.entry_date:
-            continue                                  # comprou depois da data-com
-        if a.exit_date and own_date > a.exit_date:
-            continue                                  # já tinha vendido na data-com
+        if not _dividend_owned(d, a):
+            continue
         mk = d.payment_date.strftime('%Y-%m')
         val = d.amount or 0
         if a.type == 'FII':
@@ -15555,10 +15615,7 @@ def api_mes_resultado(mes):
         if d.payment_date.strftime('%Y-%m') != mes:
             continue
         a = d.asset
-        own_date = d.ex_date or d.payment_date
-        if a.entry_date and own_date < a.entry_date:
-            continue
-        if a.exit_date and own_date > a.exit_date:
+        if not _dividend_owned(d, a):
             continue
         div_rows.append({
             'ticker': d.ticker,
@@ -19915,8 +19972,13 @@ def dividendos():
     # Filter only Stocks and FIIs for display, AND only active assets (quantity > 0)
     relevant_assets = [a for a in assets if a.type in ['ACAO', 'FII'] and (a.quantity or 0) > 0]
     
-    # Get all dividends for user's assets
-    all_dividends = db.session.query(Dividend).join(Asset).filter(Asset.user_id == current_user.id).order_by(Dividend.payment_date.desc()).all()
+    # Get all dividends for user's assets. Proventos com data-com anterior à
+    # compra (ou posterior à venda) são de quem tinha o papel na data-com —
+    # ficam de fora da lista, dos totais e dos gráficos.
+    all_dividends = [d for d in db.session.query(Dividend).join(Asset).filter(
+                         Asset.user_id == current_user.id)
+                     .order_by(Dividend.payment_date.desc()).all()
+                     if _dividend_owned(d)]
     
     today = date.today()
     

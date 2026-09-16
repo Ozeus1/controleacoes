@@ -348,6 +348,12 @@ function loadCadeia(ticker){
         renderCurrentExp();
       }
       document.getElementById('sim-underlying-input').value=ticker;
+      // Pernas de ACAO seguem o ativo da cadeia carregada.
+      document.querySelectorAll('#legs-body .leg-row').forEach(function(row){
+        if(row.querySelector('[name=leg_type]').value==='STOCK'){
+          row.querySelector('[name=leg_premium]').value=brl(curSpot||0);
+        }
+      });
       scheduleRedrawC();
     })
     .catch(function(e){
@@ -364,11 +370,34 @@ function renderSpot(ticker,spot,chg){
     +(chg!==null?'<span class="'+cc+'">'+(chg>=0?'+':'')+brl(chg)+'%</span>':'');
 }
 
+// Letras de serie B3 por mes (1=jan..12=dez): [CALL, PUT].
+var SERIE_LETRAS_C=[['A','M'],['B','N'],['C','O'],['D','P'],['E','Q'],['F','R'],
+                    ['G','S'],['H','T'],['I','U'],['J','V'],['K','W'],['L','X']];
+// 3a sexta-feira do mes, tolerando +-2 dias (feriado antecipa/atrasa o
+// vencimento na B3) — mesma regra do backend (_is_monthly_exp).
+function isVencMensalC(iso){
+  var p=(iso||'').split('-'); if(p.length!==3) return false;
+  var y=+p[0], m=+p[1], sextas=0, terceira=null;
+  for(var d=1; d<=31; d++){
+    var dt=new Date(y,m-1,d);
+    if(dt.getMonth()!==m-1) break;
+    if(dt.getDay()===5){ sextas++; if(sextas===3){ terceira=dt; break; } }
+  }
+  if(!terceira) return false;
+  return Math.abs(Math.round((new Date(y,m-1,+p[2])-terceira)/86400000))<=2;
+}
+// Rotulo no padrao do Profit: "18/09/2026 (M) - I/U".
+function labelVencC(iso){
+  var p=(iso||'').split('-'); if(p.length!==3) return fmtDate(iso);
+  var l=SERIE_LETRAS_C[+p[1]-1]||['?','?'];
+  return fmtDate(iso)+' ('+(isVencMensalC(iso)?'M':'S')+') - '+l[0]+'/'+l[1];
+}
+
 function renderVencTabs(exps){
   var wrap=document.getElementById('venc-tabs'); wrap.innerHTML='';
   exps.forEach(function(e){
     var btn=document.createElement('button'); btn.className='venc-tab';
-    btn.dataset.exp=e.exp; btn.textContent=fmtDate(e.exp); wrap.appendChild(btn);
+    btn.dataset.exp=e.exp; btn.textContent=labelVencC(e.exp); wrap.appendChild(btn);
   });
 }
 
@@ -477,8 +506,29 @@ function rowTemplateC(type){
 
 window.addLegC=function(type){
   document.getElementById('legs-body').insertAdjacentHTML('beforeend',rowTemplateC(type||'CALL'));
+  var rows=document.querySelectorAll('#legs-body .leg-row');
+  if((type||'CALL')==='STOCK') preencheCotacaoAcaoC(rows[rows.length-1]);
   scheduleRedrawC();
 };
+
+// Cotacao do ativo na perna de ACAO: entra preenchida com o ultimo preco
+// (spot da cadeia ja carregada; sem ela, /api/quote_hint) e continua
+// editavel — o usuario pode sobrescrever com o preco que executou.
+function preencheCotacaoAcaoC(row){
+  if(!row) return;
+  var premioEl=row.querySelector('[name=leg_premium]');
+  if(!premioEl) return;
+  if(curSpot){ premioEl.value=brl(curSpot); scheduleRedrawC(); return; }
+  var t=(document.getElementById('sim-underlying-input').value||'').trim().toUpperCase();
+  if(!t) return;
+  fetch('/api/quote_hint/'+encodeURIComponent(t))
+    .then(function(r){return r.json();})
+    .then(function(dd){
+      var px=Number(dd.price||0);
+      if(px>0&&!parseValC(premioEl.value)){ premioEl.value=brl(px); scheduleRedrawC(); }
+    })
+    .catch(function(){});
+}
 
 // Escreve os dados de uma opcao numa linha ja existente.
 function fillLegRowC(row,type,side,qty,ticker,premium,exp,strike,iv){
@@ -541,6 +591,7 @@ window.legTypeChangedC=function(sel){
     if(td){ td.style.display=isSt?'none':'';
       var inp=td.querySelector('input'); if(inp){inp.disabled=isSt;if(isSt)inp.value='';} }
   });
+  if(isSt&&!parseValC(row.querySelector('[name=leg_premium]').value)) preencheCotacaoAcaoC(row);
   updateIVVisibilityC();
 };
 

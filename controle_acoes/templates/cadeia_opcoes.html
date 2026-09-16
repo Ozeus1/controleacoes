@@ -2,12 +2,8 @@
 {% block title %}Cadeia de Opções{% endblock %}
 {% block extra_scripts %}
 <style>
-/* ── Tickers ── */
-#cadeia-tickers{display:flex;flex-wrap:wrap;gap:.35rem;}
-.ct-btn{padding:.25rem .6rem;border:1px solid #475569;border-radius:5px;font-size:.8rem;
-  cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap;transition:background .12s;}
-.ct-btn.active{background:#7c3aed;border-color:#7c3aed;font-weight:700;}
-.ct-btn.custom{border-color:#f59e0b;}
+/* ── Ativo ── */
+.cad-hint{font-size:.78rem;color:var(--text-secondary);}
 /* ── Vencimentos ── */
 #venc-tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin:.8rem 0;}
 .venc-tab{padding:.3rem .8rem;border:1px solid #475569;border-radius:5px;font-size:.82rem;
@@ -47,9 +43,6 @@ table.cadeia td.empty{color:#334155;}
 #cadeia-spot .chg-neg{color:#f87171;font-size:.85rem;}
 #cadeia-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
 #cadeia-error{display:none;color:#f87171;padding:1rem;}
-#add-ticker-wrap{display:flex;gap:.5rem;align-items:center;}
-#add-ticker-input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
-  border-radius:5px;padding:.25rem .5rem;font-size:.82rem;width:110px;}
 /* ── Simulador ── */
 #sim-section{margin-top:1.5rem;border-top:1px solid var(--border-color);padding-top:1.2rem;}
 #legs-table-wrap{overflow-x:auto;margin-bottom:.7rem;}
@@ -60,6 +53,13 @@ table.cadeia td.empty{color:#334155;}
 #legs-table td input,#legs-table td select{background:var(--card-bg);color:var(--text-primary);
   border:1px solid var(--border-color);border-radius:4px;padding:.2rem .35rem;font-size:.8rem;}
 .leg-remove{background:none;border:none;color:#f87171;cursor:pointer;font-size:1rem;padding:0 .3rem;}
+.leg-edit{background:none;border:none;color:var(--text-secondary);cursor:pointer;font-size:1rem;padding:0 .3rem;}
+.leg-edit:hover{color:#60a5fa;}
+/* Linha em modo substituir: o proximo clique na cadeia troca esta perna */
+.leg-row.leg-editing{background:rgba(96,165,250,.14);outline:1px solid rgba(96,165,250,.55);}
+.leg-row.leg-editing .leg-edit{color:#60a5fa;}
+/* Perna desmarcada: fora do calculo, fica esmaecida */
+.leg-row:has(.leg-on:not(:checked)){opacity:.45;}
 #sim-metrics-bar{display:flex;gap:1.2rem;flex-wrap:wrap;padding:.6rem .9rem;
   background:var(--card-bg);border-radius:6px;margin-bottom:.8rem;font-size:.85rem;
   border:1px solid var(--border-color);}
@@ -90,24 +90,39 @@ table.cadeia td.empty{color:#334155;}
     <div id="cadeia-spot"></div>
   </div>
 
-  <!-- Tickers -->
-  <div style="margin-bottom:.6rem;">
-    <div id="cadeia-tickers" style="margin-bottom:.5rem;">
-      {% if ranking_vol %}
-        <button class="ct-btn" data-t="BOVA11">BOVA11</button>
-        {% for rv in ranking_vol %}
-        <button class="ct-btn" data-t="{{ rv.ticker }}">{{ rv.ticker }}</button>
-        {% endfor %}
-      {% else %}
-        {% for t in ['BOVA11','ABEV3','ASAI3','B3SA3','BBAS3','BBDC4','BBSE3','BRAP4',
-                     'ITUB4','LREN3','PETR3','PETR4','PRIO3','USIM5','VALE3','WEGE3'] %}
-        <button class="ct-btn" data-t="{{ t }}">{{ t }}</button>
-        {% endfor %}
-      {% endif %}
+  <!-- Ativo: dropdown + busca (mesmo padrao do Simulador) -->
+  <div style="display:flex;gap:.9rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.6rem;">
+    <div style="display:flex;flex-direction:column;gap:.25rem;">
+      <label class="cad-hint">Ativo</label>
+      <div style="display:flex;gap:.4rem;">
+        <select id="cadeia-ativo-sel"
+                style="background:var(--card-bg);color:var(--text-primary);
+                       border:1px solid var(--border-color);border-radius:5px;
+                       padding:.35rem .5rem;font-size:.85rem;">
+          <option value="">selecione…</option>
+          <option value="BOVA11">BOVA11</option>
+          {% for rv in ranking_vol %}
+          <option value="{{ rv.ticker }}">{{ rv.ticker }}</option>
+          {% endfor %}
+          <option value="__outro__">— outro ativo… —</option>
+        </select>
+        <input type="text" id="cadeia-ativo" placeholder="Digite o ticker" maxlength="10"
+               style="display:none;background:var(--card-bg);color:var(--text-primary);
+                      border:1px solid var(--border-color);border-radius:5px;
+                      padding:.35rem .55rem;font-size:.85rem;width:110px;text-transform:uppercase;">
+        <button class="btn btn-primary btn-sm" id="cadeia-buscar-btn">🔎 Buscar</button>
+      </div>
     </div>
-    <div id="add-ticker-wrap">
-      <input id="add-ticker-input" type="text" placeholder="Outro ticker…" maxlength="10">
-      <button class="btn btn-secondary btn-sm" id="add-ticker-btn">+ Adicionar</button>
+    <div style="display:flex;flex-direction:column;gap:.25rem;">
+      <label class="cad-hint">Nº de vencimentos mensais</label>
+      <select id="cadeia-n-meses"
+              style="background:var(--card-bg);color:var(--text-primary);
+                     border:1px solid var(--border-color);border-radius:5px;
+                     padding:.35rem .5rem;font-size:.85rem;">
+        {% for i in range(1, 13) %}
+        <option value="{{ i }}" {{ 'selected' if i == 3 else '' }}>{{ i }}</option>
+        {% endfor %}
+      </select>
     </div>
   </div>
 
@@ -128,22 +143,11 @@ table.cadeia td.empty{color:#334155;}
     </label>
   </div>
 
-  <!-- Vencimentos: incluir semanais + janela de prazo (p/ testar semanais e travas) -->
+  <!-- Vencimentos: incluir semanais (a quantidade de mensais fica junto do ativo) -->
   <div style="display:flex;gap:1.4rem;align-items:center;margin-top:.55rem;font-size:.82rem;color:var(--text-secondary);flex-wrap:wrap;">
     <label style="display:inline-flex;align-items:center;gap:.45rem;cursor:pointer;">
       <input type="checkbox" id="cadeia-weekly" style="width:15px;height:15px;cursor:pointer;margin:0;">
       Incluir vencimentos <strong>semanais</strong> (desmarcado: apenas <strong>mensais</strong>)
-    </label>
-    <label style="display:inline-flex;align-items:center;gap:.45rem;cursor:pointer;">
-      Prazo máx. de busca:
-      <select id="cadeia-days" style="background:var(--card-bg);color:var(--text-primary);
-              border:1px solid var(--border-color);border-radius:5px;padding:.2rem .4rem;font-size:.82rem;cursor:pointer;">
-        <option value="60" selected>60 dias</option>
-        <option value="90">90 dias</option>
-        <option value="120">120 dias</option>
-        <option value="180">180 dias</option>
-        <option value="210">210 dias</option>
-      </select>
     </label>
   </div>
 
@@ -179,9 +183,10 @@ table.cadeia td.empty{color:#334155;}
       <table id="legs-table">
         <thead>
           <tr>
+            <th class="col-on-hdr" title="Marque para incluir a perna no cálculo">✓</th>
             <th>Tipo</th><th>C/V</th><th>Ticker</th><th>Qtd</th>
             <th>Prêmio</th><th>Vencimento</th><th>Strike</th>
-            <th class="col-iv-hdr" style="display:none">VI %</th><th></th>
+            <th class="col-iv-hdr" style="display:none">VI %</th><th></th><th></th>
           </tr>
         </thead>
         <tbody id="legs-body"></tbody>
@@ -228,26 +233,43 @@ var SELIC_RATE = {{ selic|default(14.5) }};
 /* ════════════════ CADEIA ════════════════ */
 var allData=null, curTicker=null, curExp=null, curSpot=null;
 
-document.getElementById('cadeia-tickers').addEventListener('click',function(e){
-  var btn=e.target.closest('.ct-btn'); if(!btn) return;
-  document.querySelectorAll('.ct-btn').forEach(function(b){b.classList.remove('active');});
-  btn.classList.add('active');
-  loadCadeia(btn.dataset.t);
+/* Ativo: dropdown com sugestoes do Ranking de Volatilidade; "outro ativo"
+   revela o campo de texto livre. Mesmo padrao do Simulador. */
+var cadAtivoSel=document.getElementById('cadeia-ativo-sel');
+var cadAtivoTxt=document.getElementById('cadeia-ativo');
+
+cadAtivoSel.addEventListener('change',function(){
+  if(cadAtivoSel.value==='__outro__'){
+    cadAtivoTxt.style.display=''; cadAtivoTxt.focus();
+  } else {
+    cadAtivoTxt.style.display='none'; cadAtivoTxt.value='';
+    if(cadAtivoSel.value) loadCadeia(cadAtivoSel.value);
+  }
+});
+cadAtivoTxt.addEventListener('keydown',function(e){
+  if(e.key==='Enter'){ e.preventDefault(); document.getElementById('cadeia-buscar-btn').click(); }
+});
+document.getElementById('cadeia-buscar-btn').addEventListener('click',function(){
+  var t=cadeiaTickerAtual();
+  if(!t){
+    document.getElementById('cadeia-error').textContent='Escolha um ativo antes de buscar.';
+    document.getElementById('cadeia-error').style.display='block';
+    return;
+  }
+  loadCadeia(t);
 });
 
-document.getElementById('add-ticker-btn').addEventListener('click',function(){
-  var v=document.getElementById('add-ticker-input').value.trim().toUpperCase(); if(!v) return;
-  var ex=document.querySelector('.ct-btn[data-t="'+v+'"]');
-  if(ex){ex.click();return;}
-  var btn=document.createElement('button'); btn.className='ct-btn custom';
-  btn.dataset.t=v; btn.textContent=v;
-  document.getElementById('cadeia-tickers').appendChild(btn);
-  document.getElementById('add-ticker-input').value='';
-  btn.click();
-});
-document.getElementById('add-ticker-input').addEventListener('keydown',function(e){
-  if(e.key==='Enter') document.getElementById('add-ticker-btn').click();
-});
+function cadeiaTickerAtual(){
+  if(cadAtivoSel.value==='__outro__') return (cadAtivoTxt.value||'').trim().toUpperCase();
+  return (cadAtivoSel.value||'').trim().toUpperCase();
+}
+// Reflete no seletor um ticker carregado por outra via (ex.: ?ativo=X na URL).
+function cadeiaSetAtivo(t){
+  t=(t||'').toUpperCase();
+  var opt=Array.prototype.filter.call(cadAtivoSel.options,function(o){return o.value===t;})[0];
+  if(opt){ cadAtivoSel.value=t; cadAtivoTxt.style.display='none'; cadAtivoTxt.value=''; }
+  else { cadAtivoSel.value='__outro__'; cadAtivoTxt.style.display=''; cadAtivoTxt.value=t; }
+}
 
 document.getElementById('venc-tabs').addEventListener('click',function(e){
   var btn=e.target.closest('.venc-tab'); if(!btn) return;
@@ -274,11 +296,11 @@ function nStrikes(){
   });
 })();
 
-/* Vencimentos: semanais + janela de prazo (padrão: mensais, 60 dias) */
+/* Vencimentos: N mensais (padrao 3) + semanais do intervalo, se marcado */
 function cadeiaWeekly(){ var c=document.getElementById('cadeia-weekly'); return c&&c.checked?'1':'0'; }
-function cadeiaDays(){ var s=document.getElementById('cadeia-days'); return s?s.value:'60'; }
+function cadeiaNMeses(){ var s=document.getElementById('cadeia-n-meses'); return s?s.value:'3'; }
 (function(){
-  var wk=document.getElementById('cadeia-weekly'), dy=document.getElementById('cadeia-days');
+  var wk=document.getElementById('cadeia-weekly'), nm=document.getElementById('cadeia-n-meses');
   if(wk){
     wk.checked = localStorage.getItem('cadeia-weekly')==='1';   // padrão desmarcado
     wk.addEventListener('change',function(){
@@ -286,11 +308,11 @@ function cadeiaDays(){ var s=document.getElementById('cadeia-days'); return s?s.
       if(curTicker) loadCadeia(curTicker);
     });
   }
-  if(dy){
-    var sd=localStorage.getItem('cadeia-days');
-    if(sd && ['60','90','120','180','210'].indexOf(sd)!==-1) dy.value=sd;
-    dy.addEventListener('change',function(){
-      localStorage.setItem('cadeia-days', dy.value);
+  if(nm){
+    var sn=localStorage.getItem('cadeia-n-meses');
+    if(sn && +sn>=1 && +sn<=12) nm.value=sn;
+    nm.addEventListener('change',function(){
+      localStorage.setItem('cadeia-n-meses', nm.value);
       if(curTicker) loadCadeia(curTicker);
     });
   }
@@ -298,12 +320,13 @@ function cadeiaDays(){ var s=document.getElementById('cadeia-days'); return s?s.
 
 function loadCadeia(ticker){
   curTicker=ticker; allData=null; curExp=null;
+  cadeiaSetAtivo(ticker);
   document.getElementById('cadeia-loading').style.display='block';
   document.getElementById('cadeia-tables').innerHTML='';
   document.getElementById('cadeia-error').style.display='none';
   document.getElementById('cadeia-spot').innerHTML='';
   document.getElementById('venc-tabs').innerHTML='';
-  fetch('/api/cadeia/'+encodeURIComponent(ticker)+'?n='+nStrikes()+'&weekly='+cadeiaWeekly()+'&days='+cadeiaDays())
+  fetch('/api/cadeia/'+encodeURIComponent(ticker)+'?n='+nStrikes()+'&weekly='+cadeiaWeekly()+'&n_meses='+cadeiaNMeses())
     .then(function(r){return r.text().then(function(text){
       var data=null;
       try{data=text?JSON.parse(text):{};}catch(_){
@@ -381,18 +404,18 @@ function renderTable(expData,spot){
       +'% em relação ao spot (R$ '+brl(spot)+')"');
     html+='<tr>';
     if(c){
-      var cE=enc(c.symbol,'CALL','SELL',c.close,s,exp);
+      var cE=enc(c.symbol,'CALL','SELL',c.close,s,exp,c.iv);
       html+='<td style="text-align:left"><span class="sym-link" data-opt="'+cE+'" title="VENDER">'+c.symbol+'</span></td>';
       html+=fV(c.close);
       html+='<td class="val">'+brlK(c.vol_fin)+'</td>'+fVar(c.var_pct)+fV(c.mid||null);
-      html+=baCell(c.symbol,'CALL',c.bid,c.ask,s,exp,c.close);
+      html+=baCell(c.symbol,'CALL',c.bid,c.ask,s,exp,c.close,c.iv);
     } else { html+='<td class="empty">—</td>'.repeat(6); }
     html+='<td class="'+sClass+'"'+sTitle+'>R$ '+brl(s)+(isSpot?' ◀':'')+'</td>';
     if(p){
-      html+=baCell(p.symbol,'PUT',p.bid,p.ask,s,exp,p.close);
+      html+=baCell(p.symbol,'PUT',p.bid,p.ask,s,exp,p.close,p.iv);
       html+=fV(p.mid||null)+fVar(p.var_pct)+'<td class="val">'+brlK(p.vol_fin)+'</td>';
       html+=fV(p.close);
-      var pE=enc(p.symbol,'PUT','SELL',p.close,s,exp);
+      var pE=enc(p.symbol,'PUT','SELL',p.close,s,exp,p.iv);
       html+='<td style="text-align:left"><span class="sym-link" data-opt="'+pE+'" title="VENDER">'+p.symbol+'</span></td>';
     } else { html+='<td class="empty">—</td>'.repeat(6); }
     html+='</tr>';
@@ -405,21 +428,22 @@ function renderTable(expData,spot){
       var opt=JSON.parse(el.dataset.opt);
       addLegFilledC(opt.type,opt.side,100,opt.ticker,
         opt.premium?opt.premium.toFixed(2).replace('.',','):'0,00',
-        opt.exp,opt.strike?opt.strike.toFixed(2).replace('.',','):'0,00');
+        opt.exp,opt.strike?opt.strike.toFixed(2).replace('.',','):'0,00',opt.iv);
     });
   });
 }
 
-function enc(sym,type,side,prem,strike,exp){
+function enc(sym,type,side,prem,strike,exp,iv){
   // Escapa aspas duplas para uso seguro dentro de atributo HTML data-opt="..."
-  return JSON.stringify({ticker:sym,type:type,side:side,premium:prem||0,strike:strike||0,exp:exp||''})
+  return JSON.stringify({ticker:sym,type:type,side:side,premium:prem||0,strike:strike||0,
+                         exp:exp||'',iv:iv||0})
     .replace(/"/g,'&quot;');
 }
-function baCell(sym,type,bid,ask,strike,exp,close){
+function baCell(sym,type,bid,ask,strike,exp,close,iv){
   // Convenção de mercado: clicar no BID = VENDER (você bate na compra do book);
   // clicar no ASK = COMPRAR (você agride a venda do book). Vale p/ CALL e PUT.
-  var bE=enc(sym,type,'SELL',bid||close,strike,exp);
-  var aE=enc(sym,type,'BUY', ask||close,strike,exp);
+  var bE=enc(sym,type,'SELL',bid||close,strike,exp,iv);
+  var aE=enc(sym,type,'BUY', ask||close,strike,exp,iv);
   return '<td><div class="ba-cell">'
     +'<span class="ba-v bid" data-opt="'+bE+'" title="VENDER">'+(bid?brl(bid):'-')+'</span>'
     +'<span class="ba-v ask" data-opt="'+aE+'" title="COMPRAR">'+(ask?brl(ask):'-')+'</span>'
@@ -430,6 +454,7 @@ function baCell(sym,type,bid,ask,strike,exp,close){
 function rowTemplateC(type){
   var isSt=type==='STOCK', hide=isSt?'display:none;':'', dis=isSt?' disabled':'';
   return '<tr class="leg-row">'
+    +'<td><input type="checkbox" class="leg-on" checked title="Incluir esta perna no cálculo" onchange="scheduleRedrawC()"></td>'
     +'<td><select name="leg_type" onchange="legTypeChangedC(this);scheduleRedrawC();" style="width:72px">'
     +'<option value="CALL"'+(type==='CALL'?' selected':'')+'>CALL</option>'
     +'<option value="PUT"'+(type==='PUT'?' selected':'')+'>PUT</option>'
@@ -444,6 +469,8 @@ function rowTemplateC(type){
     +'<td class="col-exp-c" style="'+hide+'"><input type="date" name="leg_exp" style="width:135px"'+dis+'></td>'
     +'<td class="col-strike-c" style="'+hide+'"><input type="text" name="leg_strike" placeholder="0,00" style="width:75px;text-align:right" oninput="scheduleRedrawC()"'+dis+'></td>'
     +'<td class="col-iv-c" style="display:none"><input type="text" name="leg_iv" placeholder="0,0" style="width:55px;text-align:right" oninput="scheduleRedrawC()"'+dis+'></td>'
+    +'<td><button type="button" class="leg-edit" onclick="toggleEditLegC(this)" '
+    +   'title="Modo substituir: com esta linha marcada, clicar numa opção da cadeia troca esta perna em vez de adicionar outra">✎</button></td>'
     +'<td><button type="button" class="leg-remove" onclick="removeLegC(this)">✕</button></td>'
     +'</tr>';
 }
@@ -453,24 +480,52 @@ window.addLegC=function(type){
   scheduleRedrawC();
 };
 
-window.addLegFilledC=function(type,side,qty,ticker,premium,exp,strike){
-  document.getElementById('legs-body').insertAdjacentHTML('beforeend',rowTemplateC(type||'CALL'));
-  var rows=document.querySelectorAll('#legs-body .leg-row');
-  var row=rows[rows.length-1];
+// Escreve os dados de uma opcao numa linha ja existente.
+function fillLegRowC(row,type,side,qty,ticker,premium,exp,strike,iv){
+  var typeEl=row.querySelector('[name=leg_type]');
+  if(type&&typeEl&&typeEl.value!==type){ typeEl.value=type; legTypeChangedC(typeEl); }
   row.querySelector('[name=leg_side]').value=side;
-  row.querySelector('[name=leg_qty]').value=qty;
+  if(qty) row.querySelector('[name=leg_qty]').value=qty;
   if(ticker) row.querySelector('[name=leg_ticker]').value=ticker;
   if(premium) row.querySelector('[name=leg_premium]').value=premium;
   if(exp) row.querySelector('[name=leg_exp]').value=exp;
   if(strike) row.querySelector('[name=leg_strike]').value=strike;
+  // VI da opcao, vinda da cadeia — poupa o usuario de digitar quando a
+  // estrutura tem vencimentos diferentes e precisa de Black-Scholes.
+  var ivEl=row.querySelector('[name=leg_iv]');
+  if(ivEl&&iv!=null&&iv>0) ivEl.value=brl(iv);
+}
+
+// Linha em modo "editar": a proxima opcao clicada na cadeia substitui ela.
+window.toggleEditLegC=function(btn){
+  var row=btn.closest('.leg-row');
+  var jaAtiva=row.classList.contains('leg-editing');
+  document.querySelectorAll('#legs-body .leg-row.leg-editing').forEach(function(r){
+    r.classList.remove('leg-editing');
+  });
+  if(!jaAtiva) row.classList.add('leg-editing');
+};
+
+window.addLegFilledC=function(type,side,qty,ticker,premium,exp,strike,iv){
+  // Com uma linha em modo editar, o clique na cadeia SUBSTITUI essa linha.
+  // Sem nenhuma marcada, mantém o comportamento de acrescentar uma perna.
+  var alvo=document.querySelector('#legs-body .leg-row.leg-editing');
+  if(!alvo){
+    document.getElementById('legs-body').insertAdjacentHTML('beforeend',rowTemplateC(type||'CALL'));
+    var rows=document.querySelectorAll('#legs-body .leg-row');
+    alvo=rows[rows.length-1];
+  }
+  fillLegRowC(alvo,type,side,qty,ticker,premium,exp,strike,iv);
+  alvo.classList.remove('leg-editing');
   document.getElementById('sim-section').scrollIntoView({behavior:'smooth',block:'nearest'});
+  updateIVVisibilityC();
   scheduleRedrawC();
 };
 
 window.removeLegC=function(btn){
   var rows=document.querySelectorAll('#legs-body .leg-row');
   if(rows.length<=1){alert('A operação deve ter ao menos uma perna.');return;}
-  btn.closest('.leg-row').remove(); scheduleRedrawC();
+  btn.closest('.leg-row').remove(); updateIVVisibilityC(); scheduleRedrawC();
 };
 
 window.clearLegsC=function(){
@@ -492,6 +547,8 @@ window.legTypeChangedC=function(sel){
 function updateIVVisibilityC(){
   var exps=[];
   document.querySelectorAll('#legs-body .leg-row').forEach(function(row){
+    var on=row.querySelector('.leg-on');
+    if(on&&!on.checked) return;        // desmarcada nao conta p/ calendarizacao
     var lt=row.querySelector('[name=leg_type]').value;
     var exp=row.querySelector('[name=leg_exp]');
     if(lt!=='STOCK'&&exp&&exp.value&&exps.indexOf(exp.value)<0) exps.push(exp.value);
@@ -509,6 +566,8 @@ function updateIVVisibilityC(){
 function readLegsC(){
   var legs=[];
   document.querySelectorAll('#legs-body .leg-row').forEach(function(row){
+    var on=row.querySelector('.leg-on');
+    if(on&&!on.checked) return;          // perna desmarcada fica fora do cálculo
     var lt=row.querySelector('[name=leg_type]').value;
     var side=row.querySelector('[name=leg_side]').value;
     var qty=parseInt(row.querySelector('[name=leg_qty]').value)||1;
@@ -873,16 +932,12 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 var _prefilled=prefillFromUrl();
 if(!_prefilled) addLegC('CALL');
-var first=document.querySelector('.ct-btn');
-if(first){
-  first.classList.add('active');
-  // Se veio pré-preenchido com um ativo, carrega a cadeia dele
+// Ativo inicial: o pedido na URL (?ativo=X) ou BOVA11 como padrao.
+(function(){
   var q0=new URLSearchParams(location.search);
   var wantT=(q0.get('ativo')||'').toUpperCase();
-  var match=wantT?document.querySelector('.ct-btn[data-t="'+wantT+'"]'):null;
-  if(match){ document.querySelector('.ct-btn.active')&&document.querySelector('.ct-btn.active').classList.remove('active'); match.classList.add('active'); loadCadeia(wantT); }
-  else loadCadeia(first.dataset.t);
-}
+  loadCadeia(wantT||'BOVA11');
+})();
 })();
 </script>
 {% endblock %}

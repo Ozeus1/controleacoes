@@ -13828,28 +13828,43 @@ def _pm_earned_items(user_id, ticker):
                       'ref': (f'{d.type or "Dividendo"} '
                               f'{dt.strftime("%d/%m/%Y") if dt else ""} — '
                               f'R$ {d.amount:.2f}{qtd_info}').replace('.', ',')})
-    # Trades de opções: casa pelo underlying preenchido; para registros ANTIGOS
-    # sem underlying, casa pela raiz B3 do ticker da opção (ABEVA148 → ABEV →
-    # ABEV3) — somente se a raiz for inequívoca na carteira (PETR3 × PETR4 não).
-    # Fallback extra: travas/estruturas registram o subjacente em notes mesmo
-    # quando o campo underlying ficou vazio — close_estruturada usa
-    # "{subjacente} | ..." (1º segmento); close_spread usa
-    # "{spread_type} | {subjacente} | ..." (2º segmento). Casa pelos dois.
+    # Trades de opções: casa pelo underlying; quando ele não resolve (vazio ou
+    # gravado de forma divergente — VALE3.SA, raiz sem o número), tenta o
+    # ticker da operação, o subjacente anotado em notes e, por fim, a raiz B3
+    # do ticker da opção (ABEVA148 → ABEV → ABEV3), esta só quando a raiz é
+    # inequívoca na carteira (PETR3 × PETR4 não). Travas/estruturas registram o
+    # subjacente em notes: close_estruturada usa "{subjacente} | ..." (1º
+    # segmento); close_spread usa "{spread_type} | {subjacente} | ..." (2º).
     root = ticker[:4].upper()
     same_root = Asset.query.filter(Asset.user_id == user_id,
                                    Asset.type.in_(('ACAO', 'FII')),
                                    Asset.strategy != 'SWING',
                                    Asset.quantity > 0,
                                    Asset.ticker.like(root + '%')).count()
-    for th in TradeHistory.query.filter_by(user_id=user_id, strategy='Opções').all():
-        und   = (th.underlying or '').strip().upper()
+
+    def _norm_und(v):
+        """Underlying comparável: sem espaços, maiúsculo e sem sufixo .SA."""
+        v = (v or '').strip().upper()
+        return v[:-3] if v.endswith('.SA') else v
+
+    for th in TradeHistory.query.filter(
+            TradeHistory.user_id == user_id,
+            db.func.upper(db.func.coalesce(TradeHistory.strategy, '')).like('OP%')).all():
+        und   = _norm_und(th.underlying)
         tk_th = (th.ticker or '').strip().upper()
         notes_parts = (th.notes or '').split('|')
         notes_seg1 = notes_parts[0].strip().upper() if len(notes_parts) > 0 else ''
         notes_seg2 = notes_parts[1].strip().upper() if len(notes_parts) > 1 else ''
-        match = (und == ticker) or (
-            not und and (tk_th == ticker or notes_seg1 == ticker or notes_seg2 == ticker
-                         or (same_root == 1 and tk_th[:4] == root)))
+        if und == ticker:
+            match = True
+        elif und and Asset.query.filter(Asset.user_id == user_id,
+                                        Asset.ticker == und).count():
+            match = False          # o underlying aponta para OUTRO papel da carteira
+        else:
+            # underlying ausente ou que não corresponde a nenhum ativo: cai nos
+            # demais sinais em vez de descartar o crédito silenciosamente.
+            match = (tk_th == ticker or notes_seg1 == ticker or notes_seg2 == ticker
+                     or (same_root == 1 and (tk_th[:4] == root or und[:4] == root)))
         if not match:
             continue
         pv = round(float(th.profit_value or 0), 2)

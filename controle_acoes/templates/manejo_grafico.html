@@ -225,6 +225,7 @@
   </div>
 
   <!-- Gráfico --------------------------------------------------------- -->
+  <div id="curvas-ctrl-mg"></div>
   <div id="mg-chart-wrap">
     <canvas id="mg-payoff-canvas"></canvas>
     <div id="mg-chart-tooltip"></div>
@@ -455,7 +456,7 @@
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/payoff_style.js') }}"></script>
+<script src="{{ url_for('static', filename='js/payoff_style.js') }}?v=2"></script>
 <script>
 (function () {
 'use strict';
@@ -1376,6 +1377,33 @@ function desenha(legs) {
 
     PayoffStyle.areas(ctx, geo, Sarr, Parr, xPx, yPx, y0);
     PayoffStyle.curva(ctx, Sarr, Parr, xPx, yPx, PayoffStyle.CORES.venc, 2);
+
+    // Curvas teóricas (payoff real / delta / theta) na data do slider
+    var _ctrl = PayoffStyle.controleData(document.getElementById('curvas-ctrl-mg'),
+                                         function () { desenha(lerPernas()); });
+    _ctrl.sincroniza(legs);
+    if (_ctrl.ativo()) {
+        var _ser = PayoffStyle.serieTeorica(Sarr, legs, _ctrl.dataSel(), SELIC_RATE);
+        if (_ctrl.cRe.checked)
+            PayoffStyle.curva(ctx, Sarr, _ser.valor, xPx, yPx, PayoffStyle.CORES.real, 2);
+        // delta e theta vivem noutra escala: eixo próprio à direita
+        var _q2 = [];
+        if (_ctrl.cDe.checked) _q2 = _q2.concat(_ser.delta);
+        if (_ctrl.cTh.checked) _q2 = _q2.concat(_ser.theta);
+        if (_q2.length) {
+            var _v2a = Math.min.apply(null, _q2), _v2b = Math.max.apply(null, _q2);
+            var _fg = (_v2b - _v2a) * 0.12 || Math.max(Math.abs(_v2b), 0.1) * 0.2;
+            var _rot = (_ctrl.cDe.checked && _ctrl.cTh.checked) ? 'Δ / Θ'
+                     : (_ctrl.cDe.checked ? 'Δ' : 'Θ/dia');
+            var _cor = _ctrl.cDe.checked ? PayoffStyle.CORES.delta : PayoffStyle.CORES.theta;
+            var _y2 = PayoffStyle.eixoDireito(ctx, geo, _v2a - _fg, _v2b + _fg, _rot, _cor);
+            if (_ctrl.cDe.checked)
+                PayoffStyle.curva(ctx, Sarr, _ser.delta, xPx, _y2, PayoffStyle.CORES.delta, 1.6);
+            if (_ctrl.cTh.checked)
+                PayoffStyle.curva(ctx, Sarr, _ser.theta, xPx, _y2, PayoffStyle.CORES.theta, 1.6);
+        }
+    }
+
 
     if (stockRef > 0 && stockRef >= Smin && stockRef <= Smax) {
         var xs = xPx(stockRef);

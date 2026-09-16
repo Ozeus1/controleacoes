@@ -213,6 +213,7 @@ table.cadeia td.empty{color:#334155;}
     </div>
 
     <!-- Gráfico -->
+    <div id="curvas-ctrl-c"></div>
     <div id="chart-wrap-c">
       <canvas id="payoff-canvas-c"></canvas>
       <div id="chart-tooltip-c"></div>
@@ -224,7 +225,7 @@ table.cadeia td.empty{color:#334155;}
 
 </div><!-- /card -->
 
-<script src="{{ url_for('static', filename='js/payoff_style.js') }}"></script>
+<script src="{{ url_for('static', filename='js/payoff_style.js') }}?v=2"></script>
 <script>
 var SELIC_RATE = {{ selic|default(14.5) }};
 (function(){
@@ -693,6 +694,10 @@ function drawChartC(legs){
   } catch (eZoom) {}
 
   var ctx=canvas.getContext('2d'); ctx.clearRect(0,0,W,H);
+  // Controles das curvas existem mesmo sem pernas montadas ainda.
+  var _ctrl = PayoffStyle.controleData(document.getElementById('curvas-ctrl-c'),
+                                       function () { drawChartC(readLegsC()); });
+  _ctrl.sincroniza(legs);
   if(!legs||!legs.length) return;
 
   var expDates=getExpDatesC(legs), multiExp=expDates.length>1;
@@ -748,8 +753,31 @@ function drawChartC(legs){
   // Zonas lucro/prejuízo
   PayoffStyle.areas(ctx,geo,Sarr,Parr,xPx,yPx,y0);
 
-  // Curva payoff
+  // Curva payoff (no vencimento)
   PayoffStyle.curva(ctx,Sarr,Parr,xPx,yPx);
+
+  // Curvas teóricas (payoff real / delta / theta) na data do slider
+  var ctrl=_ctrl;
+  if(ctrl.ativo()){
+    var ser=PayoffStyle.serieTeorica(Sarr,legs,ctrl.dataSel(),SELIC_RATE);
+    if(ctrl.cRe.checked)
+      PayoffStyle.curva(ctx,Sarr,ser.valor,xPx,yPx,PayoffStyle.CORES.real,2);
+    // delta e theta vivem noutra escala: eixo próprio à direita
+    var quer2=[];
+    if(ctrl.cDe.checked) quer2=quer2.concat(ser.delta);
+    if(ctrl.cTh.checked) quer2=quer2.concat(ser.theta);
+    if(quer2.length){
+      var v2Min=Math.min.apply(null,quer2), v2Max=Math.max.apply(null,quer2);
+      var folga=(v2Max-v2Min)*0.12||Math.max(Math.abs(v2Max),0.1)*0.2;
+      var rot=(ctrl.cDe.checked&&ctrl.cTh.checked)?'Δ / Θ':(ctrl.cDe.checked?'Δ':'Θ/dia');
+      var corEixo=ctrl.cDe.checked?PayoffStyle.CORES.delta:PayoffStyle.CORES.theta;
+      var y2=PayoffStyle.eixoDireito(ctx,geo,v2Min-folga,v2Max+folga,rot,corEixo);
+      if(ctrl.cDe.checked)
+        PayoffStyle.curva(ctx,Sarr,ser.delta,xPx,y2,PayoffStyle.CORES.delta,1.6);
+      if(ctrl.cTh.checked)
+        PayoffStyle.curva(ctx,Sarr,ser.theta,xPx,y2,PayoffStyle.CORES.theta,1.6);
+    }
+  }
 
   // Breakevens e cotação atual — por cima da curva, como na referência
   bes.forEach(function(be){

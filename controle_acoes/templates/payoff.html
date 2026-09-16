@@ -743,7 +743,7 @@
 <script>
 var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
 </script>
-<script src="{{ url_for('static', filename='js/payoff_style.js') }}"></script>
+<script src="{{ url_for('static', filename='js/payoff_style.js') }}?v=2"></script>
 <script>
 (function () {
     var r = Math.log(1 + SELIC_RATE / 100); // taxa contínua a.a.

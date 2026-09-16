@@ -31,6 +31,9 @@
     strike:    'rgba(148, 163, 184, 0.45)',
     be:        '#94a3b8',
     spot:      '#3b82f6',
+    real:      '#4a7fe0',                    // payoff real (marcado a mercado)
+    delta:     '#e05252',                    // curva de delta
+    theta:     '#e0a020',                    // curva de theta
     faixa:     'rgba(120, 150, 200, 0.07)'   // realce entre marcos
   };
 
@@ -252,8 +255,243 @@
     return canvas._payoffZoomCtrl;
   }
 
+  /* ══════════ Curvas teóricas: payoff real, delta e theta ══════════
+   *
+   * A curva amarela mostra o payoff NO VENCIMENTO (valor intrínseco). Antes
+   * dele a estrutura vale outra coisa: há valor de tempo. Estas funções
+   * calculam, para uma data escolhida entre hoje e o vencimento:
+   *   - payoff real  — marcação a mercado por Black-Scholes naquela data;
+   *   - delta        — quanto a estrutura ganha/perde por R$ 1 no ativo;
+   *   - theta        — quanto ela perde por dia que passa (R$/dia).
+   *
+   * As pernas chegam no formato que as telas de estrutura já usam:
+   * {type:'CALL'|'PUT'|'STOCK', side:'BUY'|'SELL', qty, strike, premium,
+   *  exp:'YYYY-MM-DD', iv} — iv em fração (0,28 = 28%).
+   */
+  var MS_DIA = 86400000, ANO = 365.25;
+
+  function _normCDF(x) {
+    var a = [0.319381530, -0.356563782, 1.781477937, -1.821255978, 1.330274429];
+    var L = Math.abs(x), k = 1 / (1 + 0.2316419 * L);
+    var w = 1 - (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-L * L / 2) *
+            (a[0]*k + a[1]*k*k + a[2]*k*k*k + a[3]*k*k*k*k + a[4]*k*k*k*k*k);
+    return x < 0 ? 1 - w : w;
+  }
+  function _normPDF(x) { return Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI); }
+
+  function _bs(S, K, T, r, sig, isCall) {
+    if (T <= 0 || sig <= 0 || S <= 0 || K <= 0)
+      return isCall ? Math.max(0, S - K) : Math.max(0, K - S);
+    var sq = Math.sqrt(T);
+    var d1 = (Math.log(S / K) + (r + 0.5 * sig * sig) * T) / (sig * sq), d2 = d1 - sig * sq;
+    return isCall ? S * _normCDF(d1) - K * Math.exp(-r * T) * _normCDF(d2)
+                  : K * Math.exp(-r * T) * _normCDF(-d2) - S * _normCDF(-d1);
+  }
+  function _bsDelta(S, K, T, r, sig, isCall) {
+    if (T <= 0 || sig <= 0 || S <= 0 || K <= 0)
+      return isCall ? (S > K ? 1 : 0) : (S < K ? -1 : 0);
+    var d1 = (Math.log(S / K) + (r + 0.5 * sig * sig) * T) / (sig * Math.sqrt(T));
+    return isCall ? _normCDF(d1) : _normCDF(d1) - 1;
+  }
+  /** Theta por DIA (não por ano) — é assim que a mesa lê o número. */
+  function _bsTheta(S, K, T, r, sig, isCall) {
+    if (T <= 0 || sig <= 0 || S <= 0 || K <= 0) return 0;
+    var sq = Math.sqrt(T);
+    var d1 = (Math.log(S / K) + (r + 0.5 * sig * sig) * T) / (sig * sq), d2 = d1 - sig * sq;
+    var t1 = -(S * _normPDF(d1) * sig) / (2 * sq);
+    var anual = isCall ? t1 - r * K * Math.exp(-r * T) * _normCDF(d2)
+                       : t1 + r * K * Math.exp(-r * T) * _normCDF(-d2);
+    return anual / ANO;
+  }
+
+  function _diaISO(d) {
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2)
+         + '-' + ('0' + d.getDate()).slice(-2);
+  }
+  function _parseDia(iso) { return new Date(iso + 'T00:00:00'); }
+  function _hojeISO() { var h = new Date(); h.setHours(0, 0, 0, 0); return _diaISO(h); }
+
+  /** Vencimentos das pernas de opção, em ordem. */
+  function vencimentos(legs) {
+    var e = [];
+    (legs || []).forEach(function (l) {
+      if (l.type !== 'STOCK' && l.exp && e.indexOf(l.exp) < 0) e.push(l.exp);
+    });
+    return e.sort();
+  }
+
+  /**
+   * Valor da estrutura a preço S na data `dataStr`, com delta e theta.
+   * Perna já vencida nessa data entra pelo intrínseco; perna viva entra por
+   * Black-Scholes. Sem iv, cai no intrínseco (sem valor de tempo).
+   */
+  function teoricoEm(S, legs, dataStr, selicPct) {
+    var r = (selicPct || 0) / 100, ref = _parseDia(dataStr);
+    var val = 0, delta = 0, theta = 0;
+    (legs || []).forEach(function (l) {
+      var sign = l.side === 'BUY' ? 1 : -1, q = l.qty || 0;
+      if (l.type === 'STOCK') {
+        val += sign * q * (S - (l.premium || 0));
+        delta += sign * q;
+        return;
+      }
+      if (!(l.strike > 0)) return;
+      var isCall = l.type === 'CALL';
+      var T = l.exp ? (_parseDia(l.exp) - ref) / (ANO * MS_DIA) : 0;
+      var custo = sign * q * (l.premium || 0);     // pago (BUY) / recebido (SELL)
+      if (T > 0 && l.iv > 0) {
+        val   += sign * q * _bs(S, l.strike, T, r, l.iv, isCall) - custo;
+        delta += sign * q * _bsDelta(S, l.strike, T, r, l.iv, isCall);
+        theta += sign * q * _bsTheta(S, l.strike, T, r, l.iv, isCall);
+      } else {
+        var intr = isCall ? Math.max(0, S - l.strike) : Math.max(0, l.strike - S);
+        val   += sign * q * intr - custo;
+        delta += sign * q * (isCall ? (S > l.strike ? 1 : 0) : (S < l.strike ? -1 : 0));
+      }
+    });
+    return { valor: val, delta: delta, theta: theta };
+  }
+
+  /** Série {valor, delta, theta} ao longo de Sarr, para uma data. */
+  function serieTeorica(Sarr, legs, dataStr, selicPct) {
+    var val = [], del = [], the = [];
+    for (var i = 0; i < Sarr.length; i++) {
+      var p = teoricoEm(Sarr[i], legs, dataStr, selicPct);
+      val.push(p.valor); del.push(p.delta); the.push(p.theta);
+    }
+    return { valor: val, delta: del, theta: the };
+  }
+
+  /**
+   * Eixo Y secundário (direita) para as curvas que não estão em R$ de payoff
+   * — delta (adimensional) e theta (R$/dia). Desenha os rótulos e devolve o
+   * projetor y2Px.
+   */
+  function eixoDireito(ctx, geo, vMin, vMax, rotulo, cor) {
+    if (!(vMax > vMin)) { vMax = (vMax || 0) + 1; vMin = (vMin || 0) - 1; }
+    var PAD = geo.PAD, cH = geo.cH, x = geo.W - PAD.right;
+    function y2Px(v) { return PAD.top + (1 - (v - vMin) / (vMax - vMin)) * cH; }
+    ctx.save();
+    ctx.fillStyle = cor || CORES.eixoTxt;
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    for (var i = 0; i <= 4; i++) {
+      var v = vMin + (vMax - vMin) * i / 4;
+      var txt = Math.abs(v) >= 100 ? v.toFixed(0)
+              : (Math.abs(v) >= 1 ? v.toFixed(1) : v.toFixed(2));
+      ctx.fillText(txt.replace('.', ','), x + 5, y2Px(v));
+    }
+    if (rotulo) {
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.fillText(rotulo, x + 20, PAD.top - 12);
+    }
+    ctx.restore();
+    return y2Px;
+  }
+
+  /**
+   * Controles das curvas teóricas: 3 checkboxes (payoff real / delta /
+   * theta) e o slider de data, que vai de hoje até o vencimento mais longo.
+   * Monta dentro de `host` uma vez só e chama `onChange()` a cada mudança.
+   */
+  /* Estilo dos controles, injetado uma vez — evita repetir o mesmo CSS nas
+     telas que desenham payoff. */
+  function _injetaCss() {
+    if (document.getElementById('ps-curvas-css')) return;
+    var st = document.createElement('style');
+    st.id = 'ps-curvas-css';
+    st.textContent =
+      '.ps-curvas{display:flex;gap:1rem;align-items:center;flex-wrap:wrap;'
+    +   'margin:.1rem 0 .5rem;font-size:.82rem;color:var(--text-secondary);}'
+    + '.ps-curvas .ps-chk{display:inline-flex;align-items:center;gap:.35rem;cursor:pointer;'
+    +   'white-space:nowrap;margin:0;}'
+    + '.ps-curvas .ps-chk input{margin:0;cursor:pointer;}'
+    + '.ps-data-wrap{display:inline-flex;align-items:center;gap:.5rem;}'
+    + '.ps-data{width:180px;cursor:pointer;accent-color:' + CORES.real + ';}'
+    + '.ps-data-lbl{font-variant-numeric:tabular-nums;color:var(--text-primary);'
+    +   'min-width:96px;display:inline-block;}';
+    document.head.appendChild(st);
+  }
+
+  function controleData(host, onChange) {
+    if (host._ctrlData) return host._ctrlData;
+    _injetaCss();
+    host.classList.add('ps-curvas');
+    host.innerHTML =
+      '<label class="ps-chk"><input type="checkbox" class="ps-c-real"> '
+      + '<span style="color:' + CORES.real + '">■</span> Payoff real</label>'
+      + '<label class="ps-chk"><input type="checkbox" class="ps-c-delta"> '
+      + '<span style="color:' + CORES.delta + '">■</span> Delta</label>'
+      + '<label class="ps-chk"><input type="checkbox" class="ps-c-theta"> '
+      + '<span style="color:' + CORES.theta + '">■</span> Theta</label>'
+      + '<span class="ps-data-wrap" style="display:none;">'
+      +   '<input type="range" class="ps-data" min="0" max="1" step="1" value="0" '
+      +     'title="Arraste para avançar a data até o vencimento">'
+      +   '<span class="ps-data-lbl">—</span>'
+      + '</span>';
+
+    var api = {
+      host: host,
+      cRe: host.querySelector('.ps-c-real'),
+      cDe: host.querySelector('.ps-c-delta'),
+      cTh: host.querySelector('.ps-c-theta'),
+      range: host.querySelector('.ps-data'),
+      lbl: host.querySelector('.ps-data-lbl'),
+      wrap: host.querySelector('.ps-data-wrap'),
+      dias: [],
+      ativo: function () { return api.cRe.checked || api.cDe.checked || api.cTh.checked; },
+      dataSel: function () { return api.dias[+api.range.value] || api.dias[0] || _hojeISO(); },
+      /** Refaz o intervalo de datas a partir dos vencimentos das pernas. */
+      sincroniza: function (legs) {
+        var exps = vencimentos(legs);
+        var fim = exps.length ? exps[exps.length - 1] : null;
+        var hoje = _hojeISO(), dias = [];
+        if (fim && fim > hoje) {
+          for (var d = _parseDia(hoje); _diaISO(d) <= fim; d.setDate(d.getDate() + 1))
+            dias.push(_diaISO(d));
+        } else {
+          dias = [hoje];
+        }
+        var antes = api.dias[+api.range.value];
+        api.dias = dias;
+        api.range.max = String(Math.max(dias.length - 1, 0));
+        var idx = antes ? dias.indexOf(antes) : -1;
+        api.range.value = String(idx >= 0 ? idx : 0);
+        api.wrap.style.display = api.ativo() ? '' : 'none';
+        api.atualizaRotulo();
+      },
+      atualizaRotulo: function () {
+        var iso = api.dataSel(), p = iso.split('-');
+        var dd = p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
+        var falta = Math.max(Math.round((_parseDia(iso) - _parseDia(_hojeISO())) / MS_DIA), 0);
+        api.lbl.textContent = dd + ' (' + falta + 'd)';
+      }
+    };
+
+    [api.cRe, api.cDe, api.cTh].forEach(function (c) {
+      c.addEventListener('change', function () {
+        api.wrap.style.display = api.ativo() ? '' : 'none';
+        onChange();
+      });
+    });
+    api.range.addEventListener('input', function () {
+      api.atualizaRotulo();
+      onChange();
+    });
+
+    host._ctrlData = api;
+    return api;
+  }
+
   global.PayoffStyle = {
     CORES: CORES,
+    vencimentos: vencimentos,
+    teoricoEm: teoricoEm,
+    serieTeorica: serieTeorica,
+    eixoDireito: eixoDireito,
+    controleData: controleData,
     grade: grade,
     eixoZero: eixoZero,
     borda: borda,

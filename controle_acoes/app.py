@@ -13727,7 +13727,12 @@ def fiis():
 @login_required
 def update_fii_dividends():
     try:
-        assets = Asset.query.filter_by(user_id=current_user.id, type='FII').all()
+        # Só os FIIs em carteira: posição zerada (já vendida) não aparece na
+        # tela nem precisa de cotação/DY — varrer tudo gastava chamadas à API
+        # e inflava a contagem do aviso.
+        assets = Asset.query.filter(Asset.user_id == current_user.id,
+                                    Asset.type == 'FII',
+                                    Asset.quantity > 0).all()
         updated_count = 0
         error_count = 0
         
@@ -13847,14 +13852,20 @@ def _pm_earned_items(user_id, ticker):
         v = (v or '').strip().upper()
         return v[:-3] if v.endswith('.SA') else v
 
-    for th in TradeHistory.query.filter(
-            TradeHistory.user_id == user_id,
-            db.func.upper(db.func.coalesce(TradeHistory.strategy, '')).like('OP%')).all():
+    for th in TradeHistory.query.filter_by(user_id=user_id).all():
+        est   = (th.strategy or '').strip().upper()
         und   = _norm_und(th.underlying)
         tk_th = (th.ticker or '').strip().upper()
         notes_parts = (th.notes or '').split('|')
         notes_seg1 = notes_parts[0].strip().upper() if len(notes_parts) > 0 else ''
         notes_seg2 = notes_parts[1].strip().upper() if len(notes_parts) > 1 else ''
+        # É trade de opções quando a estratégia diz isso ou quando existe um
+        # subjacente registrado (underlying/notes) — operação de ação não tem.
+        # Sem esse segundo critério, um trade com a estratégia gravada vazia
+        # ficava fora da varredura e o crédito sumia.
+        eh_opcao = est.startswith('OP') or bool(und) or bool(notes_seg2)
+        if est in ('SWING', 'INTERNACIONAL', 'INTL') or not eh_opcao:
+            continue
         if und == ticker:
             match = True
         elif und and Asset.query.filter(Asset.user_id == user_id,

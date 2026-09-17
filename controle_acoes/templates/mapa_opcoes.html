@@ -61,6 +61,23 @@
 
 #mo-chart-wrap{position:relative;height:420px;background:var(--card-bg);
   border:1px solid var(--border-color);border-radius:8px;padding:.6rem;}
+
+/* Brush: faixa arrastável acima do gráfico p/ escolher o intervalo de strikes */
+#mo-brush-wrap{margin:.3rem 0 .5rem;user-select:none;}
+#mo-brush-track{position:relative;height:26px;background:var(--card-bg);
+  border:1px solid var(--border-color);border-radius:5px;overflow:hidden;}
+#mo-brush-sel{position:absolute;top:0;bottom:0;left:0;right:0;
+  background:rgba(37,99,235,.28);border-left:2px solid #2563eb;border-right:2px solid #2563eb;
+  cursor:grab;}
+#mo-brush-sel:active{cursor:grabbing;}
+.mo-brush-handle{position:absolute;top:0;bottom:0;width:14px;cursor:ew-resize;
+  display:flex;align-items:center;justify-content:center;}
+#mo-brush-handle-l{left:-9px;}
+#mo-brush-handle-r{right:-9px;}
+.mo-brush-handle::after{content:'';width:4px;height:14px;border-radius:2px;
+  background:#2563eb;}
+#mo-brush-labels{display:flex;justify-content:space-between;margin-top:.2rem;
+  font-size:.72rem;color:var(--text-secondary);}
 table.mo-tab{width:100%;border-collapse:collapse;font-size:.8rem;}
 table.mo-tab th{padding:.4rem .5rem;text-align:right;white-space:nowrap;background:var(--card-bg);
   color:var(--text-secondary);font-weight:600;border-bottom:1px solid var(--border-color);
@@ -186,8 +203,20 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
         ↺ Resetar zoom
       </button>
       <span style="font-size:.75rem;color:var(--text-secondary);white-space:nowrap;">
-        roda do mouse = zoom · arrastar = mover
+        arraste as alças abaixo, ou roda do mouse/arraste no gráfico
       </span>
+    </div>
+    <div id="mo-brush-wrap">
+      <div id="mo-brush-track">
+        <div id="mo-brush-sel">
+          <div id="mo-brush-handle-l" class="mo-brush-handle"></div>
+          <div id="mo-brush-handle-r" class="mo-brush-handle"></div>
+        </div>
+      </div>
+      <div id="mo-brush-labels">
+        <span id="mo-brush-lbl-l"></span>
+        <span id="mo-brush-lbl-r"></span>
+      </div>
     </div>
     <div id="mo-chart-wrap"><canvas id="mo-chart"></canvas></div>
 
@@ -294,7 +323,149 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
 
   document.getElementById('mo-zoom-reset').addEventListener('click', function(){
     if(chart && chart.resetZoom) chart.resetZoom();
+    brushReset();
   });
+
+  // ── Brush: faixa arrastável acima do gráfico para escolher o intervalo
+  // de strikes visível — mesma ideia de "range slider" das ferramentas de
+  // gráfico de mercado. Mexer no brush aplica o zoom no Chart.js
+  // (chart.zoomScale); zoom feito por roda do mouse/arrastar no próprio
+  // gráfico atualiza o brush de volta, para os dois controles ficarem
+  // sempre sincronizados.
+  var elBrushWrap=document.getElementById('mo-brush-wrap');
+  var elBrushTrack=document.getElementById('mo-brush-track');
+  var elBrushSel=document.getElementById('mo-brush-sel');
+  var elBrushHL=document.getElementById('mo-brush-handle-l');
+  var elBrushHR=document.getElementById('mo-brush-handle-r');
+  var elBrushLblL=document.getElementById('mo-brush-lbl-l');
+  var elBrushLblR=document.getElementById('mo-brush-lbl-r');
+  var brushLabels=[];       // strikes na ordem do eixo (labels do Chart.js)
+  var brushLo=0, brushHi=1; // fração 0..1 da faixa selecionada
+  var brushSincronizando=false;  // evita loop: brush -> chart -> brush
+
+  function brushFmtStrike(v){
+    return Number(v).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:2});
+  }
+  function brushAtualizaVisual(){
+    elBrushSel.style.left=(brushLo*100)+'%';
+    elBrushSel.style.right=((1-brushHi)*100)+'%';
+    if(brushLabels.length){
+      var n=brushLabels.length;
+      var iLo=Math.round(brushLo*(n-1)), iHi=Math.round(brushHi*(n-1));
+      elBrushLblL.textContent=brushFmtStrike(brushLabels[iLo]);
+      elBrushLblR.textContent=brushFmtStrike(brushLabels[iHi]);
+    }
+  }
+  function brushAplicaNoChart(){
+    if(!chart || !brushLabels.length) return;
+    var n=brushLabels.length;
+    var iLo=Math.round(brushLo*(n-1)), iHi=Math.round(brushHi*(n-1));
+    brushSincronizando=true;
+    if(brushLo<=0.001 && brushHi>=0.999){
+      chart.resetZoom('none');
+    } else {
+      chart.zoomScale('x', {min:iLo, max:iHi}, 'none');
+    }
+    brushSincronizando=false;
+  }
+  function brushReset(){
+    brushLo=0; brushHi=1;
+    brushAtualizaVisual();
+  }
+  // Reflete no brush o range atual do eixo X do Chart.js (chamado depois
+  // de zoom/pan/reset feitos diretamente no gráfico).
+  function brushSincronizaDoChart(){
+    if(brushSincronizando || !chart || !brushLabels.length) return;
+    var xs=chart.scales.x; if(!xs) return;
+    var n=brushLabels.length;
+    var lo=xs.min, hi=xs.max;
+    if(lo==null || hi==null || n<2) return;
+    brushLo=Math.max(0, Math.min(1, lo/(n-1)));
+    brushHi=Math.max(0, Math.min(1, hi/(n-1)));
+    brushAtualizaVisual();
+  }
+
+  (function(){
+    var arrastando=null;  // 'l' | 'r' | 'meio' | null
+    var inicioX=0, inicioLo=0, inicioHi=0;
+
+    function fracaoDoEvento(clientX){
+      var r=elBrushTrack.getBoundingClientRect();
+      return Math.max(0, Math.min(1, (clientX-r.left)/r.width));
+    }
+    function comeca(tipo){
+      return function(ev){
+        ev.preventDefault();
+        arrastando=tipo;
+        inicioX=ev.clientX;
+        inicioLo=brushLo; inicioHi=brushHi;
+      };
+    }
+    elBrushHL.addEventListener('mousedown', comeca('l'));
+    elBrushHR.addEventListener('mousedown', comeca('r'));
+    elBrushSel.addEventListener('mousedown', function(ev){
+      if(ev.target===elBrushHL || ev.target===elBrushHR) return;
+      comeca('meio')(ev);
+    });
+    // Clicar fora da seleção, na trilha, recentraliza o brush ali.
+    elBrushTrack.addEventListener('mousedown', function(ev){
+      if(ev.target!==elBrushTrack) return;
+      var f=fracaoDoEvento(ev.clientX);
+      var largura=brushHi-brushLo;
+      brushLo=Math.max(0, Math.min(1-largura, f-largura/2));
+      brushHi=brushLo+largura;
+      brushAtualizaVisual();
+      brushAplicaNoChart();
+    });
+    window.addEventListener('mousemove', function(ev){
+      if(!arrastando) return;
+      var r=elBrushTrack.getBoundingClientRect();
+      var df=(ev.clientX-inicioX)/r.width;
+      if(arrastando==='l'){
+        brushLo=Math.max(0, Math.min(inicioHi-0.01, inicioLo+df));
+      } else if(arrastando==='r'){
+        brushHi=Math.min(1, Math.max(inicioLo+0.01, inicioHi+df));
+      } else {
+        var largura=inicioHi-inicioLo;
+        var novoLo=Math.max(0, Math.min(1-largura, inicioLo+df));
+        brushLo=novoLo; brushHi=novoLo+largura;
+      }
+      brushAtualizaVisual();
+    });
+    window.addEventListener('mouseup', function(){
+      if(!arrastando) return;
+      arrastando=null;
+      brushAplicaNoChart();
+    });
+    // Toque (mobile)
+    function toqueClientX(ev){ return ev.touches[0].clientX; }
+    elBrushHL.addEventListener('touchstart', function(ev){ comeca('l')({preventDefault:function(){ev.preventDefault();}, clientX:toqueClientX(ev)}); }, {passive:false});
+    elBrushHR.addEventListener('touchstart', function(ev){ comeca('r')({preventDefault:function(){ev.preventDefault();}, clientX:toqueClientX(ev)}); }, {passive:false});
+    elBrushSel.addEventListener('touchstart', function(ev){
+      if(ev.target===elBrushHL || ev.target===elBrushHR) return;
+      comeca('meio')({preventDefault:function(){ev.preventDefault();}, clientX:toqueClientX(ev)});
+    }, {passive:false});
+    window.addEventListener('touchmove', function(ev){
+      if(!arrastando) return;
+      var r=elBrushTrack.getBoundingClientRect();
+      var df=(toqueClientX(ev)-inicioX)/r.width;
+      if(arrastando==='l'){
+        brushLo=Math.max(0, Math.min(inicioHi-0.01, inicioLo+df));
+      } else if(arrastando==='r'){
+        brushHi=Math.min(1, Math.max(inicioLo+0.01, inicioHi+df));
+      } else {
+        var largura=inicioHi-inicioLo;
+        var novoLo=Math.max(0, Math.min(1-largura, inicioLo+df));
+        brushLo=novoLo; brushHi=novoLo+largura;
+      }
+      brushAtualizaVisual();
+    }, {passive:true});
+    window.addEventListener('touchend', function(){
+      if(!arrastando) return;
+      arrastando=null;
+      brushAplicaNoChart();
+    });
+  })();
 
   // Letras de série B3 por mês (1=jan..12=dez): [CALL, PUT].
   var SERIE_LETRAS=[['A','M'],['B','N'],['C','O'],['D','P'],['E','Q'],['F','R'],
@@ -708,6 +879,9 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
     var css=getComputedStyle(document.body);
     var grid='rgba(148,163,184,.12)', tick=css.getPropertyValue('--text-secondary')||'#94a3b8';
 
+    brushLabels=labels;
+    brushReset();
+
     // Linhas de referência (spot e max pain) desenhadas por plugin
     var refs=[];
     if(d.spot) refs.push({v:d.spot, cor:'#60a5fa', txt:'Spot: R$ '+Number(d.spot).toFixed(2).replace('.',',')});
@@ -849,15 +1023,18 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
           },
           // Zoom no eixo X: roda do mouse dá zoom, arrastar faz pan e o
           // pinça funciona em touch (o pan/pinch do chartjs-plugin-zoom
-          // depende do hammerjs, carregado acima). Botão "Resetar zoom"
-          // volta à visão completa. Só o eixo dos strikes — o eixo Y
-          // (volume) continua fixo.
+          // depende do hammerjs, carregado acima), além do brush acima do
+          // gráfico. Botão "Resetar zoom" volta à visão completa. Só o
+          // eixo dos strikes — o eixo Y (volume) continua fixo. Os
+          // callbacks mantêm o brush sincronizado com o zoom/pan feito
+          // direto no gráfico.
           zoom:{
-            pan:{enabled:true, mode:'x'},
+            pan:{enabled:true, mode:'x', onPanComplete:function(){ brushSincronizaDoChart(); }},
             zoom:{
               wheel:{enabled:true, speed:0.1},
               pinch:{enabled:true},
-              mode:'x'
+              mode:'x',
+              onZoomComplete:function(){ brushSincronizaDoChart(); }
             },
             limits:{x:{minRange:5}}
           }

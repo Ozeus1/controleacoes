@@ -12343,12 +12343,29 @@ def _quotes_from_db(tickers, user_id):
 
 def _get_underlying_quote(ticker, user_id):
     """Retorna (price, daily_change) do ativo subjacente.
-    Tenta primeiro cotação ao vivo via Yahoo Finance; fallback em dados do banco."""
+
+    Ordem de fontes: 1) BRAPI Pro (get_quotes — usa o token do usuário
+    quando cadastrado, mesma fonte de /resumo e do Mapa de Opções);
+    2) Yahoo Finance ao vivo, como reforço quando a BRAPI não devolveu o
+    ticker (ex.: sem token, ou papel fora da cobertura); 3) valores já
+    salvos no banco, só como último recurso. O Yahoo Finance puro (sem
+    token, sujeito a bloqueio/instabilidade por IP de datacenter) já não é
+    a fonte primária — ficava presa nesse fallback silenciosamente quando
+    a chamada falhava, atrasando a cotação exibida sem nenhum aviso."""
     if not ticker:
         return None, None
     t = ticker.strip().upper()
 
-    # 1. Cotação ao vivo via Yahoo Finance — busca 5 dias para ter 2 closes reais
+    # 1. BRAPI Pro / brapi.dev — via services.get_quotes, com token do usuário
+    try:
+        q = get_quotes([t], user_id=user_id) or {}
+        info = q.get(t)
+        if info and info.get('price'):
+            return round(float(info['price']), 2), round(float(info.get('change_percent') or 0), 2)
+    except Exception:
+        app.logger.exception('_get_underlying_quote: BRAPI falhou para %s', t)
+
+    # 2. Yahoo Finance ao vivo — busca 5 dias para ter 2 closes reais
     try:
         import requests as _req
         yf_t = t + '.SA' if not t.endswith('.SA') and '.' not in t else t
@@ -12385,9 +12402,9 @@ def _get_underlying_quote(ticker, user_id):
                         change = (float(price) - float(prev)) / float(prev) * 100
                 return round(float(price), 2), round(float(change), 2) if change is not None else None
     except Exception:
-        pass
+        app.logger.exception('_get_underlying_quote: Yahoo Finance falhou para %s', t)
 
-    # 2-5. Fallback: valores já salvos no banco
+    # 3. Fallback: valores já salvos no banco
     return _get_underlying_quote_cached(ticker, user_id)
 
 

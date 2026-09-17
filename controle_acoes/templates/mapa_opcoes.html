@@ -19,6 +19,24 @@
 .mo-side button.on{background:#2563eb;color:#fff;border-color:#2563eb;}
 .mo-side button.on.put{background:#dc2626;border-color:#dc2626;}
 
+/* Dropdown de vencimentos (multi-seleção via checkbox) */
+.mo-exp-wrap{position:relative;}
+.mo-exp-btn{width:100%;text-align:left;display:flex;align-items:center;justify-content:space-between;
+  gap:.4rem;cursor:pointer;background:var(--card-bg);color:var(--text-primary);
+  border:1px solid var(--border-color);border-radius:5px;padding:.35rem .5rem;font-size:.85rem;}
+.mo-exp-btn .car{color:var(--text-secondary);font-size:.7rem;transition:transform .12s;}
+.mo-exp-wrap.open .mo-exp-btn{border-color:#2563eb;}
+.mo-exp-wrap.open .mo-exp-btn .car{transform:rotate(180deg);}
+.mo-exp-panel{display:none;position:absolute;z-index:40;top:calc(100% + 4px);left:0;min-width:230px;
+  max-height:280px;overflow-y:auto;background:#0f172a;border:1px solid var(--border-color);
+  border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.4);padding:.3rem;}
+.mo-exp-wrap.open .mo-exp-panel{display:block;}
+.mo-exp-item{display:flex;align-items:center;gap:.5rem;padding:.32rem .5rem;border-radius:4px;
+  font-size:.84rem;color:var(--text-primary);cursor:pointer;white-space:nowrap;}
+.mo-exp-item:hover{background:rgba(148,163,184,.12);}
+.mo-exp-item input{margin:0;cursor:pointer;}
+.mo-exp-item.sel{background:rgba(37,99,235,.18);}
+
 #mo-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
 #mo-error{display:none;color:#f87171;padding:1rem;background:rgba(239,68,68,.08);
   border:1px solid rgba(239,68,68,.25);border-radius:6px;margin:.6rem 0;}
@@ -88,8 +106,14 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
              style="display:none;margin-top:.3rem;">
     </div>
     <div class="mo-campo">
-      <label>Vencimento</label>
-      <select id="mo-exp"><option value="">— carregando —</option></select>
+      <label>Vencimento(s)</label>
+      <div class="mo-exp-wrap" id="mo-exp-wrap">
+        <button type="button" class="mo-exp-btn" id="mo-exp-btn">
+          <span id="mo-exp-btn-txt">— carregando —</span>
+          <span class="car">▾</span>
+        </button>
+        <div class="mo-exp-panel" id="mo-exp-panel"></div>
+      </div>
     </div>
     <div class="mo-campo">
       <label>Tipo</label>
@@ -153,11 +177,12 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
 
     <div class="mo-cards" id="mo-cards"></div>
 
-    <h3 style="margin:1.2rem 0 .4rem;font-size:1rem;">Séries do vencimento</h3>
+    <h3 style="margin:1.2rem 0 .4rem;font-size:1rem;" id="mo-tab-titulo">Séries do vencimento</h3>
     <div class="mo-wrap">
       <table class="mo-tab no-datatable" id="mo-tabela">
         <thead><tr>
           <th data-s="symbol">Opção</th>
+          <th data-s="exp" id="mo-th-exp" style="display:none;">Vencimento</th>
           <th data-s="strike">Strike</th>
           <th data-s="close">Fechamento</th>
           <th data-s="coberto">Coberto</th>
@@ -190,7 +215,11 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
   // silenciosamente (ex.: falha de rede na CDN não quebra o resto da tela).
   if(window.Chart && window.ChartZoom) Chart.register(ChartZoom);
 
-  var elT=document.getElementById('mo-ticker'), elE=document.getElementById('mo-exp');
+  var elT=document.getElementById('mo-ticker');
+  var elExpWrap=document.getElementById('mo-exp-wrap'), elExpBtn=document.getElementById('mo-exp-btn');
+  var elExpBtnTxt=document.getElementById('mo-exp-btn-txt'), elExpPanel=document.getElementById('mo-exp-panel');
+  var vencsDisponiveis=[];    // ['2026-09-18', ...] — o que veio da API
+  var expSelecionados=[];     // subconjunto marcado pelo usuário
   var elTL=document.getElementById('mo-ticker-livre'), elModo=document.getElementById('mo-modo');
   var elData=document.getElementById('mo-data');
   elData.max=new Date().toISOString().slice(0,10);   // não deixa escolher data futura
@@ -222,6 +251,33 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
   document.getElementById('mo-zoom-reset').addEventListener('click', function(){
     if(chart && chart.resetZoom) chart.resetZoom();
   });
+
+  // Letras de série B3 por mês (1=jan..12=dez): [CALL, PUT].
+  var SERIE_LETRAS=[['A','M'],['B','N'],['C','O'],['D','P'],['E','Q'],['F','R'],
+                    ['G','S'],['H','T'],['I','U'],['J','V'],['K','W'],['L','X']];
+  // 3ª sexta-feira do mês, tolerando ±2 dias (feriado antecipa/atrasa o
+  // vencimento na B3) — mesma regra do backend (_is_monthly_exp).
+  function isVencMensal(iso){
+    var p=(iso||'').split('-'); if(p.length!==3) return false;
+    var y=+p[0], m=+p[1], sextas=0, terceira=null;
+    for(var d=1; d<=31; d++){
+      var dt=new Date(y,m-1,d);
+      if(dt.getMonth()!==m-1) break;
+      if(dt.getDay()===5){ sextas++; if(sextas===3){ terceira=dt; break; } }
+    }
+    if(!terceira) return false;
+    return Math.abs(Math.round((new Date(y,m-1,+p[2])-terceira)/86400000))<=2;
+  }
+  function dataBR(iso){
+    var p=(iso||'').split('-');
+    return p.length===3 ? p[2]+'/'+p[1]+'/'+p[0] : (iso||'');
+  }
+  // Rótulo no padrão do Profit/Simulador: "18/09/2026 (M) - I/U".
+  function labelVenc(iso){
+    var p=(iso||'').split('-'); if(p.length!==3) return dataBR(iso);
+    var l=SERIE_LETRAS[+p[1]-1]||['?','?'];
+    return dataBR(iso)+' ('+(isVencMensal(iso)?'M':'S')+') - '+l[0]+'/'+l[1];
+  }
 
   function fmt(n){ return (n||0).toLocaleString('pt-BR'); }
   function fmtM(n){
@@ -261,37 +317,129 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
   });
   elModo.addEventListener('change', function(){ if(lastData) buscar(); });
 
+  // ── Dropdown de vencimentos (multi-seleção por checkbox) ───────────
+  function atualizaTextoExpBtn(){
+    if(!vencsDisponiveis.length){ elExpBtnTxt.textContent='— sem vencimentos —'; return; }
+    if(!expSelecionados.length){ elExpBtnTxt.textContent='Selecione…'; return; }
+    if(expSelecionados.length===1){ elExpBtnTxt.textContent=dataBR(expSelecionados[0]); return; }
+    elExpBtnTxt.textContent=expSelecionados.length+' vencimentos selecionados';
+  }
+  function renderExpPanel(){
+    elExpPanel.innerHTML=vencsDisponiveis.map(function(v){
+      var marcado=expSelecionados.indexOf(v)>=0;
+      return '<label class="mo-exp-item'+(marcado?' sel':'')+'" data-v="'+v+'">'+
+        '<input type="checkbox" data-v="'+v+'" '+(marcado?'checked':'')+'>'+
+        '<span>'+labelVenc(v)+'</span></label>';
+    }).join('');
+  }
+  elExpPanel.addEventListener('change', function(ev){
+    var chk=ev.target.closest('input[type=checkbox]'); if(!chk) return;
+    var v=chk.dataset.v, idx=expSelecionados.indexOf(v);
+    if(chk.checked && idx<0) expSelecionados.push(v);
+    else if(!chk.checked && idx>=0) expSelecionados.splice(idx,1);
+    chk.closest('.mo-exp-item').classList.toggle('sel', chk.checked);
+    atualizaTextoExpBtn();
+  });
+  elExpBtn.addEventListener('click', function(ev){
+    ev.stopPropagation();
+    elExpWrap.classList.toggle('open');
+  });
+  document.addEventListener('click', function(ev){
+    if(elExpWrap.classList.contains('open') && !elExpWrap.contains(ev.target)){
+      elExpWrap.classList.remove('open');
+    }
+  });
+
   function carregarVencimentos(){
     var t=tickerAtual();
     if(!t){ return; }
-    elE.innerHTML='<option value="">— carregando —</option>';
+    vencsDisponiveis=[]; expSelecionados=[];
+    elExpBtnTxt.textContent='— carregando —';
+    elExpPanel.innerHTML='';
     clearErr();
     fetch('/api/mapa-opcoes/vencimentos/'+encodeURIComponent(t))
       .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
       .then(function(res){
-        if(!res.ok){ elE.innerHTML='<option value="">—</option>'; showErr(res.j.error||'Erro ao buscar vencimentos.'); return; }
+        if(!res.ok){ elExpBtnTxt.textContent='—'; showErr(res.j.error||'Erro ao buscar vencimentos.'); return; }
         var vs=res.j.vencimentos||[];
-        if(!vs.length){ elE.innerHTML='<option value="">— sem vencimentos —</option>'; return; }
-        elE.innerHTML=vs.map(function(v){
-          var p=v.split('-');
-          return '<option value="'+v+'">'+p[2]+'/'+p[1]+'/'+p[0]+'</option>';
-        }).join('');
+        vencsDisponiveis=vs;
+        if(!vs.length){ atualizaTextoExpBtn(); return; }
+        expSelecionados=[vs[0]];    // padrão: o vencimento mais próximo, como antes
+        renderExpPanel();
+        atualizaTextoExpBtn();
       })
       .catch(function(){ showErr('Falha de rede ao buscar vencimentos.'); });
   }
 
-  function buscar(){
-    var t=tickerAtual(), e=elE.value;
-    if(!t||!e){ showErr('Escolha o ativo e o vencimento.'); return; }
-    clearErr(); elHint.style.display='none'; elRes.style.display='none'; elLoad.style.display='block';
-    fetch('/api/mapa-opcoes/'+encodeURIComponent(t)+'?exp='+encodeURIComponent(e)
+  function buscarUmVenc(t, e){
+    return fetch('/api/mapa-opcoes/'+encodeURIComponent(t)+'?exp='+encodeURIComponent(e)
           +'&side='+side+'&modo='+elModo.value
           +(elData.value?('&data='+encodeURIComponent(elData.value)):''))
-      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
-      .then(function(res){
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, exp:e, j:j}; }); });
+  }
+
+  // Soma barras/rows por strike de vários vencimentos num único mapa. Os
+  // indicadores por vencimento isolado (Max Pain, spot, PUT/CALL do
+  // vencimento) usam o PRIMEIRO resultado bem-sucedido — combinar Max Pain
+  // de vencimentos diferentes não teria sentido (cada um "dói" numa data de
+  // expiração distinta); PUT/CALL da cadeia inteira já soma tudo por
+  // natureza e continua igual em qualquer caso.
+  function agregaMapas(resultados){
+    var ok=resultados.filter(function(r){ return r.ok; });
+    if(!ok.length) return null;
+    var base=ok[0].j;
+    if(ok.length===1) return base;
+
+    var barrasPorStrike={}, rowsTodas=[];
+    ok.forEach(function(r){
+      (r.j.barras||[]).forEach(function(b){
+        var acc=barrasPorStrike[b.strike]=barrasPorStrike[b.strike]||
+          {strike:b.strike, coberto:0, travado:0, descoberto:0, total:0, titular:0, lancador:0};
+        acc.coberto+=b.coberto||0; acc.travado+=b.travado||0; acc.descoberto+=b.descoberto||0;
+        acc.total+=b.total||0; acc.titular+=b.titular||0; acc.lancador+=b.lancador||0;
+      });
+      (r.j.rows||[]).forEach(function(row){
+        rowsTodas.push(Object.assign({}, row, {exp:r.exp}));
+      });
+    });
+    var barras=Object.keys(barrasPorStrike).map(function(k){ return barrasPorStrike[k]; })
+      .sort(function(a,b){ return a.strike-b.strike; });
+    barras.forEach(function(b){ b.iq=b.lancador? Math.round(b.titular/b.lancador*100)/100 : null; });
+    rowsTodas.sort(function(a,b){ return a.strike-b.strike; });
+
+    var totCob=barras.reduce(function(s,b){return s+b.coberto;},0);
+    var totTra=barras.reduce(function(s,b){return s+b.travado;},0);
+    var totDes=barras.reduce(function(s,b){return s+b.descoberto;},0);
+    var totTit=barras.reduce(function(s,b){return s+b.titular;},0);
+    var totLan=barras.reduce(function(s,b){return s+b.lancador;},0);
+
+    return Object.assign({}, base, {
+      barras:barras, rows:rowsTodas,
+      tot_coberto:totCob, tot_travado:totTra, tot_descoberto:totDes,
+      iq: totLan? Math.round(totTit/totLan*100)/100 : null,
+      iq_titular:totTit, iq_lancador:totLan,
+      exps_combinados: ok.map(function(r){ return r.exp; }),
+    });
+  }
+
+  function buscar(){
+    var t=tickerAtual(), exps=expSelecionados.slice();
+    if(!t||!exps.length){ showErr('Escolha o ativo e ao menos um vencimento.'); return; }
+    clearErr(); elHint.style.display='none'; elRes.style.display='none'; elLoad.style.display='block';
+    Promise.all(exps.map(function(e){ return buscarUmVenc(t, e); }))
+      .then(function(resultados){
         elLoad.style.display='none';
-        if(!res.ok){ showErr(res.j.error||'Erro ao gerar o mapa.'); elHint.style.display='block'; return; }
-        lastData=res.j; render(res.j); elRes.style.display='block';
+        var falhas=resultados.filter(function(r){ return !r.ok; });
+        var combinado=agregaMapas(resultados);
+        if(!combinado){
+          showErr((falhas[0]&&falhas[0].j&&falhas[0].j.error)||'Erro ao gerar o mapa.');
+          elHint.style.display='block'; return;
+        }
+        if(falhas.length && exps.length>1){
+          combinado.aviso=(combinado.aviso?combinado.aviso+' ':'')+
+            falhas.length+' de '+exps.length+' vencimento(s) sem dado, não entraram na soma.';
+        }
+        lastData=combinado; render(combinado); elRes.style.display='block';
       })
       .catch(function(){ elLoad.style.display='none'; showErr('Falha de rede.'); elHint.style.display='block'; });
   }
@@ -299,8 +447,11 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
 
   function render(d){
     var lbl=d.side==='call'?'CALL':'PUT';
-    var p=(d.exp||'').split('-');
     var dt=function(s){ return s? s.split('-').reverse().join('/') : ''; };
+    var multi=d.exps_combinados && d.exps_combinados.length>1;
+    var vencTxt=multi
+      ? d.exps_combinados.length+' vencimentos combinados ('+d.exps_combinados.map(dataBR).join(', ')+')'
+      : 'vencimento '+labelVenc(d.exp);
     var modoTxt='';
     if(d.modo && d.modo!=='abs'){
       var nd={var1:'1 dia',var2:'2 dias',var5:'5 dias'}[d.modo]||d.modo;
@@ -317,10 +468,12 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
         ' — mostrando o pregão disponível mais próximo, '+dt(d.data_ref)+'.</span>';
     }
     document.getElementById('mo-info').innerHTML=
-      '<strong>'+d.ticker+'</strong> · '+lbl+' · vencimento '+(p[2]+'/'+p[1]+'/'+p[0])+
+      '<strong>'+d.ticker+'</strong> · '+lbl+' · '+vencTxt+
       (d.spot?(' · spot <strong>R$ '+Number(d.spot).toFixed(2).replace('.',',')+'</strong>'):'')+
       (d.data_ref?(' · posições de '+dt(d.data_ref)):'')+modoTxt+
       (d.aviso?('<br><span style="color:#eab308;">⚠️ '+d.aviso+'</span>'):'')+avisoData;
+    document.getElementById('mo-tab-titulo').textContent=
+      multi ? 'Séries dos vencimentos combinados' : 'Séries do vencimento';
 
     renderChart(d);
     renderCards(d);
@@ -328,8 +481,10 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
   }
 
   function renderCards(d){
+    var multi=d.exps_combinados && d.exps_combinados.length>1;
     var mp=d.max_pain==null?'—':('R$ '+Number(d.max_pain).toFixed(2).replace('.',','));
     var mpSub=d.max_pain_pct==null?'':((d.max_pain_pct>0?'+':'')+String(d.max_pain_pct).replace('.',',')+'% do spot');
+    if(multi) mpSub=(mpSub?mpSub+' · ':'')+'apenas '+dataBR(d.exps_combinados[0]);
     var lado=(d.side==='call'?'CALLs':'PUTs');
     var sufixo=(d.modo&&d.modo!=='abs')?(' (variação)'):'';
     // Sem token não dá para varrer a cadeia inteira: cai no ratio do vencimento.
@@ -505,6 +660,8 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
   }
 
   function renderTabela(d){
+    var multi=d.exps_combinados && d.exps_combinados.length>1;
+    document.getElementById('mo-th-exp').style.display=multi?'':'none';
     var rows=d.rows.slice();
     rows.sort(function(a,b){
       var x=a[sortKey], y=b[sortKey];
@@ -517,6 +674,7 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
       var itm = spot && (d.side==='call' ? r.strike<spot : r.strike>spot);
       return '<tr class="'+(itm?'mo-itm':'')+'">'+
         '<td class="mo-sym">'+r.symbol+'</td>'+
+        (multi?('<td>'+dataBR(r.exp)+'</td>'):'')+
         '<td>'+money(r.strike)+'</td>'+
         '<td>'+(r.close==null?'—':money(r.close))+'</td>'+
         '<td>'+fmt(r.coberto)+'</td>'+

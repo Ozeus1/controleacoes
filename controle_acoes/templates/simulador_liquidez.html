@@ -54,14 +54,71 @@
     box-shadow: 0 0 4px rgba(0,0,0,.35);
   }
 }
-/* ── Tabela de pernas ── */
-#legs-table { width: 100%; border-collapse: collapse; font-size: .87rem; }
-#legs-table th { padding: .4rem .5rem; text-align: left; white-space: nowrap; background: var(--hover-bg); }
-#legs-table td { padding: .3rem .4rem; }
-#legs-table input, #legs-table select {
-  background: var(--card-bg); color: var(--text-primary);
-  border: 1px solid var(--border-color); border-radius: 4px; padding: .25rem .4rem;
+/* ── Planilha de pernas (motor completo, portado do Simulador/Estruturas) ── */
+#sim-tab { width:100%; border-collapse:collapse; font-size:.88rem; min-width:920px; }
+#sim-tab th {
+    padding:.45rem .5rem; text-align:center; white-space:nowrap;
+    background:var(--card-bg); color:var(--text-secondary); font-weight:600;
+    border-bottom:1px solid var(--border-color); font-size:.78rem;
+    text-transform:uppercase; letter-spacing:.03em;
 }
+#sim-tab td { padding:.35rem .4rem; text-align:center; white-space:nowrap;
+              border-bottom:1px solid rgba(255,255,255,.04); }
+#sim-tab tr.off td { opacity:.4; }
+#sim-tab select, #sim-tab input {
+    background:var(--card-bg); color:var(--text-primary);
+    border:1px solid var(--border-color); border-radius:4px;
+    padding:.3rem .4rem; font-size:.87rem; width:100%;
+}
+#sim-tab input[readonly] { background:var(--hover-bg); color:var(--text-secondary); }
+.sim-cv-c { color:#34d399; font-weight:700; }
+.sim-cv-v { color:#f87171; font-weight:700; }
+.col-qtd    { width:78px; }
+.col-sel    { width:34px; }
+.col-tipo   { width:92px; }
+.col-cv     { width:72px; }
+.col-venc   { width:158px; }
+.col-dte    { width:62px; }
+.col-strike { width:132px; }
+.col-tick   { width:112px; }
+.col-num    { width:104px; }
+.col-x      { width:34px; }
+.sim-x {
+    background:none; border:none; color:#f87171; cursor:pointer;
+    font-size:1rem; line-height:1; padding:.1rem .3rem;
+}
+.sim-tot td { font-weight:700; border-top:1px solid var(--border-color); }
+
+/* ── Painel de métricas (Simulação) ── */
+.sim-metrics {
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+    gap:.55rem; margin-top:.9rem;
+}
+.sim-met {
+    background:var(--hover-bg); border:1px solid var(--border-color);
+    border-radius:8px; padding:.55rem .8rem;
+}
+.sim-met .lbl { font-size:.72rem; color:var(--text-secondary); display:block; }
+.sim-met .val { font-size:1rem; font-weight:700; }
+#sim-aviso {
+    display:none; margin-top:.7rem; padding:.55rem .9rem;
+    border-radius:6px; font-size:.82rem; border:1px solid;
+}
+.sim-topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    gap:.7rem; flex-wrap:wrap; margin-bottom:.5rem;
+}
+.sim-topbar-info { display:flex; align-items:center; gap:.9rem; flex-wrap:wrap; }
+.sim-topbar-acoes { display:flex; gap:.4rem; flex-wrap:wrap; }
+.sim-obs-btn {
+    background:none; border:1px solid transparent; color:var(--text-secondary);
+    font-size:.78rem; padding:.3rem .55rem; border-radius:5px; cursor:pointer;
+    white-space:nowrap;
+}
+.sim-obs-btn:hover { border-color:var(--border-color); color:var(--text-primary); }
+.sim-obs-btn.tem-obs { color:#eab308; }
+.positive{color:#34d399!important;}
+.negative{color:#f87171!important;}
 /* ── Gráfico ── */
 #chart-wrap { position: relative; width: 100%; background: var(--hover-bg);
   border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; margin-top: 1rem; }
@@ -69,11 +126,6 @@
 #chart-tooltip { display: none; position: absolute; background: var(--card-bg,#1e293b);
   border: 1px solid var(--border-color); border-radius: 6px; padding: .35rem .65rem;
   font-size: .82rem; pointer-events: none; white-space: nowrap; z-index: 10; }
-/* ── Métricas ── */
-#metrics { display: flex; gap: 1.4rem; flex-wrap: wrap; background: var(--hover-bg);
-  border: 1px solid var(--border-color); border-radius: 8px;
-  padding: .8rem 1.1rem; font-size: .88rem; margin-top: .9rem; }
-#metrics div span:first-child { color: var(--text-secondary); }
 /* ── sim-item ── */
 .sim-item {
   display: flex; align-items: center; gap: .5rem;
@@ -216,107 +268,169 @@
 </div>
 {% endif %}
 
-{# ── Seção Simulador ── #}
-<div class="card" style="padding:1.2rem">
-  <h5 style="margin-bottom:1rem">📈 Simulação de Opções</h5>
+{# ── Seção Simulador (mesmo motor da tela Simulador/Estruturas) ── #}
+<div class="card" style="padding:1.1rem 1.3rem;">
 
-  <form id="sim-form" method="POST" action="{{ url_for('simulacao_new') }}">
-
-    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:1rem">
-      <div class="form-group" style="flex:3;min-width:200px;margin-bottom:0">
-        <label>Nome / Descrição</label>
-        <input type="text" name="name" required placeholder="Ex: Trava PETR4 Jun/25"
-               style="width:100%;" oninput="scheduleRedraw()">
-      </div>
-      <div class="form-group" style="flex:1;min-width:120px;margin-bottom:0">
-        <label>Ativo Subjacente</label>
-        <input type="text" name="underlying" id="sim-underlying" placeholder="PETR4"
-               style="width:100%;text-transform:uppercase;">
-      </div>
+  <div class="sim-topbar">
+    <div class="sim-topbar-info">
+      <h2 style="margin:0;white-space:nowrap;font-size:1.15rem;">📈 Simulação de Opções</h2>
+      <span id="sim-spot" style="font-size:.95rem;font-weight:700;white-space:nowrap;"></span>
+      <a id="sim-spot-chart" href="#" onclick="return simAbreGrafico();" style="display:none;
+         font-size:.8rem;color:#60a5fa;text-decoration:none;white-space:nowrap;">📈 ver gráfico</a>
     </div>
-
-    <script>var SELIC_RATE = {{ selic }};  /* % a.a. */</script>
-
-    <div style="overflow-x:auto;margin-bottom:.8rem">
-      <div style="display:flex;gap:1.4rem;flex-wrap:wrap;margin:.3rem 0 .55rem;font-size:.82rem;color:var(--text-secondary);">
-  <label style="display:inline-flex;align-items:center;gap:.35rem;cursor:pointer;white-space:nowrap;">
-    <input type="checkbox" id="chk-same-exp" style="margin:0;cursor:pointer;"> Vencimento único (preencha 1× — vale p/ todas as pernas)
-  </label>
-  <label style="display:inline-flex;align-items:center;gap:.35rem;cursor:pointer;white-space:nowrap;">
-    <input type="checkbox" id="chk-lot100" style="margin:0;cursor:pointer;"> Qtd em lotes de 100
-  </label>
-</div>
-<table id="legs-table">
-        <thead>
-          <tr>
-            <th>Tipo</th><th>C/V</th><th>Ticker</th><th>Qtd</th>
-            <th style="text-align:right">Prêmio / Preço</th>
-            <th>Vencimento</th>
-            <th style="text-align:right">Strike</th>
-            <th class="col-iv-hdr" style="text-align:right;display:none">VI %</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="legs-body">
-          <tr class="leg-row">
-            <td>
-              <select name="leg_type" onchange="legTypeChanged(this);scheduleRedraw();" style="width:72px">
-                <option value="CALL">CALL</option>
-                <option value="PUT">PUT</option>
-                <option value="STOCK">AÇÃO</option>
-              </select>
-            </td>
-            <td>
-              <select name="leg_side" onchange="scheduleRedraw();" style="width:90px">
-                <option value="BUY">COMPRA</option>
-                <option value="SELL">VENDA</option>
-              </select>
-            </td>
-            <td class="col-ticker"><input type="text" name="leg_ticker" placeholder="ex: PETRQ46"
-               style="width:110px;text-transform:uppercase"></td>
-            <td><input type="text" name="leg_qty" value="100" style="width:60px;text-align:center" oninput="scheduleRedraw()"></td>
-            <td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px;text-align:right" oninput="scheduleRedraw()"></td>
-            <td class="col-exp"><input type="date" name="leg_exp" style="width:135px"></td>
-            <td class="col-strike"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px;text-align:right" oninput="scheduleRedraw()"></td>
-            <td class="col-iv" style="display:none"><input type="text" name="leg_iv" placeholder="0,0" style="width:60px;text-align:right" oninput="scheduleRedraw()"></td>
-            <td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div style="display:flex;gap:.7rem;align-items:center;flex-wrap:wrap">
-      <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('CALL')">+ Call</button>
-      <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('PUT')">+ Put</button>
-      <button type="button" class="btn btn-secondary btn-sm" onclick="addLeg('STOCK')">+ Ação</button>
-      <button type="button" class="btn btn-secondary btn-sm" onclick="clearLegs()">🗑 Limpar</button>
-      <button type="submit" class="btn btn-primary btn-sm">💾 Salvar</button>
-    </div>
-
-  </form>
-
-  <div id="metrics">
-    <div><span>Saldo montagem</span><br><strong id="m-net">—</strong></div>
-    <div><span>Lucro máx.</span><br><strong id="m-gain" class="positive">—</strong></div>
-    <div><span>Perda máx.</span><br><strong id="m-loss" class="negative">—</strong></div>
-    <div><span>Breakeven(s)</span><br><strong id="m-be">—</strong></div>
-    <div title="Probability of Profit">
-      <span>POP</span><br><strong id="m-pop">—</strong>
+    <div class="sim-topbar-acoes">
+      <button type="button" id="sim-obs-btn" class="sim-obs-btn" onclick="simAbreObs()"
+              title="Anotações desta simulação — material de estudo, não faz parte da estrutura">📝 Obs.</button>
+      <button class="btn btn-secondary btn-sm" onclick="simCarregarModal()">📂 Abrir simulação</button>
+      <button class="btn btn-primary btn-sm" onclick="simSalvar()">💾 Salvar</button>
+      <button class="btn btn-secondary btn-sm" onclick="simSalvarComo()"
+              title="Salva a planilha atual como uma nova simulação, sem alterar a que já estava aberta">💾 Salvar como…</button>
+      <button class="btn btn-secondary btn-sm" onclick="simNova()">＋ Nova</button>
     </div>
   </div>
 
-  <div id="calendar-warning" style="display:none;margin-top:.8rem;padding:.6rem 1rem;
-       background:rgba(234,179,8,0.12);border:1px solid rgba(234,179,8,0.4);
-       border-radius:6px;font-size:.85rem;color:#ca8a04"></div>
+  {# Ativo/vencimentos vêm da seção Liquidez acima (slLoadLiq sincroniza
+     via simSetAtivo) — sem seletor próprio aqui, só um campo oculto que o
+     motor de simulação usa internamente. #}
+  <input type="hidden" id="sim-ativo" value="">
+  <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.7rem;">
+    <div style="display:flex;flex-direction:column;gap:.25rem;">
+      <label class="sim-hint">Nome da simulação</label>
+      <input type="text" id="sim-nome" placeholder="Ex.: Trava de alta PETR4"
+             style="background:var(--card-bg);color:var(--text-primary);
+                    border:1px solid var(--border-color);border-radius:5px;
+                    padding:.35rem .55rem;font-size:.85rem;min-width:230px;">
+    </div>
+    <label class="sim-chk-label">
+      <input type="checkbox" id="sim-venc-unico" style="cursor:pointer;margin:0;"
+             title="Marcado, toda nova perna de opção adicionada usa automaticamente o mesmo vencimento da 1ª perna já escolhida.">
+      vencimento único
+    </label>
+    <span id="sim-cadeia-status" class="sim-hint" style="white-space:nowrap;"></span>
+  </div>
 
-  <div id="curvas-ctrl-sl"></div>
+  <script>var SELIC_RATE = {{ selic }};  /* % a.a. */</script>
+
+  <!-- Planilha de pernas ------------------------------------------ -->
+  <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.5rem;">
+    <button class="btn btn-secondary btn-sm" onclick="simAddPerna('CALL')">+ Call</button>
+    <button class="btn btn-secondary btn-sm" onclick="simAddPerna('PUT')">+ Put</button>
+    <button class="btn btn-secondary btn-sm" onclick="simAddPerna('STOCK')">+ Ativo</button>
+    <button class="btn btn-secondary btn-sm" onclick="simAtualizarCotacoes()"
+            title="Rebusca a cadeia e atualiza o prêmio de todas as pernas já escolhidas com o preço atual (bid/ask no pregão aberto, último fechamento fora dele)">
+      🔄 Atualizar cotação
+    </button>
+    <button class="btn btn-secondary btn-sm" onclick="simLimpar()">🗑 Limpar</button>
+  </div>
+
+  <div style="overflow-x:auto;">
+    <table id="sim-tab" class="no-datatable">
+      <thead>
+        <tr>
+          <th class="col-sel" title="Marque para incluir a perna no cálculo">✓</th>
+          <th class="col-cv">C/V</th>
+          <th class="col-tipo">Tipo</th>
+          <th class="col-qtd">Qtde</th>
+          <th class="col-venc">Vencimento</th>
+          <th class="col-dte" title="Dias até o vencimento desta perna">DTE</th>
+          <th class="col-strike">Strike</th>
+          <th class="col-tick">Ticker</th>
+          <th class="col-num">Prêmio</th>
+          <th class="col-num">Entrada</th>
+          <th class="col-num">Saída</th>
+          <th class="col-num" title="Volatilidade implícita — usada no cálculo de travas com vencimentos diferentes">VI %</th>
+          <th class="col-x"></th>
+        </tr>
+      </thead>
+      <tbody id="sim-body"></tbody>
+      <tfoot>
+        <tr class="sim-tot">
+          <td colspan="9" style="text-align:right;">Total da operação</td>
+          <td id="sim-tot-ent">—</td>
+          <td id="sim-tot-sai">—</td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div id="sim-aviso"></div>
+
+  <!-- Métricas ---------------------------------------------------- -->
+  <div class="sim-metrics">
+    <div class="sim-met"><span class="lbl">Montagem</span><span class="val" id="m-net">—</span></div>
+    <div class="sim-met"><span class="lbl">Lucro máximo</span><span class="val positive" id="m-gain">—</span></div>
+    <div class="sim-met"><span class="lbl" title="Lucro máximo ÷ custo de saída (desembolso das compras)">Lucro máx. % sobre investido</span><span class="val" id="m-gain-pct">—</span></div>
+    <div class="sim-met"><span class="lbl" title="Quanto o lucro máximo % representa em relação ao rendimento da Selic no mesmo prazo (DTE do vencimento mais curto)">Lucro máx. vs. Selic no período</span><span class="val" id="m-gain-selic">—</span></div>
+    <div class="sim-met"><span class="lbl">Prejuízo máximo</span><span class="val negative" id="m-loss">—</span></div>
+    <div class="sim-met"><span class="lbl">Breakeven(s)</span><span class="val" id="m-be">—</span></div>
+    <div class="sim-met"><span class="lbl" title="Probability of Profit (Black-Scholes)">POP</span><span class="val" id="m-pop">—</span></div>
+    <div class="sim-met"><span class="lbl">Custo de entrada</span><span class="val" id="m-ent">—</span></div>
+    <div class="sim-met"><span class="lbl">Custo de saída</span><span class="val" id="m-sai">—</span></div>
+    <div class="sim-met"><span class="lbl" title="Delta líquido da estrutura hoje, no preço atual do ativo — soma de delta(Black-Scholes) × quantidade × sinal C/V de cada perna (1.0 por ação na perna de Ativo). Mede a quantas ações a posição equivale no preço atual.">Delta estrutural</span><span class="val" id="m-delta-estrutural">—</span></div>
+    <div class="sim-met"><span class="lbl" title="Diferença entre o delta estrutural hoje e o delta estrutural no vencimento mais curto (só valor intrínseco) — mostra como a exposição da estrutura muda conforme o tempo passa até lá.">Delta de transição</span><span class="val" id="m-delta-transicao">—</span></div>
+    <div class="sim-met"><span class="lbl">Vencimento mais curto</span><span class="val" id="m-dte">—</span></div>
+  </div>
+
+  <!-- Gráfico ----------------------------------------------------- -->
+  <div id="curvas-ctrl-sim"></div>
   <div id="chart-wrap">
     <canvas id="payoff-canvas"></canvas>
     <div id="chart-tooltip"></div>
   </div>
-  <p style="margin:.3rem 0 0; font-size:.72rem; color:var(--text-secondary);">
-    Roda do mouse para zoom · arraste para mover · duplo clique para resetar
+  <p class="sim-hint" style="margin-top:.4rem;">
+    Roda do mouse para zoom · arraste para mover · duplo clique para resetar.
+    O gráfico mostra o payoff no vencimento mais curto.
   </p>
+</div>
+
+<!-- ── Modal: abrir simulação salva ────────────────────────────────── -->
+<div id="open-modal" style="display:none;position:fixed;inset:0;z-index:19000;
+     background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,560px);
+              max-height:88vh;display:flex;flex-direction:column;border:1px solid var(--border-color);">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:.8rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <h3 style="margin:0;font-size:1rem;">Simulações salvas</h3>
+      <button onclick="document.getElementById('open-modal').style.display='none'"
+              style="background:none;border:none;font-size:1.4rem;
+                     color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:.6rem 1.1rem 1rem;" id="open-modal-lista">
+      <p class="sim-hint" style="padding:1rem 0;">⏳ carregando…</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: observações da simulação ─────────────────────────────── -->
+<div id="obs-modal" style="display:none;position:fixed;inset:0;z-index:19100;
+     background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,560px);
+              max-height:88vh;display:flex;flex-direction:column;border:1px solid var(--border-color);">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:.8rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <h3 style="margin:0;font-size:1rem;">📝 Observações</h3>
+      <button onclick="document.getElementById('obs-modal').style.display='none'"
+              style="background:none;border:none;font-size:1.4rem;
+                     color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:.8rem 1.1rem;display:flex;flex-direction:column;gap:.5rem;">
+      <p class="sim-hint" style="margin:0;">
+        Anotações livres desta simulação (material de estudo) — não fazem parte da estrutura
+        e não são enviadas se a operação for salva em produção.
+      </p>
+      <textarea id="obs-textarea" rows="10" placeholder="Ex.: por que montei esta estrutura, cenário esperado, o que observar…"
+                style="width:100%;resize:vertical;background:var(--hover-bg);color:var(--text-primary);
+                       border:1px solid var(--border-color);border-radius:6px;padding:.6rem .7rem;
+                       font-size:.88rem;font-family:inherit;box-sizing:border-box;"></textarea>
+      <div id="obs-status" class="sim-hint" style="min-height:1.2em;"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;padding:.7rem 1.1rem;
+                border-top:1px solid var(--border-color);">
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('obs-modal').style.display='none'">Fechar</button>
+      <button class="btn btn-primary btn-sm" onclick="simSalvarObs()">💾 Salvar observações</button>
+    </div>
+  </div>
 </div>
 
 {# ── Mini-modal: Adicionar perna ── #}
@@ -623,8 +737,10 @@ window.slLoadLiq = function(){
   document.getElementById('sl-liq-tables').style.display = 'none';
   document.getElementById('sl-filtros').style.display = 'none';
   document.getElementById('sl-liq-summary').innerHTML = '';
-  // Preenche ativo subjacente no formulário
-  document.getElementById('sim-underlying').value = ticker;
+  // Sincroniza o ativo da Simulação com o que acabou de ser buscado na
+  // Liquidez — mesmo padrão do Simulador/Estruturas (dropdown+Buscar).
+  if (window.simSetAtivo) window.simSetAtivo(ticker);
+  if (window.simCarregarCadeia) window.simCarregarCadeia();
 
   var nMeses = document.getElementById('sl-n-meses').value;
   var weekly = document.getElementById('sl-weekly').checked ? '1' : '0';
@@ -685,376 +801,1042 @@ window.slConfirmLeg = function(){
   var premium = parseFloat(p.close||0).toFixed(2).replace('.',',');
   var strike  = parseFloat(p.strike||0).toFixed(2).replace('.',',');
 
-  addLegFilled(p.type, side, qty, p.sym, premium, p.due, strike);
+  // simAddPerna já monta a linha e preenche a lista de vencimentos a
+  // partir da cadeia (CADEIA) carregada pela Simulação — só falta escolher
+  // o vencimento/strike que vieram da tabela de Liquidez.
+  window.simAddPerna(p.type);
+  var rows = document.querySelectorAll('#sim-body tr.leg-row');
+  var tr = rows[rows.length - 1];
+  tr.querySelector('.leg-side').value = side;
+  tr.querySelector('.leg-qty').value = qty;
+  if (tr.querySelector('.leg-exp-sel')) {
+    var expSel = tr.querySelector('.leg-exp-sel');
+    var temExp = Array.prototype.some.call(expSel.options, function(o){ return o.value === p.due; });
+    if (temExp) {
+      expSel.value = p.due;
+      if (window.simVencMudou) window.simVencMudou(expSel);
+    }
+    var strikeSel = tr.querySelector('.leg-strike-sel');
+    if (strikeSel) {
+      var alvo = parseFloat(p.strike);
+      var opt = Array.prototype.filter.call(strikeSel.options, function(o){
+        return Math.abs(parseFloat(o.value) - alvo) < 0.001;
+      })[0];
+      if (opt) {
+        strikeSel.value = opt.value;
+        if (window.simStrikeMudou) window.simStrikeMudou(strikeSel);
+      } else {
+        // Strike não está na cadeia carregada (ex.: fora da faixa de
+        // strikes buscada) — preenche manualmente com o que veio da
+        // tabela de liquidez, mesmo sem o select refletir.
+        tr.querySelector('.leg-ticker').value = p.sym;
+        tr.querySelector('.leg-premium').value = premium;
+      }
+    }
+  }
+  if (window.simRecalc) window.simRecalc();
   slCloseLegModal();
-  // Rola para o simulador
-  document.getElementById('legs-table').scrollIntoView({behavior:'smooth', block:'center'});
+  document.getElementById('sim-tab').scrollIntoView({behavior:'smooth', block:'center'});
 };
 
 // ═══════════════════════════════════════════════════════════
-// SIMULADOR — gestão de pernas
+// SIMULAÇÃO — motor completo (portado de Simulador/Estruturas)
 // ═══════════════════════════════════════════════════════════
-function rowTemplate(type){
-  var isSt = type === 'STOCK';
-  var hide = isSt ? 'display:none;' : '';
-  var dis  = isSt ? ' disabled' : '';
-  return '<tr class="leg-row">' +
-    '<td><select name="leg_type" onchange="legTypeChanged(this);scheduleRedraw();" style="width:72px">' +
-      '<option value="CALL"'  + (type==='CALL' ?' selected':'') + '>CALL</option>' +
-      '<option value="PUT"'   + (type==='PUT'  ?' selected':'') + '>PUT</option>'  +
-      '<option value="STOCK"' + (isSt          ?' selected':'') + '>AÇÃO</option>' +
-    '</select></td>' +
-    '<td><select name="leg_side" onchange="scheduleRedraw();" style="width:90px">' +
-      '<option value="BUY">COMPRA</option><option value="SELL">VENDA</option>' +
-    '</select></td>' +
-    '<td class="col-ticker" style="' + hide + '"><input type="text" name="leg_ticker" placeholder="ex: PETRQ46" style="width:110px;text-transform:uppercase"' + dis + '></td>' +
-    '<td><input type="text" name="leg_qty" value="100" style="width:60px;text-align:center" oninput="scheduleRedraw()"></td>' +
-    '<td><input type="text" name="leg_premium" placeholder="0,00" style="width:85px;text-align:right" oninput="scheduleRedraw()"></td>' +
-    '<td class="col-exp" style="' + hide + '"><input type="date" name="leg_exp" style="width:135px"' + dis + '></td>' +
-    '<td class="col-strike" style="' + hide + '"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px;text-align:right" oninput="scheduleRedraw()"' + dis + '></td>' +
-    '<td class="col-iv" style="display:none"><input type="text" name="leg_iv" placeholder="0,0" style="width:60px;text-align:right" oninput="scheduleRedraw()"' + dis + '></td>' +
-    '<td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>' +
-  '</tr>';
+var CADEIA = null;      // resposta de /api/cadeia
+var SIM_ID = null;      // id da simulação aberta (null = nova)
+var SIM_NOTES = '';     // anotações da simulação aberta — não fazem parte da estrutura
+var SIM_RESTAURANDO = false;   // true enquanto simAplicaPendencias reaplica uma simulação salva
+
+function simAtualizaBotaoObs() {
+    document.getElementById('sim-obs-btn').classList.toggle('tem-obs', !!SIM_NOTES.trim());
 }
 
-function addLeg(type){
-  document.getElementById('legs-body').insertAdjacentHTML('beforeend', rowTemplate(type || 'CALL'));
-  scheduleRedraw();
+function parseVal(s) {
+    return parseFloat((s || '0').toString().replace(/\./g, '').replace(',', '.')) || 0;
 }
-
-function addLegFilled(type, side, qty, ticker, premium, exp, strike){
-  document.getElementById('legs-body').insertAdjacentHTML('beforeend', rowTemplate(type || 'CALL'));
-  var rows = document.querySelectorAll('#legs-body .leg-row');
-  var row = rows[rows.length - 1];
-  row.querySelector('[name=leg_side]').value = side;
-  row.querySelector('[name=leg_qty]').value  = qty;
-  if(ticker) row.querySelector('[name=leg_ticker]').value  = ticker;
-  if(premium) row.querySelector('[name=leg_premium]').value = premium;
-  if(exp)     row.querySelector('[name=leg_exp]').value    = exp;
-  if(strike)  row.querySelector('[name=leg_strike]').value = strike;
-  scheduleRedraw();
+function fmtNum(v, dec) {
+    dec = dec == null ? 2 : dec;
+    return Number(v || 0).toLocaleString('pt-BR',
+        { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
-
-function removeLeg(btn){
-  var rows = document.querySelectorAll('#legs-body .leg-row');
-  if(rows.length <= 1){ alert('A operação deve ter ao menos uma perna.'); return; }
-  btn.closest('.leg-row').remove();
-  scheduleRedraw();
-}
-
-function clearLegs(){
-  if(!confirm('Limpar todas as pernas?')) return;
-  var body = document.getElementById('legs-body');
-  body.innerHTML = '';
-  addLeg('CALL');
-}
-
-function legTypeChanged(sel){
-  var row  = sel.closest('tr');
-  var isSt = sel.value === 'STOCK';
-  var strikeEl = row.querySelector('[name=leg_strike]');
-  var expEl    = row.querySelector('[name=leg_exp]');
-  var tickerEl = row.querySelector('[name=leg_ticker]');
-  var ivEl     = row.querySelector('[name=leg_iv]');
-  row.querySelector('.col-ticker').style.display = isSt ? 'none' : '';
-  row.querySelector('.col-exp').style.display    = isSt ? 'none' : '';
-  row.querySelector('.col-strike').style.display = isSt ? 'none' : '';
-  strikeEl.disabled = isSt; expEl.disabled = isSt; tickerEl.disabled = isSt;
-  if(ivEl) ivEl.disabled = isSt;
-  if(isSt){ strikeEl.value=''; expEl.value=''; tickerEl.value=''; }
-  updateIVVisibility();
-}
-
-function updateIVVisibility(){
-  var exps = [];
-  document.querySelectorAll('#legs-body .leg-row').forEach(function(row){
-    var lt  = row.querySelector('[name=leg_type]').value;
-    var exp = row.querySelector('[name=leg_exp]');
-    if(lt!=='STOCK' && exp && exp.value && exps.indexOf(exp.value)<0) exps.push(exp.value);
-  });
-  var multi = exps.length > 1;
-  document.querySelectorAll('.col-iv-hdr').forEach(function(th){ th.style.display=multi?'':'none'; });
-  document.querySelectorAll('#legs-body .leg-row').forEach(function(row){
-    var lt  = row.querySelector('[name=leg_type]').value;
-    var td  = row.querySelector('.col-iv');
-    var inp = row.querySelector('[name=leg_iv]');
-    if(td)  td.style.display  = (multi && lt!=='STOCK')?'':'none';
-    if(inp) inp.disabled      = !(multi && lt!=='STOCK');
-  });
-}
-
-// ═══════════════════════════════════════════════════════════
-// SIMULADOR — cálculo payoff
-// ═══════════════════════════════════════════════════════════
-function parseVal(s){ return parseFloat((s||'0').replace(/\./g,'').replace(',','.'))||0; }
-
-function readLegs(){
-  var legs = [];
-  document.querySelectorAll('#legs-body .leg-row').forEach(function(row){
-    var lt   = row.querySelector('[name=leg_type]').value;
-    var side = row.querySelector('[name=leg_side]').value;
-    var qty  = parseInt(row.querySelector('[name=leg_qty]').value)||1;
-    var k    = lt!=='STOCK'?parseVal(row.querySelector('[name=leg_strike]').value):0;
-    var p    = parseVal(row.querySelector('[name=leg_premium]').value);
-    var expEl= row.querySelector('[name=leg_exp]');
-    var exp  = (expEl&&expEl.value)?expEl.value:null;
-    var ivEl = row.querySelector('[name=leg_iv]');
-    var iv   = ivEl?(parseVal(ivEl.value)/100):0;
-    legs.push({type:lt,side:side,qty:qty,strike:k,premium:p,exp:exp,iv:iv});
-  });
-  return legs;
-}
-
-function normCDF(x){
-  var a=[0.319381530,-0.356563782,1.781477937,-1.821255978,1.330274429];
-  var L=Math.abs(x), k=1/(1+0.2316419*L);
-  var w=1-(1/Math.sqrt(2*Math.PI))*Math.exp(-L*L/2)*(a[0]*k+a[1]*k*k+a[2]*k*k*k+a[3]*k*k*k*k+a[4]*k*k*k*k*k);
-  return x<0?1-w:w;
-}
-
-function blackScholes(S,K,T,r,sigma,isCall){
-  if(T<=0||sigma<=0||S<=0||K<=0) return isCall?Math.max(0,S-K):Math.max(0,K-S);
-  var sqrtT=Math.sqrt(T);
-  var d1=(Math.log(S/K)+(r+0.5*sigma*sigma)*T)/(sigma*sqrtT);
-  var d2=d1-sigma*sqrtT;
-  if(isCall) return S*normCDF(d1)-K*Math.exp(-r*T)*normCDF(d2);
-  return K*Math.exp(-r*T)*normCDF(-d2)-S*normCDF(-d1);
-}
-
-function getExpDates(legs){
-  var exps=[];
-  legs.forEach(function(l){ if(l.type!=='STOCK'&&l.exp&&exps.indexOf(l.exp)<0) exps.push(l.exp); });
-  return exps.sort();
-}
-
-function netPremium(legs){
-  return legs.reduce(function(acc,l){
-    if(l.type==='STOCK') return acc;
-    return acc+(l.side==='SELL'?1:-1)*l.qty*l.premium;
-  },0);
-}
-
-function payoffAt(S,legs,multiExp,refDateStr){
-  var total=netPremium(legs);
-  var r=SELIC_RATE/100;
-  var refDate=refDateStr?new Date(refDateStr):null;
-  legs.forEach(function(l){
-    var sign=l.side==='BUY'?1:-1;
-    if(l.type==='STOCK'){ total+=sign*l.qty*(S-l.premium); return; }
-    if(multiExp&&refDate&&l.exp&&l.exp>refDateStr&&l.iv>0){
-      var legDate=new Date(l.exp);
-      var T=(legDate-refDate)/(365.25*24*3600*1000);
-      total+=sign*l.qty*blackScholes(S,l.strike,T,r,l.iv,l.type==='CALL');
-    } else {
-      if(l.type==='CALL') total+=sign*l.qty*Math.max(0,S-l.strike);
-      else                total+=sign*l.qty*Math.max(0,l.strike-S);
-    }
-  });
-  return total;
-}
-
-function fmtBRLsim(v){ return 'R$ '+Math.abs(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
-
-// ═══════════════════════════════════════════════════════════
-// CANVAS
-// ═══════════════════════════════════════════════════════════
-var PAD={top:28,right:16,bottom:54,left:96};
-
-function drawChart(legs){
-  var canvas=document.getElementById('payoff-canvas');
-  var wrap  =document.getElementById('chart-wrap');
-  var W=wrap.clientWidth||700, H=Math.max(300,Math.round(W*0.38));
-  canvas.width=W; canvas.height=H;
-
-  try {
-    PayoffStyle.ligaZoom(canvas, canvas._payoffView || (canvas._payoffView = { zoom:1, pan:0 }),
-        function () { drawChart(readLegs()); });
-  } catch (eZoom) {}
-
-  var ctx=canvas.getContext('2d'); ctx.clearRect(0,0,W,H);
-  if(!legs.length) return;
-
-  var expDates=getExpDates(legs), multiExp=expDates.length>1;
-  var refDateStr=multiExp?expDates[0]:null;
-  var strikes=legs.filter(function(l){return l.type!=='STOCK'&&l.strike>0;}).map(function(l){return l.strike;});
-  if(!strikes.length) strikes=[50];
-  var minK=Math.min.apply(null,strikes), maxK=Math.max.apply(null,strikes);
-  var pad=Math.max((maxK-minK)*0.6,maxK*0.3);
-  var SminBase=Math.max(0.01,minK-pad), SmaxBase=maxK+pad;
-  canvas._payoffView = canvas._payoffView || { zoom:1, pan:0 };
-  var Smin=SminBase, Smax=SmaxBase;
-  try {
-    var zoomed=PayoffStyle.aplicaZoom(SminBase,SmaxBase,canvas._payoffView);
-    Smin=Math.max(0.01,zoomed.Smin); Smax=zoomed.Smax;
-  } catch (eZoom) {}
-  var N=400, step=(Smax-Smin)/N, Sarr=[], Parr=[];
-  for(var i=0;i<=N;i++){var S=Smin+i*step;Sarr.push(S);Parr.push(payoffAt(S,legs,multiExp,refDateStr));}
-
-  var maxGain=Math.max.apply(null,Parr), maxLoss=Math.min.apply(null,Parr);
-  var ySpan=Math.max(Math.abs(maxGain),Math.abs(maxLoss))*1.15||100;
-  var yMin=-ySpan, yMax=ySpan;
-  var cW=W-PAD.left-PAD.right, cH=H-PAD.top-PAD.bottom;
-  function xPx(S){return PAD.left+(S-Smin)/(Smax-Smin)*cW;}
-  function yPx(P){return PAD.top+(1-(P-yMin)/(yMax-yMin))*cH;}
-  var y0=yPx(0);
-
-  var geo={W:W,H:H,PAD:PAD,cW:cW,cH:cH};
-  PayoffStyle.grade(ctx,geo);
-  PayoffStyle.eixoZero(ctx,geo,y0);
-
-  strikes.forEach(function(K){
-    var xk=xPx(K);
-    PayoffStyle.marco(ctx,geo,xk,PayoffStyle.CORES.strike,[4,4]);
-    PayoffStyle.pilula(ctx,'K '+K.toLocaleString('pt-BR',{minimumFractionDigits:2}),
-      xk,PAD.top-9,'rgba(30,41,59,.92)','rgba(203,213,225,.95)',
-      {borda:'rgba(148,163,184,.35)',limites:{min:PAD.left,max:W-PAD.right}});
-  });
-
-  var bes=[], pRange=maxGain-maxLoss;
-  if(pRange>0.01){
-    for(var j=0;j<Parr.length-1;j++){
-      var p1=Parr[j],p2=Parr[j+1];
-      if(p1*p2<0){var be=Sarr[j]+(-p1)*(Sarr[j+1]-Sarr[j])/(p2-p1);bes.push(Math.round(be*100)/100);}
-    }
-  }
-  PayoffStyle.areas(ctx,geo,Sarr,Parr,xPx,yPx,y0);
-  PayoffStyle.curva(ctx,Sarr,Parr,xPx,yPx);
-
-  // Curvas teóricas (payoff real / delta / theta) na data do slider
-  var _ctrl = PayoffStyle.controleData(document.getElementById('curvas-ctrl-sl'),
-                                       function () { drawChart(readLegs()); });
-  _ctrl.sincroniza(legs);
-  if (_ctrl.ativo()) {
-      var _ser = PayoffStyle.serieTeorica(Sarr, legs, _ctrl.dataSel(), SELIC_RATE);
-      if (_ctrl.cRe.checked)
-          PayoffStyle.curva(ctx, Sarr, _ser.valor, xPx, yPx, PayoffStyle.CORES.real, 2);
-      // delta e theta vivem noutra escala: eixo próprio à direita
-      var _q2 = [];
-      if (_ctrl.cDe.checked) _q2 = _q2.concat(_ser.delta);
-      if (_ctrl.cTh.checked) _q2 = _q2.concat(_ser.theta);
-      if (_q2.length) {
-          var _v2a = Math.min.apply(null, _q2), _v2b = Math.max.apply(null, _q2);
-          var _fg = (_v2b - _v2a) * 0.12 || Math.max(Math.abs(_v2b), 0.1) * 0.2;
-          var _rot = (_ctrl.cDe.checked && _ctrl.cTh.checked) ? 'Δ / Θ'
-                   : (_ctrl.cDe.checked ? 'Δ' : 'Θ/dia');
-          var _cor = _ctrl.cDe.checked ? PayoffStyle.CORES.delta : PayoffStyle.CORES.theta;
-          var _y2 = PayoffStyle.eixoDireito(ctx, geo, _v2a - _fg, _v2b + _fg, _rot, _cor);
-          if (_ctrl.cDe.checked)
-              PayoffStyle.curva(ctx, Sarr, _ser.delta, xPx, _y2, PayoffStyle.CORES.delta, 1.6);
-          if (_ctrl.cTh.checked)
-              PayoffStyle.curva(ctx, Sarr, _ser.theta, xPx, _y2, PayoffStyle.CORES.theta, 1.6);
-      }
-  }
-
-
-  bes.forEach(function(be){
-    var xb=xPx(be);
-    PayoffStyle.marco(ctx,geo,xb,'rgba(148,163,184,.75)',[5,4]);
-    PayoffStyle.pilula(ctx,'Break Even: '+be.toLocaleString('pt-BR',{minimumFractionDigits:2}),
-      xb,H-PAD.bottom+13,'rgba(71,85,105,.95)','#f1f5f9',
-      {limites:{min:PAD.left,max:W-PAD.right}});
-  });
-
-  ctx.fillStyle='rgba(148,163,184,0.85)';ctx.font='11px sans-serif';ctx.textAlign='center';
-  for(var xi=0;xi<=8;xi++){var sv=Smin+xi*(Smax-Smin)/8;ctx.fillText(sv.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}),xPx(sv),H-PAD.bottom+28);}
-  ctx.fillStyle='rgba(148,163,184,0.7)';ctx.font='10px sans-serif';
-  ctx.fillText('Preço do Ativo no Vencimento (R$)',PAD.left+cW/2,H-4);
-
-  ctx.textAlign='right';ctx.fillStyle='rgba(148,163,184,0.85)';ctx.font='11px sans-serif';
-  for(var yi=0;yi<=6;yi++){var yv=yMin+yi*(yMax-yMin)/6;ctx.fillText((yv>=0?'':'-')+fmtBRLsim(yv),PAD.left-6,yPx(yv)+4);}
-  ctx.strokeStyle='rgba(100,116,139,0.22)';ctx.lineWidth=1;ctx.strokeRect(PAD.left,PAD.top,cW,cH);
-
-  // Métricas
-  var net=netPremium(legs);
-  var netEl=document.getElementById('m-net');
-  netEl.textContent=fmtBRLsim(net)+(net>=0?' (crédito)':' (débito)');
-  netEl.className=net>=0?'positive':'negative';
-  document.getElementById('m-gain').textContent=maxGain>1e7?'∞':fmtBRLsim(maxGain);
-  document.getElementById('m-loss').textContent=maxLoss<-1e7?'-∞':fmtBRLsim(maxLoss);
-  document.getElementById('m-be').textContent=bes.length?bes.map(fmtBRLsim).join(' / '):'—';
-
-  // POP
-  (function(){
-    var popEl=document.getElementById('m-pop');
-    if(!bes.length){popEl.textContent='—';popEl.className='';return;}
-    var spotLeg=legs.find(function(l){return l.type==='STOCK';});
-    var S=spotLeg?spotLeg.entry:(legs[0]?legs[0].strike:0);
-    if(!S||S<=0){popEl.textContent='—';return;}
-    var today=new Date();today.setHours(0,0,0,0);
-    var minExp=null;
-    legs.forEach(function(l){if(l.exp&&l.exp<(minExp||'9999'))minExp=l.exp;});
-    if(!minExp){popEl.textContent='—';return;}
-    var T=Math.max((new Date(minExp+'T00:00:00')-today)/(365.25*86400000),1/365);
-    var sigmas=[];
-    legs.forEach(function(l){
-      if(l.type==='STOCK') return;
-      if(l.iv>0){sigmas.push(l.iv/100);return;}
-      if(l.premium>0&&l.strike>0) sigmas.push(Math.min(l.premium/l.strike*Math.sqrt(252/Math.max(T*252,1)),2));
+function fmtBRL(v) { return 'R$ ' + fmtNum(Math.abs(v || 0)); }
+function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
-    if(!sigmas.length){popEl.textContent='—';return;}
-    var sigma=sigmas.reduce(function(a,b){return a+b;},0)/sigmas.length;
-    var r2=Math.log(1+SELIC_RATE/100);
-    function d2(B){return(Math.log(S/B)+(r2-0.5*sigma*sigma)*T)/(sigma*Math.sqrt(T));}
-    var besSorted=bes.slice().sort(function(a,b){return a-b;});
-    var pop;
-    if(besSorted.length===1) pop=normCDF(d2(besSorted[0]))*100;
-    else pop=(normCDF(d2(besSorted[besSorted.length-1]))-normCDF(d2(besSorted[0])))*100;
-    pop=Math.max(0,Math.min(100,pop));
-    popEl.textContent=pop.toFixed(1).replace('.',',')+' %';
-    popEl.className=pop>=50?'positive':'negative';
-  })();
-
-  canvas._ser={Sarr:Sarr,Parr:Parr,Smin:Smin,Smax:Smax,legs:legs,multiExp:multiExp,refDateStr:refDateStr};
-
-  var warnEl=document.getElementById('calendar-warning');
-  if(multiExp){
-    var hasIV=legs.some(function(l){return l.type!=='STOCK'&&l.exp&&l.exp>refDateStr&&l.iv>0;});
-    if(hasIV){
-      warnEl.style.display='block';warnEl.style.background='rgba(16,185,129,0.10)';
-      warnEl.style.borderColor='rgba(16,185,129,0.4)';warnEl.style.color='#10b981';
-      warnEl.innerHTML='✅ <strong>Trava horizontal / diagonal:</strong> gráfico calculado com Black-Scholes (Selic '+SELIC_RATE.toFixed(2).replace('.',',')+'% a.a.) avaliado no vencimento mais curto ('+refDateStr+'). Preencha <strong>VI %</strong> para precisão máxima.';
-    } else {
-      warnEl.style.display='block';warnEl.style.background='rgba(234,179,8,0.12)';
-      warnEl.style.borderColor='rgba(234,179,8,0.4)';warnEl.style.color='#ca8a04';
-      warnEl.innerHTML='⚠️ <strong>Trava horizontal / diagonal detectada:</strong> preencha <strong>VI %</strong> das pernas mais longas para usar Black-Scholes.';
-    }
-  } else { warnEl.style.display='none'; }
-
-  updateIVVisibility();
+}
+function dataBR(iso) {
+    var p = (iso || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '');
+}
+function diasAte(iso) {
+    if (!iso) return null;
+    var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    return Math.round((new Date(iso + 'T00:00:00') - hoje) / 86400000);
 }
 
-// Tooltip canvas
-(function(){
-  var canvas=document.getElementById('payoff-canvas');
-  var tooltip=document.getElementById('chart-tooltip');
-  canvas.addEventListener('mousemove',function(e){
-    if(!canvas._ser || (canvas._payoffZoomCtrl && canvas._payoffZoomCtrl.estaArrastando())){
-      tooltip.style.display='none';return;}
-    var rect=canvas.getBoundingClientRect();
-    var mx=(e.clientX-rect.left)*(canvas.width/rect.width);
-    var cW2=canvas.width-PAD.left-PAD.right;
-    if(mx<PAD.left||mx>canvas.width-PAD.right){tooltip.style.display='none';return;}
-    var ser=canvas._ser;
-    var S2=ser.Smin+(mx-PAD.left)/cW2*(ser.Smax-ser.Smin);
-    var P=payoffAt(S2,ser.legs,ser.multiExp,ser.refDateStr);
-    var clr=P>=0?'#10b981':'#ef4444';
-    tooltip.innerHTML='<span style="color:rgba(148,163,184,.8)">Preço: </span><strong>'+
-      S2.toLocaleString('pt-BR',{minimumFractionDigits:2})+'</strong><br>'+
-      '<span style="color:'+clr+';">'+(P>=0?'Lucro: +':'Prejuízo: ')+fmtBRLsim(P)+'</span>';
-    tooltip.style.display='block';
-    var tx=e.clientX-rect.left+14, ty=e.clientY-rect.top-10;
-    if(tx+180>rect.width) tx=e.clientX-rect.left-188;
-    tooltip.style.left=tx+'px'; tooltip.style.top=ty+'px';
-  });
-  canvas.addEventListener('mouseleave',function(){tooltip.style.display='none';});
+// Letras de série B3 por mês (1=jan..12=dez): [CALL, PUT].
+var SERIE_LETRAS = [
+    ['A', 'M'], ['B', 'N'], ['C', 'O'], ['D', 'P'], ['E', 'Q'], ['F', 'R'],
+    ['G', 'S'], ['H', 'T'], ['I', 'U'], ['J', 'V'], ['K', 'W'], ['L', 'X']
+];
+function isVencMensal(iso) {
+    var p = (iso || '').split('-');
+    if (p.length !== 3) return false;
+    var y = +p[0], m = +p[1];
+    var sextas = 0, terceiraSexta = null, d;
+    for (d = 1; d <= 31; d++) {
+        var dt = new Date(y, m - 1, d);
+        if (dt.getMonth() !== m - 1) break;
+        if (dt.getDay() === 5) {
+            sextas++;
+            if (sextas === 3) { terceiraSexta = dt; break; }
+        }
+    }
+    if (!terceiraSexta) return false;
+    var alvo = new Date(y, m - 1, +p[2]);
+    var diffDias = Math.round((alvo - terceiraSexta) / 86400000);
+    return Math.abs(diffDias) <= 2;
+}
+function labelVenc(iso) {
+    var p = (iso || '').split('-');
+    if (p.length !== 3) return dataBR(iso);
+    var m = +p[1];
+    var letras = SERIE_LETRAS[m - 1] || ['?', '?'];
+    var tag = isVencMensal(iso) ? 'M' : 'S';
+    return dataBR(iso) + ' (' + tag + ') - ' + letras[0] + '/' + letras[1];
+}
+
+// Aplica um ticker vindo de fora (Liquidez ou abrir simulação salva) no
+// campo oculto que o motor de simulação usa — sem seletor próprio aqui,
+// o ativo é sempre o mesmo já buscado na seção Liquidez acima.
+window.simSetAtivo = function (t) {
+    t = (t || '').trim().toUpperCase();
+    document.getElementById('sim-ativo').value = t;
+};
+
+window.simAbreGrafico = function () {
+    var t = (document.getElementById('sim-ativo').value || '').trim().toUpperCase();
+    if (t && window.MyChart && MyChart.open) MyChart.open(t);
+    return false;
+};
+
+function simTemPernasPreenchidas() {
+    return Array.prototype.some.call(document.querySelectorAll('#sim-body tr.leg-row'), function (tr) {
+        var strikeSel = tr.querySelector('.leg-strike-sel');
+        if (strikeSel) return !!strikeSel.value;
+        var tipo = tr.querySelector('.leg-type').value;
+        if (tipo === 'STOCK') return parseVal(tr.querySelector('.leg-premium').value) > 0;
+        return false;
+    });
+}
+
+window.simCarregarCadeia = function () {
+    var t = (document.getElementById('sim-ativo').value || '').trim().toUpperCase();
+    var st = document.getElementById('sim-cadeia-status');
+    if (!t) { st.textContent = ''; return; }
+    if (CADEIA && CADEIA.ticker && CADEIA.ticker !== t && simTemPernasPreenchidas()) {
+        SIM_ID = null;
+        document.getElementById('sim-nome').value = '';
+        simLimpar();
+    }
+    document.getElementById('sim-ativo').value = t;
+    st.textContent = '⏳ buscando cadeia…';
+    var q = 'n=40&weekly=' + (document.getElementById('sl-weekly').checked ? '1' : '0')
+          + '&n_meses=' + document.getElementById('sl-n-meses').value;
+    fetch('/api/cadeia/' + encodeURIComponent(t) + '?' + q)
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            if (!res.ok || res.j.error) {
+                CADEIA = null;
+                st.textContent = '⚠️ ' + (res.j.error || 'falha ao buscar a cadeia');
+                st.style.color = '#f87171';
+                document.getElementById('sim-spot-chart').style.display = 'none';
+                return;
+            }
+            CADEIA = res.j;
+            st.style.color = '';
+            st.textContent = '✓ ' + (CADEIA.expirations || []).length + ' vencimento(s)';
+            var spot = CADEIA.spot || 0;
+            var ch = CADEIA.spot_change;
+            document.getElementById('sim-spot').innerHTML = spot
+                ? (t + ' ' + fmtBRL(spot) + (ch != null
+                    ? ' <span class="' + (ch >= 0 ? 'positive' : 'negative') + '" style="font-size:.82rem;">'
+                      + (ch >= 0 ? '+' : '') + fmtNum(ch) + '%</span>' : ''))
+                : '';
+            document.getElementById('sim-spot-chart').style.display = spot ? '' : 'none';
+            simPreencheTodosVencimentos();
+            simReaplicaStrikesEscolhidos();
+            simAtualizaTodosAtivos();
+            simAplicaPendencias();
+            simRecalc();
+        })
+        .catch(function (e) {
+            CADEIA = null;
+            st.style.color = '#f87171';
+            st.textContent = '⚠️ falha de rede: ' + e;
+            document.getElementById('sim-spot-chart').style.display = 'none';
+        });
+};
+
+function simReaplicaStrikesEscolhidos() {
+    document.querySelectorAll('#sim-body tr.leg-row').forEach(function (tr) {
+        var strikeSel = tr.querySelector('.leg-strike-sel');
+        if (strikeSel && strikeSel.value) simAplicaStrike(tr, strikeSel.value);
+    });
+}
+
+window.simAtualizarCotacoes = function () {
+    var t = (document.getElementById('sim-ativo').value || '').trim().toUpperCase();
+    if (!t) { alert('Escolha um ativo antes de atualizar a cotação (busque na seção Liquidez acima).'); return; }
+    simCarregarCadeia();
+};
+
+// ── Linhas da planilha ────────────────────────────────────────────
+function novaLinha(tipo) {
+    var tr = document.createElement('tr');
+    tr.className = 'leg-row';
+    var isStock = tipo === 'STOCK';
+    tr.innerHTML =
+        '<td><input type="checkbox" class="leg-on" checked onchange="simRecalc()"></td>'
+      + '<td><select class="leg-side" onchange="simSideMudou(this)">'
+      +   '<option value="BUY">C</option><option value="SELL">V</option></select></td>'
+      + '<td><select class="leg-type" onchange="simTipoMudou(this)">'
+      +   '<option value="CALL"' + (tipo === 'CALL' ? ' selected' : '') + '>CALL</option>'
+      +   '<option value="PUT"'  + (tipo === 'PUT'  ? ' selected' : '') + '>PUT</option>'
+      +   '<option value="STOCK"' + (isStock ? ' selected' : '') + '>Ativo</option>'
+      +   '</select></td>'
+      + '<td><input type="number" class="leg-qty" value="100" min="100" step="100" onchange="simQtyMudou(this)"></td>'
+      + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
+          : '<select class="leg-exp-sel" onchange="simVencMudou(this)">'
+            + '<option value="">selecione…</option></select>') + '</td>'
+      + '<td class="leg-dte sim-hint">—</td>'
+      + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
+          : '<select class="leg-strike-sel" onchange="simStrikeMudou(this)" disabled>'
+            + '<option value="">—</option></select>') + '</td>'
+      + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
+          : '<input type="text" class="leg-ticker" readonly placeholder="—">') + '</td>'
+      + '<td><input type="text" class="leg-premium" value="0,00" readonly'
+      +   (isStock ? ' title="Cotação buscada via OpLab (pregão aberto ou último fechamento)"'
+                   : ' title="Preenchido ao escolher o strike"') + '></td>'
+      + '<td class="leg-ent">—</td>'
+      + '<td class="leg-sai">—</td>'
+      + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
+          : '<input type="text" class="leg-iv" placeholder="—" onchange="simRecalc()">') + '</td>'
+      + '<td><button type="button" class="sim-x" onclick="simRemove(this)">✕</button></td>';
+    return tr;
+}
+
+window.simAddPerna = function (tipo) {
+    var tr = novaLinha(tipo);
+    document.getElementById('sim-body').appendChild(tr);
+    if (tipo === 'STOCK') simAtualizaCotacaoAtivo(tr);
+    else {
+        simPreencheVencimentos(tr);
+        simAplicaVencimentoUnico(tr);
+    }
+    simRecalc();
+};
+
+function simVencimentoComum() {
+    var linhas = document.querySelectorAll('#sim-body tr.leg-row');
+    for (var i = 0; i < linhas.length; i++) {
+        var sel = linhas[i].querySelector('.leg-exp-sel');
+        if (sel && sel.value) return sel.value;
+    }
+    return null;
+}
+function simAplicaVencimentoUnico(tr) {
+    if (!document.getElementById('sim-venc-unico').checked) return;
+    var exp = simVencimentoComum();
+    var sel = tr.querySelector('.leg-exp-sel');
+    if (!exp || !sel) return;
+    var temOpcao = Array.prototype.some.call(sel.options, function (o) { return o.value === exp; });
+    if (!temOpcao) return;
+    sel.value = exp;
+    simVencMudou(sel);
+}
+
+window.simRemove = function (btn) {
+    btn.closest('tr').remove();
+    simRecalc();
+};
+
+window.simLimpar = function () {
+    document.getElementById('sim-body').innerHTML = '';
+    simRecalc();
+};
+
+window.simTipoMudou = function (sel) {
+    var tr = sel.closest('tr');
+    var nova = novaLinha(sel.value);
+    nova.querySelector('.leg-side').value = tr.querySelector('.leg-side').value;
+    nova.querySelector('.leg-qty').value  = tr.querySelector('.leg-qty').value;
+    nova.querySelector('.leg-on').checked = tr.querySelector('.leg-on').checked;
+    tr.replaceWith(nova);
+    if (nova.querySelector('.leg-exp-sel')) {
+        simPreencheVencimentos(nova);
+        simAplicaVencimentoUnico(nova);
+    }
+    if (sel.value === 'STOCK') simAtualizaCotacaoAtivo(nova);
+    simRecalc();
+};
+
+window.simQtyMudou = function (input) {
+    var v = Math.round((parseInt(input.value, 10) || 100) / 100) * 100;
+    input.value = Math.max(100, v);
+    simRecalc();
+};
+
+window.simSideMudou = function (sel) {
+    var tr = sel.closest('tr');
+    var strikeSel = tr.querySelector('.leg-strike-sel');
+    if (strikeSel && strikeSel.value) simAplicaStrike(tr, strikeSel.value);
+    simRecalc();
+};
+
+// ── Cascata vencimento → strike → ticker/prêmio ────────────────────
+function simPreencheVencimentos(tr) {
+    var sel = tr.querySelector('.leg-exp-sel');
+    if (!sel) return;
+    var atual = sel.value;
+    sel.innerHTML = '<option value="">selecione…</option>' +
+        (CADEIA && CADEIA.expirations ? CADEIA.expirations.map(function (e) {
+            return '<option value="' + e.exp + '">' + labelVenc(e.exp) + '</option>';
+        }).join('') : '');
+    if (atual && CADEIA && (CADEIA.expirations || []).some(function (e) { return e.exp === atual; })) {
+        sel.value = atual;
+    }
+    var dteEl = tr.querySelector('.leg-dte');
+    if (dteEl) {
+        var dd = sel.value ? diasAte(sel.value) : null;
+        dteEl.textContent = dd != null ? dd + 'd' : '—';
+    }
+}
+
+function simPreencheTodosVencimentos() {
+    document.querySelectorAll('#sim-body tr.leg-row').forEach(function (tr) {
+        if (tr.querySelector('.leg-exp-sel')) simPreencheVencimentos(tr);
+    });
+}
+
+window.simVencMudou = function (sel) {
+    var tr = sel.closest('tr');
+    var strikeSel = tr.querySelector('.leg-strike-sel');
+    var exp = sel.value;
+    tr.querySelector('.leg-ticker').value = '';
+    tr.querySelector('.leg-premium').value = '0,00';
+    var dteEl = tr.querySelector('.leg-dte');
+    if (dteEl) {
+        var d = exp ? diasAte(exp) : null;
+        dteEl.textContent = d != null ? d + 'd' : '—';
+    }
+    if (!exp) {
+        strikeSel.innerHTML = '<option value="">—</option>';
+        strikeSel.disabled = true;
+        simRecalc();
+        return;
+    }
+    var tipo = tr.querySelector('.leg-type').value;
+    var bloco = (CADEIA.expirations || []).filter(function (e) { return e.exp === exp; })[0];
+    var spot = (CADEIA && CADEIA.spot) || 0;
+    var rows = (bloco && bloco.rows) || [];
+    strikeSel.innerHTML = '<option value="">selecione…</option>' + rows.map(function (r) {
+        var o = (tipo === 'PUT') ? r.put : r.call;
+        if (!o) return '';
+        var perto = spot && Math.abs(r.strike - spot) / spot < 0.02;
+        return '<option value="' + r.strike + '"' + (perto ? ' data-perto="1"' : '') + '>'
+             + fmtBRL(r.strike) + (perto ? ' (próximo do spot)' : '') + '</option>';
+    }).join('');
+    strikeSel.disabled = rows.length === 0;
+    if (!SIM_RESTAURANDO && document.getElementById('sim-venc-unico').checked) {
+        document.querySelectorAll('#sim-body tr.leg-row').forEach(function (outro) {
+            var outroSel = outro.querySelector('.leg-exp-sel');
+            if (!outroSel || outro === tr || outroSel.value === exp) return;
+            var temOpcao = Array.prototype.some.call(outroSel.options, function (o) { return o.value === exp; });
+            if (!temOpcao) return;
+            outroSel.value = exp;
+            simVencMudou(outroSel);
+        });
+    }
+    simRecalc();
+};
+
+window.simStrikeMudou = function (sel) {
+    var tr = sel.closest('tr');
+    simAplicaStrike(tr, sel.value);
+    simRecalc();
+};
+
+function simAplicaStrike(tr, strikeVal) {
+    var tickerEl = tr.querySelector('.leg-ticker');
+    var premioEl = tr.querySelector('.leg-premium');
+    if (!strikeVal) { tickerEl.value = ''; premioEl.value = '0,00'; return; }
+    var exp = tr.querySelector('.leg-exp-sel').value;
+    var tipo = tr.querySelector('.leg-type').value;
+    var lado = tr.querySelector('.leg-side').value;
+    var bloco = (CADEIA.expirations || []).filter(function (e) { return e.exp === exp; })[0];
+    var strikeNum = parseFloat(strikeVal);
+    var row = (bloco && bloco.rows || []).filter(function (r) {
+        return Math.abs(r.strike - strikeNum) < 0.001;
+    })[0];
+    var o = row && ((tipo === 'PUT') ? row.put : row.call);
+    if (!o) { tickerEl.value = ''; premioEl.value = '0,00'; return; }
+    var prem = (lado === 'SELL' ? (o.bid_eff || o.bid) : (o.ask_eff || o.ask)) || o.close || 0;
+    tickerEl.value = o.symbol;
+    premioEl.value = fmtNum(prem);
+    var ivEl = tr.querySelector('.leg-iv');
+    if (ivEl && o.iv != null) ivEl.value = fmtNum(o.iv);
+}
+
+function simAtualizaCotacaoAtivo(tr) {
+    var ativo = (document.getElementById('sim-ativo').value || '').trim().toUpperCase();
+    if (!ativo) return;
+    var premioEl = tr.querySelector('.leg-premium');
+    if (CADEIA && CADEIA.ticker === ativo && CADEIA.spot) {
+        premioEl.value = fmtNum(CADEIA.spot);
+        return;
+    }
+    fetch('/api/quote_hint/' + encodeURIComponent(ativo))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            var p = Number(d.price || 0);
+            if (p > 0) premioEl.value = fmtNum(p);
+        })
+        .catch(function () {});
+}
+
+function simAtualizaTodosAtivos() {
+    document.querySelectorAll('#sim-body tr.leg-row').forEach(function (tr) {
+        if (tr.querySelector('.leg-type').value === 'STOCK') simAtualizaCotacaoAtivo(tr);
+    });
+}
+
+// ── Leitura das pernas ────────────────────────────────────────────
+function lerPernas() {
+    var legs = [];
+    document.querySelectorAll('#sim-body tr.leg-row').forEach(function (tr) {
+        var on = tr.querySelector('.leg-on').checked;
+        tr.classList.toggle('off', !on);
+        if (!on) { tr.querySelector('.leg-ent').textContent = '—';
+                   tr.querySelector('.leg-sai').textContent = '—'; return; }
+        var tipo = tr.querySelector('.leg-type').value;
+        var kEl  = tr.querySelector('.leg-strike-sel');
+        var eEl  = tr.querySelector('.leg-exp-sel');
+        var ivEl = tr.querySelector('.leg-iv');
+        legs.push({
+            type:    tipo,
+            side:    tr.querySelector('.leg-side').value,
+            qty:     parseInt(tr.querySelector('.leg-qty').value, 10) || 0,
+            strike:  kEl ? (parseFloat(kEl.value) || 0) : 0,
+            premium: parseVal(tr.querySelector('.leg-premium').value),
+            exp:     (eEl && eEl.value) ? eEl.value : null,
+            iv:      ivEl ? (parseVal(ivEl.value) / 100) : 0,
+            ticker:  (tr.querySelector('.leg-ticker') || {}).value || '',
+            _tr:     tr
+        });
+    });
+    return legs;
+}
+
+// ── Black-Scholes ───────────────────────────────────────────────────
+function normCDF(x) {
+    var a = [0.319381530, -0.356563782, 1.781477937, -1.821255978, 1.330274429];
+    var L = Math.abs(x);
+    var k = 1 / (1 + 0.2316419 * L);
+    var w = 1 - (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-L * L / 2) *
+            (a[0]*k + a[1]*k*k + a[2]*k*k*k + a[3]*k*k*k*k + a[4]*k*k*k*k*k);
+    return x < 0 ? 1 - w : w;
+}
+function blackScholes(S, K, T, r, sigma, isCall) {
+    if (T <= 0 || sigma <= 0 || S <= 0 || K <= 0) {
+        return isCall ? Math.max(0, S - K) : Math.max(0, K - S);
+    }
+    var sqrtT = Math.sqrt(T);
+    var d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrtT);
+    var d2 = d1 - sigma * sqrtT;
+    if (isCall) return S * normCDF(d1) - K * Math.exp(-r * T) * normCDF(d2);
+    return K * Math.exp(-r * T) * normCDF(-d2) - S * normCDF(-d1);
+}
+function bsDelta(S, K, T, r, sigma, isCall) {
+    if (T <= 0 || sigma <= 0 || S <= 0 || K <= 0) {
+        var itm = isCall ? S > K : S < K;
+        return itm ? (isCall ? 1 : -1) : 0;
+    }
+    var d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
+    return isCall ? normCDF(d1) : normCDF(d1) - 1;
+}
+function deltaEstrutural(legs, S, TporExp) {
+    var r = SELIC_RATE / 100;
+    return legs.reduce(function (acc, l) {
+        var sign = l.side === 'BUY' ? 1 : -1;
+        if (l.type === 'STOCK') return acc + sign * l.qty;
+        if (l.strike <= 0) return acc;
+        var T = TporExp(l.exp);
+        var sigma = l.iv > 0 ? l.iv : 0.30;
+        var d = bsDelta(S, l.strike, T, r, sigma, l.type === 'CALL');
+        return acc + sign * l.qty * d;
+    }, 0);
+}
+
+function vencimentos(legs) {
+    var out = [];
+    legs.forEach(function (l) {
+        if (l.type !== 'STOCK' && l.exp && out.indexOf(l.exp) < 0) out.push(l.exp);
+    });
+    return out.sort();
+}
+
+function netPremium(legs) {
+    return legs.reduce(function (acc, l) {
+        if (l.type === 'STOCK') return acc;
+        return acc + (l.side === 'SELL' ? 1 : -1) * l.qty * l.premium;
+    }, 0);
+}
+
+function payoffAt(S, legs, multiExp, refDateStr) {
+    var total = netPremium(legs);
+    var r = SELIC_RATE / 100;
+    var refDate = refDateStr ? new Date(refDateStr) : null;
+    legs.forEach(function (l) {
+        var sign = l.side === 'BUY' ? 1 : -1;
+        if (l.type === 'STOCK') { total += sign * l.qty * (S - l.premium); return; }
+        if (multiExp && refDate && l.exp && l.exp > refDateStr && l.iv > 0) {
+            var T = (new Date(l.exp) - refDate) / (365.25 * 24 * 3600 * 1000);
+            total += sign * l.qty * blackScholes(S, l.strike, T, r, l.iv, l.type === 'CALL');
+        } else {
+            if (l.strike <= 0) return;
+            if (l.type === 'CALL') total += sign * l.qty * Math.max(0, S - l.strike);
+            else                   total += sign * l.qty * Math.max(0, l.strike - S);
+        }
+    });
+    return total;
+}
+
+// ── Recalcula tudo ────────────────────────────────────────────────
+window.simRecalc = function () {
+    var legs = lerPernas();
+
+    var totEnt = 0, totSai = 0;
+    legs.forEach(function (l) {
+        var fin = l.qty * l.premium;
+        var entCel = l._tr.querySelector('.leg-ent');
+        var saiCel = l._tr.querySelector('.leg-sai');
+        if (l.side === 'SELL') {
+            entCel.innerHTML = '<span class="positive">' + fmtBRL(fin) + '</span>';
+            saiCel.textContent = '—';
+            totEnt += fin;
+        } else {
+            entCel.textContent = '—';
+            saiCel.innerHTML = '<span class="negative">-' + fmtBRL(fin) + '</span>';
+            totSai += fin;
+        }
+    });
+    document.getElementById('sim-tot-ent').innerHTML =
+        totEnt > 0 ? '<span class="positive">' + fmtBRL(totEnt) + '</span>' : '—';
+    document.getElementById('sim-tot-sai').innerHTML =
+        totSai > 0 ? '<span class="negative">-' + fmtBRL(totSai) + '</span>' : '—';
+    document.getElementById('m-ent').textContent = totEnt > 0 ? fmtBRL(totEnt) : '—';
+    document.getElementById('m-sai').textContent = totSai > 0 ? '-' + fmtBRL(totSai) : '—';
+
+    var exps = vencimentos(legs);
+    var dte = exps.length ? diasAte(exps[0]) : null;
+    document.getElementById('m-dte').textContent =
+        exps.length ? (dataBR(exps[0]) + (dte != null ? ' (' + dte + 'd)' : '')) : '—';
+
+    desenha(legs);
+};
+
+// ── Gráfico + métricas ────────────────────────────────────────────
+var SIM_PAD = { top: 28, right: 16, bottom: 54, left: 96 };
+
+function desenha(legs) {
+    var canvas = document.getElementById('payoff-canvas');
+    var ctx = canvas.getContext('2d');
+    var wrap = document.getElementById('chart-wrap');
+    var W = wrap.clientWidth || 900, H = 420;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    try {
+        if (PayoffStyle.ligaZoom && !canvas._zoomOn) {
+            PayoffStyle.ligaZoom(canvas, canvas._payoffView || (canvas._payoffView = { zoom: 1, pan: 0 }),
+                function () { desenha(lerPernas()); });
+            canvas._zoomOn = true;
+        }
+    } catch (e) {}
+
+    var uteis = legs.filter(function (l) { return l.qty > 0; });
+    if (!uteis.length) {
+        ctx.fillStyle = 'rgba(148,163,184,.7)'; ctx.font = '13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Adicione pernas para ver o payoff.', W / 2, H / 2);
+        ['m-net','m-gain','m-gain-pct','m-gain-selic','m-loss','m-be','m-pop','m-delta-estrutural','m-delta-transicao'].forEach(function (id) {
+            document.getElementById(id).textContent = '—';
+        });
+        document.getElementById('sim-aviso').style.display = 'none';
+        return;
+    }
+
+    var exps = vencimentos(uteis);
+    var multiExp = exps.length > 1;
+    var refDateStr = exps.length ? exps[0] : null;
+
+    var strikes = uteis.filter(function (l) { return l.type !== 'STOCK' && l.strike > 0; })
+                       .map(function (l) { return l.strike; });
+    var stockRef = (CADEIA && CADEIA.spot) ? CADEIA.spot : 0;
+    if (!stockRef) {
+        var stL = uteis.filter(function (l) { return l.type === 'STOCK'; })[0];
+        stockRef = stL ? stL.premium : (strikes.length ? strikes[0] : 0);
+    }
+
+    var base = strikes.concat(stockRef > 0 ? [stockRef] : []);
+    if (!base.length) base = [10];
+    var lo = Math.min.apply(null, base), hi = Math.max.apply(null, base);
+    var meio = (lo + hi) / 2 || 10;
+    var span = Math.max(hi - lo, meio * 0.25) || 10;
+    var SminBase = Math.max(0.01, meio - span * 1.2);
+    var SmaxBase = meio + span * 1.2;
+    var Smin = SminBase, Smax = SmaxBase;
+    canvas._payoffView = canvas._payoffView || { zoom: 1, pan: 0 };
+    try {
+        var z = PayoffStyle.aplicaZoom(SminBase, SmaxBase, canvas._payoffView);
+        Smin = Math.max(0.01, z.Smin); Smax = z.Smax;
+    } catch (e) {}
+
+    var N = 400, step = (Smax - Smin) / N;
+    var Sarr = [], Parr = [];
+    for (var i = 0; i <= N; i++) {
+        var S = Smin + i * step;
+        Sarr.push(S); Parr.push(payoffAt(S, uteis, multiExp, refDateStr));
+    }
+
+    var maxGain = Math.max.apply(null, Parr);
+    var maxLoss = Math.min.apply(null, Parr);
+    var ySpan = Math.max(Math.abs(maxGain), Math.abs(maxLoss)) * 1.15 || 100;
+    var yMin = -ySpan, yMax = ySpan;
+    var cW = W - SIM_PAD.left - SIM_PAD.right, cH = H - SIM_PAD.top - SIM_PAD.bottom;
+    function xPx(S) { return SIM_PAD.left + (S - Smin) / (Smax - Smin) * cW; }
+    function yPx(P) { return SIM_PAD.top + (1 - (P - yMin) / (yMax - yMin)) * cH; }
+    var y0 = yPx(0);
+    var geo = { W: W, H: H, PAD: SIM_PAD, cW: cW, cH: cH };
+
+    PayoffStyle.grade(ctx, geo);
+    PayoffStyle.eixoZero(ctx, geo, y0);
+
+    strikes.forEach(function (K) {
+        var xk = xPx(K);
+        PayoffStyle.marco(ctx, geo, xk, PayoffStyle.CORES.strike, [4, 4]);
+        PayoffStyle.pilula(ctx, 'K ' + fmtNum(K), xk, SIM_PAD.top - 9,
+            'rgba(30,41,59,.92)', 'rgba(203,213,225,.95)',
+            { borda: 'rgba(148,163,184,.35)', limites: { min: SIM_PAD.left, max: W - SIM_PAD.right } });
+    });
+
+    var bes = [];
+    if (maxGain - maxLoss > 0.01) {
+        for (var j = 0; j < Parr.length - 1; j++) {
+            var p1 = Parr[j], p2 = Parr[j + 1];
+            if (p1 * p2 < 0) {
+                bes.push(Math.round((Sarr[j] + (-p1) * (Sarr[j + 1] - Sarr[j]) / (p2 - p1)) * 100) / 100);
+            }
+        }
+    }
+    if (stockRef > 0 && bes.length) {
+        var beProx = bes.reduce(function (a, b) {
+            return Math.abs(b - stockRef) < Math.abs(a - stockRef) ? b : a; });
+        PayoffStyle.faixa(ctx, geo, xPx(stockRef), xPx(beProx));
+    }
+
+    PayoffStyle.areas(ctx, geo, Sarr, Parr, xPx, yPx, y0);
+    PayoffStyle.curva(ctx, Sarr, Parr, xPx, yPx, PayoffStyle.CORES.venc, 2);
+
+    var _ctrl = PayoffStyle.controleData(document.getElementById('curvas-ctrl-sim'),
+                                         function () { desenha(lerPernas()); });
+    _ctrl.sincroniza(legs);
+    if (_ctrl.ativo()) {
+        var _ser = PayoffStyle.serieTeorica(Sarr, legs, _ctrl.dataSel(), SELIC_RATE);
+        if (_ctrl.cRe.checked)
+            PayoffStyle.curva(ctx, Sarr, _ser.valor, xPx, yPx, PayoffStyle.CORES.real, 2);
+        var _q2 = [];
+        if (_ctrl.cDe.checked) _q2 = _q2.concat(_ser.delta);
+        if (_ctrl.cTh.checked) _q2 = _q2.concat(_ser.theta);
+        if (_q2.length) {
+            var _v2a = Math.min.apply(null, _q2), _v2b = Math.max.apply(null, _q2);
+            var _fg = (_v2b - _v2a) * 0.12 || Math.max(Math.abs(_v2b), 0.1) * 0.2;
+            var _rot = (_ctrl.cDe.checked && _ctrl.cTh.checked) ? 'Δ / Θ'
+                     : (_ctrl.cDe.checked ? 'Δ' : 'Θ/dia');
+            var _cor = _ctrl.cDe.checked ? PayoffStyle.CORES.delta : PayoffStyle.CORES.theta;
+            var _y2 = PayoffStyle.eixoDireito(ctx, geo, _v2a - _fg, _v2b + _fg, _rot, _cor);
+            if (_ctrl.cDe.checked)
+                PayoffStyle.curva(ctx, Sarr, _ser.delta, xPx, _y2, PayoffStyle.CORES.delta, 1.6);
+            if (_ctrl.cTh.checked)
+                PayoffStyle.curva(ctx, Sarr, _ser.theta, xPx, _y2, PayoffStyle.CORES.theta, 1.6);
+        }
+    }
+
+    if (stockRef > 0 && stockRef >= Smin && stockRef <= Smax) {
+        var xs = xPx(stockRef);
+        PayoffStyle.marco(ctx, geo, xs, PayoffStyle.CORES.spot, [2, 3]);
+        PayoffStyle.pilula(ctx, 'S ' + fmtNum(stockRef), xs, H - SIM_PAD.bottom + 14,
+            'rgba(37,99,235,.92)', '#fff',
+            { limites: { min: SIM_PAD.left, max: W - SIM_PAD.right } });
+    }
+    bes.forEach(function (b) {
+        if (b < Smin || b > Smax) return;
+        PayoffStyle.pilula(ctx, 'BE ' + fmtNum(b), xPx(b), y0 - 10,
+            'rgba(234,179,8,.92)', '#1e293b',
+            { limites: { min: SIM_PAD.left, max: W - SIM_PAD.right } });
+    });
+
+    ctx.fillStyle = 'rgba(148,163,184,0.85)'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+    for (var xi = 0; xi <= 8; xi++) {
+        var sv = Smin + xi * (Smax - Smin) / 8;
+        ctx.fillText(fmtNum(sv), xPx(sv), H - SIM_PAD.bottom + 28);
+    }
+    ctx.fillStyle = 'rgba(148,163,184,0.7)'; ctx.font = '10px sans-serif';
+    ctx.fillText('Preço do Ativo no Vencimento (R$)', SIM_PAD.left + cW / 2, H - 4);
+    ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(148,163,184,0.85)'; ctx.font = '11px sans-serif';
+    for (var yi = 0; yi <= 6; yi++) {
+        var yv = yMin + yi * (yMax - yMin) / 6;
+        ctx.fillText((yv >= 0 ? '' : '-') + fmtBRL(yv), SIM_PAD.left - 6, yPx(yv) + 4);
+    }
+    PayoffStyle.borda(ctx, geo);
+
+    // ── Métricas ──
+    var net = netPremium(uteis);
+    var netEl = document.getElementById('m-net');
+    netEl.textContent = fmtBRL(net) + (net >= 0 ? ' (crédito)' : ' (débito)');
+    netEl.className = 'val ' + (net >= 0 ? 'positive' : 'negative');
+    document.getElementById('m-gain').textContent = maxGain > 1e7 ? '∞' : fmtBRL(maxGain);
+    document.getElementById('m-loss').textContent =
+        maxLoss < -1e7 ? '-∞' : (maxLoss < 0 ? '-' : '') + fmtBRL(maxLoss);
+    document.getElementById('m-be').textContent = bes.length ? bes.map(fmtBRL).join(' / ') : '—';
+
+    (function () {
+        var pctEl = document.getElementById('m-gain-pct');
+        var selicEl = document.getElementById('m-gain-selic');
+        var custoSaida = uteis.reduce(function (acc, l) {
+            return acc + (l.side === 'BUY' ? l.qty * l.premium : 0);
+        }, 0);
+        if (custoSaida <= 0 || maxGain > 1e7 || !refDateStr) {
+            pctEl.textContent = '—'; pctEl.className = 'val';
+            selicEl.textContent = '—'; selicEl.className = 'val';
+            return;
+        }
+        var pctGain = maxGain / custoSaida * 100;
+        pctEl.textContent = fmtNum(pctGain, 1) + '%';
+        pctEl.className = 'val ' + (pctGain >= 0 ? 'positive' : 'negative');
+
+        var dteGain = diasAte(refDateStr);
+        if (dteGain == null || dteGain <= 0) {
+            selicEl.textContent = '—'; selicEl.className = 'val';
+            return;
+        }
+        var selicPeriodo = (Math.pow(1 + SELIC_RATE / 100, dteGain / 365.25) - 1) * 100;
+        var vsSelic = selicPeriodo > 0 ? (pctGain / selicPeriodo) * 100 : null;
+        selicEl.textContent = vsSelic != null
+            ? fmtNum(vsSelic, 0) + '% da Selic (' + fmtNum(selicPeriodo, 2) + '% em ' + dteGain + 'd)'
+            : '—';
+        selicEl.className = 'val ' + (vsSelic != null && vsSelic >= 100 ? 'positive' : 'negative');
+    })();
+
+    (function () {
+        var popEl = document.getElementById('m-pop');
+        popEl.className = 'val';
+        if (!bes.length || !stockRef || stockRef <= 0 || !refDateStr) { popEl.textContent = '—'; return; }
+        var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+        var T = Math.max((new Date(refDateStr + 'T00:00:00') - hoje) / (365.25 * 86400000), 1 / 365);
+        var sigmas = [];
+        uteis.forEach(function (l) {
+            if (l.type === 'STOCK') return;
+            if (l.iv > 0) { sigmas.push(l.iv); return; }
+            if (l.premium > 0 && l.strike > 0) {
+                sigmas.push(Math.min(l.premium / l.strike * Math.sqrt(252 / Math.max(T * 252, 1)), 2));
+            }
+        });
+        if (!sigmas.length) { popEl.textContent = '—'; return; }
+        var sigma = sigmas.reduce(function (a, b) { return a + b; }, 0) / sigmas.length;
+        var r = Math.log(1 + SELIC_RATE / 100);
+        var mu = Math.log(stockRef) + (r - 0.5 * sigma * sigma) * T;
+        var sd = sigma * Math.sqrt(T);
+        var pop = 0;
+        for (var i = 0; i < Parr.length - 1; i++) {
+            if ((Parr[i] + Parr[i + 1]) / 2 <= 0) continue;
+            var z1 = (Math.log(Sarr[i])     - mu) / sd;
+            var z2 = (Math.log(Sarr[i + 1]) - mu) / sd;
+            pop += normCDF(z2) - normCDF(z1);
+        }
+        pop = Math.max(0, Math.min(100, pop * 100));
+        popEl.textContent = fmtNum(pop, 1) + '%';
+        popEl.className = 'val ' + (pop >= 50 ? 'positive' : 'negative');
+    })();
+
+    (function () {
+        var estEl = document.getElementById('m-delta-estrutural');
+        var transEl = document.getElementById('m-delta-transicao');
+        if (!stockRef || stockRef <= 0) {
+            estEl.textContent = '—'; estEl.className = 'val';
+            transEl.textContent = '—'; transEl.className = 'val';
+            return;
+        }
+        function Thoje(exp) {
+            if (!exp) return 0;
+            var d = diasAte(exp);
+            return d != null ? Math.max(d, 0) / 365.25 : 0;
+        }
+        var deltaHoje = deltaEstrutural(uteis, stockRef, Thoje);
+        var deltaVenc = deltaEstrutural(uteis, stockRef, function () { return 0; });
+        estEl.textContent = fmtNum(deltaHoje, 0);
+        estEl.className = 'val ' + (deltaHoje >= 0 ? 'positive' : 'negative');
+        var transicao = deltaHoje - deltaVenc;
+        transEl.textContent = fmtNum(transicao, 0);
+        transEl.className = 'val ' + (transicao >= 0 ? 'positive' : 'negative');
+    })();
+
+    canvas._ser = { Sarr: Sarr, Parr: Parr, Smin: Smin, Smax: Smax };
+
+    var aviso = document.getElementById('sim-aviso');
+    if (multiExp) {
+        var temIV = uteis.some(function (l) {
+            return l.type !== 'STOCK' && l.exp && l.exp > refDateStr && l.iv > 0; });
+        aviso.style.display = 'block';
+        if (temIV) {
+            aviso.style.background = 'rgba(16,185,129,.10)';
+            aviso.style.borderColor = 'rgba(16,185,129,.4)';
+            aviso.style.color = '#10b981';
+            aviso.innerHTML = '✅ <strong>Vencimentos diferentes:</strong> as pernas mais longas são '
+                + 'avaliadas por Black-Scholes (Selic ' + fmtNum(SELIC_RATE) + '% a.a.) na data do '
+                + 'vencimento mais curto (' + dataBR(refDateStr) + ').';
+        } else {
+            aviso.style.background = 'rgba(234,179,8,.12)';
+            aviso.style.borderColor = 'rgba(234,179,8,.4)';
+            aviso.style.color = '#ca8a04';
+            aviso.innerHTML = '⚠️ <strong>Vencimentos diferentes:</strong> preencha a <strong>VI %</strong> '
+                + 'das pernas mais longas para o cálculo usar Black-Scholes. Sem VI, o gráfico mostra '
+                + 'apenas o payoff intrínseco.';
+        }
+    } else {
+        aviso.style.display = 'none';
+    }
+}
+
+// Tooltip do gráfico
+(function () {
+    var canvas = document.getElementById('payoff-canvas');
+    var tip = document.getElementById('chart-tooltip');
+    canvas.addEventListener('mousemove', function (ev) {
+        var s = canvas._ser;
+        if (!s) { tip.style.display = 'none'; return; }
+        try { if (PayoffStyle.ligaZoom && canvas._payoffZoomCtrl
+                  && canvas._payoffZoomCtrl.estaArrastando()) { tip.style.display = 'none'; return; } } catch (e) {}
+        var rect = canvas.getBoundingClientRect();
+        var x = ev.clientX - rect.left;
+        var W = rect.width, cW = W - SIM_PAD.left - SIM_PAD.right;
+        if (x < SIM_PAD.left || x > W - SIM_PAD.right) { tip.style.display = 'none'; return; }
+        var S = s.Smin + (x - SIM_PAD.left) / cW * (s.Smax - s.Smin);
+        var idx = Math.round((S - s.Smin) / (s.Smax - s.Smin) * (s.Parr.length - 1));
+        idx = Math.max(0, Math.min(s.Parr.length - 1, idx));
+        var P = s.Parr[idx];
+        tip.innerHTML = 'S: <strong>' + fmtBRL(S) + '</strong><br>Resultado: <strong class="'
+            + (P >= 0 ? 'positive' : 'negative') + '">' + (P < 0 ? '-' : '') + fmtBRL(P) + '</strong>';
+        tip.style.display = 'block';
+        tip.style.left = Math.min(x + 14, rect.width - 150) + 'px';
+        tip.style.top = (ev.clientY - rect.top + 12) + 'px';
+    });
+    canvas.addEventListener('mouseleave', function () { tip.style.display = 'none'; });
 })();
 
-var _rdTimer=null;
-function scheduleRedraw(){
-  if(_rdTimer) clearTimeout(_rdTimer);
-  _rdTimer=setTimeout(function(){updateIVVisibility();drawChart(readLegs());},120);
+window.addEventListener('resize', function () { desenha(lerPernas()); });
+
+// ── Salvar / abrir ────────────────────────────────────────────────
+function simSalvarImpl(nome, asNew) {
+    var legs = lerPernas();
+    if (!legs.length) { alert('Adicione ao menos uma perna.'); return; }
+    var pendente = legs.some(function (l) {
+        if (l.type === 'STOCK') return false;
+        if (l._tr && (l._tr.dataset.pendExp || l._tr.dataset.pendStrike)) return true;
+        return !l.exp || !l.strike;
+    });
+    if (pendente) {
+        alert('⚠️ Há uma perna sem vencimento/strike selecionado (ou aguardando a cadeia carregar).\n'
+            + 'Aguarde a cotação carregar e escolha vencimento/strike em todas as pernas antes de salvar.');
+        return;
+    }
+    var body = {
+        id: asNew ? null : SIM_ID,
+        name: nome,
+        underlying: (document.getElementById('sim-ativo').value || '').trim().toUpperCase(),
+        legs: legs.map(function (l) {
+            return { type: l.type, side: l.side, qty: l.qty, strike: l.strike,
+                     premium: l.premium, exp: l.exp || '', ticker: l.ticker,
+                     iv: l.iv ? l.iv * 100 : 0 };
+        })
+    };
+    fetch('/api/simulacao/save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || res.j.error) { alert('⚠️ ' + (res.j.error || 'erro ao salvar')); return; }
+        var idAntigo = SIM_ID;
+        SIM_ID = res.j.id || SIM_ID;
+        document.getElementById('sim-nome').value = nome;
+        if (asNew && SIM_ID !== idAntigo) { SIM_NOTES = ''; simAtualizaBotaoObs(); }
+        alert('✓ Simulação salva.');
+      }).catch(function (e) { alert('⚠️ falha de rede: ' + e); });
 }
-window.addEventListener('resize',function(){drawChart(readLegs());});
+
+window.simSalvar = function () {
+    var nome = (document.getElementById('sim-nome').value || '').trim();
+    if (!nome) { alert('Dê um nome à simulação antes de salvar.'); return; }
+    simSalvarImpl(nome, false);
+};
+
+window.simAbreObs = function () {
+    document.getElementById('obs-textarea').value = SIM_NOTES;
+    document.getElementById('obs-status').textContent = SIM_ID
+        ? '' : 'Salve a simulação primeiro para poder guardar observações.';
+    document.getElementById('obs-modal').style.display = 'flex';
+};
+
+window.simSalvarObs = function () {
+    var texto = document.getElementById('obs-textarea').value;
+    var status = document.getElementById('obs-status');
+    if (!SIM_ID) {
+        SIM_NOTES = texto;
+        simAtualizaBotaoObs();
+        status.textContent = 'Guardado nesta sessão — salve a simulação para persistir.';
+        return;
+    }
+    status.textContent = '⏳ salvando…';
+    fetch('/api/simulacao/' + SIM_ID + '/notes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: texto })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || res.j.error) { status.textContent = '⚠️ ' + (res.j.error || 'erro ao salvar'); return; }
+        SIM_NOTES = texto;
+        simAtualizaBotaoObs();
+        status.textContent = '✓ observações salvas.';
+      }).catch(function (e) { status.textContent = '⚠️ falha de rede: ' + e; });
+};
+
+window.simSalvarComo = function () {
+    var atual = (document.getElementById('sim-nome').value || '').trim();
+    var sugestao = atual ? atual + ' (cópia)' : '';
+    var nome = (prompt('Nome da nova simulação:', sugestao) || '').trim();
+    if (!nome) return;
+    simSalvarImpl(nome, true);
+};
+
+window.simCarregarModal = function () {
+    document.getElementById('open-modal').style.display = 'flex';
+    var lista = document.getElementById('open-modal-lista');
+    lista.innerHTML = '<p class="sim-hint" style="padding:1rem 0;">⏳ carregando…</p>';
+    fetch('/api/simulacao/list')
+        .then(function (r) { return r.json(); })
+        .then(function (sims) {
+            if (!sims || !sims.length) {
+                lista.innerHTML = '<p class="sim-hint" style="padding:1rem 0;">Nenhuma simulação salva ainda.</p>';
+                return;
+            }
+            lista.innerHTML = sims.map(function (s) {
+                return '<div style="display:flex;align-items:center;gap:.6rem;padding:.45rem .2rem;'
+                     + 'border-bottom:1px solid rgba(255,255,255,.05);">'
+                     + '<div style="flex:1;min-width:0;">'
+                     + '<div style="font-weight:600;font-size:.88rem;">' + escHtml(s.name)
+                     +   (s.has_notes ? ' <span title="Tem observações" style="color:#eab308;">📝</span>' : '') + '</div>'
+                     + '<div class="sim-hint">' + escHtml(s.underlying || '—') + ' · ' + escHtml(s.created_at) + '</div>'
+                     + '</div>'
+                     + '<button class="btn btn-primary btn-sm" onclick="simAbrir(' + s.id + ')">Abrir</button>'
+                     + '</div>';
+            }).join('');
+        })
+        .catch(function () {
+            lista.innerHTML = '<p class="sim-hint" style="padding:1rem 0;">⚠️ falha ao carregar a lista.</p>';
+        });
+};
+
+window.simAbrir = function (id) {
+    fetch('/api/simulacao/' + id)
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            if (!res.ok || res.j.error) { alert('⚠️ ' + (res.j.error || 'erro ao abrir')); return; }
+            var d = res.j;
+            SIM_ID = d.id;
+            SIM_NOTES = d.notes || '';
+            simAtualizaBotaoObs();
+            document.getElementById('sim-nome').value  = d.name || '';
+            simSetAtivo(d.underlying);
+            var body = document.getElementById('sim-body');
+            body.innerHTML = '';
+            (d.legs || []).forEach(function (l) {
+                var tr = novaLinha(l.type);
+                tr.querySelector('.leg-side').value = l.side || 'BUY';
+                tr.querySelector('.leg-qty').value  = l.qty || 100;
+                var tEl = tr.querySelector('.leg-ticker');
+                if (tEl && l.ticker) tEl.value = l.ticker;
+                if (l.type === 'STOCK') {
+                    tr.querySelector('.leg-premium').value = fmtNum(l.premium);
+                } else {
+                    tr.dataset.pendExp = l.exp || '';
+                    tr.dataset.pendStrike = l.strike || '';
+                    tr.querySelector('.leg-premium').value = fmtNum(l.premium);
+                }
+                var ivEl = tr.querySelector('.leg-iv');
+                if (ivEl && l.iv) ivEl.value = fmtNum(l.iv);
+                body.appendChild(tr);
+            });
+            document.getElementById('open-modal').style.display = 'none';
+            if (d.underlying) simCarregarCadeia(); else simRecalc();
+        })
+        .catch(function (e) { alert('⚠️ falha de rede: ' + e); });
+};
+
+function simAplicaPendencias() {
+    SIM_RESTAURANDO = true;
+    try {
+        document.querySelectorAll('#sim-body tr.leg-row').forEach(function (tr) {
+            var expSel = tr.querySelector('.leg-exp-sel');
+            if (!expSel || !tr.dataset.pendExp) return;
+            simPreencheVencimentos(tr);
+            if (!(CADEIA.expirations || []).some(function (e) { return e.exp === tr.dataset.pendExp; })) {
+                delete tr.dataset.pendExp; delete tr.dataset.pendStrike;
+                return;
+            }
+            expSel.value = tr.dataset.pendExp;
+            simVencMudou(expSel);
+            var strikeSel = tr.querySelector('.leg-strike-sel');
+            var alvo = parseFloat(tr.dataset.pendStrike);
+            var opt = Array.prototype.filter.call(strikeSel.options, function (o) {
+                return Math.abs(parseFloat(o.value) - alvo) < 0.001;
+            })[0];
+            if (opt) { strikeSel.value = opt.value; simAplicaStrike(tr, opt.value); }
+            delete tr.dataset.pendExp; delete tr.dataset.pendStrike;
+        });
+    } finally {
+        SIM_RESTAURANDO = false;
+    }
+}
+
+window.simNova = function () {
+    SIM_ID = null;
+    SIM_NOTES = '';
+    simAtualizaBotaoObs();
+    document.getElementById('sim-nome').value = '';
+    simSetAtivo('');
+    document.getElementById('sim-spot').innerHTML = '';
+    document.getElementById('sim-spot-chart').style.display = 'none';
+    document.getElementById('sim-body').innerHTML = '';
+    CADEIA = null;
+    simRecalc();
+};
+
+// Começa com uma linha de CALL, para a seção não abrir vazia.
+simAddPerna('CALL');
 
 // ═══════════════════════════════════════════════════════════
 // QUOTE HINT TOOLTIP
@@ -1111,9 +1893,6 @@ window.addEventListener('resize',function(){drawChart(readLegs());});
 // INIT
 // ═══════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded',function(){
-  document.getElementById('legs-body').addEventListener('change',function(){updateIVVisibility();scheduleRedraw();});
-  updateIVVisibility();
-  drawChart(readLegs());
   // Fecha mini-modal clicando fora
   document.getElementById('sl-leg-modal').addEventListener('click',function(e){
     if(e.target===this) slCloseLegModal();
@@ -1124,12 +1903,6 @@ document.addEventListener('DOMContentLoaded',function(){
     selAtivo.selectedIndex = 1;
     slLoadLiq();
   }
-});
-document.addEventListener('DOMContentLoaded', function() {
-    if (window.initLegHelpers) initLegHelpers({
-        container: '#legs-body', qty: 'leg_qty', exp: 'leg_exp',
-        typeField: 'leg_type', after: scheduleRedraw
-    });
 });
 </script>
 {% endblock %}

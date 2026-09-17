@@ -9767,6 +9767,12 @@ def api_trader_contratos(ativo):
                 return c
         return lista[-1] if lista else None
 
+    # Vencimento "cheio"/mensal: bate exatamente com a data de um contrato
+    # futuro trimestral (INDV26, DOLV26...) — só esses têm liquidez de
+    # verdade acumulada; os demais são diários/semanais (D1, D2, W1...),
+    # quase sempre com poucas séries em aberto.
+    vencs_cheios = {c['exp'] for c in cheio if c.get('exp')}
+
     out = []
     for v in vencs_opcoes:
         c_cheio = _vigente(cheio, v)
@@ -9778,6 +9784,7 @@ def api_trader_contratos(ativo):
             'mini_symbol': (c_mini or {}).get('symbol'),
             'mini_mult': (c_mini or {}).get('mult'),
             'tem_opcoes': True,
+            'is_monthly': v in vencs_cheios,
         })
     return jsonify({'ativo': a, 'nome': cfg['nome'], 'contratos': out})
 

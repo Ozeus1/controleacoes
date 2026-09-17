@@ -195,9 +195,16 @@
         if(!res.ok){ elE.innerHTML='<option value="">—</option>'; showErr(res.j.error||'Erro ao buscar contratos.'); return; }
         var cs=(res.j.contratos||[]).filter(function(c){ return c.tem_opcoes; });
         if(!cs.length){ elE.innerHTML='<option value="">— sem opções —</option>'; return; }
-        elE.innerHTML=cs.map(function(c){
-          var lbl=dt(c.exp)+(c.mini_symbol?(' · '+c.mini_symbol):(c.symbol?(' · '+c.symbol):''));
-          return '<option value="'+c.exp+'">'+lbl+'</option>';
+        // Vencimento mensal (o do contrato futuro cheio) tem liquidez de
+        // verdade acumulada; diário/semanal costuma vir quase vazio. Marca
+        // "(M)" igual ao Jumba e pré-seleciona o 1º mensal, não o 1º da
+        // lista — que normalmente é um diário bem próximo e pouco líquido.
+        var idxMensal=cs.findIndex(function(c){ return c.is_monthly; });
+        var idxSel=idxMensal>=0?idxMensal:0;
+        elE.innerHTML=cs.map(function(c,i){
+          var lbl=dt(c.exp)+(c.mini_symbol?(' · '+c.mini_symbol):(c.symbol?(' · '+c.symbol):''))
+                 +(c.is_monthly?' (M)':'');
+          return '<option value="'+c.exp+'"'+(i===idxSel?' selected':'')+'>'+lbl+'</option>';
         }).join('');
       })
       .catch(function(){ showErr('Falha de rede ao buscar contratos.'); });

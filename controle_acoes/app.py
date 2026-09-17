@@ -19840,12 +19840,25 @@ def api_liquidez(ticker):
     for row in calls + puts:
         row['last_vol'] = _calc_option_iv(row)
 
+    def _top_by_expiry(rows):
+        """Top N (por volume) DENTRO DE CADA VENCIMENTO, não globalmente —
+        senão o vencimento mais próximo (que concentra mais volume) engole
+        o corte inteiro e os demais vencimentos pedidos (mensais seguintes,
+        semanais) somem da lista sem nenhuma série."""
+        by_exp = {}
+        for row in rows:
+            by_exp.setdefault(row.get('due_date'), []).append(row)
+        out = []
+        for due in sorted(by_exp):
+            out.extend(by_exp[due][:limit])
+        return out
+
     if summary_only:
         selected_calls = []
         selected_puts = []
     else:
-        selected_calls = calls[:limit]
-        selected_puts = puts[:limit]
+        selected_calls = _top_by_expiry(calls)
+        selected_puts = _top_by_expiry(puts)
     if spot_price:
         def _spot_pct(row):
             strike = row.get('strike')

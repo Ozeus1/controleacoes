@@ -38,6 +38,7 @@
 .mo-legenda{display:flex;gap:1.2rem;justify-content:center;flex-wrap:wrap;
   font-size:.8rem;color:var(--text-secondary);margin-bottom:.4rem;}
 .mo-legenda span{display:inline-flex;align-items:center;gap:.35rem;}
+.mo-leg-chk{display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;}
 .mo-dot{width:12px;height:12px;border-radius:2px;display:inline-block;}
 
 #mo-chart-wrap{position:relative;height:420px;background:var(--card-bg);
@@ -124,9 +125,18 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
     <div id="mo-info" class="mo-nota"></div>
 
     <div class="mo-legenda">
-      <span><i class="mo-dot" style="background:#f87171;"></i> Descoberto</span>
-      <span><i class="mo-dot" style="background:#eab308;"></i> Travado</span>
-      <span><i class="mo-dot" style="background:#3b82f6;"></i> Coberto</span>
+      <label class="mo-leg-chk" style="cursor:pointer;">
+        <input type="checkbox" id="mo-chk-descoberto" checked style="cursor:pointer;margin:0;">
+        <i class="mo-dot" style="background:#f87171;"></i> Descoberto
+      </label>
+      <label class="mo-leg-chk" style="cursor:pointer;">
+        <input type="checkbox" id="mo-chk-travado" checked style="cursor:pointer;margin:0;">
+        <i class="mo-dot" style="background:#eab308;"></i> Travado
+      </label>
+      <label class="mo-leg-chk" style="cursor:pointer;">
+        <input type="checkbox" id="mo-chk-coberto" checked style="cursor:pointer;margin:0;">
+        <i class="mo-dot" style="background:#3b82f6;"></i> Coberto
+      </label>
       <label style="cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;"
              title="Titulares ÷ lançadores de cada strike">
         <input type="checkbox" id="mo-iq-chk" checked style="cursor:pointer;margin:0;"> IQ sobre as barras
@@ -178,6 +188,21 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
   elIQ.addEventListener('change', function(){
     mostrarIQ=elIQ.checked;
     if(chart) chart.update();      // só redesenha, não refaz a consulta
+  });
+
+  // Checkboxes de Descoberto/Travado/Coberto: mostram/escondem a série
+  // correspondente no gráfico, sem refazer a consulta.
+  var elChkTipo={
+    descoberto: document.getElementById('mo-chk-descoberto'),
+    travado:    document.getElementById('mo-chk-travado'),
+    coberto:    document.getElementById('mo-chk-coberto')
+  };
+  var TIPO_IDX={descoberto:0, travado:1, coberto:2};   // ordem dos datasets no Chart.js
+  Object.keys(elChkTipo).forEach(function(tipo){
+    elChkTipo[tipo].addEventListener('change', function(){
+      if(chart) chart.setDatasetVisibility(TIPO_IDX[tipo], elChkTipo[tipo].checked);
+      if(chart) chart.update();
+    });
   });
 
   function fmt(n){ return (n||0).toLocaleString('pt-BR'); }
@@ -373,7 +398,12 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
           var b=d.barras[i];
           if(b.iq==null) continue;
           var el=meta.data[i]; if(!el) continue;
-          var soma=(b.coberto||0)+(b.travado||0)+(b.descoberto||0);
+          // Soma só dos tipos visíveis: com Coberto/Travado/Descoberto
+          // desmarcados o topo real da pilha muda, e o rótulo tem de
+          // acompanhar — senão fica flutuando fora da barra exibida.
+          var soma=(elChkTipo.coberto.checked?(b.coberto||0):0)
+                  +(elChkTipo.travado.checked?(b.travado||0):0)
+                  +(elChkTipo.descoberto.checked?(b.descoberto||0):0);
           // topo da pilha: acima se positiva, abaixo se negativa (modo variação)
           var yTopo=ys.getPixelForValue(soma>=0?Math.max(soma,0):Math.min(soma,0));
           itens.push({x:el.x, y:yTopo, neg:soma<0, mag:Math.abs(soma),
@@ -410,9 +440,9 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
     chart=new Chart(ctx,{
       type:'bar',
       data:{labels:labels, datasets:[
-        {label:'Descoberto', data:d.barras.map(function(b){return b.descoberto;}), backgroundColor:'#f87171', stack:'s'},
-        {label:'Travado',    data:d.barras.map(function(b){return b.travado;}),    backgroundColor:'#eab308', stack:'s'},
-        {label:'Coberto',    data:d.barras.map(function(b){return b.coberto;}),    backgroundColor:'#3b82f6', stack:'s'}
+        {label:'Descoberto', data:d.barras.map(function(b){return b.descoberto;}), backgroundColor:'#f87171', stack:'s', hidden:!elChkTipo.descoberto.checked},
+        {label:'Travado',    data:d.barras.map(function(b){return b.travado;}),    backgroundColor:'#eab308', stack:'s', hidden:!elChkTipo.travado.checked},
+        {label:'Coberto',    data:d.barras.map(function(b){return b.coberto;}),    backgroundColor:'#3b82f6', stack:'s', hidden:!elChkTipo.coberto.checked}
       ]},
       options:{
         responsive:true, maintainAspectRatio:false,

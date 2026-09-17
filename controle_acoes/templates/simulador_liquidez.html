@@ -9,6 +9,14 @@
   display:flex; align-items:center; gap:.35rem; cursor:pointer;
   font-size:.8rem; color:var(--text-secondary); white-space:nowrap;
 }
+/* Lista de vencimentos clicável — só as datas que têm dado nesta busca */
+.sl-venc-btn {
+  background: rgba(148,163,184,.15); border: 1px solid transparent; border-radius: 4px;
+  padding: .15rem .5rem; font-size: .78rem; color: #cbd5e1; cursor: pointer;
+  transition: background .12s; white-space: nowrap;
+}
+.sl-venc-btn:hover { background: rgba(148,163,184,.25); }
+.sl-venc-btn.active { background: #7c3aed; border-color: #7c3aed; color: #fff; font-weight: 700; }
 /* ── Cadeia de opções: scroll horizontal em celular, com o Strike central
    fixo como referência (a tabela é simétrica: CALL à esquerda cresce para
    a direita, PUT à direita cresce para a esquerda, ambas a partir dele). ── */
@@ -369,6 +377,7 @@
 // ═══════════════════════════════════════════════════════════
 var _slCache = {};
 var _slCurrentData = null;
+var _slVencSelecionado = null;   // vencimento exibido na tabela; null = o mais próximo
 
 function fmtBRL_sl(v){
   if(v==null) return '—';
@@ -382,6 +391,33 @@ function fmtDate_sl(s){
   if(/^\d{4}-\d{2}-\d{2}$/.test(s)){ var p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0].slice(2); }
   if(/^\d{2}\/\d{2}$/.test(s)){ var q=s.split('/'); return q[1]+'/'+q[0]; }
   return s;
+}
+
+// Letras de série B3 por mês (1=jan..12=dez): [CALL, PUT].
+var SL_SERIE_LETRAS=[['A','M'],['B','N'],['C','O'],['D','P'],['E','Q'],['F','R'],
+                    ['G','S'],['H','T'],['I','U'],['J','V'],['K','W'],['L','X']];
+// 3ª sexta-feira do mês, tolerando ±2 dias (feriado antecipa/atrasa o
+// vencimento na B3) — mesma regra do backend (_is_monthly_exp).
+function slIsVencMensal(iso){
+  var p=(iso||'').split('-'); if(p.length!==3) return false;
+  var y=+p[0], m=+p[1], sextas=0, terceira=null;
+  for(var d=1; d<=31; d++){
+    var dt=new Date(y,m-1,d);
+    if(dt.getMonth()!==m-1) break;
+    if(dt.getDay()===5){ sextas++; if(sextas===3){ terceira=dt; break; } }
+  }
+  if(!terceira) return false;
+  return Math.abs(Math.round((new Date(y,m-1,+p[2])-terceira)/86400000))<=2;
+}
+function slDataBR(iso){
+  var p=(iso||'').split('-');
+  return p.length===3 ? p[2]+'/'+p[1]+'/'+p[0] : (iso||'');
+}
+// Rótulo no padrão do Profit/Simulador: "18/09/2026 (M) - I/U".
+function slLabelVenc(iso){
+  var p=(iso||'').split('-'); if(p.length!==3) return slDataBR(iso);
+  var l=SL_SERIE_LETRAS[+p[1]-1]||['?','?'];
+  return slDataBR(iso)+' ('+(slIsVencMensal(iso)?'M':'S')+') - '+l[0]+'/'+l[1];
 }
 
 // Monta a cadeia com o strike ao centro. Calls e puts são casadas por
@@ -509,10 +545,32 @@ function _slRenderLiq(d){
     + spotHtml
     + '</div>';
 
+  // Um vencimento por vez: a lista abaixo é clicável (só as datas que têm
+  // dado) — clicar troca qual vencimento a tabela mostra. Padrão: o mais
+  // próximo (1º da lista, já ordenada pelo backend).
+  _slVencSelecionado = (d.due_dates && d.due_dates.length) ? d.due_dates[0] : null;
   if(d.due_dates && d.due_dates.length){
     var vencRow = document.createElement('div');
-    vencRow.style.cssText = 'color:var(--text-secondary);font-size:.8rem;margin-top:.4rem';
-    vencRow.textContent = 'Vencimentos: ' + d.due_dates.map(fmtDate_sl).join(', ');
+    vencRow.style.cssText = 'display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin-top:.4rem';
+    var lbl = document.createElement('span');
+    lbl.style.cssText = 'color:var(--text-secondary);font-size:.8rem';
+    lbl.textContent = 'Vencimentos:';
+    vencRow.appendChild(lbl);
+    d.due_dates.forEach(function(dt){
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'sl-venc-btn' + (dt === _slVencSelecionado ? ' active' : '');
+      btn.dataset.due = dt;
+      btn.textContent = slLabelVenc(dt);
+      btn.onclick = function(){
+        _slVencSelecionado = dt;
+        document.querySelectorAll('.sl-venc-btn').forEach(function(b){
+          b.classList.toggle('active', b.dataset.due === dt);
+        });
+        _slAplicaFiltrosEChain();
+      };
+      vencRow.appendChild(btn);
+    });
     sumEl.appendChild(vencRow);
   }
 
@@ -536,8 +594,9 @@ function _slPassaFiltro(o){
 function _slAplicaFiltrosEChain(){
   if(!_slCurrentData) return;
   var d = _slCurrentData;
-  var calls = (d.calls || []).filter(_slPassaFiltro);
-  var puts  = (d.puts  || []).filter(_slPassaFiltro);
+  function doVenc(o){ return !_slVencSelecionado || o.due_date === _slVencSelecionado; }
+  var calls = (d.calls || []).filter(doVenc).filter(_slPassaFiltro);
+  var puts  = (d.puts  || []).filter(doVenc).filter(_slPassaFiltro);
   _slRenderChain(calls, puts, d.spot_price);
 }
 

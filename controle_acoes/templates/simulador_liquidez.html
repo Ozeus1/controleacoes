@@ -4,22 +4,10 @@
 <style>
 /* ── Liquidez inline ── */
 #sl-liq-section { margin-bottom: 1.5rem; }
-.liq-ticker-switcher summary {
-  cursor: pointer; font-size: .8rem; color: var(--text-secondary);
-  list-style: none; user-select: none;
-}
-.liq-ticker-switcher summary::-webkit-details-marker { display: none; }
-.liq-ticker-switcher summary::before { content: '▸ '; }
-.liq-ticker-switcher[open] summary::before { content: '▾ '; }
-.sl-ticker-btn {
-  padding: .25rem .6rem; border: 1px solid #475569; border-radius: 5px;
-  font-size: .8rem; cursor: pointer; color: #e2e8f0; background: var(--hover-bg,#334155);
-  white-space: nowrap; transition: background .12s;
-}
-.sl-ticker-btn.active { background: #7c3aed; border-color: #7c3aed; font-weight: 700; }
-.liq-venc-btn {
-  background: rgba(148,163,184,.15); border: 1px solid transparent; border-radius: 4px;
-  padding: .15rem .5rem; font-size: .78rem; color: #cbd5e1; cursor: pointer; transition: background .12s;
+.sim-hint { color:var(--text-secondary); font-size:.78rem; }
+.sim-chk-label {
+  display:flex; align-items:center; gap:.35rem; cursor:pointer;
+  font-size:.8rem; color:var(--text-secondary); white-space:nowrap;
 }
 /* ── Cadeia de opções: scroll horizontal em celular, com o Strike central
    fixo como referência (a tabela é simétrica: CALL à esquerda cresce para
@@ -100,33 +88,70 @@
 
 {# ── Seção Liquidez ── #}
 <div id="sl-liq-section" class="card" style="padding:1rem">
-  <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.5rem">
+  <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.7rem">
     <span style="font-weight:600;font-size:.95rem">💧 Liquidez de Opções</span>
   </div>
-  <details class="liq-ticker-switcher" id="sl-ticker-switcher" style="margin-bottom:.5rem">
-    <summary>Trocar ticker</summary>
-    <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-top:.5rem">
-      <div style="display:flex;gap:.35rem;flex-wrap:wrap" id="sl-ticker-btns"></div>
-      <div style="display:flex;gap:.4rem;align-items:center">
-        <input id="sl-add-ticker" placeholder="Novo ticker…" maxlength="10"
-               style="padding:.25rem .5rem;background:var(--card-bg);border:1px solid var(--border-color);
-                      color:var(--text-primary);border-radius:5px;font-size:.8rem;width:110px;text-transform:uppercase"
-               onkeydown="if(event.key==='Enter')slAddTicker()">
-        <button class="btn btn-sm btn-secondary" onclick="slAddTicker()" title="Adicionar aos atalhos e buscar">➕</button>
+
+  {# Ativo + vencimentos: mesmo padrão da tela Simulador/Estruturas —
+     dropdown de sugestões + campo livre + Nº de vencimentos mensais. #}
+  <div style="display:flex;gap:.9rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.9rem">
+    <div style="display:flex;flex-direction:column;gap:.25rem">
+      <label class="sim-hint">Ativo</label>
+      <div style="display:flex;gap:.4rem">
+        <select id="sl-ativo-sel" onchange="slSelAtivoMudou(this)"
+                style="background:var(--card-bg);color:var(--text-primary);
+                       border:1px solid var(--border-color);border-radius:5px;
+                       padding:.35rem .5rem;font-size:.85rem">
+          <option value="">selecione…</option>
+          {% for rv in ranking_vol %}
+          <option value="{{ rv.ticker }}">{{ rv.ticker }}</option>
+          {% endfor %}
+          <option value="__outro__">— outro ativo… —</option>
+        </select>
+        <input type="text" id="sl-ativo" placeholder="Digite o ticker" maxlength="10"
+               style="display:none;background:var(--card-bg);color:var(--text-primary);
+                      border:1px solid var(--border-color);border-radius:5px;
+                      padding:.35rem .55rem;font-size:.85rem;width:110px;text-transform:uppercase">
+        <button type="button" class="btn btn-primary btn-sm" onclick="slLoadLiq()">🔎 Buscar</button>
       </div>
     </div>
-  </details>
-  <script>
-    var SL_SERVER_TICKERS = {{ ranking_vol|map(attribute='ticker')|list|tojson }};
-    // Aberto por padrão em telas largas; em celular começa fechado para não
-    // empurrar a cadeia de opções para fora da tela (ver ranking_vol.html).
-    if (window.innerWidth > 640) document.getElementById('sl-ticker-switcher').open = true;
-  </script>
+    <div style="display:flex;flex-direction:column;gap:.25rem">
+      <label class="sim-hint">Nº de vencimentos mensais</label>
+      <select id="sl-n-meses" onchange="slLoadLiq()"
+              style="background:var(--card-bg);color:var(--text-primary);
+                     border:1px solid var(--border-color);border-radius:5px;
+                     padding:.35rem .5rem;font-size:.85rem">
+        {% for i in range(1, 13) %}
+        <option value="{{ i }}" {{ 'selected' if i == 3 else '' }}>{{ i }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <label class="sim-chk-label">
+      <input type="checkbox" id="sl-weekly" style="cursor:pointer;margin:0" onchange="slLoadLiq()">
+      incluir semanais
+    </label>
+  </div>
 
   <div id="sl-liq-loading" style="color:var(--text-secondary);font-size:.85rem;padding:.5rem 0;display:none">
     Buscando dados via OpLab…
   </div>
   <div id="sl-liq-summary" style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin-bottom:.5rem"></div>
+
+  {# Filtros de "teve negócio hoje" — aplicados no que já veio da busca,
+     sem refazer a chamada ao OpLab. Volume>0 é o sinal principal; variação
+     ≠0 serve como sinal alternativo (série pode oscilar sem volume
+     financeiro relevante, ex.: ajuste de book sem negócio fechado). #}
+  <div id="sl-filtros" style="display:none;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:.5rem">
+    <span class="sim-hint">Mostrar só quem teve negócio hoje:</span>
+    <label class="sim-chk-label">
+      <input type="checkbox" id="sl-f-volume" checked style="cursor:pointer;margin:0" onchange="_slAplicaFiltrosEChain()">
+      volume &gt; 0
+    </label>
+    <label class="sim-chk-label">
+      <input type="checkbox" id="sl-f-var" style="cursor:pointer;margin:0" onchange="_slAplicaFiltrosEChain()">
+      variação ≠ 0
+    </label>
+  </div>
   {# Cadeia com o strike ao centro (mesmo formato da tela Cadeia de Opções):
      CALL à esquerda, PUT à direita, e só o lado que tem liquidez preenchido. #}
   <div id="sl-liq-tables" style="display:none">
@@ -343,7 +368,6 @@
 // LIQUIDEZ
 // ═══════════════════════════════════════════════════════════
 var _slCache = {};
-var _slActiveVenc = null;
 var _slCurrentData = null;
 
 function fmtBRL_sl(v){
@@ -370,7 +394,6 @@ function _slRenderChain(calls, puts, spot){
   function poe(lista, lado){
     (lista||[]).forEach(function(o){
       var due = o.due_date || '';
-      if(_slActiveVenc && due !== _slActiveVenc) return;
       var k = due + '|' + o.strike;
       if(!mapa[k]) mapa[k] = {strike: o.strike, due: due};
       mapa[k][lado] = o;
@@ -453,20 +476,8 @@ function _slRenderChain(calls, puts, spot){
   });
 }
 
-function _slApplyVencFilter(venc, data){
-  _slActiveVenc = (_slActiveVenc === venc) ? null : venc;
-  _slRenderChain(data.calls, data.puts, data.spot_price);
-  document.querySelectorAll('.liq-venc-btn').forEach(function(b){
-    var act = b.dataset.due === _slActiveVenc;
-    b.style.background  = act ? '#7c3aed' : 'rgba(148,163,184,.15)';
-    b.style.color       = act ? '#fff'    : '#cbd5e1';
-    b.style.borderColor = act ? '#7c3aed' : 'transparent';
-  });
-}
-
 function _slRenderLiq(d){
   _slCurrentData = d;
-  _slActiveVenc = null;
   document.getElementById('sl-liq-loading').style.display = 'none';
 
   var hasLiq = (d.vol_total_call + d.vol_total_put) > 0;
@@ -500,92 +511,74 @@ function _slRenderLiq(d){
 
   if(d.due_dates && d.due_dates.length){
     var vencRow = document.createElement('div');
-    vencRow.style.cssText = 'display:flex;gap:.35rem;flex-wrap:wrap;align-items:center;margin-top:.4rem';
-    var lbl = document.createElement('span');
-    lbl.style.cssText = 'color:var(--text-secondary);font-size:.8rem';
-    lbl.textContent = 'Venc.:';
-    vencRow.appendChild(lbl);
-    d.due_dates.forEach(function(dt){
-      var btn = document.createElement('button');
-      btn.className = 'liq-venc-btn';
-      btn.dataset.due = dt;
-      btn.textContent = fmtDate_sl(dt);
-      btn.style.cssText = 'background:rgba(148,163,184,.15);border:1px solid transparent;border-radius:4px;'
-        + 'padding:.15rem .5rem;font-size:.78rem;color:#cbd5e1;cursor:pointer;transition:background .12s';
-      btn.onclick = function(){ _slApplyVencFilter(dt, d); };
-      vencRow.appendChild(btn);
-    });
+    vencRow.style.cssText = 'color:var(--text-secondary);font-size:.8rem;margin-top:.4rem';
+    vencRow.textContent = 'Vencimentos: ' + d.due_dates.map(fmtDate_sl).join(', ');
     sumEl.appendChild(vencRow);
   }
 
-  _slRenderChain(d.calls, d.puts, d.spot_price);
+  document.getElementById('sl-filtros').style.display = 'flex';
+  _slAplicaFiltrosEChain();
   document.getElementById('sl-liq-tables').style.display = 'flex';
 }
 
-// ── Atalhos de tickers gerenciáveis (base: Ranking Vol + personalizados) ─────
-var SL_KEY_CUSTOM = 'sl-tickers-custom', SL_KEY_REMOVED = 'sl-tickers-removed';
-function slLsGet(k){ try{ return JSON.parse(localStorage.getItem(k))||[]; }catch(e){ return []; } }
-function slLsSet(k,v){ localStorage.setItem(k, JSON.stringify(v)); }
-function slTickList(){
-  var removed = slLsGet(SL_KEY_REMOVED), seen = {}, out = [];
-  (window.SL_SERVER_TICKERS||[]).concat(slLsGet(SL_KEY_CUSTOM)).forEach(function(t){
-    t = (t||'').toUpperCase();
-    if(t && !seen[t] && removed.indexOf(t) === -1){ seen[t] = 1; out.push(t); }
-  });
-  return out;
+// ── Filtros "teve negócio hoje": volume > 0 (padrão do backend) e/ou
+// variação ≠ 0 (sinal alternativo — uma série pode variar sem volume
+// financeiro relevante, ex.: ajuste de book sem negócio fechado). Os dois
+// juntam com OU: passa quem atende a pelo menos um marcado.
+function _slPassaFiltro(o){
+  var porVolume = document.getElementById('sl-f-volume').checked;
+  var porVar    = document.getElementById('sl-f-var').checked;
+  if(!porVolume && !porVar) return true;   // nenhum marcado = sem filtro extra
+  var okVolume = porVolume && (o.volume || 0) > 0;
+  var okVar    = porVar && Math.abs(o.var_pct || 0) > 0.0001;
+  return okVolume || okVar;
 }
-function slRenderTickers(active){
-  var host = document.getElementById('sl-ticker-btns');
-  if(!host) return;
-  host.innerHTML = slTickList().map(function(t){
-    return '<button class="sl-ticker-btn'+(t===active?' active':'')+'" data-t="'+t+'" onclick="slLoadLiq(\''+t+'\')">'+t+
-           '<span onclick="event.stopPropagation();slRemoveTicker(\''+t+'\')" title="Remover atalho" '+
-           'style="margin-left:.35rem;color:#94a3b8;font-weight:700;cursor:pointer">×</span></button>';
-  }).join('') || '<span style="color:var(--text-secondary);font-size:.85rem">Nenhum atalho — adicione um ticker ao lado.</span>';
+function _slAplicaFiltrosEChain(){
+  if(!_slCurrentData) return;
+  var d = _slCurrentData;
+  var calls = (d.calls || []).filter(_slPassaFiltro);
+  var puts  = (d.puts  || []).filter(_slPassaFiltro);
+  _slRenderChain(calls, puts, d.spot_price);
 }
-window.slAddTicker = function(){
-  var inp = document.getElementById('sl-add-ticker');
-  var t = (inp.value||'').trim().toUpperCase();
-  if(!t) return;
-  inp.value = '';
-  var removed = slLsGet(SL_KEY_REMOVED), ri = removed.indexOf(t);
-  if(ri >= 0){ removed.splice(ri,1); slLsSet(SL_KEY_REMOVED, removed); }
-  if(slTickList().indexOf(t) === -1){
-    var custom = slLsGet(SL_KEY_CUSTOM); custom.push(t); slLsSet(SL_KEY_CUSTOM, custom);
-  }
-  slRenderTickers(t);
-  slLoadLiq(t);
-};
-window.slRemoveTicker = function(t){
-  var custom = slLsGet(SL_KEY_CUSTOM), ci = custom.indexOf(t);
-  if(ci >= 0){ custom.splice(ci,1); slLsSet(SL_KEY_CUSTOM, custom); }
-  else{
-    var removed = slLsGet(SL_KEY_REMOVED);
-    if(removed.indexOf(t) === -1){ removed.push(t); slLsSet(SL_KEY_REMOVED, removed); }
-  }
-  var act = document.querySelector('.sl-ticker-btn.active');
-  slRenderTickers(act && act.dataset.t !== t ? act.dataset.t : null);
-};
-slRenderTickers(null);
 
-window.slLoadLiq = function(ticker){
-  document.querySelectorAll('.sl-ticker-btn').forEach(function(b){
-    b.classList.toggle('active', b.dataset.t === ticker);
-  });
+// ── Ativo: dropdown de sugestões + "outro ativo…" revela o campo livre,
+// mesmo padrão da tela Simulador/Estruturas ──────────────────────────────
+window.slSelAtivoMudou = function(sel){
+  var livre = sel.value === '__outro__';
+  var txt = document.getElementById('sl-ativo');
+  txt.style.display = livre ? '' : 'none';
+  if(livre){ txt.focus(); return; }
+  if(sel.value) slLoadLiq();
+};
+function slTickerAtual(){
+  var sel = document.getElementById('sl-ativo-sel');
+  if(sel.value === '__outro__') return (document.getElementById('sl-ativo').value||'').trim().toUpperCase();
+  return (sel.value||'').trim().toUpperCase();
+}
+
+window.slLoadLiq = function(){
+  var ticker = slTickerAtual();
+  if(!ticker) return;
   document.getElementById('sl-liq-loading').style.display = 'block';
   document.getElementById('sl-liq-loading').textContent = 'Buscando dados via OpLab…';
   document.getElementById('sl-liq-tables').style.display = 'none';
+  document.getElementById('sl-filtros').style.display = 'none';
   document.getElementById('sl-liq-summary').innerHTML = '';
   // Preenche ativo subjacente no formulário
   document.getElementById('sim-underlying').value = ticker;
 
-  if(_slCache[ticker]){ _slRenderLiq(_slCache[ticker]); return; }
+  var nMeses = document.getElementById('sl-n-meses').value;
+  var weekly = document.getElementById('sl-weekly').checked ? '1' : '0';
+  var cacheKey = ticker + '|' + nMeses + '|' + weekly;
 
-  fetch('/api/liquidez/'+encodeURIComponent(ticker))
+  if(_slCache[cacheKey]){ _slRenderLiq(_slCache[cacheKey]); return; }
+
+  var q = 'n_meses=' + encodeURIComponent(nMeses) + '&weekly=' + weekly;
+  fetch('/api/liquidez/'+encodeURIComponent(ticker)+'?'+q)
     .then(function(r){ return r.json(); })
     .then(function(d){
       if(d.error){ document.getElementById('sl-liq-loading').textContent = '✗ '+d.error; return; }
-      _slCache[ticker] = d;
+      _slCache[cacheKey] = d;
       _slRenderLiq(d);
     })
     .catch(function(e){ document.getElementById('sl-liq-loading').textContent = '✗ Erro: '+e; });
@@ -1066,9 +1059,12 @@ document.addEventListener('DOMContentLoaded',function(){
   document.getElementById('sl-leg-modal').addEventListener('click',function(e){
     if(e.target===this) slCloseLegModal();
   });
-  // Carrega o primeiro ativo automaticamente se houver ranking
-  var firstBtn = document.querySelector('.sl-ticker-btn');
-  if(firstBtn) slLoadLiq(firstBtn.dataset.t);
+  // Carrega o primeiro ativo sugerido automaticamente, se houver ranking
+  var selAtivo = document.getElementById('sl-ativo-sel');
+  if(selAtivo && selAtivo.options.length > 2){   // além de "selecione…" e "outro ativo…"
+    selAtivo.selectedIndex = 1;
+    slLoadLiq();
+  }
 });
 document.addEventListener('DOMContentLoaded', function() {
     if (window.initLegHelpers) initLegHelpers({

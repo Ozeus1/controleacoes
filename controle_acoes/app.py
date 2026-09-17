@@ -19626,6 +19626,14 @@ def api_liquidez(ticker):
         limit = 30
     expiry_filter = request.args.get('expiry', '').strip()
     summary_only = request.args.get('summary') == '1'
+    # N vencimentos mensais a trazer (padrão da tela Simulador/Estruturas) +
+    # semanais opcionais — em vez de sempre buscar TODOS os vencimentos
+    # futuros disponíveis, como a rota fazia antes.
+    try:
+        n_meses = max(1, min(int(request.args.get('n_meses', 3)), 12))
+    except (TypeError, ValueError):
+        n_meses = 3
+    include_weekly = request.args.get('weekly', '0') == '1'
     token  = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
         return jsonify({'error': 'Token OpLab não configurado. Configure em Perfil → OpLab.'}), 400
@@ -19686,9 +19694,16 @@ def api_liquidez(ticker):
             close = float(close or 0)
         except (TypeError, ValueError):
             close = 0
-        if close <= 0:
-            continue
         volume   = o.get('volume_financial') or o.get('financial_volume') or o.get('volume') or 0
+        try:
+            volume = float(volume or 0)
+        except (TypeError, ValueError):
+            volume = 0
+        # "Strike com negócio": exige volume financeiro > 0 no pregão, não só
+        # um close antigo de quando a série ainda era negociada — senão a
+        # tabela mostra série parada como se tivesse liquidez hoje.
+        if close <= 0 or volume <= 0:
+            continue
         open_int = o.get('open_interest') or o.get('openInterest') or 0
         var_pct  = o.get('variation') or o.get('change') or o.get('pct_change') or 0
         bid      = o.get('bid') or 0
@@ -19724,6 +19739,20 @@ def api_liquidez(ticker):
         else:
             calls.append(row)
             vol_total_call += row['volume']
+
+    # Vencimentos permitidos: os N mensais mais próximos (padrão da tela
+    # Simulador/Estruturas) + semanais dentro dessa janela, se marcado —
+    # em vez de trazer TODOS os vencimentos futuros da cadeia de uma vez.
+    todos_vencs = sorted({row['due_date'] for row in calls + puts if row.get('due_date')})
+    mensais = [e for e in todos_vencs if _is_monthly_exp(e)][:n_meses]
+    if mensais:
+        if include_weekly:
+            limite = mensais[-1]
+            vencs_permitidos = {e for e in todos_vencs if e <= limite}
+        else:
+            vencs_permitidos = set(mensais)
+        calls = [row for row in calls if row.get('due_date') in vencs_permitidos]
+        puts = [row for row in puts if row.get('due_date') in vencs_permitidos]
 
     expiry_summary_map = {}
     for row in calls:

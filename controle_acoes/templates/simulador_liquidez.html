@@ -136,6 +136,9 @@
 .sim-item.active { background: var(--hover-bg); border-color: var(--accent-color); }
 .sim-item-name { flex: 1; font-weight: 500; }
 .sim-item-meta { font-size: .75rem; color: var(--text-secondary); white-space: nowrap; }
+/* ── toggle lista/cards das Simulações Salvas ── */
+#sims-salvas-viewtoggle .btn.active { background: #7c3aed; border-color: #7c3aed; color: #fff; }
+#sims-salvas-list .sim-item:last-child { border-bottom: none; }
 /* ── ticker clickable ── */
 .ticker-badge { cursor: pointer; }
 </style>
@@ -241,31 +244,86 @@
   </p>
 </div>
 
-{# ── Seção Simulações Salvas ── #}
+{# ── Seção Simulações Salvas: oculta por padrão, com toggle lista/cards ── #}
 {% if sims %}
-<div class="card" style="padding:.9rem;margin-bottom:1.2rem">
-  <div style="font-size:.8rem;color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.6rem">
-    Simulações Salvas
-  </div>
-  <div style="display:flex;flex-wrap:wrap;gap:.4rem">
-    {% for s in sims %}
-    <div class="sim-item"
-         style="flex:1;min-width:200px;max-width:320px;"
-         onclick="window.location='{{ url_for('simulacao_edit', id=s.id) }}'">
-      <div style="flex:1;min-width:0">
-        <div class="sim-item-name">{{ s.name }}</div>
-        <div class="sim-item-meta">{{ s.underlying or '—' }} · {{ s.created_at.strftime('%d/%m/%y') if s.created_at else '' }}</div>
-      </div>
-      <form action="{{ url_for('simulacao_delete', id=s.id) }}" method="post" style="margin:0"
-            onclick="event.stopPropagation()">
-        <button type="submit" class="btn btn-sm btn-danger"
-                style="padding:.1rem .4rem;font-size:.8rem"
-                onclick="return confirm('Excluir simulação?')">🗑️</button>
-      </form>
+<div class="card" id="sims-salvas-card" style="padding:.9rem;margin-bottom:1.2rem">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:.6rem;flex-wrap:wrap;cursor:pointer"
+       onclick="simsSalvasToggle()">
+    <div style="font-size:.8rem;color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:.4rem">
+      <span id="sims-salvas-caret">▶</span> Simulações Salvas
+      <span style="color:var(--text-secondary);font-weight:400;text-transform:none;letter-spacing:normal">({{ sims|length }})</span>
     </div>
-    {% endfor %}
+    <div id="sims-salvas-viewtoggle" style="display:none;gap:.3rem" onclick="event.stopPropagation()">
+      <button type="button" class="btn btn-sm btn-secondary" id="sims-salvas-view-cards" onclick="simsSalvasSetView('cards')">▦ Cards</button>
+      <button type="button" class="btn btn-sm btn-secondary" id="sims-salvas-view-list" onclick="simsSalvasSetView('list')">☰ Lista</button>
+    </div>
+  </div>
+  <div id="sims-salvas-body" style="display:none;margin-top:.7rem">
+    <div id="sims-salvas-cards" style="display:flex;flex-wrap:wrap;gap:.4rem">
+      {% for s in sims %}
+      <div class="sim-item"
+           style="flex:1;min-width:200px;max-width:320px;"
+           onclick="window.location='{{ url_for('simulacao_edit', id=s.id) }}'">
+        <div style="flex:1;min-width:0">
+          <div class="sim-item-name">{{ s.name }}</div>
+          <div class="sim-item-meta">{{ s.underlying or '—' }} · {{ s.created_at.strftime('%d/%m/%y') if s.created_at else '' }}</div>
+        </div>
+        <form action="{{ url_for('simulacao_delete', id=s.id) }}" method="post" style="margin:0"
+              onclick="event.stopPropagation()">
+          <button type="submit" class="btn btn-sm btn-danger"
+                  style="padding:.1rem .4rem;font-size:.8rem"
+                  onclick="return confirm('Excluir simulação?')">🗑️</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+    <div id="sims-salvas-list" style="display:none;flex-direction:column;gap:0">
+      {% for s in sims %}
+      <div class="sim-item" style="border-radius:0;border-bottom:1px solid var(--border-color)"
+           onclick="window.location='{{ url_for('simulacao_edit', id=s.id) }}'">
+        <div style="flex:1;min-width:0;display:flex;align-items:baseline;gap:.6rem">
+          <div class="sim-item-name" style="flex:none">{{ s.name }}</div>
+          <div class="sim-item-meta">{{ s.underlying or '—' }} · {{ s.created_at.strftime('%d/%m/%y') if s.created_at else '' }}</div>
+        </div>
+        <form action="{{ url_for('simulacao_delete', id=s.id) }}" method="post" style="margin:0"
+              onclick="event.stopPropagation()">
+          <button type="submit" class="btn btn-sm btn-danger"
+                  style="padding:.1rem .4rem;font-size:.8rem"
+                  onclick="return confirm('Excluir simulação?')">🗑️</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
   </div>
 </div>
+<script>
+(function(){
+  function apply(){
+    var aberto = localStorage.getItem('sims-salvas-aberto') === '1';
+    document.getElementById('sims-salvas-body').style.display = aberto ? 'block' : 'none';
+    document.getElementById('sims-salvas-viewtoggle').style.display = aberto ? 'flex' : 'none';
+    document.getElementById('sims-salvas-caret').textContent = aberto ? '▼' : '▶';
+  }
+  window.simsSalvasToggle = function(){
+    var aberto = localStorage.getItem('sims-salvas-aberto') === '1';
+    localStorage.setItem('sims-salvas-aberto', aberto ? '0' : '1');
+    apply();
+  };
+  window.simsSalvasSetView = function(view){
+    localStorage.setItem('sims-salvas-view', view);
+    applyView();
+  };
+  function applyView(){
+    var view = localStorage.getItem('sims-salvas-view') || 'cards';
+    document.getElementById('sims-salvas-cards').style.display = view === 'cards' ? 'flex' : 'none';
+    document.getElementById('sims-salvas-list').style.display = view === 'list' ? 'flex' : 'none';
+    document.getElementById('sims-salvas-view-cards').classList.toggle('active', view === 'cards');
+    document.getElementById('sims-salvas-view-list').classList.toggle('active', view === 'list');
+  }
+  apply();
+  applyView();
+})();
+</script>
 {% endif %}
 
 {# ── Seção Simulador (mesmo motor da tela Simulador/Estruturas) ── #}

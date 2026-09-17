@@ -76,6 +76,22 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
 .mo-sym{font-weight:600;color:#60a5fa;}
 .mo-nota{font-size:.78rem;color:var(--text-secondary);margin:.5rem 0;}
 @media (max-width:640px){.mo-filtros{grid-template-columns:1fr;}#mo-chart-wrap{height:340px;}}
+
+/* Modal: evolução de uma série, dia a dia */
+#mo-ev-modal{display:none;position:fixed;inset:0;z-index:19050;
+  background:rgba(0,0,0,.82);align-items:flex-start;justify-content:center;
+  overflow-y:auto;padding:2vh 1rem;}
+#mo-ev-box{background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,1000px);
+  border:1px solid var(--border-color);margin:auto;}
+#mo-ev-modal.fullscreen{padding:0;}
+#mo-ev-modal.fullscreen #mo-ev-box{width:100vw!important;max-width:100vw!important;
+  height:100vh;border-radius:0;display:flex;flex-direction:column;}
+#mo-ev-modal.fullscreen #mo-ev-corpo{flex:1;overflow-y:auto;}
+#mo-ev-modal.fullscreen #mo-ev-corpo svg{max-height:calc(100vh - 260px);width:auto;
+  display:block;margin:0 auto;}
+.mo-ev-btn{background:none;border:none;font-size:1.1rem;color:var(--text-secondary);
+  cursor:pointer;line-height:1;padding:.2rem .3rem;}
+.mo-ev-btn:hover{color:var(--text-primary);}
 </style>
 {% endblock %}
 
@@ -202,6 +218,34 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
       <strong>Travado</strong>: posição bloqueada por outra opção (trava).
       <strong>Descoberto</strong>: a descoberto, sem cobertura.
     </p>
+  </div>
+</div>
+
+<!-- ── Modal: evolução da opção (dia a dia) ────────────────────────── -->
+<div id="mo-ev-modal">
+  <div id="mo-ev-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:.9rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <div>
+        <h3 id="mo-ev-titulo" style="margin:0;font-size:1.05rem;"></h3>
+        <div id="mo-ev-sub" style="font-size:.8rem;color:var(--text-secondary);margin-top:.15rem;"></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:.6rem;">
+        <select id="mo-ev-dias" onchange="moEvRecarregar()"
+                style="background:var(--hover-bg);color:var(--text-primary);
+                       border:1px solid var(--border-color);border-radius:5px;
+                       padding:.25rem .5rem;font-size:.8rem;">
+          <option value="15">15 pregões</option>
+          <option value="30" selected>30 pregões</option>
+          <option value="60">60 pregões</option>
+        </select>
+        <button type="button" class="mo-ev-btn" id="mo-ev-full-btn"
+                onclick="moEvAlternaTelaCheia()" title="Tela cheia">⛶</button>
+        <button type="button" class="mo-ev-btn" onclick="moEvFechar()" title="Fechar"
+                style="font-size:1.4rem;">&times;</button>
+      </div>
+    </div>
+    <div id="mo-ev-corpo" style="padding:1rem 1.1rem;"></div>
   </div>
 </div>
 
@@ -508,6 +552,155 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
     }).join('');
   }
 
+  // ── Evolução da opção (dia a dia) ───────────────────────────────
+  // Posição em aberto decomposta em coberto/travado/descoberto — mesmo
+  // modal e mesma rota /api/opcao-evolucao já usados no Volume Anômalo.
+  var MO_EV = null;   // {symbol, underlying, exp} da opção aberta
+
+  window.moEvAbrir = function(symbol, ativo, exp){
+    MO_EV = {symbol:symbol, underlying:ativo, exp:exp};
+    document.getElementById('mo-ev-titulo').textContent = 'Evolução da ' + symbol;
+    document.getElementById('mo-ev-sub').textContent = ativo + ' · vencimento ' + dataBR(exp);
+    document.getElementById('mo-ev-modal').style.display = 'flex';
+    moEvRecarregar();
+  };
+  window.moEvFechar = function(){
+    document.getElementById('mo-ev-modal').style.display = 'none';
+    document.getElementById('mo-ev-modal').classList.remove('fullscreen');
+  };
+  window.moEvAlternaTelaCheia = function(){
+    var m = document.getElementById('mo-ev-modal');
+    var cheia = m.classList.toggle('fullscreen');
+    var btn = document.getElementById('mo-ev-full-btn');
+    btn.textContent = cheia ? '⛶' : '⛶';
+    btn.title = cheia ? 'Sair da tela cheia' : 'Tela cheia';
+  };
+  document.addEventListener('keydown', function(e){
+    var m = document.getElementById('mo-ev-modal');
+    if(e.key==='Escape' && m && m.style.display!=='none') moEvFechar();
+  });
+
+  window.moEvRecarregar = function(){
+    if(!MO_EV) return;
+    var corpo = document.getElementById('mo-ev-corpo');
+    corpo.innerHTML = '<div style="padding:2rem;text-align:center;color:var(--text-secondary);">'
+      + '⏳ Buscando posições dia a dia…</div>';
+    var q = new URLSearchParams({
+      underlying: MO_EV.underlying, exp: MO_EV.exp,
+      dias: document.getElementById('mo-ev-dias').value
+    });
+    fetch('/api/opcao-evolucao/' + encodeURIComponent(MO_EV.symbol) + '?' + q.toString())
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, j:j}; }); })
+      .then(function(res){
+        if(!res.ok || res.j.error){
+          corpo.innerHTML = '<div style="padding:1.5rem;color:#f87171;">⚠️ '
+            + (res.j.error || 'Erro ao buscar a evolução.') + '</div>';
+          return;
+        }
+        moEvRender(res.j);
+      })
+      .catch(function(e){
+        corpo.innerHTML = '<div style="padding:1.5rem;color:#f87171;">⚠️ Falha: ' + e + '</div>';
+      });
+  };
+
+  function moEvRender(d){
+    var s = d.serie || [];
+    if(!s.length){
+      document.getElementById('mo-ev-corpo').innerHTML =
+        '<div style="padding:1.5rem;color:var(--text-secondary);">Sem histórico para esta série.</div>';
+      return;
+    }
+    var maxT = Math.max.apply(null, s.map(function(x){ return x.total; })) || 1;
+    var W = 920, PL = 62, PR = 14, PT = 12;
+    var iw = W - PL - PR;
+    var passoPrev = Math.max(1, Math.ceil(s.length / Math.max(2,
+      Math.min(s.length, Math.floor(iw / 44)))));
+    var espacPrev = (s.length > 1) ? (iw / (s.length - 1)) * passoPrev : iw;
+    var PB = (espacPrev < 38) ? 46 : 32;
+    var H = 218 + PB;
+    var ih = H - PT - PB;
+    var px = function(i){ return PL + (s.length < 2 ? iw / 2 : i * iw / (s.length - 1)); };
+    var py = function(v){ return PT + ih - (v / maxT) * ih; };
+    var linha = function(campo, cor){
+      var pts = s.map(function(x, i){ return px(i) + ',' + py(x[campo]); }).join(' ');
+      return '<polyline points="' + pts + '" fill="none" stroke="' + cor
+           + '" stroke-width="2" stroke-linejoin="round"/>';
+    };
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;'
+      + 'background:var(--hover-bg);border:1px solid var(--border-color);border-radius:8px;">';
+    [0, 0.5, 1].forEach(function(f){
+      var y = PT + ih * f, v = maxT * (1 - f);
+      svg += '<line x1="' + PL + '" y1="' + y + '" x2="' + (W - PR) + '" y2="' + y
+          + '" stroke="rgba(148,163,184,.18)" stroke-width="1"/>'
+          + '<text x="' + (PL - 6) + '" y="' + (y + 4) + '" text-anchor="end" '
+          + 'fill="#94a3b8" font-size="10">' + fmtM(v) + '</text>';
+    });
+    svg += linha('total', '#2dd4bf') + linha('trava', '#a78bfa')
+         + linha('descoberto', '#f87171') + linha('coberto', '#60a5fa');
+    var LARG_ROTULO = 44;
+    var maxRot = Math.max(2, Math.min(s.length, Math.floor(iw / LARG_ROTULO)));
+    var passo = Math.max(1, Math.ceil(s.length / maxRot));
+    var idxs = [];
+    for(var k = 0; k < s.length; k += passo) idxs.push(k);
+    if(idxs[idxs.length - 1] !== s.length - 1){
+      if(s.length - 1 - idxs[idxs.length - 1] < passo / 2) idxs.pop();
+      idxs.push(s.length - 1);
+    }
+    var espac = (s.length > 1) ? (iw / (s.length - 1)) * passo : iw;
+    var inclina = espac < 38;
+    idxs.forEach(function(i){
+      var x = px(i);
+      var p = (s[i].data||'').split('-');
+      var txt = p.length===3 ? (p[2]+'/'+p[1]) : (s[i].data||'');
+      svg += '<line x1="' + x + '" y1="' + (PT + ih) + '" x2="' + x + '" y2="' + (PT + ih + 4)
+          + '" stroke="rgba(148,163,184,.45)" stroke-width="1"/>';
+      if(inclina){
+        svg += '<text x="' + x + '" y="' + (PT + ih + 14) + '" text-anchor="end" '
+            + 'transform="rotate(-40 ' + x + ',' + (PT + ih + 14) + ')" '
+            + 'fill="#94a3b8" font-size="9">' + txt + '</text>';
+      } else {
+        var anc = (i === 0) ? 'start' : (i === s.length - 1 ? 'end' : 'middle');
+        svg += '<text x="' + x + '" y="' + (H - 8) + '" text-anchor="' + anc
+            + '" fill="#94a3b8" font-size="10">' + txt + '</text>';
+      }
+    });
+    svg += '</svg>';
+
+    var leg = [['Total', '#2dd4bf'], ['Travado', '#a78bfa'],
+               ['Descoberto', '#f87171'], ['Coberto', '#60a5fa']]
+      .map(function(l){
+        return '<span style="display:inline-flex;align-items:center;gap:.3rem;margin-right:.9rem;">'
+          + '<span style="width:14px;height:3px;background:' + l[1] + ';display:inline-block;"></span>'
+          + l[0] + '</span>';
+      }).join('');
+
+    var tab = '<div style="max-height:320px;overflow-y:auto;margin-top:.8rem;">'
+      + '<table class="mo-tab"><thead><tr><th>Data</th><th>Coberto</th><th>Travado</th>'
+      + '<th>Descoberto</th><th>Total</th><th title="Quantos detêm a opção comprada">Titulares</th>'
+      + '<th title="Quantos venderam a opção">Lançadores</th></tr></thead><tbody>';
+    s.slice().reverse().forEach(function(x){
+      tab += '<tr>'
+        + '<td>' + dataBR(x.data) + '</td>'
+        + '<td>' + fmt(x.coberto) + '</td>'
+        + '<td>' + fmt(x.trava) + '</td>'
+        + '<td>' + fmt(x.descoberto) + '</td>'
+        + '<td><strong>' + fmt(x.total) + '</strong></td>'
+        + '<td>' + fmt(x.titular) + '</td>'
+        + '<td>' + fmt(x.lancador) + '</td></tr>';
+    });
+    tab += '</tbody></table></div>';
+
+    document.getElementById('mo-ev-corpo').innerHTML =
+      '<div style="font-size:.78rem;color:var(--text-secondary);margin-bottom:.5rem;">' + leg + '</div>'
+      + svg
+      + '<div style="font-size:.76rem;color:var(--text-secondary);margin-top:.6rem;">'
+      + '<strong>Travado</strong>: posição vendida com outra opção como garantia. '
+      + '<strong>Coberto</strong>: garantida pelo ativo. '
+      + '<strong>Descoberto</strong>: sem garantia — é a que exige margem e força recompra.'
+      + '</div>' + tab;
+  }
+
   function renderChart(d){
     var ctx=document.getElementById('mo-chart').getContext('2d');
     if(chart){ chart.destroy(); }
@@ -610,6 +803,21 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
       }
     };
 
+    // Strike -> linha(s) de rows correspondentes, para abrir a evolução ao
+    // clicar na barra. Com um único vencimento há só 1 série por strike;
+    // combinando vencimentos pode haver mais de uma — usa a 1ª (vencimento
+    // mais próximo, já que rows vem ordenado por vencimento na agregação).
+    var rowsPorStrike={};
+    (d.rows||[]).forEach(function(r){
+      (rowsPorStrike[r.strike]=rowsPorStrike[r.strike]||[]).push(r);
+    });
+    function abreEvolucaoDoStrike(strike){
+      var rs=rowsPorStrike[strike];
+      if(!rs||!rs.length) return;
+      var r=rs[0];
+      moEvAbrir(r.symbol, d.ticker, r.exp||d.exp);
+    }
+
     chart=new Chart(ctx,{
       type:'bar',
       data:{labels:labels, datasets:[
@@ -621,6 +829,12 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
         responsive:true, maintainAspectRatio:false,
         layout:{padding:{top:28}},
         interaction:{mode:'index', intersect:false},
+        onHover:function(ev,els){ ev.native.target.style.cursor = els.length ? 'pointer' : 'default'; },
+        onClick:function(ev,els){
+          if(!els.length) return;
+          var strike=labels[els[0].index];
+          abreEvolucaoDoStrike(strike);
+        },
         plugins:{
           legend:{display:false},
           tooltip:{

@@ -22,6 +22,12 @@ table.va-tab td{padding:.4rem .5rem;text-align:right;white-space:nowrap;color:va
   border-bottom:1px solid rgba(255,255,255,.04);}
 table.va-tab td:first-child,table.va-tab td:nth-child(2){text-align:left;}
 table.va-tab tr:hover{background:rgba(124,58,237,.12);}
+#ev-modal.fullscreen{padding:0;}
+#ev-modal.fullscreen #ev-box{width:100vw!important;max-width:100vw!important;height:100vh;
+  border-radius:0;display:flex;flex-direction:column;}
+#ev-modal.fullscreen #ev-corpo{flex:1;overflow-y:auto;}
+#ev-modal.fullscreen #ev-corpo svg{max-height:calc(100vh - 260px);width:auto;
+  display:block;margin:0 auto;}
 .va-wrap{overflow-x:auto;max-height:70vh;overflow-y:auto;}
 .va-call{color:#34d399;font-weight:600;}
 .va-put{color:#f87171;font-weight:600;}
@@ -178,7 +184,7 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
 <div id="ev-modal" style="display:none;position:fixed;inset:0;z-index:19050;
      background:rgba(0,0,0,.82);align-items:flex-start;justify-content:center;
      overflow-y:auto;padding:2vh 1rem;">
-  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,1000px);
+  <div id="ev-box" style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,1000px);
               border:1px solid var(--border-color);margin:auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;
                 padding:.9rem 1.1rem;border-bottom:1px solid var(--border-color);">
@@ -195,6 +201,9 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
           <option value="30" selected>30 pregões</option>
           <option value="60">60 pregões</option>
         </select>
+        <button onclick="evAlternaTelaCheia()" title="Tela cheia" style="background:none;border:none;
+                font-size:1.1rem;color:var(--text-secondary);cursor:pointer;line-height:1;
+                padding:.2rem .3rem;">⛶</button>
         <button onclick="evFechar()" style="background:none;border:none;font-size:1.4rem;
                 color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
       </div>
@@ -528,6 +537,10 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
   };
   window.evFechar = function() {
     document.getElementById('ev-modal').style.display = 'none';
+    document.getElementById('ev-modal').classList.remove('fullscreen');
+  };
+  window.evAlternaTelaCheia = function() {
+    document.getElementById('ev-modal').classList.toggle('fullscreen');
   };
   document.addEventListener('keydown', function(e) {
     var m = document.getElementById('ev-modal');

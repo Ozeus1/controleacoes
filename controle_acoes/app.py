@@ -224,6 +224,40 @@ def _oplab_get_json(path_or_url, token, params=None, timeout=15, retries=2):
         raise OplabApiError('OpLab retornou resposta invalida em vez de JSON.', resp.status_code, preview) from exc
 
 
+DIARIO_TRADE_BASE = 'https://diariotrade.casatemporadaceara.cloud/api/v1'
+
+
+class DiarioTradeApiError(Exception):
+    def __init__(self, message, status_code=None):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def _diario_trade_request(method, path, token, json_body=None, timeout=15):
+    """POST/PUT/GET para a API do Diário de Trade, com Bearer token do usuário.
+    Levanta DiarioTradeApiError com mensagem amigável para os códigos documentados."""
+    headers = {'Authorization': f'Bearer {(token or "").strip()}',
+               'Content-Type': 'application/json; charset=utf-8'}
+    try:
+        r = requests.request(method, f'{DIARIO_TRADE_BASE}{path}', headers=headers,
+                              json=json_body, timeout=timeout)
+    except requests.exceptions.RequestException as exc:
+        raise DiarioTradeApiError(f'Falha de rede ao contatar o Diário de Trade: {exc}') from exc
+    if r.status_code in (200, 201):
+        try:
+            return r.json()
+        except ValueError as exc:
+            raise DiarioTradeApiError('Diário de Trade retornou resposta inválida em vez de JSON.') from exc
+    try:
+        msg = r.json().get('error', r.text)
+    except Exception:
+        msg = r.text
+    _MSGS = {400: 'Dados inválidos', 401: 'Token inválido ou expirado',
+             403: 'Permissão insuficiente para este token', 404: 'Operação não encontrada',
+             409: 'Limite de operações atingido ou conflito', 429: 'Muitas tentativas, aguarde e tente de novo'}
+    raise DiarioTradeApiError(f'{_MSGS.get(r.status_code, f"Erro HTTP {r.status_code}")}: {msg}', r.status_code)
+
+
 def _oplab_is_available(token: str, timeout: int = 4) -> bool:
     """
     Probe rápido de disponibilidade do servidor OpLab.
@@ -636,6 +670,9 @@ def run_migrations():
     if 'notes' not in th_cols:
         cursor.execute("ALTER TABLE trade_history ADD COLUMN notes TEXT")
         print("[MIGRATION] Added trade_history.notes")
+    if 'diario_trade_id' not in th_cols:
+        cursor.execute("ALTER TABLE trade_history ADD COLUMN diario_trade_id VARCHAR(50)")
+        print("[MIGRATION] Added trade_history.diario_trade_id")
 
     # Create option_spread table if it doesn't exist
     cursor.execute("""
@@ -16635,6 +16672,94 @@ def history():
     )
 
 
+_DIARIO_TRADE_EMOTIONS = ['Calmo', 'Confiante', 'Ansioso', 'Frustrado', 'FOMO']
+_DIARIO_TRADE_ERRORS = ['Nenhum', 'Hesitação', 'Moveu o Stop Loss', 'Overtrading',
+                         'Trade de vingança', 'Saída antecipada', 'Falta de foco', 'Tamanho muito grande']
+
+
+@app.route('/api/trade-history/<int:id>/diario-trade-payload')
+@login_required
+def api_diario_trade_payload(id):
+    """Sugestão de payload para o modal de envio ao Diário de Trade, a partir
+    dos dados já existentes no TradeHistory local — o usuário completa o resto."""
+    trade = TradeHistory.query.get_or_404(id)
+    if trade.user_id != current_user.id:
+        return jsonify({'error': 'Sem permissão'}), 403
+
+    import json as _json
+    det = {}
+    if trade.details:
+        try:
+            det = _json.loads(trade.details)
+        except Exception:
+            det = {}
+
+    is_option = bool(det.get('legs')) or 'opç' in (trade.strategy or '').lower() or 'opc' in (trade.strategy or '').lower()
+    same_day = bool(trade.entry_date and trade.exit_date and trade.entry_date == trade.exit_date)
+
+    exits = []
+    if trade.exit_date and trade.sell_price is not None and trade.quantity:
+        exits.append({
+            'date': trade.exit_date.isoformat(),
+            'qty': trade.quantity,
+            'price': trade.sell_price,
+        })
+
+    return jsonify({
+        'mode': 'day' if same_day else 'swing',
+        'assetType': 'Opções' if is_option else 'Ações',
+        'symbol': trade.ticker,
+        'underlying': trade.underlying or trade.ticker,
+        'strategy': trade.strategy or '',
+        'date': trade.entry_date.isoformat() if trade.entry_date else None,
+        'qty': trade.quantity,
+        'direction': 'Compra',
+        'entry': trade.buy_price,
+        'exitMode': 'Parciais' if len(exits) > 1 else 'Alvo único',
+        'exits': exits,
+        'fees': 0,
+        'notes': trade.notes or '',
+        'emotions': _DIARIO_TRADE_EMOTIONS,
+        'errors': _DIARIO_TRADE_ERRORS,
+        'already_sent': bool(trade.diario_trade_id),
+        'remote_id': trade.diario_trade_id,
+    })
+
+
+@app.route('/api/trade-history/<int:id>/enviar-diario-trade', methods=['POST'])
+@login_required
+def api_enviar_diario_trade(id):
+    """Envia (POST) ou atualiza (PUT, se já enviado antes) um trade local no
+    Diário de Trade externo, usando o token cadastrado em /config."""
+    trade = TradeHistory.query.get_or_404(id)
+    if trade.user_id != current_user.id:
+        return jsonify({'ok': False, 'error': 'Sem permissão'}), 403
+
+    token = Settings.get_value('diario_trade_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'ok': False, 'error': 'Configure o token do Diário de Trade em Configurações primeiro.'}), 400
+
+    payload = request.get_json(silent=True) or {}
+    # Nunca repassa user_id/id — a doc da API é explícita: "Não envie user_id nem id no POST".
+    payload.pop('user_id', None)
+    payload.pop('id', None)
+
+    try:
+        if trade.diario_trade_id:
+            resp = _diario_trade_request('PUT', f'/trades/{trade.diario_trade_id}', token, json_body=payload)
+        else:
+            resp = _diario_trade_request('POST', '/trades', token, json_body=payload)
+    except DiarioTradeApiError as exc:
+        status = exc.status_code if (exc.status_code and 400 <= exc.status_code < 500) else 502
+        return jsonify({'ok': False, 'error': str(exc)}), status
+
+    remote_trade = (resp or {}).get('trade') or {}
+    remote_id = remote_trade.get('id') or trade.diario_trade_id
+    if remote_id:
+        trade.diario_trade_id = str(remote_id)
+        db.session.commit()
+
+    return jsonify({'ok': True, 'id': trade.diario_trade_id})
 
 
 @app.route('/config', methods=['GET', 'POST'])
@@ -16679,6 +16804,14 @@ def config():
             if token:
                 Settings.set_value('oplab_token', token, user_id=current_user.id)
                 flash('Token OpLab salvo com sucesso!', 'success')
+            else:
+                flash('Token não pode ser vazio.', 'warning')
+
+        elif action == 'save_diario_trade_token':
+            token = request.form.get('diario_trade_token', '').strip()
+            if token:
+                Settings.set_value('diario_trade_token', token, user_id=current_user.id)
+                flash('Token do Diário de Trade salvo com sucesso!', 'success')
             else:
                 flash('Token não pode ser vazio.', 'warning')
 
@@ -16731,6 +16864,7 @@ def config():
     opt_fallback_brapi = Settings.get_value('opt_fallback_brapi',
                                             user_id=current_user.id, default='false') == 'true'
     receberbem_num  = Settings.get_value('receberbem_num', user_id=current_user.id, default='')
+    diario_trade_token_ok = bool(Settings.get_value('diario_trade_token', user_id=current_user.id))
 
     uid = current_user.id
     _, _, ticker_map_text, option_map_text = _build_ticker_maps(uid)
@@ -16748,6 +16882,7 @@ def config():
                            oplab_token_ok=oplab_token_ok,
                            opt_fallback_brapi=opt_fallback_brapi,
                            receberbem_num=receberbem_num,
+                           diario_trade_token_ok=diario_trade_token_ok,
                            ticker_map_text=ticker_map_text,
                            option_map_text=option_map_text,
                            selic_rate=selic_rate,

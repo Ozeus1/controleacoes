@@ -114,6 +114,7 @@ class TradeHistory(db.Model):
     #    "events": [{data, ticker, tipo, side, qty, entrada, saida, novo,
     #                novo_premio, pnl, saldo}, ...]}   ← rolagens e manejos
     details = db.Column(db.Text, nullable=True)
+    diario_trade_id = db.Column(db.String(50), nullable=True)  # id remoto após envio ao Diário de Trade
 
 class Option(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -201,7 +202,7 @@ class Settings(db.Model):
     
     # Unique constraint combo ideally: (user_id, key)
 
-    _ENCRYPTED_KEYS = {'brapi_token', 'oplab_token'}
+    _ENCRYPTED_KEYS = {'brapi_token', 'oplab_token', 'diario_trade_token'}
 
     @staticmethod
     def get_value(key, user_id, default=None):

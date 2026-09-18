@@ -5,7 +5,7 @@
     /* ── KPIs ─────────────────────────────────────────── */
     .kpi-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        grid-template-columns: repeat(3, 1fr);
         gap: 1rem;
         margin-bottom: 2rem;
     }
@@ -16,6 +16,31 @@
     .kpi-card.kpi-main .kpi-value { font-size: clamp(1.15rem, 1.7vw, 1.8rem);
         color: var(--accent-color); white-space: nowrap; }
     .kpi-sub { font-size: .8rem; color: var(--text-secondary); }
+
+    /* ── Blur toggle para esconder números ────────────── */
+    .blur-toggle {
+        position: fixed;
+        top: 6rem;
+        right: 1rem;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        padding: .5rem .7rem;
+        cursor: pointer;
+        font-size: 1.2rem;
+        z-index: 100;
+        transition: background .2s, border-color .2s;
+    }
+    .blur-toggle:hover { background: var(--hover-bg); border-color: var(--accent-color); }
+    .blur-toggle.blurred { color: var(--accent-color); }
+
+    /* Aplicar blur nos valores quando classe .blurred-mode estiver ativa */
+    body.blurred-mode .kpi-value,
+    body.blurred-mode .donut-legend > div > span:first-child {
+        filter: blur(4px);
+        color: transparent;
+    }
+    body.blurred-mode .kpi-value { color: transparent; }
 
     /* ── Pizzas em grade ──────────────────────────────── */
     .pies-grid {
@@ -45,9 +70,14 @@
     .chart-scroll .chart-inner { position: relative; height: 320px; }
     .chart-scroll .chart-inner.h-280 { height: 280px; }
 
+    /* ── Tablet (landscape + portrait) ─────────────── */
+    @media (max-width: 1024px) {
+        .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
     /* ── Celular / PWA ────────────────────────────────── */
     @media (max-width: 768px) {
-        .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: .55rem; margin-bottom: 1.2rem; }
+        .kpi-grid { gap: .55rem; margin-bottom: 1.2rem; }
         .kpi-card { padding: .8rem .5rem; border-radius: 10px; }
         .kpi-label { font-size: .72rem; line-height: 1.2; min-height: 2em;
                      display: flex; align-items: center; justify-content: center; }
@@ -55,6 +85,8 @@
         .kpi-card.kpi-main .kpi-value { font-size: 1.15rem; }
         .kpi-sub { font-size: .68rem; margin-top: .2rem !important; }
         a.kpi-link::after { display: none; }
+
+        .blur-toggle { top: 5.5rem; right: .5rem; padding: .4rem .6rem; font-size: 1rem; }
 
         .pies-grid { gap: .5rem; }
         .pie-card { padding: .7rem .4rem; }
@@ -69,7 +101,10 @@
 </style>
 
 <div class="container">
-    <h2>Resumo da Carteira</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem">
+        <h2 style="margin:0">Resumo da Carteira</h2>
+        <button class="blur-toggle" id="blur-toggle-btn" title="Esconder números" onclick="toggleBlur()">👁️</button>
+    </div>
 
     <!-- KPIs -->
     <div class="kpi-grid">
@@ -910,5 +945,19 @@
         });
     });
     });
+
+    // Toggle blur mode para esconder números
+    function toggleBlur() {
+        const btn = document.getElementById('blur-toggle-btn');
+        const isBlurred = document.body.classList.toggle('blurred-mode');
+        btn.textContent = isBlurred ? '🔒' : '👁️';
+        localStorage.setItem('resumo-blur-mode', isBlurred ? '1' : '0');
+    }
+
+    // Restaurar estado de blur da sessão anterior
+    if (localStorage.getItem('resumo-blur-mode') === '1') {
+        document.body.classList.add('blurred-mode');
+        document.getElementById('blur-toggle-btn').textContent = '🔒';
+    }
 </script>
 {% endblock %}

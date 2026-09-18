@@ -419,6 +419,7 @@
 (function() {
     var modal = document.getElementById('diario-trade-modal');
     var currentTradeId = null;
+    var currentSimplified = false;
 
     var EMOTIONS = [];
     var ERRORS = [];
@@ -440,6 +441,47 @@
     }
 
     function renderForm(d) {
+        currentSimplified = !!d.simplified;
+        if (currentSimplified) { renderSimplifiedForm(d); return; }
+        renderFullForm(d);
+    }
+
+    function renderSimplifiedForm(d) {
+        var h = '';
+        if (d.already_sent) {
+            h += '<div style="margin-bottom:.9rem; padding:.5rem .8rem; background:rgba(16,185,129,.12); ' +
+                 'border:1px solid var(--success-color); border-radius:8px; font-size:.82rem; color:var(--success-color);">' +
+                 '✓ Já enviado (id remoto: ' + d.remote_id + '). Enviar novamente vai atualizar (PUT) essa mesma operação lá fora.</div>';
+        }
+        h += '<p style="color:var(--text-secondary); font-size:.8rem; margin:0 0 .9rem;">' +
+             'Operação de opções: envio simplificado (resultado já consolidado, sem pernas/saídas detalhadas).</p>' +
+            '<div style="display:grid; grid-template-columns:1fr 1fr; gap:.7rem; margin-bottom:.7rem;">' +
+            '<div><label class="form-label" style="font-size:.82rem;">Data (entrada)</label>' +
+            '<input type="date" id="dt-date" class="form-control form-control-sm" value="' + (d.date || '') + '"></div>' +
+            '<div><label class="form-label" style="font-size:.82rem;">Data de saída</label>' +
+            '<input type="date" id="dt-exitDate" class="form-control form-control-sm" value="' + (d.exitDate || '') + '"></div>' +
+            '<div><label class="form-label" style="font-size:.82rem;">Estratégia</label>' +
+            '<input type="text" id="dt-s-strategy" class="form-control form-control-sm" value="' + (d.strategy || '') + '"></div>' +
+            '<div><label class="form-label" style="font-size:.82rem;">Subjacente</label>' +
+            '<input type="text" id="dt-s-underlying" class="form-control form-control-sm" value="' + (d.underlying || '') + '"></div>' +
+            '<div><label class="form-label" style="font-size:.82rem;">Resultado (R$)</label>' +
+            '<input type="number" id="dt-profit" class="form-control form-control-sm" value="' + (d.profit != null ? d.profit : '') + '" step="0.01"></div>' +
+            '<div><label class="form-label" style="font-size:.82rem;">Erro</label>' +
+            '<select id="dt-s-error" class="form-control form-control-sm">' + opts(ERRORS, d.error || 'Nenhum') + '</select></div>' +
+            '</div>' +
+            '<div style="margin-bottom:.7rem;"><label class="form-label" style="font-size:.82rem;">Setups (separados por vírgula)</label>' +
+            '<input type="text" id="dt-s-setups" class="form-control form-control-sm" value="' + ((d.setups || []).join(', ')) + '" placeholder="Recomendação, Price action..."></div>' +
+            '<div style="margin-bottom:.7rem;"><label class="form-label" style="font-size:.82rem;">Observações</label>' +
+            '<textarea id="dt-s-notes" class="form-control form-control-sm" rows="2">' + (d.notes || '') + '</textarea></div>' +
+            '<div id="dt-error-box" style="display:none; margin-bottom:.7rem; padding:.5rem .8rem; ' +
+            'background:rgba(239,68,68,.12); border:1px solid var(--danger-color); border-radius:8px; ' +
+            'font-size:.82rem; color:var(--danger-color);"></div>' +
+            '<button type="button" id="dt-submit-btn" class="btn btn-primary btn-sm" onclick="dtSubmit()">Enviar</button>';
+
+        document.getElementById('diario-trade-body').innerHTML = h;
+    }
+
+    function renderFullForm(d) {
         var assetOptions = ['WIN', 'WDO', 'Ações', 'Opções'];
         var isOpt = d.assetType === 'Opções';
         var exitsHtml = (d.exits || []).map(exitRowHtml).join('');
@@ -533,7 +575,7 @@
         fetch('/api/trade-history/' + tradeId + '/diario-trade-payload')
             .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
             .then(function(res) {
-                if (!res.ok || res.j.error) {
+                if (!res.ok) {
                     document.getElementById('diario-trade-body').innerHTML =
                         '<p style="color:var(--danger-color);">Erro ao carregar: ' + (res.j.error || 'falha na requisição') + '</p>';
                     return;
@@ -555,38 +597,53 @@
         var errBox = document.getElementById('dt-error-box');
         errBox.style.display = 'none';
 
-        var exits = [];
-        document.querySelectorAll('#dt-exits-body tr').forEach(function(tr) {
-            var date = tr.querySelector('.dt-exit-date').value;
-            var qty = tr.querySelector('.dt-exit-qty').value;
-            var price = tr.querySelector('.dt-exit-price').value;
-            if (date && qty && price !== '') {
-                exits.push({ date: date, qty: parseInt(qty, 10), price: parseFloat(price) });
-            }
-        });
+        var payload;
+        if (currentSimplified) {
+            payload = {
+                mode: 'options',
+                date: document.getElementById('dt-date').value,
+                exitDate: document.getElementById('dt-exitDate').value,
+                strategy: document.getElementById('dt-s-strategy').value,
+                underlying: document.getElementById('dt-s-underlying').value,
+                profit: parseFloat(document.getElementById('dt-profit').value),
+                setups: document.getElementById('dt-s-setups').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+                error: document.getElementById('dt-s-error').value,
+                notes: document.getElementById('dt-s-notes').value,
+            };
+        } else {
+            var exits = [];
+            document.querySelectorAll('#dt-exits-body tr').forEach(function(tr) {
+                var date = tr.querySelector('.dt-exit-date').value;
+                var qty = tr.querySelector('.dt-exit-qty').value;
+                var price = tr.querySelector('.dt-exit-price').value;
+                if (date && qty && price !== '') {
+                    exits.push({ date: date, qty: parseInt(qty, 10), price: parseFloat(price) });
+                }
+            });
 
-        var assetType = document.getElementById('dt-assetType').value;
-        var payload = {
-            mode: document.getElementById('dt-mode').value,
-            date: document.getElementById('dt-date').value,
-            assetType: assetType,
-            symbol: document.getElementById('dt-symbol').value,
-            qty: parseInt(document.getElementById('dt-qty').value, 10),
-            direction: document.getElementById('dt-direction').value,
-            entry: parseFloat(document.getElementById('dt-entry').value),
-            exitMode: document.getElementById('dt-exitMode').value,
-            emotion: document.getElementById('dt-emotion').value,
-            error: document.getElementById('dt-error').value,
-            setups: document.getElementById('dt-setups').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean),
-            exits: exits,
-            fees: parseFloat(document.getElementById('dt-fees').value) || 0,
-            notes: document.getElementById('dt-notes').value,
-        };
-        var time = document.getElementById('dt-time').value.trim();
-        if (time) payload.time = time;
-        if (assetType === 'Opções') {
-            payload.underlying = document.getElementById('dt-underlying').value;
-            payload.strategy = document.getElementById('dt-strategy').value;
+            var assetType = document.getElementById('dt-assetType').value;
+            payload = {
+                mode: document.getElementById('dt-mode').value,
+                date: document.getElementById('dt-date').value,
+                assetType: assetType,
+                symbol: document.getElementById('dt-symbol').value,
+                qty: parseInt(document.getElementById('dt-qty').value, 10),
+                direction: document.getElementById('dt-direction').value,
+                entry: parseFloat(document.getElementById('dt-entry').value),
+                exitMode: document.getElementById('dt-exitMode').value,
+                emotion: document.getElementById('dt-emotion').value,
+                error: document.getElementById('dt-error').value,
+                setups: document.getElementById('dt-setups').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+                exits: exits,
+                fees: parseFloat(document.getElementById('dt-fees').value) || 0,
+                notes: document.getElementById('dt-notes').value,
+            };
+            var time = document.getElementById('dt-time').value.trim();
+            if (time) payload.time = time;
+            if (assetType === 'Opções') {
+                payload.underlying = document.getElementById('dt-underlying').value;
+                payload.strategy = document.getElementById('dt-strategy').value;
+            }
         }
 
         var btn = document.getElementById('dt-submit-btn');

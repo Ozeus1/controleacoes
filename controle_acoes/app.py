@@ -16681,10 +16681,31 @@ _DIARIO_TRADE_ERRORS = ['Nenhum', 'Hesitação', 'Moveu o Stop Loss', 'Overtradi
 @login_required
 def api_diario_trade_payload(id):
     """Sugestão de payload para o modal de envio ao Diário de Trade, a partir
-    dos dados já existentes no TradeHistory local — o usuário completa o resto."""
+    dos dados já existentes no TradeHistory local — o usuário completa o resto.
+
+    Quando a coluna Estratégia do trade é 'Opções', usa o schema simplificado
+    (mode='options') que a API aceita para esse caso — menos campos, sem
+    exigir side/exitMode/exits detalhados."""
     trade = TradeHistory.query.get_or_404(id)
     if trade.user_id != current_user.id:
         return jsonify({'error': 'Sem permissão'}), 403
+
+    if (trade.strategy or '') == 'Opções':
+        return jsonify({
+            'simplified': True,
+            'mode': 'options',
+            'date': trade.entry_date.isoformat() if trade.entry_date else None,
+            'exitDate': trade.exit_date.isoformat() if trade.exit_date else None,
+            'strategy': trade.ticker or '',
+            'underlying': trade.underlying or trade.ticker,
+            'profit': trade.profit_value,
+            'setups': [],
+            'error': 'Nenhum',
+            'notes': trade.notes or '',
+            'errors': _DIARIO_TRADE_ERRORS,
+            'already_sent': bool(trade.diario_trade_id),
+            'remote_id': trade.diario_trade_id,
+        })
 
     import json as _json
     det = {}
@@ -16694,7 +16715,7 @@ def api_diario_trade_payload(id):
         except Exception:
             det = {}
 
-    is_option = bool(det.get('legs')) or 'opç' in (trade.strategy or '').lower() or 'opc' in (trade.strategy or '').lower()
+    is_option = bool(det.get('legs'))
     same_day = bool(trade.entry_date and trade.exit_date and trade.entry_date == trade.exit_date)
 
     exits = []
@@ -16706,6 +16727,7 @@ def api_diario_trade_payload(id):
         })
 
     return jsonify({
+        'simplified': False,
         'mode': 'day' if same_day else 'swing',
         'assetType': 'Opções' if is_option else 'Ações',
         'symbol': trade.ticker,

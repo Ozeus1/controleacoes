@@ -5,7 +5,7 @@
     /* ── KPIs ─────────────────────────────────────────── */
     .kpi-grid {
         display: grid;
-        grid-template-columns: repeat(3, 1fr);
+        grid-template-columns: repeat(6, 1fr);
         gap: 1rem;
         margin-bottom: 2rem;
     }
@@ -34,13 +34,23 @@
     .blur-toggle:hover { background: var(--hover-bg); border-color: var(--accent-color); }
     .blur-toggle.blurred { color: var(--accent-color); }
 
-    /* Aplicar blur nos valores quando classe .blurred-mode estiver ativa */
+    /* Aplicar blur em todos os números da página quando .blurred-mode estiver ativa */
     body.blurred-mode .kpi-value,
-    body.blurred-mode .donut-legend > div > span:first-child {
-        filter: blur(4px);
+    body.blurred-mode .kpi-sub,
+    body.blurred-mode .pie-box,
+    body.blurred-mode .donut-legend .dl-val,
+    body.blurred-mode .donut-legend .dl-pct,
+    body.blurred-mode .chart-inner,
+    body.blurred-mode #setor-body table,
+    body.blurred-mode #mes-body table,
+    body.blurred-mode .blur-num {
+        filter: blur(5px);
+        user-select: none;
+    }
+    body.blurred-mode .kpi-value,
+    body.blurred-mode .kpi-sub {
         color: transparent;
     }
-    body.blurred-mode .kpi-value { color: transparent; }
 
     /* ── Pizzas em grade ──────────────────────────────── */
     .pies-grid {
@@ -72,12 +82,12 @@
 
     /* ── Tablet (landscape + portrait) ─────────────── */
     @media (max-width: 1024px) {
-        .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+        .kpi-grid { grid-template-columns: repeat(3, 1fr); }
     }
 
     /* ── Celular / PWA ────────────────────────────────── */
     @media (max-width: 768px) {
-        .kpi-grid { gap: .55rem; margin-bottom: 1.2rem; }
+        .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: .55rem; margin-bottom: 1.2rem; }
         .kpi-card { padding: .8rem .5rem; border-radius: 10px; }
         .kpi-label { font-size: .72rem; line-height: 1.2; min-height: 2em;
                      display: flex; align-items: center; justify-content: center; }
@@ -226,8 +236,8 @@
                             </span>
                         </td>
                         <td>{{ row.type }}</td>
-                        <td>{{ row.value | brl }}</td>
-                        <td>{{ "%.1f"|format(row.pct)|replace('.', ',') }}%</td>
+                        <td class="blur-num">{{ row.value | brl }}</td>
+                        <td class="blur-num">{{ "%.1f"|format(row.pct)|replace('.', ',') }}%</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -235,8 +245,8 @@
                     <tr style="font-weight: bold; background-color: var(--total-row-bg); color: var(--text-primary);">
                         <td>TOTAL FIIs</td>
                         <td></td>
-                        <td>{{ total_fiis | brl }}</td>
-                        <td>100,0%</td>
+                        <td class="blur-num">{{ total_fiis | brl }}</td>
+                        <td class="blur-num">100,0%</td>
                     </tr>
                 </tfoot>
             </table>

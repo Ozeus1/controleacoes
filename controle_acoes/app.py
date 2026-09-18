@@ -16768,7 +16768,16 @@ def api_enviar_diario_trade(id):
 
     try:
         if trade.diario_trade_id:
-            resp = _diario_trade_request('PUT', f'/trades/{trade.diario_trade_id}', token, json_body=payload)
+            try:
+                resp = _diario_trade_request('PUT', f'/trades/{trade.diario_trade_id}', token, json_body=payload)
+            except DiarioTradeApiError as exc:
+                # id remoto não existe mais lá fora (apagado direto no site, por
+                # exemplo) — cria uma operação nova em vez de travar o reenvio.
+                if exc.status_code == 404:
+                    trade.diario_trade_id = None
+                    resp = _diario_trade_request('POST', '/trades', token, json_body=payload)
+                else:
+                    raise
         else:
             resp = _diario_trade_request('POST', '/trades', token, json_body=payload)
     except DiarioTradeApiError as exc:

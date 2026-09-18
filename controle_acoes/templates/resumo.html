@@ -65,6 +65,15 @@
     .pie-box { position: relative; width: 100%; max-width: 460px; height: 235px; }
     .pie-card .donut-legend { width: 100%; max-width: 460px; }
 
+    /* ── Tabela + gráficos de série em grade 2 colunas no desktop ── */
+    .charts-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+        align-items: start;
+    }
+    .charts-grid > .card { margin-bottom: 0 !important; }
+
     /* ── Seletor de período dos gráficos ── */
     .periodo-btn {
         background: var(--hover-bg); color: var(--text-secondary);
@@ -83,6 +92,7 @@
     /* ── Tablet (landscape + portrait) ─────────────── */
     @media (max-width: 1024px) {
         .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+        .charts-grid { grid-template-columns: 1fr; }
     }
 
     /* ── Celular / PWA ────────────────────────────────── */
@@ -213,6 +223,7 @@
             vertical-align: super;
         }
     </style>
+    <div class="charts-grid">
     {% if total_fiis > 0 %}
     <div class="card mb-4 d-none d-md-block" style="padding: 1.5rem;">
         <h3 style="font-size: 1rem; margin-bottom: 1rem;">Detalhamento de FIIs</h3>
@@ -320,6 +331,7 @@
                 <canvas id="equityChart"></canvas>
             </div>
         </div>
+    </div>
     </div>
 
 </div>

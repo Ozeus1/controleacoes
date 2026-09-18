@@ -12287,6 +12287,23 @@ def venda_puts_delete(id):
     return redirect(url_for('venda_puts'))
 
 
+# Teto de sanidade p/ variação diária de um ativo em 1 pregão. Fontes como
+# OpLab/Yahoo às vezes devolvem `variation`/`change` calculada contra um
+# close obsoleto ou com escala errada (ex.: -15,88% num dia comum para um
+# papel líquido) — sem preço anterior salvo pra comparar em todo ponto onde
+# isso é lido, um teto absoluto é o único jeito de barrar esse valor antes
+# dele poluir o banco (Asset.daily_change / Option.underlying_change / etc).
+_VAR_DIA_MAX_PLAUSIVEL = 30.0
+
+
+def _var_dia_sanitizada(v):
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if abs(f) <= _VAR_DIA_MAX_PLAUSIVEL else None
+
+
 def _get_underlying_quote_cached(ticker, user_id):
     """Retorna (price, daily_change) do subjacente SEM rede — apenas valores
     já salvos no banco (atualizados pelo botão Atualizar Cotações / feeder).
@@ -12361,7 +12378,7 @@ def _get_underlying_quote(ticker, user_id):
         q = get_quotes([t], user_id=user_id) or {}
         info = q.get(t)
         if info and info.get('price'):
-            return round(float(info['price']), 2), round(float(info.get('change_percent') or 0), 2)
+            return round(float(info['price']), 2), _var_dia_sanitizada(info.get('change_percent') or 0)
     except Exception:
         app.logger.exception('_get_underlying_quote: BRAPI falhou para %s', t)
 
@@ -12400,7 +12417,7 @@ def _get_underlying_quote(ticker, user_id):
                     prev = meta.get('previousClose') or meta.get('chartPreviousClose')
                     if prev and float(prev) > 0 and float(price) != float(prev):
                         change = (float(price) - float(prev)) / float(prev) * 100
-                return round(float(price), 2), round(float(change), 2) if change is not None else None
+                return round(float(price), 2), _var_dia_sanitizada(change)
     except Exception:
         app.logger.exception('_get_underlying_quote: Yahoo Finance falhou para %s', t)
 
@@ -22228,7 +22245,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
 
     # ── Busca preços em lotes de 150 ──────────────────────────────
     prices:     dict = {}   # ticker → close price
-    variations: dict = {}   # ticker → variation % do dia
+    variations: dict = {}   # ticker → variation % do dia (já sanitizada, ver _var_dia_sanitizada)
 
     # O primeiro lote também serve de teste de disponibilidade: se ele falhar
     # por rede/5xx, a OpLab está fora e pulamos os fallbacks individuais (que
@@ -22268,7 +22285,9 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
                     if sym and close is not None:
                         prices[sym] = float(close)
                     if sym and var is not None:
-                        variations[sym] = float(var)
+                        v = _var_dia_sanitizada(var)
+                        if v is not None:
+                            variations[sym] = v
         except requests.exceptions.RequestException:
             if i == 0:
                 oplab_online = False   # sem rede/timeout no 1º lote: OpLab fora
@@ -22290,7 +22309,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
                 p = d.get('close') or d.get('last') or d.get('price')
                 if p and float(p) > 0:
                     var = d.get('variation') or d.get('change')
-                    return float(p), (float(var) if var is not None else None)
+                    return float(p), _var_dia_sanitizada(var)
         except Exception:
             pass
         try:
@@ -22306,7 +22325,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
                     p = meta.get('regularMarketPrice') or meta.get('previousClose')
                     if p and float(p) > 0:
                         chg = meta.get('regularMarketChangePercent')
-                        return float(p), (float(chg) if chg is not None else None)
+                        return float(p), _var_dia_sanitizada(chg)
         except Exception:
             pass
         return None, None
@@ -22517,7 +22536,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
                 p = d.get('close') or d.get('last') or d.get('price')
                 if p and float(p) > 0:
                     var = d.get('variation') or d.get('change')
-                    res = (float(p), (float(var) if var is not None else None))
+                    res = (float(p), _var_dia_sanitizada(var))
         except Exception:
             pass
         if res[0] is None:
@@ -22533,7 +22552,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
                         p = meta.get('regularMarketPrice') or meta.get('previousClose')
                         if p and float(p) > 0:
                             chg = meta.get('regularMarketChangePercent')
-                            res = (float(p), (float(chg) if chg is not None else None))
+                            res = (float(p), _var_dia_sanitizada(chg))
                             break
             except Exception:
                 pass

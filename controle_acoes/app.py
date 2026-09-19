@@ -16815,6 +16815,14 @@ def api_diario_trade_payload(id):
             'price': trade.sell_price,
         })
 
+    token = Settings.get_value('diario_trade_token', user_id=current_user.id)
+    setups_options = []
+    if token:
+        try:
+            setups_options = _diario_trade_get_me(current_user.id, token)['setups']
+        except DiarioTradeApiError:
+            pass  # sem lista: o campo cai para texto livre no modal, sem travar o fluxo
+
     return jsonify({
         'simplified': False,
         'mode': 'day' if same_day else 'swing',
@@ -16830,6 +16838,8 @@ def api_diario_trade_payload(id):
         'exits': exits,
         'fees': 0,
         'notes': trade.notes or '',
+        'setups': [],
+        'setups_options': setups_options,
         'emotions': _DIARIO_TRADE_EMOTIONS,
         'errors': _DIARIO_TRADE_ERRORS,
         'already_sent': bool(trade.diario_trade_id),

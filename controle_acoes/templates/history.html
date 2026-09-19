@@ -516,22 +516,29 @@
 
     // Setups: checkboxes com a lista padrão do usuário (settings.setups via
     // GET /me) quando disponível; texto livre como fallback se a lista não
-    // pôde ser carregada.
-    function setupsFieldHtml(d) {
+    // pôde ser carregada. idPrefix diferencia o formulário simplificado
+    // ('dt-s-') do completo ('dt-') — os dois podem coexistir no mesmo DOM.
+    function buildSetupsFieldHtml(d, idPrefix) {
+        var groupId = idPrefix + 'setups-group';
+        var cbClass = idPrefix + 'setup-cb';
+        var textId = idPrefix + 'setups';
         if (d.setups_options && d.setups_options.length) {
             var selected = d.setups || [];
             var boxes = d.setups_options.map(function(s, i) {
-                var id = 'dt-s-setup-' + i;
+                var id = idPrefix + 'setup-' + i;
                 var checked = selected.indexOf(s) !== -1 ? ' checked' : '';
                 return '<div class="form-check" style="display:flex; align-items:center; gap:.4rem;">' +
-                    '<input class="form-check-input dt-s-setup-cb" type="checkbox" id="' + id + '" value="' + s + '"' + checked + ' style="margin:0;">' +
+                    '<input class="form-check-input ' + cbClass + '" type="checkbox" id="' + id + '" value="' + s + '"' + checked + ' style="margin:0;">' +
                     '<label class="form-check-label" for="' + id + '" style="font-size:.82rem; cursor:pointer; margin:0;">' + s + '</label>' +
                     '</div>';
             }).join('');
-            return '<div id="dt-s-setups-group" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:.5rem .8rem;">' + boxes + '</div>';
+            return '<div id="' + groupId + '" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:.5rem .8rem;">' + boxes + '</div>';
         }
-        return '<input type="text" id="dt-s-setups" class="form-control form-control-sm" value="' + ((d.setups || []).join(', ')) + '" placeholder="Recomendação, Price action...">';
+        return '<input type="text" id="' + textId + '" class="form-control form-control-sm" value="' + ((d.setups || []).join(', ')) + '" placeholder="Recomendação, Price action...">';
     }
+
+    function setupsFieldHtml(d) { return buildSetupsFieldHtml(d, 'dt-s-'); }
+    function setupsFieldHtmlFull(d) { return buildSetupsFieldHtml(d, 'dt-'); }
 
     function renderFullForm(d) {
         var assetOptions = ['WIN', 'WDO', 'Ações', 'Opções'];
@@ -587,8 +594,9 @@
             '<div><label class="form-label" style="font-size:.82rem;">Estratégia</label>' +
             '<input type="text" id="dt-strategy" class="form-control form-control-sm" value="' + (d.strategy || '') + '"></div>' +
             '</div>' +
-            '<div style="margin-bottom:.7rem;"><label class="form-label" style="font-size:.82rem;">Setups (separados por vírgula)</label>' +
-            '<input type="text" id="dt-setups" class="form-control form-control-sm" placeholder="Price action, Rompimento..."></div>' +
+            '<div style="margin-bottom:.7rem;"><label class="form-label" style="font-size:.82rem;">Setups</label>' +
+            setupsFieldHtmlFull(d) +
+            '</div>' +
             '<div style="margin-bottom:.7rem;"><label class="form-label" style="font-size:.82rem;">Observações</label>' +
             '<textarea id="dt-notes" class="form-control form-control-sm" rows="2">' + (d.notes || '') + '</textarea></div>' +
             '<div style="margin-bottom:.9rem;">' +
@@ -678,6 +686,10 @@
             });
 
             var assetType = document.getElementById('dt-assetType').value;
+            var setupsElFull = document.getElementById('dt-setups');
+            var setupsFull = setupsElFull
+                ? setupsElFull.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean)
+                : Array.from(document.querySelectorAll('.dt-setup-cb:checked')).map(function(cb) { return cb.value; });
             payload = {
                 mode: document.getElementById('dt-mode').value,
                 date: document.getElementById('dt-date').value,
@@ -689,7 +701,7 @@
                 exitMode: document.getElementById('dt-exitMode').value,
                 emotion: document.getElementById('dt-emotion').value,
                 error: document.getElementById('dt-error').value,
-                setups: document.getElementById('dt-setups').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+                setups: setupsFull,
                 exits: exits,
                 fees: parseFloat(document.getElementById('dt-fees').value) || 0,
                 notes: document.getElementById('dt-notes').value,

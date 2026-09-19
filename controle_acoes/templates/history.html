@@ -453,6 +453,12 @@
                  'border:1px solid var(--success-color); border-radius:8px; font-size:.82rem; color:var(--success-color);">' +
                  '✓ Já enviado (id remoto: ' + d.remote_id + '). Enviar novamente vai atualizar (PUT) essa mesma operação lá fora.</div>';
         }
+        if (d.me_error) {
+            h += '<div style="margin-bottom:.9rem; padding:.5rem .8rem; background:rgba(245,158,11,.12); ' +
+                 'border:1px solid #f59e0b; border-radius:8px; font-size:.82rem; color:#f59e0b;">' +
+                 '⚠ Não foi possível carregar as listas de Estratégia/Subjacente do Diário de Trade (' + d.me_error + '). ' +
+                 'Os campos abaixo ficaram como texto livre — confira se os valores batem com o que a API aceita antes de enviar.</div>';
+        }
         h += '<p style="color:var(--text-secondary); font-size:.8rem; margin:0 0 .9rem;">' +
              'Operação de opções: envio simplificado (resultado já consolidado, sem pernas/saídas detalhadas).</p>' +
             '<div style="display:grid; grid-template-columns:1fr 1fr; gap:.7rem; margin-bottom:.7rem;">' +
@@ -461,9 +467,11 @@
             '<div><label class="form-label" style="font-size:.82rem;">Data de saída</label>' +
             '<input type="date" id="dt-exitDate" class="form-control form-control-sm" value="' + (d.exitDate || '') + '"></div>' +
             '<div><label class="form-label" style="font-size:.82rem;">Estratégia</label>' +
-            '<input type="text" id="dt-s-strategy" class="form-control form-control-sm" value="' + (d.strategy || '') + '"></div>' +
+            strategyFieldHtml(d) +
+            '</div>' +
             '<div><label class="form-label" style="font-size:.82rem;">Subjacente</label>' +
-            '<input type="text" id="dt-s-underlying" class="form-control form-control-sm" value="' + (d.underlying || '') + '"></div>' +
+            underlyingFieldHtml(d) +
+            '</div>' +
             '<div><label class="form-label" style="font-size:.82rem;">Resultado (R$)</label>' +
             '<input type="number" id="dt-profit" class="form-control form-control-sm" value="' + (d.profit != null ? d.profit : '') + '" step="0.01"></div>' +
             '<div><label class="form-label" style="font-size:.82rem;">Erro</label>' +
@@ -479,6 +487,30 @@
             '<button type="button" id="dt-submit-btn" class="btn btn-primary btn-sm" onclick="dtSubmit()">Enviar</button>';
 
         document.getElementById('diario-trade-body').innerHTML = h;
+    }
+
+    // Estratégia/Subjacente: <select> com a lista fixa da API (settings.strategies/
+    // settings.assets, obtida via GET /me) quando disponível; texto livre como
+    // fallback se a lista não pôde ser carregada (ver aviso de me_error acima).
+    function strategyFieldHtml(d) {
+        if (d.strategies && d.strategies.length) {
+            return '<select id="dt-s-strategy" class="form-control form-control-sm">' + opts(d.strategies, d.strategy) + '</select>';
+        }
+        return '<input type="text" id="dt-s-strategy" class="form-control form-control-sm" value="' + (d.strategy || '') + '">';
+    }
+
+    function underlyingFieldHtml(d) {
+        if (d.assets && d.assets.length) {
+            var list = d.assets.slice();
+            // Ativo local fora da lista fixa da API: inclui como opção extra no
+            // topo em vez de descartar o dado (a API pode rejeitar no envio,
+            // mas o usuário vê e decide, em vez de perder a informação em silêncio).
+            if (d.underlying && list.indexOf(d.underlying) === -1) {
+                list = [d.underlying].concat(list);
+            }
+            return '<select id="dt-s-underlying" class="form-control form-control-sm">' + opts(list, d.underlying) + '</select>';
+        }
+        return '<input type="text" id="dt-s-underlying" class="form-control form-control-sm" value="' + (d.underlying || '') + '">';
     }
 
     function renderFullForm(d) {

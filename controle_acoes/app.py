@@ -16676,6 +16676,75 @@ _DIARIO_TRADE_EMOTIONS = ['Calmo', 'Confiante', 'Ansioso', 'Frustrado', 'FOMO']
 _DIARIO_TRADE_ERRORS = ['Nenhum', 'Hesitação', 'Moveu o Stop Loss', 'Overtrading',
                          'Trade de vingança', 'Saída antecipada', 'Falta de foco', 'Tamanho muito grande']
 
+# Cache curto de GET /me (settings.strategies e settings.assets — as duas
+# listas fixas que a API exige para mode='options', ver erro 400 "Categoria
+# de opções inválida... Consulte settings.strategies em GET /api/v1/me").
+# Evita 1 chamada de rede a cada abertura do modal — a lista de estratégias
+# do usuário no Diário de Trade não muda a cada request.
+_diario_trade_me_cache: dict = {}   # user_id -> (timestamp, {'strategies': [...], 'assets': [...]})
+_DIARIO_TRADE_ME_TTL = 300  # 5 min
+
+
+def _diario_trade_get_me(user_id, token):
+    now = time.time()
+    cached = _diario_trade_me_cache.get(user_id)
+    if cached and now - cached[0] < _DIARIO_TRADE_ME_TTL:
+        return cached[1]
+    data = _diario_trade_request('GET', '/me', token)
+    settings = (data or {}).get('settings') or {}
+    result = {
+        'strategies': settings.get('strategies') or [],
+        'assets': settings.get('assets') or [],
+    }
+    _diario_trade_me_cache[user_id] = (now, result)
+    return result
+
+
+# Palavras-chave → estratégia da lista fixa da API. Usada só para pré-marcar
+# o <select> a partir do nome local da operação (ex.: "T.Baixa Call",
+# "Strangle travado") — o usuário sempre pode trocar antes de enviar.
+# Ordem importa: regras mais específicas primeiro (ex. "trava"+"baixa"+
+# "débito" antes de só "trava"+"baixa").
+_DIARIO_TRADE_STRATEGY_RULES = [
+    (('trava', 'alta', 'débito'),   'Trava de alta débito'),
+    (('trava', 'alta', 'debito'),   'Trava de alta débito'),
+    (('trava', 'baixa', 'crédito'), 'Trava de baixa a crédito'),
+    (('trava', 'baixa', 'credito'), 'Trava de baixa a crédito'),
+    (('trava', 'baixa', 'débito'),  'Trava de baixa débito'),
+    (('trava', 'baixa', 'debito'),  'Trava de baixa débito'),
+    (('vaca', 'alta'),              'Vaca de alta com Put'),
+    (('venda', 'coberta'),          'Venda Coberta'),
+    (('venda', 'call', 'seco'),     'Venda de Call a Seco'),
+    (('venda', 'put'),              'Venda de Put'),
+    (('strangle', 'vendido'),       'Strangle vendido'),
+    (('strangle', 'travado'),       'Strangle vendido'),
+    (('stradle', 'comprado'),       'Stradle Comprado'),
+    (('straddle', 'comprado'),      'Stradle Comprado'),
+    (('stradle',),                  'Stradle'),
+    (('straddle',),                 'Stradle'),
+    (('compra', 'call'),            'Compra de Call'),
+    (('call', 'ratio'),             'Call Ratio'),
+    (('jade', 'lisard'),            'Jade Lisard'),
+    (('jade', 'lizard'),            'Jade Lisard'),
+    (('thl',),                      'THL'),
+]
+
+
+def _diario_trade_guess_strategy(nome_local, valid_strategies):
+    """Pré-seleciona a estratégia da lista fixa a partir do nome local da
+    operação (ex.: 'T.Baixa Call' → 'Trava de baixa débito'). 'Outros' como
+    fallback quando nada bate (inclusive quando é uma trava mas não dá pra
+    saber débito/crédito só pelo nome) — o usuário sempre pode trocar no modal."""
+    nome = (nome_local or '').lower()
+    # Abreviação comum no sistema local: "T.Baixa"/"T. Alta"/"TRAVA_BAIXA_CALL" etc.
+    nome = nome.replace('t.baixa', 'trava baixa').replace('t. baixa', 'trava baixa') \
+                .replace('t.alta', 'trava alta').replace('t. alta', 'trava alta') \
+                .replace('trava_baixa', 'trava baixa').replace('trava_alta', 'trava alta')
+    for keywords, strategy in _DIARIO_TRADE_STRATEGY_RULES:
+        if all(kw in nome for kw in keywords) and strategy in valid_strategies:
+            return strategy
+    return 'Outros' if 'Outros' in valid_strategies else (valid_strategies[0] if valid_strategies else '')
+
 
 @app.route('/api/trade-history/<int:id>/diario-trade-payload')
 @login_required
@@ -16691,18 +16760,35 @@ def api_diario_trade_payload(id):
         return jsonify({'error': 'Sem permissão'}), 403
 
     if (trade.strategy or '') == 'Opções':
+        token = Settings.get_value('diario_trade_token', user_id=current_user.id)
+        strategies, assets = [], []
+        me_error = None
+        if token:
+            try:
+                me = _diario_trade_get_me(current_user.id, token)
+                strategies = me['strategies']
+                assets = me['assets']
+            except DiarioTradeApiError as exc:
+                me_error = str(exc)
+        else:
+            me_error = 'Configure o token do Diário de Trade em Configurações primeiro.'
+
+        underlying_local = trade.underlying or trade.ticker or ''
         return jsonify({
             'simplified': True,
             'mode': 'options',
             'date': trade.entry_date.isoformat() if trade.entry_date else None,
             'exitDate': trade.exit_date.isoformat() if trade.exit_date else None,
-            'strategy': trade.ticker or '',
-            'underlying': trade.underlying or trade.ticker,
+            'strategy': _diario_trade_guess_strategy(trade.ticker, strategies),
+            'underlying': underlying_local,
             'profit': trade.profit_value,
             'setups': [],
             'error': 'Nenhum',
             'notes': trade.notes or '',
             'errors': _DIARIO_TRADE_ERRORS,
+            'strategies': strategies,
+            'assets': assets,
+            'me_error': me_error,
             'already_sent': bool(trade.diario_trade_id),
             'remote_id': trade.diario_trade_id,
         })

@@ -10,8 +10,8 @@
     .dtl-status { font-size: 1.1rem; white-space: nowrap; }
     .dtl-status-err { color: var(--danger-color); font-size: .72rem; display: block; max-width: 180px; }
     /* Setups: lista compacta em vez do grid largo do modal individual —
-       aqui a linha é de uma tabela com 12+ linhas, precisa caber sem esticar
-       a altura de cada uma. */
+       aqui a linha é de uma tabela com muitas linhas, precisa caber sem
+       esticar a altura de cada uma. */
     .dtl-setups-cell [id$="-setups-group"] {
         display: flex !important;
         flex-direction: column;
@@ -22,6 +22,20 @@
     }
     .dtl-setups-cell [id$="-setups-group"] .form-check { gap: .3rem !important; }
     .dtl-setups-cell [id$="-setups-group"] .form-check-label { font-size: .74rem !important; white-space: nowrap; }
+    .dtl-exits-cell table { border-collapse: collapse; }
+    .dtl-exits-cell td { border: none; padding: .15rem; }
+    .dtl-exits-cell input { min-width: 85px; }
+
+    /* Abas Day / Swing / Opções */
+    .dtl-tabs { display: flex; gap: .4rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); }
+    .dtl-tab-btn {
+        background: none; border: none; padding: .6rem 1rem; cursor: pointer;
+        color: var(--text-secondary); font-size: .9rem; font-weight: 600;
+        border-bottom: 2px solid transparent; margin-bottom: -1px;
+    }
+    .dtl-tab-btn.active { color: var(--accent-color); border-bottom-color: var(--accent-color); }
+    .dtl-tab-panel { display: none; }
+    .dtl-tab-panel.active { display: block; }
 </style>
 
 <div class="container">
@@ -43,48 +57,83 @@
         ✓ Nenhum trade pendente de envio — todo o Histórico já foi enviado ao Diário de Trade.
     </div>
     {% else %}
+    {% set day_rows = rows | selectattr('mode', 'equalto', 'day') | list %}
+    {% set swing_rows = rows | selectattr('mode', 'equalto', 'swing') | list %}
+    {% set options_rows = rows | selectattr('mode', 'equalto', 'options') | list %}
+
     <div class="card" style="padding:1rem 1.2rem; margin-bottom:1rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
         <div><strong id="dtl-total">{{ total_pendentes }}</strong> trade(s) pendente(s) de envio.</div>
-        <button type="button" id="dtl-send-all-btn" class="btn btn-primary btn-sm" onclick="dtlSendAll()">📤 Enviar todos</button>
+        <button type="button" id="dtl-send-all-btn" class="btn btn-primary btn-sm" onclick="dtlSendAll()">📤 Enviar todos (todas as abas)</button>
         <div id="dtl-progress" style="color:var(--text-secondary); font-size:.85rem;"></div>
     </div>
 
+    <div class="dtl-tabs">
+        <button type="button" class="dtl-tab-btn active" data-tab="day" onclick="dtlShowTab('day')">Day — {{ day_rows|length }}</button>
+        <button type="button" class="dtl-tab-btn" data-tab="swing" onclick="dtlShowTab('swing')">Swing — {{ swing_rows|length }}</button>
+        <button type="button" class="dtl-tab-btn" data-tab="options" onclick="dtlShowTab('options')">Opções — {{ options_rows|length }}</button>
+    </div>
+
+    {% macro full_table(mode_rows) %}
     <div class="card" style="padding:0; overflow-x:auto;">
-        <table class="dtl-table">
+        <table class="dtl-table no-datatable">
             <thead>
                 <tr>
-                    <th>Operação</th>
-                    <th>Modo</th>
+                    <th>Tipo</th>
                     <th>Data</th>
-                    <th>Data saída</th>
+                    <th>Hora</th>
+                    <th>Symbol/Estrutura</th>
+                    <th>Qtd</th>
+                    <th>Direção</th>
+                    <th>Entrada</th>
+                    <th>Forma saída</th>
+                    <th>Taxas (R$)</th>
                     <th>Estratégia</th>
                     <th>Subjacente</th>
-                    <th>Resultado (R$)</th>
                     <th>Emoção</th>
                     <th>Erro</th>
                     <th>Setups</th>
+                    <th>Observações</th>
+                    <th>Saídas</th>
                     <th>Ação</th>
                     <th></th>
                 </tr>
             </thead>
-            <tbody id="dtl-body">
-                {% for r in rows %}
-                <tr class="dtl-row" id="dtl-row-{{ r.trade_id }}" data-trade-id="{{ r.trade_id }}" data-simplified="{{ 'true' if r.simplified else 'false' }}">
-                    <td>{{ r.symbol if not r.simplified else r.underlying }}</td>
-                    <td>{{ r.mode }}</td>
+            <tbody>
+                {% for r in mode_rows %}
+                <tr class="dtl-row" id="dtl-row-{{ r.trade_id }}" data-trade-id="{{ r.trade_id }}" data-simplified="false" data-mode="{{ r.mode }}">
+                    <td>
+                        <select class="form-control form-control-sm dtl-assetType">
+                            {% for a in ['WIN', 'WDO', 'Ações', 'Opções'] %}
+                            <option value="{{ a }}" {{ 'selected' if a == r.assetType else '' }}>{{ a }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
                     <td><input type="date" class="form-control form-control-sm dtl-date" value="{{ r.date or '' }}"></td>
-                    <td><input type="date" class="form-control form-control-sm dtl-exitDate" value="{{ r.exitDate or '' }}"></td>
+                    <td><input type="text" class="form-control form-control-sm dtl-time" placeholder="HH:MM"></td>
+                    <td><input type="text" class="form-control form-control-sm dtl-symbol" value="{{ r.symbol or '' }}"></td>
+                    <td><input type="number" step="1" min="1" class="form-control form-control-sm dtl-qty" value="{{ r.qty if r.qty is not none else '' }}"></td>
+                    <td>
+                        <select class="form-control form-control-sm dtl-direction">
+                            <option value="Compra" {{ 'selected' if r.direction == 'Compra' else '' }}>Compra</option>
+                            <option value="Venda" {{ 'selected' if r.direction == 'Venda' else '' }}>Venda</option>
+                        </select>
+                    </td>
+                    <td><input type="number" step="0.01" class="form-control form-control-sm dtl-entry" value="{{ r.entry if r.entry is not none else '' }}"></td>
+                    <td>
+                        <select class="form-control form-control-sm dtl-exitMode">
+                            <option value="Alvo único" {{ 'selected' if r.exitMode == 'Alvo único' else '' }}>Alvo único</option>
+                            <option value="Parciais" {{ 'selected' if r.exitMode == 'Parciais' else '' }}>Parciais</option>
+                        </select>
+                    </td>
+                    <td><input type="number" step="0.01" min="0" class="form-control form-control-sm dtl-fees" value="{{ r.fees or 0 }}"></td>
                     <td class="dtl-strategy-cell"></td>
                     <td class="dtl-underlying-cell"></td>
-                    <td><input type="number" step="0.01" class="form-control form-control-sm dtl-profit" value="{{ r.profit if r.profit is not none else '' }}"></td>
-                    <td class="dtl-emotion-cell">
-                        {% if not r.simplified %}
+                    <td>
                         <select class="form-control form-control-sm dtl-emotion">
                             {% for e in r.emotions %}
                             <option value="{{ e }}" {{ 'selected' if e == r.emotion else '' }}>{{ e }}</option>
                             {% endfor %}
                         </select>
-                        {% endif %}
                     </td>
                     <td>
                         <select class="form-control form-control-sm dtl-error">
@@ -94,6 +143,8 @@
                         </select>
                     </td>
                     <td class="dtl-setups-cell"></td>
+                    <td><textarea class="form-control form-control-sm dtl-notes" rows="1">{{ r.notes or '' }}</textarea></td>
+                    <td class="dtl-exits-cell"></td>
                     <td>
                         <button type="button" class="btn btn-sm btn-secondary dtl-send-btn" onclick="dtlSendRow({{ r.trade_id }})">Enviar</button>
                     </td>
@@ -102,6 +153,80 @@
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+    {% endmacro %}
+
+    <div id="dtl-tab-day" class="dtl-tab-panel active">
+        {% if day_rows %}
+        {{ full_table(day_rows) }}
+        {% else %}
+        <div class="card" style="padding:1.5rem; text-align:center; color:var(--text-secondary);">Nenhum trade day pendente.</div>
+        {% endif %}
+    </div>
+
+    <div id="dtl-tab-swing" class="dtl-tab-panel">
+        {% if swing_rows %}
+        {{ full_table(swing_rows) }}
+        {% else %}
+        <div class="card" style="padding:1.5rem; text-align:center; color:var(--text-secondary);">Nenhum trade swing pendente.</div>
+        {% endif %}
+    </div>
+
+    <div id="dtl-tab-options" class="dtl-tab-panel">
+        {% if options_rows %}
+        <div class="card" style="padding:0; overflow-x:auto;">
+            <table class="dtl-table no-datatable">
+                <thead>
+                    <tr>
+                        <th>Operação</th>
+                        <th>Data</th>
+                        <th>Data saída</th>
+                        <th>Estratégia</th>
+                        <th>Subjacente</th>
+                        <th>Resultado (R$)</th>
+                        <th>Emoção</th>
+                        <th>Erro</th>
+                        <th>Setups</th>
+                        <th>Ação</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in options_rows %}
+                    <tr class="dtl-row" id="dtl-row-{{ r.trade_id }}" data-trade-id="{{ r.trade_id }}" data-simplified="true" data-mode="options">
+                        <td>{{ r.underlying }}</td>
+                        <td><input type="date" class="form-control form-control-sm dtl-date" value="{{ r.date or '' }}"></td>
+                        <td><input type="date" class="form-control form-control-sm dtl-exitDate" value="{{ r.exitDate or '' }}"></td>
+                        <td class="dtl-strategy-cell"></td>
+                        <td class="dtl-underlying-cell"></td>
+                        <td><input type="number" step="0.01" class="form-control form-control-sm dtl-profit" value="{{ r.profit if r.profit is not none else '' }}"></td>
+                        <td>
+                            <select class="form-control form-control-sm dtl-emotion">
+                                {% for e in r.emotions %}
+                                <option value="{{ e }}" {{ 'selected' if e == r.emotion else '' }}>{{ e }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td>
+                            <select class="form-control form-control-sm dtl-error">
+                                {% for e in r.errors %}
+                                <option value="{{ e }}" {{ 'selected' if e == r.error else '' }}>{{ e }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        <td class="dtl-setups-cell"></td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-secondary dtl-send-btn" onclick="dtlSendRow({{ r.trade_id }})">Enviar</button>
+                        </td>
+                        <td class="dtl-status">⏳</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="card" style="padding:1.5rem; text-align:center; color:var(--text-secondary);">Nenhum trade de opções pendente.</div>
+        {% endif %}
     </div>
     {% endif %}
 </div>
@@ -114,8 +239,32 @@
     var byId = {};
     ROWS.forEach(function(r) { byId[r.trade_id] = r; });
 
-    // Preenche as células de Estratégia/Subjacente/Setups de cada linha com os
-    // mesmos <select>/checkboxes do modal individual (static/js/diario_trade.js).
+    window.dtlShowTab = function(tab) {
+        document.querySelectorAll('.dtl-tab-btn').forEach(function(btn) {
+            btn.classList.toggle('active', btn.dataset.tab === tab);
+        });
+        document.querySelectorAll('.dtl-tab-panel').forEach(function(panel) {
+            panel.classList.toggle('active', panel.id === 'dtl-tab-' + tab);
+        });
+    };
+
+    function exitsTableHtml(r, prefix) {
+        var exits = r.exits || [];
+        var rowsHtml = exits.map(function(ex, idx) { return DiarioTrade.exitRowHtml(ex, idx); }).join('');
+        return '<table class="no-datatable ' + prefix + 'exits-table"><tbody class="' + prefix + 'exits-body">' + rowsHtml + '</tbody></table>' +
+            '<button type="button" class="btn btn-sm btn-secondary" style="margin-top:.3rem;" ' +
+            'onclick="dtlAddExitRow(\'' + prefix + '\')">+ Saída</button>';
+    }
+
+    window.dtlAddExitRow = function(prefix) {
+        var tbody = document.querySelector('.' + prefix + 'exits-body');
+        var idx = tbody.querySelectorAll('tr').length;
+        tbody.insertAdjacentHTML('beforeend', DiarioTrade.exitRowHtml({}, idx));
+    };
+
+    // Preenche as células de Estratégia/Subjacente/Setups/Saídas de cada linha
+    // com os mesmos <select>/checkboxes/tabela do modal individual
+    // (static/js/diario_trade.js) — evita duplicar essa lógica de renderização.
     ROWS.forEach(function(r) {
         var row = document.getElementById('dtl-row-' + r.trade_id);
         if (!row) return;
@@ -123,6 +272,8 @@
         row.querySelector('.dtl-strategy-cell').innerHTML = DiarioTrade.strategyFieldHtml(r, prefix);
         row.querySelector('.dtl-underlying-cell').innerHTML = DiarioTrade.underlyingFieldHtml(r, prefix);
         row.querySelector('.dtl-setups-cell').innerHTML = DiarioTrade.buildSetupsFieldHtml(r, prefix);
+        var exitsCell = row.querySelector('.dtl-exits-cell');
+        if (exitsCell) exitsCell.innerHTML = exitsTableHtml(r, prefix);
     });
 
     function buildPayload(tradeId) {
@@ -142,29 +293,42 @@
                 underlying: underlyingEl.value,
                 profit: parseFloat(row.querySelector('.dtl-profit').value),
                 setups: setups,
-                emotion: 'FOMO',
+                emotion: row.querySelector('.dtl-emotion').value,
                 error: row.querySelector('.dtl-error').value,
                 notes: r.notes || '',
             };
         }
 
+        var assetType = row.querySelector('.dtl-assetType').value;
+        var exits = [];
+        row.querySelectorAll('.' + prefix + 'exits-body tr').forEach(function(tr) {
+            var date = tr.querySelector('.dt-exit-date').value;
+            var qty = tr.querySelector('.dt-exit-qty').value;
+            var price = tr.querySelector('.dt-exit-price').value;
+            if (date && qty && price !== '') {
+                exits.push({ date: date, qty: parseInt(qty, 10), price: parseFloat(price) });
+            }
+        });
+
         var payload = {
             mode: r.mode,
             date: row.querySelector('.dtl-date').value,
-            assetType: r.assetType,
-            symbol: r.symbol,
-            qty: r.qty,
-            direction: r.direction,
-            entry: r.entry,
-            exitMode: r.exitMode,
+            assetType: assetType,
+            symbol: row.querySelector('.dtl-symbol').value,
+            qty: parseInt(row.querySelector('.dtl-qty').value, 10),
+            direction: row.querySelector('.dtl-direction').value,
+            entry: parseFloat(row.querySelector('.dtl-entry').value),
+            exitMode: row.querySelector('.dtl-exitMode').value,
             emotion: row.querySelector('.dtl-emotion').value,
             error: row.querySelector('.dtl-error').value,
             setups: setups,
-            exits: r.exits || [],
-            fees: r.fees || 0,
-            notes: r.notes || '',
+            exits: exits,
+            fees: parseFloat(row.querySelector('.dtl-fees').value) || 0,
+            notes: row.querySelector('.dtl-notes').value,
         };
-        if (r.assetType === 'Opções') {
+        var time = row.querySelector('.dtl-time').value.trim();
+        if (time) payload.time = time;
+        if (assetType === 'Opções') {
             payload.underlying = underlyingEl.value;
             payload.strategy = strategyEl.value;
         }

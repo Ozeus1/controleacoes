@@ -477,8 +477,9 @@
             '<div><label class="form-label" style="font-size:.82rem;">Erro</label>' +
             '<select id="dt-s-error" class="form-control form-control-sm">' + opts(ERRORS, d.error || 'Nenhum') + '</select></div>' +
             '</div>' +
-            '<div style="margin-bottom:.7rem;"><label class="form-label" style="font-size:.82rem;">Setups (separados por vírgula)</label>' +
-            '<input type="text" id="dt-s-setups" class="form-control form-control-sm" value="' + ((d.setups || []).join(', ')) + '" placeholder="Recomendação, Price action..."></div>' +
+            '<div style="margin-bottom:.7rem;"><label class="form-label" style="font-size:.82rem;">Setups</label>' +
+            setupsFieldHtml(d) +
+            '</div>' +
             '<div style="margin-bottom:.7rem;"><label class="form-label" style="font-size:.82rem;">Observações</label>' +
             '<textarea id="dt-s-notes" class="form-control form-control-sm" rows="2">' + (d.notes || '') + '</textarea></div>' +
             '<div id="dt-error-box" style="display:none; margin-bottom:.7rem; padding:.5rem .8rem; ' +
@@ -511,6 +512,25 @@
             return '<select id="dt-s-underlying" class="form-control form-control-sm">' + opts(list, d.underlying) + '</select>';
         }
         return '<input type="text" id="dt-s-underlying" class="form-control form-control-sm" value="' + (d.underlying || '') + '">';
+    }
+
+    // Setups: checkboxes com a lista padrão do usuário (settings.setups via
+    // GET /me) quando disponível; texto livre como fallback se a lista não
+    // pôde ser carregada.
+    function setupsFieldHtml(d) {
+        if (d.setups_options && d.setups_options.length) {
+            var selected = d.setups || [];
+            var boxes = d.setups_options.map(function(s, i) {
+                var id = 'dt-s-setup-' + i;
+                var checked = selected.indexOf(s) !== -1 ? ' checked' : '';
+                return '<div class="form-check" style="display:flex; align-items:center; gap:.4rem;">' +
+                    '<input class="form-check-input dt-s-setup-cb" type="checkbox" id="' + id + '" value="' + s + '"' + checked + ' style="margin:0;">' +
+                    '<label class="form-check-label" for="' + id + '" style="font-size:.82rem; cursor:pointer; margin:0;">' + s + '</label>' +
+                    '</div>';
+            }).join('');
+            return '<div id="dt-s-setups-group" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:.5rem .8rem;">' + boxes + '</div>';
+        }
+        return '<input type="text" id="dt-s-setups" class="form-control form-control-sm" value="' + ((d.setups || []).join(', ')) + '" placeholder="Recomendação, Price action...">';
     }
 
     function renderFullForm(d) {
@@ -631,6 +651,10 @@
 
         var payload;
         if (currentSimplified) {
+            var setupsEl = document.getElementById('dt-s-setups');
+            var setups = setupsEl
+                ? setupsEl.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean)
+                : Array.from(document.querySelectorAll('.dt-s-setup-cb:checked')).map(function(cb) { return cb.value; });
             payload = {
                 mode: 'options',
                 date: document.getElementById('dt-date').value,
@@ -638,7 +662,7 @@
                 strategy: document.getElementById('dt-s-strategy').value,
                 underlying: document.getElementById('dt-s-underlying').value,
                 profit: parseFloat(document.getElementById('dt-profit').value),
-                setups: document.getElementById('dt-s-setups').value.split(',').map(function(s) { return s.trim(); }).filter(Boolean),
+                setups: setups,
                 error: document.getElementById('dt-s-error').value,
                 notes: document.getElementById('dt-s-notes').value,
             };

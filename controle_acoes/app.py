@@ -16681,7 +16681,7 @@ _DIARIO_TRADE_ERRORS = ['Nenhum', 'Hesitação', 'Moveu o Stop Loss', 'Overtradi
 # de opções inválida... Consulte settings.strategies em GET /api/v1/me").
 # Evita 1 chamada de rede a cada abertura do modal — a lista de estratégias
 # do usuário no Diário de Trade não muda a cada request.
-_diario_trade_me_cache: dict = {}   # user_id -> (timestamp, {'strategies': [...], 'assets': [...]})
+_diario_trade_me_cache: dict = {}   # user_id -> (timestamp, {'strategies': [...], 'assets': [...], 'setups': [...]})
 _DIARIO_TRADE_ME_TTL = 300  # 5 min
 
 
@@ -16695,6 +16695,7 @@ def _diario_trade_get_me(user_id, token):
     result = {
         'strategies': settings.get('strategies') or [],
         'assets': settings.get('assets') or [],
+        'setups': settings.get('setups') or [],
     }
     _diario_trade_me_cache[user_id] = (now, result)
     return result
@@ -16761,13 +16762,14 @@ def api_diario_trade_payload(id):
 
     if (trade.strategy or '') == 'Opções':
         token = Settings.get_value('diario_trade_token', user_id=current_user.id)
-        strategies, assets = [], []
+        strategies, assets, setups_options = [], [], []
         me_error = None
         if token:
             try:
                 me = _diario_trade_get_me(current_user.id, token)
                 strategies = me['strategies']
                 assets = me['assets']
+                setups_options = me['setups']
             except DiarioTradeApiError as exc:
                 me_error = str(exc)
         else:
@@ -16783,6 +16785,7 @@ def api_diario_trade_payload(id):
             'underlying': underlying_local,
             'profit': trade.profit_value,
             'setups': [],
+            'setups_options': setups_options,
             'error': 'Nenhum',
             'notes': trade.notes or '',
             'errors': _DIARIO_TRADE_ERRORS,

@@ -36,6 +36,8 @@
     .dtl-tab-btn.active { color: var(--accent-color); border-bottom-color: var(--accent-color); }
     .dtl-tab-panel { display: none; }
     .dtl-tab-panel.active { display: block; }
+
+    .dtl-select-cb { width: 16px; height: 16px; cursor: pointer; }
 </style>
 
 <div class="container">
@@ -67,6 +69,16 @@
         <div id="dtl-progress" style="color:var(--text-secondary); font-size:.85rem;"></div>
     </div>
 
+    <div class="card" style="padding:.7rem 1.2rem; margin-bottom:1rem; display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;">
+        <span style="color:var(--text-secondary); font-size:.85rem;">
+            <strong id="dtl-selected-count">0</strong> selecionada(s) (na aba atual)
+        </span>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="dtlSelectAll()">☑ Selecionar tudo</button>
+        <button type="button" class="btn btn-sm btn-secondary" onclick="dtlSelectNone()">☐ Limpar seleção</button>
+        <button type="button" class="btn btn-sm btn-danger" onclick="dtlRemoveSelected()">🗑 Excluir selecionadas</button>
+        <button type="button" class="btn btn-sm btn-primary" onclick="dtlSendSelected()">📤 Enviar selecionadas</button>
+    </div>
+
     <div class="dtl-tabs">
         <button type="button" class="dtl-tab-btn active" data-tab="day" onclick="dtlShowTab('day')">Day — {{ day_rows|length }}</button>
         <button type="button" class="dtl-tab-btn" data-tab="swing" onclick="dtlShowTab('swing')">Swing — {{ swing_rows|length }}</button>
@@ -78,6 +90,7 @@
         <table class="dtl-table no-datatable">
             <thead>
                 <tr>
+                    <th></th>
                     <th>Tipo</th>
                     <th>Data</th>
                     <th>Hora</th>
@@ -87,8 +100,6 @@
                     <th>Entrada</th>
                     <th>Forma saída</th>
                     <th>Taxas (R$)</th>
-                    <th>Estratégia</th>
-                    <th>Subjacente</th>
                     <th>Emoção</th>
                     <th>Erro</th>
                     <th>Setups</th>
@@ -101,6 +112,7 @@
             <tbody>
                 {% for r in mode_rows %}
                 <tr class="dtl-row" id="dtl-row-{{ r.trade_id }}" data-trade-id="{{ r.trade_id }}" data-simplified="false" data-mode="{{ r.mode }}">
+                    <td><input type="checkbox" class="dtl-select-cb" onchange="dtlUpdateSelectedCount()"></td>
                     <td>
                         <select class="form-control form-control-sm dtl-assetType">
                             {% for a in ['WIN', 'WDO', 'Ações', 'Opções'] %}
@@ -126,8 +138,6 @@
                         </select>
                     </td>
                     <td><input type="number" step="0.01" min="0" class="form-control form-control-sm dtl-fees" value="{{ r.fees or 0 }}"></td>
-                    <td class="dtl-strategy-cell"></td>
-                    <td class="dtl-underlying-cell"></td>
                     <td>
                         <select class="form-control form-control-sm dtl-emotion">
                             {% for e in r.emotions %}
@@ -178,6 +188,7 @@
             <table class="dtl-table no-datatable">
                 <thead>
                     <tr>
+                        <th></th>
                         <th>Operação</th>
                         <th>Data</th>
                         <th>Data saída</th>
@@ -194,6 +205,7 @@
                 <tbody>
                     {% for r in options_rows %}
                     <tr class="dtl-row" id="dtl-row-{{ r.trade_id }}" data-trade-id="{{ r.trade_id }}" data-simplified="true" data-mode="options">
+                        <td><input type="checkbox" class="dtl-select-cb" onchange="dtlUpdateSelectedCount()"></td>
                         <td>{{ r.underlying }}</td>
                         <td><input type="date" class="form-control form-control-sm dtl-date" value="{{ r.date or '' }}"></td>
                         <td><input type="date" class="form-control form-control-sm dtl-exitDate" value="{{ r.exitDate or '' }}"></td>
@@ -246,7 +258,74 @@
         document.querySelectorAll('.dtl-tab-panel').forEach(function(panel) {
             panel.classList.toggle('active', panel.id === 'dtl-tab-' + tab);
         });
+        dtlUpdateSelectedCount();
     };
+
+    // Seleção em lote: sempre restrita à aba visível no momento — evita
+    // marcar/excluir/enviar linhas de outra aba sem o usuário perceber.
+    function dtlActivePanel() {
+        return document.querySelector('.dtl-tab-panel.active');
+    }
+    function dtlActiveCheckboxes() {
+        var panel = dtlActivePanel();
+        return panel ? Array.from(panel.querySelectorAll('.dtl-select-cb')) : [];
+    }
+
+    window.dtlUpdateSelectedCount = function() {
+        var checked = dtlActiveCheckboxes().filter(function(cb) { return cb.checked; });
+        var el = document.getElementById('dtl-selected-count');
+        if (el) el.textContent = checked.length;
+    };
+
+    window.dtlSelectAll = function() {
+        dtlActiveCheckboxes().forEach(function(cb) {
+            if (!cb.closest('.dtl-row').classList.contains('dtl-sent')) cb.checked = true;
+        });
+        dtlUpdateSelectedCount();
+    };
+
+    window.dtlSelectNone = function() {
+        dtlActiveCheckboxes().forEach(function(cb) { cb.checked = false; });
+        dtlUpdateSelectedCount();
+    };
+
+    window.dtlRemoveSelected = function() {
+        var checked = dtlActiveCheckboxes().filter(function(cb) { return cb.checked; });
+        if (!checked.length) return;
+        if (!confirm('Remover ' + checked.length + ' linha(s) desta lista? Isso não exclui o trade do Histórico, só tira ele desta tela de envio.')) return;
+        checked.forEach(function(cb) {
+            var row = cb.closest('.dtl-row');
+            var tradeId = parseInt(row.dataset.tradeId, 10);
+            delete byId[tradeId];
+            row.remove();
+        });
+        ROWS = ROWS.filter(function(r) { return byId.hasOwnProperty(r.trade_id); });
+        dtlUpdateSelectedCount();
+        dtlUpdateTotals();
+    };
+
+    window.dtlSendSelected = function() {
+        var checked = dtlActiveCheckboxes().filter(function(cb) {
+            return cb.checked && !cb.closest('.dtl-row').classList.contains('dtl-sent');
+        });
+        if (!checked.length) return;
+        var ids = checked.map(function(cb) { return parseInt(cb.closest('.dtl-row').dataset.tradeId, 10); });
+        dtlSendBatch(ids);
+    };
+
+    // Recalcula os contadores (total geral + total de cada aba) depois de
+    // remover linhas — os números do cabeçalho/abas ficariam desatualizados
+    // com a contagem fixa renderizada no primeiro load.
+    function dtlUpdateTotals() {
+        var totalEl = document.getElementById('dtl-total');
+        if (totalEl) totalEl.textContent = ROWS.length;
+        ['day', 'swing', 'options'].forEach(function(tab) {
+            var btn = document.querySelector('.dtl-tab-btn[data-tab="' + tab + '"]');
+            if (!btn) return;
+            var count = ROWS.filter(function(r) { return r.mode === tab; }).length;
+            btn.textContent = btn.textContent.replace(/—\s*\d+$/, '— ' + count);
+        });
+    }
 
     function exitsTableHtml(r, prefix) {
         var exits = r.exits || [];
@@ -265,12 +344,16 @@
     // Preenche as células de Estratégia/Subjacente/Setups/Saídas de cada linha
     // com os mesmos <select>/checkboxes/tabela do modal individual
     // (static/js/diario_trade.js) — evita duplicar essa lógica de renderização.
+    // Estratégia/Subjacente só existem na tabela de Opções (a API não exige
+    // mais esses campos em day/swing — colunas removidas de lá).
     ROWS.forEach(function(r) {
         var row = document.getElementById('dtl-row-' + r.trade_id);
         if (!row) return;
         var prefix = 'dtl-' + r.trade_id + '-';
-        row.querySelector('.dtl-strategy-cell').innerHTML = DiarioTrade.strategyFieldHtml(r, prefix);
-        row.querySelector('.dtl-underlying-cell').innerHTML = DiarioTrade.underlyingFieldHtml(r, prefix);
+        var strategyCell = row.querySelector('.dtl-strategy-cell');
+        var underlyingCell = row.querySelector('.dtl-underlying-cell');
+        if (strategyCell) strategyCell.innerHTML = DiarioTrade.strategyFieldHtml(r, prefix);
+        if (underlyingCell) underlyingCell.innerHTML = DiarioTrade.underlyingFieldHtml(r, prefix);
         row.querySelector('.dtl-setups-cell').innerHTML = DiarioTrade.buildSetupsFieldHtml(r, prefix);
         var exitsCell = row.querySelector('.dtl-exits-cell');
         if (exitsCell) exitsCell.innerHTML = exitsTableHtml(r, prefix);
@@ -281,10 +364,11 @@
         var row = document.getElementById('dtl-row-' + tradeId);
         var prefix = 'dtl-' + tradeId + '-';
         var setups = DiarioTrade.readSetups(prefix);
-        var strategyEl = document.getElementById(prefix + 'strategy');
-        var underlyingEl = document.getElementById(prefix + 'underlying');
 
         if (r.simplified) {
+            // Opções: Estratégia/Subjacente continuam exigidos nesse modo.
+            var strategyEl = document.getElementById(prefix + 'strategy');
+            var underlyingEl = document.getElementById(prefix + 'underlying');
             return {
                 mode: 'options',
                 date: row.querySelector('.dtl-date').value,
@@ -328,10 +412,8 @@
         };
         var time = row.querySelector('.dtl-time').value.trim();
         if (time) payload.time = time;
-        if (assetType === 'Opções') {
-            payload.underlying = underlyingEl.value;
-            payload.strategy = strategyEl.value;
-        }
+        // Day/Swing: API ajustada, Estratégia/Subjacente não são mais exigidos
+        // nem enviados (independente do tipo de ativo dentro do formulário).
         return payload;
     }
 
@@ -343,7 +425,10 @@
         else if (status === 'ok') {
             cell.textContent = '✓';
             row.classList.add('dtl-sent');
+            var selectCb = row.querySelector('.dtl-select-cb');
+            if (selectCb) selectCb.checked = false;
             row.querySelectorAll('input, select, button.dtl-send-btn').forEach(function(el) { el.disabled = true; });
+            dtlUpdateSelectedCount();
         } else if (status === 'error') {
             cell.innerHTML = '✗<span class="dtl-status-err">' + (message || 'falha') + '</span>';
         }
@@ -374,35 +459,41 @@
 
     window.dtlSendRow = function(tradeId) { sendRow(tradeId); };
 
-    window.dtlSendAll = function() {
-        var btn = document.getElementById('dtl-send-all-btn');
+    // Envio sequencial (não paralelo, evita estourar rate limit da API
+    // externa) de uma lista de ids — usada tanto por "Enviar todos" quanto
+    // por "Enviar selecionadas".
+    function dtlSendBatch(ids) {
+        if (!ids.length) return;
+        var sendAllBtn = document.getElementById('dtl-send-all-btn');
         var progress = document.getElementById('dtl-progress');
-        var pendingIds = ROWS.map(function(r) { return r.trade_id; })
-            .filter(function(id) {
-                var row = document.getElementById('dtl-row-' + id);
-                return row && !row.classList.contains('dtl-sent');
-            });
-        if (!pendingIds.length) return;
 
-        btn.disabled = true;
+        sendAllBtn.disabled = true;
         var done = 0;
-        var total = pendingIds.length;
+        var total = ids.length;
         progress.textContent = '0 de ' + total + ' enviados';
 
-        // Sequencial (não paralelo): evita estourar rate limit da API externa.
         function next(i) {
-            if (i >= pendingIds.length) {
+            if (i >= ids.length) {
                 progress.textContent = done + ' de ' + total + ' enviados — concluído';
-                btn.disabled = false;
+                sendAllBtn.disabled = false;
                 return;
             }
-            sendRow(pendingIds[i]).then(function() {
+            sendRow(ids[i]).then(function() {
                 done++;
                 progress.textContent = done + ' de ' + total + ' enviados';
                 next(i + 1);
             });
         }
         next(0);
+    }
+
+    window.dtlSendAll = function() {
+        var pendingIds = ROWS.map(function(r) { return r.trade_id; })
+            .filter(function(id) {
+                var row = document.getElementById('dtl-row-' + id);
+                return row && !row.classList.contains('dtl-sent');
+            });
+        dtlSendBatch(pendingIds);
     };
 })();
 </script>

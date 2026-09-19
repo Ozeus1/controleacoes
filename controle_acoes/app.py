@@ -16747,36 +16747,38 @@ def _diario_trade_guess_strategy(nome_local, valid_strategies):
     return 'Outros' if 'Outros' in valid_strategies else (valid_strategies[0] if valid_strategies else '')
 
 
-@app.route('/api/trade-history/<int:id>/diario-trade-payload')
-@login_required
-def api_diario_trade_payload(id):
-    """Sugestão de payload para o modal de envio ao Diário de Trade, a partir
-    dos dados já existentes no TradeHistory local — o usuário completa o resto.
+def _diario_trade_build_suggestion(trade, user_id):
+    """Monta o payload sugerido para 1 trade local, reaproveitada tanto pelo
+    modal individual (api_diario_trade_payload) quanto pela tela de envio em
+    lote (enviar_diario_trade_lote). Dois ramos conforme a coluna Estratégia
+    do trade: 'Opções' usa o schema simplificado (mode='options', sem
+    side/exitMode/exits, mas com emotion — a API foi ajustada pra aceitar
+    esse campo também nesse modo); qualquer outra estratégia usa o
+    formulário completo (day/swing).
 
-    Quando a coluna Estratégia do trade é 'Opções', usa o schema simplificado
-    (mode='options') que a API aceita para esse caso — menos campos, sem
-    exigir side/exitMode/exits detalhados."""
-    trade = TradeHistory.query.get_or_404(id)
-    if trade.user_id != current_user.id:
-        return jsonify({'error': 'Sem permissão'}), 403
+    Defaults pedidos: Emoção=FOMO, Erro=Nenhum, Setups=['Outros'] quando
+    'Outros' está na lista da API (senão lista vazia, deixando o usuário
+    escolher)."""
+    token = Settings.get_value('diario_trade_token', user_id=user_id)
+    strategies, assets, setups_options = [], [], []
+    me_error = None
+    if token:
+        try:
+            me = _diario_trade_get_me(user_id, token)
+            strategies = me['strategies']
+            assets = me['assets']
+            setups_options = me['setups']
+        except DiarioTradeApiError as exc:
+            me_error = str(exc)
+    else:
+        me_error = 'Configure o token do Diário de Trade em Configurações primeiro.'
+
+    default_setups = ['Outros'] if 'Outros' in setups_options else []
 
     if (trade.strategy or '') == 'Opções':
-        token = Settings.get_value('diario_trade_token', user_id=current_user.id)
-        strategies, assets, setups_options = [], [], []
-        me_error = None
-        if token:
-            try:
-                me = _diario_trade_get_me(current_user.id, token)
-                strategies = me['strategies']
-                assets = me['assets']
-                setups_options = me['setups']
-            except DiarioTradeApiError as exc:
-                me_error = str(exc)
-        else:
-            me_error = 'Configure o token do Diário de Trade em Configurações primeiro.'
-
         underlying_local = trade.underlying or trade.ticker or ''
-        return jsonify({
+        return {
+            'trade_id': trade.id,
             'simplified': True,
             'mode': 'options',
             'date': trade.entry_date.isoformat() if trade.entry_date else None,
@@ -16784,8 +16786,10 @@ def api_diario_trade_payload(id):
             'strategy': _diario_trade_guess_strategy(trade.ticker, strategies),
             'underlying': underlying_local,
             'profit': trade.profit_value,
-            'setups': [],
+            'setups': default_setups,
             'setups_options': setups_options,
+            'emotion': 'FOMO',
+            'emotions': _DIARIO_TRADE_EMOTIONS,
             'error': 'Nenhum',
             'notes': trade.notes or '',
             'errors': _DIARIO_TRADE_ERRORS,
@@ -16794,7 +16798,7 @@ def api_diario_trade_payload(id):
             'me_error': me_error,
             'already_sent': bool(trade.diario_trade_id),
             'remote_id': trade.diario_trade_id,
-        })
+        }
 
     import json as _json
     det = {}
@@ -16815,15 +16819,8 @@ def api_diario_trade_payload(id):
             'price': trade.sell_price,
         })
 
-    token = Settings.get_value('diario_trade_token', user_id=current_user.id)
-    setups_options = []
-    if token:
-        try:
-            setups_options = _diario_trade_get_me(current_user.id, token)['setups']
-        except DiarioTradeApiError:
-            pass  # sem lista: o campo cai para texto livre no modal, sem travar o fluxo
-
-    return jsonify({
+    return {
+        'trade_id': trade.id,
         'simplified': False,
         'mode': 'day' if same_day else 'swing',
         'assetType': 'Opções' if is_option else 'Ações',
@@ -16838,13 +16835,46 @@ def api_diario_trade_payload(id):
         'exits': exits,
         'fees': 0,
         'notes': trade.notes or '',
-        'setups': [],
+        'setups': default_setups,
         'setups_options': setups_options,
+        'emotion': 'FOMO',
         'emotions': _DIARIO_TRADE_EMOTIONS,
+        'error': 'Nenhum',
         'errors': _DIARIO_TRADE_ERRORS,
+        'strategies': strategies,
+        'assets': assets,
+        'me_error': me_error,
         'already_sent': bool(trade.diario_trade_id),
         'remote_id': trade.diario_trade_id,
-    })
+    }
+
+
+@app.route('/api/trade-history/<int:id>/diario-trade-payload')
+@login_required
+def api_diario_trade_payload(id):
+    """Sugestão de payload para o modal de envio ao Diário de Trade, a partir
+    dos dados já existentes no TradeHistory local — o usuário completa o resto."""
+    trade = TradeHistory.query.get_or_404(id)
+    if trade.user_id != current_user.id:
+        return jsonify({'error': 'Sem permissão'}), 403
+    return jsonify(_diario_trade_build_suggestion(trade, current_user.id))
+
+
+@app.route('/historico/enviar-diario-trade-lote')
+@login_required
+def enviar_diario_trade_lote():
+    """Tela de envio em massa: varre todos os trades do usuário sem
+    diario_trade_id ainda, sugere os campos de cada um (mesma lógica do
+    modal individual) e deixa revisar/editar antes de enviar tudo de uma vez."""
+    trades = TradeHistory.query.filter_by(user_id=current_user.id) \
+        .filter(TradeHistory.diario_trade_id.is_(None)) \
+        .order_by(TradeHistory.exit_date.desc()).all()
+
+    rows = [_diario_trade_build_suggestion(t, current_user.id) for t in trades]
+
+    me_error = rows[0]['me_error'] if rows else None
+    return render_template('enviar_diario_trade_lote.html',
+                           rows=rows, total_pendentes=len(trades), me_error=me_error)
 
 
 @app.route('/api/trade-history/<int:id>/enviar-diario-trade', methods=['POST'])

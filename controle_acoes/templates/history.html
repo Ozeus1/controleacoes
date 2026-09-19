@@ -26,6 +26,7 @@
                 {% endfor %}
             </select>
             <a href="{{ url_for('add_history') }}" class="btn btn-primary btn-sm">+ Adicionar Trade</a>
+            <a href="{{ url_for('enviar_diario_trade_lote') }}" class="btn btn-secondary btn-sm">📤 Enviar em lote ao Diário de Trade</a>
         </div>
     </div>
     <div id="search-info" style="display:none; padding: 0 1rem .5rem; font-size:.85rem; color:var(--text-secondary);"></div>
@@ -415,6 +416,7 @@
     <div id="diario-trade-body">Carregando…</div>
   </div>
 </div>
+<script src="{{ url_for('static', filename='js/diario_trade.js') }}"></script>
 <script>
 (function() {
     var modal = document.getElementById('diario-trade-modal');
@@ -423,22 +425,8 @@
 
     var EMOTIONS = [];
     var ERRORS = [];
-
-    function opts(list, selected) {
-        return list.map(function(v) {
-            return '<option value="' + v + '"' + (v === selected ? ' selected' : '') + '>' + v + '</option>';
-        }).join('');
-    }
-
-    function exitRowHtml(ex, idx) {
-        ex = ex || {};
-        return '<tr class="dt-exit-row" data-idx="' + idx + '">' +
-            '<td><input type="date" class="form-control form-control-sm dt-exit-date" value="' + (ex.date || '') + '"></td>' +
-            '<td><input type="number" class="form-control form-control-sm dt-exit-qty" value="' + (ex.qty != null ? ex.qty : '') + '" min="1" step="1"></td>' +
-            '<td><input type="number" class="form-control form-control-sm dt-exit-price" value="' + (ex.price != null ? ex.price : '') + '" step="0.01"></td>' +
-            '<td><button type="button" class="btn btn-sm btn-danger" onclick="this.closest(\'tr\').remove()">🗑</button></td>' +
-            '</tr>';
-    }
+    var opts = DiarioTrade.opts;
+    var exitRowHtml = DiarioTrade.exitRowHtml;
 
     function renderForm(d) {
         currentSimplified = !!d.simplified;
@@ -474,6 +462,8 @@
             '</div>' +
             '<div><label class="form-label" style="font-size:.82rem;">Resultado (R$)</label>' +
             '<input type="number" id="dt-profit" class="form-control form-control-sm" value="' + (d.profit != null ? d.profit : '') + '" step="0.01"></div>' +
+            '<div><label class="form-label" style="font-size:.82rem;">Emoção</label>' +
+            '<select id="dt-s-emotion" class="form-control form-control-sm">' + opts(EMOTIONS, d.emotion || 'Calmo') + '</select></div>' +
             '<div><label class="form-label" style="font-size:.82rem;">Erro</label>' +
             '<select id="dt-s-error" class="form-control form-control-sm">' + opts(ERRORS, d.error || 'Nenhum') + '</select></div>' +
             '</div>' +
@@ -493,52 +483,11 @@
     // Estratégia/Subjacente: <select> com a lista fixa da API (settings.strategies/
     // settings.assets, obtida via GET /me) quando disponível; texto livre como
     // fallback se a lista não pôde ser carregada (ver aviso de me_error acima).
-    function strategyFieldHtml(d) {
-        if (d.strategies && d.strategies.length) {
-            return '<select id="dt-s-strategy" class="form-control form-control-sm">' + opts(d.strategies, d.strategy) + '</select>';
-        }
-        return '<input type="text" id="dt-s-strategy" class="form-control form-control-sm" value="' + (d.strategy || '') + '">';
-    }
-
-    function underlyingFieldHtml(d) {
-        if (d.assets && d.assets.length) {
-            var list = d.assets.slice();
-            // Ativo local fora da lista fixa da API: inclui como opção extra no
-            // topo em vez de descartar o dado (a API pode rejeitar no envio,
-            // mas o usuário vê e decide, em vez de perder a informação em silêncio).
-            if (d.underlying && list.indexOf(d.underlying) === -1) {
-                list = [d.underlying].concat(list);
-            }
-            return '<select id="dt-s-underlying" class="form-control form-control-sm">' + opts(list, d.underlying) + '</select>';
-        }
-        return '<input type="text" id="dt-s-underlying" class="form-control form-control-sm" value="' + (d.underlying || '') + '">';
-    }
-
-    // Setups: checkboxes com a lista padrão do usuário (settings.setups via
-    // GET /me) quando disponível; texto livre como fallback se a lista não
-    // pôde ser carregada. idPrefix diferencia o formulário simplificado
-    // ('dt-s-') do completo ('dt-') — os dois podem coexistir no mesmo DOM.
-    function buildSetupsFieldHtml(d, idPrefix) {
-        var groupId = idPrefix + 'setups-group';
-        var cbClass = idPrefix + 'setup-cb';
-        var textId = idPrefix + 'setups';
-        if (d.setups_options && d.setups_options.length) {
-            var selected = d.setups || [];
-            var boxes = d.setups_options.map(function(s, i) {
-                var id = idPrefix + 'setup-' + i;
-                var checked = selected.indexOf(s) !== -1 ? ' checked' : '';
-                return '<div class="form-check" style="display:flex; align-items:center; gap:.4rem;">' +
-                    '<input class="form-check-input ' + cbClass + '" type="checkbox" id="' + id + '" value="' + s + '"' + checked + ' style="margin:0;">' +
-                    '<label class="form-check-label" for="' + id + '" style="font-size:.82rem; cursor:pointer; margin:0;">' + s + '</label>' +
-                    '</div>';
-            }).join('');
-            return '<div id="' + groupId + '" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(160px, 1fr)); gap:.5rem .8rem;">' + boxes + '</div>';
-        }
-        return '<input type="text" id="' + textId + '" class="form-control form-control-sm" value="' + ((d.setups || []).join(', ')) + '" placeholder="Recomendação, Price action...">';
-    }
-
-    function setupsFieldHtml(d) { return buildSetupsFieldHtml(d, 'dt-s-'); }
-    function setupsFieldHtmlFull(d) { return buildSetupsFieldHtml(d, 'dt-'); }
+    // Funções compartilhadas com a tela de envio em lote — ver static/js/diario_trade.js.
+    function strategyFieldHtml(d) { return DiarioTrade.strategyFieldHtml(d, 'dt-s-'); }
+    function underlyingFieldHtml(d) { return DiarioTrade.underlyingFieldHtml(d, 'dt-s-'); }
+    function setupsFieldHtml(d) { return DiarioTrade.buildSetupsFieldHtml(d, 'dt-s-'); }
+    function setupsFieldHtmlFull(d) { return DiarioTrade.buildSetupsFieldHtml(d, 'dt-'); }
 
     function renderFullForm(d) {
         var assetOptions = ['WIN', 'WDO', 'Ações', 'Opções'];
@@ -584,9 +533,9 @@
             '<div><label class="form-label" style="font-size:.82rem;">Taxas (R$)</label>' +
             '<input type="number" id="dt-fees" class="form-control form-control-sm" value="' + (d.fees || 0) + '" step="0.01" min="0"></div>' +
             '<div><label class="form-label" style="font-size:.82rem;">Emoção</label>' +
-            '<select id="dt-emotion" class="form-control form-control-sm">' + opts(EMOTIONS, 'Calmo') + '</select></div>' +
+            '<select id="dt-emotion" class="form-control form-control-sm">' + opts(EMOTIONS, d.emotion || 'Calmo') + '</select></div>' +
             '<div><label class="form-label" style="font-size:.82rem;">Erro</label>' +
-            '<select id="dt-error" class="form-control form-control-sm">' + opts(ERRORS, 'Nenhum') + '</select></div>' +
+            '<select id="dt-error" class="form-control form-control-sm">' + opts(ERRORS, d.error || 'Nenhum') + '</select></div>' +
             '</div>' +
             '<div id="dt-opt-fields" style="display:' + (isOpt ? 'grid' : 'none') + '; grid-template-columns:1fr 1fr; gap:.7rem; margin-bottom:.7rem;">' +
             '<div><label class="form-label" style="font-size:.82rem;">Subjacente</label>' +
@@ -659,10 +608,7 @@
 
         var payload;
         if (currentSimplified) {
-            var setupsEl = document.getElementById('dt-s-setups');
-            var setups = setupsEl
-                ? setupsEl.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean)
-                : Array.from(document.querySelectorAll('.dt-s-setup-cb:checked')).map(function(cb) { return cb.value; });
+            var setups = DiarioTrade.readSetups('dt-s-');
             payload = {
                 mode: 'options',
                 date: document.getElementById('dt-date').value,
@@ -671,6 +617,7 @@
                 underlying: document.getElementById('dt-s-underlying').value,
                 profit: parseFloat(document.getElementById('dt-profit').value),
                 setups: setups,
+                emotion: document.getElementById('dt-s-emotion').value,
                 error: document.getElementById('dt-s-error').value,
                 notes: document.getElementById('dt-s-notes').value,
             };
@@ -686,10 +633,7 @@
             });
 
             var assetType = document.getElementById('dt-assetType').value;
-            var setupsElFull = document.getElementById('dt-setups');
-            var setupsFull = setupsElFull
-                ? setupsElFull.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean)
-                : Array.from(document.querySelectorAll('.dt-setup-cb:checked')).map(function(cb) { return cb.value; });
+            var setupsFull = DiarioTrade.readSetups('dt-');
             payload = {
                 mode: document.getElementById('dt-mode').value,
                 date: document.getElementById('dt-date').value,

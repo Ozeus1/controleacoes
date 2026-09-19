@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+    .dtl-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    .dtl-table th, .dtl-table td { padding: .5rem .6rem; border-bottom: 1px solid var(--border-color); vertical-align: top; }
+    .dtl-table th { text-align: left; color: var(--text-secondary); font-weight: 600; white-space: nowrap; }
+    .dtl-table .form-control-sm { min-width: 110px; }
+    .dtl-row.dtl-sent { opacity: .55; }
+    .dtl-status { font-size: 1.1rem; white-space: nowrap; }
+    .dtl-status-err { color: var(--danger-color); font-size: .72rem; display: block; max-width: 180px; }
+    /* Setups: lista compacta em vez do grid largo do modal individual —
+       aqui a linha é de uma tabela com 12+ linhas, precisa caber sem esticar
+       a altura de cada uma. */
+    .dtl-setups-cell [id$="-setups-group"] {
+        display: flex !important;
+        flex-direction: column;
+        gap: .15rem !important;
+        max-height: 6.5rem;
+        overflow-y: auto;
+        min-width: 150px;
+    }
+    .dtl-setups-cell [id$="-setups-group"] .form-check { gap: .3rem !important; }
+    .dtl-setups-cell [id$="-setups-group"] .form-check-label { font-size: .74rem !important; white-space: nowrap; }
+</style>
+
+<div class="container">
+    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.75rem; margin-bottom:1rem;">
+        <h2 style="margin:0;">Enviar em lote ao Diário de Trade</h2>
+        <a href="{{ url_for('history') }}" class="btn btn-secondary btn-sm">← Voltar ao Histórico</a>
+    </div>
+
+    {% if me_error %}
+    <div style="margin-bottom:1rem; padding:.6rem .9rem; background:rgba(245,158,11,.12);
+                border:1px solid #f59e0b; border-radius:8px; font-size:.85rem; color:#f59e0b;">
+        ⚠ Não foi possível carregar as listas de Estratégia/Subjacente/Setups do Diário de Trade
+        ({{ me_error }}). Os campos abaixo ficaram como texto livre — confira os valores antes de enviar.
+    </div>
+    {% endif %}
+
+    {% if not rows %}
+    <div class="card" style="padding:2rem; text-align:center; color:var(--text-secondary);">
+        ✓ Nenhum trade pendente de envio — todo o Histórico já foi enviado ao Diário de Trade.
+    </div>
+    {% else %}
+    <div class="card" style="padding:1rem 1.2rem; margin-bottom:1rem; display:flex; align-items:center; gap:1rem; flex-wrap:wrap;">
+        <div><strong id="dtl-total">{{ total_pendentes }}</strong> trade(s) pendente(s) de envio.</div>
+        <button type="button" id="dtl-send-all-btn" class="btn btn-primary btn-sm" onclick="dtlSendAll()">📤 Enviar todos</button>
+        <div id="dtl-progress" style="color:var(--text-secondary); font-size:.85rem;"></div>
+    </div>
+
+    <div class="card" style="padding:0; overflow-x:auto;">
+        <table class="dtl-table">
+            <thead>
+                <tr>
+                    <th>Operação</th>
+                    <th>Modo</th>
+                    <th>Data</th>
+                    <th>Data saída</th>
+                    <th>Estratégia</th>
+                    <th>Subjacente</th>
+                    <th>Resultado (R$)</th>
+                    <th>Emoção</th>
+                    <th>Erro</th>
+                    <th>Setups</th>
+                    <th>Ação</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody id="dtl-body">
+                {% for r in rows %}
+                <tr class="dtl-row" id="dtl-row-{{ r.trade_id }}" data-trade-id="{{ r.trade_id }}" data-simplified="{{ 'true' if r.simplified else 'false' }}">
+                    <td>{{ r.symbol if not r.simplified else r.underlying }}</td>
+                    <td>{{ r.mode }}</td>
+                    <td><input type="date" class="form-control form-control-sm dtl-date" value="{{ r.date or '' }}"></td>
+                    <td><input type="date" class="form-control form-control-sm dtl-exitDate" value="{{ r.exitDate or '' }}"></td>
+                    <td class="dtl-strategy-cell"></td>
+                    <td class="dtl-underlying-cell"></td>
+                    <td><input type="number" step="0.01" class="form-control form-control-sm dtl-profit" value="{{ r.profit if r.profit is not none else '' }}"></td>
+                    <td class="dtl-emotion-cell">
+                        {% if not r.simplified %}
+                        <select class="form-control form-control-sm dtl-emotion">
+                            {% for e in r.emotions %}
+                            <option value="{{ e }}" {{ 'selected' if e == r.emotion else '' }}>{{ e }}</option>
+                            {% endfor %}
+                        </select>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <select class="form-control form-control-sm dtl-error">
+                            {% for e in r.errors %}
+                            <option value="{{ e }}" {{ 'selected' if e == r.error else '' }}>{{ e }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                    <td class="dtl-setups-cell"></td>
+                    <td>
+                        <button type="button" class="btn btn-sm btn-secondary dtl-send-btn" onclick="dtlSendRow({{ r.trade_id }})">Enviar</button>
+                    </td>
+                    <td class="dtl-status">⏳</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+
+<script id="dtl-data" type="application/json">{{ rows | tojson }}</script>
+<script src="{{ url_for('static', filename='js/diario_trade.js') }}"></script>
+<script>
+(function() {
+    var ROWS = JSON.parse(document.getElementById('dtl-data').textContent || '[]');
+    var byId = {};
+    ROWS.forEach(function(r) { byId[r.trade_id] = r; });
+
+    // Preenche as células de Estratégia/Subjacente/Setups de cada linha com os
+    // mesmos <select>/checkboxes do modal individual (static/js/diario_trade.js).
+    ROWS.forEach(function(r) {
+        var row = document.getElementById('dtl-row-' + r.trade_id);
+        if (!row) return;
+        var prefix = 'dtl-' + r.trade_id + '-';
+        row.querySelector('.dtl-strategy-cell').innerHTML = DiarioTrade.strategyFieldHtml(r, prefix);
+        row.querySelector('.dtl-underlying-cell').innerHTML = DiarioTrade.underlyingFieldHtml(r, prefix);
+        row.querySelector('.dtl-setups-cell').innerHTML = DiarioTrade.buildSetupsFieldHtml(r, prefix);
+    });
+
+    function buildPayload(tradeId) {
+        var r = byId[tradeId];
+        var row = document.getElementById('dtl-row-' + tradeId);
+        var prefix = 'dtl-' + tradeId + '-';
+        var setups = DiarioTrade.readSetups(prefix);
+        var strategyEl = document.getElementById(prefix + 'strategy');
+        var underlyingEl = document.getElementById(prefix + 'underlying');
+
+        if (r.simplified) {
+            return {
+                mode: 'options',
+                date: row.querySelector('.dtl-date').value,
+                exitDate: row.querySelector('.dtl-exitDate').value,
+                strategy: strategyEl.value,
+                underlying: underlyingEl.value,
+                profit: parseFloat(row.querySelector('.dtl-profit').value),
+                setups: setups,
+                emotion: 'FOMO',
+                error: row.querySelector('.dtl-error').value,
+                notes: r.notes || '',
+            };
+        }
+
+        var payload = {
+            mode: r.mode,
+            date: row.querySelector('.dtl-date').value,
+            assetType: r.assetType,
+            symbol: r.symbol,
+            qty: r.qty,
+            direction: r.direction,
+            entry: r.entry,
+            exitMode: r.exitMode,
+            emotion: row.querySelector('.dtl-emotion').value,
+            error: row.querySelector('.dtl-error').value,
+            setups: setups,
+            exits: r.exits || [],
+            fees: r.fees || 0,
+            notes: r.notes || '',
+        };
+        if (r.assetType === 'Opções') {
+            payload.underlying = underlyingEl.value;
+            payload.strategy = strategyEl.value;
+        }
+        return payload;
+    }
+
+    function setRowStatus(tradeId, status, message) {
+        var row = document.getElementById('dtl-row-' + tradeId);
+        if (!row) return;
+        var cell = row.querySelector('.dtl-status');
+        if (status === 'sending') { cell.textContent = '⏳'; }
+        else if (status === 'ok') {
+            cell.textContent = '✓';
+            row.classList.add('dtl-sent');
+            row.querySelectorAll('input, select, button.dtl-send-btn').forEach(function(el) { el.disabled = true; });
+        } else if (status === 'error') {
+            cell.innerHTML = '✗<span class="dtl-status-err">' + (message || 'falha') + '</span>';
+        }
+    }
+
+    function sendRow(tradeId) {
+        setRowStatus(tradeId, 'sending');
+        var payload = buildPayload(tradeId);
+        return fetch('/api/trade-history/' + tradeId + '/enviar-diario-trade', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        })
+            .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+            .then(function(res) {
+                if (!res.ok || !res.j.ok) {
+                    setRowStatus(tradeId, 'error', res.j.error || 'falha ao enviar');
+                    return false;
+                }
+                setRowStatus(tradeId, 'ok');
+                return true;
+            })
+            .catch(function(e) {
+                setRowStatus(tradeId, 'error', String(e));
+                return false;
+            });
+    }
+
+    window.dtlSendRow = function(tradeId) { sendRow(tradeId); };
+
+    window.dtlSendAll = function() {
+        var btn = document.getElementById('dtl-send-all-btn');
+        var progress = document.getElementById('dtl-progress');
+        var pendingIds = ROWS.map(function(r) { return r.trade_id; })
+            .filter(function(id) {
+                var row = document.getElementById('dtl-row-' + id);
+                return row && !row.classList.contains('dtl-sent');
+            });
+        if (!pendingIds.length) return;
+
+        btn.disabled = true;
+        var done = 0;
+        var total = pendingIds.length;
+        progress.textContent = '0 de ' + total + ' enviados';
+
+        // Sequencial (não paralelo): evita estourar rate limit da API externa.
+        function next(i) {
+            if (i >= pendingIds.length) {
+                progress.textContent = done + ' de ' + total + ' enviados — concluído';
+                btn.disabled = false;
+                return;
+            }
+            sendRow(pendingIds[i]).then(function() {
+                done++;
+                progress.textContent = done + ' de ' + total + ' enviados';
+                next(i + 1);
+            });
+        }
+        next(0);
+    };
+})();
+</script>
+{% endblock %}

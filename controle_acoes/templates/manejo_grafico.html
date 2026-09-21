@@ -32,6 +32,7 @@
 .col-strike { width:132px; }
 .col-tick   { width:112px; }
 .col-num    { width:104px; }
+.col-fonte  { width:78px; }
 .col-x      { width:60px; }
 .mg-x, .mg-lock {
     background:none; border:none; cursor:pointer;
@@ -179,6 +180,7 @@
           <th class="col-strike">Strike</th>
           <th class="col-tick">Ticker</th>
           <th class="col-num" title="Preço médio de entrada original do braço — só se aplica a braços já existentes na estrutura">PM</th>
+          <th class="col-fonte" title="Qual cotação usar no Prêmio: Auto segue o lado (venda→bid, compra→ask); Bid/Ask forçam a ponta; Último usa o preço do último negócio">Fonte</th>
           <th class="col-num" title="Cotação atual de mercado do ticker">Prêmio</th>
           <th class="col-num" title="Lucro/prejuízo mark-to-market do braço: (Prêmio atual − PM) × qtd, ajustado por C/V — só se aplica a braços já existentes na estrutura">Lucro</th>
           <th class="col-num">Entrada</th>
@@ -190,7 +192,7 @@
       <tbody id="mg-body"></tbody>
       <tfoot>
         <tr class="mg-tot">
-          <td colspan="11" style="text-align:right;">Total da operação</td>
+          <td colspan="12" style="text-align:right;">Total da operação</td>
           <td id="mg-tot-ent">—</td>
           <td id="mg-tot-sai">—</td>
           <td colspan="2"></td>
@@ -624,6 +626,14 @@ function novaLinha(tipo, origem) {
           : '<input type="text" class="leg-ticker" readonly placeholder="—">') + '</td>'
       + '<td><input type="text" class="leg-pm" value="' + (origem === 'estrutura' ? '0,00' : '—') + '" readonly'
       +   ' title="Preço médio de entrada original do braço"' + (origem !== 'estrutura' ? ' disabled' : '') + '></td>'
+      + '<td>' + (isStock ? '<span class="mg-hint">—</span>'
+          : '<select class="leg-src" onchange="mgFonteMudou(this)"'
+            + ' title="Auto: venda usa bid, compra usa ask · Bid/Ask forçam a ponta · Último usa o preço de fechamento/último negócio">'
+            + '<option value="auto">Auto</option>'
+            + '<option value="bid">Bid</option>'
+            + '<option value="ask">Ask</option>'
+            + '<option value="last">Últ.</option>'
+            + '</select>') + '</td>'
       + '<td><input type="text" class="leg-premium" value="0,00" readonly'
       +   (isStock ? ' title="Cotação buscada via OpLab"' : ' title="Preenchido ao escolher o strike"') + '></td>'
       + '<td class="leg-lucro mg-hint" title="Lucro/prejuízo mark-to-market: (Prêmio atual − PM) × qtd, ajustado por C/V">—</td>'
@@ -812,12 +822,62 @@ function mgAplicaStrike(tr, strikeVal) {
     })[0];
     var o = row && ((tipo === 'PUT') ? row.put : row.call);
     if (!o) { tickerEl.value = ''; premioEl.value = '0,00'; return; }
-    var prem = (lado === 'SELL' ? (o.bid_eff || o.bid) : (o.ask_eff || o.ask)) || o.close || 0;
     tickerEl.value = o.symbol;
-    premioEl.value = fmtNum(prem);
+    premioEl.value = fmtNum(mgPrecoDaFonte(tr, o, lado));
+    mgMarcaCotacoes(tr, o);
     var ivEl = tr.querySelector('.leg-iv');
     if (ivEl && o.iv != null) ivEl.value = fmtNum(o.iv);
 }
+
+// Preço conforme a fonte escolhida na coluna "Fonte".
+// Auto mantém o comportamento histórico (quem vende recebe o bid, quem
+// compra paga o ask); Bid/Ask forçam a ponta mesmo contra o lado; Últ. usa
+// o preço do último negócio. Qualquer fonte cai para as demais quando a
+// escolhida não veio na cadeia (série sem book no momento).
+function mgPrecoDaFonte(tr, o, lado) {
+    var srcEl = tr.querySelector('.leg-src');
+    var src = srcEl ? srcEl.value : 'auto';
+    var bid = o.bid_eff || o.bid || 0;
+    var ask = o.ask_eff || o.ask || 0;
+    var last = o.close || 0;
+    if (src === 'bid')  return bid || last || ask || 0;
+    if (src === 'ask')  return ask || last || bid || 0;
+    if (src === 'last') return last || (lado === 'SELL' ? (bid || ask) : (ask || bid)) || 0;
+    return (lado === 'SELL' ? (bid || ask) : (ask || bid)) || last || 0;
+}
+
+// Guarda bid/ask/último na própria linha para o tooltip e para recalcular
+// o prêmio quando o usuário troca a fonte sem mexer no strike.
+function mgMarcaCotacoes(tr, o) {
+    var bid = o.bid_eff || o.bid || 0;
+    var ask = o.ask_eff || o.ask || 0;
+    var last = o.close || 0;
+    tr.dataset.bid = bid; tr.dataset.ask = ask; tr.dataset.last = last;
+    var premioEl = tr.querySelector('.leg-premium');
+    if (premioEl) {
+        premioEl.title = 'Bid ' + fmtNum(bid) + ' · Ask ' + fmtNum(ask)
+                       + ' · Último ' + fmtNum(last);
+    }
+}
+
+// Troca de fonte: recalcula o prêmio sem precisar reescolher o strike.
+window.mgFonteMudou = function (sel) {
+    var tr = sel.closest('tr');
+    var lado = tr.querySelector('.leg-side').value;
+    var bid = parseFloat(tr.dataset.bid || 0);
+    var ask = parseFloat(tr.dataset.ask || 0);
+    var last = parseFloat(tr.dataset.last || 0);
+    if (!bid && !ask && !last) {
+        // Sem cotação guardada ainda (linha nova): refaz pelo strike.
+        var strikeSel = tr.querySelector('.leg-strike-sel');
+        if (strikeSel && strikeSel.value) mgAplicaStrike(tr, strikeSel.value);
+        mgRecalc();
+        return;
+    }
+    var fake = { bid_eff: bid, ask_eff: ask, close: last };
+    tr.querySelector('.leg-premium').value = fmtNum(mgPrecoDaFonte(tr, fake, lado));
+    mgRecalc();
+};
 
 function mgAtualizaCotacaoAtivo(tr) {
     var ativo = (document.getElementById('mg-ativo').value || '').trim().toUpperCase();
@@ -1613,6 +1673,7 @@ function mgColetaLinhasParaPayload() {
             exp:        (eEl && eEl.value) ? eEl.value : '',
             ticker:     (tr.querySelector('.leg-ticker') || {}).value || '',
             iv:         ivEl ? parseVal(ivEl.value) : 0,
+            src:        (tr.querySelector('.leg-src') || {}).value || 'auto',
             on:         tr.querySelector('.leg-on').checked,
             fechada:    tr.dataset.fechada === '1',
             fechaValor: tr.dataset.fechaValor ? parseFloat(tr.dataset.fechaValor) : null,
@@ -1795,6 +1856,8 @@ window.mgAbrir = function (id) {
                 }
                 var ivEl = tr.querySelector('.leg-iv');
                 if (ivEl && l.iv) ivEl.value = fmtNum(l.iv);
+                var srcEl = tr.querySelector('.leg-src');
+                if (srcEl && l.src) srcEl.value = l.src;
                 if (l.legId) tr.dataset.legId = l.legId;
                 if (l.entryPrice != null) tr.dataset.entryPrice = l.entryPrice;
                 if (l.sideOriginal) tr.dataset.sideOriginal = l.sideOriginal;

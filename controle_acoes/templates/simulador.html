@@ -31,6 +31,7 @@
 .col-strike { width:132px; }
 .col-tick   { width:112px; }
 .col-num    { width:104px; }
+.col-fonte  { width:78px; }
 .col-x      { width:34px; }
 .sim-x {
     background:none; border:none; color:#f87171; cursor:pointer;
@@ -190,6 +191,7 @@
           <th class="col-dte" title="Dias até o vencimento desta perna">DTE</th>
           <th class="col-strike">Strike</th>
           <th class="col-tick">Ticker</th>
+          <th class="col-fonte" title="Qual cotação usar no Prêmio: Auto segue o lado (venda→bid, compra→ask); Bid/Ask forçam a ponta; Último usa o preço do último negócio">Fonte</th>
           <th class="col-num">Prêmio</th>
           <th class="col-num">Entrada</th>
           <th class="col-num">Saída</th>
@@ -200,7 +202,7 @@
       <tbody id="sim-body"></tbody>
       <tfoot>
         <tr class="sim-tot">
-          <td colspan="9" style="text-align:right;">Total da operação</td>
+          <td colspan="10" style="text-align:right;">Total da operação</td>
           <td id="sim-tot-ent">—</td>
           <td id="sim-tot-sai">—</td>
           <td colspan="2"></td>
@@ -519,6 +521,15 @@ function novaLinha(tipo) {
             + '<option value="">—</option></select>') + '</td>'
       + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
           : '<input type="text" class="leg-ticker" readonly placeholder="—">') + '</td>'
+      // Fonte da cotação usada no Prêmio (Auto/Bid/Ask/Último).
+      + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
+          : '<select class="leg-src" onchange="simFonteMudou(this)"'
+            + ' title="Auto: venda usa bid, compra usa ask · Bid/Ask forçam a ponta · Último usa o preço de fechamento/último negócio">'
+            + '<option value="auto">Auto</option>'
+            + '<option value="bid">Bid</option>'
+            + '<option value="ask">Ask</option>'
+            + '<option value="last">Últ.</option>'
+            + '</select>') + '</td>'
       // Prêmio: para opção vem do strike escolhido (readonly); para Ativo é
       // a cotação da ação buscada via OpLab (pregão aberto ou fechamento),
       // também readonly — o usuário não digita esse valor.
@@ -697,6 +708,54 @@ window.simStrikeMudou = function (sel) {
 // preenche ticker/prêmio. Prêmio executável: compra paga o ask, venda
 // recebe o bid — cai no último negócio quando não há book, mesmo
 // critério da tela de Cadeia de Opções.
+// Preço conforme a fonte escolhida na coluna "Fonte".
+// Auto mantém o comportamento histórico (quem vende recebe o bid, quem
+// compra paga o ask); Bid/Ask forçam a ponta mesmo contra o lado; Últ. usa
+// o preço do último negócio. Qualquer fonte cai para as demais quando a
+// escolhida não veio na cadeia (série sem book no momento).
+function simPrecoDaFonte(tr, o, lado) {
+    var srcEl = tr.querySelector('.leg-src');
+    var src = srcEl ? srcEl.value : 'auto';
+    var bid = o.bid_eff || o.bid || 0;
+    var ask = o.ask_eff || o.ask || 0;
+    var last = o.close || 0;
+    if (src === 'bid')  return bid || last || ask || 0;
+    if (src === 'ask')  return ask || last || bid || 0;
+    if (src === 'last') return last || (lado === 'SELL' ? (bid || ask) : (ask || bid)) || 0;
+    return (lado === 'SELL' ? (bid || ask) : (ask || bid)) || last || 0;
+}
+
+// Guarda bid/ask/último na linha: alimenta o tooltip do prêmio e permite
+// recalcular ao trocar a fonte sem reescolher o strike.
+function simMarcaCotacoes(tr, o) {
+    var bid = o.bid_eff || o.bid || 0;
+    var ask = o.ask_eff || o.ask || 0;
+    var last = o.close || 0;
+    tr.dataset.bid = bid; tr.dataset.ask = ask; tr.dataset.last = last;
+    var premioEl = tr.querySelector('.leg-premium');
+    if (premioEl) {
+        premioEl.title = 'Bid ' + fmtNum(bid) + ' · Ask ' + fmtNum(ask)
+                       + ' · Último ' + fmtNum(last);
+    }
+}
+
+window.simFonteMudou = function (sel) {
+    var tr = sel.closest('tr');
+    var lado = tr.querySelector('.leg-side').value;
+    var bid = parseFloat(tr.dataset.bid || 0);
+    var ask = parseFloat(tr.dataset.ask || 0);
+    var last = parseFloat(tr.dataset.last || 0);
+    if (!bid && !ask && !last) {
+        var strikeSel = tr.querySelector('.leg-strike-sel');
+        if (strikeSel && strikeSel.value) simAplicaStrike(tr, strikeSel.value);
+        simRecalc();
+        return;
+    }
+    var fake = { bid_eff: bid, ask_eff: ask, close: last };
+    tr.querySelector('.leg-premium').value = fmtNum(simPrecoDaFonte(tr, fake, lado));
+    simRecalc();
+};
+
 function simAplicaStrike(tr, strikeVal) {
     var tickerEl = tr.querySelector('.leg-ticker');
     var premioEl = tr.querySelector('.leg-premium');
@@ -711,9 +770,9 @@ function simAplicaStrike(tr, strikeVal) {
     })[0];
     var o = row && ((tipo === 'PUT') ? row.put : row.call);
     if (!o) { tickerEl.value = ''; premioEl.value = '0,00'; return; }
-    var prem = (lado === 'SELL' ? (o.bid_eff || o.bid) : (o.ask_eff || o.ask)) || o.close || 0;
     tickerEl.value = o.symbol;
-    premioEl.value = fmtNum(prem);
+    premioEl.value = fmtNum(simPrecoDaFonte(tr, o, lado));
+    simMarcaCotacoes(tr, o);
     // VI da opção escolhida, já vinda da cadeia (OpLab) — só é obrigatória
     // para o cálculo quando há vencimentos diferentes na estrutura (a perna
     // mais longa precisa de Black-Scholes), mas preenche sempre que houver
@@ -775,6 +834,7 @@ function lerPernas() {
             exp:     (eEl && eEl.value) ? eEl.value : null,
             iv:      ivEl ? (parseVal(ivEl.value) / 100) : 0,
             ticker:  (tr.querySelector('.leg-ticker') || {}).value || '',
+            src:     (tr.querySelector('.leg-src') || {}).value || 'auto',
             _tr:     tr
         });
     });
@@ -1259,6 +1319,7 @@ function simSalvarImpl(nome, asNew) {
         legs: legs.map(function (l) {
             return { type: l.type, side: l.side, qty: l.qty, strike: l.strike,
                      premium: l.premium, exp: l.exp || '', ticker: l.ticker,
+                     src: l.src || 'auto',
                      iv: l.iv ? l.iv * 100 : 0 };
         })
     };
@@ -1393,6 +1454,8 @@ window.simAbrir = function (id) {
                 }
                 var ivEl = tr.querySelector('.leg-iv');
                 if (ivEl && l.iv) ivEl.value = fmtNum(l.iv);
+                var srcEl = tr.querySelector('.leg-src');
+                if (srcEl && l.src) srcEl.value = l.src;
                 body.appendChild(tr);
             });
             document.getElementById('open-modal').style.display = 'none';

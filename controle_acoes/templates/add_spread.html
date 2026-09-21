@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card" style="max-width: 720px; margin: 0 auto; padding: 2rem;">
+<div class="card" style="max-width: 860px; margin: 0 auto; padding: 2rem;">
 
     {% if edit %}
     <h2>Editar Trava</h2>
@@ -41,125 +41,134 @@
     </div>
     {% endif %}
 
+    {# strike menor/maior por perna, conforme o tipo — só para o rótulo da linha #}
+    {% if spread_type in ('TRAVA_ALTA_CALL', 'TRAVA_ALTA_PUT') %}
+        {% set long_hint = 'strike menor' %}{% set short_hint = 'strike maior' %}
+    {% else %}
+        {% set long_hint = 'strike maior' %}{% set short_hint = 'strike menor' %}
+    {% endif %}
+    {% set opt_type = 'PUT' if 'PUT' in spread_type else 'CALL' %}
+
     <form method="POST" action="{{ url_for('edit_spread', id=spread.id) if edit else url_for('add_spread') }}">
         <input type="hidden" name="spread_type" value="{{ spread_type }}">
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-            <div>
+        {# ── Dados gerais ── #}
+        <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem;">
+            <div class="form-group" style="flex:1; min-width:160px; margin-bottom:0;">
                 <label>Ativo Subjacente (ex: PETR4, AAPL)</label>
-                <input type="text" name="underlying_asset" class="form-control" style="text-transform:uppercase"
+                <input type="text" name="underlying_asset" class="form-control" style="width:100%; text-transform:uppercase"
                     value="{{ spread.underlying_asset if edit else '' }}" required>
             </div>
-            <div>
+            <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
                 <label>Quantidade (contratos)</label>
-                <input type="number" name="quantity" class="form-control" id="spread-qty"
+                <input type="number" name="quantity" class="form-control" id="spread-qty" style="width:100%;"
                     value="{{ spread.quantity if edit else '100' }}" required>
                 <label style="display:inline-flex;align-items:center;gap:.3rem;cursor:pointer;
                               font-size:.75rem;color:var(--text-secondary);margin-top:.25rem;white-space:nowrap;">
                     <input type="checkbox" id="chk-lot100" style="margin:0;cursor:pointer;"> lotes de 100
                 </label>
-                <script>
-                (function(){
-                    var chk = document.getElementById('chk-lot100');
-                    var qty = document.getElementById('spread-qty');
-                    chk.checked = localStorage.getItem('legs-lot100') !== '0';
-                    function apply(){
-                        if (chk.checked) { qty.min = 100; qty.step = 100;
-                            if ((parseInt(qty.value, 10) || 0) < 100) qty.value = 100; }
-                        else { qty.min = 1; qty.step = 1; }
-                    }
-                    chk.addEventListener('change', function(){
-                        localStorage.setItem('legs-lot100', this.checked ? '1' : '0'); apply();
-                    });
-                    apply();
-                })();
-                </script>
             </div>
-            <div>
+            <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
                 <label>Vencimento</label>
-                <input type="date" name="expiration_date" class="form-control"
+                <input type="date" name="expiration_date" class="form-control" style="width:100%;"
                     value="{{ spread.expiration_date.strftime('%Y-%m-%d') if edit else '' }}" required>
             </div>
-            <div>
+            <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
                 <label>Data de Entrada</label>
-                <input type="date" name="entry_date" class="form-control"
+                <input type="date" name="entry_date" class="form-control" style="width:100%;"
                     value="{{ spread.entry_date.strftime('%Y-%m-%d') if (edit and spread.entry_date) else '' }}">
             </div>
-            <div>
-                <label>POP — Probabilidade de Lucro na montagem (%)</label>
-                <input type="text" name="pop" class="form-control" placeholder="ex: 72,5"
+            <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
+                <label>POP — Probabilidade de Lucro (%)</label>
+                <input type="text" name="pop" class="form-control" style="width:100%;" placeholder="ex: 72,5"
                     value="{{ '%.1f'|format(spread.pop)|replace('.', ',') if (edit and spread.pop) else '' }}">
             </div>
         </div>
 
-        <hr style="margin: 1.5rem 0; border-color: var(--border-color);">
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-
-            {# ===== LEG COMPRA ===== #}
-            <div style="border: 1px solid var(--success-color); border-radius: 8px; padding: 1rem;">
-                <h4 style="color: var(--success-color); margin-top: 0;">
-                    📗 Leg Compra (Long)
-                    {% if spread_type == 'TRAVA_ALTA_CALL' %}<small style="font-weight:normal"> — strike menor</small>
-                    {% elif spread_type == 'TRAVA_ALTA_PUT' %}<small style="font-weight:normal"> — strike menor</small>
-                    {% elif spread_type == 'TRAVA_BAIXA_PUT' %}<small style="font-weight:normal"> — strike maior</small>
-                    {% else %}<small style="font-weight:normal"> — strike maior</small>{% endif %}
-                </h4>
-                <div style="margin-bottom: 0.75rem;">
-                    <label>Ticker da Opção</label>
-                    <input type="text" name="leg_long_ticker" class="form-control" style="text-transform:uppercase"
-                        value="{{ spread.leg_long_ticker if edit else '' }}" required>
-                </div>
-                <div style="margin-bottom: 0.75rem;">
-                    <label>Strike</label>
-                    <input type="text" name="leg_long_strike" class="form-control"
-                        value="{{ '%.2f'|format(spread.leg_long_strike)|replace('.', ',') if edit else '' }}" required>
-                </div>
-                <div style="margin-bottom: 0.75rem;">
-                    <label>Prêmio Pago (entrada)</label>
-                    <input type="text" name="leg_long_price" class="form-control" id="leg_long_price"
-                        oninput="calcNet()"
-                        value="{{ '%.2f'|format(spread.leg_long_price)|replace('.', ',') if edit else '' }}" required>
-                </div>
-                <div>
-                    <label>Cotação Atual</label>
-                    <input type="text" name="leg_long_current" class="form-control"
-                        value="{{ '%.2f'|format(spread.leg_long_current)|replace('.', ',') if edit else '0,00' }}">
-                </div>
-            </div>
-
-            {# ===== LEG VENDA ===== #}
-            <div style="border: 1px solid var(--danger-color); border-radius: 8px; padding: 1rem;">
-                <h4 style="color: var(--danger-color); margin-top: 0;">
-                    📕 Leg Venda (Short)
-                    {% if spread_type == 'TRAVA_ALTA_CALL' %}<small style="font-weight:normal"> — strike maior</small>
-                    {% elif spread_type == 'TRAVA_ALTA_PUT' %}<small style="font-weight:normal"> — strike maior</small>
-                    {% elif spread_type == 'TRAVA_BAIXA_PUT' %}<small style="font-weight:normal"> — strike menor</small>
-                    {% else %}<small style="font-weight:normal"> — strike menor</small>{% endif %}
-                </h4>
-                <div style="margin-bottom: 0.75rem;">
-                    <label>Ticker da Opção</label>
-                    <input type="text" name="leg_short_ticker" class="form-control" style="text-transform:uppercase"
-                        value="{{ spread.leg_short_ticker if edit else '' }}" required>
-                </div>
-                <div style="margin-bottom: 0.75rem;">
-                    <label>Strike</label>
-                    <input type="text" name="leg_short_strike" class="form-control"
-                        value="{{ '%.2f'|format(spread.leg_short_strike)|replace('.', ',') if edit else '' }}" required>
-                </div>
-                <div style="margin-bottom: 0.75rem;">
-                    <label>Prêmio Recebido (entrada)</label>
-                    <input type="text" name="leg_short_price" class="form-control" id="leg_short_price"
-                        oninput="calcNet()"
-                        value="{{ '%.2f'|format(spread.leg_short_price)|replace('.', ',') if edit else '' }}" required>
-                </div>
-                <div>
-                    <label>Cotação Atual</label>
-                    <input type="text" name="leg_short_current" class="form-control"
-                        value="{{ '%.2f'|format(spread.leg_short_current)|replace('.', ',') if edit else '0,00' }}">
-                </div>
-            </div>
+        {# ── Tabela das 2 pernas (padrão Operação Estruturada) ── #}
+        <div style="overflow-x:auto; margin-bottom:1rem;">
+            <table id="legs-table" class="no-datatable" style="width:100%; border-collapse:collapse; font-size:.88rem;">
+                <thead>
+                    <tr style="background:var(--hover-bg);">
+                        <th style="padding:.5rem .4rem; text-align:left;">Perna</th>
+                        <th style="padding:.5rem .4rem; text-align:left;">Ticker</th>
+                        <th style="padding:.5rem .4rem; text-align:left;">Tipo</th>
+                        <th style="padding:.5rem .4rem; text-align:center;">Qtd</th>
+                        <th style="padding:.5rem .4rem; text-align:right;">Strike</th>
+                        <th style="padding:.5rem .4rem; text-align:right;">Prêmio Entrada</th>
+                        <th style="padding:.5rem .4rem; text-align:right;">Cotação Atual</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {# ===== PERNA COMPRA (LONG) ===== #}
+                    <tr class="leg-row" style="border-left:3px solid var(--success-color);">
+                        <td style="padding:.35rem .4rem; white-space:nowrap;">
+                            📗 <strong style="color:var(--success-color);">Compra</strong>
+                            <small style="color:var(--text-secondary); display:block;">{{ long_hint }}</small>
+                        </td>
+                        <td style="padding:.35rem .4rem;">
+                            <input type="text" name="leg_long_ticker" placeholder="PETRA40"
+                                   style="width:120px; text-transform:uppercase;"
+                                   value="{{ spread.leg_long_ticker if edit else '' }}" required>
+                        </td>
+                        <td style="padding:.35rem .4rem; color:var(--text-secondary);">{{ opt_type }}</td>
+                        <td style="padding:.35rem .4rem;">
+                            <span class="spread-qty-echo" style="display:inline-block; width:60px; text-align:center; color:var(--text-secondary);">—</span>
+                        </td>
+                        <td style="padding:.35rem .4rem;">
+                            <input type="text" name="leg_long_strike" placeholder="0,00"
+                                   style="width:80px; text-align:right;"
+                                   value="{{ '%.2f'|format(spread.leg_long_strike)|replace('.', ',') if edit else '' }}" required>
+                        </td>
+                        <td style="padding:.35rem .4rem;">
+                            <input type="text" name="leg_long_price" id="leg_long_price" placeholder="0,00"
+                                   style="width:80px; text-align:right;" oninput="calcNet()"
+                                   value="{{ '%.2f'|format(spread.leg_long_price)|replace('.', ',') if edit else '' }}" required>
+                        </td>
+                        <td style="padding:.35rem .4rem;">
+                            <input type="text" name="leg_long_current" placeholder="0,00"
+                                   style="width:80px; text-align:right;"
+                                   value="{{ '%.2f'|format(spread.leg_long_current)|replace('.', ',') if edit else '0,00' }}">
+                        </td>
+                    </tr>
+                    {# ===== PERNA VENDA (SHORT) ===== #}
+                    <tr class="leg-row" style="border-left:3px solid var(--danger-color);">
+                        <td style="padding:.35rem .4rem; white-space:nowrap;">
+                            📕 <strong style="color:var(--danger-color);">Venda</strong>
+                            <small style="color:var(--text-secondary); display:block;">{{ short_hint }}</small>
+                        </td>
+                        <td style="padding:.35rem .4rem;">
+                            <input type="text" name="leg_short_ticker" placeholder="PETRA42"
+                                   style="width:120px; text-transform:uppercase;"
+                                   value="{{ spread.leg_short_ticker if edit else '' }}" required>
+                        </td>
+                        <td style="padding:.35rem .4rem; color:var(--text-secondary);">{{ opt_type }}</td>
+                        <td style="padding:.35rem .4rem;">
+                            <span class="spread-qty-echo" style="display:inline-block; width:60px; text-align:center; color:var(--text-secondary);">—</span>
+                        </td>
+                        <td style="padding:.35rem .4rem;">
+                            <input type="text" name="leg_short_strike" placeholder="0,00"
+                                   style="width:80px; text-align:right;"
+                                   value="{{ '%.2f'|format(spread.leg_short_strike)|replace('.', ',') if edit else '' }}" required>
+                        </td>
+                        <td style="padding:.35rem .4rem;">
+                            <input type="text" name="leg_short_price" id="leg_short_price" placeholder="0,00"
+                                   style="width:80px; text-align:right;" oninput="calcNet()"
+                                   value="{{ '%.2f'|format(spread.leg_short_price)|replace('.', ',') if edit else '' }}" required>
+                        </td>
+                        <td style="padding:.35rem .4rem;">
+                            <input type="text" name="leg_short_current" placeholder="0,00"
+                                   style="width:80px; text-align:right;"
+                                   value="{{ '%.2f'|format(spread.leg_short_current)|replace('.', ',') if edit else '0,00' }}">
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
+        <p style="color:var(--text-secondary); font-size:.78rem; margin:-.4rem 0 1.25rem;">
+            Vencimento e quantidade valem para as duas pernas (preenchidos acima). Prêmio Entrada é o valor
+            pago na perna de compra e recebido na perna de venda.
+        </p>
 
         {# ===== RESULTADO LÍQUIDO DA MONTAGEM ===== #}
         <div id="net-result" style="margin-top: 1.25rem; padding: 0.75rem 1rem; border-radius: 8px; background: var(--card-bg); border: 1px solid var(--border-color); font-size: 0.95rem;">
@@ -192,5 +201,34 @@ function calcNet() {
     }
 }
 {% if edit %}calcNet();{% endif %}
+
+// Ecoa a Quantidade (campo único, acima da tabela) nas duas linhas —
+// só exibição, o valor real vai no POST pelo input "quantity".
+(function(){
+    var qty = document.getElementById('spread-qty');
+    var echoes = document.querySelectorAll('.spread-qty-echo');
+    function syncEcho(){
+        echoes.forEach(function(e){ e.textContent = qty.value || '—'; });
+    }
+    qty.addEventListener('input', syncEcho);
+    syncEcho();
+})();
+
+// Lotes de 100 — mesmo padrão já usado em Operação Estruturada.
+(function(){
+    var chk = document.getElementById('chk-lot100');
+    var qty = document.getElementById('spread-qty');
+    chk.checked = localStorage.getItem('legs-lot100') !== '0';
+    function apply(){
+        if (chk.checked) { qty.min = 100; qty.step = 100;
+            if ((parseInt(qty.value, 10) || 0) < 100) qty.value = 100; }
+        else { qty.min = 1; qty.step = 1; }
+        qty.dispatchEvent(new Event('input'));
+    }
+    chk.addEventListener('change', function(){
+        localStorage.setItem('legs-lot100', this.checked ? '1' : '0'); apply();
+    });
+    apply();
+})();
 </script>
 {% endblock %}

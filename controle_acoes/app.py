@@ -5274,87 +5274,83 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: (not x['risk_free'], -x['gain_pct']))
             rows = _diversify(rows, lambda x: x['call_symbol'], per_key=2)
 
-        elif op == 'fence':
-            # Cerca: a CALL vendida (coberta pela custódia) financia a trava de
-            # baixa com PUT. As ações já estão na carteira, então o que importa é
-            # a estrutura em si — crédito recebido e proteção obtida —, não o
-            # custo de comprar o papel. Também calcula o ratio (Fence Alavancada):
-            # quantas travas o prêmio de 1 CALL paga, explorando o fato de a trava
-            # OTM estreita ser barata.
-            # A PUT comprada fica perto do dinheiro (é ela que dá a proteção); a
-            # vendida abaixo, limitando a trava. A faixa da vendida começa em 0,80
-            # do spot para não cair no pozinho: put a R$ 0,05 gera ratio altíssimo
-            # no papel, mas protege uma faixa que o ativo dificilmente alcança.
-            put_hi  = [p for p in puts_ok  if 0.94 * spot <= p['strike'] <= 1.04 * spot][:12]
-            put_lo  = [p for p in puts_ok  if 0.80 * spot <= p['strike'] <  0.99 * spot][:14]
-            call_c  = [c for c in calls_ok if 0.99 * spot <= c['strike'] <= 1.20 * spot][:12]
-            # Escada de alavancagem: em vez de sempre devolver o N máximo (que
-            # empurrava a busca para travas de pozinho e enchia a tela de 10×),
-            # procura a melhor montagem PARA CADA relação desejada.
-            _RATIOS = (1, 2, 3, 5, 8)
-            por_ratio = {n: [] for n in _RATIOS}
-            for p2 in put_hi:
-                for p1 in put_lo:
-                    if p1['strike'] >= p2['strike']:
-                        continue
-                    largura = p2['strike'] - p1['strike']
-                    custo_trava = p2['ask'] - p1['bid']
-                    if custo_trava <= 0.01:
-                        continue          # trava de crédito ou pó: não é uma cerca
-                    for c in call_c:
-                        if c['strike'] <= p2['strike']:
+        elif op in ('fence', 'seagull_alavancada'):
+            # Fence Alavancada (baixa) e Seagull Alavancada de Alta são espelhadas:
+            #   • Fence:    vende 1 CALL 2× ITM (financia) + monta N travas de
+            #               DÉBITO com PUT, asa fixa de 2 pontos, no débito.
+            #               Ganha na queda até o limite das travas; acima da CALL
+            #               vendida entrega o papel (ou fica descoberto, sem ação).
+            #   • Seagull:  vende 1 PUT 2× ITM (financia) + monta N travas de
+            #               DÉBITO com CALL, asa fixa de 2 pontos.
+            #               Ganha na alta até o limite das travas; abaixo da PUT
+            #               vendida fica exercido (ou descoberto, sem caixa).
+            # N é o piso (prêmio da vendida ÷ custo da trava): o máximo de travas
+            # inteiras que o crédito recebido cobre, deixando a montagem o mais
+            # perto possível de custo zero sem passar do crédito recebido — o
+            # resíduo (crédito não usado ou pequeno débito) fica explícito.
+            is_alta = op == 'seagull_alavancada'
+            ASA = 2.0
+            if is_alta:
+                # PUT vendida 2× ITM: 2º strike igual ou acima do spot na grade.
+                sell_pool = [p for p in puts_ok if p['strike'] >= spot and p['bid'] >= 0.05]
+                # CALL comprada (perna baixa da trava): perto do spot, ATM/OTM leve.
+                buy_pool  = [c for c in calls_ok if 0.98 * spot <= c['strike'] <= 1.05 * spot and c['ask'] >= 0.03]
+            else:
+                # CALL vendida 2× ITM: 2º strike igual ou abaixo do spot na grade.
+                sell_pool = [c for c in reversed(calls_ok) if c['strike'] <= spot and c['bid'] >= 0.05]
+                # PUT comprada (perna alta da trava): perto do spot, ATM/OTM leve.
+                buy_pool  = [p for p in puts_ok if 0.95 * spot <= p['strike'] <= 1.02 * spot and p['ask'] >= 0.03]
+            if len(sell_pool) < 2:
+                sell_pool = []
+            else:
+                sell_pool = [sell_pool[1]]   # 2º strike ITM, exatamente — não uma faixa
+
+            for sell in sell_pool:
+                for buy in buy_pool:
+                    if is_alta:
+                        # Trava de alta: compra CALL (buy), vende a CALL cujo
+                        # strike fica mais perto de buy+ASA — asa fixa de 2
+                        # pontos, respeitando a grade real (nem sempre R$1).
+                        others = [c for c in calls_ok if c['strike'] > buy['strike']]
+                        if not others:
                             continue
-                        for n in _RATIOS:
-                            custo_total = custo_trava * n
-                            credito = c['bid'] - custo_total
-                            if credito < 0:
-                                continue   # o prêmio da CALL não paga N travas
-                            protecao = largura * n
-                            # A proteção precisa cobrir ao menos a queda até o ponto
-                            # em que a trava começa a valer; senão blinda uma faixa
-                            # que o papel talvez nem alcance.
-                            queda_ate = spot - p2['strike']
-                            if queda_ate > 0 and protecao < queda_ate:
-                                continue
-                            # Sobra de crédito sem uso não é virtude: se o prêmio
-                            # pagaria muito mais travas, esta linha está subusando a
-                            # CALL e existe uma relação maior mais adequada.
-                            if credito > custo_total * 1.5 and n < _RATIOS[-1]:
-                                continue
-                            por_ratio[n].append({
-                                'put_buy_symbol':  p2['symbol'], 'put_buy_strike':  p2['strike'], 'put_buy_ask':  p2['ask'],
-                                'put_sell_symbol': p1['symbol'], 'put_sell_strike': p1['strike'], 'put_sell_bid': p1['bid'],
-                                'call_symbol': c['symbol'], 'call_strike': c['strike'], 'call_bid': c['bid'],
-                                'trava_cost':    round(custo_trava, 2),
-                                'credit':        round(credito, 2),
-                                'largura':       round(largura, 2),
-                                'n_travas':      n,
-                                'protecao':      round(protecao, 2),
-                                'protecao_pct':  round(protecao / spot * 100, 1),
-                                'eficiencia':    round(protecao / c['bid'], 2) if c['bid'] > 0 else 0,
-                                'call_up_pct':   round((c['strike'] - spot) / spot * 100, 1),
-                                'prot_until':    p1['strike'],
-                                'prot_drop_pct': round((spot - p1['strike']) / spot * 100, 1),
-                                'risk_free':     credito >= 0,
-                                'zero_cost':     abs(credito) < 0.01,
-                            })
-            # Para cada relação, as melhores montagens — assim a tabela mostra a
-            # escada 1×, 2×, 3×, 5×, 8× em vez de só o topo. O critério é a
-            # proteção por ponto de queda coberto: privilegia a trava que age perto
-            # do dinheiro, em vez de empurrar a PUT vendida para o fim da faixa só
-            # porque o spread largo soma mais proteção nominal.
-            def _densidade(x):
-                alcance = spot - x['put_sell_strike']       # queda até o fim da trava
-                return x['protecao'] / alcance if alcance > 0 else 0
-            for n in _RATIOS:
-                cands = sorted(por_ratio[n],
-                               key=lambda x: (-_densidade(x), -x['credit']))
-                rows.extend(_diversify(cands,
-                                       lambda x: (x['put_buy_strike'], x['put_sell_strike']),
-                                       per_key=1, limit=3))
-            # Escada crescente (1× primeiro): a tabela vira uma comparação entre
-            # níveis de alavancagem, e não um ranking dominado pelo N mais alto.
-            rows.sort(key=lambda x: (x['n_travas'], -x['protecao'], -x['credit']))
+                        wing = min(others, key=lambda c: abs(c['strike'] - (buy['strike'] + ASA)))
+                        largura = wing['strike'] - buy['strike']
+                        custo_trava = buy['ask'] - wing['bid']
+                    else:
+                        others = [p for p in puts_ok if p['strike'] < buy['strike']]
+                        if not others:
+                            continue
+                        wing = min(others, key=lambda p: abs(p['strike'] - (buy['strike'] - ASA)))
+                        largura = buy['strike'] - wing['strike']
+                        custo_trava = buy['ask'] - wing['bid']
+                    if custo_trava <= 0.01 or largura <= 0:
+                        continue   # trava de crédito ou pó: fora do padrão asa 2 débito
+                    n_travas = int(sell['bid'] // custo_trava)
+                    if n_travas < 1:
+                        continue
+                    custo_total = custo_trava * n_travas
+                    residuo = round(sell['bid'] - custo_total, 2)   # crédito não usado (>=0)
+                    ganho_max = (largura - custo_trava) * n_travas
+                    row = {
+                        'sell_symbol': sell['symbol'], 'sell_strike': sell['strike'], 'sell_bid': sell['bid'],
+                        'buy_symbol':  buy['symbol'],  'buy_strike':  buy['strike'],  'buy_ask':  buy['ask'],
+                        'wing_symbol': wing['symbol'], 'wing_strike': wing['strike'], 'wing_bid': wing['bid'],
+                        'largura':      round(largura, 2),
+                        'trava_cost':   round(custo_trava, 2),
+                        'n_travas':     n_travas,
+                        'custo_total':  round(custo_total, 2),
+                        'residuo':      residuo,
+                        'zero_cost':    abs(residuo) < 0.01,
+                        'ganho_max':    round(ganho_max, 2),
+                        'dist_pct':     round((sell['strike'] - spot) / spot * 100, 1) if is_alta
+                                        else round((spot - sell['strike']) / spot * 100, 1),
+                    }
+                    rows.append(row)
+            # Menor resíduo primeiro (montagem mais perto de custo zero), depois
+            # mais travas (maior alavancagem) como critério de desempate.
+            rows.sort(key=lambda x: (x['residuo'], -x['n_travas']))
+            rows = _diversify(rows, lambda x: (x['sell_symbol'], x['buy_symbol']), per_key=1, limit=8)
 
         elif op == 'seagull':
             # Gaivota (alta): compra trava de alta com CALLs financiada por venda de PUT OTM.

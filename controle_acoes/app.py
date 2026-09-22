@@ -5274,9 +5274,9 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: (not x['risk_free'], -x['gain_pct']))
             rows = _diversify(rows, lambda x: x['call_symbol'], per_key=2)
 
-        elif op in ('fence', 'seagull_alavancada'):
+        elif op in ('fence_alavancada', 'seagull_alavancada'):
             # Fence Alavancada (baixa) e Seagull Alavancada de Alta são espelhadas:
-            #   • Fence:    vende 1 CALL 2× ITM (financia) + monta N travas de
+            #   • Fence Alav.: vende 1 CALL 2× ITM (financia) + monta N travas de
             #               DÉBITO com PUT, asa fixa de 2 pontos, no débito.
             #               Ganha na queda até o limite das travas; acima da CALL
             #               vendida entrega o papel (ou fica descoberto, sem ação).
@@ -5392,6 +5392,48 @@ def api_busca_operacoes(ticker):
             # Crédito primeiro; depois CALL comprada mais perto do dinheiro; menor custo
             rows.sort(key=lambda x: (not x['is_credit'], x['call_buy_strike'], x['net_cost']))
             rows = _diversify(rows, lambda x: (x['call_buy_symbol'], x['call_sell_symbol']), per_key=1)
+
+        elif op == 'fence':
+            # Fence (Cerca): simétrica de baixa da Seagull/Gaivota — compra
+            # trava de baixa com PUTs financiada por venda de CALL OTM.
+            # PUT comprada perto do dinheiro; prêmios-poeira descartados; a
+            # CALL deve financiar pelo menos metade do custo da trava.
+            p_lo   = [p for p in puts_ok
+                      if 0.94 * spot <= p['strike'] <= 1.03 * spot and p['ask'] >= 0.10][::-1][:10]
+            c_sell = [c for c in calls_ok
+                      if 1.03 * spot <= c['strike'] <= 1.15 * spot and c['bid'] >= 0.05][:12]
+            for p1 in p_lo:
+                p_his = [p for p in puts_ok
+                         if 0.85 * spot <= p['strike'] < p1['strike'] and p['bid'] >= 0.03][::-1][:8]
+                for p2 in p_his:
+                    spread_cost = p1['ask'] - p2['bid']
+                    if spread_cost <= 0:
+                        continue
+                    for c0 in c_sell:
+                        if c0['bid'] < 0.5 * spread_cost:   # CALL precisa financiar >= 50%
+                            continue
+                        net   = spread_cost - c0['bid']     # >0 débito, <=0 crédito
+                        width = p1['strike'] - p2['strike']
+                        max_gain = width - net
+                        if max_gain <= 0:
+                            continue
+                        if net > 0.35 * width:
+                            continue
+                        margin_pct = (c0['strike'] - spot) / spot * 100
+                        be_high = c0['strike'] - min(net, 0)   # crédito amortece a alta
+                        rows.append({
+                            'put_buy_symbol':   p1['symbol'], 'put_buy_strike':   p1['strike'], 'put_buy_ask':   p1['ask'],
+                            'put_sell_symbol':  p2['symbol'], 'put_sell_strike':  p2['strike'], 'put_sell_bid':  p2['bid'],
+                            'call_sell_symbol': c0['symbol'], 'call_sell_strike': c0['strike'], 'call_sell_bid': c0['bid'],
+                            'net_cost':   round(net, 2),
+                            'is_credit':  net <= 0,
+                            'max_gain':   round(max_gain, 2),
+                            'margin_pct': round(margin_pct, 1),
+                            'be_high':    round(be_high, 2),
+                        })
+            # Crédito primeiro; depois PUT comprada mais perto do dinheiro; menor custo
+            rows.sort(key=lambda x: (not x['is_credit'], -x['put_buy_strike'], x['net_cost']))
+            rows = _diversify(rows, lambda x: (x['put_buy_symbol'], x['put_sell_symbol']), per_key=1)
 
         elif op in ('trava_alta', 'trava_baixa'):
             # Travas no DÉBITO — varredura por faixa de strike + relação alvo:

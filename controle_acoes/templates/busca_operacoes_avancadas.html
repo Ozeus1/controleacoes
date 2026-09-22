@@ -646,6 +646,24 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     return 180;
   }
 
+  // O degrau de dias é só uma janela larga o suficiente para garantir que os
+  // N mensais pedidos caibam nela — mas meses têm duração variável, então às
+  // vezes ela traz um mensal A MAIS do que o usuário escolheu. Corta aqui,
+  // no resultado, para o select "Nº de vencimentos mensais" ser sempre
+  // exato — mantém as semanais intercaladas até o N-ésimo mensal.
+  function baCortarVencimentos(expirations, nMeses) {
+    var vistos = 0, out = [];
+    for (var i = 0; i < expirations.length; i++) {
+      var e = expirations[i];
+      if (e.is_monthly) {
+        vistos++;
+        if (vistos > nMeses) break;
+      }
+      out.push(e);
+    }
+    return out;
+  }
+
   function load(ticker) {
     ticker = (ticker || '').trim().toUpperCase();
     if (!ticker) return;
@@ -677,6 +695,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
           return;
         }
         try {
+          res.j.expirations = baCortarVencimentos(res.j.expirations || [], nMeses);
           render(res.j);
         } catch (e) {
           errBox.textContent = '⚠️ Erro ao montar os resultados: ' + e;

@@ -157,6 +157,11 @@
       <input type="checkbox" id="mg-venc-unico" style="cursor:pointer;margin:0;">
       vencimento único
     </label>
+    <label class="mg-chk-label" style="opacity:.75;"
+           title="Busca a cadeia pela BRAPI em vez da OpLab — útil quando a OpLab está fora do ar (comum à noite). A BRAPI não tem bid/ask, só o preço de fechamento/último negócio.">
+      <input type="checkbox" id="mg-usar-brapi" style="cursor:pointer;margin:0;" onchange="mgCarregarCadeia()">
+      usar BRAPI
+    </label>
     <span id="mg-cadeia-status" class="mg-hint" style="white-space:nowrap;"></span>
   </div>
 
@@ -547,9 +552,11 @@ window.mgCarregarCadeia = function () {
     var t = (document.getElementById('mg-ativo').value || '').trim().toUpperCase();
     var st = document.getElementById('mg-cadeia-status');
     if (!t) { st.textContent = ''; return; }
-    st.textContent = '⏳ buscando cadeia…';
+    var usarBrapi = document.getElementById('mg-usar-brapi').checked;
+    st.textContent = usarBrapi ? '⏳ buscando cadeia via BRAPI…' : '⏳ buscando cadeia…';
     var q = 'n=40&weekly=' + (document.getElementById('mg-weekly').checked ? '1' : '0')
-          + '&days=' + document.getElementById('mg-days').value;
+          + '&days=' + document.getElementById('mg-days').value
+          + (usarBrapi ? '&source=brapi' : '');
     fetch('/api/cadeia/' + encodeURIComponent(t) + '?' + q)
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(function (res) {
@@ -561,8 +568,9 @@ window.mgCarregarCadeia = function () {
                 return;
             }
             CADEIA = res.j;
-            st.style.color = '';
-            st.textContent = '✓ ' + (CADEIA.expirations || []).length + ' vencimento(s)';
+            st.style.color = CADEIA.source === 'brapi' ? '#fbbf24' : '';
+            st.textContent = (CADEIA.source === 'brapi' ? '🅱 BRAPI · ' : '✓ ')
+                            + (CADEIA.expirations || []).length + ' vencimento(s)';
             var spot = CADEIA.spot || 0;
             var ch = CADEIA.spot_change;
             document.getElementById('mg-spot').innerHTML = spot
@@ -854,9 +862,19 @@ function mgMarcaCotacoes(tr, o) {
     var last = o.close || 0;
     tr.dataset.bid = bid; tr.dataset.ask = ask; tr.dataset.last = last;
     var premioEl = tr.querySelector('.leg-premium');
+    var srcEl = tr.querySelector('.leg-src');
+    // BRAPI não tem book — bid/ask/último vêm todos iguais (o mesmo preço
+    // de fechamento). Trava a Fonte em "Últ." pra deixar isso visível, em
+    // vez de sugerir uma escolha entre pontas que não existem de fato.
+    var veioDaBrapi = o.bid_src === 'brapi' || o.ask_src === 'brapi';
+    if (srcEl) {
+        srcEl.disabled = veioDaBrapi;
+        if (veioDaBrapi) srcEl.value = 'last';
+    }
     if (premioEl) {
-        premioEl.title = 'Bid ' + fmtNum(bid) + ' · Ask ' + fmtNum(ask)
-                       + ' · Último ' + fmtNum(last);
+        premioEl.title = veioDaBrapi
+            ? 'BRAPI: preço de fechamento/último negócio (sem book de ofertas)'
+            : 'Bid ' + fmtNum(bid) + ' · Ask ' + fmtNum(ask) + ' · Último ' + fmtNum(last);
     }
 }
 

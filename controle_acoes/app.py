@@ -3969,11 +3969,226 @@ def api_busca_rolagem_buscar():
     return jsonify({'resultados': resultados})
 
 
+def _brapi_montar_cadeia(ticker, user_id, weekly, n_meses, n_strikes):
+    """Monta a mesma estrutura de resposta de api_cadeia, mas buscando os
+    preços via BRAPI (/v2/options/analytics) em vez do OpLab.
+
+    Usada como alternativa manual no Simulador quando o OpLab está fora do
+    ar (comum à noite) — a BRAPI não tem book (bid/ask), só o preço de
+    fechamento/último negócio, então bid_eff/ask_eff saem iguais; o front
+    marca a Fonte como Último para as linhas vindas daqui (bid_src='brapi').
+
+    A BRAPI não lista vencimentos disponíveis — diferente do OpLab, que
+    traz a cadeia inteira numa chamada só. Por isso calculamos aqui as
+    datas prováveis (3ª sexta de cada mês para mensais; todas as sextas da
+    janela para semanais) e tentamos /analytics em cada uma, com folga de
+    candidatos e tolerância de ±1/±2 dias (a B3 antecipa o vencimento
+    quando a 3ª sexta cai em feriado — ex.: 20/11/2026 é Consciência
+    Negra, a série real é 19/11). Vencimento sem opções responde 404 e é
+    tratado como vazio, não como erro fatal.
+    """
+    from datetime import date as _date, timedelta as _timedelta
+
+    spot, spot_change = _get_underlying_quote(ticker, user_id)
+    today = _date.today()
+
+    def _pega_spot_de(items):
+        for it in items:
+            up = it.get('underlyingPrice')
+            if up:
+                return float(up)
+        return None
+
+    def _adiciona_expiration(result_exps, exp_date, items, n_strikes):
+        calls, puts = [], []
+        for it in items:
+            sym = str(it.get('symbol') or '').upper()
+            if not sym:
+                continue
+            strike = it.get('strike')
+            if strike is None:
+                continue
+            px = it.get('optionPrice')
+            px = round(float(px), 2) if px is not None and float(px) > 0 else 0
+            iv = it.get('impliedVolatility')
+            row = {
+                'symbol':   sym,
+                'strike':   round(float(strike), 2),
+                'close':    px,
+                'bid':      px,
+                'ask':      px,
+                'var_pct':  0,
+                'vol_fin':  0,
+                'delta':    round(float(it['delta']), 2) if it.get('delta') is not None else None,
+                'teorico':  px,
+                'liquidez': 0,
+                'iv':       round(float(iv) * 100, 2) if iv is not None else None,
+                'mid':      px,
+                'bid_eff':  px,
+                'ask_eff':  px,
+                'bid_src':  'brapi',
+                'ask_src':  'brapi',
+            }
+            (puts if it.get('side') == 'put' else calls).append(row)
+
+        calls.sort(key=lambda x: x['strike'])
+        puts.sort(key=lambda x: x['strike'])
+
+        if spot:
+            calls_below = [c for c in calls if c['strike'] <= spot][-n_strikes:]
+            calls_above = [c for c in calls if c['strike'] >  spot][:n_strikes]
+            calls_sel   = calls_below + calls_above
+            puts_below  = [p for p in puts if p['strike'] <= spot][-n_strikes:]
+            puts_above  = [p for p in puts if p['strike'] >  spot][:n_strikes]
+            puts_sel    = puts_below + puts_above
+        else:
+            calls_sel = calls[:n_strikes]
+            puts_sel  = puts[:n_strikes * 2]
+
+        all_strikes = sorted({r['strike'] for r in calls_sel + puts_sel})
+        call_map = {c['strike']: c for c in calls_sel}
+        put_map  = {p['strike']: p for p in puts_sel}
+        rows = [{'strike': s, 'call': call_map.get(s), 'put': put_map.get(s)} for s in all_strikes]
+        result_exps.append({'exp': exp_date.isoformat(), 'rows': rows})
+
+    # ── Candidatos de vencimento mensal (3ª sexta), com folga ──
+    # A BRAPI (e a própria B3) só lança cada série mensal com certa
+    # antecedência — o mês seguinte pode ainda não existir mesmo a data
+    # caindo certinho na 3ª sexta. Gera candidatos além de n_meses e para
+    # de contar quando acumular n_meses vencimentos QUE RESPONDERAM dados
+    # de verdade (não apenas calculados).
+    monthly_candidates = []
+    y, m = today.year, today.month
+    while len(monthly_candidates) < n_meses + 9:
+        day, count, tf = 1, 0, None
+        while True:
+            d = _date(y, m, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    tf = d
+                    break
+            day += 1
+        if tf > today:
+            monthly_candidates.append(tf)
+        m += 1
+        if m > 12:
+            m = 1
+            y += 1
+
+    result_exps = []
+    erros = []
+    monthly_found = []   # vencimentos mensais que de fato voltaram dados
+
+    def _busca_exp_bruta(exp_date):
+        exp_str = exp_date.isoformat()
+        d, err = _brapi_opt_get('/analytics', {'underlying': ticker, 'expirationDate': exp_str}, user_id, timeout=20)
+        if err:
+            if '404' not in str(err):
+                erros.append(err)
+            return None
+        items = (d or {}).get('analytics') or []
+        return items or None
+
+    def _busca_exp(exp_date):
+        """Tenta a data exata e, se vazia, ±1/±2 dias. Retorna
+        (data_real, items) ou (None, None)."""
+        items = _busca_exp_bruta(exp_date)
+        if items is not None:
+            return exp_date, items
+        for delta in (-1, 1, -2, 2):
+            alt = exp_date + _timedelta(days=delta)
+            items = _busca_exp_bruta(alt)
+            if items is not None:
+                return alt, items
+        return None, None
+
+    for exp_date in monthly_candidates:
+        if len(monthly_found) >= n_meses:
+            break
+        real_date, items = _busca_exp(exp_date)
+        if items is None:
+            continue
+        monthly_found.append(real_date)
+        _adiciona_expiration(result_exps, real_date, items, n_strikes)
+        if not spot:
+            spot = _pega_spot_de(items)
+
+    # ── Semanais: toda sexta-feira entre hoje e o último mensal encontrado ──
+    if weekly and monthly_found:
+        last_monthly = monthly_found[-1]
+        d = today + _timedelta(days=(4 - today.weekday()) % 7)  # próxima sexta
+        weekly_candidates = []
+        while d <= last_monthly:
+            if d not in monthly_found:
+                weekly_candidates.append(d)
+            d += _timedelta(days=7)
+        for exp_date in weekly_candidates:
+            real_date, items = _busca_exp(exp_date)
+            if items is None:
+                continue
+            _adiciona_expiration(result_exps, real_date, items, n_strikes)
+
+    result_exps.sort(key=lambda e: e['exp'])
+
+    if not result_exps and erros:
+        raise OplabApiError(erros[0])
+
+    return {
+        'ticker':      ticker,
+        'spot':        spot,
+        'spot_change': spot_change,
+        'expirations': result_exps,
+        'weekly':      weekly,
+        'source':      'brapi',
+    }
+
+
 @app.route('/api/cadeia/<ticker>')
 @login_required
 def api_cadeia(ticker):
-    """Retorna cadeia de opções completa do ticker via OpLab, organizada por vencimento."""
+    """Retorna cadeia de opções completa do ticker via OpLab, organizada por vencimento.
+
+    ?source=brapi troca a fonte para a BRAPI (fallback manual, sem depender
+    de token OpLab) — pedido do usuário: o OpLab às vezes cai à noite,
+    e nesse horário o preço de fechamento/último negócio da BRAPI já
+    serve para simulação (não há book/bid-ask nela)."""
     ticker = ticker.strip().upper()
+
+    if request.args.get('source') == 'brapi':
+        if request.args.get('n_meses') is not None:
+            try:
+                n_meses_brapi = max(1, min(12, int(request.args.get('n_meses', 3))))
+            except (TypeError, ValueError):
+                n_meses_brapi = 3
+        elif request.args.get('days') is not None:
+            # Manejo Gráfico pede um prazo em dias, não em nº de mensais —
+            # converte para o equivalente em meses (30 dias ≈ 1 mês).
+            try:
+                _days = int(request.args.get('days', 90))
+            except (TypeError, ValueError):
+                _days = 90
+            n_meses_brapi = max(1, min(12, -(-_days // 30)))
+        else:
+            n_meses_brapi = 3
+        try:
+            n_strikes_brapi = int(request.args.get('n', 10))
+        except (TypeError, ValueError):
+            n_strikes_brapi = 10
+        if n_strikes_brapi not in (10, 20, 30, 40):
+            n_strikes_brapi = 10
+        weekly_brapi = request.args.get('weekly', '0') == '1'
+        try:
+            resp = _brapi_montar_cadeia(ticker, current_user.id, weekly_brapi, n_meses_brapi, n_strikes_brapi)
+        except OplabApiError as e:
+            return jsonify({'error': str(e)}), 502
+        except Exception:
+            app.logger.exception('api_cadeia (brapi) error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia via BRAPI.'}), 500
+        if not resp.get('expirations'):
+            return jsonify({'error': f'Sem opções na BRAPI para {ticker} nos vencimentos pesquisados.'}), 404
+        return jsonify(resp)
+
     token  = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
         return jsonify({'error': 'Token OpLab não configurado'}), 400

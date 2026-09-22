@@ -8,13 +8,6 @@
 #ba-ops button{margin:0 .35rem .4rem 0;padding:.32rem .7rem;border:1px solid #475569;border-radius:6px;
   font-size:.8rem;cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);transition:background .12s;}
 #ba-ops button.active{background:#0ea5e9;border-color:#0ea5e9;font-weight:700;}
-#ba-tickers{display:flex;flex-wrap:wrap;gap:.35rem;}
-.ba-tbtn{padding:.25rem .55rem;border:1px solid #475569;border-radius:5px;font-size:.8rem;
-  cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap;
-  display:inline-flex;align-items:center;gap:.35rem;}
-.ba-tbtn.active{background:#0ea5e9;border-color:#0ea5e9;font-weight:700;}
-.ba-tbtn .ba-tdel{color:#94a3b8;font-weight:700;cursor:pointer;font-style:normal;}
-.ba-tbtn .ba-tdel:hover{color:#f87171;}
 #ba-spot{font-size:1rem;font-weight:700;color:var(--text-primary);display:inline-flex;gap:.5rem;align-items:baseline;}
 #ba-spot .chg-pos{color:#34d399;font-size:.85rem;}
 #ba-spot .chg-neg{color:#f87171;font-size:.85rem;}
@@ -52,8 +45,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
 .metric-value{font-size:1rem;font-weight:600;color:var(--text-primary);}
 .metric-value.pos{color:#34d399;}
 .metric-value.neg{color:#f87171;}
-#add-ba-input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
-  border-radius:5px;padding:.25rem .5rem;font-size:.82rem;width:110px;text-transform:uppercase;}
+.sim-hint { color:var(--text-secondary); font-size:.78rem; }
 </style>
 {% endblock %}
 
@@ -142,28 +134,47 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     </div>
   </div>
 
-  <!-- Vencimentos -->
-  <div style="display:flex;align-items:center;gap:1.4rem;flex-wrap:wrap;margin:.1rem 0 .6rem;">
+  <!-- Ativo + Nº de vencimentos mensais (mesmo padrão do Simulador) -->
+  <div style="display:flex;align-items:flex-end;gap:1.2rem;flex-wrap:wrap;margin:.1rem 0 .6rem;">
+    <div style="display:flex;flex-direction:column;gap:.25rem;">
+      <label class="sim-hint">Ativo</label>
+      <div style="display:flex;gap:.4rem;">
+        <select id="ba-ativo-sel" onchange="baSelAtivoMudou(this)"
+                style="background:var(--card-bg);color:var(--text-primary);
+                       border:1px solid var(--border-color);border-radius:5px;
+                       padding:.35rem .5rem;font-size:.85rem;">
+          <option value="">selecione…</option>
+          {% for rv in ranking_vol %}
+          <option value="{{ rv.ticker }}">{{ rv.ticker }}</option>
+          {% endfor %}
+          <option value="__outro__">— outro ativo… —</option>
+        </select>
+        <input type="text" id="ba-ativo" placeholder="Digite o ticker" maxlength="10"
+               style="display:none;background:var(--card-bg);color:var(--text-primary);
+                      border:1px solid var(--border-color);border-radius:5px;
+                      padding:.35rem .55rem;font-size:.85rem;width:110px;text-transform:uppercase;">
+        <button class="btn btn-primary btn-sm" id="ba-buscar-btn">🔎 Buscar</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.25rem;">
+      <label class="sim-hint">Nº de vencimentos mensais</label>
+      <select id="ba-n-meses"
+              style="background:var(--card-bg);color:var(--text-primary);
+                     border:1px solid var(--border-color);border-radius:5px;
+                     padding:.35rem .5rem;font-size:.85rem;">
+        {% for i in range(1, 13) %}
+        <option value="{{ i }}" {{ 'selected' if i == 3 else '' }}>{{ i }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <label style="display:inline-flex;align-items:center;gap:.45rem;
-           font-size:.83rem;color:var(--text-secondary);cursor:pointer;">
+           font-size:.83rem;color:var(--text-secondary);cursor:pointer;padding-bottom:.4rem;">
       <input type="checkbox" id="ba-weekly" style="width:16px;height:16px;cursor:pointer;margin:0;">
       Incluir vencimentos <strong>semanais</strong>
     </label>
-    <label style="display:inline-flex;align-items:center;gap:.45rem;
-           font-size:.83rem;color:var(--text-secondary);cursor:pointer;">
-      Prazo máx. de busca:
-      <select id="ba-days" style="background:var(--card-bg);color:var(--text-primary);
-              border:1px solid var(--border-color);border-radius:5px;padding:.2rem .4rem;
-              font-size:.82rem;cursor:pointer;">
-        <option value="60" selected>60 dias</option>
-        <option value="90">90 dias</option>
-        <option value="120">120 dias</option>
-        <option value="180">180 dias</option>
-      </select>
-    </label>
     <!-- Box 4 Pontas: crédito (captação) ou débito (aplicação sintética) -->
     <label id="ba-boxmode-wrap" style="display:none;align-items:center;gap:.45rem;
-           font-size:.83rem;color:var(--text-secondary);cursor:pointer;">
+           font-size:.83rem;color:var(--text-secondary);cursor:pointer;padding-bottom:.4rem;">
       Operação:
       <select id="ba-boxmode" style="background:var(--card-bg);color:var(--text-primary);
               border:1px solid var(--border-color);border-radius:5px;padding:.2rem .4rem;
@@ -174,7 +185,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     </label>
     <!-- Slide Estrutural: amplitude mínima da estrutura (C − A) -->
     <label id="ba-rangemin-wrap" style="display:none;align-items:center;gap:.45rem;
-           font-size:.83rem;color:var(--text-secondary);cursor:pointer;">
+           font-size:.83rem;color:var(--text-secondary);cursor:pointer;padding-bottom:.4rem;">
       Range mín.:
       <input type="number" id="ba-rangemin" value="0" min="0" step="1"
              style="width:70px;background:var(--card-bg);color:var(--text-primary);
@@ -182,20 +193,11 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
                     padding:.2rem .4rem;font-size:.82rem;">
     </label>
     <label style="display:inline-flex;align-items:center;gap:.35rem;cursor:pointer;opacity:.75;
-           font-size:.83rem;color:var(--text-secondary);"
+           font-size:.83rem;color:var(--text-secondary);padding-bottom:.4rem;"
            title="Busca a cadeia pela BRAPI em vez da OpLab — útil quando a OpLab está fora do ar (comum à noite). A BRAPI não tem bid/ask, só o preço de fechamento/último negócio.">
       <input type="checkbox" id="ba-usar-brapi" style="cursor:pointer;margin:0;">
       usar BRAPI
     </label>
-  </div>
-
-  <!-- Tickers -->
-  <div style="margin-bottom:.6rem;">
-    <div id="ba-tickers" style="margin-bottom:.5rem;"></div>
-    <div style="display:flex;gap:.5rem;align-items:center;">
-      <input id="add-ba-input" type="text" placeholder="Novo ticker…" maxlength="10">
-      <button class="btn btn-secondary btn-sm" id="add-ba-btn">➕ Adicionar e buscar</button>
-    </div>
   </div>
 
   <div id="ba-loading">⏳ Varrendo a cadeia de opções…</div>
@@ -228,10 +230,6 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
   </div>
 </div>
 
-<script>
-var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ranking_vol else
-    "['ABEV3','ASAI3','B3SA3','BBAS3','BBDC4','BBSE3','BRAP4','ITUB4','LREN3','PETR3','PETR4','PRIO3','USIM5','VALE3','WEGE3']"|safe }};
-</script>
 <script>
 (function() {
   var currentOp = 'call_seco';
@@ -310,55 +308,28 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
   }
 
-  // ── Tickers gerenciáveis (mesmas chaves da Busca de Operações) ─────────────
-  var KEY_CUSTOM  = 'bo-tickers-custom';
-  var KEY_REMOVED = 'bo-tickers-removed';
-  function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } }
-  function lsSet(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
-  function tickerList() {
-    var removed = lsGet(KEY_REMOVED);
-    var seen = {}, list = [];
-    ['BOVA11'].concat(SERVER_TICKERS).concat(lsGet(KEY_CUSTOM)).forEach(function(t) {
-      t = (t || '').toUpperCase();
-      if (t && !seen[t] && removed.indexOf(t) === -1) { seen[t] = 1; list.push(t); }
-    });
-    return list;
-  }
-  function renderTickers() {
-    document.getElementById('ba-tickers').innerHTML = tickerList().map(function(t) {
-      return '<span class="ba-tbtn' + (t === currentTicker ? ' active' : '') + '" data-t="' + t + '">' +
-             t + '<b class="ba-tdel" title="Remover atalho" data-t="' + t + '">×</b></span>';
-    }).join('');
-  }
-  function addTicker(t) {
+  // ── Seleção de ativo (mesmo padrão do Simulador) ────────────────────────────
+  window.baSelAtivoMudou = function(sel) {
+    var livre = sel.value === '__outro__';
+    var txt = document.getElementById('ba-ativo');
+    txt.style.display = livre ? '' : 'none';
+    if (livre) { txt.value = ''; txt.focus(); return; }
+    txt.value = sel.value;
+    if (sel.value) load(sel.value);
+  };
+
+  function baSetAtivo(t) {
     t = (t || '').trim().toUpperCase();
-    if (!t) return;
-    var removed = lsGet(KEY_REMOVED);
-    var idx = removed.indexOf(t);
-    if (idx >= 0) { removed.splice(idx, 1); lsSet(KEY_REMOVED, removed); }
-    if (tickerList().indexOf(t) === -1) {
-      var custom = lsGet(KEY_CUSTOM);
-      custom.push(t);
-      lsSet(KEY_CUSTOM, custom);
+    var sel = document.getElementById('ba-ativo-sel');
+    var txt = document.getElementById('ba-ativo');
+    var opt = Array.prototype.filter.call(sel.options, function(o) { return o.value === t; })[0];
+    if (opt) {
+      sel.value = t; txt.value = t; txt.style.display = 'none';
+    } else {
+      sel.value = t ? '__outro__' : '';
+      txt.value = t; txt.style.display = t ? '' : 'none';
     }
-    renderTickers();
   }
-  function removeTicker(t) {
-    var custom = lsGet(KEY_CUSTOM);
-    var idx = custom.indexOf(t);
-    if (idx >= 0) { custom.splice(idx, 1); lsSet(KEY_CUSTOM, custom); }
-    var removed = lsGet(KEY_REMOVED);
-    if (removed.indexOf(t) === -1 && (t === 'BOVA11' || SERVER_TICKERS.indexOf(t) !== -1)) {
-      removed.push(t); lsSet(KEY_REMOVED, removed);
-    }
-    renderTickers();
-  }
-  document.getElementById('ba-tickers').addEventListener('click', function(ev) {
-    var del = ev.target.closest('.ba-tdel');
-    if (del) { ev.stopPropagation(); removeTicker(del.dataset.t); return; }
-    var chip = ev.target.closest('.ba-tbtn');
-    if (chip) load(chip.dataset.t);
-  });
 
   // ── Tabela genérica ────────────────────────────────────────────────────────
   function legBadge(l) {
@@ -662,19 +633,32 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   });
 
   // ── Carregamento ──────────────────────────────────────────────────────────
+  // O backend segue trabalhando com uma janela em dias corridos (max_days),
+  // mas a tela agora pede "Nº de vencimentos mensais" (igual ao Simulador) —
+  // converte para o degrau de dias mais próximo que cobre N meses (30 dias/mês
+  // + folga de ~10 dias para a 3ª sexta do último mês entrar na janela).
+  function baNMesesParaDays(nMeses) {
+    var alvo = nMeses * 31 + 10;
+    var degraus = [60, 90, 120, 180];
+    for (var i = 0; i < degraus.length; i++) {
+      if (alvo <= degraus[i]) return degraus[i];
+    }
+    return 180;
+  }
+
   function load(ticker) {
     ticker = (ticker || '').trim().toUpperCase();
     if (!ticker) return;
     currentTicker = ticker;
-    addTicker(ticker);
-    renderTickers();
+    baSetAtivo(ticker);
     loading.style.display = 'block';
     errBox.style.display = 'none';
     results.innerHTML = '';
     spotEl.innerHTML = '';
     modeEl.style.display = 'none';
     var weekly = document.getElementById('ba-weekly').checked ? '1' : '0';
-    var days   = document.getElementById('ba-days').value;
+    var nMeses = parseInt(document.getElementById('ba-n-meses').value, 10) || 3;
+    var days   = baNMesesParaDays(nMeses);
     var extra  = '';
     if (currentOp === 'box4') {
       extra = '&box_mode=' + document.getElementById('ba-boxmode').value;
@@ -733,7 +717,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   document.getElementById('ba-weekly').addEventListener('change', function() {
     if (currentTicker) load(currentTicker);
   });
-  document.getElementById('ba-days').addEventListener('change', function() {
+  document.getElementById('ba-n-meses').addEventListener('change', function() {
     if (currentTicker) load(currentTicker);
   });
   document.getElementById('ba-boxmode').addEventListener('change', function() {
@@ -742,13 +726,14 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   document.getElementById('ba-rangemin').addEventListener('change', function() {
     if (currentTicker) load(currentTicker);
   });
-  document.getElementById('add-ba-btn').addEventListener('click', function() {
-    var inp = document.getElementById('add-ba-input');
-    load(inp.value);
-    inp.value = '';
+  document.getElementById('ba-buscar-btn').addEventListener('click', function() {
+    var t = document.getElementById('ba-ativo-sel').value === '__outro__'
+      ? document.getElementById('ba-ativo').value
+      : document.getElementById('ba-ativo-sel').value;
+    load(t);
   });
-  document.getElementById('add-ba-input').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') { load(this.value); this.value = ''; }
+  document.getElementById('ba-ativo').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') load(this.value);
   });
 
   // Pré-seleção de operação via URL (?op=...) — usado pela Ajuda de Operações
@@ -780,12 +765,10 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     });
   })();
 
-  renderTickers();
-
   // Pré-seleção de ativo via URL (?ticker=...) — usado pelo Ranking de
-  // Volatilidade e outras telas; insere o ticker na lista se ainda não estiver.
+  // Volatilidade e outras telas.
   var qTicker = new URLSearchParams(location.search).get('ticker');
-  if (qTicker) load(qTicker);
+  if (qTicker) { baSetAtivo(qTicker); load(qTicker); }
 })();
 </script>
 {% endblock %}

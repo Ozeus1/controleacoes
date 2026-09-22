@@ -2,13 +2,6 @@
 {% block title %}Busca de Operações{% endblock %}
 {% block extra_scripts %}
 <style>
-#bo-tickers{display:flex;flex-wrap:wrap;gap:.35rem;}
-.bo-tbtn{display:inline-flex;align-items:center;gap:.35rem;padding:.25rem .5rem;border:1px solid #475569;
-  border-radius:5px;font-size:.8rem;cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);
-  white-space:nowrap;transition:background .12s;}
-.bo-tbtn.active{background:#7c3aed;border-color:#7c3aed;font-weight:700;}
-.bo-tdel{color:#94a3b8;font-weight:700;font-size:.85rem;line-height:1;padding:0 .1rem;border-radius:3px;}
-.bo-tdel:hover{color:#f87171;background:rgba(248,113,113,.15);}
 #bo-ops{display:flex;flex-wrap:wrap;gap:.4rem;margin:.7rem 0;}
 .bo-obtn{padding:.35rem .8rem;border:1px solid #475569;border-radius:6px;font-size:.82rem;
   cursor:pointer;color:#e2e8f0;background:var(--hover-bg,#334155);white-space:nowrap;transition:background .12s;}
@@ -58,8 +51,7 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
 .metric-value{font-size:1.05rem;font-weight:600;color:var(--text-primary);}
 .metric-value.pos{color:#34d399;}
 .metric-value.neg{color:#f87171;}
-#add-bo-input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
-  border-radius:5px;padding:.25rem .5rem;font-size:.82rem;width:110px;text-transform:uppercase;}
+.sim-hint { color:var(--text-secondary); font-size:.78rem; }
 </style>
 {% endblock %}
 
@@ -106,40 +98,50 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
     <button class="bo-obtn" data-op="zebra">🦓 ZEBRA</button>
   </div>
 
-  <!-- Vencimentos: incluir semanais + janela de prazo -->
-  <div style="display:flex;align-items:center;gap:1.4rem;flex-wrap:wrap;margin:.1rem 0 .6rem;">
+  <!-- Ativo + Nº de vencimentos mensais (mesmo padrão do Simulador) -->
+  <div style="display:flex;align-items:flex-end;gap:1.2rem;flex-wrap:wrap;margin:.1rem 0 .6rem;">
+    <div style="display:flex;flex-direction:column;gap:.25rem;">
+      <label class="sim-hint">Ativo</label>
+      <div style="display:flex;gap:.4rem;">
+        <select id="bo-ativo-sel" onchange="boSelAtivoMudou(this)"
+                style="background:var(--card-bg);color:var(--text-primary);
+                       border:1px solid var(--border-color);border-radius:5px;
+                       padding:.35rem .5rem;font-size:.85rem;">
+          <option value="">selecione…</option>
+          {% for rv in ranking_vol %}
+          <option value="{{ rv.ticker }}">{{ rv.ticker }}</option>
+          {% endfor %}
+          <option value="__outro__">— outro ativo… —</option>
+        </select>
+        <input type="text" id="bo-ativo" placeholder="Digite o ticker" maxlength="10"
+               style="display:none;background:var(--card-bg);color:var(--text-primary);
+                      border:1px solid var(--border-color);border-radius:5px;
+                      padding:.35rem .55rem;font-size:.85rem;width:110px;text-transform:uppercase;">
+        <button class="btn btn-primary btn-sm" id="bo-buscar-btn">🔎 Buscar</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.25rem;">
+      <label class="sim-hint">Nº de vencimentos mensais</label>
+      <select id="bo-n-meses"
+              style="background:var(--card-bg);color:var(--text-primary);
+                     border:1px solid var(--border-color);border-radius:5px;
+                     padding:.35rem .5rem;font-size:.85rem;">
+        {% for i in range(1, 13) %}
+        <option value="{{ i }}" {{ 'selected' if i == 3 else '' }}>{{ i }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <label id="bo-weekly-wrap" style="display:inline-flex;align-items:center;gap:.45rem;
-           font-size:.83rem;color:var(--text-secondary);cursor:pointer;">
+           font-size:.83rem;color:var(--text-secondary);cursor:pointer;padding-bottom:.4rem;">
       <input type="checkbox" id="bo-weekly" style="width:16px;height:16px;cursor:pointer;margin:0;">
       Incluir vencimentos <strong>semanais</strong> (desmarcado: apenas <strong>mensais</strong>)
     </label>
-    <label style="display:inline-flex;align-items:center;gap:.45rem;
-           font-size:.83rem;color:var(--text-secondary);cursor:pointer;">
-      Prazo máx. de busca:
-      <select id="bo-days" style="background:var(--card-bg);color:var(--text-primary);
-              border:1px solid var(--border-color);border-radius:5px;padding:.2rem .4rem;
-              font-size:.82rem;cursor:pointer;">
-        <option value="60" selected>60 dias</option>
-        <option value="90">90 dias</option>
-        <option value="120">120 dias</option>
-        <option value="180">180 dias</option>
-      </select>
-    </label>
     <label style="display:inline-flex;align-items:center;gap:.35rem;cursor:pointer;opacity:.75;
-           font-size:.83rem;color:var(--text-secondary);"
+           font-size:.83rem;color:var(--text-secondary);padding-bottom:.4rem;"
            title="Busca a cadeia pela BRAPI em vez da OpLab — útil quando a OpLab está fora do ar (comum à noite). A BRAPI não tem bid/ask, só o preço de fechamento/último negócio.">
       <input type="checkbox" id="bo-usar-brapi" style="cursor:pointer;margin:0;">
       usar BRAPI
     </label>
-  </div>
-
-  <!-- Tickers (gerenciável: + adiciona, × exclui) -->
-  <div style="margin-bottom:.6rem;">
-    <div id="bo-tickers" style="margin-bottom:.5rem;"></div>
-    <div style="display:flex;gap:.5rem;align-items:center;">
-      <input id="add-bo-input" type="text" placeholder="Novo ticker…" maxlength="10">
-      <button class="btn btn-secondary btn-sm" id="add-bo-btn">➕ Adicionar e buscar</button>
-    </div>
   </div>
 
   <div id="bo-loading">⏳ Varrendo a cadeia de opções…</div>
@@ -175,10 +177,6 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
   </div>
 </div>
 
-<script>
-var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ranking_vol else
-    "['ABEV3','ASAI3','B3SA3','BBAS3','BBDC4','BBSE3','BRAP4','ITUB4','LREN3','PETR3','PETR4','PRIO3','USIM5','VALE3','WEGE3']"|safe }};
-</script>
 <script>
 (function() {
   var SELIC = {{ selic }};
@@ -238,61 +236,28 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       : '';
   }
 
-  // ── Atalhos de tickers gerenciáveis (localStorage) ─────────────────────────
-  var KEY_CUSTOM  = 'bo-tickers-custom';
-  var KEY_REMOVED = 'bo-tickers-removed';
-  function lsGet(k) { try { return JSON.parse(localStorage.getItem(k)) || []; } catch (e) { return []; } }
-  function lsSet(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
+  // ── Seleção de ativo (mesmo padrão do Simulador) ────────────────────────────
+  window.boSelAtivoMudou = function(sel) {
+    var livre = sel.value === '__outro__';
+    var txt = document.getElementById('bo-ativo');
+    txt.style.display = livre ? '' : 'none';
+    if (livre) { txt.value = ''; txt.focus(); return; }
+    txt.value = sel.value;
+    if (sel.value) load(sel.value);
+  };
 
-  function tickerList() {
-    var removed = lsGet(KEY_REMOVED);
-    var seen = {}, list = [];
-    ['BOVA11'].concat(SERVER_TICKERS).concat(lsGet(KEY_CUSTOM)).forEach(function(t) {
-      t = (t || '').toUpperCase();
-      if (t && !seen[t] && removed.indexOf(t) === -1) { seen[t] = 1; list.push(t); }
-    });
-    return list;
-  }
-
-  function renderTickers() {
-    var host = document.getElementById('bo-tickers');
-    host.innerHTML = tickerList().map(function(t) {
-      return '<span class="bo-tbtn' + (t === currentTicker ? ' active' : '') + '" data-t="' + t + '">' +
-             t + '<b class="bo-tdel" title="Remover atalho" data-t="' + t + '">×</b></span>';
-    }).join('');
-  }
-
-  function addTicker(t) {
+  function boSetAtivo(t) {
     t = (t || '').trim().toUpperCase();
-    if (!t) return;
-    var removed = lsGet(KEY_REMOVED);
-    var idx = removed.indexOf(t);
-    if (idx >= 0) { removed.splice(idx, 1); lsSet(KEY_REMOVED, removed); }
-    if (tickerList().indexOf(t) === -1) {
-      var custom = lsGet(KEY_CUSTOM);
-      custom.push(t);
-      lsSet(KEY_CUSTOM, custom);
+    var sel = document.getElementById('bo-ativo-sel');
+    var txt = document.getElementById('bo-ativo');
+    var opt = Array.prototype.filter.call(sel.options, function(o) { return o.value === t; })[0];
+    if (opt) {
+      sel.value = t; txt.value = t; txt.style.display = 'none';
+    } else {
+      sel.value = t ? '__outro__' : '';
+      txt.value = t; txt.style.display = t ? '' : 'none';
     }
-    renderTickers();
   }
-
-  function removeTicker(t) {
-    var custom = lsGet(KEY_CUSTOM);
-    var idx = custom.indexOf(t);
-    if (idx >= 0) { custom.splice(idx, 1); lsSet(KEY_CUSTOM, custom); }
-    var removed = lsGet(KEY_REMOVED);
-    if (removed.indexOf(t) === -1 && (t === 'BOVA11' || SERVER_TICKERS.indexOf(t) !== -1)) {
-      removed.push(t); lsSet(KEY_REMOVED, removed);
-    }
-    renderTickers();
-  }
-
-  document.getElementById('bo-tickers').addEventListener('click', function(ev) {
-    var del = ev.target.closest('.bo-tdel');
-    if (del) { ev.stopPropagation(); removeTicker(del.dataset.t); return; }
-    var chip = ev.target.closest('.bo-tbtn');
-    if (chip) load(chip.dataset.t);
-  });
 
   // ── Tabelas por operação (todas as linhas clicáveis) ───────────────────────
   function rowAttr(expIdx, j) {
@@ -1403,12 +1368,24 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   });
 
   // ── Carregamento ──────────────────────────────────────────────────────────
+  // O backend segue trabalhando com uma janela em dias corridos (max_days),
+  // mas a tela agora pede "Nº de vencimentos mensais" (igual ao Simulador) —
+  // converte para o degrau de dias mais próximo que cobre N meses (30 dias/mês
+  // + folga de ~10 dias para a 3ª sexta do último mês entrar na janela).
+  function boNMesesParaDays(nMeses) {
+    var alvo = nMeses * 31 + 10;
+    var degraus = [60, 90, 120, 180];
+    for (var i = 0; i < degraus.length; i++) {
+      if (alvo <= degraus[i]) return degraus[i];
+    }
+    return 180;
+  }
+
   function load(ticker) {
     ticker = (ticker || '').trim().toUpperCase();
     if (!ticker) return;
     currentTicker = ticker;
-    addTicker(ticker);   // busca também adiciona ao atalho
-    renderTickers();
+    boSetAtivo(ticker);
     loading.style.display = 'block';
     errBox.style.display = 'none';
     results.innerHTML = '';
@@ -1416,7 +1393,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     modeEl.style.display = 'none';
 
     var weekly = document.getElementById('bo-weekly').checked ? '1' : '0';
-    var days   = document.getElementById('bo-days').value;
+    var nMeses = parseInt(document.getElementById('bo-n-meses').value, 10) || 3;
+    var days   = boNMesesParaDays(nMeses);
     var usarBrapi = document.getElementById('bo-usar-brapi').checked;
     fetch('/api/busca-operacoes/' + encodeURIComponent(ticker) +
           '?op=' + encodeURIComponent(currentOp) + '&weekly=' + weekly + '&days=' + days +
@@ -1457,19 +1435,20 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
   document.getElementById('bo-weekly').addEventListener('change', function() {
     if (currentTicker) load(currentTicker);
   });
-  document.getElementById('bo-days').addEventListener('change', function() {
+  document.getElementById('bo-n-meses').addEventListener('change', function() {
     if (currentTicker) load(currentTicker);
   });
   document.getElementById('bo-usar-brapi').addEventListener('change', function() {
     if (currentTicker) load(currentTicker);
   });
-  document.getElementById('add-bo-btn').addEventListener('click', function() {
-    var inp = document.getElementById('add-bo-input');
-    load(inp.value);
-    inp.value = '';
+  document.getElementById('bo-buscar-btn').addEventListener('click', function() {
+    var t = document.getElementById('bo-ativo-sel').value === '__outro__'
+      ? document.getElementById('bo-ativo').value
+      : document.getElementById('bo-ativo-sel').value;
+    load(t);
   });
-  document.getElementById('add-bo-input').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') { load(this.value); this.value = ''; }
+  document.getElementById('bo-ativo').addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') load(this.value);
   });
 
   // Pré-seleção de operação via URL (?op=...) — usado pela Ajuda de Operações
@@ -1500,12 +1479,10 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     });
   })();
 
-  renderTickers();
-
   // Pré-seleção de ativo via URL (?ticker=...) — usado pelo Ranking de
-  // Volatilidade e outras telas; insere o ticker na lista se ainda não estiver.
+  // Volatilidade e outras telas.
   var qTicker = new URLSearchParams(location.search).get('ticker');
-  if (qTicker) load(qTicker);
+  if (qTicker) { boSetAtivo(qTicker); load(qTicker); }
 })();
 </script>
 {% endblock %}

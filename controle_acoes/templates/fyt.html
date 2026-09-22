@@ -345,6 +345,13 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       </div>
     </div>
 
+    <div class="fyt-campo" style="flex-direction:row;align-items:center;gap:.4rem;justify-content:flex-end;">
+      <input type="checkbox" id="fyt-usar-brapi" style="width:auto;cursor:pointer;">
+      <label for="fyt-usar-brapi" style="text-transform:none;font-size:.8rem;cursor:pointer;opacity:.75;"
+             title="Busca a cadeia pela BRAPI em vez da OpLab — útil quando a OpLab está fora do ar (comum à noite). A BRAPI não tem bid/ask, só o preço de fechamento/último negócio.">
+        usar BRAPI</label>
+    </div>
+
     <div class="fyt-campo" style="justify-content:flex-end;">
       <label>&nbsp;</label>
       <button class="btn btn-primary btn-sm" id="fyt-buscar" style="padding:.45rem .9rem;">
@@ -496,6 +503,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       return;
     }
     var estrutura = opSel.value;
+    var usarBrapi = document.getElementById('fyt-usar-brapi').checked;
     var url, q;
     if (estrutura === 'thl') {
       q = new URLSearchParams({
@@ -504,6 +512,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         max_px: document.getElementById('fyt-thl-max-px').value || '',
         weekly: thlWeeklyChk.checked ? '1' : ''
       });
+      if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-thl/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'mannerheim') {
       q = new URLSearchParams({
@@ -513,6 +522,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         strike_pct: document.getElementById('fyt-mann-strike-pct').value || '10',
         min_thl:    document.getElementById('fyt-mann-min-thl').value || ''
       });
+      if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-mannerheim/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'trava_alta') {
       q = new URLSearchParams({
@@ -526,6 +536,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         preco_min:   document.getElementById('fyt-trava-preco-min').value || '-8',
         preco_max:   document.getElementById('fyt-trava-preco-max').value || '8'
       });
+      if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-trava-alta/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'trava_baixa') {
       q = new URLSearchParams({
@@ -539,6 +550,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         preco_min:   document.getElementById('fyt-travab-preco-min').value || '-8',
         preco_max:   document.getElementById('fyt-travab-preco-max').value || '8'
       });
+      if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-trava-baixa/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else {
       var ratios = Array.prototype.map.call(
@@ -550,6 +562,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         asa_min: document.getElementById('fyt-asa-min').value || '0',
         asa_max: document.getElementById('fyt-asa-max').value || '12'
       });
+      if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     }
 
@@ -590,7 +603,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       (d.spot_change != null
         ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
           (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
-        : '');
+        : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
 
     if (!d.rows || !d.rows.length) {
       results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">' +
@@ -663,7 +677,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       (d.spot_change != null
         ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
           (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
-        : '');
+        : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
 
     if (!d.rows || !d.rows.length) {
       results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">' +
@@ -728,7 +743,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       (d.spot_change != null
         ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
           (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
-        : '');
+        : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
 
     if (!d.rows || !d.rows.length) {
       results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">' +
@@ -802,7 +818,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       (d.spot_change != null
         ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
           (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
-        : '');
+        : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
 
     if (!d.rows || !d.rows.length) {
       results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">' +
@@ -866,7 +883,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       (d.spot_change != null
         ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
           (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
-        : '');
+        : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
 
     if (!d.rows || !d.rows.length) {
       results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">' +

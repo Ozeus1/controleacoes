@@ -149,6 +149,11 @@ table.cadeia td.empty{color:#334155;}
       <input type="checkbox" id="cadeia-weekly" style="width:15px;height:15px;cursor:pointer;margin:0;">
       Incluir vencimentos <strong>semanais</strong> (desmarcado: apenas <strong>mensais</strong>)
     </label>
+    <label style="display:inline-flex;align-items:center;gap:.35rem;cursor:pointer;opacity:.75;"
+           title="Busca a cadeia pela BRAPI em vez da OpLab — útil quando a OpLab está fora do ar (comum à noite). A BRAPI não tem bid/ask, só o preço de fechamento/último negócio.">
+      <input type="checkbox" id="cadeia-usar-brapi" style="cursor:pointer;margin:0;" onchange="loadCadeia(cadeiaTickerAtual())">
+      usar BRAPI
+    </label>
   </div>
 
   <div id="venc-tabs"></div>
@@ -327,7 +332,9 @@ function loadCadeia(ticker){
   document.getElementById('cadeia-error').style.display='none';
   document.getElementById('cadeia-spot').innerHTML='';
   document.getElementById('venc-tabs').innerHTML='';
-  fetch('/api/cadeia/'+encodeURIComponent(ticker)+'?n='+nStrikes()+'&weekly='+cadeiaWeekly()+'&n_meses='+cadeiaNMeses())
+  var cadeiaUsarBrapi = document.getElementById('cadeia-usar-brapi');
+  var cadeiaSrcParam = (cadeiaUsarBrapi && cadeiaUsarBrapi.checked) ? '&source=brapi' : '';
+  fetch('/api/cadeia/'+encodeURIComponent(ticker)+'?n='+nStrikes()+'&weekly='+cadeiaWeekly()+'&n_meses='+cadeiaNMeses()+cadeiaSrcParam)
     .then(function(r){return r.text().then(function(text){
       var data=null;
       try{data=text?JSON.parse(text):{};}catch(_){
@@ -340,7 +347,7 @@ function loadCadeia(ticker){
     .then(function(d){
       document.getElementById('cadeia-loading').style.display='none';
       allData=d; curSpot=d.spot;
-      renderSpot(ticker,d.spot,d.spot_change);
+      renderSpot(ticker,d.spot,d.spot_change,d.source);
       renderVencTabs(d.expirations);
       if(d.expirations&&d.expirations.length){
         curExp=d.expirations[0].exp;
@@ -364,11 +371,12 @@ function loadCadeia(ticker){
     });
 }
 
-function renderSpot(ticker,spot,chg){
+function renderSpot(ticker,spot,chg,src){
   var el=document.getElementById('cadeia-spot'); if(!spot){el.innerHTML='';return;}
   var cc=chg!==null?(chg>=0?'chg-pos':'chg-neg'):'';
   el.innerHTML='<span>'+ticker+' R$ '+brl(spot)+'</span>'
-    +(chg!==null?'<span class="'+cc+'">'+(chg>=0?'+':'')+brl(chg)+'%</span>':'');
+    +(chg!==null?'<span class="'+cc+'">'+(chg>=0?'+':'')+brl(chg)+'%</span>':'')
+    +(src==='brapi'?'<span style="color:#fbbf24;margin-left:.5rem;">🅱 BRAPI</span>':'');
 }
 
 // Letras de serie B3 por mes (1=jan..12=dez): [CALL, PUT].

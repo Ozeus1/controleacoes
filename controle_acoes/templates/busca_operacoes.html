@@ -125,6 +125,12 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
         <option value="180">180 dias</option>
       </select>
     </label>
+    <label style="display:inline-flex;align-items:center;gap:.35rem;cursor:pointer;opacity:.75;
+           font-size:.83rem;color:var(--text-secondary);"
+           title="Busca a cadeia pela BRAPI em vez da OpLab — útil quando a OpLab está fora do ar (comum à noite). A BRAPI não tem bid/ask, só o preço de fechamento/último negócio.">
+      <input type="checkbox" id="bo-usar-brapi" style="cursor:pointer;margin:0;">
+      usar BRAPI
+    </label>
   </div>
 
   <!-- Tickers (gerenciável: + adiciona, × exclui) -->
@@ -845,7 +851,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       (d.spot_change != null
         ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
           (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
-        : '');
+        : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
     modeEl.style.display = 'inline-block';
     modeEl.className = d.mode;
     var weeklyOn = document.getElementById('bo-weekly').checked;
@@ -1410,8 +1417,10 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
 
     var weekly = document.getElementById('bo-weekly').checked ? '1' : '0';
     var days   = document.getElementById('bo-days').value;
+    var usarBrapi = document.getElementById('bo-usar-brapi').checked;
     fetch('/api/busca-operacoes/' + encodeURIComponent(ticker) +
-          '?op=' + encodeURIComponent(currentOp) + '&weekly=' + weekly + '&days=' + days)
+          '?op=' + encodeURIComponent(currentOp) + '&weekly=' + weekly + '&days=' + days +
+          (usarBrapi ? '&source=brapi' : ''))
       .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
       .then(function(res) {
         loading.style.display = 'none';
@@ -1449,6 +1458,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     if (currentTicker) load(currentTicker);
   });
   document.getElementById('bo-days').addEventListener('change', function() {
+    if (currentTicker) load(currentTicker);
+  });
+  document.getElementById('bo-usar-brapi').addEventListener('change', function() {
     if (currentTicker) load(currentTicker);
   });
   document.getElementById('add-bo-btn').addEventListener('click', function() {

@@ -4144,6 +4144,89 @@ def _brapi_montar_cadeia(ticker, user_id, weekly, n_meses, n_strikes):
     }
 
 
+def _brapi_opt_list_raw(ticker, user_id, max_days=None):
+    """Busca a cadeia de opções via BRAPI e devolve uma lista "crua" no
+    mesmo formato que a OpLab devolve em /market/options/{ticker} (mesmas
+    chaves: symbol, category, strike, bid, ask, close, financial_volume,
+    due_date, delta) — permite que qualquer rota escrita para consumir
+    opt_list da OpLab funcione sem alteração, só trocando a origem.
+
+    Usada como alternativa manual (checkbox "usar BRAPI") nas telas que
+    varrem a cadeia para montar operações (Busca de Operações, Busca de
+    Operações Avançadas, FYT) — mesmo motivo do Simulador: a OpLab às
+    vezes cai à noite, e a BRAPI (sem book, só fechamento/último negócio)
+    já serve quando a simulação vai usar o último preço mesmo.
+
+    Diferente de _brapi_montar_cadeia (que monta a cadeia já organizada
+    por vencimento/strike pro Simulador), aqui usamos o endpoint
+    /expirations da própria BRAPI para saber os vencimentos REAIS —
+    mais direto que calcular a 3ª sexta com tolerância de feriado, e é
+    o mesmo endpoint que o Ranking de Volatilidade já usa hoje.
+
+    max_days, se informado, limita aos vencimentos dentro da janela
+    (dias corridos a partir de hoje) — evita gastar chamadas da BRAPI
+    (rate limit 20/min) com vencimentos muito distantes que a tela não
+    vai usar.
+    """
+    from datetime import date as _date
+    from concurrent.futures import ThreadPoolExecutor
+
+    ex_data, ex_err = _brapi_opt_get('/expirations', {'underlying': ticker}, user_id, timeout=12)
+    if ex_err:
+        raise OplabApiError(ex_err)
+    all_exps = (ex_data or {}).get('expirations') or []
+    if not all_exps:
+        return []
+
+    if max_days is not None:
+        today = _date.today()
+        def _dentro_da_janela(e):
+            try:
+                return (_date.fromisoformat(e) - today).days <= max_days
+            except (TypeError, ValueError):
+                return False
+        all_exps = [e for e in all_exps if _dentro_da_janela(e)]
+
+    erros = []
+
+    def _busca(exp_str):
+        d, err = _brapi_opt_get('/analytics', {'underlying': ticker, 'expirationDate': exp_str}, user_id, timeout=20)
+        if err:
+            if '404' not in str(err):
+                erros.append(err)
+            return []
+        return (d or {}).get('analytics') or []
+
+    opt_list = []
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        for items in pool.map(_busca, all_exps):
+            for it in items:
+                sym = str(it.get('symbol') or '').upper()
+                strike = it.get('strike')
+                if not sym or strike is None:
+                    continue
+                px = it.get('optionPrice')
+                px = round(float(px), 2) if px is not None and float(px) > 0 else 0
+                opt_list.append({
+                    'symbol':          sym,
+                    'category':        'PUT' if it.get('side') == 'put' else 'CALL',
+                    'strike':          round(float(strike), 2),
+                    'bid':             px,
+                    'ask':             px,
+                    'close':           px,
+                    'financial_volume': 0,
+                    'due_date':        it.get('expirationDate') or '',
+                    'delta':           it.get('delta'),
+                    'bid_src':         'brapi',
+                    'ask_src':         'brapi',
+                })
+
+    if not opt_list and erros:
+        raise OplabApiError(erros[0])
+
+    return opt_list
+
+
 @app.route('/api/cadeia/<ticker>')
 @login_required
 def api_cadeia(ticker):
@@ -4578,27 +4661,42 @@ def api_busca_operacoes(ticker):
     """Analisa a cadeia de opções e sugere:
     1) Collars (compra ação + compra PUT + venda CALL) que superem a Selic no período
     2) Travas de alta/baixa no débito com relação ganho/custo > 1
-    Até 8 vencimentos se o ativo tiver semanais com liquidez; senão 3 mensais."""
+    Até 8 vencimentos se o ativo tiver semanais com liquidez; senão 3 mensais.
+
+    ?source=brapi troca a fonte para a BRAPI (fallback manual quando a
+    OpLab está fora do ar, comum à noite) — ver _brapi_opt_list_raw."""
     ticker = ticker.strip().upper()
-    token  = Settings.get_value('oplab_token', user_id=current_user.id)
-    if not token:
-        return jsonify({'error': 'Token OpLab não configurado'}), 400
+    usar_brapi = request.args.get('source') == 'brapi'
 
     spot, spot_change = _get_underlying_quote(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
-    try:
-        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
-    except OplabApiError as e:
-        return jsonify({'error': str(e), 'status': e.status_code}), 503
-    except Exception:
-        app.logger.exception('api_busca_operacoes error for %s', ticker)
-        return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+    if usar_brapi:
+        try:
+            opt_list = _brapi_opt_list_raw(ticker, current_user.id, max_days=180)
+        except OplabApiError as e:
+            return jsonify({'error': str(e)}), 502
+        except Exception:
+            app.logger.exception('api_busca_operacoes (brapi) error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia via BRAPI.'}), 500
+        if not opt_list:
+            return jsonify({'error': f'Sem opções na BRAPI para {ticker}.'}), 404
+    else:
+        token = Settings.get_value('oplab_token', user_id=current_user.id)
+        if not token:
+            return jsonify({'error': 'Token OpLab não configurado'}), 400
+        try:
+            data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+        except OplabApiError as e:
+            return jsonify({'error': str(e), 'status': e.status_code}), 503
+        except Exception:
+            app.logger.exception('api_busca_operacoes error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
 
-    opt_list = data if isinstance(data, list) else (
-        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
-    )
+        opt_list = data if isinstance(data, list) else (
+            data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+        )
 
     from datetime import date as _date
 
@@ -5049,6 +5147,7 @@ def api_busca_operacoes(ticker):
             'ticker': ticker, 'spot': spot, 'spot_change': spot_change,
             'op': op, 'max_days': max_days, 'market_open': market_open,
             'selic': round(selic, 2), 'expirations': expirations,
+            'source': 'brapi' if usar_brapi else 'oplab',
         })
 
     expirations = []
@@ -6570,6 +6669,7 @@ def api_busca_operacoes(ticker):
         'market_open': market_open,
         'selic':       round(selic, 2),
         'expirations': expirations,
+        'source':      'brapi' if usar_brapi else 'oplab',
     })
 
 
@@ -10467,9 +10567,12 @@ def api_fyt(ticker):
       asa_min / asa_max = distância entre os strikes (R$), 0 a 12
     """
     ticker = ticker.strip().upper()
-    token  = Settings.get_value('oplab_token', user_id=current_user.id)
-    if not token:
-        return jsonify({'error': 'Token OpLab não configurado'}), 400
+    usar_brapi = request.args.get('source') == 'brapi'
+    token = None
+    if not usar_brapi:
+        token = Settings.get_value('oplab_token', user_id=current_user.id)
+        if not token:
+            return jsonify({'error': 'Token OpLab não configurado'}), 400
 
     spot, spot_change = _get_underlying_quote(ticker, current_user.id)
     if not spot:
@@ -10515,17 +10618,28 @@ def api_fyt(ticker):
         ratios = RATIOS_OK
 
     # ── Cadeia ───────────────────────────────────────────────────────────
-    try:
-        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
-    except OplabApiError as e:
-        return jsonify({'error': str(e), 'status': e.status_code}), 503
-    except Exception:
-        app.logger.exception('api_fyt error for %s', ticker)
-        return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+    if usar_brapi:
+        try:
+            opt_list = _brapi_opt_list_raw(ticker, current_user.id)
+        except OplabApiError as e:
+            return jsonify({'error': str(e)}), 502
+        except Exception:
+            app.logger.exception('api_fyt (brapi) error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia via BRAPI.'}), 500
+        if not opt_list:
+            return jsonify({'error': f'Sem opções na BRAPI para {ticker}.'}), 404
+    else:
+        try:
+            data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+        except OplabApiError as e:
+            return jsonify({'error': str(e), 'status': e.status_code}), 503
+        except Exception:
+            app.logger.exception('api_fyt error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
 
-    opt_list = data if isinstance(data, list) else (
-        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
-    )
+        opt_list = data if isinstance(data, list) else (
+            data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+        )
 
     from datetime import date as _date
     today = _date.today()
@@ -10720,6 +10834,7 @@ def api_fyt(ticker):
         'exp_c': exp_c, 'exp_v': exp_v, 'dc_c': dc_c, 'dc_v': dc_v,
         'mesmo_venc': mesmo_venc,
         'rows': rows, 'total': len(rows),
+        'source': 'brapi' if usar_brapi else 'oplab',
     })
 
 
@@ -10754,9 +10869,12 @@ def api_fyt_thl(ticker):
     FECHADO, usa o último negócio normalmente, como nas demais buscas.
     """
     ticker = ticker.strip().upper()
-    token  = Settings.get_value('oplab_token', user_id=current_user.id)
-    if not token:
-        return jsonify({'error': 'Token OpLab não configurado'}), 400
+    usar_brapi = request.args.get('source') == 'brapi'
+    token = None
+    if not usar_brapi:
+        token = Settings.get_value('oplab_token', user_id=current_user.id)
+        if not token:
+            return jsonify({'error': 'Token OpLab não configurado'}), 400
 
     spot, spot_change = _get_underlying_quote(ticker, current_user.id)
     if not spot:
@@ -10785,17 +10903,28 @@ def api_fyt_thl(ticker):
             max_px = None
 
     # ── Cadeia ───────────────────────────────────────────────────────────
-    try:
-        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
-    except OplabApiError as e:
-        return jsonify({'error': str(e), 'status': e.status_code}), 503
-    except Exception:
-        app.logger.exception('api_fyt_thl error for %s', ticker)
-        return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+    if usar_brapi:
+        try:
+            opt_list = _brapi_opt_list_raw(ticker, current_user.id)
+        except OplabApiError as e:
+            return jsonify({'error': str(e)}), 502
+        except Exception:
+            app.logger.exception('api_fyt_thl (brapi) error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia via BRAPI.'}), 500
+        if not opt_list:
+            return jsonify({'error': f'Sem opções na BRAPI para {ticker}.'}), 404
+    else:
+        try:
+            data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+        except OplabApiError as e:
+            return jsonify({'error': str(e), 'status': e.status_code}), 503
+        except Exception:
+            app.logger.exception('api_fyt_thl error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
 
-    opt_list = data if isinstance(data, list) else (
-        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
-    )
+        opt_list = data if isinstance(data, list) else (
+            data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+        )
 
     from datetime import date as _date
     today = _date.today()
@@ -11027,6 +11156,7 @@ def api_fyt_thl(ticker):
         'exp_c_all': exp_c_all,
         'exp_v': exp_v, 'dc_v': dc_v,
         'rows': rows, 'total': len(rows),
+        'source': 'brapi' if usar_brapi else 'oplab',
     })
 
 
@@ -11070,9 +11200,12 @@ def api_fyt_mannerheim(ticker):
                  minimo (traz todas as linhas com pelo menos 1 THL)
     """
     ticker = ticker.strip().upper()
-    token  = Settings.get_value('oplab_token', user_id=current_user.id)
-    if not token:
-        return jsonify({'error': 'Token OpLab não configurado'}), 400
+    usar_brapi = request.args.get('source') == 'brapi'
+    token = None
+    if not usar_brapi:
+        token = Settings.get_value('oplab_token', user_id=current_user.id)
+        if not token:
+            return jsonify({'error': 'Token OpLab não configurado'}), 400
 
     spot, spot_change = _get_underlying_quote(ticker, current_user.id)
     if not spot:
@@ -11118,17 +11251,28 @@ def api_fyt_mannerheim(ticker):
             min_thl = None
 
     # ── Cadeia ───────────────────────────────────────────────────────────
-    try:
-        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
-    except OplabApiError as e:
-        return jsonify({'error': str(e), 'status': e.status_code}), 503
-    except Exception:
-        app.logger.exception('api_fyt_mannerheim error for %s', ticker)
-        return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+    if usar_brapi:
+        try:
+            opt_list = _brapi_opt_list_raw(ticker, current_user.id)
+        except OplabApiError as e:
+            return jsonify({'error': str(e)}), 502
+        except Exception:
+            app.logger.exception('api_fyt_mannerheim (brapi) error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia via BRAPI.'}), 500
+        if not opt_list:
+            return jsonify({'error': f'Sem opções na BRAPI para {ticker}.'}), 404
+    else:
+        try:
+            data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+        except OplabApiError as e:
+            return jsonify({'error': str(e), 'status': e.status_code}), 503
+        except Exception:
+            app.logger.exception('api_fyt_mannerheim error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
 
-    opt_list = data if isinstance(data, list) else (
-        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
-    )
+        opt_list = data if isinstance(data, list) else (
+            data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+        )
 
     from datetime import date as _date
     today = _date.today()
@@ -11363,6 +11507,7 @@ def api_fyt_mannerheim(ticker):
         'exp_c_all': exp_c_all,
         'strike_pct': strike_pct, 'min_thl': min_thl,
         'rows': rows, 'total': len(rows),
+        'source': 'brapi' if usar_brapi else 'oplab',
     })
 
 
@@ -11396,9 +11541,12 @@ def api_fyt_trava_alta(ticker):
                    (negativo = crédito recebido, positivo = débito pago)
     """
     ticker = ticker.strip().upper()
-    token  = Settings.get_value('oplab_token', user_id=current_user.id)
-    if not token:
-        return jsonify({'error': 'Token OpLab não configurado'}), 400
+    usar_brapi = request.args.get('source') == 'brapi'
+    token = None
+    if not usar_brapi:
+        token = Settings.get_value('oplab_token', user_id=current_user.id)
+        if not token:
+            return jsonify({'error': 'Token OpLab não configurado'}), 400
 
     spot, spot_change = _get_underlying_quote(ticker, current_user.id)
     if not spot:
@@ -11443,17 +11591,28 @@ def api_fyt_trava_alta(ticker):
         preco_min, preco_max = preco_max, preco_min
 
     # ── Cadeia ───────────────────────────────────────────────────────────
-    try:
-        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
-    except OplabApiError as e:
-        return jsonify({'error': str(e), 'status': e.status_code}), 503
-    except Exception:
-        app.logger.exception('api_fyt_trava_alta error for %s', ticker)
-        return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+    if usar_brapi:
+        try:
+            opt_list = _brapi_opt_list_raw(ticker, current_user.id)
+        except OplabApiError as e:
+            return jsonify({'error': str(e)}), 502
+        except Exception:
+            app.logger.exception('api_fyt_trava_alta (brapi) error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia via BRAPI.'}), 500
+        if not opt_list:
+            return jsonify({'error': f'Sem opções na BRAPI para {ticker}.'}), 404
+    else:
+        try:
+            data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+        except OplabApiError as e:
+            return jsonify({'error': str(e), 'status': e.status_code}), 503
+        except Exception:
+            app.logger.exception('api_fyt_trava_alta error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
 
-    opt_list = data if isinstance(data, list) else (
-        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
-    )
+        opt_list = data if isinstance(data, list) else (
+            data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+        )
 
     from datetime import date as _date
     today = _date.today()
@@ -11706,6 +11865,7 @@ def api_fyt_trava_alta(ticker):
         'expirations': exps_out,
         'exp': exp, 'dc': dc, 'tipo': tipo,
         'rows': rows, 'total': len(rows),
+        'source': 'brapi' if usar_brapi else 'oplab',
     })
 
 
@@ -11743,9 +11903,12 @@ def api_fyt_trava_baixa(ticker):
                    (negativo = crédito recebido, positivo = débito pago)
     """
     ticker = ticker.strip().upper()
-    token  = Settings.get_value('oplab_token', user_id=current_user.id)
-    if not token:
-        return jsonify({'error': 'Token OpLab não configurado'}), 400
+    usar_brapi = request.args.get('source') == 'brapi'
+    token = None
+    if not usar_brapi:
+        token = Settings.get_value('oplab_token', user_id=current_user.id)
+        if not token:
+            return jsonify({'error': 'Token OpLab não configurado'}), 400
 
     spot, spot_change = _get_underlying_quote(ticker, current_user.id)
     if not spot:
@@ -11790,17 +11953,28 @@ def api_fyt_trava_baixa(ticker):
         preco_min, preco_max = preco_max, preco_min
 
     # ── Cadeia ───────────────────────────────────────────────────────────
-    try:
-        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
-    except OplabApiError as e:
-        return jsonify({'error': str(e), 'status': e.status_code}), 503
-    except Exception:
-        app.logger.exception('api_fyt_trava_baixa error for %s', ticker)
-        return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+    if usar_brapi:
+        try:
+            opt_list = _brapi_opt_list_raw(ticker, current_user.id)
+        except OplabApiError as e:
+            return jsonify({'error': str(e)}), 502
+        except Exception:
+            app.logger.exception('api_fyt_trava_baixa (brapi) error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia via BRAPI.'}), 500
+        if not opt_list:
+            return jsonify({'error': f'Sem opções na BRAPI para {ticker}.'}), 404
+    else:
+        try:
+            data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+        except OplabApiError as e:
+            return jsonify({'error': str(e), 'status': e.status_code}), 503
+        except Exception:
+            app.logger.exception('api_fyt_trava_baixa error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
 
-    opt_list = data if isinstance(data, list) else (
-        data.get('options') or data.get('calls', []) + data.get('puts', []) or []
-    )
+        opt_list = data if isinstance(data, list) else (
+            data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+        )
 
     from datetime import date as _date
     today = _date.today()
@@ -12054,6 +12228,7 @@ def api_fyt_trava_baixa(ticker):
         'expirations': exps_out,
         'exp': exp, 'dc': dc, 'tipo': tipo,
         'rows': rows, 'total': len(rows),
+        'source': 'brapi' if usar_brapi else 'oplab',
     })
 
 

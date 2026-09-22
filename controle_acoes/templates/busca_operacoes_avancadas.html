@@ -181,6 +181,12 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
                     border:1px solid var(--border-color);border-radius:5px;
                     padding:.2rem .4rem;font-size:.82rem;">
     </label>
+    <label style="display:inline-flex;align-items:center;gap:.35rem;cursor:pointer;opacity:.75;
+           font-size:.83rem;color:var(--text-secondary);"
+           title="Busca a cadeia pela BRAPI em vez da OpLab — útil quando a OpLab está fora do ar (comum à noite). A BRAPI não tem bid/ask, só o preço de fechamento/último negócio.">
+      <input type="checkbox" id="ba-usar-brapi" style="cursor:pointer;margin:0;">
+      usar BRAPI
+    </label>
   </div>
 
   <!-- Tickers -->
@@ -495,7 +501,8 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       (d.spot_change != null
         ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
           (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
-        : '');
+        : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
     modeEl.style.display = 'inline-block';
     modeEl.textContent = '📅 até ' + d.max_days + ' dias' +
       (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '');
@@ -674,6 +681,7 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
     } else if (currentOp === 'slide_estrutural') {
       extra = '&range_min=' + (document.getElementById('ba-rangemin').value || 0);
     }
+    if (document.getElementById('ba-usar-brapi').checked) extra += '&source=brapi';
     fetch('/api/busca-operacoes/' + encodeURIComponent(ticker) +
           '?op=' + encodeURIComponent(currentOp) + '&weekly=' + weekly + '&days=' + days + extra)
       .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
@@ -718,6 +726,9 @@ var SERVER_TICKERS = {{ (ranking_vol|map(attribute='ticker')|list|tojson) if ran
       syncOpFilters();
       if (currentTicker) load(currentTicker);
     });
+  });
+  document.getElementById('ba-usar-brapi').addEventListener('change', function() {
+    if (currentTicker) load(currentTicker);
   });
   document.getElementById('ba-weekly').addEventListener('change', function() {
     if (currentTicker) load(currentTicker);

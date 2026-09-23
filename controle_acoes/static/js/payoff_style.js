@@ -203,54 +203,91 @@
   }
 
   /**
+   * Mesma ideia de aplicaZoom, para o eixo Y (resultado R$) — usa
+   * view.zoomY/panY, independentes de zoom/pan (eixo X). Uma view sem
+   * zoomY/panY (telas antigas que só chamam aplicaZoom) se comporta como
+   * zoomY=1: o range Y passado entra intacto.
+   */
+  function aplicaZoomY(Ymin, Ymax, view) {
+    var zoom = (view && view.zoomY) || 1;
+    var pan  = (view && view.panY)  || 0;
+    var altura = (Ymax - Ymin) / zoom;
+    var centro = (Ymin + Ymax) / 2 + pan * (Ymax - Ymin);
+    return { Ymin: centro - altura / 2, Ymax: centro + altura / 2 };
+  }
+
+  /**
    * Liga zoom (roda do mouse) e pan (arrastar) num canvas de payoff.
-   * `view` é o objeto {zoom, pan} mutável (guardado pela tela, tipicamente
-   * em canvas._payoffView); `redesenha` é a função local de desenho da
-   * tela (drawChart/draw/…), chamada a cada mudança de view.
+   * `view` é o objeto {zoom, pan, zoomY, panY} mutável (guardado pela tela,
+   * tipicamente em canvas._payoffView); `redesenha` é a função local de
+   * desenho da tela (drawChart/draw/…), chamada a cada mudança de view.
    * Não depende de nenhum outro estado — cada tela mantém seu próprio
    * cálculo de payoff intacto, só o range visível muda.
+   *
+   * Eixo X (preço, sempre existiu): roda = zoom, arrastar = pan.
+   * Eixo Y (resultado R$, novo): Shift+roda = zoom, Shift+arrastar = pan.
+   * Isso deixa o gesto "só roda"/"só arrastar" de sempre intacto (não muda
+   * o comportamento de quem já usava o zoom) e adiciona o eixo Y como um
+   * modificador — sem precisar de um segundo controle na tela.
    */
   function ligaZoom(canvas, view, redesenha) {
     if (canvas._payoffZoomCtrl) return canvas._payoffZoomCtrl;
-    var arrastando = false, moveu = false, ultimoX = 0;
+    if (view.zoomY == null) view.zoomY = 1;
+    if (view.panY  == null) view.panY  = 0;
+    var arrastando = false, arrastandoY = false, moveu = false, ultimoX = 0, ultimoY = 0;
 
     canvas.addEventListener('wheel', function (e) {
       e.preventDefault();
       var fator = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-      view.zoom = Math.min(Math.max(view.zoom * fator, 1), 30);
+      if (e.shiftKey) {
+        view.zoomY = Math.min(Math.max(view.zoomY * fator, 1), 30);
+      } else {
+        view.zoom = Math.min(Math.max(view.zoom * fator, 1), 30);
+      }
       redesenha();
     }, { passive: false });
 
     canvas.addEventListener('mousedown', function (e) {
-      arrastando = true; moveu = false;
-      ultimoX = e.clientX;
+      if (e.shiftKey) { arrastandoY = true; ultimoY = e.clientY; }
+      else { arrastando = true; ultimoX = e.clientX; }
+      moveu = false;
       canvas.style.cursor = 'grabbing';
     });
     window.addEventListener('mouseup', function () {
-      if (arrastando) { arrastando = false; canvas.style.cursor = 'grab'; }
+      if (arrastando || arrastandoY) {
+        arrastando = false; arrastandoY = false;
+        canvas.style.cursor = 'grab';
+      }
     });
     // Captura na fase de captura (antes de qualquer listener de tooltip
     // adicionado depois): assim o pan sempre ganha prioridade e o tooltip
     // de cada tela só roda quando NÃO se está arrastando o gráfico.
     canvas.addEventListener('mousemove', function (e) {
-      if (!arrastando) return;
+      if (!arrastando && !arrastandoY) return;
       moveu = true;
-      var dx = e.clientX - ultimoX;
-      ultimoX = e.clientX;
-      // desloca em fração do intervalo visível, dividido pela largura do
-      // canvas em CSS px (não canvas.width, que já vem em px de device)
       var rect = canvas.getBoundingClientRect();
-      view.pan -= (dx / rect.width) / view.zoom;
+      if (arrastandoY) {
+        var dy = e.clientY - ultimoY;
+        ultimoY = e.clientY;
+        // eixo Y da tela cresce pra baixo; inverte pra "arrastar pra cima" subir o range
+        view.panY += (dy / rect.height) / view.zoomY;
+      } else {
+        var dx = e.clientX - ultimoX;
+        ultimoX = e.clientX;
+        // desloca em fração do intervalo visível, dividido pela largura do
+        // canvas em CSS px (não canvas.width, que já vem em px de device)
+        view.pan -= (dx / rect.width) / view.zoom;
+      }
       redesenha();
     }, true);
     canvas.addEventListener('dblclick', function () {
-      view.zoom = 1; view.pan = 0;
+      view.zoom = 1; view.pan = 0; view.zoomY = 1; view.panY = 0;
       redesenha();
     });
     canvas.style.cursor = 'grab';
 
     canvas._payoffZoomCtrl = {
-      estaArrastando: function () { return arrastando && moveu; }
+      estaArrastando: function () { return (arrastando || arrastandoY) && moveu; }
     };
     return canvas._payoffZoomCtrl;
   }
@@ -501,6 +538,7 @@
     faixa: faixa,
     pilula: pilula,
     aplicaZoom: aplicaZoom,
+    aplicaZoomY: aplicaZoomY,
     ligaZoom: ligaZoom
   };
 })(window);

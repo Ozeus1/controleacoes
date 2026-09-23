@@ -588,6 +588,14 @@
                                    style="width:70px; text-align:right; background:var(--input-bg,#0f172a);
                                           color:var(--text-primary); border:1px solid var(--border-color);
                                           border-radius:4px; padding:.2rem .35rem; font-size:.85rem;">
+                            {% if leg.opt_type != 'STOCK' %}
+                            <button type="button" class="leg-refresh-btn" data-ticker="{{ leg.ticker }}"
+                                    title="Buscar bid/ask ao vivo do book (só com o pregão aberto)"
+                                    style="background:none; border:none; cursor:pointer; padding:.15rem;
+                                           color:var(--text-secondary); font-size:.85rem; line-height:1;
+                                           opacity:.6; transition:opacity .15s;"
+                                    onmouseover="this.style.opacity='1';" onmouseout="this.style.opacity='.6';">🔄</button>
+                            {% endif %}
                         </div>
                         {% else %}
                         R$ {{ "%.2f"|format(cur)|replace('.', ',') }}
@@ -727,6 +735,7 @@
     </div>
 
     {# ── Gráfico ── #}
+    <div id="curvas-ctrl-payoff"></div>
     <div style="position:relative; width:100%; background:var(--hover-bg); border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
         <canvas id="payoff-chart" style="display:block; width:100%;"
                 data-spot="{{ underlying_price or '' }}"
@@ -736,14 +745,14 @@
              font-size:.82rem; pointer-events:none; white-space:nowrap; z-index:10;"></div>
     </div>
     <p style="margin:.3rem 0 0; font-size:.72rem; color:var(--text-secondary);">
-        Roda do mouse para zoom · arraste para mover · duplo clique para resetar
+        Roda do mouse: zoom no eixo X (preço) · arraste: mover no X · Shift+roda: zoom no eixo Y (R$) · Shift+arraste: mover no Y · duplo clique: resetar
     </p>
 </div>
 
 <script>
 var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
 </script>
-<script src="{{ url_for('static', filename='js/payoff_style.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='js/payoff_style.js') }}?v=3"></script>
 <script>
 (function () {
     var r = Math.log(1 + SELIC_RATE / 100); // taxa contínua a.a.
@@ -1043,8 +1052,9 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
         var cH = H - PAD.top  - PAD.bottom;
 
         // ── Escala ───────────────────────────────────────────────────────────
-        var yMax = Math.max(Math.abs(maxGain), Math.abs(maxLoss)) * 1.12 || 100;
-        var yMin = -yMax;
+        var yMaxBase = Math.max(Math.abs(maxGain), Math.abs(maxLoss)) * 1.12 || 100;
+        var yZ = PayoffStyle.aplicaZoomY(-yMaxBase, yMaxBase, canvas._payoffView);
+        var yMin = yZ.Ymin, yMax = yZ.Ymax;
 
         function xPx(S) { return PAD.left + (S - Smin) / (Smax - Smin) * cW; }
         function yPx(P) { return PAD.top  + (1 - (P - yMin) / (yMax - yMin)) * cH; }
@@ -1074,6 +1084,38 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
         // ── Áreas de lucro/prejuízo e curva do vencimento ──────────────────────
         PayoffStyle.areas(ctx, geo, Sarr, Parr, xPx, yPx, y0);
         PayoffStyle.curva(ctx, Sarr, Parr, xPx, yPx);
+
+        // ── Curvas teóricas (payoff real / delta / theta) na data do slider ──
+        // Mesma lib e mesmo padrão do Simulador — legs aqui usa entry/current
+        // (não premium/iv), então adapta pro shape que serieTeorica espera.
+        var _ctrl = PayoffStyle.controleData(document.getElementById('curvas-ctrl-payoff'),
+                                             function () { draw(); });
+        var _legsTeoricas = legs.map(function (l) {
+            return { type: l.type, side: l.side, qty: l.qty, strike: l.strike,
+                     premium: l.entry, exp: l.exp, iv: l.type === 'STOCK' ? 0 : estimateIV(l) };
+        });
+        _ctrl.sincroniza(_legsTeoricas);
+        if (_ctrl.ativo()) {
+            var _ser = PayoffStyle.serieTeorica(Sarr, _legsTeoricas, _ctrl.dataSel(), SELIC_RATE);
+            if (_ctrl.cRe.checked)
+                PayoffStyle.curva(ctx, Sarr, _ser.valor, xPx, yPx, PayoffStyle.CORES.real, 2);
+            // delta e theta vivem noutra escala: eixo próprio à direita
+            var _q2 = [];
+            if (_ctrl.cDe.checked) _q2 = _q2.concat(_ser.delta);
+            if (_ctrl.cTh.checked) _q2 = _q2.concat(_ser.theta);
+            if (_q2.length) {
+                var _v2a = Math.min.apply(null, _q2), _v2b = Math.max.apply(null, _q2);
+                var _fg = (_v2b - _v2a) * 0.12 || Math.max(Math.abs(_v2b), 0.1) * 0.2;
+                var _rot = (_ctrl.cDe.checked && _ctrl.cTh.checked) ? 'Δ / Θ'
+                         : (_ctrl.cDe.checked ? 'Δ' : 'Θ/dia');
+                var _cor = _ctrl.cDe.checked ? PayoffStyle.CORES.delta : PayoffStyle.CORES.theta;
+                var _y2 = PayoffStyle.eixoDireito(ctx, geo, _v2a - _fg, _v2b + _fg, _rot, _cor);
+                if (_ctrl.cDe.checked)
+                    PayoffStyle.curva(ctx, Sarr, _ser.delta, xPx, _y2, PayoffStyle.CORES.delta, 1.6);
+                if (_ctrl.cTh.checked)
+                    PayoffStyle.curva(ctx, Sarr, _ser.theta, xPx, _y2, PayoffStyle.CORES.theta, 1.6);
+            }
+        }
 
         // ── Linhas de breakeven (por cima da curva) ────────────────────────────
         breakevens.forEach(function(be) {
@@ -1265,6 +1307,38 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
             var original = parseFloat(tr.dataset.current || '0');
             if (!isNaN(typed) && Math.abs(typed - original) > 0.0001) commit();
         });
+
+        // ── Botão "🔄 atualizar": busca bid/ask ao vivo (pregão aberto) ────
+        // Perna VENDIDA usa o ASK (custo de recomprar); perna COMPRADA usa
+        // o BID (valor de vender agora) — mesma convenção do resto do app.
+        // O campo continua editável mesmo depois de atualizar via botão.
+        var refreshBtn = tr.querySelector('.leg-refresh-btn');
+        if (refreshBtn) {
+            refreshBtn.addEventListener('click', function () {
+                var ticker = refreshBtn.dataset.ticker;
+                var side = tr.dataset.side;
+                refreshBtn.disabled = true;
+                refreshBtn.textContent = '⏳';
+                fetch('/api/payoff-leg/book_price/' + encodeURIComponent(ticker))
+                    .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+                    .then(function (res) {
+                        refreshBtn.disabled = false;
+                        refreshBtn.textContent = '🔄';
+                        if (!res.ok || res.d.error) throw new Error(res.d.error || 'Erro ao buscar cotação');
+                        var px = side === 'SELL' ? res.d.ask : res.d.bid;
+                        if (px == null) px = side === 'SELL' ? res.d.bid : res.d.ask;   // fallback pro outro lado do book
+                        if (px == null) px = res.d.last;
+                        if (px == null) throw new Error('Sem preço disponível');
+                        input.value = px.toFixed(2).replace('.', ',');
+                        commit();
+                    })
+                    .catch(function (e) {
+                        refreshBtn.disabled = false;
+                        refreshBtn.textContent = '🔄';
+                        alert('Não foi possível atualizar: ' + e.message);
+                    });
+            });
+        }
     });
 })();
 </script>

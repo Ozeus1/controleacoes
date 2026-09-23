@@ -3,7 +3,7 @@
    - Navegações e /api/: rede primeiro; sem rede, cai no cache (páginas) ou offline.html.
    - /static/ e CDNs: stale-while-revalidate (responde do cache e atualiza por trás).
    - Páginas centrais pré-cacheadas no install, pra funcionar offline já na 1ª visita. */
-var CACHE = 'myinvest-v214';
+var CACHE = 'myinvest-v215';
 var OFFLINE_URL = '/offline.html';
 
 // Essenciais (públicos, sempre existem) vão com addAll — se um falhar,

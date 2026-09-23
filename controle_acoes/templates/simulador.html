@@ -241,7 +241,7 @@
     <div id="chart-tooltip"></div>
   </div>
   <p class="sim-hint" style="margin-top:.4rem;">
-    Roda do mouse para zoom · arraste para mover · duplo clique para resetar.
+    Roda: zoom no X (preço) · arraste: mover no X · Shift+roda: zoom no Y (R$) · Shift+arraste: mover no Y · duplo clique: resetar.
     O gráfico mostra o payoff no vencimento mais curto.
   </p>
 </div>
@@ -295,7 +295,7 @@
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='js/payoff_style.js') }}?v=2"></script>
+<script src="{{ url_for('static', filename='js/payoff_style.js') }}?v=3"></script>
 <script>
 (function () {
 'use strict';
@@ -1050,8 +1050,9 @@ function desenha(legs) {
 
     var maxGain = Math.max.apply(null, Parr);
     var maxLoss = Math.min.apply(null, Parr);
-    var ySpan = Math.max(Math.abs(maxGain), Math.abs(maxLoss)) * 1.15 || 100;
-    var yMin = -ySpan, yMax = ySpan;
+    var ySpanBase = Math.max(Math.abs(maxGain), Math.abs(maxLoss)) * 1.15 || 100;
+    var yZ = PayoffStyle.aplicaZoomY(-ySpanBase, ySpanBase, canvas._payoffView);
+    var yMin = yZ.Ymin, yMax = yZ.Ymax;
     var cW = W - PAD.left - PAD.right, cH = H - PAD.top - PAD.bottom;
     function xPx(S) { return PAD.left + (S - Smin) / (Smax - Smin) * cW; }
     function yPx(P) { return PAD.top + (1 - (P - yMin) / (yMax - yMin)) * cH; }

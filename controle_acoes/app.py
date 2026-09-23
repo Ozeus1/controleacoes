@@ -13625,6 +13625,54 @@ def api_payoff_leg_current_price():
     return jsonify({'ok': True, 'current_price': price})
 
 
+@app.route('/api/payoff-leg/book_price/<ticker>')
+@login_required
+def api_payoff_leg_book_price(ticker):
+    """Cotação bid/ask ao vivo de UMA opção, para o botão "🔄 atualizar" da
+    coluna Cotação Atual na tela de Payoff. Só busca a rede quando o pregão
+    está aberto (fora do horário o book fica vazio/velho — não há bid/ask
+    fresco pra buscar); o front decide o lado (perna vendida usa ask, o
+    custo de recomprar; perna comprada usa bid, o valor de vender), então
+    devolve os dois e deixa a escolha pro chamador.
+    """
+    token = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado.'}), 403
+
+    _now = now_brt()
+    market_open = (_now.weekday() < 5 and (10, 0) <= (_now.hour, _now.minute) < (16, 30))
+    if not market_open:
+        return jsonify({'error': 'Pregão fechado — sem book de ofertas ao vivo.',
+                        'market_open': False}), 409
+
+    ticker = ticker.strip().upper()
+    try:
+        d = _oplab_get_json(f'/market/instruments/{ticker}', token, timeout=10)
+    except OplabApiError as e:
+        return jsonify({'error': f'OpLab: {e}', 'market_open': True}), e.status_code or 502
+    except Exception as e:
+        return jsonify({'error': str(e), 'market_open': True}), 502
+
+    if isinstance(d, list) and d:
+        d = d[0]
+    if not isinstance(d, dict):
+        return jsonify({'error': 'Resposta inesperada da OpLab.', 'market_open': True}), 502
+
+    def _f(v):
+        try:
+            r = round(float(v), 2)
+            return r if r > 0 else None
+        except (TypeError, ValueError):
+            return None
+
+    bid, ask, last = _f(d.get('bid')), _f(d.get('ask')), _f(d.get('close'))
+    if bid is None and ask is None:
+        return jsonify({'error': 'Sem book de ofertas para este ticker agora.',
+                        'market_open': True}), 404
+
+    return jsonify({'ok': True, 'market_open': True, 'bid': bid, 'ask': ask, 'last': last})
+
+
 @app.route('/roll_spread/<int:id>', methods=['POST'])
 @login_required
 def roll_spread(id):

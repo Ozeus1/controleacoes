@@ -911,6 +911,10 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
     // par de variáveis, sempre em sincronia com o último desenho.
     canvas._payoffView = { zoom: 1, pan: 0 };
     var Smin = SminBase, Smax = SmaxBase;
+    // _ctrl (controle Payoff real/Delta/Theta) e _legsTeoricas ficam setados
+    // por draw() e lidos pelo tooltip do mousemove, pra mostrar o lucro real
+    // junto do teórico quando a curva "Payoff real" estiver marcada.
+    var _ctrl = null, _legsTeoricas = null;
 
     // ── Métricas ─────────────────────────────────────────────────────────────
     var net     = netPremium();
@@ -1088,9 +1092,9 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
         // ── Curvas teóricas (payoff real / delta / theta) na data do slider ──
         // Mesma lib e mesmo padrão do Simulador — legs aqui usa entry/current
         // (não premium/iv), então adapta pro shape que serieTeorica espera.
-        var _ctrl = PayoffStyle.controleData(document.getElementById('curvas-ctrl-payoff'),
-                                             function () { draw(); });
-        var _legsTeoricas = legs.map(function (l) {
+        _ctrl = PayoffStyle.controleData(document.getElementById('curvas-ctrl-payoff'),
+                                         function () { draw(); });
+        _legsTeoricas = legs.map(function (l) {
             return { type: l.type, side: l.side, qty: l.qty, strike: l.strike,
                      premium: l.entry, exp: l.exp, iv: l.type === 'STOCK' ? 0 : estimateIV(l) };
         });
@@ -1238,10 +1242,25 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
         var S = Smin + (mx - PAD.left) / cW * (Smax - Smin);
         var P = payoffAt(S);
         var color = P >= 0 ? '#10b981' : '#ef4444';
+        // fmtBRL usa valor absoluto — o sinal precisa vir explícito, senão um
+        // prejuízo em vermelho ("R$ 21,00") é lido como lucro por quem não
+        // repara na cor (mesmo cuidado já tomado no rótulo m-pnl acima).
+        var linhaTeorico = '<span style="color:rgba(148,163,184,.8)">Teórico (venc.): </span>' +
+            '<span style="color:' + color + ';">' + (P < 0 ? '−' : '+') + fmtBRL(P) + '</span>';
+        // Com a curva "Payoff real" marcada, soma o lucro real (marcação a
+        // mercado na data do slider) — mesma série azul desenhada no gráfico.
+        var linhaReal = '';
+        if (_ctrl && _ctrl.cRe && _ctrl.cRe.checked) {
+            var pReal = PayoffStyle.teoricoEm(S, _legsTeoricas, _ctrl.dataSel(), SELIC_RATE).valor;
+            var colorReal = pReal >= 0 ? '#10b981' : '#ef4444';
+            linhaReal = '<br><span style="color:' + PayoffStyle.CORES.real + ';">Real (hoje): </span>' +
+                '<span style="color:' + colorReal + ';">' + (pReal < 0 ? '−' : '+') + fmtBRL(pReal) + '</span>';
+        }
         tooltip.innerHTML =
             '<span style="color:rgba(148,163,184,.8)">Preço: </span><strong>' +
             S.toLocaleString('pt-BR', {minimumFractionDigits:2}) + '</strong><br>' +
-            '<span style="color:' + color + ';">' + (P >= 0 ? 'Lucro: +' : 'Prejuízo: ') + fmtBRL(P) + '</span>';
+            (linhaReal ? linhaTeorico + linhaReal : ('<span style="color:' + color + ';">' +
+                (P >= 0 ? 'Lucro: +' : 'Prejuízo: ') + fmtBRL(P) + '</span>'));
         tooltip.style.display = 'block';
         var tx = e.clientX - rect.left + 14;
         var ty = e.clientY - rect.top  - 10;

@@ -8564,6 +8564,39 @@ def _pareia_estruturas(linhas, tol_qtd=0.10, tol_voi=0.45, min_medio=20000):
     ops = [x for x in linhas if x.get('side') in ('call', 'put') and x.get('exp')
            and (x.get('medio') or 0) >= min_medio]
 
+    # ── Spot aproximado por (ativo, vencimento), via paridade put-call ─────
+    # Sem cotação do ativo-mãe nos dados (a busca só varre a cadeia de
+    # opções, não o subjacente — buscá-lo à parte gastaria mais uma chamada
+    # por ativo no limite de 20 req/min da BRAPI), estima o "centro do
+    # dinheiro" pelo strike onde CALL e PUT do mesmo grupo têm preços mais
+    # PARECIDOS entre si — é onde a paridade put-call fica mais próxima de
+    # zero, o proxy clássico pra achar o ATM sem o preço da ação. Usa TODA
+    # a cadeia recebida (antes do filtro de min_medio), pra ter strikes
+    # suficientes mesmo quando as pernas casadas são pouco líquidas.
+    _spot_aprox = {}
+    _por_grupo = {}
+    for x in linhas:
+        if x.get('side') not in ('call', 'put') or not x.get('exp'):
+            continue
+        _por_grupo.setdefault((x['ativo'], x['exp']), {'call': {}, 'put': {}})[x['side']][x.get('strike')] = x.get('preco') or 0
+    for chave, g in _por_grupo.items():
+        comuns = set(g['call']) & set(g['put'])
+        if not comuns:
+            continue
+        melhor_k = min(comuns, key=lambda k: abs(g['call'][k] - g['put'][k]))
+        _spot_aprox[chave] = melhor_k
+
+    def _perto_do_dinheiro(op, banda=0.25):
+        """True se o strike da perna está dentro de ±banda (25% por
+        padrão) do spot aproximado do grupo — ou se não há spot estimado
+        (par único de strike na cadeia, sem como checar), pra não travar a
+        detecção quando os dados não permitem a estimativa."""
+        spot = _spot_aprox.get((op['ativo'], op['exp']))
+        if not spot:
+            return True
+        k = op.get('strike') or 0
+        return spot > 0 and abs(k - spot) / spot <= banda
+
     def _casa(a, b, tqtd=tol_qtd):
         """Se as duas pernas podem ser a mesma operação (proporção 1:1),
         devolve o quão bem elas casam (0 = idênticas); senão, None."""
@@ -8670,11 +8703,23 @@ def _pareia_estruturas(linhas, tol_qtd=0.10, tol_voi=0.45, min_medio=20000):
             qtd_ref = a.get('qtd') or 0
 
         elif a['side'] != b['side']:
+            # Straddle/strangle só faz sentido econômico perto do dinheiro
+            # (é onde o valor de tempo — a aposta em volatilidade — domina
+            # o prêmio). Uma CALL fundo ITM pareada com uma PUT fundo OTM
+            # que só coincidiu em quantidade/ΔOI não é uma estrutura
+            # montada de propósito, é quase certo duas operações
+            # independentes que a heurística casou por acaso (ex.: alguém
+            # ajustando uma posição direcional comprada + vendendo proteção
+            # à parte) — sem essa checagem, o rótulo "comprado" saía errado
+            # também: o payoff de uma CALL fundo ITM é ~delta 1, quase uma
+            # compra sintética da ação, não uma aposta em volatilidade.
+            if not (_perto_do_dinheiro(a) and _perto_do_dinheiro(b)):
+                continue
             mesmo_k = a.get('strike') == b.get('strike')
-            # Straddle/strangle: o OI abrindo nas duas pernas juntas é lido
-            # como as duas COMPRADAS (quem vendeu é a contraparte de cada
-            # negócio, que não aparece nos dados) — mesma convenção que a
-            # aba Estruturas de Cálculo de Opções já usava.
+            # O OI abrindo nas duas pernas juntas é lido como as duas
+            # COMPRADAS (quem vendeu é a contraparte de cada negócio, que
+            # não aparece nos dados) — mesma convenção que a aba Estruturas
+            # de Cálculo de Opções já usava.
             tipo = (('Straddle comprado' if mesmo_k else 'Strangle comprado')
                     + ' (dir. presumida)')
             pernas = _marca_lado([(a, 'BUY'), (b, 'BUY')])
@@ -8879,6 +8924,65 @@ def _pareia_estruturas(linhas, tol_qtd=0.10, tol_voi=0.45, min_medio=20000):
             usados.add(curta['symbol'])
             usados.add(longa['symbol'])
             break   # cada perna curta casa com no máx. 1 longa
+
+    # ── THL: mesmo lado (call/put), STRIKES diferentes, vencimentos
+    # diferentes — diagonal, não calendar puro. Mesma convenção usada em
+    # api_fyt_thl (busca dedicada de THL, cadeia única): vende a curta e
+    # compra a longa; em CALL a comprada fica no strike MENOR (a vendida,
+    # de prazo curto, no MAIOR); em PUT é o espelho — comprada no strike
+    # MAIOR, vendida no MENOR. Sem essa relação de strike na direção
+    # certa não é uma THL (viraria uma diagonal invertida sem lógica de
+    # financiamento por Theta).
+    livres3 = [o for o in ops if o['symbol'] not in usados]
+    por_lado = {}
+    for o in livres3:
+        por_lado.setdefault((o['ativo'], o['side']), []).append(o)
+    for (ativo_k, side_k), grupo in por_lado.items():
+        if len(grupo) < 2:
+            continue
+        # Candidatos por par de vencimentos distintos, ordenados por
+        # qualidade (quantidade mais parecida primeiro) — mesmo padrão de
+        # "melhor combinação" do pareamento 1:1 principal.
+        cands_thl = []
+        for i, x in enumerate(grupo):
+            for y in grupo[i + 1:]:
+                if x['exp'] == y['exp']:
+                    continue
+                curta, longa = (x, y) if x['exp'] < y['exp'] else (y, x)
+                kc, kl = curta.get('strike') or 0, longa.get('strike') or 0
+                # Relação de strike da THL: CALL comprada (longa) no strike
+                # MENOR; PUT comprada (longa) no strike MAIOR.
+                ok_dir = (kl < kc) if side_k == 'call' else (kl > kc)
+                if not ok_dir:
+                    continue
+                qc, ql = curta.get('qtd') or 0, longa.get('qtd') or 0
+                mq = max(qc, ql)
+                if not mq:
+                    continue
+                dq = abs(qc - ql) / mq
+                if dq > tol_qtd:
+                    continue
+                cands_thl.append((dq, curta, longa))
+        cands_thl.sort(key=lambda t: t[0])
+        for _dq, curta, longa in cands_thl:
+            if curta['symbol'] in usados or longa['symbol'] in usados:
+                continue
+            curta['lado_presumido'] = 'SELL'
+            longa['lado_presumido'] = 'BUY'
+            direcao = 'CALL' if side_k == 'call' else 'PUT'
+            out.append({
+                'ativo': ativo_k, 'exp': longa['exp'], 'tipo':
+                    f"THL de {direcao} (venc. curto {curta['exp']}, dir. presumida)",
+                'presumida': True, 'abre': None,
+                'qtd': min(curta.get('qtd') or 0, longa.get('qtd') or 0),
+                'pernas': [
+                    {k: p.get(k) for k in ('symbol', 'side', 'strike', 'preco',
+                                           'qtd', 'trades', 'var_oi', 'lado_presumido')}
+                    for p in (curta, longa)
+                ],
+            })
+            usados.add(curta['symbol'])
+            usados.add(longa['symbol'])
 
     return out
 

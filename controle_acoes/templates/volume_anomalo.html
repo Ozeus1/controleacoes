@@ -740,40 +740,37 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
   });
 
   // Monta o link para a aba Estruturas de Cálculos de Opções no modo
-  // "livre" (pernas arbitrárias), mesmo contrato que o FYT já usa.
-  // Como o OI abre nas duas pernas juntas, a leitura é de estrutura
-  // COMPRADA — quem vendeu é a contraparte, que não temos como saber.
+  // "livre" (pernas arbitrárias, até 4), mesmo contrato que o FYT já usa.
+  // A direção de cada perna (compra/venda) vem PRESUMIDA do backend
+  // (lado_presumido, ver _pareia_estruturas em app.py) — é uma suposição
+  // pela convenção de como cada estrutura costuma ser montada na prática,
+  // não um dado observado: a BRAPI não publica quem foi o comprador/
+  // vendedor do negócio.
   function urlCalculo(e) {
-    var a = e.pernas[0], b = e.pernas[1];
+    var pernas = e.pernas.slice(0, 4);   // livre_legs aceita até 4 (A/B/C/D)
     // O volume da BRAPI vem em AÇÕES; a tela de cálculo trabalha em
     // CONTRATOS (lote de 100). Sem dividir, "qty" ia como 1.000.700.
-    var lote = Math.max(100, Math.round(Math.min(a.qtd, b.qtd) / 100));
+    // Usa a MENOR quantidade do grupo como base (a perna "unidade" —
+    // ex.: no booster 1:N é a comprada; nas demais, todas têm ~a mesma).
+    var qtdMin = Math.min.apply(null, pernas.map(function(p) { return p.qtd || 0; }));
+    var lote = Math.max(100, Math.round(qtdMin / 100));
 
-    // Numa trava as pernas são opostas (compra uma, vende a outra) — com
-    // ambas positivas o payoff sairia errado. Monta sempre A DÉBITO, que é
-    // como a trava costuma ser operada individualmente: compra a perna
-    // mais cara e vende a mais barata, pagando a diferença.
-    //
-    // Isso depende do tipo, não do strike: em CALL a mais cara é a de
-    // strike MENOR, em PUT é a de strike MAIOR. Usar "compra o strike
-    // menor" para os dois deixava as travas de PUT no crédito (era o caso
-    // do AURE3: comprava a de 9,04 a R$0,07 e vendia a de 10,19 a R$0,34).
-    // Comparar o prêmio resolve os dois casos de uma vez.
-    // Nas de call+put as duas vão compradas, que é a leitura do OI abrindo
-    // junto (straddle comprado / collar); quem vendeu é a contraparte.
-    var sa = 1, sb = 1;
-    if (a.side === b.side) {
-      if ((a.preco || 0) >= (b.preco || 0)) sb = -1; else sa = -1;
-    }
-    var p = {
+    var legsSpec = pernas.map(function(p) {
+      var qtdRel = qtdMin ? Math.max(1, Math.round((p.qtd || 0) / qtdMin)) : 1;
+      var sinal = p.lado_presumido === 'SELL' ? -qtdRel : qtdRel;
+      return (p.side === 'call' ? 'C' : 'P') + ':' + sinal;
+    }).join('|');
+
+    var params = {
       st: '1', ativo: e.ativo, exp: e.exp, qty: lote, op: 'livre',
-      livre_legs: (a.side === 'call' ? 'C' : 'P') + ':' + sa + '|'
-                + (b.side === 'call' ? 'C' : 'P') + ':' + sb,
+      livre_legs: legsSpec,
       livre_nome: e.tipo + ' ' + e.ativo,
-      at: a.symbol, ak: a.strike, ap: a.preco,
-      bt: b.symbol, bk: b.strike, bp: b.preco
+      at: pernas[0].symbol, ak: pernas[0].strike, ap: pernas[0].preco,
+      bt: pernas[1].symbol, bk: pernas[1].strike, bp: pernas[1].preco
     };
-    return '/venda_puts?' + new URLSearchParams(p).toString() + '#estrutura';
+    if (pernas[2]) { params.ct2 = pernas[2].symbol; params.ck2 = pernas[2].strike; params.cp2 = pernas[2].preco; }
+    if (pernas[3]) { params.dt  = pernas[3].symbol; params.dk  = pernas[3].strike; params.dp  = pernas[3].preco; }
+    return '/venda_puts?' + new URLSearchParams(params).toString() + '#estrutura';
   }
 
   window.vaCopiar = function(btn) {
@@ -783,10 +780,14 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
                   + (e.abre == null ? ''
                      : ' · ' + (e.abre ? 'abrindo posição' : 'encerrando posição'))];
     e.pernas.forEach(function(p) {
+      var ladoTxt = p.lado_presumido
+        ? ' | ' + (p.lado_presumido === 'BUY' ? 'compra' : 'venda') + ' (presumida)'
+        : '';
       linhas.push((p.side === 'call' ? 'CALL' : 'PUT') + ' ' + p.symbol
         + ' | strike ' + brl(p.strike) + ' | preço ' + brl(p.preco)
         + ' | ' + num(p.qtd) + ' un. | ' + num(p.trades) + ' neg.'
-        + ' | ΔOI ' + (p.var_oi > 0 ? '+' : '') + num(p.var_oi));
+        + ' | ΔOI ' + (p.var_oi > 0 ? '+' : '') + num(p.var_oi)
+        + ladoTxt);
     });
     var txt = linhas.join('\n');
     var ok = function() {
@@ -843,6 +844,15 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
               + (e.abre ? 'abrindo posição' : 'encerrando posição') + '</span>')
         + '</div>';
       e.pernas.forEach(function(p) {
+        // lado_presumido é uma SUPOSIÇÃO pela convenção de mercado da
+        // estrutura (ver comentário no backend), não um dado observado —
+        // por isso o badge usa "presumido" no title em vez de afirmar.
+        var badgeLado = p.lado_presumido
+          ? ' <span class="va-est-tag" style="background:' +
+              (p.lado_presumido === 'BUY' ? 'rgba(16,185,129,.18);color:#34d399' : 'rgba(239,68,68,.18);color:#f87171')
+            + ';font-size:.68rem;padding:.06rem .4rem;" title="Direção presumida pela convenção da estrutura — não é dado observado">'
+            + (p.lado_presumido === 'BUY' ? 'compra (presumida)' : 'venda (presumida)') + '</span>'
+          : '';
         h += '<div class="va-est-perna">'
           + '<span class="' + (p.side === 'call' ? 'va-call' : 'va-put') + '">'
           +   (p.side === 'call' ? 'C' : 'P') + '</span> '
@@ -854,6 +864,7 @@ tr.va-tem-par td:first-child{box-shadow:inset 3px 0 0 #7c3aed;}
           + ' · ' + num(p.qtd) + ' un.'
           + ' · ' + num(p.trades) + ' neg.'
           + ' · OI ' + (p.var_oi > 0 ? '+' : '') + num(p.var_oi)
+          + badgeLado
           + '</div>';
       });
       h += '<div style="display:flex;gap:.4rem;margin-top:.5rem;flex-wrap:wrap;">'

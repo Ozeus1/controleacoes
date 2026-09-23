@@ -8503,8 +8503,12 @@ def api_opcao_evolucao(simbolo):
                     'serie': serie, 'n': len(serie)})
 
 
+_BOOSTER_RATIOS = (2, 3, 5)   # N vendidas para 1 comprada — proporções usuais de ratio/booster
+
 def _pareia_estruturas(linhas, tol_qtd=0.10, tol_voi=0.45, min_medio=20000):
-    """Acha pernas que provavelmente são a MESMA operação montada de uma vez.
+    """Acha pernas que provavelmente são a MESMA operação montada de uma vez,
+    e infere qual perna foi COMPRADA e qual foi VENDIDA por CONVENÇÃO DE
+    MERCADO — não por dado observado.
 
     Sem horário do negócio (a BRAPI só publica o fechado do pregão — nem
     /options/historical com interval=5m devolve intradiário), não dá para
@@ -8544,12 +8548,25 @@ def _pareia_estruturas(linhas, tol_qtd=0.10, tol_voi=0.45, min_medio=20000):
 
     Não é prova de que foi a mesma operação; é uma coincidência forte o
     bastante para valer o destaque, e por isso a tela usa "possível".
+
+    ── Direção (compra/venda) por CONVENÇÃO, não por dado observado ──────
+    A BRAPI não publica quem foi o agressor comprador/vendedor do negócio
+    (nenhum endpoint devolve isso), e a variação de OI sozinha NÃO
+    distingue lado: um ΔOI positivo numa série sobe tanto se alguém abriu
+    posição comprada quanto se alguém lançou (vendeu a descoberto) — as
+    duas coisas aumentam o open interest igualmente. Por isso a direção
+    aqui é sempre uma SUPOSIÇÃO baseada em como cada estrutura costuma ser
+    montada na prática (a mesma convenção que a aba Estruturas de Cálculo
+    de Opções já usava para desenhar o payoff a débito), nunca uma leitura
+    de mercado — o rótulo da estrutura carrega "(dir. presumida)" e o
+    front deixa isso explícito.
     """
     ops = [x for x in linhas if x.get('side') in ('call', 'put') and x.get('exp')
            and (x.get('medio') or 0) >= min_medio]
-    def _casa(a, b):
-        """Se as duas pernas podem ser a mesma operação, devolve o quão bem
-        elas casam (0 = idênticas); senão, None."""
+
+    def _casa(a, b, tqtd=tol_qtd):
+        """Se as duas pernas podem ser a mesma operação (proporção 1:1),
+        devolve o quão bem elas casam (0 = idênticas); senão, None."""
         if a['ativo'] != b['ativo'] or a['exp'] != b['exp']:
             return None
         qa, qb = a.get('qtd') or 0, b.get('qtd') or 0
@@ -8557,7 +8574,7 @@ def _pareia_estruturas(linhas, tol_qtd=0.10, tol_voi=0.45, min_medio=20000):
         if not mq:
             return None
         dq = abs(qa - qb) / mq
-        if dq > tol_qtd:
+        if dq > tqtd:
             return None
 
         va, vb = a.get('var_oi') or 0, b.get('var_oi') or 0
@@ -8577,6 +8594,33 @@ def _pareia_estruturas(linhas, tol_qtd=0.10, tol_voi=0.45, min_medio=20000):
             return None
         return dq + dv
 
+    def _casa_ratio(comprada, vendida, n):
+        """Booster/Ratio: 1 perna comprada financia N vendidas do MESMO lado
+        (side), quantidade da vendida ≈ N × a da comprada — mesma folga de
+        10%/45% do pareamento 1:1, só que sobre a proporção N:1 em vez da
+        igualdade."""
+        if comprada['ativo'] != vendida['ativo'] or comprada['exp'] != vendida['exp']:
+            return None
+        if comprada['side'] != vendida['side']:
+            return None
+        qc, qv = comprada.get('qtd') or 0, vendida.get('qtd') or 0
+        if not qc or not qv:
+            return None
+        alvo = qc * n
+        dq = abs(qv - alvo) / alvo
+        if dq > tol_qtd:
+            return None
+        va, vb = comprada.get('var_oi') or 0, vendida.get('var_oi') or 0
+        if va == 0 and vb == 0:
+            return dq if dq <= 0.01 else None
+        if va * vb < 0 or va == 0 or vb == 0:
+            return None
+        alvo_v = va * n
+        dv = abs(vb - alvo_v) / abs(alvo_v) if alvo_v else 1.0
+        if dv > tol_voi:
+            return None
+        return dq + dv
+
     # Pareamento pela MELHOR combinação, não pela primeira encontrada: em
     # BPAC11 havia três pernas concentradas no mesmo vencimento e a ordem
     # casava V661 com J661 (qualidade 0,055) em vez da trava V661×V621
@@ -8586,41 +8630,256 @@ def _pareia_estruturas(linhas, tol_qtd=0.10, tol_voi=0.45, min_medio=20000):
         for b in ops[i + 1:]:
             q = _casa(a, b)
             if q is not None:
-                cands.append((q, i, a, b))
-    cands.sort(key=lambda x: (x[0], x[1]))
+                cands.append((q, 'par', i, a, b, None))
+            if a['side'] == b['side']:
+                for n in _BOOSTER_RATIOS:
+                    qr = _casa_ratio(a, b, n)
+                    if qr is not None:
+                        cands.append((qr, 'booster', i, a, b, n))
+                    qr2 = _casa_ratio(b, a, n)
+                    if qr2 is not None:
+                        cands.append((qr2, 'booster', i, b, a, n))
+    cands.sort(key=lambda x: (x[0], x[2]))
+
+    def _mid(rows):
+        """'Meio do dinheiro' aproximado do grupo: média dos strikes — usado
+        só para decidir qual perna fica mais perto do spot quando a
+        convenção precisa disso (seagull/slide)."""
+        ks = [r.get('strike') or 0 for r in rows]
+        return sum(ks) / len(ks) if ks else 0
+
+    def _marca_lado(pernas_com_lado):
+        """Escreve 'lado_presumido': 'BUY'/'SELL' em cada perna do grupo, in
+        place, a partir do (side_op, lado) já decidido por quem monta o
+        grupo — só centraliza o formato de saída."""
+        for p, lado in pernas_com_lado:
+            p['lado_presumido'] = lado
+        return [p for p, _ in pernas_com_lado]
 
     out, usados = [], set()
-    for _q, _i, a, b in cands:
+
+    for _q, kind, _i, a, b, n in cands:
         if a['symbol'] in usados or b['symbol'] in usados:
             continue
 
-        if a['side'] != b['side']:
-            mesmo_k = a.get('strike') == b.get('strike')
-            tipo = ('Straddle / conversão' if mesmo_k
-                    else 'Collar / risk reversal')
-        else:
-            # A tela monta a trava a débito (compra a perna mais cara), e a
-            # débito o sentido é dado pelo tipo: CALL vira trava de alta,
-            # PUT vira trava de baixa. Diz isso no rótulo em vez de só
-            # "trava vertical de PUT", que não informa a direção.
+        if kind == 'booster':
+            # a = comprada (1x), b = vendida (Nx) — decidido no pareamento.
             direcao = 'alta' if a['side'] == 'call' else 'baixa'
-            tipo = f"Trava de {direcao} ({a['side'].upper()}, débito)"
+            tipo = f"Booster / Ratio {direcao} (1:{n}, dir. presumida)"
+            pernas = _marca_lado([(a, 'BUY'), (b, 'SELL')])
+            qtd_ref = a.get('qtd') or 0
+
+        elif a['side'] != b['side']:
+            mesmo_k = a.get('strike') == b.get('strike')
+            # Straddle/strangle: o OI abrindo nas duas pernas juntas é lido
+            # como as duas COMPRADAS (quem vendeu é a contraparte de cada
+            # negócio, que não aparece nos dados) — mesma convenção que a
+            # aba Estruturas de Cálculo de Opções já usava.
+            tipo = (('Straddle comprado' if mesmo_k else 'Strangle comprado')
+                    + ' (dir. presumida)')
+            pernas = _marca_lado([(a, 'BUY'), (b, 'BUY')])
+            qtd_ref = max(a.get('qtd') or 0, b.get('qtd') or 0)
+
+        else:
+            # Trava 1:1 mesmo lado — convenção já usada no urlCalculo do
+            # front: a perna de PRÊMIO MAIOR é a comprada (é o lado que
+            # paga mais caro na montagem a débito, como o book realmente
+            # sai quando alguém monta essa trava).
+            if (a.get('preco') or 0) >= (b.get('preco') or 0):
+                comprada, vendida = a, b
+            else:
+                comprada, vendida = b, a
+            direcao = 'alta' if a['side'] == 'call' else 'baixa'
+            tipo = f"Trava de {direcao} ({a['side'].upper()}, débito, dir. presumida)"
+            pernas = _marca_lado([(comprada, 'BUY'), (vendida, 'SELL')])
+            qtd_ref = max(a.get('qtd') or 0, b.get('qtd') or 0)
+
         va = a.get('var_oi') or 0
         vb = b.get('var_oi') or 0
         out.append({
             'ativo': a['ativo'], 'exp': a['exp'], 'tipo': tipo,
+            'presumida': True,
             # Sem dado de OI (as duas pernas em 0) não dá para dizer se a
             # posição abriu ou encerrou — a tela omite o selo nesse caso.
             'abre': None if (va == 0 and vb == 0) else (va + vb) > 0,
-            'qtd': max(a.get('qtd') or 0, b.get('qtd') or 0),
+            'qtd': qtd_ref,
             'pernas': [
                 {k: p.get(k) for k in ('symbol', 'side', 'strike', 'preco',
-                                       'qtd', 'trades', 'var_oi')}
-                for p in (a, b)
+                                       'qtd', 'trades', 'var_oi', 'lado_presumido')}
+                for p in pernas
             ],
         })
         usados.add(a['symbol'])
         usados.add(b['symbol'])
+
+    # ── Expansão para 3-4 pernas: Slide, Seagull, Iron Condor ──────────────
+    # Procura, entre as estruturas de 2 pernas já achadas (travas e
+    # straddles/strangles), uma TERCEIRA (e quarta) perna livre que também
+    # bate no mesmo ativo/vencimento com quantidade e ΔOI compatíveis com o
+    # grupo — mesma régua de tolerância do pareamento 1:1, aplicada contra
+    # a MENOR quantidade do grupo (a perna "unidade" da estrutura).
+    livres = [o for o in ops if o['symbol'] not in usados]
+
+    def _compativel(grupo_qtd, grupo_voi_sinal, extra):
+        qe = extra.get('qtd') or 0
+        if not qe or not grupo_qtd:
+            return None
+        dq = abs(qe - grupo_qtd) / max(qe, grupo_qtd)
+        if dq > tol_qtd:
+            return None
+        ve = extra.get('var_oi') or 0
+        if grupo_voi_sinal == 0 or ve == 0:
+            return dq if dq <= 0.01 else None
+        if ve * grupo_voi_sinal < 0:
+            return None
+        return dq
+
+    expandidas = []
+    for est in out:
+        if est['tipo'].startswith('Booster'):
+            continue   # ratio já é 3 pernas conceitualmente (1 vs N) — não expande
+        pernas = est['pernas']
+        if len(pernas) != 2:
+            continue
+        grupo_qtd = min(p.get('qtd') or 0 for p in pernas)
+        grupo_voi = sum(p.get('var_oi') or 0 for p in pernas)
+        cand3 = []
+        for extra in livres:
+            if extra['symbol'] in usados:
+                continue   # já reivindicada por outra estrutura nesta mesma expansão
+            if extra['ativo'] != est['ativo'] or extra['exp'] != est['exp']:
+                continue
+            dq = _compativel(grupo_qtd, grupo_voi, extra)
+            if dq is None:
+                continue
+            cand3.append((dq, extra))
+        if not cand3:
+            continue
+        cand3.sort(key=lambda x: x[0])
+        _dq3, terceira = cand3[0]
+
+        strikes_existentes = sorted(p.get('strike') or 0 for p in pernas)
+        sides_existentes = {p['side'] for p in pernas}
+
+        if est['tipo'].startswith('Trava'):
+            # 2 CALLs (ou 2 PUTs) + 1 perna nova do lado OPOSTO no mesmo
+            # vencimento → Seagull: a trava de débito já achada financiada
+            # pela venda de uma opção OTM do outro lado. Convenção: a nova
+            # perna entra VENDIDA (é ela que financia a trava).
+            if terceira['side'] not in sides_existentes:
+                nova_tipo = ('Seagull de alta' if 'call' in sides_existentes
+                             else 'Seagull de baixa') + ' (dir. presumida)'
+                terceira['lado_presumido'] = 'SELL'
+                expandidas.append({
+                    'ativo': est['ativo'], 'exp': est['exp'], 'tipo': nova_tipo,
+                    'presumida': True, 'abre': est['abre'],
+                    'qtd': est['qtd'],
+                    'pernas': pernas + [
+                        {k: terceira.get(k) for k in ('symbol', 'side', 'strike', 'preco',
+                                                       'qtd', 'trades', 'var_oi', 'lado_presumido')}
+                    ],
+                })
+                usados.add(terceira['symbol'])
+                continue
+
+            # Mesmo lado da trava, strike fora dos dois já usados → Slide
+            # (débito): 1 comprada + 2 vendidas em strikes consecutivos.
+            if terceira['side'] in sides_existentes:
+                k3 = terceira.get('strike') or 0
+                if k3 > max(strikes_existentes) or k3 < min(strikes_existentes):
+                    direcao = 'alta' if terceira['side'] == 'call' else 'baixa'
+                    terceira['lado_presumido'] = 'SELL'
+                    expandidas.append({
+                        'ativo': est['ativo'], 'exp': est['exp'],
+                        'tipo': f"Slide estrutural {direcao} (dir. presumida)",
+                        'presumida': True, 'abre': est['abre'],
+                        'qtd': est['qtd'],
+                        'pernas': pernas + [
+                            {k: terceira.get(k) for k in ('symbol', 'side', 'strike', 'preco',
+                                                           'qtd', 'trades', 'var_oi', 'lado_presumido')}
+                        ],
+                    })
+                    usados.add(terceira['symbol'])
+                    continue
+
+        if est['tipo'].startswith('Straddle') or est['tipo'].startswith('Strangle'):
+            # 1 CALL + 1 PUT já casadas (straddle/strangle) + mais uma perna
+            # do mesmo lado de uma delas, strike mais afastado → Iron Condor
+            # em formação (falta a 4ª para fechar as duas travas). Guarda
+            # como candidato de 3 pernas com rótulo "possível Iron Condor";
+            # se aparecer uma 4ª perna livre completando o outro lado, uma
+            # segunda rodada fecha em 4. Mantém simples: reporta as 3.
+            if terceira['side'] in sides_existentes:
+                continue  # ambíguo demais sem 4ª perna — não força palpite
+            k3 = terceira.get('strike') or 0
+            outra_mesmo_lado = next((p for p in pernas if p['side'] == terceira['side']), None)
+            if outra_mesmo_lado and abs(k3 - (outra_mesmo_lado.get('strike') or 0)) > 0.001:
+                terceira['lado_presumido'] = 'SELL'
+                expandidas.append({
+                    'ativo': est['ativo'], 'exp': est['exp'],
+                    'tipo': 'Iron Condor (3 de 4 pernas, dir. presumida)',
+                    'presumida': True, 'abre': est['abre'],
+                    'qtd': est['qtd'],
+                    'pernas': pernas + [
+                        {k: terceira.get(k) for k in ('symbol', 'side', 'strike', 'preco',
+                                                       'qtd', 'trades', 'var_oi', 'lado_presumido')}
+                    ],
+                })
+                usados.add(terceira['symbol'])
+
+    if expandidas:
+        # Remove do out as bases que viraram estruturas maiores, substitui
+        # pela versão expandida — evita listar a trava de 2 pernas e o
+        # seagull de 3 como dois achados separados do mesmo grupo.
+        bases_substituidas = set()
+        for exp3 in expandidas:
+            syms3 = tuple(sorted(p['symbol'] for p in exp3['pernas'][:2]))
+            bases_substituidas.add(syms3)
+        out = [e for e in out
+               if tuple(sorted(p['symbol'] for p in e['pernas'])) not in bases_substituidas]
+        out.extend(expandidas)
+
+    # ── Calendar: mesmo strike e lado, VENCIMENTOS diferentes ──────────────
+    # _casa exige mesmo exp (não serve aqui); pareamento à parte no que
+    # sobrou livre. Convenção: a perna de vencimento mais CURTO é a
+    # vendida (financia) e a mais LONGA é a comprada — é como o calendar
+    # tradicionalmente é montado (Theta a favor na curta).
+    livres2 = [o for o in ops if o['symbol'] not in usados]
+    por_strike = {}
+    for o in livres2:
+        chave = (o['ativo'], o['side'], o.get('strike'))
+        por_strike.setdefault(chave, []).append(o)
+    for chave, grupo in por_strike.items():
+        if len(grupo) < 2:
+            continue
+        grupo.sort(key=lambda o: o['exp'])
+        for i in range(len(grupo) - 1):
+            curta, longa = grupo[i], grupo[i + 1]
+            if curta['symbol'] in usados or longa['symbol'] in usados:
+                continue
+            if curta['exp'] == longa['exp']:
+                continue
+            qc, ql = curta.get('qtd') or 0, longa.get('qtd') or 0
+            mq = max(qc, ql)
+            if not mq or abs(qc - ql) / mq > tol_qtd:
+                continue
+            curta['lado_presumido'] = 'SELL'
+            longa['lado_presumido'] = 'BUY'
+            direcao = 'CALL' if chave[1] == 'call' else 'PUT'
+            out.append({
+                'ativo': chave[0], 'exp': longa['exp'], 'tipo':
+                    f"Calendar de {direcao} (venc. curto {curta['exp']}, dir. presumida)",
+                'presumida': True, 'abre': None, 'qtd': min(qc, ql),
+                'pernas': [
+                    {k: p.get(k) for k in ('symbol', 'side', 'strike', 'preco',
+                                           'qtd', 'trades', 'var_oi', 'lado_presumido')}
+                    for p in (curta, longa)
+                ],
+            })
+            usados.add(curta['symbol'])
+            usados.add(longa['symbol'])
+            break   # cada perna curta casa com no máx. 1 longa
+
     return out
 
 
@@ -9015,13 +9274,16 @@ def api_volume_anomalo_export_excel():
     if estruturas:
         ws = wb.create_sheet('Estruturas Casadas')
         headers = ['#', 'Ativo', 'Vencimento', 'Tipo', 'Sinal', 'Perna',
-                   'Ticker', 'Strike', 'Preço', 'Quantidade', 'Negócios', 'Var. OI']
-        _cabecalho(ws, headers, [5, 9, 12, 22, 16, 8, 12, 10, 10, 14, 10, 12])
+                   'Ticker', 'Strike', 'Preço', 'Quantidade', 'Negócios', 'Var. OI',
+                   'Direção (presumida)']
+        _cabecalho(ws, headers, [5, 9, 12, 22, 16, 8, 12, 10, 10, 14, 10, 12, 18])
 
         for i, e in enumerate(estruturas, 1):
             sinal = ('abrindo posição' if e.get('abre') is True
                      else 'encerrando posição' if e.get('abre') is False else '—')
             for j, p in enumerate(e.get('pernas') or [], 1):
+                lado = p.get('lado_presumido')
+                lado_str = 'Compra (presumida)' if lado == 'BUY' else 'Venda (presumida)' if lado == 'SELL' else ''
                 ws.append([
                     i if j == 1 else '',
                     e.get('ativo') if j == 1 else '',
@@ -9035,6 +9297,7 @@ def api_volume_anomalo_export_excel():
                     p.get('qtd') or 0,
                     p.get('trades') if p.get('trades') is not None else '',
                     p.get('var_oi') if p.get('var_oi') is not None else '',
+                    lado_str,
                 ])
                 rr = ws.max_row
                 for col in range(1, len(headers) + 1):

@@ -27,6 +27,7 @@
     --input-bg: #0c1119;
     --input-color: #f2f6fc;
     --hover-bg: rgba(255, 255, 255, 0.028);
+    --zebra-bg: rgba(255, 255, 255, 0.014);  /* listra de linha ímpar — mais discreta que --hover-bg */
     --dropdown-hover: rgba(0, 224, 138, 0.10);
     --toggle-bg: rgba(255, 255, 255, 0.06);
     --nav-mobile-border: rgba(255, 255, 255, 0.06);
@@ -60,6 +61,7 @@
     --input-bg: #ffffff;
     --input-color: #0b1220;
     --hover-bg: rgba(0, 0, 0, 0.03);
+    --zebra-bg: rgba(0, 0, 0, 0.018);  /* listra de linha ímpar — mais discreta que --hover-bg */
     --dropdown-hover: rgba(0, 135, 79, 0.10);
     --toggle-bg: rgba(0, 0, 0, 0.06);
     --nav-mobile-border: rgba(0, 0, 0, 0.08);
@@ -711,6 +713,25 @@ td:first-child {
 
 tr:hover {
     background-color: var(--hover-bg);
+}
+
+/* Zebra striping discreto: linhas ímpares levemente mais escuras, só para
+   facilitar a leitura horizontal em tabelas longas. Aplicado por td/th (não
+   por tr) porque a 1ª coluna é sticky com fundo opaco fixo (--card-bg
+   !important) — sobrescrever ali também é o que faz a listra acompanhar a
+   coluna congelada em vez de parar nela. :hover (--hover-bg, mais forte)
+   sempre tem prioridade sobre a listra (--zebra-bg, mais sutil). */
+tbody tr:nth-child(odd) > td,
+tbody tr:nth-child(odd) > th {
+    background-color: var(--zebra-bg);
+}
+tbody tr:nth-child(odd) > td:first-child {
+    background-color: var(--zebra-bg) !important;
+}
+tbody tr:hover > td,
+tbody tr:hover > th,
+tbody tr:hover > td:first-child {
+    background-color: var(--hover-bg) !important;
 }
 
 /* ── Freeze panes: sticky header row ── */

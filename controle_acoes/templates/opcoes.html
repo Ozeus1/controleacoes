@@ -820,7 +820,8 @@
                     <a href="{{ url_for('edit_estruturada', id=op.id) }}" class="btn btn-sm btn-primary" title="Editar">✏️</a>
                     <form action="{{ url_for('close_estruturada', id=op.id) }}" method="post" style="display:inline;">
                         <button type="submit" class="btn btn-sm" style="background:var(--accent-color); color: var(--accent-contrast);"
-                                title="Encerrar operação" onclick="return confirm('Encerrar esta operação?')">🛑</button>
+                                title="Encerrar operação"
+                                onclick="return confirm('Encerrar {{ op.name|e }} ({{ op.underlying_asset or '—' }})?\n\nLucro atual: {{ cur }} {{ '%.2f'|format(item.current_pnl)|replace('.', ',') }}')">🛑</button>
                     </form>
                     <form action="{{ url_for('delete_estruturada', id=op.id) }}" method="post" style="display:inline;">
                         <button type="submit" class="btn btn-sm btn-danger" title="Excluir"

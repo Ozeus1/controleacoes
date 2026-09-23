@@ -23354,8 +23354,18 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
             uk = sp.underlying_asset.upper()
             if uk in prices and prices[uk] > 0:
                 sp.underlying_price = prices[uk]
-            if uk in variations:
-                sp.underlying_change = variations[uk]
+                if uk in variations:
+                    sp.underlying_change = variations[uk]
+            elif oplab_online and _left() > 0:
+                # O bulk pode não trazer o subjacente (ex.: ação de baixa
+                # liquidez fora do lote) — sem esse fallback, o preço fica
+                # 0,00/travado indefinidamente para ativos que não estão na
+                # carteira (Asset), já que só o OpLab bulk os cobre.
+                p, var = _fallback_option_quote(uk)
+                if p:
+                    sp.underlying_price = p
+                    if var is not None:
+                        sp.underlying_change = var
 
     # ── Atualiza StudyOptions (/estudos) ──────────────────────────
     for so in study_options:

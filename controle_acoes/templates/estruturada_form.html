@@ -116,10 +116,18 @@
                                        oninput="recalc()">
                             </td>
                             <td style="padding:.35rem .4rem;">
-                                <input type="text" name="leg_current_price"
-                                       value="{{ '%.2f'|format(leg.current_price)|replace('.', ',') }}"
-                                       placeholder="0,00" style="width:80px; text-align:right;"
-                                       oninput="recalc()">
+                                <div style="display:flex; align-items:center; gap:.25rem;">
+                                    <input type="text" name="leg_current_price"
+                                           value="{{ '%.2f'|format(leg.current_price)|replace('.', ',') }}"
+                                           placeholder="0,00" style="width:80px; text-align:right;"
+                                           oninput="recalc()">
+                                    <button type="button" class="leg-refresh-btn" title="Buscar bid/ask ao vivo do book (só com o pregão aberto)"
+                                            style="background:none; border:none; cursor:pointer; padding:.15rem;
+                                                   color:var(--text-secondary); font-size:.85rem; line-height:1;
+                                                   opacity:.6; transition:opacity .15s;"
+                                            onmouseover="this.style.opacity='1';" onmouseout="this.style.opacity='.6';"
+                                            onclick="refreshLegPrice(this)">🔄</button>
+                                </div>
                             </td>
                             <td style="padding:.35rem .4rem;">
                                 <button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button>
@@ -162,8 +170,16 @@
                                        style="width:80px; text-align:right;" oninput="recalc()">
                             </td>
                             <td style="padding:.35rem .4rem;">
-                                <input type="text" name="leg_current_price" placeholder="0,00"
-                                       style="width:80px; text-align:right;" oninput="recalc()">
+                                <div style="display:flex; align-items:center; gap:.25rem;">
+                                    <input type="text" name="leg_current_price" placeholder="0,00"
+                                           style="width:80px; text-align:right;" oninput="recalc()">
+                                    <button type="button" class="leg-refresh-btn" title="Buscar bid/ask ao vivo do book (só com o pregão aberto)"
+                                            style="background:none; border:none; cursor:pointer; padding:.15rem;
+                                                   color:var(--text-secondary); font-size:.85rem; line-height:1;
+                                                   opacity:.6; transition:opacity .15s;"
+                                            onmouseover="this.style.opacity='1';" onmouseout="this.style.opacity='.6';"
+                                            onclick="refreshLegPrice(this)">🔄</button>
+                                </div>
                             </td>
                             <td style="padding:.35rem .4rem;">
                                 <button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button>
@@ -194,12 +210,24 @@
             </div>
         </div>
 
-        <div style="display:flex; gap:1rem; flex-wrap:wrap;">
+        <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center;">
             <button type="submit" class="btn btn-primary">💾 Salvar Operação</button>
             <a href="{{ url_for('opcoes') }}" class="btn btn-secondary">Cancelar</a>
+            {% if edit and op %}
+            <button type="button" id="btn-encerrar-op"
+                    style="margin-left:auto; background:none; border:1px solid var(--border-color);
+                           color:var(--text-secondary); border-radius:6px; padding:.4rem .8rem;
+                           font-size:.82rem; cursor:pointer; transition:opacity .15s;"
+                    onmouseover="this.style.opacity='.75';" onmouseout="this.style.opacity='1';"
+                    onclick="encerrarOperacao()">🛑 Encerrar operação</button>
+            {% endif %}
         </div>
     </form>
 </div>
+
+{% if edit and op %}
+<form id="form-encerrar-op" method="post" action="{{ url_for('close_estruturada', id=op.id) }}" style="display:none;"></form>
+{% endif %}
 
 <script>
 function fmtBRL(v) {
@@ -219,7 +247,15 @@ function addLeg() {
         <td style="padding:.35rem .4rem;" class="col-strike"><input type="text" name="leg_strike" placeholder="0,00" style="width:80px; text-align:right;"></td>
         <td style="padding:.35rem .4rem;" class="col-exp"><input type="date" name="leg_expiration" style="width:130px;"></td>
         <td style="padding:.35rem .4rem;"><input type="text" name="leg_entry_price" placeholder="0,00" style="width:80px; text-align:right;" oninput="recalc()"></td>
-        <td style="padding:.35rem .4rem;"><input type="text" name="leg_current_price" placeholder="0,00" style="width:80px; text-align:right;" oninput="recalc()"></td>
+        <td style="padding:.35rem .4rem;"><div style="display:flex; align-items:center; gap:.25rem;">
+            <input type="text" name="leg_current_price" placeholder="0,00" style="width:80px; text-align:right;" oninput="recalc()">
+            <button type="button" class="leg-refresh-btn" title="Buscar bid/ask ao vivo do book (só com o pregão aberto)"
+                    style="background:none; border:none; cursor:pointer; padding:.15rem;
+                           color:var(--text-secondary); font-size:.85rem; line-height:1;
+                           opacity:.6; transition:opacity .15s;"
+                    onmouseover="this.style.opacity='1';" onmouseout="this.style.opacity='.6';"
+                    onclick="refreshLegPrice(this)">🔄</button>
+        </div></td>
         <td style="padding:.35rem .4rem;"><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
     </tr>`;
     tbody.insertAdjacentHTML('beforeend', tmpl);
@@ -260,6 +296,39 @@ function removeLeg(btn) {
     recalc();
 }
 
+// ── Botão "🔄 atualizar": busca bid/ask ao vivo (pregão aberto) ────────────
+// Perna VENDIDA usa o ASK (custo de recomprar); perna COMPRADA usa o BID
+// (valor de vender agora) — mesma convenção da tela de Payoff. O campo
+// continua editável manualmente mesmo depois de atualizar via botão.
+function refreshLegPrice(btn) {
+    var row = btn.closest('.leg-row');
+    var ticker = (row.querySelector('[name=leg_ticker]').value || '').trim().toUpperCase();
+    if (!ticker) { alert('Preencha o ticker da perna antes de atualizar.'); return; }
+    var side = row.querySelector('[name=leg_side]').value;
+    var input = row.querySelector('[name=leg_current_price]');
+    btn.disabled = true;
+    var original = btn.textContent;
+    btn.textContent = '⏳';
+    fetch('/api/payoff-leg/book_price/' + encodeURIComponent(ticker))
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+            btn.disabled = false;
+            btn.textContent = original;
+            if (!res.ok || res.d.error) throw new Error(res.d.error || 'Erro ao buscar cotação');
+            var px = side === 'SELL' ? res.d.ask : res.d.bid;
+            if (px == null) px = side === 'SELL' ? res.d.bid : res.d.ask;   // fallback pro outro lado do book
+            if (px == null) px = res.d.last;
+            if (px == null) throw new Error('Sem preço disponível');
+            input.value = px.toFixed(2).replace('.', ',');
+            recalc();
+        })
+        .catch(function (e) {
+            btn.disabled = false;
+            btn.textContent = original;
+            alert('Não foi possível atualizar: ' + e.message);
+        });
+}
+
 function recalc() {
     var rows = document.querySelectorAll('#legs-body .leg-row');
     var net = 0, pnl = 0;
@@ -297,6 +366,17 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     recalc();
 });
+
+// ── Encerrar operação: mesmo comportamento do botão da tela Operações ─────
+{% if edit and op %}
+function encerrarOperacao() {
+    var nome = {{ op.name|tojson }};
+    var ativo = {{ (op.underlying_asset or '—')|tojson }};
+    var pnlTxt = document.getElementById('prev-pnl').textContent;
+    var ok = confirm('Encerrar ' + nome + ' (' + ativo + ')?\n\nLucro atual: ' + pnlTxt);
+    if (ok) document.getElementById('form-encerrar-op').submit();
+}
+{% endif %}
 
 // Atualiza preview ao mudar lado ou qtd
 document.getElementById('legs-body').addEventListener('change', recalc);

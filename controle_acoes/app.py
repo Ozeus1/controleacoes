@@ -6464,12 +6464,11 @@ def api_busca_operacoes(ticker):
         elif op in ('slide_estrutural', 'slide_estrutural_put'):
             # ── Slide Estrutural — CALL (alta) e PUT (baixa), espelhadas ───────
             # 3 pernas: +1 comprada (A) −1 vendida 1 (B) −1 vendida 2 (C).
-            #   B e C ficam SEMPRE strikes consecutivos (vizinhos na cadeia) —
-            #   formam o platô estreito de lucro máximo, exatamente como no
-            #   exemplo real (Simulador: A=182, B=187, C=188 — B e C colados).
-            #   A asa que varia de 2 a 5 posições é a distância A→B (o quão
-            #   longe o platô fica da comprada): mais longe = mais prêmio de
-            #   B (mais crédito), mas o platô começa mais tarde.
+            #   Duas asas, cada uma variando de 2 a 5 posições na cadeia:
+            #   A→B (o quão longe o platô começa, em relação à comprada) e
+            #   B→C (a largura do próprio platô de lucro máximo). Cada
+            #   combinação (A, asa A→B, asa B→C) vira sua própria variante
+            #   na tabela — coluna Asas mostra "asa_A→B : asa_B→C".
             # CALL (alta): A < B < C, todas acima do spot.
             # PUT (baixa): espelho — A > B > C, todas abaixo do spot. Monta-se
             # a trava de débito com PUT (compra A, vende B) e paga vendendo
@@ -6506,106 +6505,108 @@ def api_busca_operacoes(ticker):
                 return (k - spot) / spot if is_call else (spot - k) / spot
             a_cands = [x for x in pool if 0 <= _otm_pct(x['strike']) <= 0.06 and x['ask'] > 0]
 
-            melhores_por_a = {}   # (buy_symbol, asa) -> melhor linha encontrada
+            melhores_por_a = {}   # (buy_symbol, asa_ab, asa_bc) -> linha
             for a in a_cands:
                 i = pool.index(a)
-                # B: asa (distância A→B na cadeia, em Nº de strikes) variando
-                # de 2 a 5 posições — cada largura vira uma variante própria
-                # na tabela (não só a melhor), para o usuário comparar range
-                # vs. custo. Mesma faixa de posições para ações e ETFs: como
-                # a cadeia de ações já tem strikes mais espaçados em R$, o
-                # range fica proporcionalmente maior sem lógica extra.
+                # B: asa A→B variando de 2 a 5 posições — o quão longe o
+                # platô começa em relação à comprada. Mesma faixa de
+                # posições para ações e ETFs: como a cadeia de ações já tem
+                # strikes mais espaçados em R$, o range fica
+                # proporcionalmente maior sem lógica extra.
                 b_cands = pool[i + 2:i + 6]
-                for asa_pos, b in enumerate(b_cands, start=2):
+                for asa_ab, b in enumerate(b_cands, start=2):
                     if b['bid'] <= 0:
                         continue
-                    # C: SEMPRE o strike consecutivo logo após B — forma o
-                    # platô estreito de lucro máximo (B e C vizinhos), igual
-                    # ao exemplo real. Não varia: só a distância A→B varia.
                     j = pool.index(b)
-                    if j + 1 >= len(pool):
-                        continue
-                    c = pool[j + 1]
-                    if c['bid'] <= 0:
-                        continue
-                    rng = round(abs(c['strike'] - a['strike']), 2)
-                    if range_min and rng < range_min:
-                        continue
-                    # Custo pelo book (executável) e pelo último negócio —
-                    # mesma fórmula nos dois casos: compra A no ask, vende
-                    # B e C no bid.
-                    custo_boca = a['ask'] - b['bid'] - c['bid']
-                    if a.get('close') and b.get('close') and c.get('close'):
-                        custo_ult = a['close'] - b['close'] - c['close']
-                    else:
-                        custo_ult = None
-                    # Só montagens a custo ~zero ou no crédito (ZCC) — o
-                    # valor recebido/pago da montagem deve ser >= 0 em
-                    # crédito (custo_boca <= ~0), nunca um débito real.
-                    if custo_boca > 0.10:
-                        continue
-                    asa_lo = round(abs(b['strike'] - a['strike']), 2)
-                    asa_hi = round(abs(c['strike'] - b['strike']), 2)
-                    if asa_lo <= 0 or asa_hi <= 0:
-                        continue
-                    # Payoff no vencimento (por ação), custo pelo book:
-                    # lucro máximo no platô entre B-C (a largura vendida)
-                    # menos o custo de montagem.
-                    lucro_max = asa_lo - custo_boca
-                    if lucro_max <= 0:
-                        continue
-                    # CALL: acima de C a inclinação vira −1 (call nua) —
-                    # assunção = C + lucro_max.
-                    # PUT: abaixo de C a inclinação vira −1 (put nua) —
-                    # assunção = C − lucro_max (espelho).
-                    assuncao = round(c['strike'] + lucro_max, 2) if is_call \
-                        else round(c['strike'] - lucro_max, 2)
-                    row = {
-                        'buy_symbol':  a['symbol'], 'buy_strike':  a['strike'],
-                        'sell1_symbol': b['symbol'], 'sell1_strike': b['strike'],
-                        'sell2_symbol': c['symbol'], 'sell2_strike': c['strike'],
-                        'assuncao':    assuncao,
-                        'asas':        '%g:%g' % (asa_lo, asa_hi),
-                        'asa_lo':      asa_lo, 'asa_hi': asa_hi,
-                        'range':       rng,
-                        'ultimo':      round(custo_ult, 2) if custo_ult is not None else None,
-                        'boca':        round(custo_boca, 2),
-                        'lucro_max':   round(lucro_max, 2),
-                        'liq':         min(a.get('vol_fin') or 0, b.get('vol_fin') or 0,
-                                           c.get('vol_fin') or 0),
-                        # Campos padrão (modal / abrir na cadeia / cálculos)
-                        'legs': [
-                            {'sym': a['symbol'], 'tp': opt_type, 'k': a['strike'],
-                             'q': 1,  'px': a['ask'], 'delta': None},
-                            {'sym': b['symbol'], 'tp': opt_type, 'k': b['strike'],
-                             'q': -1, 'px': b['bid'], 'delta': None},
-                            {'sym': c['symbol'], 'tp': opt_type, 'k': c['strike'],
-                             'q': -1, 'px': c['bid'], 'delta': None},
-                        ],
-                        'net':       round(-custo_boca, 2),
-                        'is_credit': custo_boca < 0,
-                        'montagem':  ('CRÉDITO' if custo_boca < -0.005 else 'ZERO'),
-                        'max_gain':  round(lucro_max, 2),
-                        'gain_unl':  False,
-                        # CALL: perda ilimitada ACIMA de C. PUT: perda
-                        # ilimitada (limitada a zero, na prática) ABAIXO
-                        # de C — a put nua descoberta não tem risco
-                        # matematicamente infinito (o papel não vai a
-                        # negativo), mas cai fora do escopo tabelado
-                        # exatamente como o lado descoberto da CALL.
-                        'max_loss':  None,
-                        'loss_unl':  True,
-                        'ratio':     None,
-                        'bes':       [assuncao],
-                    }
-                    # Uma linha por (comprada A, asa A→B): mantém só a
-                    # melhor (embora agora B→C seja fixo, não há mais
-                    # empate a resolver, mas mantemos o critério por
-                    # segurança/uniformidade com o resto do código).
-                    chave = (a['symbol'], asa_pos)
-                    atual = melhores_por_a.get(chave)
-                    if atual is None or (row['boca'], -row['range']) < (atual['boca'], -atual['range']):
-                        melhores_por_a[chave] = row
+                    # C: asa B→C variando também de 2 a 5 posições — a
+                    # largura do platô de lucro máximo. Cada combinação
+                    # (asa A→B, asa B→C) é uma variante própria na tabela.
+                    c_cands = pool[j + 2:j + 6]
+                    for asa_bc, c in enumerate(c_cands, start=2):
+                        if c['bid'] <= 0:
+                            continue
+                        rng = round(abs(c['strike'] - a['strike']), 2)
+                        if range_min and rng < range_min:
+                            continue
+                        # Custo pelo book (executável) e pelo último negócio
+                        # — mesma fórmula nos dois casos: compra A no ask,
+                        # vende B e C no bid.
+                        custo_boca = a['ask'] - b['bid'] - c['bid']
+                        if a.get('close') and b.get('close') and c.get('close'):
+                            custo_ult = a['close'] - b['close'] - c['close']
+                        else:
+                            custo_ult = None
+                        # Só montagens a custo ~zero ou no crédito (ZCC) — o
+                        # valor recebido/pago da montagem deve ser >= 0 em
+                        # crédito (custo_boca <= ~0), nunca um débito real.
+                        if custo_boca > 0.10:
+                            continue
+                        asa_lo = round(abs(b['strike'] - a['strike']), 2)
+                        asa_hi = round(abs(c['strike'] - b['strike']), 2)
+                        if asa_lo <= 0 or asa_hi <= 0:
+                            continue
+                        # Payoff no vencimento (por ação), custo pelo book:
+                        # lucro máximo no platô entre A-B (a largura da
+                        # trava comprada) menos o custo de montagem — o
+                        # platô se estende de B até C (onde a 2ª vendida
+                        # passa a descontar o ganho até C ficar nua).
+                        lucro_max = asa_lo - custo_boca
+                        if lucro_max <= 0:
+                            continue
+                        # CALL: acima de C a inclinação vira −1 (call nua) —
+                        # assunção = C + lucro_max.
+                        # PUT: abaixo de C a inclinação vira −1 (put nua) —
+                        # assunção = C − lucro_max (espelho).
+                        assuncao = round(c['strike'] + lucro_max, 2) if is_call \
+                            else round(c['strike'] - lucro_max, 2)
+                        row = {
+                            'buy_symbol':  a['symbol'], 'buy_strike':  a['strike'],
+                            'sell1_symbol': b['symbol'], 'sell1_strike': b['strike'],
+                            'sell2_symbol': c['symbol'], 'sell2_strike': c['strike'],
+                            'assuncao':    assuncao,
+                            'asas':        '%g:%g' % (asa_lo, asa_hi),
+                            'asa_lo':      asa_lo, 'asa_hi': asa_hi,
+                            'range':       rng,
+                            'ultimo':      round(custo_ult, 2) if custo_ult is not None else None,
+                            'boca':        round(custo_boca, 2),
+                            'lucro_max':   round(lucro_max, 2),
+                            'liq':         min(a.get('vol_fin') or 0, b.get('vol_fin') or 0,
+                                               c.get('vol_fin') or 0),
+                            # Campos padrão (modal / abrir na cadeia / cálculos)
+                            'legs': [
+                                {'sym': a['symbol'], 'tp': opt_type, 'k': a['strike'],
+                                 'q': 1,  'px': a['ask'], 'delta': None},
+                                {'sym': b['symbol'], 'tp': opt_type, 'k': b['strike'],
+                                 'q': -1, 'px': b['bid'], 'delta': None},
+                                {'sym': c['symbol'], 'tp': opt_type, 'k': c['strike'],
+                                 'q': -1, 'px': c['bid'], 'delta': None},
+                            ],
+                            'net':       round(-custo_boca, 2),
+                            'is_credit': custo_boca < 0,
+                            'montagem':  ('CRÉDITO' if custo_boca < -0.005 else 'ZERO'),
+                            'max_gain':  round(lucro_max, 2),
+                            'gain_unl':  False,
+                            # CALL: perda ilimitada ACIMA de C. PUT: perda
+                            # ilimitada (limitada a zero, na prática) ABAIXO
+                            # de C — a put nua descoberta não tem risco
+                            # matematicamente infinito (o papel não vai a
+                            # negativo), mas cai fora do escopo tabelado
+                            # exatamente como o lado descoberto da CALL.
+                            'max_loss':  None,
+                            'loss_unl':  True,
+                            'ratio':     None,
+                            'bes':       [assuncao],
+                        }
+                        # Uma linha por (comprada A, asa A→B, asa B→C): cada
+                        # combinação de asas é geometricamente distinta, não
+                        # há "melhor" a escolher entre elas — todas ficam.
+                        # A dedup por chave é só uma salvaguarda (mesma
+                        # combinação não deveria repetir, mas por segurança
+                        # mantém a de menor custo/maior range se acontecer).
+                        chave = (a['symbol'], asa_ab, asa_bc)
+                        atual = melhores_por_a.get(chave)
+                        if atual is None or (row['boca'], -row['range']) < (atual['boca'], -atual['range']):
+                            melhores_por_a[chave] = row
 
             rows.extend(melhores_por_a.values())
             # Agrupa por A (strike comprado), menor custo de montagem

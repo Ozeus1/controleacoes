@@ -9,13 +9,25 @@
         gap: 1rem;
         margin-bottom: 2rem;
     }
-    .kpi-card { padding: 1.5rem; text-align: center; }
-    .kpi-label { color: var(--text-secondary); font-size: .9rem; }
-    .kpi-value { font-size: 1.5rem; font-weight: bold; margin-top: .5rem; overflow-wrap: anywhere; }
-    /* Fonte adaptativa + sem quebra: "R$ 332.730,07" cabe em 1 linha em qualquer largura */
-    .kpi-card.kpi-main .kpi-value { font-size: clamp(1.15rem, 1.7vw, 1.8rem);
-        color: var(--accent-color); white-space: nowrap; }
-    .kpi-sub { font-size: .8rem; color: var(--text-secondary); }
+    .kpi-card {
+        padding: 1.5rem; text-align: center;
+        display: flex; flex-direction: column; justify-content: center;
+        min-height: 132px;
+    }
+    .kpi-label {
+        color: var(--text-secondary); font-size: .82rem; font-weight: 600;
+        text-transform: uppercase; letter-spacing: .03em;
+    }
+    /* Fonte adaptativa + sem quebra em TODOS os KPIs (não só o principal):
+       "R$ 277.440,00" cabia forçado em 1.5rem fixo e ficava espremido/
+       quase estourando a largura do card — clamp() encolhe com a coluna. */
+    .kpi-value {
+        font-size: clamp(1.05rem, 1.5vw, 1.45rem); font-weight: 700;
+        margin-top: .4rem; white-space: nowrap; line-height: 1.15;
+    }
+    .kpi-card.kpi-main .kpi-value { font-size: clamp(1.2rem, 1.9vw, 1.9rem);
+        color: var(--accent-color); }
+    .kpi-sub { font-size: .78rem; color: var(--text-secondary); margin-top: .35rem; line-height: 1.4; }
 
     /* ── Blur toggle para esconder números ────────────── */
     .blur-toggle {
@@ -65,14 +77,14 @@
     .pie-box { position: relative; width: 100%; max-width: 460px; height: 235px; }
     .pie-card .donut-legend { width: 100%; max-width: 460px; }
 
-    /* ── Tabela + gráficos de série em grade 2 colunas no desktop ── */
-    .charts-grid {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 1rem;
-        align-items: start;
-    }
-    .charts-grid > .card { margin-bottom: 0 !important; }
+    /* ── Tabela + gráficos de série: pilha única em largura total ──────────
+       Antes dividiam uma grid 2 colunas com a tabela de FIIs, que é bem
+       mais baixa que os gráficos — ficavam visivelmente desalinhados
+       (card curto ao lado de um alto). Empilhados, todos os cards ganham
+       a mesma largura e o mesmo espaçamento vertical entre si — "elegante"
+       aqui é consistência de moldura, não tamanho igual forçado. */
+    .charts-stack { display: flex; flex-direction: column; gap: 1.25rem; }
+    .charts-stack > .card { margin-bottom: 0 !important; }
 
     /* ── Seletor de período dos gráficos ── */
     .periodo-btn {
@@ -92,13 +104,12 @@
     /* ── Tablet (landscape + portrait) ─────────────── */
     @media (max-width: 1024px) {
         .kpi-grid { grid-template-columns: repeat(3, 1fr); }
-        .charts-grid { grid-template-columns: 1fr; }
     }
 
     /* ── Celular / PWA ────────────────────────────────── */
     @media (max-width: 768px) {
         .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: .55rem; margin-bottom: 1.2rem; }
-        .kpi-card { padding: .8rem .5rem; border-radius: 10px; }
+        .kpi-card { padding: .8rem .5rem; border-radius: 10px; min-height: 0; }
         .kpi-label { font-size: .72rem; line-height: 1.2; min-height: 2em;
                      display: flex; align-items: center; justify-content: center; }
         .kpi-value { font-size: 1.05rem; margin-top: .3rem; line-height: 1.25; }
@@ -223,11 +234,11 @@
             vertical-align: super;
         }
     </style>
-    <div class="charts-grid">
+    <div class="charts-stack">
     {% if total_fiis > 0 %}
     <div class="card mb-4 d-none d-md-block" style="padding: 1.5rem;">
         <h3 style="font-size: 1rem; margin-bottom: 1rem;">Detalhamento de FIIs</h3>
-        <div class="table-responsive">
+        <div class="table-responsive" style="max-width: 620px; margin: 0 auto;">
             <table class="table table-dark table-striped text-center align-middle table-center-forced">
                 <thead>
                     <tr>

@@ -6463,19 +6463,19 @@ def api_busca_operacoes(ticker):
 
         elif op in ('slide_estrutural', 'slide_estrutural_put'):
             # ── Slide Estrutural — CALL (alta) e PUT (baixa), espelhadas ───────
-            # CALL (alta): 3 pernas de CALL em strikes consecutivos CRESCENTES:
-            #   +1 comprada (A) −1 vendida 1 (B) −1 vendida 2 (C), A < B < C.
-            #   Lucro máximo no platô ENTRE B e C; acima de C uma call fica nua
-            #   (perda ilimitada acima da "assunção").
-            # PUT (baixa): espelho exato com strikes consecutivos DECRESCENTES:
-            #   +1 comprada (A) −1 vendida 1 (B) −1 vendida 2 (C), A > B > C.
-            #   Monta-se a trava de débito com PUT (compra A, vende B) e paga
-            #   essa trava vendendo uma PUT OTM mais abaixo (C) — o crédito da
-            #   C cobre o débito da trava, de forma que o total >= 0 (custo
-            #   ~zero ou no crédito). Lucro máximo no platô ENTRE C e B; abaixo
-            #   de C uma put fica nua (perda ilimitada abaixo da "assunção").
-            # Nos dois casos a montagem é a custo ~zero ou até no crédito (ZCC)
-            # e o "escorregador" de lucro fica entre as duas pernas vendidas.
+            # 3 pernas: +1 comprada (A) −1 vendida 1 (B) −1 vendida 2 (C).
+            #   A e B formam a TRAVA propriamente dita — barata, próxima do
+            #   dinheiro (A um pouco OTM, B logo depois de A). C é só a
+            #   FINANCIADORA que paga essa trava, vendida mais longe — sem
+            #   precisar ser vizinha de B, pode estar em qualquer strike além
+            #   dela (mais longe = mais range de lucro, mas prêmio menor).
+            # CALL (alta): A < B < C, todas acima do spot.
+            # PUT (baixa): espelho — A > B > C, todas abaixo do spot. Monta-se
+            # a trava de débito com PUT (compra A, vende B) e paga vendendo
+            # uma PUT OTM mais abaixo (C) — o crédito de C cobre o débito da
+            # trava, então o total é sempre >= 0 (custo ~zero ou no crédito).
+            # Lucro máximo no platô ENTRE B e C nos dois casos; do lado de
+            # fora de C uma perna fica nua (perda ilimitada na "assunção").
             #
             # Colunas do painel: Comprada (A), Vendida 1 (B), Vendida 2 (C),
             # Assunção (spot a partir do qual o resultado vira negativo — o
@@ -6494,19 +6494,33 @@ def api_busca_operacoes(ticker):
             # do que "depois" significa para CALL (strike maior).
             pool = calls_ok if is_call else list(reversed(puts_ok))
             opt_type = 'CALL' if is_call else 'PUT'
-            for i, a in enumerate(pool):
-                if a['ask'] <= 0:
-                    continue
-                for j in range(i + 1, len(pool)):
-                    b = pool[j]
-                    # CALL: vendida (B) tem strike MAIOR que a comprada (A).
-                    # PUT:  vendida (B) tem strike MENOR que a comprada (A).
-                    if b['bid'] <= 0 or (is_call and b['strike'] <= a['strike']) \
-                            or (not is_call and b['strike'] >= a['strike']):
+
+            # A: só strikes perto do dinheiro (até 6% OTM) — "um pouco acima
+            # do ATM" para CALL, "um pouco abaixo" para PUT. Sem essa banda,
+            # a busca varria a cadeia inteira como comprada e devolvia
+            # dezenas de travas bem fora do dinheiro, sem sentido prático
+            # como Slide (que é uma aposta de curto alcance, não uma trava
+            # qualquer).
+            def _otm_pct(k):
+                return (k - spot) / spot if is_call else (spot - k) / spot
+            a_cands = [x for x in pool if 0 <= _otm_pct(x['strike']) <= 0.06 and x['ask'] > 0]
+
+            melhores_por_a = {}   # buy_symbol -> melhor linha encontrada para essa A
+            for a in a_cands:
+                i = pool.index(a)
+                # B: só as poucas próximas strikes depois de A (até 4 posições
+                # na cadeia) — é o que forma a trava de débito estreita e
+                # barata. Não precisa ser EXATAMENTE a próxima, mas fica perto.
+                b_cands = pool[i + 1:i + 5]
+                for b in b_cands:
+                    if b['bid'] <= 0:
                         continue
+                    # C: livre — qualquer strike depois de B, sem limite de
+                    # distância. É a perna que só financia, então mais longe
+                    # dela é normal (menos prêmio, mais range de lucro).
+                    j = pool.index(b)
                     for c in pool[j + 1:]:
-                        if c['bid'] <= 0 or (is_call and c['strike'] <= b['strike']) \
-                                or (not is_call and c['strike'] >= b['strike']):
+                        if c['bid'] <= 0:
                             continue
                         rng = round(abs(c['strike'] - a['strike']), 2)
                         if range_min and rng < range_min:
@@ -6540,7 +6554,7 @@ def api_busca_operacoes(ticker):
                         # assunção = C − lucro_max (espelho).
                         assuncao = round(c['strike'] + lucro_max, 2) if is_call \
                             else round(c['strike'] - lucro_max, 2)
-                        rows.append({
+                        row = {
                             'buy_symbol':  a['symbol'], 'buy_strike':  a['strike'],
                             'sell1_symbol': b['symbol'], 'sell1_strike': b['strike'],
                             'sell2_symbol': c['symbol'], 'sell2_strike': c['strike'],
@@ -6577,11 +6591,21 @@ def api_busca_operacoes(ticker):
                             'loss_unl':  True,
                             'ratio':     None,
                             'bes':       [assuncao],
-                        })
+                        }
+                        # Uma linha por comprada (A): mantém só a MELHOR C
+                        # para cada A já encontrada — menor custo de
+                        # montagem, range maior como desempate. Sem isso a
+                        # tabela repetia a mesma trava A-B dezenas de vezes,
+                        # variando só a C (era o "muitas alternativas
+                        # duplicadas" reportado).
+                        atual = melhores_por_a.get(a['symbol'])
+                        if atual is None or (row['boca'], -row['range']) < (atual['boca'], -atual['range']):
+                            melhores_por_a[a['symbol']] = row
+
+            rows.extend(melhores_por_a.values())
             # Menor custo de montagem primeiro (quanto mais perto de zero /
             # no crédito, melhor), com o range maior como desempate
             rows.sort(key=lambda x: (x['boca'], -x['range']))
-            rows = _diversify(rows, lambda x: x['buy_symbol'], per_key=8, limit=40)
 
         elif op == 'box3':
             # ── Box de 3 Pontas (conversão / renda fixa sintética) ────────────

@@ -6461,58 +6461,85 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: abs(x['net_extr']))
             rows = _diversify(rows, lambda x: x['buy_symbol'], per_key=2)
 
-        elif op == 'slide_estrutural':
-            # ── Slide Estrutural ──────────────────────────────────────────────
-            # Estratégia DIRECIONAL DE INTERVALO com 3 pernas de CALL:
-            #   +1 comprada (A) −1 vendida 1 (B) −1 vendida 2 (C), A < B < C
-            # em strikes consecutivos, formando o "escorregador" de lucro.
-            # O lucro máximo ocorre na FAIXA ENTRE OS DOIS STRIKES VENDIDOS
-            # (B a C) — é uma operação de intervalo, não de trava simples.
-            # A montagem é a custo ~zero ou até no crédito (ZCC).
+        elif op in ('slide_estrutural', 'slide_estrutural_put'):
+            # ── Slide Estrutural — CALL (alta) e PUT (baixa), espelhadas ───────
+            # CALL (alta): 3 pernas de CALL em strikes consecutivos CRESCENTES:
+            #   +1 comprada (A) −1 vendida 1 (B) −1 vendida 2 (C), A < B < C.
+            #   Lucro máximo no platô ENTRE B e C; acima de C uma call fica nua
+            #   (perda ilimitada acima da "assunção").
+            # PUT (baixa): espelho exato com strikes consecutivos DECRESCENTES:
+            #   +1 comprada (A) −1 vendida 1 (B) −1 vendida 2 (C), A > B > C.
+            #   Monta-se a trava de débito com PUT (compra A, vende B) e paga
+            #   essa trava vendendo uma PUT OTM mais abaixo (C) — o crédito da
+            #   C cobre o débito da trava, de forma que o total >= 0 (custo
+            #   ~zero ou no crédito). Lucro máximo no platô ENTRE C e B; abaixo
+            #   de C uma put fica nua (perda ilimitada abaixo da "assunção").
+            # Nos dois casos a montagem é a custo ~zero ou até no crédito (ZCC)
+            # e o "escorregador" de lucro fica entre as duas pernas vendidas.
             #
             # Colunas do painel: Comprada (A), Vendida 1 (B), Vendida 2 (C),
-            # Assunção (spot a partir do qual o resultado vira negativo, ou
-            # seja o breakeven superior — onde o investidor "assume" a posição
-            # vendida a descoberto), Asas (B−A : C−B), Range (C−A), Último
-            # (custo pelo último negócio) e Boca (custo pelo book).
+            # Assunção (spot a partir do qual o resultado vira negativo — o
+            # breakeven do lado descoberto, onde o investidor "assume" a
+            # posição vendida a descoberto), Asas (B−A : C−B, em módulo),
+            # Range (|C−A|), Último (custo pelo último negócio) e Boca (custo
+            # pelo book).
+            is_call = op == 'slide_estrutural'
             try:
                 range_min = float(request.args.get('range_min') or 0)
             except (TypeError, ValueError):
                 range_min = 0.0
-            for i, a in enumerate(calls_ok):
+            # CALL: strikes crescentes (pool na ordem natural). PUT: espelho —
+            # percorre os strikes em ordem DECRESCENTE, então "depois" na
+            # iteração sempre significa "strike menor", exatamente o espelho
+            # do que "depois" significa para CALL (strike maior).
+            pool = calls_ok if is_call else list(reversed(puts_ok))
+            opt_type = 'CALL' if is_call else 'PUT'
+            for i, a in enumerate(pool):
                 if a['ask'] <= 0:
                     continue
-                for j in range(i + 1, len(calls_ok)):
-                    b = calls_ok[j]
-                    if b['bid'] <= 0 or b['strike'] <= a['strike']:
+                for j in range(i + 1, len(pool)):
+                    b = pool[j]
+                    # CALL: vendida (B) tem strike MAIOR que a comprada (A).
+                    # PUT:  vendida (B) tem strike MENOR que a comprada (A).
+                    if b['bid'] <= 0 or (is_call and b['strike'] <= a['strike']) \
+                            or (not is_call and b['strike'] >= a['strike']):
                         continue
-                    for c in calls_ok[j + 1:]:
-                        if c['bid'] <= 0 or c['strike'] <= b['strike']:
+                    for c in pool[j + 1:]:
+                        if c['bid'] <= 0 or (is_call and c['strike'] <= b['strike']) \
+                                or (not is_call and c['strike'] >= b['strike']):
                             continue
-                        rng = round(c['strike'] - a['strike'], 2)
+                        rng = round(abs(c['strike'] - a['strike']), 2)
                         if range_min and rng < range_min:
                             continue
-                        # Custo pelo book (executável) e pelo último negócio
+                        # Custo pelo book (executável) e pelo último negócio —
+                        # mesma fórmula nos dois casos: compra A no ask, vende
+                        # B e C no bid.
                         custo_boca = a['ask'] - b['bid'] - c['bid']
                         if a.get('close') and b.get('close') and c.get('close'):
                             custo_ult = a['close'] - b['close'] - c['close']
                         else:
                             custo_ult = None
-                        # Só montagens a custo ~zero ou no crédito (ZCC)
+                        # Só montagens a custo ~zero ou no crédito (ZCC) — o
+                        # valor recebido/pago da montagem deve ser >= 0 em
+                        # crédito (custo_boca <= ~0), nunca um débito real.
                         if custo_boca > 0.10:
                             continue
-                        asa_lo = round(b['strike'] - a['strike'], 2)
-                        asa_hi = round(c['strike'] - b['strike'], 2)
+                        asa_lo = round(abs(b['strike'] - a['strike']), 2)
+                        asa_hi = round(abs(c['strike'] - b['strike']), 2)
                         if asa_lo <= 0 or asa_hi <= 0:
                             continue
                         # Payoff no vencimento (por ação), custo pelo book:
-                        #   lucro máximo no platô entre B e C = (B − A) − custo
+                        # lucro máximo no platô entre A-B (a largura da trava
+                        # de débito comprada) menos o custo de montagem.
                         lucro_max = asa_lo - custo_boca
                         if lucro_max <= 0:
                             continue
-                        # Acima de C a inclinação vira −1 (uma call fica nua):
-                        # assunção = C + lucro_max
-                        assuncao = round(c['strike'] + lucro_max, 2)
+                        # CALL: acima de C a inclinação vira −1 (call nua) —
+                        # assunção = C + lucro_max.
+                        # PUT: abaixo de C a inclinação vira −1 (put nua) —
+                        # assunção = C − lucro_max (espelho).
+                        assuncao = round(c['strike'] + lucro_max, 2) if is_call \
+                            else round(c['strike'] - lucro_max, 2)
                         rows.append({
                             'buy_symbol':  a['symbol'], 'buy_strike':  a['strike'],
                             'sell1_symbol': b['symbol'], 'sell1_strike': b['strike'],
@@ -6528,11 +6555,11 @@ def api_busca_operacoes(ticker):
                                                c.get('vol_fin') or 0),
                             # Campos padrão (modal / abrir na cadeia / cálculos)
                             'legs': [
-                                {'sym': a['symbol'], 'tp': 'CALL', 'k': a['strike'],
+                                {'sym': a['symbol'], 'tp': opt_type, 'k': a['strike'],
                                  'q': 1,  'px': a['ask'], 'delta': None},
-                                {'sym': b['symbol'], 'tp': 'CALL', 'k': b['strike'],
+                                {'sym': b['symbol'], 'tp': opt_type, 'k': b['strike'],
                                  'q': -1, 'px': b['bid'], 'delta': None},
-                                {'sym': c['symbol'], 'tp': 'CALL', 'k': c['strike'],
+                                {'sym': c['symbol'], 'tp': opt_type, 'k': c['strike'],
                                  'q': -1, 'px': c['bid'], 'delta': None},
                             ],
                             'net':       round(-custo_boca, 2),
@@ -6540,7 +6567,13 @@ def api_busca_operacoes(ticker):
                             'montagem':  ('CRÉDITO' if custo_boca < -0.005 else 'ZERO'),
                             'max_gain':  round(lucro_max, 2),
                             'gain_unl':  False,
-                            'max_loss':  None,     # acima de C a perda é ilimitada
+                            # CALL: perda ilimitada ACIMA de C. PUT: perda
+                            # ilimitada (limitada a zero, na prática) ABAIXO
+                            # de C — a put nua descoberta não tem risco
+                            # matematicamente infinito (o papel não vai a
+                            # negativo), mas cai fora do escopo tabelado
+                            # exatamente como o lado descoberto da CALL.
+                            'max_loss':  None,
                             'loss_unl':  True,
                             'ratio':     None,
                             'bes':       [assuncao],

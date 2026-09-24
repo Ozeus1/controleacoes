@@ -85,7 +85,8 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="covered_put">📉 Covered Put</button>
       <button class="ba-obtn" data-op="jade_lizard">🦎 Jade Lizard</button>
       <button class="ba-obtn" data-op="jade_lizard_turbo">🦎🔥 Jade Lizard Turbinada (1 put : 2 travas)</button>
-      <button class="ba-obtn" data-op="slide_estrutural">🛝 Slide Estrutural</button>
+      <button class="ba-obtn" data-op="slide_estrutural">🛝 Slide Estrutural c/ CALL (alta)</button>
+      <button class="ba-obtn" data-op="slide_estrutural_put">🛝 Slide Estrutural c/ PUT (baixa)</button>
       <button class="ba-obtn" data-op="iron_butterfly">🦋💰 Iron Butterfly</button>
       <button class="ba-obtn" data-op="stock_repair">🩹 Reparo (1×2)</button>
     </div>
@@ -254,7 +255,8 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     covered_put:    '📉 Covered Put — vende a ação (aluguel) + vende PUT OTM Δ −0,20 a −0,35 (renda em mercado de baixa)',
     jade_lizard:    '🦎 Jade Lizard — venda PUT de 10% ITM a 10% OTM + trava de baixa com CALL. Regra obrigatória: largura da trava ≤ crédito total recebido, então ultrapassar a trava NÃO gera prejuízo — risco de alta ZERO. A coluna "PUT vs spot" mostra o quanto o strike está ITM/OTM: quanto mais ITM, maior o prêmio e maior a chance de exercício',
     jade_lizard_turbo: '🦎🔥 Jade Lizard Turbinada — mesma montagem, mas com o DOBRO de travas de CALL por PUT vendida (1:2); crédito bem maior, exigindo crédito ≥ largura DOBRADA da trava para manter o risco de alta zero (bem mais restritiva: pode não haver montagem válida)',
-    slide_estrutural: '🛝 Slide Estrutural — operação DIRECIONAL DE INTERVALO: +1 CALL comprada (A) −2 CALLs vendidas em strikes consecutivos (B e C), formando o "escorregador" de lucro. Lucro máximo na FAIXA ENTRE OS DOIS STRIKES VENDIDOS; montagem a custo ~zero ou no crédito (ZCC)',
+    slide_estrutural: '🛝 Slide Estrutural com CALL (alta) — operação DIRECIONAL DE INTERVALO: +1 CALL comprada (A) −2 CALLs vendidas em strikes consecutivos (B e C), formando o "escorregador" de lucro. Lucro máximo na FAIXA ENTRE OS DOIS STRIKES VENDIDOS; montagem a custo ~zero ou no crédito (ZCC)',
+    slide_estrutural_put: '🛝 Slide Estrutural com PUT (baixa) — espelho do Slide de CALL: monta a trava de débito com PUT (+1 comprada A, −1 vendida B) e paga essa trava vendendo mais 1 PUT OTM (C) mais abaixo. O valor recebido é sempre ≥ 0 (custo ~zero ou no crédito). Lucro máximo na FAIXA ENTRE B e C; abaixo de C a 2ª venda fica descoberta',
     stock_repair:   '🩹 Reparo de Posição (Stock Repair 1×2) — compra 1 CALL ATM (Δ 0,45–0,60) + vende 2 CALLs OTM (Δ 0,20–0,35) a custo ~ZERO; dobra a recuperação até o strike vendido para ação NO PREJUÍZO em carteira (2ª venda coberta pela ação)',
     ratio_spread:   '➗ Ratio Spread CALL 1×2 — compra 1 CALL ITM (Δ 0,55–0,72) + vende 2 CALLs OTM (Δ 0,20–0,35); débito baixo ou crédito, lucro máx. no strike vendido; risco ILIMITADO acima (front ratio — ponta nua)',
     iron_butterfly: '🦋💰 Iron Butterfly — venda straddle ATM + compra strangle OTM de proteção (Δ ≈ 0,05–0,10); crédito',
@@ -435,22 +437,26 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     return h + '</tbody></table></div>';
   }
 
-  // ── Slide Estrutural ───────────────────────────────────────────────────────
-  function slideTable(rows, expIdx) {
+  // ── Slide Estrutural (CALL alta / PUT baixa, espelhadas) ────────────────────
+  function slideTable(rows, expIdx, isPut) {
     if (!rows.length) return '<div class="ba-empty">Nenhuma montagem a custo ~zero neste vencimento.</div>';
+    var badgeCls = isPut ? 'put' : 'call';
+    var assuncaoTitle = isPut
+      ? 'Spot a partir do qual o resultado no vencimento fica negativo (abaixo dele a 2ª venda fica descoberta)'
+      : 'Spot a partir do qual o resultado no vencimento fica negativo (é preciso ter o ativo ou stop definido)';
     var h = '<div class="ba-wrap"><table class="ba-tab"><thead><tr>' +
       '<th>Tickers</th><th>Comprada</th><th>Vendida 1</th><th>Vendida 2</th>' +
-      '<th title="Spot a partir do qual o resultado no vencimento fica negativo (é preciso ter o ativo ou stop definido)">Assunção</th>' +
-      '<th title="Distância entre os strikes: (B−A) : (C−B)">Asas</th>' +
-      '<th title="Amplitude total da estrutura: C − A">Range</th>' +
+      '<th title="' + assuncaoTitle + '">Assunção</th>' +
+      '<th title="Distância entre os strikes: (B−A) : (C−B), em módulo">Asas</th>' +
+      '<th title="Amplitude total da estrutura: |C − A|">Range</th>' +
       '<th title="Custo de montagem pelo último negócio de cada perna">Último</th>' +
       '<th title="Custo de montagem pelo book (compra no ask, vendas no bid)">Boca</th>' +
       '</tr></thead><tbody>';
     rows.forEach(function(r, j) {
       h += '<tr class="ba-row" data-exp="' + expIdx + '" data-row="' + j + '" title="Clique para ver o resumo">' +
-        '<td><span class="ba-badge call">+' + r.buy_symbol + '</span> ' +
-            '<span class="ba-badge put">−' + r.sell1_symbol + '</span> ' +
-            '<span class="ba-badge put">−' + r.sell2_symbol + '</span></td>' +
+        '<td><span class="ba-badge ' + badgeCls + '">+' + r.buy_symbol + '</span> ' +
+            '<span class="ba-badge ' + badgeCls + '">−' + r.sell1_symbol + '</span> ' +
+            '<span class="ba-badge ' + badgeCls + '">−' + r.sell2_symbol + '</span></td>' +
         '<td><strong>' + brl(r.buy_strike) + '</strong></td>' +
         '<td>' + brl(r.sell1_strike) + '</td>' +
         '<td>' + brl(r.sell2_strike) + '</td>' +
@@ -464,7 +470,9 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     return h + '</tbody></table></div>';
   }
 
-  var CUSTOM_TABLES = {box3: box3Table, box4: box4Table, slide_estrutural: slideTable};
+  var CUSTOM_TABLES = {box3: box3Table, box4: box4Table,
+    slide_estrutural: function(rows, expIdx) { return slideTable(rows, expIdx, false); },
+    slide_estrutural_put: function(rows, expIdx) { return slideTable(rows, expIdx, true); }};
 
   function render(d) {
     window.__baData = d;
@@ -680,7 +688,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     var extra  = '';
     if (currentOp === 'box4') {
       extra = '&box_mode=' + document.getElementById('ba-boxmode').value;
-    } else if (currentOp === 'slide_estrutural') {
+    } else if (currentOp === 'slide_estrutural' || currentOp === 'slide_estrutural_put') {
       extra = '&range_min=' + (document.getElementById('ba-rangemin').value || 0);
     }
     if (document.getElementById('ba-usar-brapi').checked) extra += '&source=brapi';
@@ -716,7 +724,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     document.getElementById('ba-boxmode-wrap').style.display =
       (currentOp === 'box4') ? 'inline-flex' : 'none';
     document.getElementById('ba-rangemin-wrap').style.display =
-      (currentOp === 'slide_estrutural') ? 'inline-flex' : 'none';
+      (currentOp === 'slide_estrutural' || currentOp === 'slide_estrutural_put') ? 'inline-flex' : 'none';
   }
   syncOpFilters();
 

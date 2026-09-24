@@ -6505,14 +6505,18 @@ def api_busca_operacoes(ticker):
                 return (k - spot) / spot if is_call else (spot - k) / spot
             a_cands = [x for x in pool if 0 <= _otm_pct(x['strike']) <= 0.06 and x['ask'] > 0]
 
-            melhores_por_a = {}   # buy_symbol -> melhor linha encontrada para essa A
+            melhores_por_a = {}   # (buy_symbol, asa) -> melhor linha encontrada
             for a in a_cands:
                 i = pool.index(a)
-                # B: só as poucas próximas strikes depois de A (até 4 posições
-                # na cadeia) — é o que forma a trava de débito estreita e
-                # barata. Não precisa ser EXATAMENTE a próxima, mas fica perto.
-                b_cands = pool[i + 1:i + 5]
-                for b in b_cands:
+                # B: asa (distância A→B na cadeia, em Nº de strikes) variando
+                # de 2 a 5 posições — é o que forma a trava de débito estreita
+                # e barata. Cada largura de asa vira uma variante própria na
+                # tabela (não só a melhor), para o usuário comparar range vs.
+                # custo. Mesma faixa de posições para ações e ETFs: como a
+                # cadeia de ações já tem strikes mais espaçados em R$, o
+                # range fica proporcionalmente maior sem lógica extra.
+                b_cands = pool[i + 2:i + 6]
+                for asa_pos, b in enumerate(b_cands, start=2):
                     if b['bid'] <= 0:
                         continue
                     # C: livre — qualquer strike depois de B, sem limite de
@@ -6592,20 +6596,24 @@ def api_busca_operacoes(ticker):
                             'ratio':     None,
                             'bes':       [assuncao],
                         }
-                        # Uma linha por comprada (A): mantém só a MELHOR C
-                        # para cada A já encontrada — menor custo de
-                        # montagem, range maior como desempate. Sem isso a
-                        # tabela repetia a mesma trava A-B dezenas de vezes,
-                        # variando só a C (era o "muitas alternativas
-                        # duplicadas" reportado).
-                        atual = melhores_por_a.get(a['symbol'])
+                        # Uma linha por (comprada A, asa A→B): mantém só a
+                        # MELHOR C para cada combinação já encontrada — menor
+                        # custo de montagem, range maior como desempate. Sem
+                        # isso a tabela repetia a mesma trava A-B dezenas de
+                        # vezes, variando só a C (era o "muitas alternativas
+                        # duplicadas" reportado). Agora cada asa (2 a 5) de
+                        # uma mesma A vira sua própria variante na tabela.
+                        chave = (a['symbol'], asa_pos)
+                        atual = melhores_por_a.get(chave)
                         if atual is None or (row['boca'], -row['range']) < (atual['boca'], -atual['range']):
-                            melhores_por_a[a['symbol']] = row
+                            melhores_por_a[chave] = row
 
             rows.extend(melhores_por_a.values())
-            # Menor custo de montagem primeiro (quanto mais perto de zero /
-            # no crédito, melhor), com o range maior como desempate
-            rows.sort(key=lambda x: (x['boca'], -x['range']))
+            # Agrupa por A (strike comprado), menor custo de montagem
+            # primeiro dentro de cada A, range maior como desempate — assim
+            # as variantes de asa da mesma comprada ficam juntas na tabela.
+            rows.sort(key=lambda x: (x['buy_strike'] if is_call else -x['buy_strike'],
+                                      x['boca'], -x['range']))
 
         elif op == 'box3':
             # ── Box de 3 Pontas (conversão / renda fixa sintética) ────────────

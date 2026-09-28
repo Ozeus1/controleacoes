@@ -12718,6 +12718,679 @@ def api_fyt_trava_baixa(ticker):
     })
 
 
+@app.route('/api/fyt-borboleta/<ticker>')
+@login_required
+def api_fyt_borboleta(ticker):
+    """Busca Borboleta (Butterfly) na cadeia: +1 K1 (asa inferior) −2 K2
+    (miolo, vendido) +1 K3 (asa superior), mesmo vencimento e mesmo tipo
+    (CALL = viés de alta, PUT = viés de baixa — a ação precisa se mover
+    até o miolo para o ganho máximo, mas já lucra se andar rápido nessa
+    direção nos dias seguintes à montagem, sem precisar CHEGAR no miolo).
+
+    Risco limitado ao custo de montagem (sempre um débito líquido pequeno);
+    ganho máximo concentrado no strike do meio, no vencimento.
+
+    Simétrica: K2−K1 == K3−K2 (asas equidistantes do miolo) — filtro Asa
+    com um valor fixo. Assimétrica: asas de tamanhos diferentes, permite
+    viesar o payoff — filtro Asa = 'todos'.
+
+    Filtros:
+      tipo      = 'call' (viés alta) ou 'put' (viés baixa)
+      exp       = índice do vencimento (0 = próximo mensal, 1 = +1, 2 = +2)
+      asa       = 'todos' (assimétrica, varre qualquer combinação de asas)
+                  ou um valor em R$ (simétrica, K2−K1 == K3−K2 == asa,
+                  com tolerância de 1 centavo)
+      asa_min/asa_max = faixa de tamanho de asa aceita (cada perna,
+                  independente), de 0 a 20
+      strike_pct = faixa de strikes varrida em torno do spot, em % (padrão
+                  15 — o miolo K2 fica nessa faixa; K1/K3 podem estender
+                  um pouco além dela pela largura da asa)
+      preco_min/preco_max = custo de montagem (débito) aceito, em R$, de
+                  0 a 6 (a Borboleta clássica é sempre um débito pequeno)
+    """
+    ticker = ticker.strip().upper()
+    usar_brapi = request.args.get('source') == 'brapi'
+    token = None
+    if not usar_brapi:
+        token = Settings.get_value('oplab_token', user_id=current_user.id)
+        if not token:
+            return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    if not spot:
+        return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
+
+    # ── Filtros ──────────────────────────────────────────────────────────
+    tipo = (request.args.get('tipo') or 'call').strip().lower()
+    if tipo not in ('call', 'put'):
+        tipo = 'call'
+    is_call_leg = (tipo == 'call')
+
+    try:
+        exp_i = int(request.args.get('exp', 0))
+    except (TypeError, ValueError):
+        exp_i = 0
+    exp_i = exp_i if exp_i in (0, 1, 2) else 0
+
+    asa_raw = (request.args.get('asa') or 'todos').strip().lower()
+    asa_fixa = None
+    if asa_raw not in ('', 'todos', 'all'):
+        try:
+            asa_fixa = round(float(asa_raw.replace(',', '.')), 2)
+        except ValueError:
+            asa_fixa = None
+
+    def _num(name, default):
+        raw = (request.args.get(name) or '').strip()
+        if not raw:
+            return default
+        try:
+            return float(raw.replace(',', '.'))
+        except ValueError:
+            return default
+
+    asa_min = max(0.0, _num('asa_min', 1.0))
+    asa_max = min(20.0, _num('asa_max', 6.0))
+    if asa_max < asa_min:
+        asa_min, asa_max = asa_max, asa_min
+
+    strike_pct = _num('strike_pct', 15.0)
+    strike_pct = min(max(abs(strike_pct), 1.0), 50.0)
+
+    preco_min = max(0.0, _num('preco_min', 0.0))
+    preco_max = min(50.0, _num('preco_max', 6.0))
+    if preco_max < preco_min:
+        preco_min, preco_max = preco_max, preco_min
+
+    # ── Cadeia ───────────────────────────────────────────────────────────
+    if usar_brapi:
+        try:
+            opt_list = _brapi_opt_list_raw(ticker, current_user.id)
+        except OplabApiError as e:
+            return jsonify({'error': str(e)}), 502
+        except Exception:
+            app.logger.exception('api_fyt_borboleta (brapi) error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia via BRAPI.'}), 500
+        if not opt_list:
+            return jsonify({'error': f'Sem opções na BRAPI para {ticker}.'}), 404
+    else:
+        try:
+            data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+        except OplabApiError as e:
+            return jsonify({'error': str(e), 'status': e.status_code}), 503
+        except Exception:
+            app.logger.exception('api_fyt_borboleta error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+
+        opt_list = data if isinstance(data, list) else (
+            data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+        )
+
+    from datetime import date as _date
+    today = _date.today()
+
+    def _third_friday(y, m):
+        count, day = 0, 1
+        while True:
+            d = _date(y, m, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    return d
+            day += 1
+
+    def _is_monthly(exp_str):
+        d = _date.fromisoformat(exp_str)
+        tf = _third_friday(d.year, d.month)
+        return abs((d - tf).days) <= 2
+
+    opts_by_exp = {}
+    for o in opt_list:
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        o_is_put = ('PUT' in cat or cat == 'P')
+        if o_is_put == is_call_leg:      # descarta o tipo que não interessa
+            continue
+        strike = float(o.get('strike') or 0)
+        if strike <= 0:
+            continue
+        due = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due:
+            due = due.split('T')[0]
+        if not due:
+            continue
+        try:
+            if _date.fromisoformat(due) <= today:
+                continue
+        except ValueError:
+            continue
+        opts_by_exp.setdefault(due, []).append({
+            'symbol': str(o.get('symbol') or o.get('ticker') or '').upper(),
+            'strike': round(strike, 2),
+            'bid':    round(float(o.get('bid') or 0), 2),
+            'ask':    round(float(o.get('ask') or 0), 2),
+            'close':  round(float(o.get('close') or 0), 2),
+            'vol_fin': round(float(o.get('financial_volume')
+                                   or o.get('volume_financial') or 0), 2),
+        })
+
+    monthlies = sorted([e for e in opts_by_exp if _is_monthly(e)])[:3]
+    if not monthlies:
+        return jsonify({'error': f'Nenhum vencimento mensal com '
+                        f'{"CALLs" if is_call_leg else "PUTs"} para {ticker}.'}), 404
+
+    exps_out = [{'exp': e,
+                 'dc': max((_date.fromisoformat(e) - today).days, 0),
+                 'label': ('Próximo mensal' if i == 0 else f'Mensal +{i}')}
+                for i, e in enumerate(monthlies)]
+
+    if exp_i >= len(monthlies):
+        return jsonify({'error': 'Vencimento escolhido não disponível para este ativo.',
+                        'expirations': exps_out}), 404
+    exp = monthlies[exp_i]
+
+    _now_b = now_brt()
+    market_open = (_now_b.weekday() < 5
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+
+    def _eff(rw):
+        bid, ask, last = rw['bid'], rw['ask'], rw['close']
+        last_ok = last if last >= 0.05 else None
+        has_book = bid >= 0.05 and ask >= 0.05
+        if not market_open:
+            return {'bid_eff': last_ok, 'ask_eff': last_ok,
+                    'bid_raw': bid if bid >= 0.05 else None,
+                    'ask_raw': ask if ask >= 0.05 else None,
+                    'src': 'ultimo', 'has_boca': has_book}
+        b = bid if bid >= 0.05 else last_ok
+        a = ask if ask >= 0.05 else last_ok
+        src = 'book' if has_book else 'ultimo'
+        if has_book and last_ok:
+            mid = (bid + ask) / 2
+            if (ask - bid) > max(0.10, 0.25 * mid):
+                b = a = last_ok
+                src = 'ultimo'
+        return {'bid_eff': b, 'ask_eff': a,
+                'bid_raw': bid if bid >= 0.05 else None,
+                'ask_raw': ask if ask >= 0.05 else None,
+                'src': src, 'has_boca': has_book}
+
+    opts = sorted(opts_by_exp.get(exp, []), key=lambda x: x['strike'])
+    if not opts:
+        return jsonify({'error': 'Cadeia sem opções no vencimento escolhido.',
+                        'expirations': exps_out}), 404
+
+    dc = max((_date.fromisoformat(exp) - today).days, 1)
+    T = dc / 365.0
+    # Selic/r_cont calculados UMA VEZ fora dos loops abaixo — chamar
+    # _selic() por combinação (até 80+ linhas, 3-4× cada) deixava a busca
+    # visivelmente lenta (5s+ por requisição).
+    selic = _selic()
+    r_cont = math.log(1 + selic / 100.0)
+
+    # K2 (miolo, vendido 2×) varre a faixa perto do spot; K1/K3 varrem os
+    # candidatos de asa dentro de [asa_min, asa_max] de distância de K2.
+    lo_k = spot * (1 - strike_pct / 100.0)
+    hi_k = spot * (1 + strike_pct / 100.0)
+    k2_cands = [o for o in opts if lo_k <= o['strike'] <= hi_k]
+
+    rows = []
+    iv_cache = {}
+    for k2 in k2_cands:
+        e_k2 = _eff(k2)
+        if market_open and not e_k2['has_boca']:
+            continue
+        k2_px = e_k2['bid_eff']         # vendida 2×: recebe o bid
+        if not k2_px or k2_px <= 0:
+            continue
+
+        k1_cands = [o for o in opts
+                    if o['strike'] < k2['strike']
+                    and asa_min <= round(k2['strike'] - o['strike'], 2) <= asa_max]
+        k3_cands = [o for o in opts
+                    if o['strike'] > k2['strike']
+                    and asa_min <= round(o['strike'] - k2['strike'], 2) <= asa_max]
+
+        for k1 in k1_cands:
+            asa1 = round(k2['strike'] - k1['strike'], 2)
+            e_k1 = _eff(k1)
+            if market_open and not e_k1['has_boca']:
+                continue
+            k1_px = e_k1['ask_eff']     # comprada: paga o ask
+            if not k1_px or k1_px <= 0:
+                continue
+
+            for k3 in k3_cands:
+                asa2 = round(k3['strike'] - k2['strike'], 2)
+                if asa_fixa is not None and (abs(asa1 - asa_fixa) > 0.01
+                                              or abs(asa2 - asa_fixa) > 0.01):
+                    continue
+                e_k3 = _eff(k3)
+                if market_open and not e_k3['has_boca']:
+                    continue
+                k3_px = e_k3['ask_eff']  # comprada: paga o ask
+                if not k3_px or k3_px <= 0:
+                    continue
+
+                # Custo da montagem: compra K1 e K3, vende 2× K2.
+                custo = round(k1_px + k3_px - 2 * k2_px, 2)
+                if custo <= 0.005 or not (preco_min <= custo <= preco_max):
+                    continue
+
+                # Payoff no vencimento (por ação): fórmula IDÊNTICA para CALL
+                # e PUT — a montagem usa sempre K1<K2<K3 (strike crescente)
+                # nos dois casos, só troca o tipo de opção, não a topologia
+                # dos strikes. Verificado por simulação: payoff(S) bate ponto
+                # a ponto entre CALL e PUT com os mesmos K1/K2/K3/custo.
+                # Pico no miolo K2 = asa1 − custo; abaixo de K1 e acima de K3
+                # perde só o custo da montagem (risco limitado).
+                lucro_max = asa1 - custo
+                be_baixo  = k1['strike'] + custo   # cruza zero subindo de K1
+                be_alto   = k3['strike'] - custo   # cruza zero descendo de K3
+                if lucro_max <= 0:
+                    continue
+
+                # IV com cache por strike — a bisecção de _implied_vol é cara
+                # e o mesmo K2 se repete em dezenas de combinações (K1 e K3
+                # variam por cima), então sem cache ela rodava centenas de
+                # vezes por requisição (era o gargalo dos ~3,5s de busca).
+                iv = None
+                for _rw in (k2, k1, k3):
+                    if _rw['strike'] in iv_cache:
+                        iv = iv_cache[_rw['strike']]
+                        if iv is not None:
+                            break
+                        continue
+                    prem = _rw['close'] or ((_rw['bid'] + _rw['ask']) / 2 if (_rw['bid'] and _rw['ask']) else 0)
+                    iv_try = None
+                    if prem:
+                        intr = max(0.0, (spot - _rw['strike']) if is_call_leg else (_rw['strike'] - spot))
+                        if prem > intr * 1.005:
+                            _t = _implied_vol(spot, _rw['strike'], T, r_cont, prem, is_call_leg)
+                            iv_try = _t if 0.005 < _t < 4.9 else None
+                    iv_cache[_rw['strike']] = iv_try
+                    if iv_try is not None:
+                        iv = iv_try
+                        break
+                iv = iv or 0.35
+                pop = None
+                if be_alto > be_baixo:
+                    d2_lo = (math.log(spot / be_baixo) + (r_cont - 0.5 * iv * iv) * T) / (iv * math.sqrt(T)) if be_baixo > 0 and T > 0 else None
+                    d2_hi = (math.log(spot / be_alto)  + (r_cont - 0.5 * iv * iv) * T) / (iv * math.sqrt(T)) if be_alto  > 0 and T > 0 else None
+                    if d2_lo is not None and d2_hi is not None:
+                        pop = (_norm_cdf(d2_lo) - _norm_cdf(d2_hi)) * 100
+
+                liq = min(k1.get('vol_fin') or 0, k2.get('vol_fin') or 0, k3.get('vol_fin') or 0)
+                rows.append({
+                    'is_simetrica': asa1 == asa2,
+                    'k1_symbol': k1['symbol'], 'k1_strike': k1['strike'],
+                    'k1_px': round(k1_px, 2), 'k1_bid': e_k1['bid_raw'], 'k1_ask': e_k1['ask_raw'], 'k1_src': e_k1['src'],
+                    'k2_symbol': k2['symbol'], 'k2_strike': k2['strike'],
+                    'k2_px': round(k2_px, 2), 'k2_bid': e_k2['bid_raw'], 'k2_ask': e_k2['ask_raw'], 'k2_src': e_k2['src'],
+                    'k3_symbol': k3['symbol'], 'k3_strike': k3['strike'],
+                    'k3_px': round(k3_px, 2), 'k3_bid': e_k3['bid_raw'], 'k3_ask': e_k3['ask_raw'], 'k3_src': e_k3['src'],
+                    'asa1': asa1, 'asa2': asa2,
+                    'custo': custo,
+                    'lucro_max': round(lucro_max, 2),
+                    'ratio': round(lucro_max / custo, 2) if custo > 0.005 else None,
+                    'be_baixo': round(be_baixo, 2) if be_baixo > 0 else None,
+                    'be_alto': round(be_alto, 2) if (be_alto > 0 and be_alto > k2['strike']) else None,
+                    'pop': round(pop, 1) if pop is not None else None,
+                    'k1_dist': round((k1['strike'] - spot) / spot * 100, 1),
+                    'k2_dist': round((k2['strike'] - spot) / spot * 100, 1),
+                    'k3_dist': round((k3['strike'] - spot) / spot * 100, 1),
+                    'liq': liq,
+                })
+
+    if not rows:
+        return jsonify({'error': 'Nenhuma montagem atende aos filtros neste ativo/vencimento. '
+                        'Tente ampliar a faixa de asa, o preço máximo ou a variação de strike.',
+                        'expirations': exps_out}), 404
+
+    # Menor custo primeiro (mais alavancada), com melhor relação como
+    # desempate e liquidez como critério final.
+    rows.sort(key=lambda x: (x['custo'], -(x['ratio'] or 0), -x['liq']))
+    rows = _fyt_diversify(rows, lambda x: x['k2_symbol'], per_key=4, limit=80)
+
+    return jsonify({
+        'ticker': ticker, 'spot': spot, 'spot_change': spot_change,
+        'selic': round(selic, 2), 'market_open': market_open,
+        'expirations': exps_out,
+        'exp': exp, 'dc': dc, 'tipo': tipo,
+        'rows': rows, 'total': len(rows),
+        'source': 'brapi' if usar_brapi else 'oplab',
+    })
+
+
+@app.route('/api/fyt-broken-wing/<ticker>')
+@login_required
+def api_fyt_broken_wing(ticker):
+    """Busca Broken Wing Short PUT: combina uma BWB (Broken Wing Butterfly)
+    de CALLs com uma PUT vendida no mesmo strike da cobertura.
+
+    4 pernas, mesmo vencimento:
+      +1 K1 (comprada, asa inferior)
+      −2 K2 (vendidas, miolo)
+      +1 K3 (comprada, cobertura — "asa quebrada": K3−K2 normalmente
+             MAIOR que K2−K1, o que faz a BWB nascer no crédito ou a
+             custo baixo, diferente da Borboleta simétrica)
+      −1 PUT K3 (vendida, MESMO strike da cobertura — sempre coincide)
+
+    Estrutura de crédito, para mercado lateral ou de alta: o crédito da
+    PUT cobre o custo/quase-custo da BWB, gerando uma faixa de ganho
+    entre K1 e K3. Risco: abaixo do breakeven a PUT vendida nua domina o
+    payoff (perda cresce 1:1 com a queda, sem limite matemático).
+
+    Breakeven calculado por varredura numérica do payoff (a fórmula
+    fechada muda dependendo de em qual segmento [<K1, K1–K2, K2–K3, >K3]
+    o zero cai — mais seguro que uma fórmula única fixa).
+
+    Filtros:
+      exp        = índice do vencimento (0 = próximo mensal, 1 = +1, 2 = +2)
+      asa_min/asa_max = distância K2−K1 aceita (asa "normal"), em R$
+      cobertura_min/cobertura_max = distância K3−K2 aceita (a asa
+                   "quebrada"/cobertura — tipicamente maior que a asa
+                   normal), em R$
+      strike_pct = faixa de strikes varrida em torno do spot para K2
+                   (miolo), em %
+      preco_min/preco_max = crédito líquido total aceito (BWB + PUT), em
+                   R$ (negativo = crédito recebido — a estrutura nasce
+                   quase sempre no crédito)
+    """
+    ticker = ticker.strip().upper()
+    usar_brapi = request.args.get('source') == 'brapi'
+    token = None
+    if not usar_brapi:
+        token = Settings.get_value('oplab_token', user_id=current_user.id)
+        if not token:
+            return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    if not spot:
+        return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
+
+    try:
+        exp_i = int(request.args.get('exp', 0))
+    except (TypeError, ValueError):
+        exp_i = 0
+    exp_i = exp_i if exp_i in (0, 1, 2) else 0
+
+    def _num(name, default):
+        raw = (request.args.get(name) or '').strip()
+        if not raw:
+            return default
+        try:
+            return float(raw.replace(',', '.'))
+        except ValueError:
+            return default
+
+    asa_min = max(0.0, _num('asa_min', 1.0))
+    asa_max = min(20.0, _num('asa_max', 4.0))
+    if asa_max < asa_min:
+        asa_min, asa_max = asa_max, asa_min
+
+    cobertura_min = max(0.0, _num('cobertura_min', 2.0))
+    cobertura_max = min(30.0, _num('cobertura_max', 8.0))
+    if cobertura_max < cobertura_min:
+        cobertura_min, cobertura_max = cobertura_max, cobertura_min
+
+    strike_pct = _num('strike_pct', 15.0)
+    strike_pct = min(max(abs(strike_pct), 1.0), 50.0)
+
+    preco_min = _num('preco_min', -6.0)
+    preco_max = _num('preco_max', 2.0)
+    if preco_max < preco_min:
+        preco_min, preco_max = preco_max, preco_min
+
+    # ── Cadeia (CALLs e PUTs — a estrutura usa os dois tipos) ──────────────
+    if usar_brapi:
+        try:
+            opt_list = _brapi_opt_list_raw(ticker, current_user.id)
+        except OplabApiError as e:
+            return jsonify({'error': str(e)}), 502
+        except Exception:
+            app.logger.exception('api_fyt_broken_wing (brapi) error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia via BRAPI.'}), 500
+        if not opt_list:
+            return jsonify({'error': f'Sem opções na BRAPI para {ticker}.'}), 404
+    else:
+        try:
+            data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+        except OplabApiError as e:
+            return jsonify({'error': str(e), 'status': e.status_code}), 503
+        except Exception:
+            app.logger.exception('api_fyt_broken_wing error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+
+        opt_list = data if isinstance(data, list) else (
+            data.get('options') or data.get('calls', []) + data.get('puts', []) or []
+        )
+
+    from datetime import date as _date
+    today = _date.today()
+
+    def _third_friday(y, m):
+        count, day = 0, 1
+        while True:
+            d = _date(y, m, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    return d
+            day += 1
+
+    def _is_monthly(exp_str):
+        d = _date.fromisoformat(exp_str)
+        tf = _third_friday(d.year, d.month)
+        return abs((d - tf).days) <= 2
+
+    calls_by_exp, puts_by_exp = {}, {}
+    for o in opt_list:
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        o_is_put = ('PUT' in cat or cat == 'P')
+        strike = float(o.get('strike') or 0)
+        if strike <= 0:
+            continue
+        due = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due:
+            due = due.split('T')[0]
+        if not due:
+            continue
+        try:
+            if _date.fromisoformat(due) <= today:
+                continue
+        except ValueError:
+            continue
+        rw = {
+            'symbol': str(o.get('symbol') or o.get('ticker') or '').upper(),
+            'strike': round(strike, 2),
+            'bid':    round(float(o.get('bid') or 0), 2),
+            'ask':    round(float(o.get('ask') or 0), 2),
+            'close':  round(float(o.get('close') or 0), 2),
+            'vol_fin': round(float(o.get('financial_volume')
+                                   or o.get('volume_financial') or 0), 2),
+        }
+        (puts_by_exp if o_is_put else calls_by_exp).setdefault(due, []).append(rw)
+
+    monthlies = sorted([e for e in calls_by_exp if _is_monthly(e) and e in puts_by_exp])[:3]
+    if not monthlies:
+        return jsonify({'error': f'Nenhum vencimento mensal com CALLs e PUTs para {ticker}.'}), 404
+
+    exps_out = [{'exp': e,
+                 'dc': max((_date.fromisoformat(e) - today).days, 0),
+                 'label': ('Próximo mensal' if i == 0 else f'Mensal +{i}')}
+                for i, e in enumerate(monthlies)]
+
+    if exp_i >= len(monthlies):
+        return jsonify({'error': 'Vencimento escolhido não disponível para este ativo.',
+                        'expirations': exps_out}), 404
+    exp = monthlies[exp_i]
+
+    _now_b = now_brt()
+    market_open = (_now_b.weekday() < 5
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+
+    def _eff(rw):
+        bid, ask, last = rw['bid'], rw['ask'], rw['close']
+        last_ok = last if last >= 0.05 else None
+        has_book = bid >= 0.05 and ask >= 0.05
+        if not market_open:
+            return {'bid_eff': last_ok, 'ask_eff': last_ok,
+                    'bid_raw': bid if bid >= 0.05 else None,
+                    'ask_raw': ask if ask >= 0.05 else None,
+                    'src': 'ultimo', 'has_boca': has_book}
+        b = bid if bid >= 0.05 else last_ok
+        a = ask if ask >= 0.05 else last_ok
+        src = 'book' if has_book else 'ultimo'
+        if has_book and last_ok:
+            mid = (bid + ask) / 2
+            if (ask - bid) > max(0.10, 0.25 * mid):
+                b = a = last_ok
+                src = 'ultimo'
+        return {'bid_eff': b, 'ask_eff': a,
+                'bid_raw': bid if bid >= 0.05 else None,
+                'ask_raw': ask if ask >= 0.05 else None,
+                'src': src, 'has_boca': has_book}
+
+    calls = sorted(calls_by_exp.get(exp, []), key=lambda x: x['strike'])
+    puts  = sorted(puts_by_exp.get(exp, []),  key=lambda x: x['strike'])
+    if not calls or not puts:
+        return jsonify({'error': 'Cadeia sem CALLs ou PUTs no vencimento escolhido.',
+                        'expirations': exps_out}), 404
+    puts_by_strike = {p['strike']: p for p in puts}
+
+    dc = max((_date.fromisoformat(exp) - today).days, 1)
+
+    lo_k = spot * (1 - strike_pct / 100.0)
+    hi_k = spot * (1 + strike_pct / 100.0)
+    k2_cands = [o for o in calls if lo_k <= o['strike'] <= hi_k]
+
+    def _payoff(S, K1, K2, K3, credito_liq):
+        bwb = max(S - K1, 0) - 2 * max(S - K2, 0) + max(S - K3, 0)
+        put = -max(K3 - S, 0)
+        return bwb + put + credito_liq
+
+    def _find_breakeven(K1, K2, K3, credito_liq):
+        lo, hi = 0.01, K3 * 3
+        N = 300
+        step = (hi - lo) / N
+        prev_S = lo
+        prev_P = _payoff(lo, K1, K2, K3, credito_liq)
+        for i in range(1, N + 1):
+            S = lo + i * step
+            P = _payoff(S, K1, K2, K3, credito_liq)
+            if prev_P * P < 0:
+                return round(prev_S + (-prev_P) * (S - prev_S) / (P - prev_P), 2)
+            prev_S, prev_P = S, P
+        return None
+
+    rows = []
+    for k2 in k2_cands:
+        e_k2 = _eff(k2)
+        if market_open and not e_k2['has_boca']:
+            continue
+        k2_px = e_k2['bid_eff']         # vendida 2×: recebe o bid
+        if not k2_px or k2_px <= 0:
+            continue
+
+        k1_cands = [o for o in calls
+                    if o['strike'] < k2['strike']
+                    and asa_min <= round(k2['strike'] - o['strike'], 2) <= asa_max]
+        k3_cands = [o for o in calls
+                    if o['strike'] > k2['strike']
+                    and cobertura_min <= round(o['strike'] - k2['strike'], 2) <= cobertura_max
+                    and o['strike'] in puts_by_strike]   # PUT vendida precisa existir no mesmo strike
+
+        for k1 in k1_cands:
+            asa = round(k2['strike'] - k1['strike'], 2)
+            e_k1 = _eff(k1)
+            if market_open and not e_k1['has_boca']:
+                continue
+            k1_px = e_k1['ask_eff']     # comprada: paga o ask
+            if not k1_px or k1_px <= 0:
+                continue
+
+            for k3 in k3_cands:
+                cobertura = round(k3['strike'] - k2['strike'], 2)
+                e_k3 = _eff(k3)
+                if market_open and not e_k3['has_boca']:
+                    continue
+                k3_px = e_k3['ask_eff']  # comprada: paga o ask
+                if not k3_px or k3_px <= 0:
+                    continue
+
+                put_k3 = puts_by_strike[k3['strike']]
+                e_put = _eff(put_k3)
+                if market_open and not e_put['has_boca']:
+                    continue
+                put_px = e_put['bid_eff']  # vendida: recebe o bid
+                if not put_px or put_px <= 0:
+                    continue
+
+                custo_bwb = round(k1_px + k3_px - 2 * k2_px, 2)
+                credito_total = round(put_px - custo_bwb, 2)   # >0 crédito líquido
+                custo_liq = round(-credito_total, 2)            # financeiro (negativo=crédito)
+                if not (preco_min <= custo_liq <= preco_max):
+                    continue
+
+                # Ganho máximo: pico do payoff na varredura densa entre K1 e
+                # K3 (mais seguro que fórmula fechada — o pico pode estar no
+                # miolo K2 ou já ter caído por causa da PUT vendida a partir
+                # de K3, dependendo dos preços).
+                grid = [k1['strike'] + i * (k3['strike'] - k1['strike']) / 100
+                        for i in range(101)]
+                payoffs_grid = [_payoff(s, k1['strike'], k2['strike'], k3['strike'], credito_total)
+                                for s in grid]
+                max_gain = round(max(payoffs_grid), 2)
+                max_loss_grid = round(min(payoffs_grid), 2)
+                if max_gain <= 0:
+                    continue
+
+                be = _find_breakeven(k1['strike'], k2['strike'], k3['strike'], credito_total)
+
+                liq = min(k1.get('vol_fin') or 0, k2.get('vol_fin') or 0,
+                          k3.get('vol_fin') or 0, put_k3.get('vol_fin') or 0)
+                rows.append({
+                    'k1_symbol': k1['symbol'], 'k1_strike': k1['strike'],
+                    'k1_px': round(k1_px, 2), 'k1_bid': e_k1['bid_raw'], 'k1_ask': e_k1['ask_raw'], 'k1_src': e_k1['src'],
+                    'k2_symbol': k2['symbol'], 'k2_strike': k2['strike'],
+                    'k2_px': round(k2_px, 2), 'k2_bid': e_k2['bid_raw'], 'k2_ask': e_k2['ask_raw'], 'k2_src': e_k2['src'],
+                    'k3_symbol': k3['symbol'], 'k3_strike': k3['strike'],
+                    'k3_px': round(k3_px, 2), 'k3_bid': e_k3['bid_raw'], 'k3_ask': e_k3['ask_raw'], 'k3_src': e_k3['src'],
+                    'put_symbol': put_k3['symbol'], 'put_strike': put_k3['strike'],
+                    'put_px': round(put_px, 2), 'put_bid': e_put['bid_raw'], 'put_ask': e_put['ask_raw'], 'put_src': e_put['src'],
+                    'asa': asa, 'cobertura': cobertura,
+                    'custo': custo_liq,
+                    'is_credito': custo_liq < -0.005,
+                    'max_gain': max_gain,
+                    'max_loss_faixa': max_loss_grid,
+                    'breakeven': be,
+                    'be_dist': round((be - spot) / spot * 100, 2) if be else None,
+                    'k1_dist': round((k1['strike'] - spot) / spot * 100, 1),
+                    'k2_dist': round((k2['strike'] - spot) / spot * 100, 1),
+                    'k3_dist': round((k3['strike'] - spot) / spot * 100, 1),
+                    'liq': liq,
+                })
+
+    if not rows:
+        return jsonify({'error': 'Nenhuma montagem atende aos filtros neste ativo/vencimento. '
+                        'Tente ampliar a asa, a cobertura ou a faixa de preço.',
+                        'expirations': exps_out}), 404
+
+    # Maior crédito primeiro (custo mais negativo = melhor), maior ganho
+    # máximo como desempate.
+    rows.sort(key=lambda x: (x['custo'], -x['max_gain'], -x['liq']))
+    rows = _fyt_diversify(rows, lambda x: x['k2_symbol'], per_key=4, limit=80)
+
+    return jsonify({
+        'ticker': ticker, 'spot': spot, 'spot_change': spot_change,
+        'selic': round(_selic(), 2), 'market_open': market_open,
+        'expirations': exps_out,
+        'exp': exp, 'dc': dc,
+        'rows': rows, 'total': len(rows),
+        'source': 'brapi' if usar_brapi else 'oplab',
+    })
+
+
 @app.route('/venda-put-longa')
 @login_required
 def venda_put_longa():

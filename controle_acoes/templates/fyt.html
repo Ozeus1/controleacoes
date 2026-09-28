@@ -101,6 +101,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <option value="mannerheim">🛡️ Linha de Mannerheim</option>
         <option value="trava_alta">📈 Trava de Alta</option>
         <option value="trava_baixa">📉 Trava de Baixa</option>
+        <option value="borboleta">🦋 Borboleta</option>
+        <option value="broken_wing">🪽 Broken Wing Short PUT</option>
       </select>
     </div>
 
@@ -345,6 +347,114 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       </div>
     </div>
 
+    <!-- Filtros da Borboleta -->
+    <div id="fyt-filtros-borboleta" style="display:none;">
+      <div class="fyt-campo">
+        <label for="fyt-borb-tipo" title="Call = viés de alta (a ação precisa subir até o miolo). Put = viés de baixa (precisa cair até o miolo)">
+          Tipo</label>
+        <select id="fyt-borb-tipo">
+          <option value="call" selected>Call</option>
+          <option value="put">Put</option>
+        </select>
+      </div>
+
+      <div class="fyt-campo">
+        <label for="fyt-borb-exp">Vencimento</label>
+        <select id="fyt-borb-exp">
+          <option value="0" selected>Vencimento Atual</option>
+          <option value="1">Mensal +1</option>
+          <option value="2">Mensal +2</option>
+        </select>
+      </div>
+
+      <div class="fyt-campo">
+        <label for="fyt-borb-asa" title="Um valor fixo busca só borboletas SIMÉTRICAS (asas iguais dos dois lados do miolo). 'Todos' busca também ASSIMÉTRICAS (asas de tamanhos diferentes)">
+          Asa</label>
+        <select id="fyt-borb-asa">
+          <option value="todos" selected>Todos</option>
+          <option value="1">R$ 1,00 (simétrica)</option>
+          <option value="1.5">R$ 1,50 (simétrica)</option>
+          <option value="2">R$ 2,00 (simétrica)</option>
+          <option value="2.5">R$ 2,50 (simétrica)</option>
+          <option value="3">R$ 3,00 (simétrica)</option>
+          <option value="4">R$ 4,00 (simétrica)</option>
+          <option value="5">R$ 5,00 (simétrica)</option>
+        </select>
+      </div>
+
+      <div class="fyt-campo">
+        <label>Faixa de asa (R$)</label>
+        <div class="fyt-asa">
+          <input type="number" id="fyt-borb-asa-min" min="0" max="20" step="0.25" value="1">
+          <span style="color:var(--text-secondary);">até</span>
+          <input type="number" id="fyt-borb-asa-max" min="0" max="20" step="0.25" value="6">
+        </div>
+      </div>
+
+      <div class="fyt-campo">
+        <label for="fyt-borb-strike-pct" title="Faixa de strikes varrida em torno do spot para o strike do miolo (vendido), em %">
+          Faixa do miolo (± %)</label>
+        <input type="number" id="fyt-borb-strike-pct" min="1" max="50" step="1" value="15">
+      </div>
+
+      <div class="fyt-campo">
+        <label title="Custo de montagem (débito) aceito, em R$ — a Borboleta clássica é sempre um débito pequeno">
+          Preço (R$)</label>
+        <div class="fyt-asa">
+          <input type="number" id="fyt-borb-preco-min" min="0" step="0.1" value="0">
+          <span style="color:var(--text-secondary);">até</span>
+          <input type="number" id="fyt-borb-preco-max" step="0.1" value="6">
+        </div>
+      </div>
+    </div>
+
+    <!-- Filtros do Broken Wing Short PUT -->
+    <div id="fyt-filtros-bwb" style="display:none;">
+      <div class="fyt-campo">
+        <label for="fyt-bwb-exp">Vencimento</label>
+        <select id="fyt-bwb-exp">
+          <option value="0" selected>Vencimento Atual</option>
+          <option value="1">Mensal +1</option>
+          <option value="2">Mensal +2</option>
+        </select>
+      </div>
+
+      <div class="fyt-campo">
+        <label>Asa (R$)</label>
+        <div class="fyt-asa">
+          <input type="number" id="fyt-bwb-asa-min" min="0" max="20" step="0.25" value="1">
+          <span style="color:var(--text-secondary);">até</span>
+          <input type="number" id="fyt-bwb-asa-max" min="0" max="20" step="0.25" value="4">
+        </div>
+      </div>
+
+      <div class="fyt-campo">
+        <label title="Distância K3−K2: o strike da cobertura/venda da Put em relação à vendida (miolo). A PUT vendida sempre coincide com este strike">
+          Cobertura / Venda da Put (R$)</label>
+        <div class="fyt-asa">
+          <input type="number" id="fyt-bwb-cob-min" min="0" max="30" step="0.5" value="2">
+          <span style="color:var(--text-secondary);">até</span>
+          <input type="number" id="fyt-bwb-cob-max" min="0" max="30" step="0.5" value="8">
+        </div>
+      </div>
+
+      <div class="fyt-campo">
+        <label for="fyt-bwb-strike-pct" title="Faixa de strikes varrida em torno do spot para o strike do miolo (vendido), em %">
+          Faixa do miolo (± %)</label>
+        <input type="number" id="fyt-bwb-strike-pct" min="1" max="50" step="1" value="15">
+      </div>
+
+      <div class="fyt-campo">
+        <label title="Crédito líquido total da montagem (BWB + Put vendida), em R$. Negativo = crédito recebido — a estrutura nasce quase sempre no crédito">
+          Preço (R$)</label>
+        <div class="fyt-asa">
+          <input type="number" id="fyt-bwb-preco-min" step="0.5" value="-6">
+          <span style="color:var(--text-secondary);">até</span>
+          <input type="number" id="fyt-bwb-preco-max" step="0.5" value="2">
+        </div>
+      </div>
+    </div>
+
     <div class="fyt-campo" style="flex-direction:row;align-items:center;gap:.4rem;justify-content:flex-end;">
       <input type="checkbox" id="fyt-usar-brapi" style="width:auto;cursor:pointer;">
       <label for="fyt-usar-brapi" style="text-transform:none;font-size:.8rem;cursor:pointer;opacity:.75;"
@@ -464,6 +574,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('fyt-filtros-mann').style.display    = (v === 'mannerheim') ? 'contents' : 'none';
     document.getElementById('fyt-filtros-trava').style.display   = (v === 'trava_alta') ? 'contents' : 'none';
     document.getElementById('fyt-filtros-travabaixa').style.display = (v === 'trava_baixa') ? 'contents' : 'none';
+    document.getElementById('fyt-filtros-borboleta').style.display = (v === 'borboleta') ? 'contents' : 'none';
+    document.getElementById('fyt-filtros-bwb').style.display     = (v === 'broken_wing') ? 'contents' : 'none';
     thlWeeklyWrap.style.display = (v === 'thl') ? 'flex' : 'none';
   }
   opSel.addEventListener('change', syncFiltrosEstrutura);
@@ -552,6 +664,32 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       });
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-trava-baixa/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'borboleta') {
+      q = new URLSearchParams({
+        tipo:        document.getElementById('fyt-borb-tipo').value,
+        exp:         document.getElementById('fyt-borb-exp').value,
+        asa:         document.getElementById('fyt-borb-asa').value || 'todos',
+        asa_min:     document.getElementById('fyt-borb-asa-min').value || '1',
+        asa_max:     document.getElementById('fyt-borb-asa-max').value || '6',
+        strike_pct:  document.getElementById('fyt-borb-strike-pct').value || '15',
+        preco_min:   document.getElementById('fyt-borb-preco-min').value || '0',
+        preco_max:   document.getElementById('fyt-borb-preco-max').value || '6'
+      });
+      if (usarBrapi) q.set('source', 'brapi');
+      url = '/api/fyt-borboleta/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'broken_wing') {
+      q = new URLSearchParams({
+        exp:           document.getElementById('fyt-bwb-exp').value,
+        asa_min:       document.getElementById('fyt-bwb-asa-min').value || '1',
+        asa_max:       document.getElementById('fyt-bwb-asa-max').value || '4',
+        cobertura_min: document.getElementById('fyt-bwb-cob-min').value || '2',
+        cobertura_max: document.getElementById('fyt-bwb-cob-max').value || '8',
+        strike_pct:    document.getElementById('fyt-bwb-strike-pct').value || '15',
+        preco_min:     document.getElementById('fyt-bwb-preco-min').value || '-6',
+        preco_max:     document.getElementById('fyt-bwb-preco-max').value || '2'
+      });
+      if (usarBrapi) q.set('source', 'brapi');
+      url = '/api/fyt-broken-wing/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else {
       var ratios = Array.prototype.map.call(
         document.querySelectorAll('#fyt-ratios .fyt-chip.on'), function(c) { return c.dataset.r; }).join(',');
@@ -586,6 +724,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         else if (estrutura === 'mannerheim') renderMann(res.j);
         else if (estrutura === 'trava_alta') renderTrava(res.j);
         else if (estrutura === 'trava_baixa') renderTravaBaixa(res.j);
+        else if (estrutura === 'borboleta') renderBorboleta(res.j);
+        else if (estrutura === 'broken_wing') renderBrokenWing(res.j);
         else render(res.j);
       })
       .catch(function(e) {
@@ -941,6 +1081,128 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     });
   }
 
+  // ── Render Borboleta ─────────────────────────────────────────────────
+  function renderBorboleta(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
+          (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
+        : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
+
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">' +
+        'Nenhuma montagem atende aos filtros neste ativo. Tente ampliar a faixa de asa, ' +
+        'o preço máximo ou a variação de strike.</div>';
+      return;
+    }
+
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">' +
+      '🦋 <strong>Borboleta (' + (d.tipo === 'call' ? 'CALL · viés de alta' : 'PUT · viés de baixa') + ')</strong> · ' +
+      '📆 Vencimento: <strong>' + dateBR(d.exp) + '</strong> (' + d.dc + 'd)' +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') +
+      ' · <strong>' + d.rows.length + '</strong> montagem(ns)' +
+      '</div>';
+
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th title="Asa inferior, comprada">Comprada (K1)</th>' +
+      '<th title="Miolo, vendida 2×">Vendida (K2)</th>' +
+      '<th title="Asa superior, comprada">Comprada (K3)</th>' +
+      '<th title="Distância K2−K1 : K3−K2 — iguais = simétrica">Asas</th>' +
+      '<th title="Débito líquido da montagem">Custo</th>' +
+      '<th title="Lucro no strike do miolo (K2), no vencimento">Lucro máx.</th>' +
+      '<th title="Lucro máximo / custo">Relação</th>' +
+      '<th title="Probabilidade de terminar entre os dois breakevens, via Black-Scholes">POP</th>' +
+      '<th title="Faixa de preço em que a montagem dá lucro no vencimento">Breakevens</th>' +
+      '</tr></thead><tbody>';
+
+    d.rows.forEach(function(r, i) {
+      h += '<tr data-i="' + i + '" title="Clique para ver o detalhamento">' +
+        '<td><span class="fyt-badge buy">+1× ' + r.k1_symbol + '</span><br>' +
+            brl(r.k1_strike) + ' <span style="font-size:.72rem;color:var(--text-secondary);">' + pct(r.k1_dist) + '</span></td>' +
+        '<td><span class="fyt-badge sell">−2× ' + r.k2_symbol + '</span><br>' +
+            brl(r.k2_strike) + ' <span style="font-size:.72rem;color:var(--text-secondary);">' + pct(r.k2_dist) + '</span></td>' +
+        '<td><span class="fyt-badge buy">+1× ' + r.k3_symbol + '</span><br>' +
+            brl(r.k3_strike) + ' <span style="font-size:.72rem;color:var(--text-secondary);">' + pct(r.k3_dist) + '</span></td>' +
+        '<td>' + brl(r.asa1) + ' : ' + brl(r.asa2) + (r.is_simetrica ? ' <span class="pos">(simétrica)</span>' : '') + '</td>' +
+        '<td>' + brl(r.custo) + '</td>' +
+        '<td class="pos"><strong>' + brl(r.lucro_max) + '</strong></td>' +
+        '<td>' + (r.ratio != null ? fmt(r.ratio, 1) + '×' : '—') + '</td>' +
+        '<td>' + (r.pop != null ? fmt(r.pop, 1) + '%' : '—') + '</td>' +
+        '<td>' + (r.be_baixo != null ? brl(r.be_baixo) : '—') + ' – ' +
+                 (r.be_alto != null ? brl(r.be_alto) : '—') + '</td>' +
+        '</tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) {
+      tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); });
+    });
+  }
+
+  // ── Render Broken Wing Short PUT ────────────────────────────────────
+  function renderBrokenWing(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
+          (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
+        : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
+
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">' +
+        'Nenhuma montagem atende aos filtros neste ativo. Tente ampliar a asa, ' +
+        'a cobertura ou a faixa de preço.</div>';
+      return;
+    }
+
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">' +
+      '🪽 <strong>Broken Wing Short PUT</strong> · ' +
+      '📆 Vencimento: <strong>' + dateBR(d.exp) + '</strong> (' + d.dc + 'd)' +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') +
+      ' · <strong>' + d.rows.length + '</strong> montagem(ns)' +
+      '</div>';
+
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th title="Asa inferior da BWB, comprada">Comprada</th>' +
+      '<th title="Miolo da BWB, vendida 2×">Vendida</th>' +
+      '<th title="Cobertura da BWB (comprada) — a PUT vendida coincide com este strike">Cobertura</th>' +
+      '<th title="PUT vendida, mesmo strike da cobertura">Venda da Put</th>' +
+      '<th title="Distância K2−K1">Asa</th>' +
+      '<th title="Distância K3−K2 (a asa \'quebrada\')">Cobertura</th>' +
+      '<th title="Negativo = crédito recebido na montagem (BWB + Put)">Preço</th>' +
+      '<th title="Lucro máximo na faixa entre a comprada e a cobertura">Ganho máx.</th>' +
+      '<th title="Abaixo deste preço a Put vendida nua domina e a perda cresce sem limite">Breakeven</th>' +
+      '</tr></thead><tbody>';
+
+    d.rows.forEach(function(r, i) {
+      h += '<tr data-i="' + i + '" title="Clique para ver o detalhamento">' +
+        '<td><span class="fyt-badge buy">+1× ' + r.k1_symbol + '</span><br>' +
+            brl(r.k1_strike) + ' <span style="font-size:.72rem;color:var(--text-secondary);">' + pct(r.k1_dist) + '</span></td>' +
+        '<td><span class="fyt-badge sell">−2× ' + r.k2_symbol + '</span><br>' +
+            brl(r.k2_strike) + ' <span style="font-size:.72rem;color:var(--text-secondary);">' + pct(r.k2_dist) + '</span></td>' +
+        '<td><span class="fyt-badge buy">+1× ' + r.k3_symbol + '</span><br>' +
+            brl(r.k3_strike) + ' <span style="font-size:.72rem;color:var(--text-secondary);">' + pct(r.k3_dist) + '</span></td>' +
+        '<td><span class="fyt-badge sell">−1× ' + r.put_symbol + '</span><br>' + brl(r.put_strike) + '</td>' +
+        '<td>' + brl(r.asa) + '</td>' +
+        '<td>' + brl(r.cobertura) + '</td>' +
+        '<td><span class="fyt-badge ' + (r.is_credito ? 'cred' : 'deb') + '">' +
+            (r.is_credito ? 'crédito ' + brl(Math.abs(r.custo)) : brl(r.custo)) + '</span></td>' +
+        '<td class="pos"><strong>' + brl(r.max_gain) + '</strong></td>' +
+        '<td>' + (r.breakeven != null
+                  ? brl(r.breakeven) + '<br><span style="font-size:.72rem;color:var(--text-secondary);">' + pct(r.be_dist) + '</span>'
+                  : '—') + '</td>' +
+        '</tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) {
+      tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); });
+    });
+  }
+
   // ── Modal ─────────────────────────────────────────────────────────────
   var modalIdx = null;
   function openModal(i) {
@@ -962,6 +1224,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (currentEstrutura === 'mannerheim') { refreshModalMann(); return; }
     if (currentEstrutura === 'trava_alta') { refreshModalTrava(); return; }
     if (currentEstrutura === 'trava_baixa') { refreshModalTravaBaixa(); return; }
+    if (currentEstrutura === 'borboleta') { refreshModalBorboleta(); return; }
+    if (currentEstrutura === 'broken_wing') { refreshModalBrokenWing(); return; }
     var r = lastData.rows[modalIdx];
     var q = parseInt(document.getElementById('fytm-qty').value) || 100;
 
@@ -1253,6 +1517,129 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     calcBtnTB.style.display = '';
   }
 
+  // ── Modal da Borboleta ───────────────────────────────────────────────
+  function refreshModalBorboleta() {
+    var r = lastData.rows[modalIdx];
+    var q = parseInt(document.getElementById('fytm-qty').value) || 100;
+    var tp = lastData.tipo === 'call' ? 'CALL' : 'PUT';
+
+    document.getElementById('fytm-title').textContent =
+      'Borboleta (' + tp + ') ' + lastData.ticker + ' — ' +
+      r.k1_symbol + ' / ' + r.k2_symbol + ' / ' + r.k3_symbol;
+
+    var custoTotal = r.custo * q;
+
+    var boxes = [
+      ['Compra ' + q + '× ' + r.k1_symbol + ' (K ' + fmt(r.k1_strike) + ')',
+          brl(r.k1_px * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.k1_bid, r.k1_ask, r.k1_src) + ')</span>', 'neg'],
+      ['Venda ' + (2 * q) + '× ' + r.k2_symbol + ' (K ' + fmt(r.k2_strike) + ')',
+          brl(r.k2_px * 2 * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.k2_bid, r.k2_ask, r.k2_src) + ')</span>', 'pos'],
+      ['Compra ' + q + '× ' + r.k3_symbol + ' (K ' + fmt(r.k3_strike) + ')',
+          brl(r.k3_px * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.k3_bid, r.k3_ask, r.k3_src) + ')</span>', 'neg'],
+      ['Custo da montagem (débito)', brl(custoTotal), 'neg'],
+      ['Lucro máximo (no strike do miolo)', brl(r.lucro_max * q), 'pos'],
+      ['Relação lucro / custo', r.ratio != null ? fmt(r.ratio, 1) + '×' : '—', ''],
+      ['Asas (K2−K1 : K3−K2)', brl(r.asa1) + ' : ' + brl(r.asa2) + (r.is_simetrica ? ' (simétrica)' : ' (assimétrica)'), ''],
+      ['POP (prob. de terminar entre os breakevens)', r.pop != null ? fmt(r.pop, 1) + '%' : '—', ''],
+      ['Breakeven inferior', r.be_baixo != null ? brl(r.be_baixo) : 'não há', ''],
+      ['Breakeven superior', r.be_alto != null ? brl(r.be_alto) : 'não há', ''],
+      ['Vencimento', dateBR(lastData.exp) + ' (' + lastData.dc + ' d.c.)', '']
+    ];
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
+             '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+
+    // Abrir na Cadeia de Opções com as 3 pernas
+    var legs = [
+      [r.k1_symbol, tp, 'BUY',  q,     r.k1_px, r.k1_strike, lastData.exp].join(','),
+      [r.k2_symbol, tp, 'SELL', 2 * q, r.k2_px, r.k2_strike, lastData.exp].join(','),
+      [r.k3_symbol, tp, 'BUY',  q,     r.k3_px, r.k3_strike, lastData.exp].join(',')
+    ].join('|');
+    var qs = new URLSearchParams({sim: '1', ativo: lastData.ticker,
+      nome: 'Borboleta (' + tp + ') ' + lastData.ticker, legs: legs});
+    document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + qs.toString();
+
+    // Abrir em Cálculos de Opções (aba Estruturas) — motor genérico "livre",
+    // 3 pernas no mesmo vencimento (ct2/ck2/cp2 é a 3ª perna nesse motor).
+    var calcBtn = document.getElementById('fytm-calc');
+    var pB = {st: '1', ativo: lastData.ticker, spot: lastData.spot, qty: q,
+      exp: lastData.exp, op: 'livre',
+      livre_legs: tp[0] + ':1|' + tp[0] + ':-2|' + tp[0] + ':1',
+      livre_nome: 'Borboleta (' + tp + ') ' + lastData.ticker,
+      at: r.k1_symbol, ak: r.k1_strike, ap: r.k1_px,
+      bt: r.k2_symbol, bk: r.k2_strike, bp: r.k2_px,
+      ct2: r.k3_symbol, ck2: r.k3_strike, cp2: r.k3_px};
+    calcBtn.href = '/venda_puts?' + new URLSearchParams(pB).toString() + '#estrutura';
+    calcBtn.style.display = '';
+  }
+
+  // ── Modal do Broken Wing Short PUT ──────────────────────────────────
+  function refreshModalBrokenWing() {
+    var r = lastData.rows[modalIdx];
+    var q = parseInt(document.getElementById('fytm-qty').value) || 100;
+
+    document.getElementById('fytm-title').textContent =
+      'Broken Wing Short PUT ' + lastData.ticker + ' — ' +
+      r.k1_symbol + ' / ' + r.k2_symbol + ' / ' + r.k3_symbol + ' / ' + r.put_symbol;
+
+    var custoTotal = r.custo * q;
+
+    var boxes = [
+      ['Compra ' + q + '× ' + r.k1_symbol + ' CALL (K ' + fmt(r.k1_strike) + ')',
+          brl(r.k1_px * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.k1_bid, r.k1_ask, r.k1_src) + ')</span>', 'neg'],
+      ['Venda ' + (2 * q) + '× ' + r.k2_symbol + ' CALL (K ' + fmt(r.k2_strike) + ')',
+          brl(r.k2_px * 2 * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.k2_bid, r.k2_ask, r.k2_src) + ')</span>', 'pos'],
+      ['Compra ' + q + '× ' + r.k3_symbol + ' CALL (K ' + fmt(r.k3_strike) + ')',
+          brl(r.k3_px * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.k3_bid, r.k3_ask, r.k3_src) + ')</span>', 'neg'],
+      ['Venda ' + q + '× ' + r.put_symbol + ' PUT (K ' + fmt(r.put_strike) + ')',
+          brl(r.put_px * q) + ' <span style="font-size:.72rem;color:var(--text-secondary);">(' +
+          bocaCel(r.put_bid, r.put_ask, r.put_src) + ')</span>', 'pos'],
+      [r.is_credito ? 'Crédito líquido recebido' : 'Custo líquido da montagem',
+          brl(Math.abs(custoTotal)), r.is_credito ? 'pos' : 'neg'],
+      ['Ganho máximo (faixa entre comprada e cobertura)', brl(r.max_gain * q), 'pos'],
+      ['Asa (K2−K1)', brl(r.asa), ''],
+      ['Cobertura (K3−K2)', brl(r.cobertura), ''],
+      ['Breakeven', r.breakeven != null ? brl(r.breakeven) + ' (' + pct(r.be_dist) + ')' : '—', ''],
+      ['Vencimento', dateBR(lastData.exp) + ' (' + lastData.dc + ' d.c.)', '']
+    ];
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
+             '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+
+    // Abrir na Cadeia de Opções com as 4 pernas
+    var legs = [
+      [r.k1_symbol,  'CALL', 'BUY',  q,     r.k1_px,  r.k1_strike,  lastData.exp].join(','),
+      [r.k2_symbol,  'CALL', 'SELL', 2 * q, r.k2_px,  r.k2_strike,  lastData.exp].join(','),
+      [r.k3_symbol,  'CALL', 'BUY',  q,     r.k3_px,  r.k3_strike,  lastData.exp].join(','),
+      [r.put_symbol, 'PUT',  'SELL', q,     r.put_px, r.put_strike, lastData.exp].join(',')
+    ].join('|');
+    var qs = new URLSearchParams({sim: '1', ativo: lastData.ticker,
+      nome: 'Broken Wing Short PUT ' + lastData.ticker, legs: legs});
+    document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + qs.toString();
+
+    // Abrir em Cálculos de Opções (aba Estruturas) — motor genérico "livre",
+    // 4 pernas no mesmo vencimento (ct2/dt são a 3ª e 4ª perna nesse motor).
+    var calcBtn = document.getElementById('fytm-calc');
+    var pBW = {st: '1', ativo: lastData.ticker, spot: lastData.spot, qty: q,
+      exp: lastData.exp, op: 'livre',
+      livre_legs: 'C:1|C:-2|C:1|P:-1',
+      livre_nome: 'Broken Wing Short PUT ' + lastData.ticker,
+      at: r.k1_symbol, ak: r.k1_strike, ap: r.k1_px,
+      bt: r.k2_symbol, bk: r.k2_strike, bp: r.k2_px,
+      ct2: r.k3_symbol, ck2: r.k3_strike, cp2: r.k3_px,
+      dt: r.put_symbol, dk: r.put_strike, dp: r.put_px};
+    calcBtn.href = '/venda_puts?' + new URLSearchParams(pBW).toString() + '#estrutura';
+    calcBtn.style.display = '';
+  }
+
   // Pré-seleção via URL (?ticker=XXXX) — não dispara a busca sozinha
   var qTicker = new URLSearchParams(location.search).get('ticker');
   if (qTicker) setTicker(qTicker);
@@ -1261,7 +1648,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   // Operações — também não dispara a busca sozinha.
   var qEstrutura = new URLSearchParams(location.search).get('estrutura');
   if (qEstrutura === 'thl' || qEstrutura === 'mannerheim' || qEstrutura === 'trava_alta' ||
-      qEstrutura === 'trava_baixa') {
+      qEstrutura === 'trava_baixa' || qEstrutura === 'borboleta' || qEstrutura === 'broken_wing') {
     opSel.value = qEstrutura;
     syncFiltrosEstrutura();
   }

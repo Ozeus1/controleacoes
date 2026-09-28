@@ -83,6 +83,15 @@
     <a href="{{ url_for('opcoes') }}" class="btn btn-danger"
         style="flex: 1; text-align: center; text-decoration: none;">Cancelar</a>
 </div>
+{% if edit %}
+<div style="margin-top:1rem; text-align:center;">
+    <a href="{{ url_for('close_option', id=option.id) }}"
+       style="background:none; border:1px solid var(--border-color);
+              color:var(--text-secondary); border-radius:6px; padding:.4rem .8rem;
+              font-size:.82rem; cursor:pointer; text-decoration:none; transition:opacity .15s;"
+       onmouseover="this.style.opacity='.75';" onmouseout="this.style.opacity='1';">🛑 Encerrar operação</a>
+</div>
+{% endif %}
 </form>
 </div>
 <script>

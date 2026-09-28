@@ -13542,7 +13542,8 @@ def payoff_spread(id):
                            days_nearest=days_nearest,
                            roll_adjustment=roll_adjustment,
                            roll_history_json=_json.dumps(roll_history, ensure_ascii=False),
-                           legs_json=_json.dumps(legs))
+                           legs_json=_json.dumps(legs),
+                           edit_url=url_for('edit_spread', id=sp.id))
 
 
 @app.route('/payoff/estruturada/<int:id>')
@@ -13697,7 +13698,8 @@ def payoff_option(id):
                            selic=_selic(),
                            T_days=t_days,
                            days_nearest=t_days,
-                           legs_json=_json.dumps(legs))
+                           legs_json=_json.dumps(legs),
+                           edit_url=url_for('edit_option', id=opt.id))
 
 
 @app.route('/api/option/<int:id>/delta', methods=['POST'])

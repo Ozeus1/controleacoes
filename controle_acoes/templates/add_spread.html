@@ -175,9 +175,16 @@
             <span id="net-label">— preencha os prêmios para ver o resultado líquido da montagem</span>
         </div>
 
-        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+        <div style="display: flex; gap: 1rem; margin-top: 1.5rem; align-items:center; flex-wrap:wrap;">
             <button type="submit" class="btn btn-primary">💾 Salvar</button>
             <a href="{{ url_for('opcoes') }}" class="btn btn-secondary">Cancelar</a>
+            {% if edit %}
+            <a href="{{ url_for('close_spread', id=spread.id) }}"
+               style="margin-left:auto; background:none; border:1px solid var(--border-color);
+                      color:var(--text-secondary); border-radius:6px; padding:.4rem .8rem;
+                      font-size:.82rem; cursor:pointer; text-decoration:none; transition:opacity .15s;"
+               onmouseover="this.style.opacity='.75';" onmouseout="this.style.opacity='1';">🛑 Encerrar operação</a>
+            {% endif %}
         </div>
     </form>
 </div>

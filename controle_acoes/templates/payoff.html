@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+<div id="payoff-fullscreen-wrap">
 <div class="card" style="max-width:960px; margin:0 auto; padding:1.5rem;">
 
     <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1.2rem;">
@@ -25,8 +26,8 @@
             {% if underlying %}
             <button class="btn btn-outline-info btn-sm" onclick="openChart()">📈 Gráfico {{ underlying }}</button>
             {% endif %}
-            <button class="btn btn-secondary btn-sm" onclick="toggleFullscreen()"
-                    title="Abrir gráfico em tela cheia">⛶ Expandir</button>
+            <button id="payoff-fs-toggle" class="btn btn-secondary btn-sm" onclick="toggleFullscreen()"
+                    title="Abrir esta tela em tela cheia">⛶ Expandir</button>
             <a href="{{ url_for('opcoes') }}" class="btn btn-secondary btn-sm">← Voltar</a>
         </div>
     </div>
@@ -740,79 +741,74 @@
     </div>
 
     {# ── Gráfico ── #}
-    <div id="payoff-chart-wrap">
-        <div id="curvas-ctrl-payoff"></div>
-        <div style="position:relative; width:100%; background:var(--hover-bg); border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
-            <canvas id="payoff-chart" style="display:block; width:100%;"
-                    data-spot="{{ underlying_price or '' }}"
-                    data-change="{{ underlying_change if underlying_change is not none else '' }}"></canvas>
-            <div id="tooltip-box" style="display:none; position:absolute; background:var(--card-bg,#1e293b);
-                 border:1px solid var(--border-color); border-radius:6px; padding:.4rem .7rem;
-                 font-size:.82rem; pointer-events:none; white-space:nowrap; z-index:10;"></div>
-            <button id="payoff-fs-exit" onclick="toggleFullscreen()"
-                    style="display:none; position:absolute; top:.6rem; right:.6rem; z-index:11;
-                           background:var(--card-bg,#1e293b); border:1px solid var(--border-color);
-                           color:var(--text-secondary); border-radius:6px; padding:.3rem .6rem;
-                           font-size:.8rem; cursor:pointer;">✕ Fechar</button>
-        </div>
-        <p style="margin:.3rem 0 0; font-size:.72rem; color:var(--text-secondary);">
-            Roda do mouse: zoom no eixo X (preço) · arraste: mover no X · Shift+roda: zoom no eixo Y (R$) · Shift+arraste: mover no Y · duplo clique: resetar
-        </p>
+    <div id="curvas-ctrl-payoff"></div>
+    <div style="position:relative; width:100%; background:var(--hover-bg); border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
+        <canvas id="payoff-chart" style="display:block; width:100%;"
+                data-spot="{{ underlying_price or '' }}"
+                data-change="{{ underlying_change if underlying_change is not none else '' }}"></canvas>
+        <div id="tooltip-box" style="display:none; position:absolute; background:var(--card-bg,#1e293b);
+             border:1px solid var(--border-color); border-radius:6px; padding:.4rem .7rem;
+             font-size:.82rem; pointer-events:none; white-space:nowrap; z-index:10;"></div>
     </div>
+    <p style="margin:.3rem 0 0; font-size:.72rem; color:var(--text-secondary);">
+        Roda do mouse: zoom no eixo X (preço) · arraste: mover no X · Shift+roda: zoom no eixo Y (R$) · Shift+arraste: mover no Y · duplo clique: resetar
+    </p>
 </div>
+</div>{# /payoff-fullscreen-wrap #}
 
 <script>
 var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
 </script>
 <style>
 /* Fallback para quando a Fullscreen API é bloqueada (ex.: iframe sem allow) —
-   classe aplicada via JS cobrindo a tela inteira com position:fixed. */
-#payoff-chart-wrap.pf-fs-fallback {
+   classe aplicada via JS cobrindo a tela inteira com position:fixed. Cobre a
+   tela TODA (título, tabela de pernas, métricas e gráfico), não só o canvas. */
+#payoff-fullscreen-wrap.pf-fs-fallback {
     position:fixed; inset:0; z-index:9998; background:var(--bg-primary,#0f172a);
-    padding:1rem; overflow:auto; display:flex; flex-direction:column; justify-content:center;
+    padding:1.2rem; overflow:auto;
 }
-#payoff-chart-wrap:fullscreen,
-#payoff-chart-wrap:-webkit-full-screen {
-    background:var(--bg-primary,#0f172a); padding:1rem; display:flex;
-    flex-direction:column; justify-content:center;
+#payoff-fullscreen-wrap:fullscreen,
+#payoff-fullscreen-wrap:-webkit-full-screen {
+    background:var(--bg-primary,#0f172a); padding:1.2rem; overflow:auto;
 }
 </style>
 <script>
-// ── Expandir gráfico em tela cheia ──────────────────────────────────────────
+// ── Expandir a tela inteira (título, pernas, métricas e gráfico) ───────────
 // Usa a Fullscreen API nativa (dispara 'resize', que já redimensiona o canvas
 // via setSize() existente); se o navegador recusar (ex.: iframe sem permissão
-// allow="fullscreen"), cai no fallback CSS position:fixed.
+// allow="fullscreen"), cai no fallback CSS position:fixed. O próprio botão
+// "Expandir" no topo vira "Fechar" enquanto em tela cheia.
 function toggleFullscreen() {
-    var wrap = document.getElementById('payoff-chart-wrap');
-    var btn  = document.getElementById('payoff-fs-exit');
+    var wrap = document.getElementById('payoff-fullscreen-wrap');
+    var btn  = document.getElementById('payoff-fs-toggle');
     var isFallback = wrap.classList.contains('pf-fs-fallback');
     if (document.fullscreenElement || isFallback) {
         if (document.fullscreenElement && document.exitFullscreen) {
             document.exitFullscreen();
         } else {
             wrap.classList.remove('pf-fs-fallback');
-            btn.style.display = 'none';
+            btn.innerHTML = '⛶ Expandir';
             window.dispatchEvent(new Event('resize'));
         }
         return;
     }
     if (wrap.requestFullscreen) {
         wrap.requestFullscreen().then(function () {
-            btn.style.display = 'block';
+            btn.innerHTML = '✕ Fechar';
         }).catch(function () {
             wrap.classList.add('pf-fs-fallback');
-            btn.style.display = 'block';
+            btn.innerHTML = '✕ Fechar';
             window.dispatchEvent(new Event('resize'));
         });
     } else {
         wrap.classList.add('pf-fs-fallback');
-        btn.style.display = 'block';
+        btn.innerHTML = '✕ Fechar';
         window.dispatchEvent(new Event('resize'));
     }
 }
 document.addEventListener('fullscreenchange', function () {
-    var btn = document.getElementById('payoff-fs-exit');
-    if (!document.fullscreenElement) { btn.style.display = 'none'; }
+    var btn = document.getElementById('payoff-fs-toggle');
+    if (!document.fullscreenElement) { btn.innerHTML = '⛶ Expandir'; }
     window.dispatchEvent(new Event('resize'));
 });
 </script>

@@ -213,6 +213,13 @@
         <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center;">
             <button type="submit" class="btn btn-primary">💾 Salvar Operação</button>
             <a href="{{ url_for('opcoes') }}" class="btn btn-secondary">Cancelar</a>
+            <button type="button" id="btn-exportar-pnt"
+                    style="{% if not (edit and op) %}margin-left:auto;{% endif %}
+                           background:none; border:1px solid var(--border-color);
+                           color:var(--text-secondary); border-radius:6px; padding:.4rem .8rem;
+                           font-size:.82rem; cursor:pointer; transition:opacity .15s;"
+                    onmouseover="this.style.opacity='.75';" onmouseout="this.style.opacity='1';"
+                    onclick="exportarPnt()" title="Copia tickers, C/V, quantidades e o spread da montagem para a área de transferência">📋 Exportar Pnt</button>
             {% if edit and op %}
             <button type="button" id="btn-encerrar-op"
                     style="margin-left:auto; background:none; border:1px solid var(--border-color);
@@ -357,6 +364,65 @@ function recalc() {
 
     pnlEl.textContent = fmtBRL(pnl);
     pnlEl.style.color = pnl >= 0 ? 'var(--success-color)' : 'var(--danger-color)';
+}
+
+// ── Exportar Pnt: copia tickers, C/V (lado da operação), quantidades e o
+// spread da montagem (saldo ÷ quantidade da 1ª perna) para a área de
+// transferência, no formato usado para colar em planilha/plataforma de
+// pregão: <tickers separados por TAB> <C/V por TAB> <quantidades por TAB>
+// <spread por ação, 1 único valor no final>.
+function exportarPnt() {
+    var rows = Array.prototype.slice.call(document.querySelectorAll('#legs-body .leg-row'));
+    if (!rows.length) { alert('Nenhuma perna para exportar.'); return; }
+
+    var tickers = [], sides = [], qtys = [];
+    var net = 0;
+    rows.forEach(function(row) {
+        var ticker = (row.querySelector('[name=leg_ticker]').value || '').trim().toUpperCase();
+        var side   = row.querySelector('[name=leg_side]').value;
+        var type   = row.querySelector('[name=leg_opt_type]').value;
+        var qty    = parseInt(row.querySelector('[name=leg_quantity]').value) || 1;
+        var entry  = parseVal(row.querySelector('[name=leg_entry_price]').value);
+        var sign   = side === 'SELL' ? 1 : -1;
+        net += sign * qty * entry;
+
+        tickers.push(ticker);
+        sides.push(side === 'BUY' ? 'C' : 'V');   // C=Compra, V=Venda
+        qtys.push(qty);
+    });
+
+    // Spread por ação: saldo total da montagem (valor absoluto) dividido
+    // pela quantidade da 1ª perna — mesma referência mostrada no preview
+    // "Saldo da montagem" (R$ totais) mas normalizada por lote/ação.
+    var qtyRef = qtys[0] || 1;
+    var spreadPorAcao = Math.abs(net) / qtyRef;
+
+    var linha = tickers.concat(sides).concat(qtys)
+        .concat([spreadPorAcao.toFixed(2).replace('.', ',')])
+        .join('\t');
+
+    var btn = document.getElementById('btn-exportar-pnt');
+    var original = btn.textContent;
+    function ok() {
+        btn.textContent = '✓ Copiado!';
+        setTimeout(function () { btn.textContent = original; }, 1500);
+    }
+    function fail(e) {
+        alert('Não foi possível copiar automaticamente. Texto:\n\n' + linha);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(linha).then(ok, fail);
+    } else {
+        // Fallback para contexto sem clipboard API (ex.: http sem TLS)
+        var ta = document.createElement('textarea');
+        ta.value = linha;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); ok(); } catch (e) { fail(e); }
+        document.body.removeChild(ta);
+    }
 }
 
 // Inicializa preview e estado visual ao carregar

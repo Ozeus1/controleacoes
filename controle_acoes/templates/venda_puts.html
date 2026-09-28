@@ -428,6 +428,15 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             <button type="button" class="btn btn-primary btn-sm" onclick="estruturaAddLeg()">
                 ➕ Adicionar perna / editar no simulador
             </button>
+            <button type="button" id="e-export-btn"
+                    style="background:none; border:1px solid var(--border-color); color:var(--text-secondary);
+                           border-radius:6px; padding:.3rem .7rem; font-size:.8rem; cursor:pointer;
+                           transition:opacity .15s;"
+                    onmouseover="this.style.opacity='.75';" onmouseout="this.style.opacity='1';"
+                    onclick="estruturaExportarPnt()"
+                    title="Copia tickers, C/V, quantidades e o spread da montagem para a área de transferência">
+                📋 Exportar Pnt
+            </button>
             <span style="font-size:.8rem; color:var(--text-secondary); align-self:center;">
                 Salva nas Simulações de Opções, ou abre a Cadeia de Opções para incluir mais pernas.
             </span>
@@ -2429,6 +2438,53 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         });
         var q = new URLSearchParams({sim: '1', ativo: ativo, nome: nomeComAtivo(nome, ativo), legs: parts.join('|')});
         window.location.href = '/cadeia-opcoes?' + q.toString();
+    };
+
+    // Exportar Pnt: copia tickers, C/V (lado da operação), quantidades e o
+    // spread da montagem (saldo ÷ quantidade da 1ª perna) para a área de
+    // transferência — mesmo formato usado em Editar Operação Estruturada:
+    // <tickers por TAB> <C/V por TAB> <quantidades por TAB> <spread, 1 valor>.
+    window.estruturaExportarPnt = function() {
+        var legs = window.__estruturaLegs;
+        if (!legs || !legs.length) { alert('Preencha a estrutura primeiro.'); return; }
+
+        var tickers = [], sides = [], qtys = [];
+        var net = 0;
+        legs.forEach(function(l) {
+            var sign = l.side === 'SELL' ? 1 : -1;
+            net += sign * (l.qty || 0) * (l.premium || 0);
+            tickers.push(l.ticker || '');
+            sides.push(l.side === 'BUY' ? 'C' : 'V');
+            qtys.push(l.qty || 0);
+        });
+
+        var qtyRef = qtys[0] || 1;
+        var spreadPorAcao = Math.abs(net) / qtyRef;
+        var linha = tickers.concat(sides).concat(qtys)
+            .concat([spreadPorAcao.toFixed(2).replace('.', ',')])
+            .join('\t');
+
+        var btn = document.getElementById('e-export-btn');
+        var original = btn.innerHTML;
+        function ok() {
+            btn.textContent = '✓ Copiado!';
+            setTimeout(function () { btn.innerHTML = original; }, 1500);
+        }
+        function fail() {
+            alert('Não foi possível copiar automaticamente. Texto:\n\n' + linha);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(linha).then(ok, fail);
+        } else {
+            var ta = document.createElement('textarea');
+            ta.value = linha;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try { document.execCommand('copy'); ok(); } catch (e) { fail(); }
+            document.body.removeChild(ta);
+        }
     };
 
     // Salva a estrutura nas Simulações de Opções. Com producao=true, também

@@ -922,14 +922,32 @@ var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
     var maxLoss = Math.min.apply(null, Parr);
     var pnl     = currentPnl();
 
+    // Quando o payoff fica ~0 por um TRECHO INTEIRO da grade (ex.: net ≈ 0 e
+    // nenhuma perna com valor intrínseco nessa faixa — comum perto de S=0
+    // numa operação a custo ~zero, como um booster com saldo R$0,00), o
+    // ponto anterior já estava perto de zero, então a condição disparava em
+    // CADA ponto do platô — gerando dezenas de "breakevens" idênticos em
+    // vez de só a borda de entrada. Só conta quando o ponto anterior NÃO
+    // estava perto de zero (é de fato uma borda vinda de cruzamento real).
+    // O primeiro ponto (j==0) fica de fora mesmo se for zero: se o platô já
+    // começa achatado no limite inferior testado, não dá pra saber se o
+    // "cruzamento" está ali ou mais abaixo (fora do range) — não é um
+    // breakeven real, é só a borda do que foi testado.
     var breakevens = [];
+    var prevWasZero = true;   // j==0 nunca conta como borda de entrada
     for (var j = 0; j < Parr.length - 1; j++) {
         var p1 = Parr[j], p2 = Parr[j+1];
-        if (Math.abs(p1) < 0.01 && breakevens.indexOf(Math.round(Sarr[j]*100)/100) < 0) {
-            breakevens.push(Math.round(Sarr[j]*100)/100);
-        } else if (p1 * p2 < 0) {
-            var be = Sarr[j] + (-p1)*(Sarr[j+1]-Sarr[j])/(p2-p1);
-            breakevens.push(Math.round(be*100)/100);
+        if (Math.abs(p1) < 0.01) {
+            if (!prevWasZero && breakevens.indexOf(Math.round(Sarr[j]*100)/100) < 0) {
+                breakevens.push(Math.round(Sarr[j]*100)/100);
+            }
+            prevWasZero = true;
+        } else {
+            prevWasZero = false;
+            if (p1 * p2 < 0) {
+                var be = Sarr[j] + (-p1)*(Sarr[j+1]-Sarr[j])/(p2-p1);
+                breakevens.push(Math.round(be*100)/100);
+            }
         }
     }
 

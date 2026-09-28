@@ -1304,10 +1304,13 @@ def _calc_structured_metrics(op):
     # era zero, então P1==0 dispararia em CADA ponto do platô, um por um —
     # gerando dezenas de "breakevens" idênticos em vez de só a borda de
     # entrada do platô. Só conta como breakeven quando o ponto anterior NÃO
-    # era zero (é de fato uma borda, seja subindo ao 0 ou vindo de um
-    # cruzamento) ou quando é o primeiro ponto da varredura.
+    # era zero (é de fato uma borda vinda de um cruzamento real). O
+    # PRIMEIRO ponto da varredura (i==0) fica de fora mesmo se for zero: se
+    # o platô já começa achatado no limite inferior testado, não dá pra
+    # saber se o "cruzamento" está ali ou mais abaixo (fora do range) — não
+    # é um breakeven real, é só a borda do que foi testado.
     breakevens = []
-    prev_was_zero = False
+    prev_was_zero = True   # i==0 nunca conta como borda de entrada
     for i in range(len(payoffs) - 1):
         S1, P1 = payoffs[i]
         S2, P2 = payoffs[i + 1]

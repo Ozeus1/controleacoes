@@ -1298,16 +1298,29 @@ def _calc_structured_metrics(op):
     max_loss   = float('-inf') if unlimited_loss   else min(p for _, p in payoffs)
 
     # ── Breakevens matemáticos (cruzamentos de zero do payoff) ─────
+    # Quando o payoff fica exatamente em 0.0 por um TRECHO INTEIRO da grade
+    # (ex.: net ≈ 0 e nenhuma perna com valor intrínseco nessa faixa — comum
+    # perto de S=0 numa operação a custo ~zero), o ponto anterior (i-1) já
+    # era zero, então P1==0 dispararia em CADA ponto do platô, um por um —
+    # gerando dezenas de "breakevens" idênticos em vez de só a borda de
+    # entrada do platô. Só conta como breakeven quando o ponto anterior NÃO
+    # era zero (é de fato uma borda, seja subindo ao 0 ou vindo de um
+    # cruzamento) ou quando é o primeiro ponto da varredura.
     breakevens = []
+    prev_was_zero = False
     for i in range(len(payoffs) - 1):
         S1, P1 = payoffs[i]
         S2, P2 = payoffs[i + 1]
-        if P1 == 0 and S1 not in breakevens:
-            breakevens.append(round(S1, 2))
-        elif P1 * P2 < 0:
-            be = S1 + (-P1) * (S2 - S1) / (P2 - P1)
-            breakevens.append(round(be, 2))
-    if payoffs and payoffs[-1][1] == 0:
+        if P1 == 0:
+            if not prev_was_zero and S1 not in breakevens:
+                breakevens.append(round(S1, 2))
+            prev_was_zero = True
+        else:
+            prev_was_zero = False
+            if P1 * P2 < 0:
+                be = S1 + (-P1) * (S2 - S1) / (P2 - P1)
+                breakevens.append(round(be, 2))
+    if payoffs and payoffs[-1][1] == 0 and not prev_was_zero:
         be = round(payoffs[-1][0], 2)
         if be not in breakevens:
             breakevens.append(be)

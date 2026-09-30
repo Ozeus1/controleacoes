@@ -2713,6 +2713,19 @@ def simulador():
                            ranking_vol=ranking_vol, selic=_selic())
 
 
+@app.route('/simulador-estudo')
+@login_required
+def simulador_estudo():
+    """Simulador de Estudo: mesma engenharia de cálculo/gráfico/salvar do
+    Simulador normal (compartilham a tabela SimulacaoOpcoes), mas a perna
+    é montada digitando o TICKER da opção — vencimento, strike e prêmio
+    são buscados via OpLab (/api/busca-opcao), em vez de escolher de uma
+    cadeia pré-carregada por vencimento→strike.
+    """
+    sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id)                                .order_by(SimulacaoOpcoes.created_at.desc()).all()
+    return render_template('simulador_estudo.html', sims=sims, selic=_selic())
+
+
 @app.route('/api/simulacao/<int:sim_id>')
 @login_required
 def api_simulacao_get(sim_id):

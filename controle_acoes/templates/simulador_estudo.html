@@ -1,0 +1,1267 @@
+{% extends "base.html" %}
+{% block title %}Simulador de Estudo{% endblock %}
+
+{% block extra_scripts %}
+<style>
+/* ── Planilha de pernas ─────────────────────────────────────────── */
+#sim-tab { width:100%; border-collapse:collapse; font-size:.88rem; min-width:920px; }
+#sim-tab th {
+    padding:.45rem .5rem; text-align:center; white-space:nowrap;
+    background:var(--card-bg); color:var(--text-secondary); font-weight:600;
+    border-bottom:1px solid var(--border-color); font-size:.78rem;
+    text-transform:uppercase; letter-spacing:.03em;
+}
+#sim-tab td { padding:.35rem .4rem; text-align:center; white-space:nowrap;
+              border-bottom:1px solid rgba(255,255,255,.04); }
+#sim-tab tr.off td { opacity:.4; }
+#sim-tab select, #sim-tab input {
+    background:var(--card-bg); color:var(--text-primary);
+    border:1px solid var(--border-color); border-radius:4px;
+    padding:.3rem .4rem; font-size:.87rem; width:100%;
+}
+#sim-tab input[readonly] { background:var(--hover-bg); color:var(--text-secondary); }
+.sim-cv-c { color:#34d399; font-weight:700; }
+.sim-cv-v { color:#f87171; font-weight:700; }
+.col-qtd    { width:78px; }
+.col-sel    { width:34px; }
+.col-tipo   { width:92px; }
+.col-cv     { width:72px; }
+.col-venc   { width:158px; }
+.col-dte    { width:62px; }
+.col-strike { width:132px; }
+.col-tick   { width:112px; }
+.col-num    { width:104px; }
+.col-fonte  { width:78px; }
+.col-x      { width:34px; }
+.sim-x {
+    background:none; border:none; color:#f87171; cursor:pointer;
+    font-size:1rem; line-height:1; padding:.1rem .3rem;
+}
+.sim-tot td { font-weight:700; border-top:1px solid var(--border-color); }
+
+/* ── Painel de métricas ─────────────────────────────────────────── */
+.sim-metrics {
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+    gap:.55rem; margin-top:.9rem;
+}
+.sim-met {
+    background:var(--hover-bg); border:1px solid var(--border-color);
+    border-radius:8px; padding:.55rem .8rem;
+}
+.sim-met .lbl { font-size:.72rem; color:var(--text-secondary); display:block; }
+.sim-met .val { font-size:1rem; font-weight:700; }
+
+#payoff-canvas { display:block; width:100%; }
+#chart-wrap {
+    position:relative; width:100%; background:var(--hover-bg);
+    border:1px solid var(--border-color); border-radius:8px;
+    overflow:hidden; margin-top:1rem;
+}
+#chart-tooltip {
+    display:none; position:absolute; background:var(--card-bg,#1e293b);
+    border:1px solid var(--border-color); border-radius:6px; padding:.35rem .65rem;
+    font-size:.82rem; pointer-events:none; white-space:nowrap; z-index:10;
+}
+.sim-hint { color:var(--text-secondary); font-size:.78rem; }
+#sim-aviso {
+    display:none; margin-top:.7rem; padding:.55rem .9rem;
+    border-radius:6px; font-size:.82rem; border:1px solid;
+}
+.sim-topbar {
+    display:flex; align-items:center; justify-content:space-between;
+    gap:.7rem; flex-wrap:wrap; margin-bottom:.5rem;
+}
+.sim-topbar-info { display:flex; align-items:center; gap:.9rem; flex-wrap:wrap; }
+.sim-topbar-acoes { display:flex; gap:.4rem; flex-wrap:wrap; }
+.sim-obs-btn {
+    background:none; border:1px solid transparent; color:var(--text-secondary);
+    font-size:.78rem; padding:.3rem .55rem; border-radius:5px; cursor:pointer;
+    white-space:nowrap;
+}
+.sim-obs-btn:hover { border-color:var(--border-color); color:var(--text-primary); }
+.sim-obs-btn.tem-obs { color:#eab308; }
+.sim-chk-label {
+    display:flex; align-items:center; gap:.35rem; cursor:pointer;
+    font-size:.8rem; color:var(--text-secondary); white-space:nowrap;
+}
+.sim-tickers { display:flex; flex-wrap:wrap; gap:.3rem; }
+.sim-tbtn {
+    padding:.2rem .5rem; border:1px solid var(--border-color); border-radius:5px;
+    font-size:.76rem; cursor:pointer; color:var(--text-primary);
+    background:var(--hover-bg); white-space:nowrap;
+}
+.sim-tbtn.active { background:#7c3aed; border-color:#7c3aed; color:#fff; font-weight:700; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="padding:1.1rem 1.3rem;">
+
+  <div class="sim-topbar">
+    <div class="sim-topbar-info">
+      <h2 style="margin:0;white-space:nowrap;">🔬 Simulador de Estudo</h2>
+      <span id="sim-spot" style="font-size:.95rem;font-weight:700;white-space:nowrap;"></span>
+      <a id="sim-spot-chart" href="#" onclick="return simAbreGrafico();" style="display:none;
+         font-size:.8rem;color:#60a5fa;text-decoration:none;white-space:nowrap;">📈 ver gráfico</a>
+    </div>
+    <div class="sim-topbar-acoes">
+      <button type="button" id="sim-obs-btn" class="sim-obs-btn" onclick="simAbreObs()"
+              title="Anotações desta simulação — material de estudo, não faz parte da estrutura">📝 Obs.</button>
+      <button class="btn btn-secondary btn-sm" onclick="simCarregarModal()">📂 Abrir simulação</button>
+      <button class="btn btn-primary btn-sm" onclick="simSalvar()">💾 Salvar</button>
+      <button class="btn btn-secondary btn-sm" onclick="simSalvarComo()"
+              title="Salva a planilha atual como uma nova simulação, sem alterar a que já estava aberta">💾 Salvar como…</button>
+      <button class="btn btn-secondary btn-sm" onclick="simNova()">＋ Nova</button>
+    </div>
+  </div>
+
+  <!-- Ativo ------------------------------------------------------- -->
+  <div style="display:flex;gap:.9rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:.7rem;">
+    <div style="display:flex;flex-direction:column;gap:.25rem;">
+      <label class="sim-hint">Nome da simulação</label>
+      <input type="text" id="sim-nome" placeholder="Ex.: Trava de alta PETR4"
+             style="background:var(--card-bg);color:var(--text-primary);
+                    border:1px solid var(--border-color);border-radius:5px;
+                    padding:.35rem .55rem;font-size:.85rem;min-width:230px;">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:.25rem;">
+      <label class="sim-hint" title="Detectado automaticamente a partir do ticker da 1ª perna de opção">Ativo</label>
+      <input type="text" id="sim-ativo" readonly placeholder="— (detectado pelo 1º ticker)"
+             style="background:var(--hover-bg);color:var(--text-secondary);
+                    border:1px solid var(--border-color);border-radius:5px;
+                    padding:.35rem .55rem;font-size:.85rem;width:150px;text-transform:uppercase;">
+    </div>
+    <span id="sim-cadeia-status" class="sim-hint" style="white-space:nowrap;"></span>
+  </div>
+  <p class="sim-hint" style="margin:0 0 .7rem;">
+    Monte a estrutura perna a perna: escolha Call/Put/Ativo, defina Compra ou Venda e digite o
+    <strong>ticker da opção</strong> — o sistema busca vencimento, strike e prêmio automaticamente
+    via OpLab (avisa se o ticker não bater com o tipo Call/Put escolhido).
+  </p>
+
+  <!-- Planilha de pernas ------------------------------------------ -->
+  <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:.5rem;">
+    <button class="btn btn-secondary btn-sm" onclick="simAddPerna('CALL')">+ Call</button>
+    <button class="btn btn-secondary btn-sm" onclick="simAddPerna('PUT')">+ Put</button>
+    <button class="btn btn-secondary btn-sm" onclick="simAddPerna('STOCK')">+ Ativo</button>
+    <button class="btn btn-secondary btn-sm" onclick="simAtualizarCotacoes()"
+            title="Rebusca cada ticker já preenchido e atualiza o prêmio com o preço atual (bid/ask no pregão aberto, último fechamento fora dele)">
+      🔄 Atualizar cotação
+    </button>
+    <button class="btn btn-secondary btn-sm" onclick="simLimpar()">🗑 Limpar</button>
+  </div>
+
+  <div style="overflow-x:auto;">
+    <table id="sim-tab" class="no-datatable">
+      <thead>
+        <tr>
+          <th class="col-sel" title="Marque para incluir a perna no cálculo">✓</th>
+          <th class="col-cv">C/V</th>
+          <th class="col-tipo">Tipo</th>
+          <th class="col-qtd">Qtde</th>
+          <th class="col-tick" title="Digite o ticker da opção — vencimento, strike e prêmio são buscados automaticamente">Ticker</th>
+          <th class="col-venc">Vencimento</th>
+          <th class="col-dte" title="Dias até o vencimento desta perna">DTE</th>
+          <th class="col-strike">Strike</th>
+          <th class="col-fonte" title="Qual cotação usar no Prêmio: Auto segue o lado (venda→bid, compra→ask); Bid/Ask forçam a ponta; Último usa o preço do último negócio">Fonte</th>
+          <th class="col-num">Prêmio</th>
+          <th class="col-num">Entrada</th>
+          <th class="col-num">Saída</th>
+          <th class="col-num" title="Volatilidade implícita — usada no cálculo de travas com vencimentos diferentes">VI %</th>
+          <th class="col-x"></th>
+        </tr>
+      </thead>
+      <tbody id="sim-body"></tbody>
+      <tfoot>
+        <tr class="sim-tot">
+          <td colspan="10" style="text-align:right;">Total da operação</td>
+          <td id="sim-tot-ent">—</td>
+          <td id="sim-tot-sai">—</td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+
+  <div id="sim-aviso"></div>
+
+  <!-- Métricas ---------------------------------------------------- -->
+  <div class="sim-metrics">
+    <div class="sim-met"><span class="lbl">Montagem</span><span class="val" id="m-net">—</span></div>
+    <div class="sim-met"><span class="lbl">Lucro máximo</span><span class="val positive" id="m-gain">—</span></div>
+    <div class="sim-met"><span class="lbl" title="Lucro máximo ÷ custo de saída (desembolso das compras)">Lucro máx. % sobre investido</span><span class="val" id="m-gain-pct">—</span></div>
+    <div class="sim-met"><span class="lbl" title="Quanto o lucro máximo % representa em relação ao rendimento da Selic no mesmo prazo (DTE do vencimento mais curto)">Lucro máx. vs. Selic no período</span><span class="val" id="m-gain-selic">—</span></div>
+    <div class="sim-met"><span class="lbl">Prejuízo máximo</span><span class="val negative" id="m-loss">—</span></div>
+    <div class="sim-met"><span class="lbl">Breakeven(s)</span><span class="val" id="m-be">—</span></div>
+    <div class="sim-met"><span class="lbl" title="Probability of Profit (Black-Scholes)">POP</span><span class="val" id="m-pop">—</span></div>
+    <div class="sim-met"><span class="lbl">Custo de entrada</span><span class="val" id="m-ent">—</span></div>
+    <div class="sim-met"><span class="lbl">Custo de saída</span><span class="val" id="m-sai">—</span></div>
+    <div class="sim-met"><span class="lbl" title="Delta líquido da estrutura hoje, no preço atual do ativo — soma de delta(Black-Scholes) × quantidade × sinal C/V de cada perna (1.0 por ação na perna de Ativo). Mede a quantas ações a posição equivale no preço atual.">Delta estrutural</span><span class="val" id="m-delta-estrutural">—</span></div>
+    <div class="sim-met"><span class="lbl" title="Diferença entre o delta estrutural hoje e o delta estrutural no vencimento mais curto (só valor intrínseco) — mostra como a exposição da estrutura muda conforme o tempo passa até lá.">Delta de transição</span><span class="val" id="m-delta-transicao">—</span></div>
+    <div class="sim-met"><span class="lbl">Vencimento mais curto</span><span class="val" id="m-dte">—</span></div>
+  </div>
+
+  <!-- Gráfico ----------------------------------------------------- -->
+  <div id="curvas-ctrl-sim"></div>
+  <div id="chart-wrap">
+    <canvas id="payoff-canvas"></canvas>
+    <div id="chart-tooltip"></div>
+  </div>
+  <p class="sim-hint" style="margin-top:.4rem;">
+    Roda: zoom no X (preço) · arraste: mover no X · Shift+roda: zoom no Y (R$) · Shift+arraste: mover no Y · duplo clique: resetar.
+    O gráfico mostra o payoff no vencimento mais curto.
+  </p>
+</div>
+
+<!-- ── Modal: abrir simulação salva ────────────────────────────────── -->
+<div id="open-modal" style="display:none;position:fixed;inset:0;z-index:19000;
+     background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,560px);
+              max-height:88vh;display:flex;flex-direction:column;border:1px solid var(--border-color);">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:.8rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <h3 style="margin:0;font-size:1rem;">Simulações salvas</h3>
+      <button onclick="document.getElementById('open-modal').style.display='none'"
+              style="background:none;border:none;font-size:1.4rem;
+                     color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:.6rem 1.1rem 1rem;" id="open-modal-lista">
+      <p class="sim-hint" style="padding:1rem 0;">⏳ carregando…</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: observações da simulação ─────────────────────────────── -->
+<div id="obs-modal" style="display:none;position:fixed;inset:0;z-index:19100;
+     background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,560px);
+              max-height:88vh;display:flex;flex-direction:column;border:1px solid var(--border-color);">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:.8rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <h3 style="margin:0;font-size:1rem;">📝 Observações</h3>
+      <button onclick="document.getElementById('obs-modal').style.display='none'"
+              style="background:none;border:none;font-size:1.4rem;
+                     color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:.8rem 1.1rem;display:flex;flex-direction:column;gap:.5rem;">
+      <p class="sim-hint" style="margin:0;">
+        Anotações livres desta simulação (material de estudo) — não fazem parte da estrutura
+        e não são enviadas se a operação for salva em produção.
+      </p>
+      <textarea id="obs-textarea" rows="10" placeholder="Ex.: por que montei esta estrutura, cenário esperado, o que observar…"
+                style="width:100%;resize:vertical;background:var(--hover-bg);color:var(--text-primary);
+                       border:1px solid var(--border-color);border-radius:6px;padding:.6rem .7rem;
+                       font-size:.88rem;font-family:inherit;box-sizing:border-box;"></textarea>
+      <div id="obs-status" class="sim-hint" style="min-height:1.2em;"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;padding:.7rem 1.1rem;
+                border-top:1px solid var(--border-color);">
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('obs-modal').style.display='none'">Fechar</button>
+      <button class="btn btn-primary btn-sm" onclick="simSalvarObs()">💾 Salvar observações</button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/payoff_style.js') }}?v=3"></script>
+<script>
+(function () {
+'use strict';
+
+var SELIC_RATE = {{ selic }};
+var SPOT_ATUAL = 0;     // cotação do ativo subjacente, detectada pela 1ª perna de opção resolvida
+var SIM_ID = null;      // id da simulação aberta (null = nova)
+var SIM_NOTES = '';     // anotações da simulação aberta — não fazem parte da estrutura
+
+function simAtualizaBotaoObs() {
+    document.getElementById('sim-obs-btn').classList.toggle('tem-obs', !!SIM_NOTES.trim());
+}
+
+// ── Utilidades ────────────────────────────────────────────────────
+function parseVal(s) {
+    return parseFloat((s || '0').toString().replace(/\./g, '').replace(',', '.')) || 0;
+}
+function fmtNum(v, dec) {
+    dec = dec == null ? 2 : dec;
+    return Number(v || 0).toLocaleString('pt-BR',
+        { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+function fmtBRL(v) { return 'R$ ' + fmtNum(Math.abs(v || 0)); }
+function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+}
+function dataBR(iso) {
+    var p = (iso || '').split('-');
+    return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : (iso || '');
+}
+function diasAte(iso) {
+    if (!iso) return null;
+    var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    return Math.round((new Date(iso + 'T00:00:00') - hoje) / 86400000);
+}
+
+window.simAbreGrafico = function () {
+    var t = (document.getElementById('sim-ativo').value || '').trim().toUpperCase();
+    if (t && window.MyChart && MyChart.open) MyChart.open(t);
+    return false;
+};
+
+// Atualiza o spot do ativo detectado (chip no topo + campo readonly
+// "Ativo") — usado assim que o 1º ticker de opção é resolvido, e sempre
+// que o botão "Atualizar cotação" roda.
+function simAtualizaSpot(underlying, spot, spotChange) {
+    document.getElementById('sim-ativo').value = underlying || '';
+    SPOT_ATUAL = spot || 0;
+    document.getElementById('sim-spot').innerHTML = (underlying && spot)
+        ? (underlying + ' ' + fmtBRL(spot) + (spotChange != null
+            ? ' <span class="' + (spotChange >= 0 ? 'chg-pos' : 'chg-neg') + '" style="font-size:.82rem;">'
+              + (spotChange >= 0 ? '+' : '') + fmtNum(spotChange) + '%</span>' : ''))
+        : '';
+}
+
+// Botão "Atualizar cotação": rebusca cada ticker de opção já preenchido
+// (pelo próprio ticker, não mais por uma cadeia inteira) e a cotação de
+// cada perna de Ativo — no pregão aberto o book muda a cada instante.
+window.simAtualizarCotacoes = function () {
+    var linhas = document.querySelectorAll('#sim-body tr.leg-row');
+    if (!linhas.length) return;
+    linhas.forEach(function (tr) {
+        var tipo = tr.querySelector('.leg-type').value;
+        if (tipo === 'STOCK') { simAtualizaCotacaoAtivo(tr); return; }
+        var tickerEl = tr.querySelector('.leg-ticker');
+        var ticker = (tickerEl.value || '').trim().toUpperCase();
+        if (ticker) simBuscaTicker(tr, ticker);
+    });
+};
+
+// ── Linhas da planilha ──────────────────────────────────────────────
+// Ticker é agora um campo DIGITÁVEL (não mais um <select> em cascata):
+// o usuário digita o ticker da opção e o sistema busca vencimento,
+// strike e prêmio via OpLab (/api/busca-opcao). Vencimento/Strike/Fonte
+// ficam só leitura, preenchidos pela busca.
+function novaLinha(tipo) {
+    var tr = document.createElement('tr');
+    tr.className = 'leg-row';
+    var isStock = tipo === 'STOCK';
+    tr.innerHTML =
+        '<td><input type="checkbox" class="leg-on" checked onchange="simRecalc()"></td>'
+      + '<td><select class="leg-side" onchange="simSideMudou(this)">'
+      +   '<option value="BUY">C</option><option value="SELL">V</option></select></td>'
+      + '<td><select class="leg-type" onchange="simTipoMudou(this)">'
+      +   '<option value="CALL"' + (tipo === 'CALL' ? ' selected' : '') + '>CALL</option>'
+      +   '<option value="PUT"'  + (tipo === 'PUT'  ? ' selected' : '') + '>PUT</option>'
+      +   '<option value="STOCK"' + (isStock ? ' selected' : '') + '>Ativo</option>'
+      +   '</select></td>'
+      + '<td><input type="number" class="leg-qty" value="100" min="100" step="100" onchange="simQtyMudou(this)"></td>'
+      // Ticker: agora é a ENTRADA da linha — digita e busca sozinho ao sair
+      // do campo (blur) ou apertar Enter. Para Ativo, mostra o ticker do
+      // ativo subjacente (herdado da 1ª perna de opção já resolvida).
+      + '<td>' + (isStock
+          ? '<input type="text" class="leg-ticker" readonly placeholder="—" title="Mesmo ativo detectado pela 1ª perna de opção">'
+          : '<input type="text" class="leg-ticker" placeholder="Ex.: PETRJ500" style="text-transform:uppercase;"'
+            + ' onblur="simTickerBlur(this)" onkeydown="if(event.key===\'Enter\'){event.preventDefault();this.blur();}">') + '</td>'
+      // Vencimento/Strike: agora SÓ LEITURA, preenchidos pela busca do ticker.
+      + '<td class="leg-venc sim-hint">' + (isStock ? '—' : '—') + '</td>'
+      + '<td class="leg-dte sim-hint">—</td>'
+      + '<td class="leg-strike sim-hint">' + (isStock ? '—' : '—') + '</td>'
+      // Fonte da cotação usada no Prêmio (Auto/Bid/Ask/Último).
+      + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
+          : '<select class="leg-src" onchange="simFonteMudou(this)"'
+            + ' title="Auto: venda usa bid, compra usa ask · Bid/Ask forçam a ponta · Último usa o preço de fechamento/último negócio">'
+            + '<option value="auto">Auto</option>'
+            + '<option value="bid">Bid</option>'
+            + '<option value="ask">Ask</option>'
+            + '<option value="last">Últ.</option>'
+            + '</select>') + '</td>'
+      + '<td><input type="text" class="leg-premium" value="0,00" readonly'
+      +   (isStock ? ' title="Cotação buscada via OpLab (pregão aberto ou último fechamento)"'
+                   : ' title="Preenchido ao buscar o ticker"') + '></td>'
+      + '<td class="leg-ent">—</td>'
+      + '<td class="leg-sai">—</td>'
+      + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
+          : '<input type="text" class="leg-iv" placeholder="—" onchange="simRecalc()">') + '</td>'
+      + '<td><button type="button" class="sim-x" onclick="simRemove(this)">✕</button></td>';
+    var trErr = document.createElement('tr');
+    trErr.className = 'leg-row-err';
+    trErr.style.display = 'none';
+    trErr.innerHTML = '<td colspan="13" style="padding:.15rem .5rem .4rem;text-align:left;"></td>';
+    tr._errRow = trErr;
+    return tr;
+}
+
+window.simAddPerna = function (tipo) {
+    var tr = novaLinha(tipo);
+    document.getElementById('sim-body').appendChild(tr);
+    document.getElementById('sim-body').appendChild(tr._errRow);
+    if (tipo === 'STOCK') simAtualizaCotacaoAtivo(tr);
+    simRecalc();
+};
+
+window.simRemove = function (btn) {
+    var tr = btn.closest('tr');
+    if (tr._errRow) tr._errRow.remove();
+    tr.remove();
+    simRecalc();
+};
+
+window.simLimpar = function () {
+    document.getElementById('sim-body').innerHTML = '';
+    simRecalc();
+};
+
+// Trocar o tipo redesenha a linha — se já havia um ticker buscado, refaz
+// a busca (agora validando contra o novo tipo escolhido).
+window.simTipoMudou = function (sel) {
+    var tr = sel.closest('tr');
+    var tickerAntigo = (tr.querySelector('.leg-ticker') || {}).value || '';
+    var nova = novaLinha(sel.value);
+    nova.querySelector('.leg-side').value = tr.querySelector('.leg-side').value;
+    nova.querySelector('.leg-qty').value  = tr.querySelector('.leg-qty').value;
+    nova.querySelector('.leg-on').checked = tr.querySelector('.leg-on').checked;
+    if (tr._errRow) tr._errRow.remove();
+    tr.replaceWith(nova);
+    nova.parentNode.insertBefore(nova._errRow, nova.nextSibling);
+    if (sel.value === 'STOCK') {
+        simAtualizaCotacaoAtivo(nova);
+    } else if (tickerAntigo) {
+        nova.querySelector('.leg-ticker').value = tickerAntigo;
+        simBuscaTicker(nova, tickerAntigo);
+    }
+    simRecalc();
+};
+
+// Quantidade sempre em lotes de 100 (padrão de mercado de opções na B3).
+window.simQtyMudou = function (input) {
+    var v = Math.round((parseInt(input.value, 10) || 100) / 100) * 100;
+    input.value = Math.max(100, v);
+    simRecalc();
+};
+
+// Trocar compra/venda muda qual ponta do book é usada (compra=ask,
+// venda=bid) — refaz a leitura do prêmio se já há cotações guardadas.
+window.simSideMudou = function (sel) {
+    var tr = sel.closest('tr');
+    if (tr.dataset.bid || tr.dataset.ask || tr.dataset.last) {
+        var lado = sel.value;
+        var fake = { bid_eff: parseFloat(tr.dataset.bid || 0), ask_eff: parseFloat(tr.dataset.ask || 0), close: parseFloat(tr.dataset.last || 0) };
+        tr.querySelector('.leg-premium').value = fmtNum(simPrecoDaFonte(tr, fake, lado));
+    }
+    simRecalc();
+};
+
+// ── Ticker digitado → busca via OpLab (/api/busca-opcao) ───────────
+function simMostraErroLinha(tr, msg) {
+    var errRow = tr._errRow;
+    if (!errRow) return;
+    if (!msg) { errRow.style.display = 'none'; return; }
+    errRow.querySelector('td').innerHTML =
+        '<span style="color:#f87171;font-size:.78rem;">⚠️ ' + escHtml(msg) + '</span>';
+    errRow.style.display = '';
+}
+
+window.simTickerBlur = function (input) {
+    var tr = input.closest('tr');
+    var ticker = (input.value || '').trim().toUpperCase();
+    input.value = ticker;
+    if (!ticker) { simMostraErroLinha(tr, ''); return; }
+    simBuscaTicker(tr, ticker);
+};
+
+// Preço executável conforme a fonte escolhida — mesma convenção do
+// Simulador normal: Auto segue o lado (venda→bid, compra→ask), Bid/Ask
+// forçam a ponta, Último usa o preço de fechamento/último negócio.
+function simPrecoDaFonte(tr, o, lado) {
+    var srcEl = tr.querySelector('.leg-src');
+    var src = srcEl ? srcEl.value : 'auto';
+    var bid = o.bid_eff || o.bid || 0;
+    var ask = o.ask_eff || o.ask || 0;
+    var last = o.close || 0;
+    if (src === 'bid')  return bid || last || ask || 0;
+    if (src === 'ask')  return ask || last || bid || 0;
+    if (src === 'last') return last || (lado === 'SELL' ? (bid || ask) : (ask || bid)) || 0;
+    return (lado === 'SELL' ? (bid || ask) : (ask || bid)) || last || 0;
+}
+
+window.simFonteMudou = function (sel) {
+    var tr = sel.closest('tr');
+    var lado = tr.querySelector('.leg-side').value;
+    var bid = parseFloat(tr.dataset.bid || 0);
+    var ask = parseFloat(tr.dataset.ask || 0);
+    var last = parseFloat(tr.dataset.last || 0);
+    if (!bid && !ask && !last) { simRecalc(); return; }
+    var fake = { bid_eff: bid, ask_eff: ask, close: last };
+    tr.querySelector('.leg-premium').value = fmtNum(simPrecoDaFonte(tr, fake, lado));
+    simRecalc();
+};
+
+// Busca o ticker via OpLab e preenche tipo/vencimento/strike/prêmio da
+// linha. Critica quando o tipo retornado (CALL/PUT) não bate com o que
+// o usuário escolheu no select "Tipo" — sugere a correção em vez de
+// preencher silenciosamente um tipo diferente do pedido.
+function simBuscaTicker(tr, ticker) {
+    simMostraErroLinha(tr, '');
+    var tipoEl = tr.querySelector('.leg-type');
+    var vencEl = tr.querySelector('.leg-venc');
+    var dteEl  = tr.querySelector('.leg-dte');
+    var strikeEl = tr.querySelector('.leg-strike');
+    var premioEl = tr.querySelector('.leg-premium');
+    var ivEl = tr.querySelector('.leg-iv');
+    premioEl.value = '⏳';
+    fetch('/api/busca-opcao/' + encodeURIComponent(ticker))
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            if (!res.ok || res.j.error) {
+                premioEl.value = '0,00';
+                vencEl.textContent = '—'; dteEl.textContent = '—'; strikeEl.textContent = '—';
+                simMostraErroLinha(tr, res.j.error || ('Ticker ' + ticker + ' não encontrado na OpLab.'));
+                return;
+            }
+            var d = res.j;
+            var tipoReal = (d.type || '').toUpperCase().indexOf('PUT') >= 0 ? 'PUT' : 'CALL';
+            var tipoPedido = tipoEl.value;
+            if (tipoReal !== tipoPedido) {
+                simMostraErroLinha(tr,
+                    ticker + ' é uma ' + tipoReal + ', mas a perna estava marcada como ' + tipoPedido +
+                    '. Corrigido automaticamente para ' + tipoReal + '.');
+                tipoEl.value = tipoReal;
+            }
+            vencEl.textContent = d.expiration ? dataBR(d.expiration) : '—';
+            var dd = d.expiration ? diasAte(d.expiration) : null;
+            dteEl.textContent = dd != null ? dd + 'd' : '—';
+            strikeEl.textContent = d.strike != null ? fmtBRL(d.strike) : '—';
+            tr.dataset.exp = d.expiration || '';
+            tr.dataset.strike = d.strike != null ? d.strike : '';
+
+            var o = { bid_eff: d.bid, ask_eff: d.ask, close: d.last };
+            tr.dataset.bid = d.bid || 0; tr.dataset.ask = d.ask || 0; tr.dataset.last = d.last || 0;
+            var lado = tr.querySelector('.leg-side').value;
+            premioEl.value = fmtNum(simPrecoDaFonte(tr, o, lado));
+            premioEl.title = 'Bid ' + fmtNum(d.bid || 0) + ' · Ask ' + fmtNum(d.ask || 0) + ' · Último ' + fmtNum(d.last || 0);
+            if (ivEl && d.iv != null) ivEl.value = fmtNum(d.iv * 100);
+
+            // Detecta o ativo subjacente pela 1ª perna de opção resolvida —
+            // sem um campo "Ativo" digitável, é assim que o spot é obtido.
+            if (d.underlying && (!SPOT_ATUAL || document.getElementById('sim-ativo').value !== d.underlying)) {
+                simAtualizaSpot(d.underlying, d.spot_price, d.spot_change);
+                simAtualizaTodosAtivos();
+            }
+            simRecalc();
+        })
+        .catch(function (e) {
+            premioEl.value = '0,00';
+            simMostraErroLinha(tr, 'Falha de rede ao buscar ' + ticker + ': ' + e);
+        });
+}
+
+// ── Ativo: cotação buscada via OpLab (pregão aberto ou fechamento) ──
+function simAtualizaCotacaoAtivo(tr) {
+    var ativo = (document.getElementById('sim-ativo').value || '').trim().toUpperCase();
+    if (!ativo) return;
+    var premioEl = tr.querySelector('.leg-premium');
+    var tickerEl = tr.querySelector('.leg-ticker');
+    if (tickerEl) tickerEl.value = ativo;
+    if (SPOT_ATUAL) { premioEl.value = fmtNum(SPOT_ATUAL); return; }
+    fetch('/api/quote_hint/' + encodeURIComponent(ativo))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+            var p = Number(d.price || 0);
+            if (p > 0) premioEl.value = fmtNum(p);
+        })
+        .catch(function () {});
+}
+
+// Atualiza a cotação de TODAS as pernas de Ativo já na planilha —
+// chamado sempre que o spot muda (1ª perna de opção resolvida, ou
+// clique em "Atualizar cotação").
+function simAtualizaTodosAtivos() {
+    document.querySelectorAll('#sim-body tr.leg-row').forEach(function (tr) {
+        if (tr.querySelector('.leg-type').value === 'STOCK') simAtualizaCotacaoAtivo(tr);
+    });
+}
+
+// ── Leitura das pernas ────────────────────────────────────────────
+// Só entram no cálculo as linhas com o checkbox marcado.
+function lerPernas() {
+    var legs = [];
+    document.querySelectorAll('#sim-body tr.leg-row').forEach(function (tr) {
+        var on = tr.querySelector('.leg-on').checked;
+        tr.classList.toggle('off', !on);
+        if (!on) { tr.querySelector('.leg-ent').textContent = '—';
+                   tr.querySelector('.leg-sai').textContent = '—'; return; }
+        var tipo = tr.querySelector('.leg-type').value;
+        var ivEl = tr.querySelector('.leg-iv');
+        // Strike/vencimento vêm do dataset (preenchidos por simBuscaTicker),
+        // não mais de <select> — a linha só tem input de ticker + campos
+        // de só leitura.
+        legs.push({
+            type:    tipo,
+            side:    tr.querySelector('.leg-side').value,
+            qty:     parseInt(tr.querySelector('.leg-qty').value, 10) || 0,
+            strike:  tr.dataset.strike ? (parseFloat(tr.dataset.strike) || 0) : 0,
+            premium: parseVal(tr.querySelector('.leg-premium').value),
+            exp:     tr.dataset.exp || null,
+            iv:      ivEl ? (parseVal(ivEl.value) / 100) : 0,
+            ticker:  (tr.querySelector('.leg-ticker') || {}).value || '',
+            src:     (tr.querySelector('.leg-src') || {}).value || 'auto',
+            _tr:     tr
+        });
+    });
+    return legs;
+}
+
+// ── Black-Scholes (mesma implementação da tela Gráficos-Simulações) ─
+function normCDF(x) {
+    var a = [0.319381530, -0.356563782, 1.781477937, -1.821255978, 1.330274429];
+    var L = Math.abs(x);
+    var k = 1 / (1 + 0.2316419 * L);
+    var w = 1 - (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-L * L / 2) *
+            (a[0]*k + a[1]*k*k + a[2]*k*k*k + a[3]*k*k*k*k + a[4]*k*k*k*k*k);
+    return x < 0 ? 1 - w : w;
+}
+function blackScholes(S, K, T, r, sigma, isCall) {
+    if (T <= 0 || sigma <= 0 || S <= 0 || K <= 0) {
+        return isCall ? Math.max(0, S - K) : Math.max(0, K - S);
+    }
+    var sqrtT = Math.sqrt(T);
+    var d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * sqrtT);
+    var d2 = d1 - sigma * sqrtT;
+    if (isCall) return S * normCDF(d1) - K * Math.exp(-r * T) * normCDF(d2);
+    return K * Math.exp(-r * T) * normCDF(-d2) - S * normCDF(-d1);
+}
+// Delta Black-Scholes de uma opção. Com T<=0 (no vencimento) usa o delta
+// intrínseco (0 ou 1/-1, conforme dentro/fora do dinheiro) em vez de d1,
+// que não é definido nesse limite.
+function bsDelta(S, K, T, r, sigma, isCall) {
+    if (T <= 0 || sigma <= 0 || S <= 0 || K <= 0) {
+        var itm = isCall ? S > K : S < K;
+        return itm ? (isCall ? 1 : -1) : 0;
+    }
+    var d1 = (Math.log(S / K) + (r + 0.5 * sigma * sigma) * T) / (sigma * Math.sqrt(T));
+    return isCall ? normCDF(d1) : normCDF(d1) - 1;
+}
+// Delta líquido da estrutura (em "ações equivalentes") no instante T
+// (anos até o vencimento de cada perna — 0 para o cálculo no vencimento
+// mais curto). Cada perna de opção contribui delta(BS) × qty × sinal
+// C/V; a perna de Ativo contribui 1.0 × qty × sinal (comprado = +1).
+function deltaEstrutural(legs, S, TporExp) {
+    var r = SELIC_RATE / 100;
+    return legs.reduce(function (acc, l) {
+        var sign = l.side === 'BUY' ? 1 : -1;
+        if (l.type === 'STOCK') return acc + sign * l.qty;
+        if (l.strike <= 0) return acc;
+        var T = TporExp(l.exp);
+        var sigma = l.iv > 0 ? l.iv : 0.30;
+        var d = bsDelta(S, l.strike, T, r, sigma, l.type === 'CALL');
+        return acc + sign * l.qty * d;
+    }, 0);
+}
+
+function vencimentos(legs) {
+    var out = [];
+    legs.forEach(function (l) {
+        if (l.type !== 'STOCK' && l.exp && out.indexOf(l.exp) < 0) out.push(l.exp);
+    });
+    return out.sort();
+}
+
+// Saldo de montagem — a perna de Ativo não é prêmio.
+function netPremium(legs) {
+    return legs.reduce(function (acc, l) {
+        if (l.type === 'STOCK') return acc;
+        return acc + (l.side === 'SELL' ? 1 : -1) * l.qty * l.premium;
+    }, 0);
+}
+
+function payoffAt(S, legs, multiExp, refDateStr) {
+    var total = netPremium(legs);
+    var r = SELIC_RATE / 100;
+    var refDate = refDateStr ? new Date(refDateStr) : null;
+    legs.forEach(function (l) {
+        var sign = l.side === 'BUY' ? 1 : -1;
+        if (l.type === 'STOCK') { total += sign * l.qty * (S - l.premium); return; }
+        if (multiExp && refDate && l.exp && l.exp > refDateStr && l.iv > 0) {
+            var T = (new Date(l.exp) - refDate) / (365.25 * 24 * 3600 * 1000);
+            total += sign * l.qty * blackScholes(S, l.strike, T, r, l.iv, l.type === 'CALL');
+        } else {
+            if (l.strike <= 0) return;
+            if (l.type === 'CALL') total += sign * l.qty * Math.max(0, S - l.strike);
+            else                   total += sign * l.qty * Math.max(0, l.strike - S);
+        }
+    });
+    return total;
+}
+
+// ── Recalcula tudo ────────────────────────────────────────────────
+window.simRecalc = function () {
+    var legs = lerPernas();
+
+    // Entrada/Saída são colunas mutuamente exclusivas por perna: venda
+    // recebe agora (Entrada), compra paga agora (Saída). A outra coluna
+    // fica em branco na linha — não é "o mesmo valor com o sinal trocado".
+    // O total de cada coluna é a soma só do que pertence a ela.
+    var totEnt = 0, totSai = 0;
+    legs.forEach(function (l) {
+        var fin = l.qty * l.premium;
+        var entCel = l._tr.querySelector('.leg-ent');
+        var saiCel = l._tr.querySelector('.leg-sai');
+        if (l.side === 'SELL') {
+            entCel.innerHTML = '<span class="positive">' + fmtBRL(fin) + '</span>';
+            saiCel.textContent = '—';
+            totEnt += fin;
+        } else {
+            entCel.textContent = '—';
+            saiCel.innerHTML = '<span class="negative">-' + fmtBRL(fin) + '</span>';
+            totSai += fin;
+        }
+    });
+    // totEnt (recebido nas vendas) e totSai (pago nas compras) nunca são
+    // negativos aqui — cada perna contribui só para a coluna do seu lado.
+    document.getElementById('sim-tot-ent').innerHTML =
+        totEnt > 0 ? '<span class="positive">' + fmtBRL(totEnt) + '</span>' : '—';
+    document.getElementById('sim-tot-sai').innerHTML =
+        totSai > 0 ? '<span class="negative">-' + fmtBRL(totSai) + '</span>' : '—';
+    document.getElementById('m-ent').textContent = totEnt > 0 ? fmtBRL(totEnt) : '—';
+    document.getElementById('m-sai').textContent = totSai > 0 ? '-' + fmtBRL(totSai) : '—';
+
+    var exps = vencimentos(legs);
+    var dte = exps.length ? diasAte(exps[0]) : null;
+    document.getElementById('m-dte').textContent =
+        exps.length ? (dataBR(exps[0]) + (dte != null ? ' (' + dte + 'd)' : '')) : '—';
+
+    desenha(legs);
+};
+
+// ── Gráfico + métricas ────────────────────────────────────────────
+var PAD = { top: 28, right: 16, bottom: 54, left: 96 };
+
+function desenha(legs) {
+    var canvas = document.getElementById('payoff-canvas');
+    var ctx = canvas.getContext('2d');
+    var wrap = document.getElementById('chart-wrap');
+    var W = wrap.clientWidth || 900, H = 420;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr; canvas.height = H * dpr;
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+
+    try {
+        if (PayoffStyle.ligaZoom && !canvas._zoomOn) {
+            PayoffStyle.ligaZoom(canvas, canvas._payoffView || (canvas._payoffView = { zoom: 1, pan: 0 }),
+                function () { desenha(lerPernas()); });
+            canvas._zoomOn = true;
+        }
+    } catch (e) {}
+
+    var uteis = legs.filter(function (l) { return l.qty > 0; });
+    if (!uteis.length) {
+        ctx.fillStyle = 'rgba(148,163,184,.7)'; ctx.font = '13px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Adicione pernas para ver o payoff.', W / 2, H / 2);
+        ['m-net','m-gain','m-gain-pct','m-gain-selic','m-loss','m-be','m-pop','m-delta-estrutural','m-delta-transicao'].forEach(function (id) {
+            document.getElementById(id).textContent = '—';
+        });
+        document.getElementById('sim-aviso').style.display = 'none';
+        return;
+    }
+
+    var exps = vencimentos(uteis);
+    var multiExp = exps.length > 1;
+    var refDateStr = exps.length ? exps[0] : null;
+
+    var strikes = uteis.filter(function (l) { return l.type !== 'STOCK' && l.strike > 0; })
+                       .map(function (l) { return l.strike; });
+    var stockRef = SPOT_ATUAL || 0;
+    if (!stockRef) {
+        var st = uteis.filter(function (l) { return l.type === 'STOCK'; })[0];
+        stockRef = st ? st.premium : (strikes.length ? strikes[0] : 0);
+    }
+
+    var base = strikes.concat(stockRef > 0 ? [stockRef] : []);
+    if (!base.length) base = [10];
+    var lo = Math.min.apply(null, base), hi = Math.max.apply(null, base);
+    var meio = (lo + hi) / 2 || 10;
+    var span = Math.max(hi - lo, meio * 0.25) || 10;
+    var SminBase = Math.max(0.01, meio - span * 1.2);
+    var SmaxBase = meio + span * 1.2;
+    var Smin = SminBase, Smax = SmaxBase;
+    canvas._payoffView = canvas._payoffView || { zoom: 1, pan: 0 };
+    try {
+        var z = PayoffStyle.aplicaZoom(SminBase, SmaxBase, canvas._payoffView);
+        Smin = Math.max(0.01, z.Smin); Smax = z.Smax;
+    } catch (e) {}
+
+    var N = 400, step = (Smax - Smin) / N;
+    var Sarr = [], Parr = [];
+    for (var i = 0; i <= N; i++) {
+        var S = Smin + i * step;
+        Sarr.push(S); Parr.push(payoffAt(S, uteis, multiExp, refDateStr));
+    }
+
+    var maxGain = Math.max.apply(null, Parr);
+    var maxLoss = Math.min.apply(null, Parr);
+    var ySpanBase = Math.max(Math.abs(maxGain), Math.abs(maxLoss)) * 1.15 || 100;
+    var yZ = PayoffStyle.aplicaZoomY(-ySpanBase, ySpanBase, canvas._payoffView);
+    var yMin = yZ.Ymin, yMax = yZ.Ymax;
+    var cW = W - PAD.left - PAD.right, cH = H - PAD.top - PAD.bottom;
+    function xPx(S) { return PAD.left + (S - Smin) / (Smax - Smin) * cW; }
+    function yPx(P) { return PAD.top + (1 - (P - yMin) / (yMax - yMin)) * cH; }
+    var y0 = yPx(0);
+    var geo = { W: W, H: H, PAD: PAD, cW: cW, cH: cH };
+
+    PayoffStyle.grade(ctx, geo);
+    PayoffStyle.eixoZero(ctx, geo, y0);
+
+    strikes.forEach(function (K) {
+        var xk = xPx(K);
+        PayoffStyle.marco(ctx, geo, xk, PayoffStyle.CORES.strike, [4, 4]);
+        PayoffStyle.pilula(ctx, 'K ' + fmtNum(K), xk, PAD.top - 9,
+            'rgba(30,41,59,.92)', 'rgba(203,213,225,.95)',
+            { borda: 'rgba(148,163,184,.35)', limites: { min: PAD.left, max: W - PAD.right } });
+    });
+
+    // Breakevens: onde o payoff cruza o zero
+    var bes = [];
+    if (maxGain - maxLoss > 0.01) {
+        for (var j = 0; j < Parr.length - 1; j++) {
+            var p1 = Parr[j], p2 = Parr[j + 1];
+            if (p1 * p2 < 0) {
+                bes.push(Math.round((Sarr[j] + (-p1) * (Sarr[j + 1] - Sarr[j]) / (p2 - p1)) * 100) / 100);
+            }
+        }
+    }
+    if (stockRef > 0 && bes.length) {
+        var beProx = bes.reduce(function (a, b) {
+            return Math.abs(b - stockRef) < Math.abs(a - stockRef) ? b : a; });
+        PayoffStyle.faixa(ctx, geo, xPx(stockRef), xPx(beProx));
+    }
+
+    PayoffStyle.areas(ctx, geo, Sarr, Parr, xPx, yPx, y0);
+    PayoffStyle.curva(ctx, Sarr, Parr, xPx, yPx, PayoffStyle.CORES.venc, 2);
+
+    // Curvas teóricas (payoff real / delta / theta) na data do slider
+    var _ctrl = PayoffStyle.controleData(document.getElementById('curvas-ctrl-sim'),
+                                         function () { desenha(lerPernas()); });
+    _ctrl.sincroniza(legs);
+    if (_ctrl.ativo()) {
+        var _ser = PayoffStyle.serieTeorica(Sarr, legs, _ctrl.dataSel(), SELIC_RATE);
+        if (_ctrl.cRe.checked)
+            PayoffStyle.curva(ctx, Sarr, _ser.valor, xPx, yPx, PayoffStyle.CORES.real, 2);
+        // delta e theta vivem noutra escala: eixo próprio à direita
+        var _q2 = [];
+        if (_ctrl.cDe.checked) _q2 = _q2.concat(_ser.delta);
+        if (_ctrl.cTh.checked) _q2 = _q2.concat(_ser.theta);
+        if (_q2.length) {
+            var _v2a = Math.min.apply(null, _q2), _v2b = Math.max.apply(null, _q2);
+            var _fg = (_v2b - _v2a) * 0.12 || Math.max(Math.abs(_v2b), 0.1) * 0.2;
+            var _rot = (_ctrl.cDe.checked && _ctrl.cTh.checked) ? 'Δ / Θ'
+                     : (_ctrl.cDe.checked ? 'Δ' : 'Θ/dia');
+            var _cor = _ctrl.cDe.checked ? PayoffStyle.CORES.delta : PayoffStyle.CORES.theta;
+            var _y2 = PayoffStyle.eixoDireito(ctx, geo, _v2a - _fg, _v2b + _fg, _rot, _cor);
+            if (_ctrl.cDe.checked)
+                PayoffStyle.curva(ctx, Sarr, _ser.delta, xPx, _y2, PayoffStyle.CORES.delta, 1.6);
+            if (_ctrl.cTh.checked)
+                PayoffStyle.curva(ctx, Sarr, _ser.theta, xPx, _y2, PayoffStyle.CORES.theta, 1.6);
+        }
+    }
+
+
+    if (stockRef > 0 && stockRef >= Smin && stockRef <= Smax) {
+        var xs = xPx(stockRef);
+        PayoffStyle.marco(ctx, geo, xs, PayoffStyle.CORES.spot, [2, 3]);
+        PayoffStyle.pilula(ctx, 'S ' + fmtNum(stockRef), xs, H - PAD.bottom + 14,
+            'rgba(37,99,235,.92)', '#fff',
+            { limites: { min: PAD.left, max: W - PAD.right } });
+    }
+    bes.forEach(function (b) {
+        if (b < Smin || b > Smax) return;
+        PayoffStyle.pilula(ctx, 'BE ' + fmtNum(b), xPx(b), y0 - 10,
+            'rgba(234,179,8,.92)', '#1e293b',
+            { limites: { min: PAD.left, max: W - PAD.right } });
+    });
+
+    ctx.fillStyle = 'rgba(148,163,184,0.85)'; ctx.font = '11px sans-serif'; ctx.textAlign = 'center';
+    for (var xi = 0; xi <= 8; xi++) {
+        var sv = Smin + xi * (Smax - Smin) / 8;
+        ctx.fillText(fmtNum(sv), xPx(sv), H - PAD.bottom + 28);
+    }
+    ctx.fillStyle = 'rgba(148,163,184,0.7)'; ctx.font = '10px sans-serif';
+    ctx.fillText('Preço do Ativo no Vencimento (R$)', PAD.left + cW / 2, H - 4);
+    ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(148,163,184,0.85)'; ctx.font = '11px sans-serif';
+    for (var yi = 0; yi <= 6; yi++) {
+        var yv = yMin + yi * (yMax - yMin) / 6;
+        ctx.fillText((yv >= 0 ? '' : '-') + fmtBRL(yv), PAD.left - 6, yPx(yv) + 4);
+    }
+    PayoffStyle.borda(ctx, geo);
+
+    // ── Métricas ──
+    var net = netPremium(uteis);
+    var netEl = document.getElementById('m-net');
+    netEl.textContent = fmtBRL(net) + (net >= 0 ? ' (crédito)' : ' (débito)');
+    netEl.className = 'val ' + (net >= 0 ? 'positive' : 'negative');
+    document.getElementById('m-gain').textContent = maxGain > 1e7 ? '∞' : fmtBRL(maxGain);
+    // Sinal explícito só quando há perda de fato — uma estrutura que não
+    // perde (piso positivo) não pode aparecer como negativa.
+    document.getElementById('m-loss').textContent =
+        maxLoss < -1e7 ? '-∞' : (maxLoss < 0 ? '-' : '') + fmtBRL(maxLoss);
+    document.getElementById('m-be').textContent = bes.length ? bes.map(fmtBRL).join(' / ') : '—';
+
+    // Lucro máximo em % sobre o valor investido (custo de saída — o
+    // desembolso das pernas compradas) e o quanto isso representa frente
+    // ao rendimento da Selic no mesmo prazo (DTE do vencimento mais
+    // curto). Estrutura 100% a crédito (sem nenhuma compra) não tem uma
+    // base de investimento para o % — fica "—".
+    (function () {
+        var pctEl = document.getElementById('m-gain-pct');
+        var selicEl = document.getElementById('m-gain-selic');
+        var custoSaida = uteis.reduce(function (acc, l) {
+            return acc + (l.side === 'BUY' ? l.qty * l.premium : 0);
+        }, 0);
+        if (custoSaida <= 0 || maxGain > 1e7 || !refDateStr) {
+            pctEl.textContent = '—'; pctEl.className = 'val';
+            selicEl.textContent = '—'; selicEl.className = 'val';
+            return;
+        }
+        var pctGain = maxGain / custoSaida * 100;
+        pctEl.textContent = fmtNum(pctGain, 1) + '%';
+        pctEl.className = 'val ' + (pctGain >= 0 ? 'positive' : 'negative');
+
+        var dteGain = diasAte(refDateStr);
+        if (dteGain == null || dteGain <= 0) {
+            selicEl.textContent = '—'; selicEl.className = 'val';
+            return;
+        }
+        // Selic proporcional ao prazo (juros compostos, mesma base a.a. da tela).
+        var selicPeriodo = (Math.pow(1 + SELIC_RATE / 100, dteGain / 365.25) - 1) * 100;
+        var vsSelic = selicPeriodo > 0 ? (pctGain / selicPeriodo) * 100 : null;
+        selicEl.textContent = vsSelic != null
+            ? fmtNum(vsSelic, 0) + '% da Selic (' + fmtNum(selicPeriodo, 2) + '% em ' + dteGain + 'd)'
+            : '—';
+        selicEl.className = 'val ' + (vsSelic != null && vsSelic >= 100 ? 'positive' : 'negative');
+    })();
+
+    // POP — integra a densidade log-normal de S_T sobre a região onde o
+    // payoff (já calculado em Parr/Sarr) é positivo. Funciona para qualquer
+    // formato de estrutura (lucro entre os BEs, fora deles, ou com 3+ BEs
+    // como condor/butterfly combinados) — não depende de assumir qual lado
+    // de cada breakeven é o lucrativo.
+    (function () {
+        var popEl = document.getElementById('m-pop');
+        popEl.className = 'val';
+        if (!bes.length || !stockRef || stockRef <= 0 || !refDateStr) { popEl.textContent = '—'; return; }
+        var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+        var T = Math.max((new Date(refDateStr + 'T00:00:00') - hoje) / (365.25 * 86400000), 1 / 365);
+        var sigmas = [];
+        uteis.forEach(function (l) {
+            if (l.type === 'STOCK') return;
+            if (l.iv > 0) { sigmas.push(l.iv); return; }
+            if (l.premium > 0 && l.strike > 0) {
+                sigmas.push(Math.min(l.premium / l.strike * Math.sqrt(252 / Math.max(T * 252, 1)), 2));
+            }
+        });
+        if (!sigmas.length) { popEl.textContent = '—'; return; }
+        var sigma = sigmas.reduce(function (a, b) { return a + b; }, 0) / sigmas.length;
+        var r = Math.log(1 + SELIC_RATE / 100);
+        var mu = Math.log(stockRef) + (r - 0.5 * sigma * sigma) * T;
+        var sd = sigma * Math.sqrt(T);
+        // Densidade acumulada N((ln(S)-mu)/sd) already disponível via normCDF;
+        // soma a probabilidade de cada faixa [Sarr[i], Sarr[i+1]] onde o
+        // payoff médio da faixa é positivo.
+        var pop = 0;
+        for (var i = 0; i < Parr.length - 1; i++) {
+            if ((Parr[i] + Parr[i + 1]) / 2 <= 0) continue;
+            var z1 = (Math.log(Sarr[i])     - mu) / sd;
+            var z2 = (Math.log(Sarr[i + 1]) - mu) / sd;
+            pop += normCDF(z2) - normCDF(z1);
+        }
+        pop = Math.max(0, Math.min(100, pop * 100));
+        popEl.textContent = fmtNum(pop, 1) + '%';
+        popEl.className = 'val ' + (pop >= 50 ? 'positive' : 'negative');
+    })();
+
+    // Delta estrutural (hoje) e delta de transição (hoje vs. vencimento
+    // mais curto) — em "ações equivalentes": positivo = comportamento de
+    // comprado, negativo = comportamento de vendido no ativo.
+    (function () {
+        var estEl = document.getElementById('m-delta-estrutural');
+        var transEl = document.getElementById('m-delta-transicao');
+        if (!stockRef || stockRef <= 0) {
+            estEl.textContent = '—'; estEl.className = 'val';
+            transEl.textContent = '—'; transEl.className = 'val';
+            return;
+        }
+        function Thoje(exp) {
+            if (!exp) return 0;
+            var d = diasAte(exp);
+            return d != null ? Math.max(d, 0) / 365.25 : 0;
+        }
+        var deltaHoje = deltaEstrutural(uteis, stockRef, Thoje);
+        var deltaVenc = deltaEstrutural(uteis, stockRef, function () { return 0; });
+        estEl.textContent = fmtNum(deltaHoje, 0);
+        estEl.className = 'val ' + (deltaHoje >= 0 ? 'positive' : 'negative');
+        var transicao = deltaHoje - deltaVenc;
+        transEl.textContent = fmtNum(transicao, 0);
+        transEl.className = 'val ' + (transicao >= 0 ? 'positive' : 'negative');
+    })();
+
+    canvas._ser = { Sarr: Sarr, Parr: Parr, Smin: Smin, Smax: Smax };
+
+    // Aviso de trava com vencimentos diferentes
+    var aviso = document.getElementById('sim-aviso');
+    if (multiExp) {
+        var temIV = uteis.some(function (l) {
+            return l.type !== 'STOCK' && l.exp && l.exp > refDateStr && l.iv > 0; });
+        aviso.style.display = 'block';
+        if (temIV) {
+            aviso.style.background = 'rgba(16,185,129,.10)';
+            aviso.style.borderColor = 'rgba(16,185,129,.4)';
+            aviso.style.color = '#10b981';
+            aviso.innerHTML = '✅ <strong>Vencimentos diferentes:</strong> as pernas mais longas são '
+                + 'avaliadas por Black-Scholes (Selic ' + fmtNum(SELIC_RATE) + '% a.a.) na data do '
+                + 'vencimento mais curto (' + dataBR(refDateStr) + ').';
+        } else {
+            aviso.style.background = 'rgba(234,179,8,.12)';
+            aviso.style.borderColor = 'rgba(234,179,8,.4)';
+            aviso.style.color = '#ca8a04';
+            aviso.innerHTML = '⚠️ <strong>Vencimentos diferentes:</strong> preencha a <strong>VI %</strong> '
+                + 'das pernas mais longas para o cálculo usar Black-Scholes. Sem VI, o gráfico mostra '
+                + 'apenas o payoff intrínseco.';
+        }
+    } else {
+        aviso.style.display = 'none';
+    }
+}
+
+// Tooltip do gráfico
+(function () {
+    var canvas = document.getElementById('payoff-canvas');
+    var tip = document.getElementById('chart-tooltip');
+    canvas.addEventListener('mousemove', function (ev) {
+        var s = canvas._ser;
+        if (!s) { tip.style.display = 'none'; return; }
+        try { if (PayoffStyle.ligaZoom && canvas._payoffZoomCtrl
+                  && canvas._payoffZoomCtrl.estaArrastando()) { tip.style.display = 'none'; return; } } catch (e) {}
+        var rect = canvas.getBoundingClientRect();
+        var x = ev.clientX - rect.left;
+        var W = rect.width, cW = W - PAD.left - PAD.right;
+        if (x < PAD.left || x > W - PAD.right) { tip.style.display = 'none'; return; }
+        var S = s.Smin + (x - PAD.left) / cW * (s.Smax - s.Smin);
+        var idx = Math.round((S - s.Smin) / (s.Smax - s.Smin) * (s.Parr.length - 1));
+        idx = Math.max(0, Math.min(s.Parr.length - 1, idx));
+        var P = s.Parr[idx];
+        tip.innerHTML = 'S: <strong>' + fmtBRL(S) + '</strong><br>Resultado: <strong class="'
+            + (P >= 0 ? 'positive' : 'negative') + '">' + (P < 0 ? '-' : '') + fmtBRL(P) + '</strong>';
+        tip.style.display = 'block';
+        tip.style.left = Math.min(x + 14, rect.width - 150) + 'px';
+        tip.style.top = (ev.clientY - rect.top + 12) + 'px';
+    });
+    canvas.addEventListener('mouseleave', function () { tip.style.display = 'none'; });
+})();
+
+window.addEventListener('resize', function () { desenha(lerPernas()); });
+
+// ── Salvar / abrir ────────────────────────────────────────────────
+// asNew=true força criar uma simulação nova (id null) mesmo que uma já
+// esteja aberta — usado pelo "Salvar como", que não deve sobrescrever a
+// simulação original.
+function simSalvarImpl(nome, asNew) {
+    var legs = lerPernas();
+    if (!legs.length) { alert('Adicione ao menos uma perna.'); return; }
+    // Perna de opção sem ticker resolvido (vencimento/strike ainda vazios)
+    // não pode ser salva como está — gravaria exp/strike zerados e
+    // destruiria a estrutura já montada. Bloqueia e avisa em vez disso.
+    var pendente = legs.some(function (l) {
+        if (l.type === 'STOCK') return false;
+        return !l.ticker || !l.exp || !l.strike;
+    });
+    if (pendente) {
+        alert('⚠️ Há uma perna de opção sem ticker buscado com sucesso (vencimento/strike vazios).\n'
+            + 'Digite um ticker válido em todas as pernas antes de salvar.');
+        return;
+    }
+    var body = {
+        id: asNew ? null : SIM_ID,
+        name: nome,
+        underlying: (document.getElementById('sim-ativo').value || '').trim().toUpperCase(),
+        legs: legs.map(function (l) {
+            return { type: l.type, side: l.side, qty: l.qty, strike: l.strike,
+                     premium: l.premium, exp: l.exp || '', ticker: l.ticker,
+                     src: l.src || 'auto',
+                     iv: l.iv ? l.iv * 100 : 0 };
+        })
+    };
+    fetch('/api/simulacao/save', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || res.j.error) { alert('⚠️ ' + (res.j.error || 'erro ao salvar')); return; }
+        var idAntigo = SIM_ID;
+        SIM_ID = res.j.id || SIM_ID;
+        document.getElementById('sim-nome').value = nome;
+        // "Salvar como" abre uma simulação NOVA (id diferente da que estava
+        // sendo editada) — sem notas próprias ainda, mesmo que a original
+        // tivesse (observações não são copiadas automaticamente).
+        if (asNew && SIM_ID !== idAntigo) { SIM_NOTES = ''; simAtualizaBotaoObs(); }
+        alert('✓ Simulação salva.');
+      }).catch(function (e) { alert('⚠️ falha de rede: ' + e); });
+}
+
+window.simSalvar = function () {
+    var nome = (document.getElementById('sim-nome').value || '').trim();
+    if (!nome) { alert('Dê um nome à simulação antes de salvar.'); return; }
+    simSalvarImpl(nome, false);
+};
+
+// ── Observações: anotações livres por simulação, sem relação com a
+// estrutura (pernas) em si — nunca são lidas por quem envia a operação
+// pra produção. Guardadas em memória (SIM_NOTES) enquanto a tela está
+// aberta e persistidas via endpoint próprio, sem precisar resalvar toda
+// a planilha só para atualizar uma anotação.
+window.simAbreObs = function () {
+    document.getElementById('obs-textarea').value = SIM_NOTES;
+    document.getElementById('obs-status').textContent = SIM_ID
+        ? '' : 'Salve a simulação primeiro para poder guardar observações.';
+    document.getElementById('obs-modal').style.display = 'flex';
+};
+
+window.simSalvarObs = function () {
+    var texto = document.getElementById('obs-textarea').value;
+    var status = document.getElementById('obs-status');
+    if (!SIM_ID) {
+        SIM_NOTES = texto;
+        simAtualizaBotaoObs();
+        status.textContent = 'Guardado nesta sessão — salve a simulação para persistir.';
+        return;
+    }
+    status.textContent = '⏳ salvando…';
+    fetch('/api/simulacao/' + SIM_ID + '/notes', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: texto })
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || res.j.error) { status.textContent = '⚠️ ' + (res.j.error || 'erro ao salvar'); return; }
+        SIM_NOTES = texto;
+        simAtualizaBotaoObs();
+        status.textContent = '✓ observações salvas.';
+      }).catch(function (e) { status.textContent = '⚠️ falha de rede: ' + e; });
+};
+
+// "Salvar como": sempre cria uma simulação nova, sem alterar a que já
+// estava aberta (SIM_ID) — pede um nome novo, pré-preenchido a partir
+// do nome atual para facilitar variações ("... (cópia)").
+window.simSalvarComo = function () {
+    var atual = (document.getElementById('sim-nome').value || '').trim();
+    var sugestao = atual ? atual + ' (cópia)' : '';
+    var nome = (prompt('Nome da nova simulação:', sugestao) || '').trim();
+    if (!nome) return;
+    simSalvarImpl(nome, true);
+};
+
+// Busca a lista de simulações via API a cada abertura do modal — a lista
+// que vinha renderizada pelo servidor no carregamento da página ficava
+// desatualizada até um F5, mesmo depois de um Salvar/Salvar como.
+window.simCarregarModal = function () {
+    document.getElementById('open-modal').style.display = 'flex';
+    var lista = document.getElementById('open-modal-lista');
+    lista.innerHTML = '<p class="sim-hint" style="padding:1rem 0;">⏳ carregando…</p>';
+    fetch('/api/simulacao/list')
+        .then(function (r) { return r.json(); })
+        .then(function (sims) {
+            if (!sims || !sims.length) {
+                lista.innerHTML = '<p class="sim-hint" style="padding:1rem 0;">Nenhuma simulação salva ainda.</p>';
+                return;
+            }
+            lista.innerHTML = sims.map(function (s) {
+                return '<div style="display:flex;align-items:center;gap:.6rem;padding:.45rem .2rem;'
+                     + 'border-bottom:1px solid rgba(255,255,255,.05);">'
+                     + '<div style="flex:1;min-width:0;">'
+                     + '<div style="font-weight:600;font-size:.88rem;">' + escHtml(s.name)
+                     +   (s.has_notes ? ' <span title="Tem observações" style="color:#eab308;">📝</span>' : '') + '</div>'
+                     + '<div class="sim-hint">' + escHtml(s.underlying || '—') + ' · ' + escHtml(s.created_at) + '</div>'
+                     + '</div>'
+                     + '<button class="btn btn-primary btn-sm" onclick="simAbrir(' + s.id + ')">Abrir</button>'
+                     + '</div>';
+            }).join('');
+        })
+        .catch(function () {
+            lista.innerHTML = '<p class="sim-hint" style="padding:1rem 0;">⚠️ falha ao carregar a lista.</p>';
+        });
+};
+
+// Abre uma simulação salva: recria cada linha e, para pernas de opção,
+// rebusca o ticker salvo via OpLab (simBuscaTicker) — sem uma cadeia
+// pré-carregada, é assim que vencimento/strike/prêmio voltam a aparecer.
+// Se a opção já venceu/sumiu da OpLab, a busca falha e a linha mostra o
+// erro inline, mas o prêmio/IV salvos continuam visíveis (o usuário pode
+// editar manualmente para manter o estudo).
+window.simAbrir = function (id) {
+    fetch('/api/simulacao/' + id)
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            if (!res.ok || res.j.error) { alert('⚠️ ' + (res.j.error || 'erro ao abrir')); return; }
+            var d = res.j;
+            SIM_ID = d.id;
+            SIM_NOTES = d.notes || '';
+            simAtualizaBotaoObs();
+            document.getElementById('sim-nome').value  = d.name || '';
+            document.getElementById('sim-ativo').value = (d.underlying || '').toUpperCase();
+            SPOT_ATUAL = 0;
+            document.getElementById('sim-spot').innerHTML = '';
+            var body = document.getElementById('sim-body');
+            body.innerHTML = '';
+            var tickersParaBuscar = [];
+            (d.legs || []).forEach(function (l) {
+                var tr = novaLinha(l.type);
+                tr.querySelector('.leg-side').value = l.side || 'BUY';
+                tr.querySelector('.leg-qty').value  = l.qty || 100;
+                var tEl = tr.querySelector('.leg-ticker');
+                if (tEl && l.ticker) tEl.value = l.ticker;
+                if (l.type === 'STOCK') {
+                    tr.querySelector('.leg-premium').value = fmtNum(l.premium);
+                } else {
+                    // Prêmio/vencimento/strike salvos ficam visíveis de
+                    // imediato (não esperam a rede) — simBuscaTicker
+                    // atualiza por cima se conseguir confirmar o ticker.
+                    tr.dataset.exp = l.exp || '';
+                    tr.dataset.strike = l.strike || '';
+                    tr.querySelector('.leg-venc').textContent = l.exp ? dataBR(l.exp) : '—';
+                    var dd = l.exp ? diasAte(l.exp) : null;
+                    tr.querySelector('.leg-dte').textContent = dd != null ? dd + 'd' : '—';
+                    tr.querySelector('.leg-strike').textContent = l.strike ? fmtBRL(l.strike) : '—';
+                    tr.querySelector('.leg-premium').value = fmtNum(l.premium);
+                    if (l.ticker) tickersParaBuscar.push([tr, l.ticker]);
+                }
+                var ivEl = tr.querySelector('.leg-iv');
+                if (ivEl && l.iv) ivEl.value = fmtNum(l.iv);
+                var srcEl = tr.querySelector('.leg-src');
+                if (srcEl && l.src) srcEl.value = l.src;
+                body.appendChild(tr);
+                body.appendChild(tr._errRow);
+            });
+            document.getElementById('open-modal').style.display = 'none';
+            tickersParaBuscar.forEach(function (pair) { simBuscaTicker(pair[0], pair[1]); });
+            simRecalc();
+        })
+        .catch(function (e) { alert('⚠️ falha de rede: ' + e); });
+};
+
+window.simNova = function () {
+    SIM_ID = null;
+    SIM_NOTES = '';
+    simAtualizaBotaoObs();
+    document.getElementById('sim-nome').value = '';
+    document.getElementById('sim-ativo').value = '';
+    document.getElementById('sim-spot').innerHTML = '';
+    document.getElementById('sim-spot-chart').style.display = 'none';
+    document.getElementById('sim-body').innerHTML = '';
+    SPOT_ATUAL = 0;
+    simRecalc();
+};
+
+// Começa com uma linha de CALL, para a tela não abrir vazia.
+simAddPerna('CALL');
+})();
+</script>
+{% endblock %}

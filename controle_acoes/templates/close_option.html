@@ -55,12 +55,34 @@
             <label for="reason">Motivo/Estratégia</label>
             <select id="reason" name="reason" class="form-control">
                 <option value="Virou Pó">Virou Pó (Expirou sem valor)</option>
-                <option value="Recompra">Recompra (Encerramento antecipado)</option>
+                <option value="Fechamento Antecipado">Fechamento Antecipado (Recompra/Venda antes do vencimento)</option>
                 <option value="Parcial">Saída Parcial</option>
-                <option value="Stop Loss">Stop Loss</option>
-                <option value="Rolagem">Rolagem</option>
             </select>
         </div>
+
+        <script>
+        // "Virou Pó" só faz sentido com preço de saída = 0 (a opção expirou
+        // sem valor, ninguém paga/recebe nada para fechar). O campo vinha
+        // pré-preenchido com a cotação atual, então escolher esse motivo sem
+        // notar o valor no campo gerava um cálculo de lucro/prejuízo errado
+        // (contava como recompra, não como pó). Zera automaticamente ao
+        // selecionar, mas deixa editável se o usuário quiser ajustar.
+        (function () {
+            var reasonSel = document.getElementById('reason');
+            var priceInput = document.getElementById('price');
+            var lastNonZero = priceInput.value;
+            reasonSel.addEventListener('change', function () {
+                if (reasonSel.value === 'Virou Pó') {
+                    if (priceInput.value && priceInput.value !== '0,00' && priceInput.value !== '0') {
+                        lastNonZero = priceInput.value;
+                    }
+                    priceInput.value = '0,00';
+                } else if (priceInput.value === '0,00' && lastNonZero) {
+                    priceInput.value = lastNonZero;
+                }
+            });
+        })();
+        </script>
 
         <div style="display: flex; gap: 1rem; margin-top: 2rem;">
             <button type="submit" class="btn btn-danger" style="flex: 1;">Confirmar Saída</button>

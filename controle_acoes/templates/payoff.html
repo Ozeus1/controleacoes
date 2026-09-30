@@ -552,6 +552,7 @@
                     <th style="padding:.45rem .6rem; text-align:left;">Ticker</th>
                     <th style="padding:.45rem .6rem; text-align:left;">Tipo</th>
                     <th style="padding:.45rem .6rem; text-align:right;">Strike</th>
+                    <th style="padding:.45rem .6rem; text-align:right;">Vencimento</th>
                     <th style="padding:.45rem .6rem; text-align:right;">Preço Entrada</th>
                     <th style="padding:.45rem .6rem; text-align:right;">Cotação Atual</th>
                     <th style="padding:.45rem .6rem; text-align:right;">Total</th>
@@ -584,6 +585,15 @@
                     <td style="padding:.4rem .6rem;"><span class="ticker-badge">{{ leg.ticker }}</span></td>
                     <td style="padding:.4rem .6rem;">{{ leg.opt_type }}</td>
                     <td style="padding:.4rem .6rem; text-align:right;">R$ {{ "%.2f"|format(leg.strike)|replace('.', ',') }}</td>
+                    <td style="padding:.4rem .6rem; text-align:right; color:{{ 'var(--text-secondary)' if leg.opt_type == 'STOCK' else 'inherit' }};">
+                        {% if leg.opt_type == 'STOCK' %}
+                        — <span style="font-size:.78rem;">(não vence)</span>
+                        {% elif leg.expiration_date %}
+                        {{ leg.expiration_date[8:10] }}/{{ leg.expiration_date[5:7] }}/{{ leg.expiration_date[0:4] }}
+                        {% else %}
+                        —
+                        {% endif %}
+                    </td>
                     <td style="padding:.4rem .6rem; text-align:right;">R$ {{ "%.2f"|format(leg.entry_price)|replace('.', ',') }}</td>
                     <td style="padding:.3rem .4rem; text-align:right;">
                         {% if leg.leg_ref %}
@@ -621,16 +631,16 @@
             </tbody>
             <tfoot>
                 <tr style="font-weight:bold; background:var(--total-row-bg);">
-                    <td colspan="7" style="padding:.5rem .6rem; text-align:right;">Saldo da montagem:</td>
+                    <td colspan="8" style="padding:.5rem .6rem; text-align:right;">Saldo da montagem:</td>
                     <td id="tfoot-net" style="padding:.5rem .6rem; text-align:right;"></td>
                 </tr>
                 {% if roll_adjustment is defined and roll_adjustment %}
                 <tr style="font-weight:bold; background:rgba(15,23,42,.35);">
-                    <td colspan="7" style="padding:.5rem .6rem; text-align:right;">Resultado carregado das rolagens:</td>
+                    <td colspan="8" style="padding:.5rem .6rem; text-align:right;">Resultado carregado das rolagens:</td>
                     <td id="tfoot-roll-adjustment" style="padding:.5rem .6rem; text-align:right;"></td>
                 </tr>
                 <tr style="font-weight:bold; background:var(--total-row-bg);">
-                    <td colspan="7" style="padding:.5rem .6rem; text-align:right;">Saldo total considerado no payoff:</td>
+                    <td colspan="8" style="padding:.5rem .6rem; text-align:right;">Saldo total considerado no payoff:</td>
                     <td id="tfoot-total-net" style="padding:.5rem .6rem; text-align:right;"></td>
                 </tr>
                 {% endif %}
@@ -1066,12 +1076,17 @@ document.addEventListener('fullscreenchange', function () {
         }
         if (sigmaEst && sigmaEst > 0.01) sigma = sigmaEst;
         function d2fn(B) { return (Math.log(spot/B) + (-0.5*sigma*sigma)*T) / (sigma*Math.sqrt(T)); }
+        // d2fn(B) = (ln(spot/B) − ½σ²T) / (σ√T) DECRESCE conforme B aumenta
+        // (ln(spot/B) cai), então para 2 breakevens ordenados crescente,
+        // normCDF(d2fn(bes[0])) É MAIOR que normCDF(d2fn(bes[1])) — fazer
+        // "maior menos menor" (bes[último] − bes[0]) sempre dava negativo.
+        // A ordem certa é normCDF(d2fn(menor)) − normCDF(d2fn(maior)).
         var pop = null;
         var bes = breakevens.slice().sort(function(a,b){return a-b;});
         if (bes.length === 1) {
             pop = normCDF(d2fn(bes[0])) * 100;
         } else if (bes.length >= 2) {
-            pop = (normCDF(d2fn(bes[bes.length-1])) - normCDF(d2fn(bes[0]))) * 100;
+            pop = (normCDF(d2fn(bes[0])) - normCDF(d2fn(bes[bes.length-1]))) * 100;
         }
         var popEl = document.getElementById('m-pop');
         if (pop !== null && isFinite(pop)) {

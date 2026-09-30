@@ -1839,6 +1839,12 @@ def edit_spread(id):
             sp.pop = float(pop_str.replace(',', '.')) if pop_str else None
 
             db.session.commit()
+            # Botão "Encerrar operação" salva as edições pendentes primeiro
+            # (senão a tela de encerramento abria com os valores antigos do
+            # banco, ignorando o que o usuário acabou de digitar) e só
+            # depois segue para a tela de encerramento.
+            if request.form.get('next_action') == 'close':
+                return redirect(url_for('close_spread', id=sp.id))
             flash("Trava atualizada!", "success")
         except Exception as e:
             flash(f"Erro: {e}", "danger")

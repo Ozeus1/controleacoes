@@ -538,7 +538,12 @@ function simBuscaTicker(tr, ticker) {
             var lado = tr.querySelector('.leg-side').value;
             premioEl.value = fmtNum(simPrecoDaFonte(tr, o, lado));
             premioEl.title = 'Bid ' + fmtNum(d.bid || 0) + ' · Ask ' + fmtNum(d.ask || 0) + ' · Último ' + fmtNum(d.last || 0);
-            if (ivEl && d.iv != null) ivEl.value = fmtNum(d.iv * 100);
+            // d.iv (de /api/busca-opcao) já vem em formato PERCENTUAL (ex.:
+            // 30.29 = 30,29%), mesma convenção de /api/cadeia usada no
+            // Simulador normal — multiplicar por 100 aqui inflava a VI em
+            // 100× (30,29% virava 3029%), achatando o payoff por completo
+            // (Black-Scholes com sigma=30 é puro ruído).
+            if (ivEl && d.iv != null) ivEl.value = fmtNum(d.iv);
 
             // Detecta o ativo subjacente pela 1ª perna de opção resolvida —
             // sem um campo "Ativo" digitável, é assim que o spot é obtido.

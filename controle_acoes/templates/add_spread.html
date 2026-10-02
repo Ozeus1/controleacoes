@@ -53,13 +53,11 @@
         <input type="hidden" name="spread_type" value="{{ spread_type }}">
         <input type="hidden" name="next_action" id="next_action" value="">
 
-        {# ── Dados gerais ── #}
+        {# ── Dados gerais (1ª parte): só o que o usuário precisa decidir
+           ANTES de montar as pernas. Ativo/Vencimento/POP vêm da busca do
+           ticker, então ficam depois da tabela — não faz sentido pedir
+           pro usuário preencher algo que o sistema vai descobrir sozinho. ── #}
         <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem;">
-            <div class="form-group" style="flex:1; min-width:160px; margin-bottom:0;">
-                <label title="Preenchido automaticamente ao buscar o 1º ticker; editável">Ativo Subjacente (ex: PETR4, AAPL)</label>
-                <input type="text" name="underlying_asset" id="spread-underlying" class="form-control" style="width:100%; text-transform:uppercase"
-                    value="{{ spread.underlying_asset if edit else '' }}" required>
-            </div>
             <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
                 <label>Quantidade (contratos)</label>
                 <input type="number" name="quantity" class="form-control" id="spread-qty" style="width:100%;"
@@ -70,20 +68,9 @@
                 </label>
             </div>
             <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
-                <label title="Preenchido automaticamente ao buscar o 1º ticker; editável">Vencimento</label>
-                <input type="date" name="expiration_date" id="spread-expiration" class="form-control" style="width:100%;"
-                    value="{{ spread.expiration_date.strftime('%Y-%m-%d') if edit else '' }}" required>
-            </div>
-            <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
                 <label>Data de Entrada</label>
                 <input type="date" name="entry_date" class="form-control" style="width:100%;" id="spread-entry-date"
                     value="{{ spread.entry_date.strftime('%Y-%m-%d') if (edit and spread.entry_date) else today.strftime('%Y-%m-%d') }}">
-            </div>
-            <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
-                <label title="Calculado automaticamente via Black-Scholes assim que as duas pernas são resolvidas">POP — Probabilidade de Lucro (%)</label>
-                <input type="text" name="pop" id="spread-pop" class="form-control" readonly
-                       style="width:100%; background:var(--hover-bg); color:var(--text-secondary);" placeholder="—"
-                    value="{{ '%.1f'|format(spread.pop)|replace('.', ',') if (edit and spread.pop) else '' }}">
             </div>
         </div>
 
@@ -189,9 +176,32 @@
             </table>
         </div>
         <p style="color:var(--text-secondary); font-size:.78rem; margin:-.4rem 0 1.25rem;">
-            Vencimento e quantidade valem para as duas pernas (preenchidos acima). Prêmio Entrada é o valor
-            pago na perna de compra e recebido na perna de venda.
+            Quantidade vale para as duas pernas (preenchida acima). Prêmio Entrada vem pré-preenchido com a
+            cotação atual ao buscar o ticker, mas continua editável — é o valor pago na perna de compra e
+            recebido na perna de venda.
         </p>
+
+        {# ── Dados gerais (2ª parte): Ativo/Vencimento vêm da busca do 1º
+           ticker e POP é calculado automaticamente — ficam aqui, depois das
+           pernas, só para conferência/ajuste manual se a busca falhar. ── #}
+        <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem;">
+            <div class="form-group" style="flex:1; min-width:160px; margin-bottom:0;">
+                <label title="Preenchido automaticamente ao buscar o 1º ticker; editável">Ativo Subjacente (ex: PETR4, AAPL)</label>
+                <input type="text" name="underlying_asset" id="spread-underlying" class="form-control" style="width:100%; text-transform:uppercase"
+                    value="{{ spread.underlying_asset if edit else '' }}" required>
+            </div>
+            <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
+                <label title="Preenchido automaticamente ao buscar o 1º ticker; editável">Vencimento</label>
+                <input type="date" name="expiration_date" id="spread-expiration" class="form-control" style="width:100%;"
+                    value="{{ spread.expiration_date.strftime('%Y-%m-%d') if edit else '' }}" required>
+            </div>
+            <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
+                <label title="Calculado automaticamente via Black-Scholes assim que as duas pernas são resolvidas">POP — Probabilidade de Lucro (%)</label>
+                <input type="text" name="pop" id="spread-pop" class="form-control" readonly
+                       style="width:100%; background:var(--hover-bg); color:var(--text-secondary);" placeholder="—"
+                    value="{{ '%.1f'|format(spread.pop)|replace('.', ',') if (edit and spread.pop) else '' }}">
+            </div>
+        </div>
 
         {# ===== RESULTADO LÍQUIDO DA MONTAGEM ===== #}
         <div id="net-result" style="margin-top: 1.25rem; padding: 0.75rem 1rem; border-radius: 8px; background: var(--card-bg); border: 1px solid var(--border-color); font-size: 0.95rem;">
@@ -301,6 +311,7 @@ function spreadBuscaTicker(input, lado, tipoEsperado) {
     var strikeEl   = document.getElementById('leg_' + lado + '_strike');
     var currentEl  = document.getElementById('leg_' + lado + '_current');
     var tipoEl     = document.getElementById('leg_' + lado + '_tipo');
+    var priceEl    = document.getElementById('leg_' + lado + '_price');
 
     fetch('/api/busca-opcao/' + encodeURIComponent(ticker))
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
@@ -328,6 +339,12 @@ function spreadBuscaTicker(input, lado, tipoEsperado) {
             if (d.bid != null || d.ask != null || d.last != null) {
                 var cot = (lado === 'long' ? d.ask : d.bid) || d.last || d.ask || d.bid || 0;
                 currentEl.value = cot.toFixed(2).replace('.', ',');
+                // Prêmio Entrada: pré-preenche com a mesma cotação atual (só
+                // quando o campo ainda está vazio/zero — não sobrescreve um
+                // valor já digitado, nem o prêmio salvo ao reabrir em modo
+                // edição). Continua editável depois de preenchido.
+                var priceAtual = parseFloat((priceEl.value || '0').replace(',', '.')) || 0;
+                if (priceAtual <= 0 && cot > 0) priceEl.value = cot.toFixed(2).replace('.', ',');
             }
             tipoEl.textContent = tipoReal;
 
@@ -343,6 +360,7 @@ function spreadBuscaTicker(input, lado, tipoEsperado) {
                 strike: d.strike || 0, iv: d.iv || 0, spot: d.spot_price || 0,
                 expiration: d.expiration || '',
             };
+            calcNet();
             spreadAtualizaPop();
         })
         .catch(function (e) {

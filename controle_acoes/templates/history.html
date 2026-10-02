@@ -134,6 +134,28 @@
                         title="Fechar detalhamento"
                         style="position:absolute; top:.4rem; right:.6rem; background:none; border:none;
                                color:var(--text-secondary); font-size:1.3rem; line-height:1; cursor:pointer;">&times;</button>
+
+                {% if det.structure_name or det.net_total is not none or det.days_held is not none %}
+                <div style="display:flex; gap:1.5rem; flex-wrap:wrap; align-items:baseline; margin-bottom:.7rem;
+                            font-size:.85rem;">
+                    {% if det.structure_name %}
+                    <div><strong>{{ det.structure_name }}</strong>
+                        {% if det.underlying %}<span style="color:var(--text-secondary);"> — {{ det.underlying }}</span>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if det.net_total is not none %}
+                    <div style="color:var(--text-secondary);">Saldo financeiro total:
+                        <strong class="{{ 'positive' if det.net_total >= 0 else 'negative' }}">
+                            {{ '+' if det.net_total >= 0 else '−' }}R$ {{ '%.2f'|format(det.net_total|abs)|replace('.', ',') }}
+                        </strong>
+                    </div>
+                    {% endif %}
+                    {% if det.days_held is not none %}
+                    <div style="color:var(--text-secondary);">Dias em operação: <strong>{{ det.days_held }}</strong></div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
                 {% if det.legs %}
                 <div style="font-size:.82rem; font-weight:700; margin-bottom:.4rem;">Pernas da operação</div>
                 <div style="overflow-x:auto; margin-bottom:.9rem;">
@@ -144,12 +166,16 @@
                         <th style="text-align:left; padding:.3rem .5rem;">Tipo</th>
                         <th style="text-align:right; padding:.3rem .5rem;">Strike</th>
                         <th style="text-align:right; padding:.3rem .5rem;">Qtd</th>
-                        <th style="text-align:right; padding:.3rem .5rem;">Preço compra</th>
-                        <th style="text-align:right; padding:.3rem .5rem;">Preço venda</th>
+                        <th style="text-align:left; padding:.3rem .5rem;">Entrada</th>
+                        <th style="text-align:left; padding:.3rem .5rem;">Saída</th>
                         <th style="text-align:right; padding:.3rem .5rem;">Resultado</th>
+                        <th style="text-align:left; padding:.3rem .5rem;">Fechamento</th>
                     </tr></thead>
                     <tbody>
                     {% for l in det.legs %}
+                        {# Compatibilidade: trades antigos só têm l.buy/l.sell (sem
+                           data nem motivo); trades novos têm entry_price/exit_price
+                           + entry_date/exit_date/close_reason. #}
                         <tr style="border-top:1px solid var(--border-color);">
                             <td style="padding:.3rem .5rem;">
                                 <span style="padding:.05rem .4rem; border-radius:4px; font-weight:700;
@@ -158,15 +184,22 @@
                                     {{ 'V' if l.side=='SELL' else 'C' }}</span>
                             </td>
                             <td style="padding:.3rem .5rem;">{{ l.ticker }}</td>
-                            <td style="padding:.3rem .5rem;">{{ l.opt_type }}</td>
+                            <td style="padding:.3rem .5rem;">{{ l.opt_type or '—' }}</td>
                             <td style="padding:.3rem .5rem; text-align:right;">
                                 {{ 'R$ %.2f'|format(l.strike)|replace('.', ',') if l.strike else '—' }}</td>
                             <td style="padding:.3rem .5rem; text-align:right;">{{ l.qty }}</td>
-                            <td style="padding:.3rem .5rem; text-align:right;">R$ {{ '%.2f'|format(l.buy)|replace('.', ',') }}</td>
-                            <td style="padding:.3rem .5rem; text-align:right;">R$ {{ '%.2f'|format(l.sell)|replace('.', ',') }}</td>
+                            <td style="padding:.3rem .5rem;">
+                                {{ l.entry_date | date_fmt if l.entry_date else '—' }}
+                                @ R$ {{ '%.2f'|format((l.entry_price if l.entry_price is not none else l.buy) or 0)|replace('.', ',') }}</td>
+                            <td style="padding:.3rem .5rem;">
+                                {{ l.exit_date | date_fmt if l.exit_date else '—' }}
+                                @ R$ {{ '%.2f'|format((l.exit_price if l.exit_price is not none else l.sell) or 0)|replace('.', ',') }}</td>
                             <td style="padding:.3rem .5rem; text-align:right;"
                                 class="{{ 'positive' if l.pnl >= 0 else 'negative' }}">
                                 {{ '+' if l.pnl >= 0 else '−' }}R$ {{ '%.2f'|format(l.pnl|abs)|replace('.', ',') }}</td>
+                            <td style="padding:.3rem .5rem;
+                                color:{{ 'var(--text-secondary)' if not l.close_reason else ('var(--danger-color)' if l.close_reason=='Manejo' else 'var(--text-primary)') }};">
+                                {{ l.close_reason or '—' }}</td>
                         </tr>
                     {% endfor %}
                     </tbody>
@@ -174,7 +207,12 @@
                 </div>
                 {% endif %}
 
-                {% if det.events %}
+                {# Trades NOVOS já trazem as pernas de manejo/rolagem dentro de
+                   det.legs (com close_reason) — a tabela de events abaixo só é
+                   necessária para trades ANTIGOS que não têm esse detalhe por
+                   perna (sem risco de duplicar a mesma informação duas vezes). #}
+                {% set tem_motivo_por_perna = det.legs and det.legs | selectattr('close_reason') | list | length > 0 %}
+                {% if det.events and not tem_motivo_por_perna %}
                 <div style="font-size:.82rem; font-weight:700; margin-bottom:.4rem;">
                     🔧 Rolagens e manejos
                     <span style="font-weight:400; font-size:.75rem; color:var(--text-secondary);">

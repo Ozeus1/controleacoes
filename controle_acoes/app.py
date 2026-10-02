@@ -1851,6 +1851,106 @@ def edit_spread(id):
         return redirect(url_for('opcoes'))
     return render_template('add_spread.html', spread_type=sp.spread_type, spread=sp, edit=True, today=date.today())
 
+def _fmt_data_br(iso_or_date):
+    """Aceita string ISO ('2026-10-02') ou date/datetime; devolve 'DD/MM/AAAA'
+    ou '?' se vazio/inválido."""
+    if not iso_or_date:
+        return '?'
+    if hasattr(iso_or_date, 'strftime'):
+        return iso_or_date.strftime('%d/%m/%Y')
+    try:
+        return date.fromisoformat(str(iso_or_date)[:10]).strftime('%d/%m/%Y')
+    except (TypeError, ValueError):
+        return str(iso_or_date)
+
+
+def _fmt_resumo_trade(details, fallback_underlying=None, fallback_days=None, fallback_notes=None):
+    """Formata o texto de `notes` a partir do `details` estruturado (dict, já
+    decodificado de JSON) — mesma função usada ao ENCERRAR uma posição
+    (grava o texto pronto em TradeHistory.notes) e ao VISUALIZAR um trade já
+    salvo (reformata a partir de `details` sem precisar regravar nada).
+
+    Layout pedido:
+      - 1 perna: ativo, lado, data+preço de entrada, data+preço de saída, lucro.
+      - múltiplas pernas: nome da estrutura, ativo subjacente, depois por
+        perna (ticker, lado, entrada, saída, lucro, motivo de fechamento),
+        saldo financeiro total e quantidade de dias.
+    """
+    if not details or not isinstance(details, dict) or not details.get('legs'):
+        return fallback_notes or ''
+
+    legs = details['legs']
+    underlying = details.get('underlying') or fallback_underlying or ''
+    days_held = details.get('days_held', fallback_days)
+
+    def _lado(side):
+        return 'Comprado' if side == 'BUY' else 'Vendido'
+
+    def _fmt_px(v):
+        return f'R$ {v:.2f}'.replace('.', ',') if v is not None else '?'
+
+    if len(legs) == 1:
+        l = legs[0]
+        partes = [
+            f"{l.get('ticker') or underlying}",
+            _lado(l.get('side')),
+            f"entrada {_fmt_data_br(l.get('entry_date'))} @ {_fmt_px(l.get('entry_price'))}",
+            f"saída {_fmt_data_br(l.get('exit_date'))} @ {_fmt_px(l.get('exit_price'))}",
+            f"lucro {_fmt_px(l.get('pnl'))}",
+        ]
+        return ' | '.join(partes)
+
+    nome_estrutura = details.get('structure_name') or 'Estrutura'
+    linhas = [f"{nome_estrutura} | {underlying}"]
+    for l in legs:
+        motivo = l.get('close_reason') or 'Normal'
+        linhas.append(
+            f"  {l.get('ticker')}: {_lado(l.get('side'))} | "
+            f"entrada {_fmt_data_br(l.get('entry_date'))} @ {_fmt_px(l.get('entry_price'))} | "
+            f"saída {_fmt_data_br(l.get('exit_date'))} @ {_fmt_px(l.get('exit_price'))} | "
+            f"lucro {_fmt_px(l.get('pnl'))} | fechamento: {motivo}"
+        )
+    net_total = details.get('net_total')
+    if net_total is not None:
+        linhas.append(f"Saldo financeiro total: {_fmt_px(net_total)}")
+    if days_held is not None:
+        linhas.append(f"Dias em operação: {days_held}")
+    return '\n'.join(linhas)
+
+
+def _datas_entrada_pernas(op):
+    """Reconstrói a data de entrada de cada perna ATUAL de uma StructuredOp
+    a partir do roll_history: uma perna SUBSTITUTA (entrou via manejo) tem
+    como data de entrada a data daquele manejo (roll_date); uma perna
+    ORIGINAL (nunca foi trocada) usa a data de montagem da operação
+    (op.created_at). Casa por ticker — se o mesmo ticker aparecer como
+    `new_ticker` em mais de um evento (rolagem em cadeia), fica a data do
+    evento MAIS RECENTE que o criou.
+    Devolve {ticker: date_ou_None}.
+    """
+    import json as _json
+    datas = {}
+    try:
+        history = _json.loads(op.roll_history) if op.roll_history else []
+    except Exception:
+        history = []
+    for ev in history:
+        if not isinstance(ev, dict):
+            continue
+        roll_date_str = ev.get('roll_date')
+        try:
+            roll_date = date.fromisoformat(roll_date_str) if roll_date_str else None
+        except (TypeError, ValueError):
+            roll_date = None
+        for leg in (ev.get('legs') or []):
+            if not isinstance(leg, dict):
+                continue
+            novo_ticker = leg.get('new_ticker')
+            if novo_ticker and roll_date:
+                datas[novo_ticker] = roll_date  # mais recente sobrescreve
+    return datas
+
+
 @app.route('/close_spread/<int:id>', methods=['GET', 'POST'])
 @login_required
 def close_spread(id):
@@ -1886,11 +1986,32 @@ def close_spread(id):
                 'TRAVA_BAIXA_PUT': 'T.Baixa Put', 'TRAVA_BAIXA_CALL': 'T.Baixa Call',
             }
             label = type_labels.get(sp.spread_type, 'TRAVA')
-            notes = (
-                f"{sp.spread_type} | {sp.underlying_asset} | "
-                f"C:{sp.leg_long_ticker} K={sp.leg_long_strike:.2f} entrada@{sp.leg_long_price:.2f} saída@{close_long_price:.2f} | "
-                f"V:{sp.leg_short_ticker} K={sp.leg_short_strike:.2f} entrada@{sp.leg_short_price:.2f} saída@{close_short_price:.2f}"
-            )
+            opt_type_sp = 'PUT' if 'PUT' in sp.spread_type else 'CALL'
+            pnl_long  = (close_long_price - sp.leg_long_price) * sp.quantity
+            pnl_short = (sp.leg_short_price - close_short_price) * sp.quantity
+            import json as _json_sp
+            details_dict = {
+                'kind': 'structure',
+                'structure_name': type_labels.get(sp.spread_type, sp.spread_type),
+                'underlying': sp.underlying_asset,
+                'net_total': round(profit_val, 2),
+                'days_held': days_held,
+                'legs': [
+                    {'ticker': sp.leg_long_ticker, 'side': 'BUY', 'opt_type': opt_type_sp,
+                     'strike': round(sp.leg_long_strike, 2), 'qty': sp.quantity,
+                     'entry_date': sp.entry_date.isoformat() if sp.entry_date else None,
+                     'entry_price': round(sp.leg_long_price, 2),
+                     'exit_date': exit_date.isoformat(), 'exit_price': round(close_long_price, 2),
+                     'pnl': round(pnl_long, 2), 'close_reason': 'Normal'},
+                    {'ticker': sp.leg_short_ticker, 'side': 'SELL', 'opt_type': opt_type_sp,
+                     'strike': round(sp.leg_short_strike, 2), 'qty': sp.quantity,
+                     'entry_date': sp.entry_date.isoformat() if sp.entry_date else None,
+                     'entry_price': round(sp.leg_short_price, 2),
+                     'exit_date': exit_date.isoformat(), 'exit_price': round(close_short_price, 2),
+                     'pnl': round(pnl_short, 2), 'close_reason': 'Normal'},
+                ],
+            }
+            notes = _fmt_resumo_trade(details_dict)
             history = TradeHistory(
                 user_id    = current_user.id,
                 ticker     = label,
@@ -1908,6 +2029,7 @@ def close_spread(id):
                 reason       = reason,
                 underlying   = sp.underlying_asset,
                 notes        = notes,
+                details      = _json_sp.dumps(details_dict, ensure_ascii=False),
             )
             db.session.add(history)
             db.session.delete(sp)
@@ -2141,18 +2263,13 @@ def close_estruturada(id):
 
     ticker_label = (op.name or op.underlying_asset or 'ESTRUT')[:20]
 
-    # Detalhes completos de cada perna para rastreabilidade
-    legs_detail = ' | '.join(
-        f"{'V' if l.side=='SELL' else 'C'}:{l.ticker} {l.opt_type} K={l.strike:.2f}"
-        f" entrada@{l.entry_price:.2f} saída@{l.current_price or l.entry_price:.2f}"
-        for l in op.legs
-    )
-    realized_note = (f" | inclui R$ {realized_prev:.2f} realizados em manejos anteriores"
-                     if abs(realized_prev) > 0.005 else '')
-    notes = f"{op.underlying_asset} | {legs_detail}{realized_note}"
+    try:
+        _adj, _events = _estruturada_roll_adjustment(op)
+    except Exception:
+        _adj, _events = 0.0, []
+    _datas_entrada = _datas_entrada_pernas(op)
 
-    # Detalhamento estruturado: as mesmas pernas e o extrato de manejos, mas
-    # em JSON — o texto de `notes` não dá para consultar nem editar por perna.
+    # Pernas ATUAIS (ainda abertas na operação): fecham agora, motivo Normal.
     # Convenção de compra/venda: quem VENDE recebe na entrada (buy = prêmio
     # recebido) e paga para fechar; quem COMPRA faz o inverso.
     _det_legs = []
@@ -2160,27 +2277,55 @@ def close_estruturada(id):
         _cur = l.current_price if l.current_price is not None else l.entry_price
         _q = l.quantity or 0
         _pnl = ((l.entry_price - _cur) if l.side == 'SELL' else (_cur - l.entry_price)) * _q
+        _entrada = _datas_entrada.get(l.ticker) or entry_date
         _det_legs.append({
             'ticker':   l.ticker,
             'side':     l.side,
             'opt_type': l.opt_type,
             'strike':   round(l.strike or 0, 2),
             'qty':      _q,
-            'buy':      round(l.entry_price or 0, 4),
-            'sell':     round(_cur or 0, 4),
+            'entry_date':  _entrada.isoformat() if hasattr(_entrada, 'isoformat') else _entrada,
+            'entry_price': round(l.entry_price or 0, 2),
+            'exit_date':   exit_date.isoformat(),
+            'exit_price':  round(_cur or 0, 2),
             'pnl':      round(_pnl, 2),
+            'close_reason': 'Normal',
         })
-    try:
-        _adj, _events = _estruturada_roll_adjustment(op)
-    except Exception:
-        _adj, _events = 0.0, []
-    details_json = _json.dumps({
+
+    # Pernas HISTÓRICAS (já fechadas/substituídas num manejo anterior): cada
+    # evento de _estruturada_roll_adjustment vira sua própria perna no
+    # resumo. 'novo' preenchido = a perna foi ROLADA (trocada por outra);
+    # vazio = a perna foi apenas ENCERRADA (zerada) no manejo.
+    for ev in _events:
+        motivo = 'Rolagem' if ev.get('novo') else 'Manejo'
+        _det_legs.append({
+            'ticker':   ev.get('ticker') or '',
+            'side':     ev.get('side') or '',
+            'opt_type': None,
+            'strike':   None,
+            'qty':      ev.get('quantity') or 0,
+            'entry_date':  None,   # não rastreado no extrato de manejo (só a saída)
+            'entry_price': ev.get('entrada'),
+            'exit_date':   ev.get('data'),
+            'exit_price':  ev.get('saida'),
+            'pnl':      ev.get('pnl'),
+            'close_reason': motivo,
+        })
+
+    details_dict = {
+        'kind':            'structure',
+        'structure_name':  op.name or ticker_label,
+        'underlying':      op.underlying_asset,
+        'net_total':       round(pnl_total, 2),
+        'days_held':       days_held,
         'legs':            _det_legs,
-        'events':          _events,
+        'events':          _events,            # mantido para compatibilidade com a tela de manejo
         'realized_manejos': round(realized_prev, 2),
         'net_open':        round(net_open, 2),
         'net_close':       round(net_close, 2),
-    }, ensure_ascii=False)
+    }
+    notes = _fmt_resumo_trade(details_dict)
+    details_json = _json.dumps(details_dict, ensure_ascii=False)
 
     history = TradeHistory(
         user_id      = current_user.id,
@@ -14526,23 +14671,57 @@ def close_option(id):
         profit_pct = (profit_val / (qty_exit * entry_p) * 100) if entry_p > 0 else 0
 
         import json as _json_opt
-        details_json = _json_opt.dumps({
-            'legs': [{
-                'ticker':   opt.ticker,
-                'side':     'SELL' if opt.option_type in ('VENDA_CALL', 'VENDA_PUT') else 'BUY',
-                'opt_type': 'CALL' if 'CALL' in (opt.option_type or '') else 'PUT',
-                'strike':   round(opt.strike_price or 0, 2),
-                'qty':      qty_exit,
-                'buy':      round(entry_p or 0, 4),
-                'sell':     round(exit_p or 0, 4),
-                'pnl':      round(profit_val - rolls_realized, 2),
-            }],
-            'events':           roll_events,
-            'realized_manejos': rolls_realized,
-        }, ensure_ascii=False) if roll_events else None
-
-        rolls_note = (f" | inclui R$ {rolls_realized:.2f} realizados em rolagens"
-                      if abs(rolls_realized) > 0.005 else '')
+        side_final = 'SELL' if opt.option_type in ('VENDA_CALL', 'VENDA_PUT') else 'BUY'
+        opt_type_final = 'CALL' if 'CALL' in (opt.option_type or '') else 'PUT'
+        final_leg = {
+            'ticker': opt.ticker, 'side': side_final, 'opt_type': opt_type_final,
+            'strike': round(opt.strike_price or 0, 2), 'qty': qty_exit,
+            # Trecho final só nasceu na última rolagem (ou na abertura, se
+            # nunca rolou) — mesma lógica de _datas_entrada_pernas, mas sem
+            # precisar casar por ticker porque já sabemos que é o último.
+            'entry_date': (roll_events[-1]['data'] if roll_events else
+                           (opt.entry_date.isoformat() if opt.entry_date else None)),
+            'entry_price': round(entry_p or 0, 2),
+            'exit_date': date_exit.isoformat(), 'exit_price': round(exit_p or 0, 2),
+            'pnl': round(profit_val - rolls_realized, 2), 'close_reason': 'Normal',
+        }
+        if roll_events:
+            # Cada evento de rolagem fechou um trecho anterior da MESMA
+            # posição — vira uma "perna" própria no resumo, com seu próprio
+            # ticker antigo, datas e motivo "Rolagem".
+            legs_hist = []
+            data_anterior = opt.entry_date.isoformat() if opt.entry_date else None
+            for ev in roll_events:
+                legs_hist.append({
+                    'ticker': ev.get('ticker') or opt.ticker, 'side': side_final,
+                    'opt_type': opt_type_final, 'strike': round(opt.strike_price or 0, 2),
+                    'qty': ev.get('quantity') or qty_exit,
+                    'entry_date': data_anterior,
+                    'entry_price': ev.get('entrada'),
+                    'exit_date': ev.get('data'), 'exit_price': ev.get('saida'),
+                    'pnl': ev.get('pnl'), 'close_reason': 'Rolagem',
+                })
+                data_anterior = ev.get('data')
+            final_leg['entry_date'] = data_anterior
+            legs_hist.append(final_leg)
+            details_dict = {
+                'kind': 'structure',
+                'structure_name': opt.option_type,
+                'underlying': opt.underlying_asset,
+                'net_total': round(profit_val, 2),
+                'days_held': days_held,
+                'legs': legs_hist,
+            }
+        else:
+            details_dict = {
+                'kind': 'single',
+                'underlying': opt.underlying_asset,
+                'net_total': round(profit_val, 2),
+                'days_held': days_held,
+                'legs': [final_leg],
+            }
+        notes = _fmt_resumo_trade(details_dict)
+        details_json = _json_opt.dumps(details_dict, ensure_ascii=False)
 
         history = TradeHistory(
             user_id    = current_user.id,
@@ -14558,7 +14737,7 @@ def close_option(id):
             days_held    = days_held,
             reason       = reason,
             underlying   = opt.underlying_asset,
-            notes        = f"{opt.option_type} | {opt.underlying_asset} | K={opt.strike_price:.2f} | venc {opt.expiration_date.strftime('%d/%m/%Y') if opt.expiration_date else '?'}{rolls_note}",
+            notes        = notes,
             details      = details_json,
         )
         db.session.add(history)

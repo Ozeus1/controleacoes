@@ -56,8 +56,8 @@
         {# ── Dados gerais ── #}
         <div style="display:flex; gap:1rem; flex-wrap:wrap; margin-bottom:1.5rem;">
             <div class="form-group" style="flex:1; min-width:160px; margin-bottom:0;">
-                <label>Ativo Subjacente (ex: PETR4, AAPL)</label>
-                <input type="text" name="underlying_asset" class="form-control" style="width:100%; text-transform:uppercase"
+                <label title="Preenchido automaticamente ao buscar o 1º ticker; editável">Ativo Subjacente (ex: PETR4, AAPL)</label>
+                <input type="text" name="underlying_asset" id="spread-underlying" class="form-control" style="width:100%; text-transform:uppercase"
                     value="{{ spread.underlying_asset if edit else '' }}" required>
             </div>
             <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
@@ -70,29 +70,35 @@
                 </label>
             </div>
             <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
-                <label>Vencimento</label>
-                <input type="date" name="expiration_date" class="form-control" style="width:100%;"
+                <label title="Preenchido automaticamente ao buscar o 1º ticker; editável">Vencimento</label>
+                <input type="date" name="expiration_date" id="spread-expiration" class="form-control" style="width:100%;"
                     value="{{ spread.expiration_date.strftime('%Y-%m-%d') if edit else '' }}" required>
             </div>
             <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
                 <label>Data de Entrada</label>
-                <input type="date" name="entry_date" class="form-control" style="width:100%;"
-                    value="{{ spread.entry_date.strftime('%Y-%m-%d') if (edit and spread.entry_date) else '' }}">
+                <input type="date" name="entry_date" class="form-control" style="width:100%;" id="spread-entry-date"
+                    value="{{ spread.entry_date.strftime('%Y-%m-%d') if (edit and spread.entry_date) else today.strftime('%Y-%m-%d') }}">
             </div>
             <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
-                <label>POP — Probabilidade de Lucro (%)</label>
-                <input type="text" name="pop" class="form-control" style="width:100%;" placeholder="ex: 72,5"
+                <label title="Calculado automaticamente via Black-Scholes assim que as duas pernas são resolvidas">POP — Probabilidade de Lucro (%)</label>
+                <input type="text" name="pop" id="spread-pop" class="form-control" readonly
+                       style="width:100%; background:var(--hover-bg); color:var(--text-secondary);" placeholder="—"
                     value="{{ '%.1f'|format(spread.pop)|replace('.', ',') if (edit and spread.pop) else '' }}">
             </div>
         </div>
 
         {# ── Tabela das 2 pernas (padrão Operação Estruturada) ── #}
+        {# Fluxo: digita o ticker → busca via OpLab (/api/busca-opcao) →
+           preenche tipo/strike/cotação atual sozinho, prêmio de entrada fica
+           editável (é o preço pago/recebido na montagem, não necessariamente
+           a cotação do instante da busca). Se o ticker não for achado, Strike
+           volta a ficar editável para preenchimento manual. #}
         <div style="overflow-x:auto; margin-bottom:1rem;">
             <table id="legs-table" class="no-datatable" style="width:100%; border-collapse:collapse; font-size:.88rem;">
                 <thead>
                     <tr style="background:var(--hover-bg);">
                         <th style="padding:.5rem .4rem; text-align:left;">Perna</th>
-                        <th style="padding:.5rem .4rem; text-align:left;">Ticker</th>
+                        <th style="padding:.5rem .4rem; text-align:left;" title="Digite o ticker da opção — tipo, strike e cotação atual são buscados automaticamente">Ticker</th>
                         <th style="padding:.5rem .4rem; text-align:left;">Tipo</th>
                         <th style="padding:.5rem .4rem; text-align:center;">Qtd</th>
                         <th style="padding:.5rem .4rem; text-align:right;">Strike</th>
@@ -108,18 +114,21 @@
                             <small style="color:var(--text-secondary); display:block;">{{ long_hint }}</small>
                         </td>
                         <td style="padding:.35rem .4rem;">
-                            <input type="text" name="leg_long_ticker" placeholder="PETRA40"
+                            <input type="text" name="leg_long_ticker" id="leg_long_ticker" placeholder="PETRA40"
                                    style="width:120px; text-transform:uppercase;"
-                                   value="{{ spread.leg_long_ticker if edit else '' }}" required>
+                                   value="{{ spread.leg_long_ticker if edit else '' }}" required
+                                   onblur="spreadBuscaTicker(this, 'long', '{{ opt_type }}')"
+                                   onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">
                         </td>
-                        <td style="padding:.35rem .4rem; color:var(--text-secondary);">{{ opt_type }}</td>
+                        <td style="padding:.35rem .4rem; color:var(--text-secondary);" id="leg_long_tipo">{{ opt_type }}</td>
                         <td style="padding:.35rem .4rem;">
                             <span class="spread-qty-echo" style="display:inline-block; width:60px; text-align:center; color:var(--text-secondary);">—</span>
                         </td>
                         <td style="padding:.35rem .4rem;">
-                            <input type="text" name="leg_long_strike" placeholder="0,00"
+                            <input type="text" name="leg_long_strike" id="leg_long_strike" placeholder="0,00"
                                    style="width:80px; text-align:right;"
-                                   value="{{ '%.2f'|format(spread.leg_long_strike)|replace('.', ',') if edit else '' }}" required>
+                                   value="{{ '%.2f'|format(spread.leg_long_strike)|replace('.', ',') if edit else '' }}" required
+                                   {{ 'readonly' if edit else '' }}>
                         </td>
                         <td style="padding:.35rem .4rem;">
                             <input type="text" name="leg_long_price" id="leg_long_price" placeholder="0,00"
@@ -127,9 +136,14 @@
                                    value="{{ '%.2f'|format(spread.leg_long_price)|replace('.', ',') if edit else '' }}" required>
                         </td>
                         <td style="padding:.35rem .4rem;">
-                            <input type="text" name="leg_long_current" placeholder="0,00"
+                            <input type="text" name="leg_long_current" id="leg_long_current" placeholder="0,00"
                                    style="width:80px; text-align:right;"
                                    value="{{ '%.2f'|format(spread.leg_long_current)|replace('.', ',') if edit else '0,00' }}">
+                        </td>
+                    </tr>
+                    <tr id="leg_long_err_row" style="display:none;">
+                        <td colspan="7" style="padding:.1rem .4rem .4rem;">
+                            <span id="leg_long_err" style="color:#f87171; font-size:.78rem;"></span>
                         </td>
                     </tr>
                     {# ===== PERNA VENDA (SHORT) ===== #}
@@ -139,18 +153,21 @@
                             <small style="color:var(--text-secondary); display:block;">{{ short_hint }}</small>
                         </td>
                         <td style="padding:.35rem .4rem;">
-                            <input type="text" name="leg_short_ticker" placeholder="PETRA42"
+                            <input type="text" name="leg_short_ticker" id="leg_short_ticker" placeholder="PETRA42"
                                    style="width:120px; text-transform:uppercase;"
-                                   value="{{ spread.leg_short_ticker if edit else '' }}" required>
+                                   value="{{ spread.leg_short_ticker if edit else '' }}" required
+                                   onblur="spreadBuscaTicker(this, 'short', '{{ opt_type }}')"
+                                   onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}">
                         </td>
-                        <td style="padding:.35rem .4rem; color:var(--text-secondary);">{{ opt_type }}</td>
+                        <td style="padding:.35rem .4rem; color:var(--text-secondary);" id="leg_short_tipo">{{ opt_type }}</td>
                         <td style="padding:.35rem .4rem;">
                             <span class="spread-qty-echo" style="display:inline-block; width:60px; text-align:center; color:var(--text-secondary);">—</span>
                         </td>
                         <td style="padding:.35rem .4rem;">
-                            <input type="text" name="leg_short_strike" placeholder="0,00"
+                            <input type="text" name="leg_short_strike" id="leg_short_strike" placeholder="0,00"
                                    style="width:80px; text-align:right;"
-                                   value="{{ '%.2f'|format(spread.leg_short_strike)|replace('.', ',') if edit else '' }}" required>
+                                   value="{{ '%.2f'|format(spread.leg_short_strike)|replace('.', ',') if edit else '' }}" required
+                                   {{ 'readonly' if edit else '' }}>
                         </td>
                         <td style="padding:.35rem .4rem;">
                             <input type="text" name="leg_short_price" id="leg_short_price" placeholder="0,00"
@@ -158,9 +175,14 @@
                                    value="{{ '%.2f'|format(spread.leg_short_price)|replace('.', ',') if edit else '' }}" required>
                         </td>
                         <td style="padding:.35rem .4rem;">
-                            <input type="text" name="leg_short_current" placeholder="0,00"
+                            <input type="text" name="leg_short_current" id="leg_short_current" placeholder="0,00"
                                    style="width:80px; text-align:right;"
                                    value="{{ '%.2f'|format(spread.leg_short_current)|replace('.', ',') if edit else '0,00' }}">
+                        </td>
+                    </tr>
+                    <tr id="leg_short_err_row" style="display:none;">
+                        <td colspan="7" style="padding:.1rem .4rem .4rem;">
+                            <span id="leg_short_err" style="color:#f87171; font-size:.78rem;"></span>
                         </td>
                     </tr>
                 </tbody>
@@ -252,5 +274,144 @@ function calcNet() {
     });
     apply();
 })();
+
+// ── Busca de ticker via OpLab + cálculo automático de POP ───────────────
+// Mesmo padrão do Simulador de Estudo: digita o ticker, busca
+// /api/busca-opcao, preenche tipo/strike/cotação atual sozinho. Critica
+// quando o tipo encontrado não bate com o esperado pela estratégia
+// (ex.: Trava de Alta com Calls espera CALL nas duas pernas) e sugere a
+// correção — aqui não há um <select> de tipo pra corrigir (o tipo da
+// trava é fixo pelo spread_type da tela), então o aviso só avisa.
+var SPREAD_DADOS = { long: null, short: null };
+
+function spreadMostraErro(lado, msg) {
+    var row = document.getElementById('leg_' + lado + '_err_row');
+    var el  = document.getElementById('leg_' + lado + '_err');
+    if (!msg) { row.style.display = 'none'; return; }
+    el.textContent = '⚠️ ' + msg;
+    row.style.display = '';
+}
+
+function spreadBuscaTicker(input, lado, tipoEsperado) {
+    var ticker = (input.value || '').trim().toUpperCase();
+    input.value = ticker;
+    spreadMostraErro(lado, '');
+    if (!ticker) return;
+
+    var strikeEl   = document.getElementById('leg_' + lado + '_strike');
+    var currentEl  = document.getElementById('leg_' + lado + '_current');
+    var tipoEl     = document.getElementById('leg_' + lado + '_tipo');
+
+    fetch('/api/busca-opcao/' + encodeURIComponent(ticker))
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            if (!res.ok || res.j.error) {
+                SPREAD_DADOS[lado] = null;
+                strikeEl.readOnly = false;
+                spreadMostraErro(lado, (res.j && res.j.error) || ('Ticker ' + ticker + ' não encontrado na OpLab.') +
+                    ' Preencha o strike manualmente.');
+                spreadAtualizaPop();
+                return;
+            }
+            var d = res.j;
+            var tipoReal = (d.type || '').toUpperCase().indexOf('PUT') >= 0 ? 'PUT' : 'CALL';
+            if (tipoReal !== tipoEsperado) {
+                spreadMostraErro(lado, ticker + ' é uma ' + tipoReal + ', mas esta trava é de ' + tipoEsperado +
+                    's. Confira o ticker — ele não foi usado no cálculo.');
+                SPREAD_DADOS[lado] = null;
+                strikeEl.readOnly = false;
+                spreadAtualizaPop();
+                return;
+            }
+            strikeEl.value = d.strike != null ? d.strike.toFixed(2).replace('.', ',') : '';
+            strikeEl.readOnly = true;
+            if (d.bid != null || d.ask != null || d.last != null) {
+                var cot = (lado === 'long' ? d.ask : d.bid) || d.last || d.ask || d.bid || 0;
+                currentEl.value = cot.toFixed(2).replace('.', ',');
+            }
+            tipoEl.textContent = tipoReal;
+
+            // Vencimento/Ativo: preenche a partir da 1ª busca bem-sucedida,
+            // sem sobrescrever o que o usuário já tenha digitado por conta
+            // própria nesses campos gerais.
+            var expEl = document.getElementById('spread-expiration');
+            if (d.expiration && !expEl.value) expEl.value = d.expiration;
+            var undEl = document.getElementById('spread-underlying');
+            if (d.underlying && !undEl.value) undEl.value = d.underlying;
+
+            SPREAD_DADOS[lado] = {
+                strike: d.strike || 0, iv: d.iv || 0, spot: d.spot_price || 0,
+                expiration: d.expiration || '',
+            };
+            spreadAtualizaPop();
+        })
+        .catch(function (e) {
+            SPREAD_DADOS[lado] = null;
+            strikeEl.readOnly = false;
+            spreadMostraErro(lado, 'Falha de rede ao buscar ' + ticker + ': ' + e + '. Preencha o strike manualmente.');
+            spreadAtualizaPop();
+        });
+}
+
+function normCDF(x) {
+    var a = [0.319381530, -0.356563782, 1.781477937, -1.821255978, 1.330274429];
+    var L = Math.abs(x);
+    var k = 1 / (1 + 0.2316419 * L);
+    var w = 1 - (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-L * L / 2) *
+            (a[0]*k + a[1]*k*k + a[2]*k*k*k + a[3]*k*k*k*k + a[4]*k*k*k*k*k);
+    return x < 0 ? 1 - w : w;
+}
+
+// POP via Black-Scholes a partir do breakeven da trava — só calcula
+// quando as duas pernas foram resolvidas pela busca (tem strike + IV +
+// spot). Usa a IV média das duas pernas e o spot da perna comprada.
+function spreadAtualizaPop() {
+    var popEl = document.getElementById('spread-pop');
+    var dLong = SPREAD_DADOS.long, dShort = SPREAD_DADOS.short;
+    if (!dLong || !dShort) { popEl.value = ''; return; }
+
+    var longPrice  = parseFloat((document.getElementById('leg_long_price').value || '0').replace(',', '.')) || 0;
+    var shortPrice = parseFloat((document.getElementById('leg_short_price').value || '0').replace(',', '.')) || 0;
+    var net = shortPrice - longPrice;   // >0 crédito recebido, <0 débito pago
+    var isAlta = {{ 'true' if spread_type in ('TRAVA_ALTA_CALL', 'TRAVA_ALTA_PUT') else 'false' }};
+    var isDebito = {{ 'true' if spread_type in ('TRAVA_ALTA_CALL', 'TRAVA_BAIXA_PUT') else 'false' }};
+
+    // Breakeven verificado numericamente (payoff no vencimento) para as 4
+    // combinações: o SINAL depende da DIREÇÃO da trava (Alta usa −net,
+    // Baixa usa +net), não do tipo CALL/PUT. A referência de strike é a
+    // perna COMPRADA quando a trava nasce a DÉBITO (Alta c/ Calls, Baixa
+    // c/ Puts) e a VENDIDA quando nasce a CRÉDITO (Alta c/ Puts, Baixa c/
+    // Calls) — é o strike que limita o risco protegido da montagem.
+    var kRef = isDebito ? dLong.strike : dShort.strike;
+    var be = isAlta ? (kRef - net) : (kRef + net);
+
+    var spot = dLong.spot || dShort.spot || 0;
+    var ivAvg = ((dLong.iv || 0) + (dShort.iv || 0)) / 2 / 100;  // iv vem em % (ex.: 30.29)
+    var exp = dLong.expiration || dShort.expiration;
+    if (!spot || !ivAvg || !exp || be <= 0) { popEl.value = ''; return; }
+
+    var hoje = new Date(); hoje.setHours(0,0,0,0);
+    var dias = Math.round((new Date(exp + 'T00:00:00') - hoje) / 86400000);
+    var T = Math.max(dias, 1) / 365.25;
+    var r = 0; // taxa livre de risco: aproximação neutra, não crítica para o POP
+    var d2 = (Math.log(spot / be) + (r - 0.5 * ivAvg * ivAvg) * T) / (ivAvg * Math.sqrt(T));
+    // Trava de alta (CALL ou PUT): lucro ACIMA do BE → POP = N(d2).
+    // Trava de baixa: lucro ABAIXO do BE → POP = 1 − N(d2).
+    var pop = isAlta ? normCDF(d2) * 100 : (1 - normCDF(d2)) * 100;
+    popEl.value = pop.toFixed(1).replace('.', ',');
+}
+document.getElementById('leg_long_price').addEventListener('input', spreadAtualizaPop);
+document.getElementById('leg_short_price').addEventListener('input', spreadAtualizaPop);
+
+{% if edit %}
+// Modo edição: os tickers já vêm preenchidos do banco — rebusca os dois
+// para recalcular o POP e confirmar que ainda batem com o tipo esperado.
+(function () {
+    var lT = document.getElementById('leg_long_ticker');
+    var sT = document.getElementById('leg_short_ticker');
+    if (lT.value) spreadBuscaTicker(lT, 'long', '{{ opt_type }}');
+    if (sT.value) spreadBuscaTicker(sT, 'short', '{{ opt_type }}');
+})();
+{% endif %}
 </script>
 {% endblock %}

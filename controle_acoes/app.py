@@ -1808,7 +1808,7 @@ def add_spread():
         return redirect(url_for('opcoes'))
 
     spread_type = request.args.get('type', 'TRAVA_ALTA_PUT')
-    return render_template('add_spread.html', spread_type=spread_type)
+    return render_template('add_spread.html', spread_type=spread_type, today=date.today())
 
 @app.route('/edit_spread/<int:id>', methods=['GET', 'POST'])
 @login_required
@@ -1849,7 +1849,7 @@ def edit_spread(id):
         except Exception as e:
             flash(f"Erro: {e}", "danger")
         return redirect(url_for('opcoes'))
-    return render_template('add_spread.html', spread_type=sp.spread_type, spread=sp, edit=True)
+    return render_template('add_spread.html', spread_type=sp.spread_type, spread=sp, edit=True, today=date.today())
 
 @app.route('/close_spread/<int:id>', methods=['GET', 'POST'])
 @login_required

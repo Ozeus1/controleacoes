@@ -16,10 +16,11 @@ table.pl-tab{width:100%;border-collapse:collapse;font-size:.8rem;}
 table.pl-tab th{padding:.35rem .5rem;text-align:right;white-space:nowrap;
   background:var(--card-bg);color:var(--text-secondary);font-weight:600;
   border-bottom:1px solid var(--border-color);}
-table.pl-tab th:first-child,table.pl-tab th:nth-child(2){text-align:left;}
+table.pl-tab th:first-child,table.pl-tab th:nth-child(3){text-align:left;}
+table.pl-tab th:nth-child(2){text-align:center;}
 table.pl-tab td{padding:.35rem .5rem;text-align:right;white-space:nowrap;color:var(--text-primary);
   border-bottom:1px solid rgba(255,255,255,.04);}
-table.pl-tab td:first-child,table.pl-tab td:nth-child(2){text-align:left;}
+table.pl-tab td:first-child,table.pl-tab td:nth-child(3){text-align:left;}
 table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
 .pos{color:#34d399;}
 .neg{color:#f87171;}
@@ -33,6 +34,21 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
 .metric-value.neg{color:#f87171;}
 #pl-add-input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
   border-radius:5px;padding:.25rem .5rem;font-size:.82rem;width:110px;text-transform:uppercase;}
+.pl-flt{font-size:.82rem;color:var(--text-secondary);display:inline-flex;align-items:center;gap:.3rem;
+  white-space:nowrap;cursor:pointer;}
+.pl-flt select{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);
+  border-radius:5px;padding:.15rem .35rem;font-size:.8rem;}
+/* Painel "Atividade do dia" */
+#pl-resumo{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:.6rem;margin:.4rem 0 .8rem;}
+.pl-card{background:var(--hover-bg);border:1px solid var(--border-color);border-radius:8px;padding:.6rem .8rem;}
+.pl-card .lbl{font-size:.72rem;color:var(--text-secondary);display:block;margin-bottom:.15rem;}
+.pl-card .val{font-size:1rem;font-weight:700;}
+.pl-card ul{list-style:none;margin:.2rem 0 0;padding:0;font-size:.78rem;}
+.pl-card li{display:flex;justify-content:space-between;gap:.5rem;padding:.08rem 0;}
+.pl-score{display:inline-block;min-width:2.1rem;text-align:center;padding:.05rem .35rem;border-radius:4px;
+  font-weight:700;font-size:.74rem;}
+.pl-hoje{display:inline-block;width:7px;height:7px;border-radius:50%;background:#34d399;margin-left:.3rem;
+  vertical-align:middle;}
 </style>
 {% endblock %}
 
@@ -48,6 +64,9 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     considerando apenas PUTs com <strong>negócio efetivado</strong> (prêmio = último).
     Rendimento do prêmio com <strong>capital reservado = strike</strong>: retorno = prêmio / strike no período.
     Se exercido, compra a ação ao <strong>custo efetivo K − P</strong>. Clique na linha para ver o detalhamento.
+    <br>O <strong>Score</strong> (0–100) combina rendimento a.a. acima da Selic (40%), margem de segurança (25%),
+    volume negociado no dia (20%) e prazo (15%) — ranking dentro do ativo, priorizando oportunidades longas
+    com movimentação recente. 🔥 = volume ≥ 3× a mediana das PUTs do ativo.
   </p>
 
   <!-- Tickers -->
@@ -69,11 +88,29 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       <label style="font-size:.82rem;color:var(--text-secondary);display:inline-flex;align-items:center;gap:.3rem;white-space:nowrap;cursor:pointer;">
         <input type="checkbox" id="pl-chk-itm" checked onchange="plMoneyChanged()"> ITM
       </label>
+      <span style="width:1px;height:20px;background:var(--border-color);margin:0 .3rem;"></span>
+      <label class="pl-flt" title="Prazo mínimo até o vencimento">
+        Prazo mín.
+        <select id="pl-prazo" onchange="plRefiltra()">
+          <option value="40">&gt; 40 dias</option>
+          <option value="90">≥ 3 meses</option>
+          <option value="180">≥ 6 meses</option>
+          <option value="365">≥ 1 ano</option>
+        </select>
+      </label>
+      <label class="pl-flt" id="pl-flt-hoje-wrap" style="display:none;"
+             title="Só séries cujo último negócio foi na sessão mais recente">
+        <input type="checkbox" id="pl-chk-hoje" onchange="plRefiltra()"> Só negociadas hoje
+      </label>
+      <label class="pl-flt" title="Volume financeiro ≥ 3× a mediana das PUTs do ativo e ≥ R$ 10 mil">
+        <input type="checkbox" id="pl-chk-vol" onchange="plRefiltra()"> Só volume acima do normal 🔥
+      </label>
     </div>
   </div>
 
   <div id="pl-loading">⏳ Varrendo a cadeia de opções (até 2 anos)…</div>
   <div id="pl-error"></div>
+  <div id="pl-resumo"></div>
   <div id="pl-results"></div>
 </div>
 
@@ -116,7 +153,63 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso;
   }
 
-  var sortKey = 'taxa_per', sortDir = -1;   // padrão: maior retorno primeiro
+  var sortKey = 'score', sortDir = -1;   // padrão: melhor oportunidade primeiro
+  function volK(v) { return v ? (v >= 1e6 ? fmt(v / 1e6, 2) + 'M' : fmt(v / 1000, 1) + 'k') : '—'; }
+  function scoreCel(s) {
+    if (s == null) return '—';
+    var bg = s >= 75 ? 'rgba(16,185,129,.22)' : s >= 50 ? 'rgba(234,179,8,.18)' : 'rgba(148,163,184,.15)';
+    var fg = s >= 75 ? '#34d399' : s >= 50 ? '#eab308' : 'var(--text-secondary)';
+    return '<span class="pl-score" style="background:' + bg + ';color:' + fg + ';">' + s + '</span>';
+  }
+  function varCel(v) {
+    if (v == null) return '—';
+    return '<span class="' + (v >= 0 ? 'pos' : 'neg') + '">' + (v >= 0 ? '+' : '') + fmt(v, 1) + '%</span>';
+  }
+
+  // Painel "Atividade do dia": volume total, séries negociadas, onde o
+  // dinheiro se concentrou (vencimentos) e os maiores negócios da sessão.
+  function renderResumo(d) {
+    var el = document.getElementById('pl-resumo');
+    var s = d.resumo;
+    if (!s || !s.n_series) { el.innerHTML = ''; return; }
+    var sessao = s.sessao ? dateBR(s.sessao) : null;
+    var h = '<div class="pl-card"><span class="lbl">Volume em PUTs longas' +
+              (sessao ? ' · sessão ' + sessao : '') + '</span>' +
+            '<span class="val">' + brl(s.vol_total) + '</span>' +
+            '<div style="font-size:.76rem;color:var(--text-secondary);margin-top:.2rem;">' +
+              s.n_series + ' séries negociadas' +
+              (s.n_hoje ? ' · ' + s.n_hoje + ' hoje' : '') +
+              (s.n_vol_alto ? ' · <span style="color:#fb923c;">' + s.n_vol_alto + ' 🔥</span>' : '') +
+            '</div></div>';
+    h += '<div class="pl-card"><span class="lbl">Onde o dinheiro se concentrou</span><ul>' +
+         (s.venc_top || []).map(function(v) {
+           return '<li><span>' + dateBR(v.exp) + '</span><span>' + volK(v.vol_fin) +
+                  ' <span style="color:var(--text-secondary);">(' + fmt(v.pct, 0) + '%)</span></span></li>';
+         }).join('') + '</ul></div>';
+    h += '<div class="pl-card" style="grid-column:span 2;min-width:0;"><span class="lbl">Maiores negócios da sessão</span><ul>' +
+         (s.maiores || []).map(function(m) {
+           return '<li><span><span class="pl-badge">' + m.symbol + '</span> ' +
+                  (m.vol_alto ? '🔥 ' : '') + brl(m.strike) + ' · ' + dateBR(m.exp) +
+                  ' <span style="color:var(--text-secondary);">(' + m.dc + 'd)</span></span>' +
+                  '<span>' + volK(m.vol_fin) + (m.trades ? ' · ' + m.trades + ' neg.' : '') +
+                  (m.var_dia != null ? ' · ' + varCel(m.var_dia) : '') + '</span></li>';
+         }).join('') + '</ul></div>';
+    el.innerHTML = h;
+  }
+
+  // Filtros client-side (não refazem a consulta à OpLab).
+  function filtrar(rows) {
+    var prazo = parseInt(document.getElementById('pl-prazo').value, 10) || 40;
+    var soHoje = document.getElementById('pl-chk-hoje').checked;
+    var soVol = document.getElementById('pl-chk-vol').checked;
+    return rows.filter(function(r) {
+      if (r.dc < prazo) return false;
+      if (soHoje && r.hoje !== true) return false;
+      if (soVol && !r.vol_alto) return false;
+      return true;
+    });
+  }
+  window.plRefiltra = function() { if (window.__plData) render(window.__plData); };
 
   function sortRows(rows) {
     rows.sort(function(a, b) {
@@ -137,14 +230,30 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
           (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>'
         : '');
+    renderResumo(d);
+    // "Só negociadas hoje" só aparece quando a OpLab trouxe a data do
+    // último negócio — sem ela o filtro não teria como decidir.
+    var temHoje = d.rows.some(function(r) { return r.hoje != null; });
+    document.getElementById('pl-flt-hoje-wrap').style.display = temHoje ? '' : 'none';
+    if (!temHoje) document.getElementById('pl-chk-hoje').checked = false;
+
     if (!d.rows.length) {
       document.getElementById('pl-results').innerHTML =
         '<div style="color:var(--text-secondary);padding:1rem;">Nenhuma PUT negociada até 2 anos.</div>';
       return;
     }
-    sortRows(d.rows);
-    var hasTrades = d.rows.some(function(r) { return r.trades > 0; });
+    var view = filtrar(d.rows.slice());
+    sortRows(view);
+    window.__plView = view;
+    if (!view.length) {
+      document.getElementById('pl-results').innerHTML =
+        '<div style="color:var(--text-secondary);padding:1rem;">Nenhuma série atende aos filtros ' +
+        '(prazo / negociadas hoje / volume acima do normal). Afrouxe os filtros acima.</div>';
+      return;
+    }
+    var hasTrades = view.some(function(r) { return r.trades > 0; });
     var cols = [
+      ['score',    'Score', 'Oportunidade 0–100: rendimento a.a. acima da Selic (40%), margem (25%), volume do dia (20%), prazo (15%)'],
       ['symbol',   'PUT (venda)', ''],
       ['exp',      'Vencimento', ''],
       ['dc',       'Dias', ''],
@@ -159,7 +268,9 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       ['taxa_aa',  'Retorno a.a.', ''],
       ['vs_selic', 'vs Selic per.', ''],
       ['delta',    'Δ', ''],
-      ['vol_fin',  'Vol. fin.', '']
+      ['vol_fin',  'Vol. fin.', 'Volume financeiro negociado na sessão'],
+      ['vol_rel',  'Vol. rel.', 'Volume financeiro ÷ mediana das PUTs negociadas do ativo (🔥 ≥ 3× e ≥ R$ 10 mil)'],
+      ['var_dia',  'Var. dia', 'Variação % do prêmio na sessão (último vs. fechamento anterior)']
     ];
     if (hasTrades) cols.push(['trades', 'Negócios', 'Quantidade de negócios realizados na série (dado da OpLab)']);
     var h = '<div class="pl-wrap"><table class="pl-tab"><thead><tr><th>#</th>';
@@ -170,11 +281,15 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
            ' style="cursor:pointer;user-select:none;">' + c[1] + arrow + '</th>';
     });
     h += '</tr></thead><tbody>';
-    d.rows.forEach(function(r, j) {
+    view.forEach(function(r, j) {
       var isItm = r.itm_pct > 0;
       h += '<tr data-i="' + j + '" title="Clique para ver o detalhamento">' +
         '<td>' + (j + 1) + '</td>' +
-        '<td><span class="pl-badge">' + r.symbol + '</span></td>' +
+        '<td style="text-align:center;">' + scoreCel(r.score) + '</td>' +
+        '<td><span class="pl-badge">' + r.symbol + '</span>' +
+            (r.vol_alto ? ' <span title="Volume ' + fmt(r.vol_rel, 1) + '× a mediana das PUTs do ativo">🔥</span>' : '') +
+            (r.hoje ? '<span class="pl-hoje" title="Negociada na última sessão' +
+                      (r.ult_neg ? ' (' + dateBR(r.ult_neg) + ')' : '') + '"></span>' : '') + '</td>' +
         '<td>' + dateBR(r.exp) + '</td><td>' + r.dc + 'd</td>' +
         '<td>' + brl(r.strike) + '</td>' +
         '<td class="' + (isItm ? 'neg' : 'pos') + '">' + (isItm ? '−' : '+') + fmt(Math.abs(r.itm_pct), 1) + '% ' + (isItm ? 'ITM' : 'OTM') + '</td>' +
@@ -187,16 +302,18 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         '<td class="pos">' + (r.taxa_aa != null ? fmt(r.taxa_aa, 1) + '%' : '—') + '</td>' +
         '<td class="' + (r.vs_selic >= 0 ? 'pos' : 'neg') + '">' + (r.vs_selic >= 0 ? '+' : '') + fmt(r.vs_selic) + ' p.p.</td>' +
         '<td>' + fmt(r.delta, 1) + '</td>' +
-        '<td>' + (r.vol_fin ? fmt(r.vol_fin / 1000, 1) + 'k'
+        '<td>' + (r.vol_fin ? volK(r.vol_fin)
                 : (r.vol_qtd ? fmt(r.vol_qtd, 0) + ' un.' : '—')) + '</td>' +
+        '<td' + (r.vol_alto ? ' style="color:#fb923c;font-weight:700;"' : '') + '>' +
+            (r.vol_rel != null ? fmt(r.vol_rel, 1) + '×' : '—') + '</td>' +
+        '<td>' + varCel(r.var_dia) + '</td>' +
         (hasTrades ? '<td>' + (r.trades ? fmt(r.trades, 0) : '—') + '</td>' : '') +
         '</tr>';
     });
     h += '</tbody></table></div>';
-    if (d.total > d.rows.length) {
-      h += '<p style="font-size:.78rem;color:var(--text-secondary);margin-top:.5rem;">Mostrando os ' +
-           d.rows.length + ' maiores rendimentos de ' + d.total + ' séries negociadas (venc. &gt; 40 dias).</p>';
-    }
+    h += '<p style="font-size:.78rem;color:var(--text-secondary);margin-top:.5rem;">Mostrando ' +
+         view.length + ' de ' + d.total + ' séries negociadas (venc. &gt; 40 dias' +
+         (d.total > d.rows.length ? '; até 15 melhores por vencimento' : '') + ').</p>';
     document.getElementById('pl-results').innerHTML = h;
   }
 
@@ -252,7 +369,7 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   function refreshModal() {
     var d = window.__plData;
     var modal = document.getElementById('pl-modal');
-    var r = d.rows[parseInt(modal.dataset.i)];
+    var r = (window.__plView || d.rows)[parseInt(modal.dataset.i)];   // índice da lista exibida (filtrada)
     var qty = parseInt(document.getElementById('plm-qty').value) || 100;
     document.getElementById('plm-title').textContent =
       'Venda de PUT ' + d.ticker + ' — ' + r.symbol + ' K=' + brl(r.strike) + ' · ' + dateBR(r.exp);
@@ -269,7 +386,14 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       ['Margem de segurança', (r.margem >= 0 ? '+' : '') + fmt(r.margem) + '%', r.margem >= 0 ? 'pos' : 'neg'],
       ['Preço de equilíbrio', brl(r.custo_ef), ''],
       ['Spot atual', brl(d.spot), ''],
-      ['Prazo', r.dc + ' dias corridos', '']
+      ['Prazo', r.dc + ' dias corridos', ''],
+      ['Score de oportunidade', r.score != null ? r.score + ' / 100' : '—', r.score >= 75 ? 'pos' : ''],
+      ['Volume na sessão', brl(r.vol_fin) + (r.trades ? ' · ' + r.trades + ' neg.' : ''), ''],
+      ['Volume vs. mediana do ativo', r.vol_rel != null ? fmt(r.vol_rel, 1) + '×' + (r.vol_alto ? ' 🔥' : '') : '—',
+          r.vol_alto ? 'pos' : ''],
+      ['Variação do prêmio no dia', r.var_dia != null ? (r.var_dia >= 0 ? '+' : '') + fmt(r.var_dia, 1) + '%' : '—',
+          r.var_dia == null ? '' : (r.var_dia >= 0 ? 'pos' : 'neg')],
+      ['Último negócio', r.ult_neg ? dateBR(r.ult_neg) + (r.hoje ? ' (sessão mais recente)' : '') : '—', '']
     ];
     document.getElementById('plm-grid').innerHTML = boxes.map(function(b) {
       return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +

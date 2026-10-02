@@ -13614,6 +13614,46 @@ def api_venda_put_longa(ticker):
         tf = _third_friday(exp_d.year, exp_d.month)
         return abs((exp_d - tf).days) <= 2  # tolera feriado na 3ª sexta
 
+    # Data do último negócio da série. A OpLab não documenta um nome fixo
+    # para esse campo na cadeia — tenta os candidatos do mais específico
+    # (horário do negócio) ao mais genérico (última atualização da série).
+    # Aceita ISO ('2026-10-02T15:31:00') ou epoch (s/ms), sempre em BRT.
+    from datetime import timezone as _tzmod
+    _tz_brt = _tzmod(timedelta(hours=-3))
+
+    def _ts_date(o):
+        for k in ('last_trade_at', 'last_trade_date', 'traded_at', 'time', 'updated_at'):
+            v = o.get(k)
+            if v in (None, '', 0):
+                continue
+            if isinstance(v, (int, float)):
+                try:
+                    return datetime.fromtimestamp(v / 1000 if v > 1e11 else v, tz=_tz_brt).date()
+                except (OverflowError, OSError, ValueError):
+                    continue
+            try:
+                return _date.fromisoformat(str(v)[:10])
+            except ValueError:
+                continue
+        return None
+
+    def _fnum(v):
+        try:
+            return float(v or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    # Base do "volume acima do normal": mediana do volume financeiro de
+    # TODAS as PUTs negociadas do ativo (antes dos filtros de prazo/
+    # moneyness), para o termômetro não depender do recorte da tela.
+    _vols_put = sorted(
+        _fnum(o.get('financial_volume') or o.get('volume_financial'))
+        for o in opt_list
+        if 'PUT' in str(o.get('category') or o.get('type') or '').upper()
+        and _fnum(o.get('financial_volume') or o.get('volume_financial')) > 0
+    )
+    vol_mediana = _vols_put[len(_vols_put) // 2] if _vols_put else 0.0
+
     rows = []
     for o in opt_list:
         cat = str(o.get('category') or o.get('type') or '').upper()
@@ -13674,6 +13714,16 @@ def api_venda_put_longa(ticker):
         bid = float(o.get('bid') or 0)
         ask = float(o.get('ask') or 0)
 
+        # Atividade da sessão: variação do prêmio no dia e volume relativo à
+        # mediana das PUTs do ativo (≥3× e ≥ R$10 mil = acima do normal).
+        var_dia  = o.get('variation')
+        try:
+            var_dia = round(float(var_dia), 2) if var_dia not in (None, '') else None
+        except (TypeError, ValueError):
+            var_dia = None
+        vol_rel  = round(vol_fin / vol_mediana, 1) if vol_mediana > 0 and vol_fin > 0 else None
+        ts_d     = _ts_date(o)
+
         rows.append({
             'symbol':    sym,
             'exp':       due,
@@ -13692,14 +13742,80 @@ def api_venda_put_longa(ticker):
             'vol_fin':   round(vol_fin, 2),
             'vol_qtd':   round(vol_qtd, 0),
             'trades':    int(trades) if trades > 0 else 0,
+            'var_dia':   var_dia,
+            'vol_rel':   vol_rel,
+            'vol_alto':  bool(vol_rel is not None and vol_rel >= 3 and vol_fin >= 10000),
+            '_ts':       ts_d,
         })
 
-    rows.sort(key=lambda x: -x['taxa_per'])
-    # No máximo 10 alternativas por vencimento
+    # "Negociada hoje": a sessão de referência é a data mais recente de
+    # último negócio entre as séries do ativo (fim de semana/feriado = a
+    # última sessão). Sem campo de data na resposta, fica None (desconhecido)
+    # e a tela não oferece o filtro — o volume > 0 já exigido acima continua
+    # garantindo negócio na série.
+    datas = [r['_ts'] for r in rows if r['_ts']]
+    sessao = max(datas) if datas else None
+    for r in rows:
+        r['hoje'] = (r['_ts'] == sessao) if (sessao and r['_ts']) else None
+        r['ult_neg'] = r['_ts'].isoformat() if r['_ts'] else None
+        del r['_ts']
+
+    # Score de oportunidade (0–100) — ranking percentil DENTRO do ativo,
+    # robusto a escalas diferentes entre os critérios:
+    #   40% rendimento a.a. acima da Selic (prazo já normalizado)
+    #   25% margem de segurança (BE abaixo do spot)
+    #   20% atividade do dia (volume financeiro)
+    #   15% prazo (vencimentos mais longos primeiro)
+    def _pct_rank(vals):
+        ordenados = sorted(vals)
+        n = len(ordenados)
+        if n <= 1:
+            return [1.0] * n
+        import bisect
+        return [bisect.bisect_left(ordenados, v) / (n - 1) for v in vals]
+
+    if rows:
+        _cap = 9999.0   # taxa_aa None = composto explodido → topo do critério
+        r_yield = _pct_rank([(r['taxa_aa'] if r['taxa_aa'] is not None else _cap) - selic for r in rows])
+        r_marg  = _pct_rank([r['margem'] for r in rows])
+        r_ativ  = _pct_rank([r['vol_fin'] for r in rows])
+        r_prazo = _pct_rank([r['dc'] for r in rows])
+        for i, r in enumerate(rows):
+            r['score'] = round(100 * (0.40 * r_yield[i] + 0.25 * r_marg[i]
+                                      + 0.20 * r_ativ[i] + 0.15 * r_prazo[i]))
+
+    # Resumo da atividade do dia (sobre TODAS as séries, antes do corte):
+    # onde o dinheiro se concentrou e os maiores negócios.
+    vol_total = sum(r['vol_fin'] for r in rows)
+    por_venc = {}
+    for r in rows:
+        por_venc[r['exp']] = por_venc.get(r['exp'], 0.0) + r['vol_fin']
+    venc_top = sorted(por_venc.items(), key=lambda kv: -kv[1])[:3]
+    resumo = {
+        'vol_total':  round(vol_total, 2),
+        'n_series':   len(rows),
+        'n_hoje':     sum(1 for r in rows if r['hoje']),
+        'n_vol_alto': sum(1 for r in rows if r['vol_alto']),
+        'sessao':     sessao.isoformat() if sessao else None,
+        'vol_mediana': round(vol_mediana, 2),
+        'venc_top':   [{'exp': e, 'vol_fin': round(v, 2),
+                        'pct': round(v / vol_total * 100, 1) if vol_total else 0}
+                       for e, v in venc_top],
+        'maiores':    [{'symbol': r['symbol'], 'exp': r['exp'], 'dc': r['dc'],
+                        'strike': r['strike'], 'vol_fin': r['vol_fin'],
+                        'trades': r['trades'], 'var_dia': r['var_dia'],
+                        'vol_alto': r['vol_alto']}
+                       for r in sorted(rows, key=lambda x: -x['vol_fin'])[:5]
+                       if r['vol_fin'] > 0],
+    }
+
+    rows.sort(key=lambda x: (-x.get('score', 0), -x['vol_fin']))
+    # No máximo 15 alternativas por vencimento — agora pelo score, não só
+    # pelo retorno, para não descartar séries com muita atividade no dia.
     per_exp, capped = {}, []
     for r in rows:
         n = per_exp.get(r['exp'], 0)
-        if n >= 10:
+        if n >= 15:
             continue
         per_exp[r['exp']] = n + 1
         capped.append(r)
@@ -13708,8 +13824,9 @@ def api_venda_put_longa(ticker):
         'spot':        spot,
         'spot_change': spot_change,
         'selic':       round(selic, 2),
-        'rows':        capped[:60],
+        'rows':        capped[:120],
         'total':       len(rows),
+        'resumo':      resumo,
     })
 
 

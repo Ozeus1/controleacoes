@@ -135,7 +135,15 @@
                         style="position:absolute; top:.4rem; right:.6rem; background:none; border:none;
                                color:var(--text-secondary); font-size:1.3rem; line-height:1; cursor:pointer;">&times;</button>
 
-                {% if det.structure_name or det.net_total is not none or det.days_held is not none %}
+                {# Trades ANTIGOS (antes desta mudança) não têm structure_name/
+                   net_total/days_held no details -- ficam Undefined no Jinja,
+                   e "Undefined is not none" é True (Undefined != None), o que
+                   quebrava a página inteira ao tentar "Undefined >= 0" logo
+                   abaixo. `is defined` filtra isso antes de qualquer comparação
+                   numérica. #}
+                {% set tem_net_total = det.net_total is defined and det.net_total is not none %}
+                {% set tem_days_held = det.days_held is defined and det.days_held is not none %}
+                {% if det.structure_name or tem_net_total or tem_days_held %}
                 <div style="display:flex; gap:1.5rem; flex-wrap:wrap; align-items:baseline; margin-bottom:.7rem;
                             font-size:.85rem;">
                     {% if det.structure_name %}
@@ -143,14 +151,14 @@
                         {% if det.underlying %}<span style="color:var(--text-secondary);"> — {{ det.underlying }}</span>{% endif %}
                     </div>
                     {% endif %}
-                    {% if det.net_total is not none %}
+                    {% if tem_net_total %}
                     <div style="color:var(--text-secondary);">Saldo financeiro total:
                         <strong class="{{ 'positive' if det.net_total >= 0 else 'negative' }}">
                             {{ '+' if det.net_total >= 0 else '−' }}R$ {{ '%.2f'|format(det.net_total|abs)|replace('.', ',') }}
                         </strong>
                     </div>
                     {% endif %}
-                    {% if det.days_held is not none %}
+                    {% if tem_days_held %}
                     <div style="color:var(--text-secondary);">Dias em operação: <strong>{{ det.days_held }}</strong></div>
                     {% endif %}
                 </div>
@@ -188,12 +196,18 @@
                             <td style="padding:.3rem .5rem; text-align:right;">
                                 {{ 'R$ %.2f'|format(l.strike)|replace('.', ',') if l.strike else '—' }}</td>
                             <td style="padding:.3rem .5rem; text-align:right;">{{ l.qty }}</td>
+                            {# `is defined` antes de `is not none` é obrigatório
+                               aqui: trades antigos não têm entry_price/exit_price
+                               (campo ausente -> Undefined do Jinja), e
+                               "Undefined is not none" dá True, então caía no
+                               ramo que tentava formatar um Undefined como
+                               número e quebrava a página inteira. #}
                             <td style="padding:.3rem .5rem;">
                                 {{ l.entry_date | date_fmt if l.entry_date else '—' }}
-                                @ R$ {{ '%.2f'|format((l.entry_price if l.entry_price is not none else l.buy) or 0)|replace('.', ',') }}</td>
+                                @ R$ {{ '%.2f'|format((l.entry_price if (l.entry_price is defined and l.entry_price is not none) else l.buy) or 0)|replace('.', ',') }}</td>
                             <td style="padding:.3rem .5rem;">
                                 {{ l.exit_date | date_fmt if l.exit_date else '—' }}
-                                @ R$ {{ '%.2f'|format((l.exit_price if l.exit_price is not none else l.sell) or 0)|replace('.', ',') }}</td>
+                                @ R$ {{ '%.2f'|format((l.exit_price if (l.exit_price is defined and l.exit_price is not none) else l.sell) or 0)|replace('.', ',') }}</td>
                             <td style="padding:.3rem .5rem; text-align:right;"
                                 class="{{ 'positive' if l.pnl >= 0 else 'negative' }}">
                                 {{ '+' if l.pnl >= 0 else '−' }}R$ {{ '%.2f'|format(l.pnl|abs)|replace('.', ',') }}</td>

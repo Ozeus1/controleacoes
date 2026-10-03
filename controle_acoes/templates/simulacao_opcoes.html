@@ -9,35 +9,81 @@
     background: var(--card-bg); color: var(--text-primary);
     border: 1px solid var(--border-color); border-radius: 4px; padding: .25rem .4rem;
 }
-/* ── Lista de simulações ── */
+/* ── Lista de simulações salvas ── */
+.sim-panel-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.6rem; }
+.sim-panel-title {
+    display:flex; align-items:center; gap:.5rem; cursor:pointer; user-select:none;
+    font-size:.8rem; color:var(--text-secondary); font-weight:600;
+    text-transform:uppercase; letter-spacing:.04em; background:none; border:none; padding:0;
+}
+.sim-panel-title .chev { display:inline-block; transition:transform .15s; font-size:.7rem; }
+.sim-panel.collapsed .sim-panel-title .chev { transform:rotate(-90deg); }
+.sim-count {
+    background:var(--hover-bg); border:1px solid var(--border-color); border-radius:999px;
+    padding:0 .55rem; font-size:.72rem; font-weight:600; letter-spacing:0; text-transform:none;
+}
+.sim-panel-tools { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
+.sim-panel.collapsed .sim-panel-tools, .sim-panel.collapsed #sim-panel-body { display:none; }
+#sim-panel-body { margin-top:.7rem; }
+#sim-search {
+    background:var(--card-bg); color:var(--text-primary); border:1px solid var(--border-color);
+    border-radius:6px; padding:.3rem .6rem; font-size:.8rem; width:190px; margin:0;
+}
 .sim-item {
-    display: flex; align-items: center; gap: .5rem;
-    padding: .5rem .7rem; border-radius: 6px; cursor: pointer;
-    font-size: .87rem; transition: background .15s; border: 1px solid transparent;
+    display:flex; align-items:center; gap:.6rem; cursor:pointer; font-size:.87rem;
+    transition:background .15s, border-color .15s, transform .1s;
+    border:1px solid var(--border-color); background:var(--card-bg);
 }
-.sim-item:hover  { background: var(--hover-bg); }
-.sim-item.active { background: var(--hover-bg); border-color: var(--accent-color); }
-.sim-item-name { flex: 1; font-weight: 500; }
-.sim-item-meta { font-size: .75rem; color: var(--text-secondary); white-space: nowrap; }
-/* Modo cartão (padrão): itens lado a lado, em grade */
-#sims-wrap.view-card { display: flex; flex-wrap: wrap; gap: .4rem; }
-#sims-wrap.view-card .sim-item { flex: 1; min-width: 200px; max-width: 320px; }
-/* Modo lista: um item por linha, com checkbox de seleção */
-#sims-wrap.view-list { display: flex; flex-direction: column; gap: .2rem; }
-#sims-wrap.view-list .sim-item { width: 100%; }
-.sim-check { display: none; width: 16px; height: 16px; cursor: pointer; flex: 0 0 auto; }
-#sims-wrap.view-list .sim-check { display: block; }
-.sim-view-toggle { display: inline-flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; }
+.sim-item:hover  { background:var(--hover-bg); border-color:rgba(148,163,184,.45); }
+.sim-item.active { background:var(--hover-bg); border-color:var(--accent-color); box-shadow:0 0 0 1px var(--accent-color) inset; }
+.sim-item-name {
+    font-weight:600; line-height:1.25; overflow:hidden;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+}
+.sim-item-meta { display:flex; align-items:center; gap:.45rem; margin-top:.25rem; font-size:.72rem; color:var(--text-secondary); white-space:nowrap; }
+.sim-tk {
+    font-weight:700; color:var(--accent-color); background:rgba(14,165,233,.12);
+    border-radius:4px; padding:0 .4rem; letter-spacing:.02em;
+}
+.sim-tk { justify-self:start; }
+#sim-bulk-bar label { white-space:nowrap; margin:0; }
+#sim-bulk-bar input[type=checkbox] { width:auto; margin:0; }
+.sim-actions { display:flex; align-items:center; gap:.3rem; flex:0 0 auto; }
+.sim-actions .btn { padding:.15rem .45rem; font-size:.8rem; line-height:1.2; }
+/* Modo cartão (padrão): grade responsiva de cartões */
+#sims-wrap.view-card { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:.6rem; }
+#sims-wrap.view-card .sim-item { border-radius:10px; padding:.65rem .75rem; min-height:68px; }
+#sims-wrap.view-card .sim-item:hover { transform:translateY(-1px); }
+#sims-wrap.view-card .sim-body { flex:1; min-width:0; }
+/* Modo lista: linhas em colunas (nome | ativo | data | ações), zebrado */
+#sims-wrap.view-list { display:flex; flex-direction:column; border:1px solid var(--border-color); border-radius:10px; overflow:hidden; }
+#sims-wrap.view-list .sim-item { border:none; border-radius:0; padding:.45rem .8rem; background:transparent; width:100%; }
+#sims-wrap.view-list .sim-item:nth-child(even) { background:rgba(148,163,184,.06); }
+#sims-wrap.view-list .sim-item:hover { background:var(--hover-bg); }
+#sims-wrap.view-list .sim-item.active { box-shadow:3px 0 0 var(--accent-color) inset; }
+#sims-wrap.view-list .sim-item-name { -webkit-line-clamp:1; }
+#sims-wrap.view-list .sim-body { display:grid; grid-template-columns:minmax(0,1fr) 90px 80px; align-items:center; gap:.8rem; flex:1; min-width:0; }
+#sims-wrap.view-list .sim-item-meta { margin:0; display:contents; }
+#sims-wrap.view-list .sim-dt { text-align:right; }
+.sim-check { display:none; width:16px; height:16px; cursor:pointer; flex:0 0 auto; margin:0; }
+#sims-wrap.view-list .sim-check { display:block; }
+.sim-view-toggle { display:inline-flex; border:1px solid var(--border-color); border-radius:6px; overflow:hidden; }
 .sim-view-toggle button {
-    background: var(--card-bg); color: var(--text-secondary); border: none;
-    padding: .3rem .6rem; font-size: .8rem; cursor: pointer;
+    background:var(--card-bg); color:var(--text-secondary); border:none;
+    padding:.3rem .6rem; font-size:.8rem; cursor:pointer;
 }
-.sim-view-toggle button.active { background: var(--accent-color); color: var(--accent-contrast, #fff); }
+.sim-view-toggle button.active { background:var(--accent-color); color:var(--accent-contrast, #fff); }
 #sim-bulk-bar {
-    display: none; align-items: center; gap: .6rem; margin-bottom: .6rem;
-    font-size: .82rem; color: var(--text-secondary);
+    display:none; align-items:center; gap:.6rem; margin-bottom:.6rem;
+    font-size:.82rem; color:var(--text-secondary);
 }
-#sim-bulk-bar.show { display: flex; }
+#sim-bulk-bar.show { display:flex; }
+#sim-empty-search { display:none; padding:1rem; text-align:center; color:var(--text-secondary); font-size:.85rem; }
+@media (max-width:640px) {
+    #sims-wrap.view-list .sim-body { grid-template-columns:minmax(0,1fr) auto; }
+    #sims-wrap.view-list .sim-tk { display:none; }
+    #sim-search { width:100%; }
+}
 /* ── Gráfico ── */
 #chart-wrap { position: relative; width: 100%; background: var(--hover-bg);
     border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; margin-top: 1rem; }
@@ -71,18 +117,22 @@
 
 {# ── 1. Lista de simulações salvas (topo, largura total) ── #}
 {% if sims %}
-<div class="card" style="padding:.9rem; margin-bottom:1.2rem;">
-    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:.6rem; margin-bottom:.6rem;">
-        <div style="font-size:.8rem; color:var(--text-secondary); font-weight:600;
-                    text-transform:uppercase; letter-spacing:.04em;">
-            Simulações Salvas
-        </div>
-        <div class="sim-view-toggle">
-            <button type="button" id="sim-view-card-btn" class="active" onclick="simSetView('card')">🔳 Cartões</button>
-            <button type="button" id="sim-view-list-btn" onclick="simSetView('list')">☰ Lista</button>
+<div class="card sim-panel" id="sim-panel" style="padding:.9rem; margin-bottom:1.2rem;">
+    <div class="sim-panel-head">
+        <button type="button" class="sim-panel-title" onclick="simTogglePanel()" aria-expanded="true" id="sim-panel-toggle"
+                title="Mostrar / ocultar a lista">
+            <span class="chev">▼</span> Simulações Salvas <span class="sim-count">{{ sims|length }}</span>
+        </button>
+        <div class="sim-panel-tools">
+            <input type="search" id="sim-search" placeholder="Filtrar por nome ou ativo…" oninput="simFiltra(this.value)">
+            <div class="sim-view-toggle">
+                <button type="button" id="sim-view-card-btn" class="active" onclick="simSetView('card')">🔳 Cartões</button>
+                <button type="button" id="sim-view-list-btn" onclick="simSetView('list')">☰ Lista</button>
+            </div>
         </div>
     </div>
 
+    <div id="sim-panel-body">
     <div id="sim-bulk-bar">
         <label style="display:flex; align-items:center; gap:.35rem; cursor:pointer;">
             <input type="checkbox" id="sim-select-all" onchange="simToggleAll(this.checked)"> Selecionar todas
@@ -99,10 +149,14 @@
              onclick="simItemClick(event, {{ s.id }})">
             <input type="checkbox" class="sim-check" data-id="{{ s.id }}"
                    onclick="event.stopPropagation(); simUpdateBulkBar();">
-            <div style="flex:1; min-width:0;">
-                <div class="sim-item-name">{{ s.name }}</div>
-                <div class="sim-item-meta">{{ s.underlying or '—' }} · {{ s.created_at.strftime('%d/%m/%y') if s.created_at else '' }}</div>
+            <div class="sim-body">
+                <div class="sim-item-name" title="{{ s.name }}">{{ s.name }}</div>
+                <div class="sim-item-meta">
+                    <span class="sim-tk">{{ s.underlying or '—' }}</span>
+                    <span class="sim-dt">{{ s.created_at.strftime('%d/%m/%y') if s.created_at else '' }}</span>
+                </div>
             </div>
+            <div class="sim-actions">
             {% if s.underlying %}
             <button type="button" class="btn btn-sm" title="Gráfico {{ s.underlying }}"
                     style="padding:.1rem .4rem; font-size:.8rem; background:#0ea5e9; color:white;"
@@ -114,9 +168,12 @@
                         style="padding:.1rem .4rem; font-size:.8rem;"
                         onclick="return confirm('Excluir simulação?')">🗑️</button>
             </form>
+            </div>
         </div>
         {% endfor %}
     </div>
+    <div id="sim-empty-search">Nenhuma simulação encontrada.</div>
+    </div>{# /sim-panel-body #}
 </div>
 <script>
 (function() {
@@ -137,6 +194,31 @@
         }
         try { localStorage.setItem('sim_view_mode', mode); } catch (e) {}
     };
+
+    // Mostrar / ocultar a lista (lembra a escolha; abre recolhida ao editar uma simulação)
+    var panel = document.getElementById('sim-panel');
+    var editing = {{ 'true' if sim else 'false' }};
+    window.simTogglePanel = function(force) {
+        var collapse = (typeof force === 'boolean') ? force : !panel.classList.contains('collapsed');
+        panel.classList.toggle('collapsed', collapse);
+        document.getElementById('sim-panel-toggle').setAttribute('aria-expanded', String(!collapse));
+        try { localStorage.setItem('sim_list_collapsed', collapse ? '1' : '0'); } catch (e) {}
+    };
+    window.simFiltra = function(q) {
+        q = (q || '').trim().toLowerCase();
+        var vis = 0;
+        wrap.querySelectorAll('.sim-item').forEach(function(it) {
+            var ok = !q || it.textContent.toLowerCase().indexOf(q) !== -1;
+            it.style.display = ok ? '' : 'none';
+            if (ok) vis++;
+        });
+        document.getElementById('sim-empty-search').style.display = vis ? 'none' : 'block';
+    };
+    (function() {
+        var c = null;
+        try { c = localStorage.getItem('sim_list_collapsed'); } catch (e) {}
+        simTogglePanel(c === null ? editing : c === '1');
+    })();
 
     window.simItemClick = function(ev, id) {
         // No modo lista, clicar na linha alterna o checkbox em vez de navegar —
@@ -363,6 +445,7 @@
         <div title="Probability of Profit — probabilidade de lucro no vencimento via Black-Scholes">
             <span>POP</span><br><strong id="m-pop">—</strong>
         </div>
+        <div id="m-now-box" style="display:none;" title="Resultado no vencimento se o preço do ativo ficar onde está agora"><span>Lucro atual</span><br><strong id="m-now">—</strong></div>
         <div id="m-spot-box" style="display:none;"><span id="m-spot-lbl">Spot</span><br><strong id="m-spot">—</strong></div>
         <div id="m-delta-box" style="display:none;" title="Delta total da posição (Σ sinal × qtd × delta)"><span>Delta</span><br><strong id="m-delta">—</strong></div>
         <div id="m-gamma-box" style="display:none;" title="Gamma total da posição"><span>Gamma</span><br><strong id="m-gamma">—</strong></div>
@@ -838,7 +921,8 @@ function drawChart(legs) {
     var strikes = legs.filter(function(l){ return l.type!=='STOCK' && l.strike>0; })
                       .map(function(l){ return l.strike; });
     var stockLegs = legs.filter(function(l){ return l.type==='STOCK' && l.premium>0; });
-    var stockRef  = stockLegs.length ? stockLegs[0].premium : 0;
+    // Sem perna de ação, usa a cotação do ativo buscada na OpLab/Yahoo (fetchSpotOnlySim)
+    var stockRef  = stockLegs.length ? stockLegs[0].premium : (window.__simSpot || 0);
     if (!strikes.length && !stockRef) strikes = [50];
 
     // Âncoras: strikes das opções + preço da ação
@@ -944,13 +1028,34 @@ function drawChart(legs) {
             { limites:{ min:PAD.left, max:W-PAD.right } });
     });
 
-    // Preço atual do ativo
+    // Preço atual do ativo: linha, selo "S=…" (com variação do dia, se houver) e
+    // ponto sobre a curva com o resultado se o preço ficar onde está (como em
+    // Operações Estruturadas).
     if (stockRef > 0 && stockRef >= Smin && stockRef <= Smax) {
         var xs = xPx(stockRef);
         PayoffStyle.marco(ctx, geo, xs, 'rgba(59,130,246,.85)', [4,3], 2);
-        PayoffStyle.pilula(ctx, 'Spot: '+stockRef.toLocaleString('pt-BR',{minimumFractionDigits:2}),
-            xs, H-PAD.bottom-11, PayoffStyle.CORES.spot, '#ffffff',
+        var _chg = window.__simSpotChg;
+        var _hasChg = (_chg != null && !isNaN(_chg) && !stockLegs.length);
+        var _spotTxt = 'S=' + stockRef.toLocaleString('pt-BR',{minimumFractionDigits:2}) +
+            (_hasChg ? ' ' + (_chg >= 0 ? '+' : '') + _chg.toLocaleString('pt-BR',{minimumFractionDigits:2}) + '%' : '');
+        PayoffStyle.pilula(ctx, _spotTxt, xs, H-PAD.bottom-11, PayoffStyle.CORES.spot, '#ffffff',
             { limites:{ min:PAD.left, max:W-PAD.right } });
+        var pSpot = payoffAt(stockRef, legs, multiExp, refDateStr);
+        var dotCol = pSpot >= 0 ? '#10b981' : '#ef4444';
+        ctx.beginPath(); ctx.arc(xs, yPx(pSpot), 5, 0, Math.PI*2);
+        ctx.fillStyle = dotCol; ctx.fill();
+        ctx.strokeStyle = 'white'; ctx.lineWidth = 1.5; ctx.stroke();
+        PayoffStyle.pilula(ctx, (pSpot >= 0 ? '+' : '-') + fmtBRL(Math.abs(pSpot)),
+            Math.min(xs + 46, W - PAD.right - 30), yPx(pSpot) - 14, 'rgba(30,41,59,.85)', dotCol,
+            { limites:{ min:PAD.left, max:W-PAD.right } });
+        var nowEl = document.getElementById('m-now');
+        if (nowEl) {
+            document.getElementById('m-now-box').style.display = '';
+            nowEl.textContent = (pSpot >= 0 ? '+' : '-') + fmtBRL(Math.abs(pSpot));
+            nowEl.className = pSpot >= 0 ? 'positive' : 'negative';
+        }
+    } else {
+        var nb = document.getElementById('m-now-box'); if (nb) nb.style.display = 'none';
     }
 
     // Eixo X
@@ -982,7 +1087,7 @@ function drawChart(legs) {
         if (!bes.length) { popEl.textContent = '—'; popEl.className = ''; return; }
         // Estima spot e sigma a partir das pernas vendidas
         var spotLeg = legs.find(function(l){ return l.type === 'STOCK'; });
-        var S = spotLeg ? spotLeg.entry : (legs[0] ? legs[0].strike : 0);
+        var S = stockRef > 0 ? stockRef : (spotLeg ? spotLeg.entry : (legs[0] ? legs[0].strike : 0));
         if (!S || S <= 0) { popEl.textContent = '—'; return; }
         // Usa vencimento mais próximo em dias
         var today = new Date(); today.setHours(0,0,0,0);
@@ -994,7 +1099,7 @@ function drawChart(legs) {
         var sigmas = [];
         legs.forEach(function(l){
             if (l.type === 'STOCK') return;
-            if (l.iv > 0) { sigmas.push(l.iv / 100); return; }
+            if (l.iv > 0) { sigmas.push(l.iv); return; }   // l.iv já é fração (readLegs divide por 100)
             // Proxy simples: prêmio / strike como IV estimada
             if (l.entry > 0 && l.strike > 0) sigmas.push(Math.min(l.entry / l.strike * Math.sqrt(252 / Math.max(T * 252, 1)), 2));
         });
@@ -1009,12 +1114,20 @@ function drawChart(legs) {
             return x >= 0 ? c : 1-c;
         }
         function d2(B) { return (Math.log(S/B) + (r - 0.5*sigma*sigma)*T) / (sigma*Math.sqrt(T)); }
+        // P(S_T > B) = N(d2(B)). A POP soma a probabilidade de cada faixa entre
+        // breakevens em que o payoff é POSITIVO (testado num ponto da faixa) —
+        // serve para lucro no meio (borboleta), nas pontas (straddle comprado) ou
+        // de um lado só.
         var besSorted = bes.slice().sort(function(a,b){return a-b;});
-        var pop;
-        if (besSorted.length === 1) {
-            pop = normCDF(d2(besSorted[0])) * 100;
-        } else {
-            pop = (normCDF(d2(besSorted[besSorted.length-1])) - normCDF(d2(besSorted[0]))) * 100;
+        var edges = [0].concat(besSorted).concat([Infinity]);
+        var pop = 0;
+        for (var ei = 0; ei < edges.length - 1; ei++) {
+            var lo = edges[ei], hi = edges[ei+1];
+            var rep = !isFinite(hi) ? lo * 1.25 : (lo === 0 ? hi * 0.75 : (lo + hi) / 2);
+            if (payoffAt(rep, legs, multiExp, refDateStr) <= 0) continue;
+            var pLo = lo === 0 ? 1 : normCDF(d2(lo));
+            var pHi = !isFinite(hi) ? 0 : normCDF(d2(hi));
+            pop += (pLo - pHi) * 100;
         }
         pop = Math.max(0, Math.min(100, pop));
         popEl.textContent = pop.toFixed(1).replace('.', ',') + '%';
@@ -1166,6 +1279,8 @@ function fetchSpotOnlySim() {
             var p = Number(d.price || 0);
             if (p > 0) {
                 window.__simSpot = p;
+                window.__simSpotChg = (d.change != null && d.change !== '') ? Number(d.change) : null;
+                scheduleRedraw();
                 document.getElementById('m-spot-box').style.display = '';
                 document.getElementById('m-spot-lbl').textContent = ativo + ' agora';
                 document.getElementById('m-spot').textContent = 'R$ ' + fmtNum(p, 2);
@@ -1184,7 +1299,7 @@ window.atualizarCotacoesSim = function() {
             var byTicker = {};
             d.options.forEach(function(o) { byTicker[o.symbol] = o; });
             var spot = Number(d.spot || 0);
-            if (spot > 0) window.__simSpot = spot;
+            if (spot > 0) { window.__simSpot = spot; scheduleRedraw(); }
             var r = Math.log(1 + SELIC_RATE / 100);
             var today = new Date(); today.setHours(0, 0, 0, 0);
             var nOk = 0, nMiss = 0, missT = [];

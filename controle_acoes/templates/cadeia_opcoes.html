@@ -888,9 +888,19 @@ function drawChartC(legs){
     var sigma=sigmas.reduce(function(a,b){return a+b;},0)/sigmas.length;
     var r2=Math.log(1+SELIC_RATE/100);
     function d2b(B){return(Math.log(S0/B)+(r2-0.5*sigma*sigma)*T)/(sigma*Math.sqrt(T));}
+    // POP = soma da probabilidade das faixas (entre breakevens) em que o payoff é positivo.
+    // P(S_T > B) = N(d2(B)).
     var besSorted=bes.slice().sort(function(a,b){return a-b;});
-    var pop=besSorted.length===1?normCDF(d2b(besSorted[0]))*100
-      :(normCDF(d2b(besSorted[besSorted.length-1]))-normCDF(d2b(besSorted[0])))*100;
+    var edges=[0].concat(besSorted).concat([Infinity]);
+    var pop=0;
+    for(var ei=0;ei<edges.length-1;ei++){
+      var lo=edges[ei],hi=edges[ei+1];
+      var rep=!isFinite(hi)?lo*1.25:(lo===0?hi*0.75:(lo+hi)/2);
+      if(payoffAtC(rep,legs,multiExp,refDateStr)<=0) continue;
+      var pLo=lo===0?1:normCDF(d2b(lo));
+      var pHi=!isFinite(hi)?0:normCDF(d2b(hi));
+      pop+=(pLo-pHi)*100;
+    }
     pop=Math.max(0,Math.min(100,pop));
     popEl.textContent=pop.toFixed(1).replace('.',',')+' %';
     popEl.className=pop>=50?'positive':'negative';

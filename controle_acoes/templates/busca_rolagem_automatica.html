@@ -478,6 +478,18 @@ window.brBuscar = function () {
       .then(function (res) {
         if (!res.ok || res.j.error) { status.textContent = '⚠️ ' + (res.j.error || 'erro na busca'); return; }
         BR_RESULTADOS = res.j.resultados || [];
+        // Ticker manual: o backend descobre ativo, tipo, strike e vencimento
+        // reais — grava de volta no input para o card mostrar os detalhes e
+        // o Salvar/Gravar usarem o ativo certo (não a raiz "ASAI").
+        BR_RESULTADOS.forEach(function (r, i) {
+            var inp = BR_INPUTS[i], p = r.perna_atual;
+            if (!inp || !p || inp.origem !== 'manual') return;
+            ['underlying', 'opt_type', 'strike', 'exp'].forEach(function (k) {
+                if (p[k] && !inp[k]) inp[k] = p[k];
+            });
+            if (p.avg_price && !inp.avg_price) inp.avg_price = p.avg_price;
+        });
+        brRenderInputs();
         // Pregão fechado: o motor precifica tudo pelo último negócio e só
         // considera séries que foram negociadas — avisa para o usuário não
         // ler os valores como book executável agora.

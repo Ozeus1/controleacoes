@@ -4120,6 +4120,43 @@ def _busca_rolagem_alternativas(perna, cadeia, criterios):
     return alternativas
 
 
+def _busca_rolagem_subjacente(ticker_opcao, user_id, cadeia_cache):
+    """Descobre o ativo-objeto de um ticker de opção digitado à mão.
+
+    1º a ficha da opção na OpLab (/market/instruments/{ticker} →
+    parent_symbol). 2º, se a ficha não vier, raiz B3 + sufixos comuns
+    (3, 4, 11, 5, 6): fica com a primeira cadeia que contém o ticker. As
+    cadeias baixadas no caminho vão para `cadeia_cache`, evitando baixar
+    de novo a do ativo escolhido.
+    """
+    t = (ticker_opcao or '').strip().upper()
+    token = Settings.get_value('oplab_token', user_id=user_id)
+    if token:
+        try:
+            d = _oplab_get_json(f'/market/instruments/{t}', token, timeout=10)
+            if isinstance(d, list):
+                d = d[0] if d else {}
+            if isinstance(d, dict):
+                und = (d.get('parent_symbol') or d.get('underlying_symbol') or d.get('underlying') or '')
+                und = str(und).strip().upper()
+                if und:
+                    return und
+        except Exception:
+            pass   # cai no plano B
+    raiz = t[:4]
+    for suf in ('3', '4', '11', '5', '6'):
+        cand = raiz + suf
+        if cand not in cadeia_cache:
+            try:
+                cadeia_cache[cand] = _busca_cadeia_flat(cand, user_id)
+            except _BuscaRolagemError as e:
+                cadeia_cache[cand] = {'error': e.message}
+        cad = cadeia_cache[cand]
+        if 'error' not in cad and any(o['symbol'] == t for o in cad.get('options') or []):
+            return cand
+    return None
+
+
 @app.route('/api/busca-rolagem/buscar', methods=['POST'])
 @login_required
 def api_busca_rolagem_buscar():
@@ -4142,8 +4179,18 @@ def api_busca_rolagem_buscar():
 
         underlying = perna['underlying']
         if not underlying:
-            # Ticker manual sem subjacente informado — tenta inferir pela raiz B3.
-            underlying = perna['ticker'][:4]
+            # Ticker manual sem subjacente informado. A raiz B3 sozinha
+            # ("ASAIJ102"[:4] = "ASAI") NÃO é um ativo — a OpLab devolve
+            # cadeia vazia. Pergunta à própria OpLab de quem é a opção
+            # (parent_symbol, mesma fonte da Busca de Opção) e, se falhar,
+            # testa raiz + 3/4/11/5/6 até achar a cadeia que contém o ticker.
+            underlying = _busca_rolagem_subjacente(perna['ticker'], current_user.id, cadeia_cache)
+            if not underlying:
+                resultados.append({'input': inp, 'perna_atual': perna,
+                                   'error': f'Não identifiquei o ativo-objeto de {perna["ticker"]}. '
+                                            'Adicione a posição informando o ativo.'})
+                continue
+            perna['underlying'] = underlying
 
         if underlying not in cadeia_cache:
             try:

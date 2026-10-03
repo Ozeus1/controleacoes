@@ -478,10 +478,24 @@ window.brBuscar = function () {
       .then(function (res) {
         if (!res.ok || res.j.error) { status.textContent = '⚠️ ' + (res.j.error || 'erro na busca'); return; }
         BR_RESULTADOS = res.j.resultados || [];
-        status.textContent = '✓ busca concluída';
+        // Pregão fechado: o motor precifica tudo pelo último negócio e só
+        // considera séries que foram negociadas — avisa para o usuário não
+        // ler os valores como book executável agora.
+        status.textContent = res.j.market_open === false
+            ? '✓ busca concluída · 🕐 pregão fechado: preços pelo último negócio (só séries negociadas)'
+            : '✓ busca concluída';
         brRenderResultados();
       }).catch(function (e) { status.textContent = '⚠️ falha de rede: ' + e; });
 };
+
+// Etiqueta discreta da origem do preço — só quando NÃO é o book ao vivo.
+function brFonte(f) {
+    if (!f || f === 'book') return '';
+    return ' <span class="br-hint" style="font-size:.7rem;" title="'
+         + (f === 'último' ? 'Preço do último negócio (pregão fechado)'
+                           : 'Sem negócio na série: usado o preço médio de entrada') + '">('
+         + (f === 'último' ? 'últ.' : 'p. médio') + ')</span>';
+}
 
 function brRenderResultados() {
     var wrap = document.getElementById('br-results');
@@ -506,8 +520,8 @@ function brRenderResultados() {
                  + '<td>' + escHtml(a.ticker) + '</td>'
                  + '<td>' + fmtBRL(a.strike) + '</td>'
                  + '<td>' + (a.dif_strike >= 0 ? '+' : '') + fmtNum(a.dif_strike) + '</td>'
-                 + '<td>' + fmtBRL(a.close_price) + '</td>'
-                 + '<td>' + fmtBRL(a.open_price) + '</td>'
+                 + '<td>' + fmtBRL(a.close_price) + brFonte(a.fonte_fech) + '</td>'
+                 + '<td>' + fmtBRL(a.open_price) + brFonte(a.fonte_abert) + '</td>'
                  + '<td class="' + (a.net_roll_total >= 0 ? 'positive' : 'negative') + '">' + fmtBRLSigned(a.net_roll_total) + '</td>'
                  + '<td><button class="br-pick-btn' + (jaEscolhida ? ' escolhida' : '') + '" onclick="brEscolheAlternativa(' + ri + ',' + ai + ')">'
                  + (jaEscolhida ? '✓ Escolhida' : 'Escolher') + '</button></td></tr>';

@@ -3975,13 +3975,21 @@ def _busca_rolagem_vencimentos_elegiveis(cadeia_options, incluir_semanais, profu
     return out
 
 
-def _busca_rolagem_calcula_alternativa(perna, exp, strike, cadeia_by_key):
+_ULT_MIN = 0.05   # último negócio abaixo disso = série sem negócio de fato
+
+
+def _busca_rolagem_calcula_alternativa(perna, exp, strike, cadeia_by_key, market_open=True):
     """Monta 1 alternativa de rolagem (perna atual -> vencimento/strike
     alvo), calculando prêmio de fechamento (perna atual, preço de mercado
     corrente) e abertura (perna alvo), e o crédito/débito líquido.
 
     cadeia_by_key: dict {(exp, kind, strike): row} de toda a cadeia do
     ticker, para lookup O(1).
+
+    Pregão FECHADO: o book (bid/ask) fica vazio ou velho, então fechamento
+    e abertura usam só o ÚLTIMO NEGÓCIO de cada série. Série alvo sem
+    negócio não tem preço confiável e é descartada (None); perna atual sem
+    negócio cai no preço médio de entrada — nunca no book velho.
     """
     kind = perna['opt_type']
     alvo = cadeia_by_key.get((exp, kind, round(strike, 2)))
@@ -3990,20 +3998,32 @@ def _busca_rolagem_calcula_alternativa(perna, exp, strike, cadeia_by_key):
         return None
 
     side = perna['side']
-    # Fechar a perna atual: vendida recompra (paga ask), comprada vende (recebe bid).
-    if atual:
-        close_price = (atual.get('ask_eff') or atual.get('ask') or atual.get('close') or 0) if side == 'SELL' \
-            else (atual.get('bid_eff') or atual.get('bid') or atual.get('close') or 0)
+    if not market_open:
+        open_price = alvo.get('close') or 0
+        if open_price < _ULT_MIN:
+            return None
+        if atual and (atual.get('close') or 0) >= _ULT_MIN:
+            close_price, fonte_fech = atual['close'], 'último'
+        else:
+            close_price, fonte_fech = perna['avg_price'], 'preço médio'
+        fonte_abert = 'último'
     else:
-        # Perna atual não encontrada na cadeia (ex.: vencimento já muito
-        # próximo/sem book) — usa o preço médio de entrada como referência
-        # neutra, mantendo o cálculo executável mesmo sem cotação fresca.
-        close_price = perna['avg_price']
+        # Fechar a perna atual: vendida recompra (paga ask), comprada vende (recebe bid).
+        if atual:
+            close_price = (atual.get('ask_eff') or atual.get('ask') or atual.get('close') or 0) if side == 'SELL' \
+                else (atual.get('bid_eff') or atual.get('bid') or atual.get('close') or 0)
+            fonte_fech = 'book'
+        else:
+            # Perna atual não encontrada na cadeia (ex.: vencimento já muito
+            # próximo/sem book) — usa o preço médio de entrada como referência
+            # neutra, mantendo o cálculo executável mesmo sem cotação fresca.
+            close_price, fonte_fech = perna['avg_price'], 'preço médio'
 
-    # Abrir a nova perna no MESMO lado da atual: vendida vende de novo
-    # (recebe bid), comprada compra de novo (paga ask).
-    open_price = (alvo.get('bid_eff') or alvo.get('bid') or alvo.get('close') or 0) if side == 'SELL' \
-        else (alvo.get('ask_eff') or alvo.get('ask') or alvo.get('close') or 0)
+        # Abrir a nova perna no MESMO lado da atual: vendida vende de novo
+        # (recebe bid), comprada compra de novo (paga ask).
+        open_price = (alvo.get('bid_eff') or alvo.get('bid') or alvo.get('close') or 0) if side == 'SELL' \
+            else (alvo.get('ask_eff') or alvo.get('ask') or alvo.get('close') or 0)
+        fonte_abert = 'book'
 
     qty = perna['qty']
     if side == 'SELL':
@@ -4017,6 +4037,7 @@ def _busca_rolagem_calcula_alternativa(perna, exp, strike, cadeia_by_key):
         'net_roll_unit': round(net_roll, 4), 'net_roll_total': round(net_roll * qty, 2),
         'dif_strike': round(strike - perna['strike'], 2),
         'iv': alvo.get('iv'),
+        'fonte_fech': fonte_fech, 'fonte_abert': fonte_abert,
     }
 
 
@@ -4024,9 +4045,16 @@ def _busca_rolagem_alternativas(perna, cadeia, criterios):
     """Gera as alternativas de rolagem de UMA perna, conforme os critérios
     (vencimentos mensais/semanais, profundidade, modo Tempo/Strike/Tempo+Strike)."""
     options = cadeia['options']
+    market_open = cadeia.get('market_open', True)
     kind = perna['opt_type'] or 'CALL'
     mesmo_kind = [o for o in options if o['kind'] == kind]
     cadeia_by_key = {(o['exp'], o['kind'], o['strike']): o for o in options}
+    # Pregão fechado: só séries com negócio entram como ALVO (vencimentos e
+    # strikes candidatos) — assim o "strike mais próximo" no modo Tempo já
+    # é o mais próximo NEGOCIADO, em vez de uma série sem preço que seria
+    # descartada depois e deixaria o vencimento sem alternativa.
+    if not market_open:
+        mesmo_kind = [o for o in mesmo_kind if (o.get('close') or 0) >= _ULT_MIN]
 
     incluir_semanais = criterios.get('vencimentos') == 'mensal_semanal'
     profundidades = criterios.get('profundidade') or [1]
@@ -4046,7 +4074,7 @@ def _busca_rolagem_alternativas(perna, cadeia, criterios):
             if not strikes_disp:
                 continue
             alvo_strike = min(strikes_disp, key=lambda s: abs(s - perna['strike']))
-            alt = _busca_rolagem_calcula_alternativa(perna, exp, alvo_strike, cadeia_by_key)
+            alt = _busca_rolagem_calcula_alternativa(perna, exp, alvo_strike, cadeia_by_key, market_open)
             if alt:
                 alternativas.append(alt)
 
@@ -4058,7 +4086,7 @@ def _busca_rolagem_alternativas(perna, cadeia, criterios):
             abaixo = sorted([s for s in strikes_disp if s < perna['strike']], reverse=True)[:max_dist]
             acima = sorted([s for s in strikes_disp if s > perna['strike']])[:max_dist]
             for s in sorted(abaixo + acima):
-                alt = _busca_rolagem_calcula_alternativa(perna, exp_atual, s, cadeia_by_key)
+                alt = _busca_rolagem_calcula_alternativa(perna, exp_atual, s, cadeia_by_key, market_open)
                 if alt:
                     alternativas.append(alt)
 
@@ -4078,7 +4106,7 @@ def _busca_rolagem_alternativas(perna, cadeia, criterios):
             candidatos.sort(reverse=not is_call)  # mais próximo do strike atual primeiro
             melhor = None
             for s in candidatos:
-                alt = _busca_rolagem_calcula_alternativa(perna, exp, s, cadeia_by_key)
+                alt = _busca_rolagem_calcula_alternativa(perna, exp, s, cadeia_by_key, market_open)
                 if not alt:
                     continue
                 if alt['net_roll_total'] >= 0:
@@ -4144,9 +4172,12 @@ def api_busca_rolagem_buscar():
             continue
 
         alternativas = _busca_rolagem_alternativas(perna, cadeia, criterios)
-        resultados.append({'input': inp, 'perna_atual': perna, 'alternativas': alternativas})
+        resultados.append({'input': inp, 'perna_atual': perna, 'alternativas': alternativas,
+                           'market_open': cadeia.get('market_open', True)})
 
-    return jsonify({'resultados': resultados})
+    _now_b = now_brt()
+    market_open = _now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30)
+    return jsonify({'resultados': resultados, 'market_open': market_open})
 
 
 def _brapi_montar_cadeia(ticker, user_id, weekly, n_meses, n_strikes):

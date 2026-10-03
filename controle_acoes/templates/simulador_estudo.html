@@ -555,7 +555,30 @@ function simPrecoDaFonte(tr, o, lado) {
     if (src === 'bid')  return bid || last || ask || 0;
     if (src === 'ask')  return ask || last || bid || 0;
     if (src === 'last') return last || (lado === 'SELL' ? (bid || ask) : (ask || bid)) || 0;
+    // Auto: no pregão segue o lado (venda→bid, compra→ask); fora do pregão — ou com
+    // book vazio/abusivo (spread > 25% do mid, mínimo R$ 0,10) — o book está velho e
+    // o preço confiável é o último negócio. Mesma regra da busca de operações.
+    var lastOk = last >= 0.05 ? last : 0;
+    if (lastOk) {
+        if (!simPregaoAberto()) return lastOk;
+        if (bid >= 0.05 && ask >= 0.05) {
+            var mid = (bid + ask) / 2;
+            if ((ask - bid) > Math.max(0.10, 0.25 * mid)) return lastOk;
+        } else {
+            return lastOk;   // falta uma ponta do book
+        }
+    }
     return (lado === 'SELL' ? (bid || ask) : (ask || bid)) || last || 0;
+}
+// Pregão de opções da B3: seg–sex, 10h00–16h30 (Brasília)
+function simPregaoAberto() {
+    try {
+        var f = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', weekday: 'short',
+                hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(new Date());
+        var o = {}; f.forEach(function (x) { o[x.type] = x.value; });
+        var min = (parseInt(o.hour, 10) % 24) * 60 + parseInt(o.minute, 10);
+        return !/Sat|Sun/.test(o.weekday) && min >= 600 && min < 990;
+    } catch (e) { return true; }
 }
 
 window.simFonteMudou = function (sel) {
@@ -574,7 +597,7 @@ window.simFonteMudou = function (sel) {
 // linha. Critica quando o tipo retornado (CALL/PUT) não bate com o que
 // o usuário escolheu no select "Tipo" — sugere a correção em vez de
 // preencher silenciosamente um tipo diferente do pedido.
-function simBuscaTicker(tr, ticker) {
+function simBuscaTicker(tr, ticker, preservaPremio) {
     simMostraErroLinha(tr, '');
     var tipoEl = tr.querySelector('.leg-type');
     var vencEl = tr.querySelector('.leg-venc');
@@ -582,11 +605,13 @@ function simBuscaTicker(tr, ticker) {
     var strikeEl = tr.querySelector('.leg-strike');
     var premioEl = tr.querySelector('.leg-premium');
     var ivEl = tr.querySelector('.leg-iv');
-    premioEl.value = '⏳';
+    var premioSalvo = premioEl.value;
+    if (!preservaPremio) premioEl.value = '⏳';
     fetch('/api/busca-opcao/' + encodeURIComponent(ticker))
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(function (res) {
             if (!res.ok || res.j.error) {
+                if (preservaPremio) { simMostraErroLinha(tr, res.j.error || ('Ticker ' + ticker + ' não encontrado na OpLab.')); return; }
                 premioEl.value = '0,00';
                 vencEl.textContent = '—'; dteEl.textContent = '—'; strikeEl.textContent = '—';
                 simMostraErroLinha(tr, res.j.error || ('Ticker ' + ticker + ' não encontrado na OpLab.'));
@@ -611,14 +636,18 @@ function simBuscaTicker(tr, ticker) {
             var o = { bid_eff: d.bid, ask_eff: d.ask, close: d.last };
             tr.dataset.bid = d.bid || 0; tr.dataset.ask = d.ask || 0; tr.dataset.last = d.last || 0;
             var lado = tr.querySelector('.leg-side').value;
-            premioEl.value = fmtNum(simPrecoDaFonte(tr, o, lado));
-            premioEl.title = 'Bid ' + fmtNum(d.bid || 0) + ' · Ask ' + fmtNum(d.ask || 0) + ' · Último ' + fmtNum(d.last || 0);
+            // Ao ABRIR uma simulação salva, o prêmio salvo é mantido (é o preço com que ela
+            // foi montada — igual à tela Simulação de Opções); a cotação de hoje fica no tooltip.
+            if (preservaPremio) premioEl.value = premioSalvo;
+            else premioEl.value = fmtNum(simPrecoDaFonte(tr, o, lado));
+            premioEl.title = (preservaPremio ? 'Prêmio salvo ' + premioSalvo + ' · mercado agora: ' : '') +
+                'Bid ' + fmtNum(d.bid || 0) + ' · Ask ' + fmtNum(d.ask || 0) + ' · Último ' + fmtNum(d.last || 0);
             // d.iv (de /api/busca-opcao) já vem em formato PERCENTUAL (ex.:
             // 30.29 = 30,29%), mesma convenção de /api/cadeia usada no
             // Simulador normal — multiplicar por 100 aqui inflava a VI em
             // 100× (30,29% virava 3029%), achatando o payoff por completo
             // (Black-Scholes com sigma=30 é puro ruído).
-            if (ivEl && d.iv != null) ivEl.value = fmtNum(d.iv);
+            if (ivEl && d.iv != null && !(preservaPremio && parseVal(ivEl.value) > 0)) ivEl.value = fmtNum(d.iv);
 
             // Detecta o ativo subjacente pela 1ª perna de opção resolvida —
             // sem um campo "Ativo" digitável, é assim que o spot é obtido.
@@ -1465,7 +1494,7 @@ window.simAbrir = function (id) {
                 body.appendChild(tr._errRow);
             });
             document.getElementById('open-modal').style.display = 'none';
-            tickersParaBuscar.forEach(function (pair) { simBuscaTicker(pair[0], pair[1]); });
+            tickersParaBuscar.forEach(function (pair) { simBuscaTicker(pair[0], pair[1], true); });
             simRecalc();
         })
         .catch(function (e) { alert('⚠️ falha de rede: ' + e); });

@@ -13,6 +13,7 @@ import time
 import threading
 import uuid
 import json
+import re
 import tempfile
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
@@ -2844,7 +2845,7 @@ def api_simulacao_delete(sim_id):
 def simulador_liquidez():
     """Página: tabela de liquidez (ranking) + simulador de payoff integrado."""
     sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id).order_by(SimulacaoOpcoes.created_at.desc()).all()
-    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_dropdown_rows(current_user.id)
     return render_template('simulador_liquidez.html', sims=sims, ranking_vol=ranking_vol, selic=_selic())
 
 
@@ -2852,7 +2853,7 @@ def simulador_liquidez():
 @login_required
 def cadeia_opcoes():
     """Cadeia de opções estilo HB — calls/puts em torno do spot por vencimento."""
-    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_dropdown_rows(current_user.id)
     return render_template('cadeia_opcoes.html', ranking_vol=ranking_vol, selic=_selic())
 
 
@@ -2866,8 +2867,7 @@ def simulador():
     strike em listas vindas da cadeia, e o prêmio vem preenchido.
     """
     sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id)                                .order_by(SimulacaoOpcoes.created_at.desc()).all()
-    ranking_vol = _ranking_liq_filter(
-        RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_dropdown_rows(current_user.id)
     return render_template('simulador.html', sims=sims,
                            ranking_vol=ranking_vol, selic=_selic())
 
@@ -3510,7 +3510,7 @@ def download_rtd_tsv():
 @login_required
 def rolagem_opcoes():
     """Simulador de rolagem de opcoes por tempo ou strike."""
-    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_dropdown_rows(current_user.id)
     return render_template('rolagem_opcoes.html', ranking_vol=ranking_vol, manejo_mode=False)
 
 
@@ -3518,7 +3518,7 @@ def rolagem_opcoes():
 @login_required
 def busca_rolagem_automatica():
     """Busca automática de alternativas de rolagem para 1 ou mais posições."""
-    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_dropdown_rows(current_user.id)
     # Posições abertas do usuário, para o seletor "usar posição existente"
     # (mesmo padrão de manejo_grafico()).
     opcoes_abertas = Option.query.filter_by(user_id=current_user.id).order_by(Option.ticker).all()
@@ -3535,7 +3535,7 @@ def busca_rolagem_automatica():
 def manejo_opcoes():
     """Simulador de MANEJO de opções: mesma engrenagem da Rolagem, com a aba
     Manejo pré-selecionada e a lista de simulações filtrada por MANEJO."""
-    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_dropdown_rows(current_user.id)
     return render_template('rolagem_opcoes.html', ranking_vol=ranking_vol, manejo_mode=True)
 
 
@@ -3599,7 +3599,7 @@ def manejo_grafico():
     travas_abertas = OptionSpread.query.filter_by(user_id=current_user.id).order_by(
         OptionSpread.underlying_asset).all()
 
-    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_dropdown_rows(current_user.id)
     return render_template('manejo_grafico.html', op=op, sp=sp, roll_adjustment=roll_adjustment,
                            roll_extrato=roll_extrato,
                            estruturas_abertas=estruturas_abertas, travas_abertas=travas_abertas,
@@ -4814,7 +4814,7 @@ def api_cadeia(ticker):
 @login_required
 def busca_operacoes():
     """Página: sugestões de collar e travas no débito por vencimento."""
-    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_dropdown_rows(current_user.id)
     return render_template('busca_operacoes.html', ranking_vol=ranking_vol, selic=_selic())
 
 
@@ -4829,7 +4829,7 @@ def ajuda_operacoes():
 @login_required
 def busca_operacoes_avancadas():
     """Página: busca de operações avançadas (guia técnico Vol. 2), por categoria."""
-    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_dropdown_rows(current_user.id)
     return render_template('busca_operacoes_avancadas.html', ranking_vol=ranking_vol, selic=_selic())
 
 
@@ -7240,7 +7240,7 @@ _MP_PREFIX = '[Manejo Put] '
 @login_required
 def manejo_put():
     """Página: manejo/defesa de PUT vendida — sugere pernas concretas para 6 estratégias."""
-    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_dropdown_rows(current_user.id)
     saved = (SimulacaoOpcoes.query
              .filter(SimulacaoOpcoes.user_id == current_user.id,
                      SimulacaoOpcoes.name.like(_MP_PREFIX + '%'))
@@ -7954,7 +7954,7 @@ def api_manejo_put_save():
 @login_required
 def lancamento_coberto():
     """Página: ranking de lançamento coberto por ativo (vencimentos longos)."""
-    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_dropdown_rows(current_user.id)
     return render_template('lancamento_coberto.html', ranking_vol=ranking_vol, selic=_selic())
 
 
@@ -8294,10 +8294,7 @@ def mapa_opcoes():
     ativos = sorted({(a.ticker or '').strip().upper()
                      for a in Asset.query.filter_by(user_id=current_user.id).all()
                      if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
-    rk = sorted({(r.ticker or '').strip().upper()
-                 for r in _ranking_liq_filter(
-                     RankingVol.query.filter_by(user_id=current_user.id)).all()
-                 if r.ticker})
+    rk = sorted(_ranking_dropdown_tickers(current_user.id))
     sugestoes = sorted(set(ativos) | set(rk))
     return render_template('mapa_opcoes.html',
                            sugestoes=sugestoes,
@@ -9951,10 +9948,7 @@ def market_gamma():
     ativos = sorted({(a.ticker or '').strip().upper()
                      for a in Asset.query.filter_by(user_id=current_user.id).all()
                      if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
-    rk = sorted({(r.ticker or '').strip().upper()
-                 for r in _ranking_liq_filter(
-                     RankingVol.query.filter_by(user_id=current_user.id)).all()
-                 if r.ticker})
+    rk = sorted(_ranking_dropdown_tickers(current_user.id))
     return render_template('market_gamma.html',
                            sugestoes=sorted(set(ativos) | set(rk)),
                            tem_token=bool(_brapi_opt_token(current_user.id)))
@@ -10177,10 +10171,7 @@ def bgt_bands():
     ativos = sorted({(a.ticker or '').strip().upper()
                      for a in Asset.query.filter_by(user_id=current_user.id).all()
                      if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
-    rk = sorted({(r.ticker or '').strip().upper()
-                 for r in _ranking_liq_filter(
-                     RankingVol.query.filter_by(user_id=current_user.id)).all()
-                 if r.ticker})
+    rk = sorted(_ranking_dropdown_tickers(current_user.id))
     return render_template('bgt_bands.html',
                            sugestoes=sorted(set(ativos) | set(rk)),
                            tem_token=bool(_brapi_opt_token(current_user.id)))
@@ -10504,10 +10495,7 @@ def curva_volatilidade():
     ativos = sorted({(a.ticker or '').strip().upper()
                      for a in Asset.query.filter_by(user_id=current_user.id).all()
                      if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
-    rk = sorted({(r.ticker or '').strip().upper()
-                 for r in _ranking_liq_filter(
-                     RankingVol.query.filter_by(user_id=current_user.id)).all()
-                 if r.ticker})
+    rk = sorted(_ranking_dropdown_tickers(current_user.id))
     return render_template('curva_volatilidade.html',
                            sugestoes=sorted(set(ativos) | set(rk)),
                            tem_token=bool(Settings.get_value('oplab_token', user_id=current_user.id)))
@@ -10701,10 +10689,7 @@ def simulador_bs():
     ativos = sorted({(a.ticker or '').strip().upper()
                      for a in Asset.query.filter_by(user_id=current_user.id).all()
                      if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
-    rk = sorted({(r.ticker or '').strip().upper()
-                 for r in _ranking_liq_filter(
-                     RankingVol.query.filter_by(user_id=current_user.id)).all()
-                 if r.ticker})
+    rk = sorted(_ranking_dropdown_tickers(current_user.id))
     return render_template('simulador_bs.html',
                            sugestoes=sorted(set(ativos) | set(rk)),
                            selic=_selic(),
@@ -10815,10 +10800,7 @@ def put_call_ratio():
     ativos = sorted({(a.ticker or '').strip().upper()
                      for a in Asset.query.filter_by(user_id=current_user.id).all()
                      if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
-    rk = sorted({(r.ticker or '').strip().upper()
-                 for r in _ranking_liq_filter(
-                     RankingVol.query.filter_by(user_id=current_user.id)).all()
-                 if r.ticker})
+    rk = sorted(_ranking_dropdown_tickers(current_user.id))
     return render_template('put_call_ratio.html',
                            sugestoes=sorted(set(ativos) | set(rk)),
                            tem_token=bool(_brapi_opt_token(current_user.id)))
@@ -11472,8 +11454,7 @@ def api_walls_candles(ativo):
 @login_required
 def fyt():
     """Página FYT: busca de estruturas na cadeia por filtros (Booster/Ratio)."""
-    ranking_vol = _ranking_liq_filter(
-        RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_dropdown_rows(current_user.id)
     return render_template('fyt.html', ranking_vol=ranking_vol, selic=_selic())
 
 
@@ -13836,7 +13817,7 @@ def api_fyt_broken_wing(ticker):
 @login_required
 def venda_put_longa():
     """Página: ranking de venda de PUT (cash-secured) de longo prazo."""
-    ranking_vol = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id)).order_by(RankingVol.ticker).all()
+    ranking_vol = _ranking_dropdown_rows(current_user.id)
     return render_template('venda_put_longa.html', ranking_vol=ranking_vol, selic=_selic())
 
 
@@ -21670,31 +21651,189 @@ def _ranking_liq_filter(query):
     return query.filter(db.or_(RankingVol.grupo == 'LIQ', RankingVol.grupo.is_(None)))
 
 
+# ── Listas de ativos (Ranking de Volatilidade) editáveis ─────────────────────
+# Cada lista tem chave (grupo em RankingVol), nome e se alimenta as listas
+# suspensas de busca das telas. LIQ/GERAL são as originais; o usuário pode
+# renomeá-las e criar outras (chave "L<n>"). Metadados em Settings['ticker_lists'].
+_TL_DEFAULT = [
+    {'key': 'LIQ',   'nome': 'Com liquidez', 'dropdown': True},
+    {'key': 'GERAL', 'nome': 'Geral',        'dropdown': False},
+]
+
+
+def _ticker_lists_meta(uid):
+    try:
+        meta = json.loads(Settings.get_value('ticker_lists', user_id=uid) or '[]')
+        if not isinstance(meta, list):
+            meta = []
+    except (TypeError, ValueError):
+        meta = []
+    meta = [m for m in meta if isinstance(m, dict) and m.get('key')]
+    have = {m['key'] for m in meta}
+    base = [dict(d) for d in _TL_DEFAULT if d['key'] not in have]
+    out = base + meta
+    out.sort(key=lambda m: (0 if m['key'] == 'LIQ' else 1 if m['key'] == 'GERAL' else 2))
+    for m in out:
+        m['nome'] = (m.get('nome') or m['key']).strip()[:30] or m['key']
+        m['dropdown'] = bool(m.get('dropdown'))
+    return out
+
+
+def _ticker_lists_save(uid, meta):
+    slim = [{'key': m['key'], 'nome': m['nome'], 'dropdown': bool(m['dropdown'])} for m in meta]
+    Settings.set_value('ticker_lists', json.dumps(slim, ensure_ascii=False), user_id=uid)
+
+
+def _tl_query(uid, key):
+    q = RankingVol.query.filter_by(user_id=uid)
+    return _ranking_liq_filter(q) if key == 'LIQ' else q.filter_by(grupo=key)
+
+
+def _tl_key_from_slug(uid, slug):
+    """'liq'/'geral'/'l1' → chave da lista existente (padrão: LIQ)."""
+    slug = (slug or 'liq').upper()
+    return slug if any(m['key'] == slug for m in _ticker_lists_meta(uid)) else 'LIQ'
+
+
+def _ranking_dropdown_rows(uid=None):
+    """Tickers das listas marcadas para as listas suspensas (sem repetição)."""
+    uid = uid or current_user.id
+    seen = {}
+    for m in _ticker_lists_meta(uid):
+        if not m['dropdown']:
+            continue
+        if m['key'] == 'GERAL':
+            _seed_ranking_geral(uid)
+        for r in _tl_query(uid, m['key']).all():
+            if r.ticker:
+                seen.setdefault(r.ticker.strip().upper(), r)
+    return sorted(seen.values(), key=lambda r: r.ticker.strip().upper())
+
+
+def _ranking_dropdown_tickers(uid=None):
+    return [r.ticker.strip().upper() for r in _ranking_dropdown_rows(uid)]
+
+
+@app.route('/api/ticker-lists')
+@login_required
+def api_ticker_lists():
+    uid = current_user.id
+    meta = _ticker_lists_meta(uid)
+    if any(m['key'] == 'GERAL' for m in meta):
+        _seed_ranking_geral(uid)
+    out = []
+    for m in meta:
+        tk = sorted({(r.ticker or '').strip().upper() for r in _tl_query(uid, m['key']).all() if r.ticker})
+        out.append({'key': m['key'], 'nome': m['nome'], 'dropdown': m['dropdown'],
+                    'custom': m['key'] not in ('LIQ', 'GERAL'), 'tickers': tk})
+    return jsonify({'listas': out})
+
+
+@app.route('/api/ticker-lists/save', methods=['POST'])
+@login_required
+def api_ticker_lists_save():
+    """Atualiza nome e flag 'aparece nas listas suspensas' de cada lista."""
+    uid = current_user.id
+    data = (request.get_json(silent=True) or {}).get('listas') or []
+    por_chave = {str(d.get('key')): d for d in data if isinstance(d, dict)}
+    meta = _ticker_lists_meta(uid)
+    for m in meta:
+        d = por_chave.get(m['key'])
+        if d is None:
+            continue
+        nome = (d.get('nome') or '').strip()
+        if nome:
+            m['nome'] = nome[:30]
+        m['dropdown'] = bool(d.get('dropdown'))
+    _ticker_lists_save(uid, meta)
+    return jsonify({'ok': True})
+
+
+@app.route('/api/ticker-lists/new', methods=['POST'])
+@login_required
+def api_ticker_lists_new():
+    uid = current_user.id
+    nome = ((request.get_json(silent=True) or {}).get('nome') or '').strip()[:30] or 'Nova lista'
+    meta = _ticker_lists_meta(uid)
+    nums = [int(m['key'][1:]) for m in meta if re.fullmatch(r'L\d+', m['key'])]
+    key = 'L%d' % ((max(nums) if nums else 0) + 1)
+    meta.append({'key': key, 'nome': nome, 'dropdown': True})
+    _ticker_lists_save(uid, meta)
+    return jsonify({'ok': True, 'key': key})
+
+
+@app.route('/api/ticker-lists/<key>', methods=['DELETE'])
+@login_required
+def api_ticker_lists_delete(key):
+    uid = current_user.id
+    if key in ('LIQ', 'GERAL'):
+        return jsonify({'error': 'As listas padrão não podem ser excluídas (desmarque-as nas listas suspensas, se quiser).'}), 400
+    meta = _ticker_lists_meta(uid)
+    if not any(m['key'] == key for m in meta):
+        return jsonify({'error': 'Lista não encontrada.'}), 404
+    RankingVol.query.filter_by(user_id=uid, grupo=key).delete()
+    _ticker_lists_save(uid, [m for m in meta if m['key'] != key])
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/ticker-lists/<key>/tickers', methods=['POST', 'DELETE'])
+@login_required
+def api_ticker_lists_tickers(key):
+    uid = current_user.id
+    if not any(m['key'] == key for m in _ticker_lists_meta(uid)):
+        return jsonify({'error': 'Lista não encontrada.'}), 404
+    data = request.get_json(silent=True) or {}
+    if request.method == 'DELETE':
+        t = (data.get('ticker') or '').strip().upper()
+        for rv in _tl_query(uid, key).filter(RankingVol.ticker == t).all():
+            if key == 'GERAL' and t in RANKING_GERAL_TICKERS and not RankingVolExcluded.query.filter_by(user_id=uid, ticker=t).first():
+                db.session.add(RankingVolExcluded(user_id=uid, ticker=t))
+            db.session.delete(rv)
+        db.session.commit()
+        return jsonify({'ok': True})
+    # POST: aceita vários tickers separados por espaço, vírgula ou quebra de linha
+    brutos = re.split(r'[^A-Za-z0-9]+', str(data.get('tickers') or ''))
+    novos = []
+    existentes = {(r.ticker or '').upper() for r in _tl_query(uid, key).all()}
+    grupo = 'LIQ' if key == 'LIQ' else key
+    for t in brutos:
+        t = t.strip().upper()
+        if not t or len(t) > 15 or t in existentes:
+            continue
+        existentes.add(t)
+        novos.append(t)
+        db.session.add(RankingVol(user_id=uid, ticker=t, grupo=grupo))
+        if key == 'GERAL':
+            RankingVolExcluded.query.filter_by(user_id=uid, ticker=t).delete()
+    db.session.commit()
+    return jsonify({'ok': True, 'adicionados': novos})
+
+
 @app.route('/ranking-volatilidade')
 @login_required
 def ranking_volatilidade():
-    lista = (request.args.get('lista') or 'liq').lower()
-    if lista == 'geral':
+    key = _tl_key_from_slug(current_user.id, request.args.get('lista'))
+    if key == 'GERAL':
         _seed_ranking_geral(current_user.id)
-        q = RankingVol.query.filter_by(user_id=current_user.id, grupo='GERAL')
-    else:
-        lista = 'liq'
-        q = _ranking_liq_filter(RankingVol.query.filter_by(user_id=current_user.id))
-    ranking_vol = q.order_by(RankingVol.ticker).all()
-    return render_template('ranking_vol.html', ranking_vol=ranking_vol, lista=lista)
+    ranking_vol = _tl_query(current_user.id, key).order_by(RankingVol.ticker).all()
+    listas = _ticker_lists_meta(current_user.id)
+    return render_template('ranking_vol.html', ranking_vol=ranking_vol, lista=key.lower(),
+                           listas=listas,
+                           dropdown_tickers=_ranking_dropdown_tickers(current_user.id))
 
 
 @app.route('/estudos/ranking_vol/add', methods=['POST'])
 @login_required
 def ranking_vol_add():
-    lista  = (request.form.get('lista') or 'liq').lower()
-    grupo  = 'GERAL' if lista == 'geral' else 'LIQ'
+    grupo  = _tl_key_from_slug(current_user.id, request.form.get('lista'))
+    lista  = grupo.lower()
     ticker = request.form.get('ticker', '').strip().upper()
     if not ticker:
         flash('Ticker obrigatório.', 'danger')
         return redirect(url_for('ranking_volatilidade', lista=lista))
     q = RankingVol.query.filter_by(user_id=current_user.id, ticker=ticker)
-    exists = (q.filter_by(grupo='GERAL') if grupo == 'GERAL' else _ranking_liq_filter(q)).first()
+    exists = (_ranking_liq_filter(q) if grupo == 'LIQ' else q.filter_by(grupo=grupo)).first()
     if exists:
         flash(f'{ticker} já está no ranking.', 'warning')
         return redirect(url_for('ranking_volatilidade', lista=lista))
@@ -21712,7 +21851,7 @@ def ranking_vol_add():
 @login_required
 def ranking_vol_delete(rid):
     rv = RankingVol.query.filter_by(id=rid, user_id=current_user.id).first_or_404()
-    lista = 'geral' if rv.grupo == 'GERAL' else 'liq'
+    lista = (rv.grupo or 'LIQ').lower()
     ticker = rv.ticker
     # Lápide: sem isso, _seed_ranking_geral() recria o ticker padrão na
     # próxima visita à lista GERAL, porque só olha o que existe hoje na
@@ -21772,8 +21911,7 @@ def _api_ranking_vol_update_impl():
     # Atualiza somente a lista ativa (liq = com liquidez; geral = lista ampla)
     lista = ((request.get_json(silent=True) or {}).get('lista')
              or request.args.get('lista') or 'liq').lower()
-    q = RankingVol.query.filter_by(user_id=uid)
-    items = (q.filter_by(grupo='GERAL') if lista == 'geral' else _ranking_liq_filter(q)).all()
+    items = _tl_query(uid, _tl_key_from_slug(uid, lista)).all()
     if not items:
         return jsonify({'updated': 0, 'results': []})
 

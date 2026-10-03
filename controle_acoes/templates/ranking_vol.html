@@ -165,13 +165,14 @@
 </p>
 
 <!-- Seleção da lista -->
-<div style="display:flex;gap:.5rem;margin-bottom:.85rem;">
-  <a href="{{ url_for('ranking_volatilidade', lista='liq') }}" onclick="localStorage.setItem('rv-lista','liq')"
-     class="btn btn-sm" style="{{ 'background:#0ea5e9;color:#fff;font-weight:700;' if lista != 'geral'
-        else 'background:var(--hover-bg);color:var(--text-secondary);' }}">💧 Com liquidez</a>
-  <a href="{{ url_for('ranking_volatilidade', lista='geral') }}" onclick="localStorage.setItem('rv-lista','geral')"
-     class="btn btn-sm" style="{{ 'background:#0ea5e9;color:#fff;font-weight:700;' if lista == 'geral'
-        else 'background:var(--hover-bg);color:var(--text-secondary);' }}">🌐 Geral</a>
+<div style="display:flex;gap:.5rem;margin-bottom:.85rem;flex-wrap:wrap;">
+  {% for l in listas %}
+  <a href="{{ url_for('ranking_volatilidade', lista=l.key|lower) }}" onclick="localStorage.setItem('rv-lista','{{ l.key|lower }}')"
+     class="btn btn-sm" style="{{ 'background:#0ea5e9;color:#fff;font-weight:700;' if lista == l.key|lower
+        else 'background:var(--hover-bg);color:var(--text-secondary);' }}">{{ '💧 ' if l.key == 'LIQ' else ('🌐 ' if l.key == 'GERAL' else '📋 ') }}{{ l.nome }}</a>
+  {% endfor %}
+  <a href="{{ url_for('config') }}#tl-section" class="btn btn-sm" title="Editar nomes, ativos e quais listas aparecem nas listas suspensas"
+     style="background:transparent;color:var(--text-secondary);border:1px dashed var(--border-color);">✏️ Editar listas</a>
 </div>
 <script>
 // Restaura a última lista escolhida quando a página é aberta sem parâmetro
@@ -179,8 +180,8 @@
   var params = new URLSearchParams(location.search);
   if (!params.has('lista')) {
     var saved = localStorage.getItem('rv-lista');
-    if (saved === 'geral') {
-      params.set('lista', 'geral');
+    if (saved && saved !== 'liq') {
+      params.set('lista', saved);
       location.replace(location.pathname + '?' + params.toString());
     }
   } else {
@@ -346,13 +347,9 @@
          "Trocar ticker" aparece), evitando que 20+ chips empurrem o conteúdo
          útil (as tabelas) para fora da tela em celular. -->
     <details class="liq-ticker-switcher" id="liq-ticker-switcher">
-      <summary>Trocar ticker</summary>
+      <summary>Trocar ativo</summary>
       <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-top:.5rem">
-        <div style="display:flex;gap:.35rem;flex-wrap:wrap" id="liq-ticker-btns"></div>
-        <div style="display:flex;gap:.3rem;align-items:center">
-          <input id="liq-add-ticker" type="text" placeholder="Ticker" style="width:78px;text-transform:uppercase;background:var(--input-bg,#0f172a);border:1px solid var(--border-color);color:var(--text-primary);border-radius:5px;padding:.18rem .4rem;font-size:.75rem">
-          <button type="button" class="btn-verde" onclick="addLiqTicker()" style="border-radius:5px;padding:.2rem .45rem;font-size:.75rem;cursor:pointer">Adicionar</button>
-        </div>
+        <div style="display:flex;gap:.4rem;flex-wrap:wrap;align-items:center" id="liq-ticker-btns"></div>
       </div>
     </details>
     <script>
@@ -657,32 +654,48 @@
     });
   }
 
+  // Ativos da lista suspensa: listas marcadas em ⚙️ APIs → "Listas de ativos"
+  var _DD_TICKERS = {{ (dropdown_tickers|default([]))|tojson }};
   function _visibleTickers(){
+    if(_DD_TICKERS.length) return _DD_TICKERS.slice();
     return Array.from(document.querySelectorAll('#rv-tbody tr[data-ticker]'))
       .filter(function(r){return r.style.display!=='none';})
       .map(function(r){return r.dataset.ticker;});
   }
 
+  var _SEL_STYLE = 'background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:5px;padding:.3rem .5rem;font-size:.85rem';
   function _renderLiqTickerButtons(tickers){
     _liqBtnsCt.innerHTML = '';
-    tickers.slice(0, 30).forEach(function(t){
-      var wrap = document.createElement('span');
-      wrap.style.cssText = 'display:inline-flex;align-items:center;border:1px solid #475569;border-radius:4px;overflow:hidden;background:var(--hover-bg,#334155)';
-      var btn = document.createElement('button');
-      btn.textContent = t;
-      btn.dataset.t = t;
-      btn.style.cssText = 'padding:.1rem .42rem;border:0;font-size:.72rem;cursor:pointer;color:#e2e8f0;background:transparent;white-space:nowrap';
-      btn.onclick = function(){ _liqSelectedExpiry = null; _loadLiqTicker(t); };
-      var del = document.createElement('button');
-      del.type = 'button';
-      del.textContent = '×';
-      del.title = 'Remover ticker';
-      del.style.cssText = 'padding:.1rem .28rem;border:0;border-left:1px solid #475569;color:#f87171;background:transparent;cursor:pointer;font-size:.8rem;line-height:1';
-      del.onclick = function(e){ e.stopPropagation(); removeLiqTicker(t); };
-      wrap.appendChild(btn);
-      wrap.appendChild(del);
-      _liqBtnsCt.appendChild(wrap);
-    });
+    var sel = document.createElement('select');
+    sel.id = 'liq-ativo-sel'; sel.style.cssText = _SEL_STYLE;
+    sel.innerHTML = '<option value="">selecione…</option>' +
+      tickers.map(function(t){ return '<option value="'+t+'">'+t+'</option>'; }).join('') +
+      '<option value="__outro__">— outro ativo… —</option>';
+    var txt = document.createElement('input');
+    txt.type = 'text'; txt.id = 'liq-ativo-txt'; txt.placeholder = 'Digite o ticker'; txt.maxLength = 10;
+    txt.style.cssText = _SEL_STYLE + ';display:none;width:110px;text-transform:uppercase';
+    var go = document.createElement('button');
+    go.type = 'button'; go.className = 'btn btn-primary btn-sm'; go.textContent = '🔎 Buscar';
+    function buscar(){
+      var t = sel.value === '__outro__' ? (txt.value || '').trim().toUpperCase() : sel.value;
+      if(!t) return;
+      _liqSelectedExpiry = null; _loadLiqTicker(t);
+    }
+    sel.onchange = function(){
+      var livre = sel.value === '__outro__';
+      txt.style.display = livre ? '' : 'none';
+      if(livre){ txt.focus(); return; }
+      buscar();
+    };
+    txt.onkeydown = function(e){ if(e.key === 'Enter') buscar(); };
+    go.onclick = buscar;
+    _liqBtnsCt.appendChild(sel); _liqBtnsCt.appendChild(txt); _liqBtnsCt.appendChild(go);
+  }
+  function _liqSyncSelect(ticker){
+    var sel = document.getElementById('liq-ativo-sel'); if(!sel) return;
+    var has = Array.prototype.some.call(sel.options, function(o){ return o.value === ticker; });
+    if(has){ sel.value = ticker; var t = document.getElementById('liq-ativo-txt'); if(t) t.style.display = 'none'; }
+    else { sel.value = '__outro__'; var t2 = document.getElementById('liq-ativo-txt'); if(t2){ t2.style.display = ''; t2.value = ticker; } }
   }
 
   function fmtBRL(v){
@@ -805,11 +818,7 @@
     document.getElementById('liq-loading').textContent   = 'Buscando dados via OpLab…';
     document.getElementById('liq-tables').style.display  = 'none';
     document.getElementById('liq-summary').innerHTML     = '';
-    _liqBtnsCt.querySelectorAll('button[data-t]').forEach(function(b){
-      var active = b.dataset.t === ticker;
-      b.style.background  = active ? '#7c3aed' : 'var(--hover-bg,#334155)';
-      b.style.fontWeight  = active ? '700' : '400';
-    });
+    _liqSyncSelect(ticker);
 
     var cacheKey = ticker + ':' + limit + ':' + _liqMode + ':' + (_liqSelectedExpiry || 'summary');
     if(_liqCache[cacheKey]){
@@ -943,62 +952,6 @@
     _renderLiqTickerButtons(tickers);
     _liqModal.style.display = 'flex';
     _loadLiqTicker(first);
-  };
-
-  function _ensureRvTickerRow(ticker){
-    var tbody = document.getElementById('rv-tbody');
-    var existing = tbody.querySelector('tr[data-ticker="'+ticker+'"]');
-    if(existing) return;
-    var tr = document.createElement('tr');
-    tr.dataset.ticker = ticker;
-    tr.innerHTML = '<td><span class="ticker-badge">'+ticker+'</span></td>'
-      + '<td class="rv-var">—</td><td class="rv-price">—</td><td class="rv-date">—</td>'
-      + '<td class="rv-ivr">—</td><td class="rv-ivp">—</td><td class="rv-vol">—</td>'
-      + '<td class="rv-volmin">—</td><td class="rv-volmax">—</td><td></td>';
-    tbody.appendChild(tr);
-    var empty = document.getElementById('rv-empty'); if(empty) empty.remove();
-  }
-
-  window.addLiqTicker = function(){
-    var input = document.getElementById('liq-add-ticker');
-    var ticker = (input.value || '').trim().toUpperCase();
-    if(!ticker) return;
-    fetch('/api/ranking_vol/ticker', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name=csrf-token]')?.content||''},
-      body: JSON.stringify({ticker:ticker})
-    }).then(function(r){return r.json();}).then(function(d){
-      if(d.error){ alert(d.error); return; }
-      input.value = '';
-      _ensureRvTickerRow(ticker);
-      // _visibleTickers() pode não incluir a nova row antes do repaint;
-      // garante que o ticker novo conste na lista de botões diretamente
-      var tickers = _visibleTickers();
-      if(tickers.indexOf(ticker) === -1) tickers = tickers.concat([ticker]);
-      _renderLiqTickerButtons(tickers);
-      _liqSelectedExpiry = null;
-      _loadLiqTicker(ticker);
-    }).catch(function(e){ alert('Erro ao adicionar ticker: '+e); });
-  };
-
-  window.removeLiqTicker = function(ticker){
-    if(!confirm('Remover '+ticker+' da lista?')) return;
-    fetch('/api/ranking_vol/ticker', {
-      method: 'DELETE',
-      headers: {'Content-Type':'application/json','X-CSRFToken':document.querySelector('meta[name=csrf-token]')?.content||''},
-      body: JSON.stringify({ticker:ticker})
-    }).then(function(r){return r.json();}).then(function(d){
-      if(d.error){ alert(d.error); return; }
-      var row = document.querySelector('#rv-tbody tr[data-ticker="'+ticker+'"]');
-      if(row) row.remove();
-      var tickers = _visibleTickers();
-      _renderLiqTickerButtons(tickers);
-      if(_liqCurrentTicker === ticker){
-        _liqSelectedExpiry = null;
-        if(tickers.length) _loadLiqTicker(tickers[0]);
-        else closeLiquidez();
-      }
-    }).catch(function(e){ alert('Erro ao remover ticker: '+e); });
   };
 
   if(_liqLimitEl){

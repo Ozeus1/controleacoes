@@ -306,6 +306,105 @@
         </form>
     </div>
 
+    <!-- LISTAS DE ATIVOS (Ranking de Volatilidade) -->
+    <div id="tl-section" style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-bottom: 2rem;">
+        <h3>Listas de ativos</h3>
+        <p style="color: var(--text-secondary); margin-bottom: 1rem; font-size:.9rem;">
+            São as listas do Ranking de Volatilidade. Edite o nome e os ativos de cada uma e marque
+            <strong>“Aparece nas listas suspensas”</strong> para que os ativos dela entrem nas listas de busca
+            de todas as telas (Simulador, Venda de PUT Longa, Lançamento Coberto, Busca de Operações, Liquidez etc.).
+            Um ativo que esteja em mais de uma lista marcada aparece uma vez só.
+        </p>
+        <div id="tl-box" style="display:flex;flex-direction:column;gap:.8rem;"><em>Carregando…</em></div>
+        <div style="display:flex;gap:.5rem;align-items:center;margin-top:.8rem;flex-wrap:wrap;">
+            <input id="tl-new-nome" type="text" maxlength="30" placeholder="Nome da nova lista" style="max-width:220px;margin:0;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="tlNova()">+ Nova lista</button>
+            <span id="tl-msg" style="font-size:.8rem;color:var(--text-secondary);"></span>
+        </div>
+    </div>
+
+    <script>
+    (function(){
+      var box = document.getElementById('tl-box'), msg = document.getElementById('tl-msg');
+      var csrf = (document.querySelector('meta[name=csrf-token]') || {}).content || '';
+      var DATA = [];
+      function esc(t){ return String(t).replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+      function api(url, method, body){
+        return fetch(url, {method: method || 'GET',
+          headers: {'Content-Type':'application/json','X-CSRFToken':csrf},
+          body: body ? JSON.stringify(body) : undefined}).then(function(r){ return r.json(); });
+      }
+      function flash(t){ msg.textContent = t; setTimeout(function(){ if(msg.textContent === t) msg.textContent = ''; }, 2500); }
+      function render(){
+        box.innerHTML = '';
+        DATA.forEach(function(l){
+          var d = document.createElement('div');
+          d.style.cssText = 'border:1px solid var(--border-color);border-radius:8px;padding:.7rem .8rem;';
+          var chips = l.tickers.map(function(t){
+            return '<span style="display:inline-flex;align-items:center;border:1px solid #475569;border-radius:4px;font-size:.75rem;overflow:hidden;">' +
+              '<span style="padding:.1rem .4rem;">' + esc(t) + '</span>' +
+              '<button type="button" data-del="' + esc(t) + '" title="Remover" style="border:0;border-left:1px solid #475569;background:transparent;color:#f87171;cursor:pointer;padding:.1rem .3rem;">×</button></span>';
+          }).join(' ');
+          d.innerHTML =
+            '<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:.5rem;">' +
+              '<input type="text" class="tl-nome" maxlength="30" value="' + esc(l.nome) + '" style="max-width:220px;margin:0;font-weight:600;">' +
+              '<label style="display:inline-flex;gap:.35rem;align-items:center;font-size:.85rem;cursor:pointer;white-space:nowrap;margin:0;">' +
+                '<input type="checkbox" class="tl-dd" style="width:auto;margin:0;"' + (l.dropdown ? ' checked' : '') + '> Aparece nas listas suspensas</label>' +
+              '<span style="font-size:.78rem;color:var(--text-secondary);">' + l.tickers.length + ' ativos</span>' +
+              (l.custom ? '<button type="button" class="btn btn-secondary btn-sm tl-del-lista" style="margin-left:auto;color:#f87171;">Excluir lista</button>' : '') +
+            '</div>' +
+            '<details><summary style="cursor:pointer;font-size:.85rem;">Editar ativos</summary>' +
+              '<div style="display:flex;gap:.5rem;align-items:center;margin:.5rem 0;flex-wrap:wrap;">' +
+                '<input type="text" class="tl-add" placeholder="Tickers (separe por espaço ou vírgula)" style="max-width:320px;margin:0;text-transform:uppercase;">' +
+                '<button type="button" class="btn btn-secondary btn-sm tl-add-btn">Adicionar</button></div>' +
+              '<div style="display:flex;gap:.3rem;flex-wrap:wrap;max-height:220px;overflow:auto;">' + chips + '</div>' +
+            '</details>';
+          d.querySelector('.tl-nome').onchange = d.querySelector('.tl-dd').onchange = function(){
+            l.nome = d.querySelector('.tl-nome').value.trim() || l.nome;
+            l.dropdown = d.querySelector('.tl-dd').checked;
+            api('/api/ticker-lists/save', 'POST', {listas: DATA.map(function(x){ return {key:x.key, nome:x.nome, dropdown:x.dropdown}; })})
+              .then(function(){ flash('Salvo.'); });
+          };
+          var add = function(){
+            var inp = d.querySelector('.tl-add'); if(!inp.value.trim()) return;
+            api('/api/ticker-lists/' + l.key + '/tickers', 'POST', {tickers: inp.value}).then(function(r){
+              if(r.error){ flash(r.error); return; }
+              (r.adicionados || []).forEach(function(t){ l.tickers.push(t); }); l.tickers.sort();
+              flash((r.adicionados || []).length + ' adicionado(s).'); var open = true; render();
+              var det = box.children[DATA.indexOf(l)].querySelector('details'); if(det) det.open = open;
+            });
+          };
+          d.querySelector('.tl-add-btn').onclick = add;
+          d.querySelector('.tl-add').onkeydown = function(e){ if(e.key === 'Enter'){ e.preventDefault(); add(); } };
+          d.querySelectorAll('[data-del]').forEach(function(b){
+            b.onclick = function(){
+              var t = b.dataset.del;
+              api('/api/ticker-lists/' + l.key + '/tickers', 'DELETE', {ticker: t}).then(function(){
+                l.tickers = l.tickers.filter(function(x){ return x !== t; }); render();
+                var det = box.children[DATA.indexOf(l)].querySelector('details'); if(det) det.open = true;
+              });
+            };
+          });
+          var dl = d.querySelector('.tl-del-lista');
+          if(dl) dl.onclick = function(){
+            if(!confirm('Excluir a lista "' + l.nome + '" e seus ativos?')) return;
+            api('/api/ticker-lists/' + l.key, 'DELETE').then(function(r){
+              if(r.error){ flash(r.error); return; }
+              DATA = DATA.filter(function(x){ return x.key !== l.key; }); render();
+            });
+          };
+          box.appendChild(d);
+        });
+      }
+      window.tlNova = function(){
+        var inp = document.getElementById('tl-new-nome');
+        api('/api/ticker-lists/new', 'POST', {nome: inp.value}).then(function(){ inp.value = ''; load(); });
+      };
+      function load(){ api('/api/ticker-lists').then(function(r){ DATA = r.listas || []; render(); }); }
+      load();
+    })();
+    </script>
+
     <div style="border-top: 1px solid var(--border-color); padding-top: 2rem;">
         <h3>Testar Conexão OpLab</h3>
         <p style="color: var(--text-secondary); margin-bottom: 1rem;">

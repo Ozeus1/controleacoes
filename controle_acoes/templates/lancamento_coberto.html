@@ -52,16 +52,18 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
 
   <!-- Tickers -->
   <div style="margin-bottom:.6rem;">
-    <div id="lc-tickers" style="margin-bottom:.5rem;">
-      <button class="lc-tbtn" data-t="BOVA11" onclick="lcLoad('BOVA11')">BOVA11</button>
-      {% for rv in ranking_vol %}
-      <button class="lc-tbtn" data-t="{{ rv.ticker }}" onclick="lcLoad('{{ rv.ticker }}')">{{ rv.ticker }}</button>
-      {% endfor %}
-    </div>
     <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;">
-      <input id="lc-add-input" type="text" placeholder="Outro ticker…" maxlength="10"
+      <select id="lc-ativo-sel" onchange="lcSelMudou(this)"
+              style="background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:5px;padding:.35rem .5rem;font-size:.85rem">
+        <option value="">selecione…</option>
+        {% for t in (['BOVA11'] + (ranking_vol|map(attribute='ticker')|list))|unique %}
+        <option value="{{ t }}">{{ t }}</option>
+        {% endfor %}
+        <option value="__outro__">— outro ativo… —</option>
+      </select>
+      <input id="lc-add-input" type="text" placeholder="Digite o ticker" maxlength="10" style="display:none;width:110px;text-transform:uppercase;"
              onkeydown="if(event.key==='Enter')lcLoad(this.value)">
-      <button class="btn btn-secondary btn-sm" onclick="lcLoad(document.getElementById('lc-add-input').value)">🔍 Buscar</button>
+      <button class="btn btn-primary btn-sm" onclick="lcBuscar()">🔍 Buscar</button>
       <span style="width:1px;height:20px;background:var(--border-color);margin:0 .3rem;"></span>
       <label style="font-size:.82rem;color:var(--text-secondary);display:inline-flex;align-items:center;gap:.3rem;white-space:nowrap;cursor:pointer;">
         <input type="checkbox" id="lc-chk-otm" checked onchange="lcMoneyChanged()"> OTM
@@ -216,13 +218,30 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (curTicker) lcLoad(curTicker);
   };
 
+  window.lcSelMudou = function(sel) {
+    var livre = sel.value === '__outro__';
+    var txt = document.getElementById('lc-add-input');
+    txt.style.display = livre ? '' : 'none';
+    if (livre) { txt.value = ''; txt.focus(); return; }
+    if (sel.value) lcLoad(sel.value);
+  };
+  window.lcBuscar = function() {
+    var sel = document.getElementById('lc-ativo-sel');
+    var t = sel.value === '__outro__' ? document.getElementById('lc-add-input').value : sel.value;
+    lcLoad(t);
+  };
+  function lcSyncSel(ticker) {
+    var sel = document.getElementById('lc-ativo-sel'), txt = document.getElementById('lc-add-input');
+    var has = Array.prototype.some.call(sel.options, function(o) { return o.value === ticker; });
+    if (has) { sel.value = ticker; txt.style.display = 'none'; }
+    else { sel.value = '__outro__'; txt.style.display = ''; txt.value = ticker; }
+  }
+
   window.lcLoad = function(ticker) {
     ticker = (ticker || '').trim().toUpperCase();
     if (!ticker) return;
     curTicker = ticker;
-    document.querySelectorAll('.lc-tbtn').forEach(function(b) {
-      b.classList.toggle('active', b.dataset.t === ticker);
-    });
+    lcSyncSel(ticker);
     document.getElementById('lc-loading').style.display = 'block';
     document.getElementById('lc-error').style.display = 'none';
     document.getElementById('lc-results').innerHTML = '';

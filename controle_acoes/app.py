@@ -3136,9 +3136,9 @@ def api_busca_opcao(ticker):
         'rho':              _fz(greeks.get('rho')),
         'vega':             _fz(greeks.get('vega')),
         # Volatilidade (de /market/options/{underlying})
-        'iv':               _fz(iv_data.get('iv') or iv_data.get('current')),
-        'iv_ask':           _fz(iv_data.get('ask')),
-        'iv_bid':           _fz(iv_data.get('bid')),
+        'iv':               _fz(iv_data.get('iv') or iv_data.get('current'), 6),
+        'iv_ask':           _fz(iv_data.get('ask'), 6),
+        'iv_bid':           _fz(iv_data.get('bid'), 6),
         'iv_over_hv':       _fz(iv_data.get('iv_over_hv') or iv_data.get('ratio')),
         'intrinsic_value':  _f(iv_data.get('intrinsic_value') if iv_data.get('intrinsic_value') is not None else greeks.get('intrinsic_value')),
         'extrinsic_value':  _fz(iv_data.get('extrinsic_value') or greeks.get('extrinsic_value') or greeks.get('time_value')),
@@ -3191,6 +3191,16 @@ def api_busca_opcao(ticker):
         if not result.get('type') and rtd.option_type:
             result['type'] = rtd.option_type
         result['_rtd_imported_at'] = rtd.imported_at.strftime('%d/%m/%Y %H:%M') if rtd.imported_at else None
+
+    # A VI chega ora em % (30,29), ora em fração (0,30 — OpLab em alguns casos e
+    # RTD/Profit). O contrato desta rota é PERCENTUAL: uma VI ≤ 1,5 não existe em %
+    # para ações/ETFs, então é fração e vira % (0,37 → 37).
+    for _k in ('iv', 'iv_ask', 'iv_bid'):
+        _v = result.get(_k)
+        if _v and 0 < _v <= 1.5:
+            result[_k] = round(_v * 100, 2)
+        elif _v:
+            result[_k] = round(_v, 2)
 
     # ── Dias corridos (calendário) a partir da data de vencimento ────────────
     # days_to_maturity da OpLab é em dias ÚTEIS; days_calendar (corridos) é usado
@@ -3841,7 +3851,7 @@ def _busca_cadeia_flat(ticker, user_id):
             'bid_eff': round(_b_eff, 2) if _b_eff else 0,
             'ask_eff': round(_a_eff, 2) if _a_eff else 0,
             'mid': round((bid + ask) / 2, 2) if (bid or ask) else 0,
-            'iv': round(float(iv_pct), 2) if iv_pct is not None else None,
+            'iv': round(float(iv_pct) * (100 if 0 < float(iv_pct) <= 1.5 else 1), 2) if iv_pct is not None else None,
             'var_pct': round(var_pct, 2),
             'vol_fin': round(vol_fin, 2),
         })
@@ -4673,7 +4683,7 @@ def api_cadeia(ticker):
             'delta':    round(float(delta), 2) if delta is not None else None,
             'teorico':  round(teorico, 2),
             'liquidez': round(liquidez, 2),
-            'iv':       round(float(iv_pct), 2) if iv_pct is not None else None,
+            'iv':       round(float(iv_pct) * (100 if 0 < float(iv_pct) <= 1.5 else 1), 2) if iv_pct is not None else None,
             'mid':      round((bid + ask) / 2, 2) if (bid or ask) else 0,
             # Preços executáveis + a origem de cada um, para a tela poder dizer
             # ao usuário se o número veio do book ou do último negócio.

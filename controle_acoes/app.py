@@ -2566,6 +2566,20 @@ def _sim_producao_redirect(sim):
     return redirect(url_for('opcoes'))
 
 
+def _iv_pct_db(v):
+    """VI das pernas salvas, sempre em % (30,0 = 30%). Simulações salvas pela Cadeia
+    de Opções guardaram FRAÇÃO (0,3) por engano; ≤ 1,5 não existe em % para
+    ações/ETFs, então é fração e vira % na leitura."""
+    try:
+        v = float(v or 0)
+    except (TypeError, ValueError):
+        return 0
+    return round(v * 100, 2) if 0 < v <= 1.5 else v
+
+
+app.add_template_filter(_iv_pct_db, 'iv_pct')
+
+
 @app.route('/simulacao_opcoes')
 @login_required
 def simulacao_opcoes():
@@ -2796,7 +2810,7 @@ def api_simulacao_list():
             'legs': [{'type': l.leg_type, 'side': l.side, 'qty': l.quantity,
                       'ticker': l.ticker, 'premium': l.premium,
                       'strike': l.strike, 'exp': l.expiration.isoformat() if l.expiration else '',
-                      'iv': l.iv or 0} for l in s.legs],
+                      'iv': _iv_pct_db(l.iv)} for l in s.legs],
         })
     return jsonify(result)
 
@@ -2889,7 +2903,7 @@ def api_simulacao_get(sim_id):
             'premium': l.premium,
             'ticker':  l.ticker or '',
             'exp':     l.expiration.isoformat() if l.expiration else '',
-            'iv':      l.iv or 0,
+            'iv':      _iv_pct_db(l.iv),
         } for l in sim.legs],
     })
 

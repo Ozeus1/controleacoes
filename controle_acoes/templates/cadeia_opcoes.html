@@ -955,7 +955,7 @@ document.getElementById('sim-save-btn').addEventListener('click',function(){
   if(!name){alert('Informe um nome para a simulação.');return;}
   var legs=readLegsC().map(function(l){return {
     type:l.type, side:l.side, qty:l.qty, ticker:l.ticker,
-    premium:l.premium, strike:l.strike, exp:l.exp||'', iv:l.iv||0
+    premium:l.premium, strike:l.strike, exp:l.exp||'', iv:l.iv?l.iv*100:0   /* banco guarda VI em % (como Simulador) */
   };});
   var body={name:name,underlying:underlying,legs:legs};
   if(simId) body.id=parseInt(simId);

@@ -287,7 +287,7 @@
                     </td>
                     <td class="col-iv" style="display:none;">
                         <input type="text" name="leg_iv"
-                               value="{{ ('%.1f'|format(leg.iv) if leg.iv else '0,0')|replace('.', ',') }}"
+                               value="{{ ('%.1f'|format(leg.iv|iv_pct) if leg.iv else '0,0')|replace('.', ',') }}"
                                placeholder="0,0" style="width:60px; text-align:right;" oninput="scheduleRedraw()"
                                {% if isSt %}readonly{% endif %}>
                     </td>

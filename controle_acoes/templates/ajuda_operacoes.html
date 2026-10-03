@@ -767,7 +767,27 @@ var OPS=[
  cenario:'Neutra a leve alta: espera-se o ativo estagnado dentro de um intervalo; lucra com o Theta acelerado das pontas curtas vendidas, protegido pelas longas.',
  sel:['Curtas: straddle ATM (mesmo strike) · Longas: strangle OTM (Δ ≈ ±0,20–0,35)','Compras no venc. distante (Back), vendas no próximo (Front)','Crédito ou débito conforme prazos/strikes · estimado por BS'],
  man:['Rebalancear o Delta se o preço ameaçar as pontas curtas','Combina dois spreads diagonais — rolar conforme o cenário'],
- busca:B(BA,'straddle_strangle_swap')}
+ busca:B(BA,'straddle_strangle_swap')},
+{cat:'cat-cal',nome:'Bull Straddle / HA',cen:'alta',tipo:'zero',
+ alias:['bull_straddle_ha'],
+ tags:['ALTA','CRÉDITO OU PEQUENO DÉBITO','Θ A FAVOR + CONVEXIDADE'],
+ cal:true,dcS:30,dcL:90,iv:0.30,
+ legs:[{t:'C',q:-1,K:100,p:3.4},{t:'P',q:-1,K:100,p:3.0},{t:'C',q:2,K:104,p:3.0,long:true}],
+ mont:'−1 CALL + −1 PUT no mesmo strike e vencimento curto (T1) + 2 CALLs compradas em strike acima e vencimento posterior (T2 > T1). −C_K(T1) − P_K(T1) + 2·C_(K+Δ)(T2). Ex.: BOVA11 = 184 → −C184 Out −P184 Out +2 C186 Nov.',
+ cenario:'Lateral a moderadamente altista, com possibilidade de alta forte. Combina a renda do straddle vendido (theta) com a assimetria das 2 CALLs longas: numa alta forte −1 CALL + 2 CALL ≈ +1 CALL, e a estrutura passa a ganhar com a continuação da alta.',
+ sel:['Straddle: strike ATM ou muito próximo do spot','HA: 2 CALLs compradas normalmente 1 strike acima, em vencimento posterior','Boa liquidez nas três séries','HA mais próximo: mais proteção e mais custo; mais distante: menos custo e maior zona de desconforto','Crédito líquido = prêmio CALL + prêmio PUT − 2 × custo da CALL longa; montar a crédito, perto de zero ou com pequeno débito (evitar débito excessivo)'],
+ man:['Perto do strike central: aproveitar o theta do straddle','Próximo do vencimento curto: rolar CALL e PUT para o vencimento seguinte; as CALLs longas ficam como lastro/HA','Queda: CALL vendida vira pó, CALLs longas perdem valor e a PUT vendida concentra o risco — rolar a PUT ou aceitar assunção das ações, se planejado','Alta: PUT vira pó, CALL vendida fica ITM, mas as 2 CALLs longas compensam e depois superam','Saída: realizar quando o straddle perdeu boa parte do extrínseco; encerrar tudo ao atingir o objetivo','Ponto de atenção: região K < S < K+Δ — a CALL curta já perde e as longas ainda não protegem totalmente'],
+ busca:B(BA,'bull_straddle_ha')},
+{cat:'cat-cal',nome:'Bear Straddle / HA',cen:'baixa',tipo:'zero',
+ alias:['bear_straddle_ha'],
+ tags:['BAIXA','CRÉDITO OU PEQUENO DÉBITO','Θ A FAVOR + CONVEXIDADE'],
+ cal:true,dcS:30,dcL:90,iv:0.30,
+ legs:[{t:'C',q:-1,K:100,p:3.4},{t:'P',q:-1,K:100,p:3.0},{t:'P',q:2,K:96,p:3.0,long:true}],
+ mont:'−1 CALL + −1 PUT no mesmo strike e vencimento curto (T1) + 2 PUTs compradas em strike abaixo e vencimento posterior (T2 > T1). −C_K(T1) − P_K(T1) + 2·P_(K−Δ)(T2). Ex.: BOVA11 = 184 → −C184 Out −P184 Out +2 P182 Nov.',
+ cenario:'Lateral a moderadamente baixista, com possibilidade de queda forte. Renda do straddle vendido + assimetria das 2 PUTs longas: numa queda forte −1 PUT + 2 PUT ≈ +1 PUT, e a estrutura passa a ganhar com a continuação da queda.',
+ sel:['Straddle: strike ATM ou muito próximo do spot','HA: 2 PUTs compradas normalmente 1 strike abaixo, em vencimento posterior','Strikes líquidos','HA mais próximo: mais proteção, mais custo e reação mais rápida; mais distante: menos custo e maior zona de desconforto','Crédito líquido = prêmio CALL + prêmio PUT − 2 × custo da PUT longa; a crédito, perto de zero ou com pequeno débito — comparar o custo com a distância K − (K−Δ)'],
+ man:['Perto do strike central: capturar theta do straddle','Próximo do vencimento curto: rolar CALL e PUT para a série seguinte; as PUTs longas ficam como lastro/HA','Queda: CALL vendida perde valor, PUT vendida entra ITM e as 2 PUTs longas compensam e depois superam','Alta: PUT vira pó, PUTs longas perdem valor e a CALL vendida concentra o risco (coberta se houver ações; sem cobertura, atenção ao risco crescente)','Saída: realizar quando o straddle perdeu boa parte do extrínseco; realizar as PUTs longas em queda forte; na alta, manejar/rolar a CALL','Ponto de atenção: região K−Δ < S < K — a PUT curta já perde e as longas ainda não protegem totalmente'],
+ busca:B(BA,'bear_straddle_ha')}
 ];
 
 /* ── Render ── */
@@ -817,7 +837,7 @@ var VI_BY_OP={
   booster:'alta',
   vaca_travada:'alta', vaca_tradicional:'alta', vaca_revertida:'neutra',
   boi_coberto:'neutra', vaca_put:'alta',
-  strap:'baixa', strip:'baixa', guts_long:'baixa', guts_short:'alta', strangle_itm:'alta',
+  strap:'baixa', strip:'baixa', guts_long:'baixa', guts_short:'alta', strangle_itm:'alta', bull_straddle_ha:'alta', bear_straddle_ha:'alta',
   box_spread:'neutra', box3:'neutra', box4:'neutra',
   acao_sintetica:'neutra', short_sintetico:'neutra', risk_reversal:'neutra',
   synthetic_straddle:'baixa', fence:'baixa', fence_alavancada:'baixa', seagull_alavancada:'alta',

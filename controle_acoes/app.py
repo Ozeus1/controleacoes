@@ -5146,7 +5146,8 @@ def api_busca_operacoes(ticker):
     _CAL_V4 = ('neutral_calendar', 'double_calendar', 'pmcc', 'bull_calendar',
                'pmcp', 'bear_calendar')
     if op in ('calendar_spread', 'diagonal_spread', 'double_diagonal',
-              'short_call_calendar', 'straddle_strangle_swap') + _CAL_V4:
+              'short_call_calendar', 'straddle_strangle_swap',
+              'bull_straddle_ha', 'bear_straddle_ha') + _CAL_V4:
         def _enrich_cal(lst):
             out = []
             for rw in lst:
@@ -5249,7 +5250,12 @@ def api_busca_operacoes(ticker):
                             sig = lg['iv'] or 0.35
                             v += q * _bs_price(S, lg['k'], T_rem, r_cont, sig, is_c)
                     return v
-                grid = [spot * (0.70 + 0.01 * k) for k in range(61)]   # 0.70–1.30 × spot
+                if op in ('bull_straddle_ha', 'bear_straddle_ha'):
+                    # exposição aberta nas duas pontas: varre ~0–1,60 × spot
+                    # (S→0 entra no cálculo para a perda/ganho máximos da PUT)
+                    grid = [spot * (0.01 + 0.0265 * k) for k in range(61)]
+                else:
+                    grid = [spot * (0.70 + 0.01 * k) for k in range(61)]   # 0.70–1.30 × spot
                 vals = [val(S) for S in grid]
                 bes = []
                 for k in range(len(grid) - 1):
@@ -5352,6 +5358,33 @@ def api_busca_operacoes(ticker):
                                            (pb, dpb or -0.5, False, -1, exp_s, dc_s),
                                            (cl, dvl, True, 1, exp_l, dc_l),
                                            (pl, dpl, False, 1, exp_l, dc_l)])
+            elif op in ('bull_straddle_ha', 'bear_straddle_ha'):
+                # Straddle curto ATM (−CALL K, −PUT K, venc. T1) + 2 CALLs (bull) ou
+                # 2 PUTs (bear) compradas em venc. posterior T2, 1–3 strikes além de K.
+                bull = op == 'bull_straddle_ha'
+                put_s_map = {p['strike']: p for p in puts_s}
+                atm_ks = sorted([c for c in calls_s
+                                 if c['bid'] >= 0.02 and c['strike'] in put_s_map
+                                 and put_s_map[c['strike']]['bid'] >= 0.02],
+                                key=lambda c: abs(c['strike'] - spot))[:2]
+                pool_l = calls_l if bull else puts_l
+                for cs in atm_ks:
+                    ps = put_s_map[cs['strike']]
+                    dcs, dps = _dl(cs, True, T_s), _dl(ps, False, T_s)
+                    if dcs is None or dps is None:
+                        continue
+                    ha = sorted([r for r in pool_l
+                                 if (r['strike'] > cs['strike'] if bull else r['strike'] < cs['strike'])
+                                 and r['ask'] >= 0.02],
+                                key=lambda r: abs(r['strike'] - cs['strike']))[:3]
+                    for idx, hl in enumerate(ha):
+                        dhl = _dl(hl, bull, T_l)
+                        if dhl is None:
+                            continue
+                        combos.append([(cs, dcs, True, -1, exp_s, dc_s),
+                                       (ps, dps, False, -1, exp_s, dc_s),
+                                       (hl, dhl, bull, 2, exp_l, dc_l)])
+                        combos[-1].append(('rank', idx, abs(cs['strike'] - spot)))
             else:   # double_diagonal
                 for cs, dvs in _cands_cal(calls_s, True, T_s, (0.18, 0.32), 'sell')[:2]:
                     for ps, dps in _cands_cal(puts_s, False, T_s, (-0.32, -0.18), 'sell')[:2]:
@@ -5367,12 +5400,21 @@ def api_busca_operacoes(ticker):
                                                (pl, dpl, False, 1, exp_l, dc_l)])
 
             # Operações do livro montadas no CRÉDITO (não exigir débito)
-            _credit_cal = ('double_diagonal', 'short_call_calendar', 'straddle_strangle_swap')
+            _ha_op = op in ('bull_straddle_ha', 'bear_straddle_ha')
+            _credit_cal = ('double_diagonal', 'short_call_calendar', 'straddle_strangle_swap')                           + (('bull_straddle_ha', 'bear_straddle_ha') if _ha_op else ())
             for sel in combos:
+                rank_k = None
+                if _ha_op:
+                    rank_k = sel[-1]
+                    sel = sel[:-1]
                 net, legs_out, max_gain, max_loss, bes = _eval_cal(sel)
                 cost = -net
                 if cost <= 0 and op not in _credit_cal:
                     continue                                  # calendários/diagonais: débito
+                if _ha_op:
+                    # crédito ou PEQUENO débito (≤ 3% do spot)
+                    if cost > 0.03 * spot:
+                        continue
                 if max_gain <= 0:
                     continue
                 ratio = round(max_gain / max_loss, 2) if max_loss > 0.001 else None
@@ -5389,7 +5431,19 @@ def api_busca_operacoes(ticker):
                     'bes':       [round(b, 2) for b in bes],
                     'est':       True,                        # valores estimados (BS)
                 })
-            rows.sort(key=lambda x: -(x['ratio'] or 0))
+                if _ha_op:
+                    # Bull: CALLs líquidas > 0 → ganho ilimitado na alta; Bear: CALL
+                    # curta descoberta na alta → perda ilimitada (cobrir com ações).
+                    rows[-1]['gain_unl'] = (op == 'bull_straddle_ha')
+                    rows[-1]['loss_unl'] = (op == 'bear_straddle_ha')
+                    rows[-1]['ratio'] = None
+                    rows[-1]['_rk'] = (rank_k[1], rank_k[2], -net)
+            if _ha_op:
+                rows.sort(key=lambda x: x['_rk'])        # HA 1 strike além primeiro, strike mais ATM, maior crédito
+                for r_ in rows:
+                    r_.pop('_rk', None)
+            else:
+                rows.sort(key=lambda x: -(x['ratio'] or 0))
             rows = rows[:8]
             expirations.append({
                 'exp':          exp_s,

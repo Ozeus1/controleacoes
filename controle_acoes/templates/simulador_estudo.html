@@ -257,10 +257,10 @@
       <label class="jb-chk" id="jb-junto-wrap" style="display:none;" title="Inclui o custo do papel (cotação × quantidade) em Preço, Boca e Último">
         <input type="checkbox" id="jb-papel-junto" onchange="simRecalc()"> Comprar Papel Junto</label>
       <span class="jb-fld" id="jb-papel-qty-wrap" style="display:none;">
-        <label style="font-size:.72rem;">Quantidade</label>
-        <input type="number" id="jb-papel-qty" min="0" step="1" oninput="simRecalc()"></span>
+        <label style="font-size:.72rem;" title="Positivo = comprar papel, negativo = vender papel">Qtd. papel (+C / −V)</label>
+        <input type="number" id="jb-papel-qty" step="1" oninput="simRecalc()"></span>
       <button type="button" class="btn btn-secondary btn-sm" style="margin-left:auto;"
-              title="Insere o papel na quantidade que zera o delta das opções (na data do slider)" onclick="jbTravaDelta()">Travar o Delta</button>
+              title="Calcula quantos papéis comprar (+) ou vender (−) para zerar o delta das opções, na data do slider" onclick="jbTravaDelta()">Travar o Delta</button>
     </div>
     <table class="jb-tab">
       <thead><tr><th>Ticker</th><th>Strike</th><th>Quantidade</th></tr></thead>
@@ -777,14 +777,14 @@ function payoffAt(S, legs, multiExp, refDateStr) {
 // Payoff" está marcado. Não é uma linha da tabela: só existe no desenho/gregas.
 function jbPapelQtd() {
     var el = document.getElementById('jb-papel-qty');
-    return Math.max(0, parseInt(el && el.value, 10) || 0);
+    return parseInt(el && el.value, 10) || 0;   // + compra / − venda
 }
 function legsComPapel(legs) {
     var on = document.getElementById('jb-papel-on');
     if (!on || !on.checked || !SPOT_ATUAL) return legs;
     var q = jbPapelQtd();
     if (!q || !legs.some(function (l) { return l.type !== 'STOCK' && l.qty > 0; })) return legs;
-    return legs.concat([{ type: 'STOCK', side: 'BUY', qty: q, strike: 0, premium: SPOT_ATUAL,
+    return legs.concat([{ type: 'STOCK', side: q > 0 ? 'BUY' : 'SELL', qty: Math.abs(q), strike: 0, premium: SPOT_ATUAL,
                           exp: null, iv: 0, ticker: '', _papel: true }]);
 }
 function lerPernasPlot() { return legsComPapel(lerPernas()); }
@@ -839,7 +839,7 @@ function jbAtualiza(legsPlot) {
     var qBase = Math.min.apply(null, opcoes.map(function (l) { return l.qty; })) || 1;
     var papel = legsPlot.filter(function (l) { return l._papel; })[0];
     var junto = document.getElementById('jb-papel-junto').checked && papel;
-    var custoPapel = junto ? papel.qty * SPOT_ATUAL / qBase : 0;
+    var custoPapel = junto ? (papel.side === 'BUY' ? 1 : -1) * papel.qty * SPOT_ATUAL / qBase : 0;
 
     var preco = 0, boca = 0, ult = 0;
     opcoes.forEach(function (l) {
@@ -860,7 +860,7 @@ function jbAtualiza(legsPlot) {
         return '<tr><td>' + escHtml(l.ticker || (l.type + ' ' + fmtNum(l.strike))) + '</td><td>R$ ' + fmtNum(l.strike)
              + '</td><td>' + (l.side === 'SELL' ? '- ' : '') + fmtNum(l.qty, 0) + '</td></tr>';
     }).join('') + (papel ? '<tr><td>' + escHtml((document.getElementById('sim-ativo') || {}).value || 'Papel')
-             + '</td><td>—</td><td>' + fmtNum(papel.qty, 0) + '</td></tr>' : '');
+             + '</td><td>—</td><td>' + (papel.side === 'SELL' ? '- ' : '') + fmtNum(papel.qty, 0) + '</td></tr>' : '');
 
     var g = jbSomaGregas(legsPlot, SPOT_ATUAL || 0, jbDataSel());
     function fmtG(v, d) { return fmtNum(v, d); }
@@ -884,7 +884,7 @@ function jbSetaQtdZeraDelta() {
     var base = lerPernas().filter(function (l) { return l.type !== 'STOCK' && l.qty > 0; });
     if (!base.length || !SPOT_ATUAL) return;
     var d = jbSomaGregas(base, SPOT_ATUAL, jbDataSel()).delta;
-    document.getElementById('jb-papel-qty').value = Math.max(0, Math.round(-d));
+    document.getElementById('jb-papel-qty').value = Math.round(-d);   // delta + → vender papel (negativo); delta − → comprar
 }
 window.jbTravaDelta = function () {
     var on = document.getElementById('jb-papel-on');

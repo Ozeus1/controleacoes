@@ -362,6 +362,7 @@ function loadCadeia(ticker){
           row.querySelector('[name=leg_premium]').value=brl(curSpot||0);
         }
       });
+      updateIVVisibilityC();
       scheduleRedrawC();
     })
     .catch(function(e){
@@ -620,6 +621,42 @@ function updateIVVisibilityC(){
     var td=row.querySelector('.col-iv-c'), inp=row.querySelector('[name=leg_iv]');
     if(td) td.style.display=(multi&&lt!=='STOCK')?'':'none';
     if(inp) inp.disabled=!(multi&&lt!=='STOCK');
+  });
+  if(multi) autoFillIVC();
+}
+
+// Vencimentos diferentes → cada perna precisa de VI (Black-Scholes). Preenche
+// sozinho as VIs vazias: primeiro pela cadeia já carregada, senão consulta a
+// ficha da opção na OpLab (/api/busca-opcao, iv já em %). Só tenta 1× por ticker
+// de cada linha e nunca sobrescreve uma VI digitada.
+function autoFillIVC(){
+  document.querySelectorAll('#legs-body .leg-row').forEach(function(row){
+    var lt=row.querySelector('[name=leg_type]').value;
+    var ivEl=row.querySelector('[name=leg_iv]');
+    var tkEl=row.querySelector('[name=leg_ticker]');
+    if(lt==='STOCK'||!ivEl||!tkEl) return;
+    var tk=tkEl.value.trim().toUpperCase();
+    if(!tk||row.dataset.ivAuto===tk) return;
+    if(parseValC(ivEl.value)>0){ row.dataset.ivAuto=tk; return; }
+    var viaCadeia=null;
+    if(allData&&allData.expirations){
+      allData.expirations.forEach(function(e){
+        (e.rows||[]).forEach(function(r){
+          [r.call,r.put].forEach(function(o){ if(o&&o.symbol===tk&&o.iv>0) viaCadeia=o.iv; });
+        });
+      });
+    }
+    row.dataset.ivAuto=tk;
+    if(viaCadeia){ ivEl.value=brl(viaCadeia); scheduleRedrawC(); return; }
+    fetch('/api/busca-opcao/'+encodeURIComponent(tk))
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if(!d||d.error||!(d.iv>0)) return;
+        if(row.dataset.ivAuto!==tk||parseValC(ivEl.value)>0) return;
+        ivEl.value=brl(d.iv);
+        scheduleRedrawC();
+      })
+      .catch(function(){});
   });
 }
 

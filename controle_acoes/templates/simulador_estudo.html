@@ -252,15 +252,21 @@
       </div>
     </div>
     <div class="jb-papel">
-      <label class="jb-chk" title="Soma ao payoff e às gregas uma posição comprada no ativo, para ver a estrutura com o delta neutralizado. Só afeta esta tela.">
+      <label class="jb-chk" title="Soma ao payoff e às gregas a compra ou venda de papéis calculada para zerar o delta. Só afeta esta tela.">
         <input type="checkbox" id="jb-papel-on" onchange="jbPapelMudou()"> Inserir Papel no Payoff</label>
-      <label class="jb-chk" id="jb-junto-wrap" style="display:none;" title="Inclui o custo do papel (cotação × quantidade) em Preço, Boca e Último">
-        <input type="checkbox" id="jb-papel-junto" onchange="simRecalc()"> Comprar Papel Junto</label>
-      <span class="jb-fld" id="jb-papel-qty-wrap" style="display:none;">
-        <label style="font-size:.72rem;" title="Positivo = comprar papel, negativo = vender papel">Qtd. papel (+C / −V)</label>
-        <input type="number" id="jb-papel-qty" step="1" oninput="simRecalc()"></span>
       <button type="button" class="btn btn-secondary btn-sm" style="margin-left:auto;"
-              title="Calcula quantos papéis comprar (+) ou vender (−) para zerar o delta das opções, na data do slider" onclick="jbTravaDelta()">Travar o Delta</button>
+              title="Abre o menu com o cálculo de quantos papéis comprar (+) ou vender (−) para zerar o delta das opções, na data do slider" onclick="jbTravaDelta()">Travar o Delta</button>
+    </div>
+    <div id="jb-menu" style="display:none;">
+      <div id="jb-calc-txt" class="sim-hint" style="margin:.1rem 0 .5rem;font-size:.84rem;"></div>
+      <div class="jb-papel" style="border-top:none;margin-top:0;padding-top:0;">
+        <label class="jb-chk" title="Soma aos papéis do delta mais a quantidade de papéis igual à de cada perna (compra do papel junto com a estrutura) e inclui o custo em Preço, Boca e Último">
+          <input type="checkbox" id="jb-papel-junto" onchange="jbJuntoMudou()"> Comprar Papel Junto
+          <span id="jb-junto-info" class="sim-hint"></span></label>
+        <span class="jb-fld">
+          <label style="font-size:.72rem;" title="Positivo = comprar papel, negativo = vender papel">Qtd. papel (+C / −V)</label>
+          <input type="number" id="jb-papel-qty" step="1" oninput="jbQtdManual()"></span>
+      </div>
     </div>
     <table class="jb-tab">
       <thead><tr><th>Ticker</th><th>Strike</th><th>Quantidade</th></tr></thead>
@@ -808,7 +814,30 @@ function jbPapelQtd() {
     var el = document.getElementById('jb-papel-qty');
     return parseInt(el && el.value, 10) || 0;   // + compra / − venda
 }
+var JB = { manual: false, juntoQtd: 0 };
+function jbMenuAberto() { return document.getElementById('jb-menu').style.display !== 'none'; }
+function jbAbreMenu() { document.getElementById('jb-menu').style.display = ''; }
+// Calcula e mostra o papel recomendado: hedge do delta (+ papéis "junto", se marcado).
+// Enquanto o usuário não digitou a quantidade à mão, o campo acompanha o cálculo.
+function jbAutoQtd(legs) {
+    if (!jbMenuAberto()) return;
+    var base = legs.filter(function (l) { return l.type !== 'STOCK' && l.qty > 0 && l.strike > 0; });
+    var txt = document.getElementById('jb-calc-txt');
+    if (!base.length || !SPOT_ATUAL) { txt.textContent = 'Preencha as pernas (e aguarde a cotação do ativo) para calcular.'; return; }
+    var d = jbSomaGregas(base, SPOT_ATUAL, jbDataSel()).delta;
+    var hedge = Math.round(-d);
+    var junto = document.getElementById('jb-papel-junto').checked ? JB.juntoQtd : 0;
+    var ativo = ((document.getElementById('sim-ativo') || {}).value || 'papel').toUpperCase();
+    txt.innerHTML = 'Delta das opções: <strong>' + fmtNum(d, 2) + '</strong> → para zerar, '
+        + (hedge === 0 ? 'não é preciso papel'
+           : '<strong>' + (hedge > 0 ? 'comprar ' : 'vender ') + fmtNum(Math.abs(hedge), 0) + '</strong> ' + escHtml(ativo))
+        + (junto ? ' · mais <strong>+' + fmtNum(junto, 0) + '</strong> comprados junto = total <strong>'
+                   + fmtNum(hedge + junto, 0) + '</strong>' : '') + '.';
+    document.getElementById('jb-junto-info').textContent = JB.juntoQtd ? '(+' + fmtNum(JB.juntoQtd, 0) + ' = qtd. das pernas)' : '';
+    if (!JB.manual) document.getElementById('jb-papel-qty').value = hedge + junto;
+}
 function legsComPapel(legs) {
+    jbAutoQtd(legs);
     var on = document.getElementById('jb-papel-on');
     if (!on || !on.checked || !SPOT_ATUAL) return legs;
     var q = jbPapelQtd();
@@ -902,25 +931,37 @@ function jbAtualiza(legsPlot) {
 }
 
 window.jbPapelMudou = function () {
-    var on = document.getElementById('jb-papel-on').checked;
-    document.getElementById('jb-junto-wrap').style.display = on ? '' : 'none';
-    document.getElementById('jb-papel-qty-wrap').style.display = on ? '' : 'none';
-    if (on && !jbPapelQtd()) jbSetaQtdZeraDelta();
+    if (document.getElementById('jb-papel-on').checked) { jbAbreMenu(); JB.manual = false; }
     simRecalc();
 };
-// Quantidade de papel que zera o delta das OPÇÕES (na data do slider)
-function jbSetaQtdZeraDelta() {
-    var base = lerPernas().filter(function (l) { return l.type !== 'STOCK' && l.qty > 0; });
-    if (!base.length || !SPOT_ATUAL) return;
-    var d = jbSomaGregas(base, SPOT_ATUAL, jbDataSel()).delta;
-    document.getElementById('jb-papel-qty').value = Math.round(-d);   // delta + → vender papel (negativo); delta − → comprar
-}
+// Travar o Delta: abre o menu e mostra o cálculo; "Inserir Papel no Payoff" aplica ao gráfico.
 window.jbTravaDelta = function () {
-    var on = document.getElementById('jb-papel-on');
-    on.checked = true;
-    document.getElementById('jb-junto-wrap').style.display = '';
-    document.getElementById('jb-papel-qty-wrap').style.display = '';
-    jbSetaQtdZeraDelta();
+    jbAbreMenu(); JB.manual = false;
+    simRecalc();
+};
+window.jbQtdManual = function () { JB.manual = true; simRecalc(); };
+// "Comprar Papel Junto": soma papéis na mesma quantidade das pernas. Se as pernas
+// têm quantidades diferentes, pergunta qual somar.
+window.jbJuntoMudou = function () {
+    var chk = document.getElementById('jb-papel-junto');
+    if (chk.checked) {
+        var qs = [];
+        lerPernas().forEach(function (l) {
+            if (l.type !== 'STOCK' && l.qty > 0 && qs.indexOf(l.qty) < 0) qs.push(l.qty);
+        });
+        if (!qs.length) { chk.checked = false; return; }
+        var q = qs[0];
+        if (qs.length > 1) {
+            var r = prompt('As pernas têm quantidades diferentes (' + qs.sort(function (a, b) { return a - b; }).join(', ')
+                           + ').' + String.fromCharCode(10) + 'Quantos papéis somar junto com a estrutura?', String(Math.min.apply(null, qs)));
+            q = parseInt(r, 10);
+            if (!(q > 0)) { chk.checked = false; return; }
+        }
+        JB.juntoQtd = q;
+    } else {
+        JB.juntoQtd = 0;
+    }
+    JB.manual = false;
     simRecalc();
 };
 window.jbExportarPnt = function () {

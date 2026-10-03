@@ -787,7 +787,17 @@ var OPS=[
  cenario:'Lateral a moderadamente baixista, com possibilidade de queda forte. Renda do straddle vendido + assimetria das 2 PUTs longas: numa queda forte −1 PUT + 2 PUT ≈ +1 PUT, e a estrutura passa a ganhar com a continuação da queda.',
  sel:['Straddle: strike ATM ou muito próximo do spot','HA: 2 PUTs compradas normalmente 1 strike abaixo, em vencimento posterior','Strikes líquidos','HA mais próximo: mais proteção, mais custo e reação mais rápida; mais distante: menos custo e maior zona de desconforto','Crédito líquido = prêmio CALL + prêmio PUT − 2 × custo da PUT longa; a crédito, perto de zero ou com pequeno débito — comparar o custo com a distância K − (K−Δ)'],
  man:['Perto do strike central: capturar theta do straddle','Próximo do vencimento curto: rolar CALL e PUT para a série seguinte; as PUTs longas ficam como lastro/HA','Queda: CALL vendida perde valor, PUT vendida entra ITM e as 2 PUTs longas compensam e depois superam','Alta: PUT vira pó, PUTs longas perdem valor e a CALL vendida concentra o risco (coberta se houver ações; sem cobertura, atenção ao risco crescente)','Saída: realizar quando o straddle perdeu boa parte do extrínseco; realizar as PUTs longas em queda forte; na alta, manejar/rolar a CALL','Ponto de atenção: região K−Δ < S < K — a PUT curta já perde e as longas ainda não protegem totalmente'],
- busca:B(BA,'bear_straddle_ha')}
+ busca:B(BA,'bear_straddle_ha')},
+{cat:'cat-cal',nome:'Straddle HA Dual',cen:'lateral',tipo:'zero',
+ alias:['straddle_ha_dual'],
+ tags:['LATERAL + MOVIMENTO FORTE','~ZERO/CRÉD.','Θ A FAVOR + CONVEXIDADE NOS 2 LADOS'],
+ cal:true,dcS:30,dcL:90,iv:0.30,
+ legs:[{t:'C',q:-5,K:100,p:3.4},{t:'P',q:-5,K:100,p:3.0},{t:'C',q:6,K:102,p:2.3,long:true},{t:'P',q:6,K:98,p:2.0,long:true}],
+ mont:'Três blocos: (1) straddle central vendido −CALL_K −PUT_K (T1, ATM); (2) HA de CALL: para cada −1 CALL_K(T1), +1,5 CALL_(K+Δ)(T2); (3) HA de PUT: para cada −1 PUT_K(T1), +1,5 PUT_(K−Δ)(T2). Em escala inteira (straddle + módulos HA): −5 CALL_K −5 PUT_K + 6 CALL_(K+Δ) + 6 PUT_(K−Δ), as longas em vencimento posterior. Ex. BOVA11 = 184: −5 C184 −5 P184 Out + 6 C186 + 6 P182 Nov. A relação 5:6 é o resultado do conjunto; cada HA isolado continua 1 : 1,5 (4 curtas financiam 6 longas).',
+ cenario:'Inicialmente lateral, com possibilidade de movimento forte depois, para qualquer lado. Combina theta no centro, convexidade na alta e convexidade na baixa: perfil ganho no centro → vale → ganho na ponta, dos dois lados.',
+ sel:['Straddle central: ATM ou o mais próximo possível do spot, vencimento curto/intermediário','HA de CALL: primeiro strike líquido acima do central; HA de PUT: primeiro strike líquido abaixo; ambos em vencimento posterior','Preferir strikes aproximadamente equidistantes (Δ_PUT ≈ Δ_CALL), sem obrigação se o skew não permitir ZCC','ZCC: prêmio da curta ≈ 1,5 × prêmio da longa em cada lado (ex.: CALL 184 = 3,00 e CALL 186 = 2,00; PUT 184 = 3,30 e PUT 182 = 2,20)','Sem ZCC no 1º strike: afastar o strike longo — isso aumenta o vale de risco','O crédito líquido deve vir principalmente do straddle central'],
+ man:['No centro: capturar theta do straddle; perto do vencimento curto, rolar CALL e PUT centrais','Manter as opções longas dos HAs como lastro estrutural; não desmontar o HA só porque uma ponta começou a se mover','Alta forte: CALLs compradas > vendidas, delta líquido positivo; queda forte: PUTs compradas > vendidas, delta líquido negativo','Saída: realizar o straddle com boa parte do extrínseco capturado; realizar parcial/totalmente o HA em movimento forte; avaliar o P&L da estrutura completa, não cada perna','Atenção: não é sem risco — os dois vales (K−Δ < S < K e K < S < K+Δ) podem gerar perdas relevantes antes de os HAs dominarem; distância dos strikes e custo do hedge são decisivos'],
+ busca:B(BA,'straddle_ha_dual')}
 ];
 
 /* ── Render ── */
@@ -837,7 +847,7 @@ var VI_BY_OP={
   booster:'alta',
   vaca_travada:'alta', vaca_tradicional:'alta', vaca_revertida:'neutra',
   boi_coberto:'neutra', vaca_put:'alta',
-  strap:'baixa', strip:'baixa', guts_long:'baixa', guts_short:'alta', strangle_itm:'alta', bull_straddle_ha:'alta', bear_straddle_ha:'alta',
+  strap:'baixa', strip:'baixa', guts_long:'baixa', guts_short:'alta', strangle_itm:'alta', bull_straddle_ha:'alta', straddle_ha_dual:'alta', bear_straddle_ha:'alta',
   box_spread:'neutra', box3:'neutra', box4:'neutra',
   acao_sintetica:'neutra', short_sintetico:'neutra', risk_reversal:'neutra',
   synthetic_straddle:'baixa', fence:'baixa', fence_alavancada:'baixa', seagull_alavancada:'alta',

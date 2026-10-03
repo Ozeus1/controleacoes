@@ -5147,7 +5147,7 @@ def api_busca_operacoes(ticker):
                'pmcp', 'bear_calendar')
     if op in ('calendar_spread', 'diagonal_spread', 'double_diagonal',
               'short_call_calendar', 'straddle_strangle_swap',
-              'bull_straddle_ha', 'bear_straddle_ha') + _CAL_V4:
+              'bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual') + _CAL_V4:
         def _enrich_cal(lst):
             out = []
             for rw in lst:
@@ -5250,7 +5250,7 @@ def api_busca_operacoes(ticker):
                             sig = lg['iv'] or 0.35
                             v += q * _bs_price(S, lg['k'], T_rem, r_cont, sig, is_c)
                     return v
-                if op in ('bull_straddle_ha', 'bear_straddle_ha'):
+                if op in ('bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual'):
                     # exposição aberta nas duas pontas: varre ~0–1,60 × spot
                     # (S→0 entra no cálculo para a perda/ganho máximos da PUT)
                     grid = [spot * (0.01 + 0.0265 * k) for k in range(61)]
@@ -5385,6 +5385,43 @@ def api_busca_operacoes(ticker):
                                        (ps, dps, False, -1, exp_s, dc_s),
                                        (hl, dhl, bull, 2, exp_l, dc_l)])
                         combos[-1].append(('rank', idx, abs(cs['strike'] - spot)))
+            elif op == 'straddle_ha_dual':
+                # Su: straddle central curto (ATM) + HA de CALL + HA de PUT. Cada HA é
+                # 1 curta : 1,5 longa (ZCC); com o straddle central a escala inteira
+                # fica −5 CALL −5 PUT (T1) + 6 CALL (K+Δ) + 6 PUT (K−Δ) (T2).
+                put_s_map = {p['strike']: p for p in puts_s}
+                atm_ks = sorted([c for c in calls_s
+                                 if c['bid'] >= 0.02 and c['strike'] in put_s_map
+                                 and put_s_map[c['strike']]['bid'] >= 0.02],
+                                key=lambda c: abs(c['strike'] - spot))[:2]
+                for cs in atm_ks:
+                    ps = put_s_map[cs['strike']]
+                    dcs, dps = _dl(cs, True, T_s), _dl(ps, False, T_s)
+                    if dcs is None or dps is None:
+                        continue
+                    ha_c = sorted([r for r in calls_l if r['strike'] > cs['strike'] and r['ask'] >= 0.02],
+                                  key=lambda r: r['strike'])[:8]
+                    ha_p = sorted([r for r in puts_l if r['strike'] < cs['strike'] and r['ask'] >= 0.02],
+                                  key=lambda r: -r['strike'])[:8]
+                    for ic, hc in enumerate(ha_c):
+                        dhc = _dl(hc, True, T_l)
+                        for ip, hp in enumerate(ha_p):
+                            dhp = _dl(hp, False, T_l)
+                            if dhc is None or dhp is None:
+                                continue
+                            # ZCC de cada HA: 4 curtas financiam 6 longas
+                            cost_c = 6 * hc['ask'] - 4 * cs['bid']
+                            cost_p = 6 * hp['ask'] - 4 * ps['bid']
+                            base = 4 * (cs['bid'] + ps['bid'])
+                            dev = (abs(cost_c) + abs(cost_p)) / base if base > 0 else 9
+                            if dev > 0.50:
+                                continue
+                            asym = abs((hc['strike'] - cs['strike']) - (cs['strike'] - hp['strike']))
+                            combos.append([(cs, dcs, True, -5, exp_s, dc_s),
+                                           (ps, dps, False, -5, exp_s, dc_s),
+                                           (hc, dhc, True, 6, exp_l, dc_l),
+                                           (hp, dhp, False, 6, exp_l, dc_l),
+                                           ('rank', round(dev, 3), asym, round(cost_c, 2), round(cost_p, 2))])
             else:   # double_diagonal
                 for cs, dvs in _cands_cal(calls_s, True, T_s, (0.18, 0.32), 'sell')[:2]:
                     for ps, dps in _cands_cal(puts_s, False, T_s, (-0.32, -0.18), 'sell')[:2]:
@@ -5400,8 +5437,8 @@ def api_busca_operacoes(ticker):
                                                (pl, dpl, False, 1, exp_l, dc_l)])
 
             # Operações do livro montadas no CRÉDITO (não exigir débito)
-            _ha_op = op in ('bull_straddle_ha', 'bear_straddle_ha')
-            _credit_cal = ('double_diagonal', 'short_call_calendar', 'straddle_strangle_swap')                           + (('bull_straddle_ha', 'bear_straddle_ha') if _ha_op else ())
+            _ha_op = op in ('bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual')
+            _credit_cal = ('double_diagonal', 'short_call_calendar', 'straddle_strangle_swap')                           + (('bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual') if _ha_op else ())
             for sel in combos:
                 rank_k = None
                 if _ha_op:
@@ -5412,8 +5449,8 @@ def api_busca_operacoes(ticker):
                 if cost <= 0 and op not in _credit_cal:
                     continue                                  # calendários/diagonais: débito
                 if _ha_op:
-                    # crédito ou PEQUENO débito (≤ 3% do spot)
-                    if cost > 0.03 * spot:
+                    # crédito ou PEQUENO débito (≤ 3% do spot; Dual: por straddle, escala 5×)
+                    if cost > 0.03 * spot * (5 if op == 'straddle_ha_dual' else 1):
                         continue
                 if max_gain <= 0:
                     continue
@@ -5434,10 +5471,17 @@ def api_busca_operacoes(ticker):
                 if _ha_op:
                     # Bull: CALLs líquidas > 0 → ganho ilimitado na alta; Bear: CALL
                     # curta descoberta na alta → perda ilimitada (cobrir com ações).
-                    rows[-1]['gain_unl'] = (op == 'bull_straddle_ha')
+                    rows[-1]['gain_unl'] = op in ('bull_straddle_ha', 'straddle_ha_dual')
                     rows[-1]['loss_unl'] = (op == 'bear_straddle_ha')
                     rows[-1]['ratio'] = None
-                    rows[-1]['_rk'] = (rank_k[1], rank_k[2], -net)
+                    if op == 'straddle_ha_dual':
+                        rows[-1]['_rk'] = (rank_k[1], rank_k[2], -net)
+                        rows[-1]['zcc_txt'] = ('ZCC CALL ' + ('crédito ' if rank_k[3] < 0 else 'débito ')
+                                               + f'{abs(rank_k[3]):.2f}'.replace('.', ',')
+                                               + ' · ZCC PUT ' + ('crédito ' if rank_k[4] < 0 else 'débito ')
+                                               + f'{abs(rank_k[4]):.2f}'.replace('.', ','))
+                    else:
+                        rows[-1]['_rk'] = (rank_k[1], rank_k[2], -net)
             if _ha_op:
                 rows.sort(key=lambda x: x['_rk'])        # HA 1 strike além primeiro, strike mais ATM, maior crédito
                 for r_ in rows:

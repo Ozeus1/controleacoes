@@ -1732,6 +1732,51 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         estruturaCalc();
     };
 
+    // ── Estrutura livre com vencimentos diferentes ────────────────────────────
+    // O payoff é avaliado no vencimento mais curto: pernas que vencem depois valem
+    // Black-Scholes pelo tempo restante, com a VI da própria opção buscada na OpLab
+    // (não exibida por perna — só alimenta o gráfico). Sem VI, estima pelo prêmio
+    // informado e, em último caso, 35%.
+    var LIVRE_IV = {};   // ticker -> VI em fração (null = buscando/sem dado)
+    function livreCalBS(op, U) {
+        return op === 'livre' && U && U.cal && U.exps && U.exps.length === U.q.length;
+    }
+    function livreAplicaBS(pernas, U, spot) {
+        var ids = ['a', 'b', 'c', 'd'];
+        var rr = Math.log(1 + SELIC / 100);
+        var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+        var exps = U.exps.map(function(e) { return e ? new Date(e + 'T00:00:00') : null; });
+        var ref = null;
+        pernas.forEach(function(l, i) {
+            if (l.t !== 'S' && exps[i] && (!ref || exps[i] < ref)) ref = exps[i];
+        });
+        pernas.forEach(function(l, i) {
+            if (l.t === 'S' || !exps[i] || !ref) return;
+            l.T = Math.max((exps[i] - ref) / 86400000, 0) / 365;
+            if (l.T <= 0) return;                       // vence na data de referência: intrínseco
+            var tk = (document.getElementById('e-' + ids[i] + '-t').value || '').trim().toUpperCase();
+            var iv = LIVRE_IV[tk];
+            if (!(iv > 0)) {
+                var Tfull = Math.max((exps[i] - hoje) / 86400000, 1) / 365;
+                iv = ivFromPremJ(spot, l.K, Tfull, rr, l.p, l.t === 'C') || 0.35;
+            }
+            l.iv = iv;
+            if (tk && !(tk in LIVRE_IV)) {
+                LIVRE_IV[tk] = null;
+                fetch('/api/busca-opcao/' + encodeURIComponent(tk))
+                    .then(function(r) { return r.json(); })
+                    .then(function(d) {
+                        if (d && !d.error && d.iv > 0) { LIVRE_IV[tk] = d.iv / 100; window.estruturaCalc(); }
+                    })
+                    .catch(function() {});
+            }
+        });
+    }
+    function livrePayBS(l, S, rr) {
+        var isC = l.t === 'C';
+        return bsPriceJ(S, l.K, l.T, rr, l.iv || 0.35, isC);
+    }
+
     window.estruturaCalc = function() {
         var op    = document.getElementById('e-op').value;
         var spot  = toFloat(document.getElementById('e-spot').value);
@@ -2023,10 +2068,14 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             pernasU.forEach(function(l) {
                 netU += -l.q * (l.t === 'S' ? spot : l.p);
             });
+            var calBS = livreCalBS(op, U);
+            var rU = Math.log(1 + SELIC / 100);
+            if (calBS) livreAplicaBS(pernasU, U, spot);
             function payU(S) {
                 var v = netU;
                 pernasU.forEach(function(l) {
                     if (l.t === 'S')      v += l.q * S;
+                    else if (l.T > 0)     v += l.q * livrePayBS(l, S, rU);
                     else if (l.t === 'C') v += l.q * Math.max(0, S - l.K);
                     else                  v += l.q * Math.max(0, l.K - S);
                 });
@@ -2050,6 +2099,12 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                                 .sort(function(a, b) { return a - b; });
             var refU  = ksOrdU.length ? ksOrdU[ksOrdU.length - 1] : spot;
             var ptsU  = [0].concat(ksOrdU).concat([Math.max(refU, spot || 0) * 1.8]);
+            if (calBS) {
+                // Black-Scholes não é linear por partes: varre uma grade fina.
+                var hiU = Math.max(refU, spot || 0) * 1.8;
+                ptsU = [];
+                for (var gi2 = 0; gi2 <= 400; gi2++) ptsU.push(hiU * gi2 / 400);
+            }
             var valsU = ptsU.map(payU);
             var besU  = [];
             for (var ub = 0; ub < ptsU.length - 1; ub++) {
@@ -2085,7 +2140,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 boxes.splice(3, 0, ['Relação lucro/perda',
                     (maxGU / maxLU).toLocaleString('pt-BR', {maximumFractionDigits: 2}), '']);
             }
-            if (U.cal) {
+            if (U.cal && !calBS) {
                 // No calendário as pernas vencem em datas diferentes: no vencimento
                 // da curta a longa ainda tem valor extrínseco, que este payoff (só
                 // valor intrínseco) não captura. Deixa o aviso explícito.
@@ -2329,10 +2384,13 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             }
             var netU2 = 0;
             pernasU2.forEach(function(l) { netU2 += -l.q * (l.t === 'S' ? spot : l.p); });
+            var rU2 = Math.log(1 + SELIC / 100);
+            if (livreCalBS(op, U2)) livreAplicaBS(pernasU2, U2, spot);
             payoffFn = function(S) {
                 var v = netU2;
                 pernasU2.forEach(function(l) {
                     if (l.t === 'S')      v += l.q * S;
+                    else if (l.T > 0)     v += l.q * livrePayBS(l, S, rU2);
                     else if (l.t === 'C') v += l.q * Math.max(0, S - l.K);
                     else                  v += l.q * Math.max(0, l.K - S);
                 });

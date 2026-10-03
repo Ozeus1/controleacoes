@@ -914,11 +914,18 @@ function jbAtualiza(legsPlot) {
     document.getElementById('jb-boca').textContent = jbMoeda(boca);
     document.getElementById('jb-ultimo').textContent = jbMoeda(ult);
 
-    document.getElementById('jb-tbody').innerHTML = opcoes.map(function (l) {
+    // Tabela: o papel só vira linha (no topo, strike = cotação) quando "Comprar Papel Junto"
+    // está marcado; sem ele o papel é só um hedge inserido no payoff/gregas.
+    var linhaPapel = '';
+    if (papel && junto) {
+        linhaPapel = '<tr><td>' + escHtml((document.getElementById('sim-ativo') || {}).value || 'Papel')
+            + '</td><td>' + fmtNum(SPOT_ATUAL) + '</td><td>' + (papel.side === 'SELL' ? '- ' : '+ ')
+            + fmtNum(papel.qty, 0) + '</td></tr>';
+    }
+    document.getElementById('jb-tbody').innerHTML = linhaPapel + opcoes.map(function (l) {
         return '<tr><td>' + escHtml(l.ticker || (l.type + ' ' + fmtNum(l.strike))) + '</td><td>R$ ' + fmtNum(l.strike)
              + '</td><td>' + (l.side === 'SELL' ? '- ' : '') + fmtNum(l.qty, 0) + '</td></tr>';
-    }).join('') + (papel ? '<tr><td>' + escHtml((document.getElementById('sim-ativo') || {}).value || 'Papel')
-             + '</td><td>—</td><td>' + (papel.side === 'SELL' ? '- ' : '') + fmtNum(papel.qty, 0) + '</td></tr>' : '');
+    }).join('');
 
     var g = jbSomaGregas(legsPlot, SPOT_ATUAL || 0, jbDataSel());
     function fmtG(v, d) { return fmtNum(v, d); }

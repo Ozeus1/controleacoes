@@ -96,6 +96,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="strangle_comprado">🔗 Strangle Comprado</button>
       <button class="ba-obtn" data-op="guts_long">💪 Guts (Long)</button>
       <button class="ba-obtn" data-op="guts_short">💪📉 Guts (Short)</button>
+      <button class="ba-obtn" data-op="strangle_itm">🔗💰 Strangle ITM (vendido)</button>
       <button class="ba-obtn" data-op="borboleta_delta">🦋 Borboleta (Δ)</button>
       <button class="ba-obtn" data-op="broken_wing">🦋🩹 Broken Wing Butterfly</button>
       <button class="ba-obtn" data-op="strap">📈⚖️ Strap</button>
@@ -263,6 +264,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     straddle_comprado: '⚖️ Straddle Comprado — compra CALL + PUT ATM (mesmo strike; lucra com movimento forte em qualquer direção)',
     strangle_comprado: '🔗 Strangle Comprado — compra CALL OTM (Δ 0,20–0,30) + PUT OTM (Δ −0,20 a −0,30); mais barato que o straddle',
     guts_long:      '💪 Guts (Long) — compra CALL ITM (Δ 0,70–0,80) + PUT ITM (Δ −0,70 a −0,80); volatilidade com opções ITM',
+    strangle_itm:   '🔗💰 Strangle ITM (vendido) — venda CALL ITM (abaixo do spot) + PUT ITM (acima), ~1–3% ITM cada; lateral/manejo; lucro = gordura (crédito − (K_PUT − K_CALL)); risco ilimitado fora do corredor',
     guts_short:     '💪📉 Guts (Short) — venda CALL ITM + PUT ITM (Δ 0,60–0,70); mercado lateral com IV alta; risco ilimitado nas pontas',
     borboleta_delta: '🦋 Borboleta — compra CALL ITM (Δ ≈ 0,70) + venda 2 CALLs ATM (Δ ≈ 0,50) + compra CALL OTM (Δ ≈ 0,30); lucro máximo no miolo',
     broken_wing:    '🦋🩹 Broken Wing Butterfly — borboleta com asa superior mais espaçada (reduz o custo; perfil assimétrico)',
@@ -470,7 +472,34 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     return h + '</tbody></table></div>';
   }
 
-  var CUSTOM_TABLES = {box3: box3Table, box4: box4Table,
+  // ── Strangle ITM vendido ───────────────────────────────────────────────────
+  function strangleItmTable(rows, expIdx) {
+    if (!rows.length) return '<div class="ba-empty">Nenhuma montagem com gordura positiva (crédito &gt; K_PUT − K_CALL) neste vencimento.</div>';
+    var h = '<div class="ba-wrap"><table class="ba-tab"><thead><tr>' +
+      '<th>Pernas (qtd × série)</th><th>Strikes (CALL / PUT)</th>' +
+      '<th title="Quanto cada strike está dentro do dinheiro">ITM (CALL / PUT)</th>' +
+      '<th>Crédito</th>' +
+      '<th title="Intrínseco conjunto entre os strikes: K_PUT − K_CALL">Corredor</th>' +
+      '<th title="Gordura = crédito recebido − (K_PUT − K_CALL): o extrínseco efetivamente recebido">Gordura</th>' +
+      '<th title="Parcela do crédito que é extrínseco">% extrínseco</th>' +
+      '<th>Breakevens</th></tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += '<tr class="ba-row" data-exp="' + expIdx + '" data-row="' + j + '" title="Clique para ver o resumo">' +
+        '<td>' + r.legs.map(legBadge).join(' ') +
+          (r.dte_ok ? '' : ' <span title="Fora da faixa ideal de 20–45 dias até o vencimento" style="font-size:.75rem;">⏱️</span>') + '</td>' +
+        '<td>' + fmt(r.legs[0].k) + ' / ' + fmt(r.legs[1].k) + '</td>' +
+        '<td>' + fmt(r.call_itm, 1) + '% / ' + fmt(r.put_itm, 1) + '%</td>' +
+        '<td><span class="ba-badge credit">CRÉDITO ' + brl(r.net) + '</span></td>' +
+        '<td>' + brl(r.corredor) + '</td>' +
+        '<td class="pos"><strong>' + brl(r.gordura) + '</strong> <span style="color:var(--text-secondary);font-size:.8em;">(' + fmt(r.gordura_pct) + '% do spot)</span></td>' +
+        '<td>' + fmt(r.extr_share, 0) + '%</td>' +
+        '<td>' + r.bes.map(function(b) { return brl(b); }).join(' · ') + '</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  var CUSTOM_TABLES = {box3: box3Table, box4: box4Table, strangle_itm: strangleItmTable,
     slide_estrutural: function(rows, expIdx) { return slideTable(rows, expIdx, false); },
     slide_estrutural_put: function(rows, expIdx) { return slideTable(rows, expIdx, true); }};
 

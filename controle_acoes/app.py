@@ -6666,6 +6666,62 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: -x['credit_pct'])
             rows = _diversify(rows, lambda x: x['call_symbol'], per_key=2)
 
+        elif op == 'strangle_itm':
+            # Strangle ITM vendido: -1 CALL ITM (strike ABAIXO do spot) + -1 PUT ITM
+            # (strike ACIMA do spot), mesmo vencimento. Cada perna ~1–3% ITM.
+            # Entre os strikes o intrínseco conjunto fica ≈ (K_PUT − K_CALL), logo
+            # o que interessa é a "gordura" = crédito − (K_PUT − K_CALL).
+            T = dc / 365.0
+            call_c, put_c = [], []
+            for c in sorted(calls_by_exp.get(exp, []), key=lambda x: x['strike']):
+                itm = (spot - c['strike']) / spot * 100
+                if 0.5 <= itm <= 3.5:
+                    c_prem, c_src = _sell_prem(c)
+                    if c_prem is not None:
+                        call_c.append((c, itm, c_prem, c_src))
+            for p in sorted(puts_by_exp.get(exp, []), key=lambda x: x['strike']):
+                itm = (p['strike'] - spot) / spot * 100
+                if 0.5 <= itm <= 3.5:
+                    p_prem, p_src = _sell_prem(p)
+                    if p_prem is not None:
+                        put_c.append((p, itm, p_prem, p_src))
+            for c, c_itm, c_prem, c_src in call_c:
+                for p, p_itm, p_prem, p_src in put_c:
+                    credit  = c_prem + p_prem
+                    corr    = p['strike'] - c['strike']
+                    gordura = credit - corr
+                    if gordura <= 0.005:
+                        continue
+                    be_low, be_up = p['strike'] - credit, c['strike'] + credit
+                    d_c = _leg_delta_pct(c, True, T)
+                    d_p = _leg_delta_pct(p, False, T)
+                    rows.append({
+                        'legs': [
+                            {'sym': c['symbol'], 'tp': 'CALL', 'k': c['strike'], 'q': -1,
+                             'px': round(c_prem, 2), 'delta': d_c},
+                            {'sym': p['symbol'], 'tp': 'PUT', 'k': p['strike'], 'q': -1,
+                             'px': round(p_prem, 2), 'delta': d_p},
+                        ],
+                        'net':       round(credit, 2),
+                        'is_credit': True,
+                        'montagem':  'CRÉDITO',
+                        'max_gain':  round(gordura, 2),
+                        'gain_unl':  False,
+                        'max_loss':  round(max(p['strike'] - credit, 0.0), 2),
+                        'loss_unl':  True,
+                        'ratio':     None,
+                        'bes':       [round(be_low, 2), round(be_up, 2)],
+                        'corredor':  round(corr, 2),
+                        'gordura':   round(gordura, 2),
+                        'gordura_pct': round(gordura / spot * 100, 2),
+                        'extr_share':  round(gordura / credit * 100, 0),
+                        'call_itm':  round(c_itm, 1),
+                        'put_itm':   round(p_itm, 1),
+                        'dte_ok':    20 <= dc <= 45,
+                    })
+            rows.sort(key=lambda x: (-x['gordura_pct'], abs(x['call_itm'] - x['put_itm'])))
+            rows = _diversify(rows, lambda x: x['legs'][0]['sym'], per_key=2, limit=12)
+
         elif op == 'zebra':
             # ZEBRA (Zero Extrinsic Back Ratio): compra 2 CALLs ITM (Δ ≈ 0,70)
             # + venda 1 CALL ATM (Δ ≈ 0,50). Delta total ≈ +1,0 e extrínseco

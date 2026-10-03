@@ -1455,9 +1455,14 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         // para não perder a identidade da operação ao abrir aqui. Sem isso,
         // cai no rótulo genérico de sempre.
         var nomeCustom = new URLSearchParams(location.search).get('livre_nome');
+        // Vencimento de cada perna (?livre_exps=2026-10-16|2026-10-16|2026-11-19).
+        var expsRaw = new URLSearchParams(location.search).get('livre_exps');
+        var exps = expsRaw ? expsRaw.split('|') : null;
+        var distintos = exps ? exps.filter(function(e, i) { return e && exps.indexOf(e) === i; }) : [];
         UNI_CFG.livre = {nome: nomeCustom || 'Estrutura livre (pernas da simulação)',
                          legs: legs, q: q, t: t, lg: q.map(function() { return 0; }),
-                         stock: t.indexOf('S') !== -1};
+                         stock: t.indexOf('S') !== -1,
+                         exps: exps, cal: distintos.length > 1};
     })();
 
     // Publica as estruturas do motor universal no E_CFG (rótulos das pernas e
@@ -2397,7 +2402,8 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             // usa o ativo subjacente.
             // Associa tickers na ordem das pernas de opção A,B,C,D.
             var order = ['a', 'b', 'c', 'd'], oi = 0;
-            window.__estruturaLegs = legsArr.map(function(l) {
+            var lvExps = (op === 'livre' && UNI_CFG.livre && UNI_CFG.livre.exps) || null;
+            window.__estruturaLegs = legsArr.map(function(l, li) {
                 if (l.t === 'STOCK') {
                     return {ticker: (document.getElementById('e-ativo').value || '').toUpperCase(),
                             type: 'STOCK', side: l.s > 0 ? 'BUY' : 'SELL', qty: qty * (l.q || 1),
@@ -2405,7 +2411,8 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 }
                 var tk = tks[order[oi++]] || '';
                 return {ticker: tk, type: l.t, side: l.s > 0 ? 'BUY' : 'SELL',
-                        qty: qty * (l.q || 1), premium: l.prem, strike: l.K, exp: expS};
+                        qty: qty * (l.q || 1), premium: l.prem, strike: l.K,
+                        exp: (lvExps && lvExps[li]) || expS};
             });
             document.getElementById('e-actions').style.display = 'flex';
         } else {

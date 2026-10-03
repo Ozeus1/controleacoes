@@ -658,6 +658,32 @@ function updateIVVisibility() {
         if (td) td.style.display = (multi && lt !== 'STOCK') ? '' : 'none';
         if (inp) inp.readOnly = !(multi && lt !== 'STOCK');
     });
+    if (multi) autoFillIV();
+}
+
+// Vencimentos diferentes → cada perna precisa de VI (Black-Scholes). Preenche
+// sozinho as VIs vazias consultando a ficha da opção na OpLab (/api/busca-opcao,
+// iv já em %). 1 tentativa por ticker em cada linha; nunca sobrescreve VI digitada.
+function autoFillIV() {
+    document.querySelectorAll('#legs-body .leg-row').forEach(function(row) {
+        var lt   = row.querySelector('[name=leg_type]').value;
+        var ivEl = row.querySelector('[name=leg_iv]');
+        var tkEl = row.querySelector('[name=leg_ticker]');
+        if (lt === 'STOCK' || !ivEl || !tkEl) return;
+        var tk = tkEl.value.trim().toUpperCase();
+        if (!tk || row.dataset.ivAuto === tk) return;
+        row.dataset.ivAuto = tk;
+        if (parseVal(ivEl.value) > 0) return;
+        fetch('/api/busca-opcao/' + encodeURIComponent(tk))
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                if (!d || d.error || !(d.iv > 0)) return;
+                if (row.dataset.ivAuto !== tk || parseVal(ivEl.value) > 0) return;
+                ivEl.value = d.iv.toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 2});
+                scheduleRedraw();
+            })
+            .catch(function() {});
+    });
 }
 
 // ── Leitura das pernas ────────────────────────────────────────────────────────
@@ -1412,6 +1438,9 @@ function abrirEmCalculos() {
         pl[f === 'c' ? 'cp2' : f + 'p'] = (l.premium || 0).toFixed(2);
     });
     pl.livre_legs = spec.join('|');
+    // Vencimento de cada perna (mesma ordem de livre_legs): sem isso a aba
+    // Estruturas achava que todas vencem na mesma data.
+    pl.livre_exps = ordem.map(function(l) { return l.type === 'STOCK' ? '' : (l.exp || ''); }).join('|');
     if (legs.length > 4) {
         alert('Esta simulação tem ' + legs.length + ' pernas; a aba Estruturas trabalha com até 4.\n\n' +
               'Abrindo no editor da Cadeia de Opções, que aceita qualquer número de pernas.');

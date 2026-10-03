@@ -845,9 +845,6 @@
 {# ========== TABELA: OPERAÇÕES ESTRUTURADAS (nacionais) ========== #}
 {{ estruturada_card(structured_ops, 'Operações Estruturadas', url_for('add_estruturada'), 'R$') }}
 
-{# ========== TABELA: OPERAÇÕES TASTYTRADE (internacionais, US$) ========== #}
-{{ estruturada_card(tastytrade_ops, 'Operações Tastytrade 🇺🇸', url_for('add_estruturada', intl=1), 'US$', True) }}
-
 <!-- ═══ MODAL: Rolagem de Opção Individual ═══ -->
 <div id="modal-roll-option" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.7);align-items:center;justify-content:center;">
   <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.5rem;width:min(96vw,520px);color:var(--text-primary);">

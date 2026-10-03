@@ -5147,7 +5147,8 @@ def api_busca_operacoes(ticker):
                'pmcp', 'bear_calendar')
     if op in ('calendar_spread', 'diagonal_spread', 'double_diagonal',
               'short_call_calendar', 'straddle_strangle_swap',
-              'bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual') + _CAL_V4:
+              'bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual',
+              'straddle_long_put') + _CAL_V4:
         def _enrich_cal(lst):
             out = []
             for rw in lst:
@@ -5250,7 +5251,7 @@ def api_busca_operacoes(ticker):
                             sig = lg['iv'] or 0.35
                             v += q * _bs_price(S, lg['k'], T_rem, r_cont, sig, is_c)
                     return v
-                if op in ('bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual'):
+                if op in ('bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual', 'straddle_long_put'):
                     # exposição aberta nas duas pontas: varre ~0–1,60 × spot
                     # (S→0 entra no cálculo para a perda/ganho máximos da PUT)
                     grid = [spot * (0.01 + 0.0265 * k) for k in range(61)]
@@ -5385,6 +5386,26 @@ def api_busca_operacoes(ticker):
                                        (ps, dps, False, -1, exp_s, dc_s),
                                        (hl, dhl, bull, 2, exp_l, dc_l)])
                         combos[-1].append(('rank', idx, abs(cs['strike'] - spot)))
+            elif op == 'straddle_long_put':
+                # SLP: −CALL_K −PUT_K (T1) + PUT_K (T2 > T1), MESMO strike nos três.
+                # A PUT longa é lastro reutilizável da PUT curta (calendar de PUT).
+                put_s_map = {p['strike']: p for p in puts_s}
+                put_l_map = {p['strike']: p for p in puts_l}
+                atm_ks = sorted([c for c in calls_s
+                                 if c['bid'] >= 0.02 and c['strike'] in put_s_map
+                                 and put_s_map[c['strike']]['bid'] >= 0.02
+                                 and c['strike'] in put_l_map
+                                 and put_l_map[c['strike']]['ask'] >= 0.02],
+                                key=lambda c: abs(c['strike'] - spot))[:3]
+                for cs in atm_ks:
+                    ps, pl = put_s_map[cs['strike']], put_l_map[cs['strike']]
+                    dcs, dps, dpl = _dl(cs, True, T_s), _dl(ps, False, T_s), _dl(pl, False, T_l)
+                    if dcs is None or dps is None or dpl is None:
+                        continue
+                    combos.append([(cs, dcs, True, -1, exp_s, dc_s),
+                                   (ps, dps, False, -1, exp_s, dc_s),
+                                   (pl, dpl, False, 1, exp_l, dc_l),
+                                   ('rank', round(abs(cs['strike'] - spot), 2), 0)])
             elif op == 'straddle_ha_dual':
                 # Su: straddle central curto (ATM) + HA de CALL + HA de PUT. Cada HA é
                 # 1 curta : 1,5 longa (ZCC); com o straddle central a escala inteira
@@ -5437,8 +5458,8 @@ def api_busca_operacoes(ticker):
                                                (pl, dpl, False, 1, exp_l, dc_l)])
 
             # Operações do livro montadas no CRÉDITO (não exigir débito)
-            _ha_op = op in ('bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual')
-            _credit_cal = ('double_diagonal', 'short_call_calendar', 'straddle_strangle_swap')                           + (('bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual') if _ha_op else ())
+            _ha_op = op in ('bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual', 'straddle_long_put')
+            _credit_cal = ('double_diagonal', 'short_call_calendar', 'straddle_strangle_swap')                           + (('bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual', 'straddle_long_put') if _ha_op else ())
             for sel in combos:
                 rank_k = None
                 if _ha_op:
@@ -5472,7 +5493,7 @@ def api_busca_operacoes(ticker):
                     # Bull: CALLs líquidas > 0 → ganho ilimitado na alta; Bear: CALL
                     # curta descoberta na alta → perda ilimitada (cobrir com ações).
                     rows[-1]['gain_unl'] = op in ('bull_straddle_ha', 'straddle_ha_dual')
-                    rows[-1]['loss_unl'] = (op == 'bear_straddle_ha')
+                    rows[-1]['loss_unl'] = op in ('bear_straddle_ha', 'straddle_long_put')
                     rows[-1]['ratio'] = None
                     if op == 'straddle_ha_dual':
                         rows[-1]['_rk'] = (rank_k[1], rank_k[2], -net)

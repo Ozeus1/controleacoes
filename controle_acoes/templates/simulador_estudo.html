@@ -63,6 +63,35 @@
     font-size:.82rem; pointer-events:none; white-space:nowrap; z-index:10;
 }
 .sim-hint { color:var(--text-secondary); font-size:.78rem; }
+
+/* ── Painel de análise (quantidade/preço, boca/último, papel, gregas) ── */
+#sim-jumba {
+    display:none; margin-top:1rem; background:var(--hover-bg);
+    border:1px solid var(--border-color); border-radius:10px; padding:.9rem 1rem;
+}
+.jb-top { display:flex; align-items:flex-end; gap:1.1rem; flex-wrap:wrap; }
+.jb-fld { display:flex; flex-direction:column; gap:.2rem; }
+.jb-fld label { font-size:.8rem; font-weight:700; margin:0; }
+.jb-fld .jb-box {
+    background:var(--card-bg); border:1px solid var(--border-color); border-radius:6px;
+    padding:.35rem .7rem; min-width:110px; font-weight:600; font-size:.95rem;
+}
+.jb-bl { margin-left:auto; text-align:right; font-size:.85rem; line-height:1.5; }
+.jb-bl b { font-weight:700; }
+.jb-papel {
+    display:flex; align-items:center; gap:1.1rem; flex-wrap:wrap;
+    border-top:1px solid var(--border-color); margin-top:.7rem; padding-top:.7rem;
+}
+.jb-papel label.jb-chk { display:inline-flex; align-items:center; gap:.4rem; font-size:.82rem; cursor:pointer; margin:0; white-space:nowrap; }
+.jb-papel input[type=checkbox] { width:auto; margin:0; }
+.jb-papel input[type=number] { width:96px; margin:0; text-align:center; }
+.jb-tab, .jb-greeks { width:100%; border-collapse:collapse; margin-top:.7rem; font-size:.85rem; }
+.jb-tab th, .jb-tab td { padding:.4rem .6rem; text-align:left; border-bottom:1px solid var(--border-color); }
+.jb-tab th { font-weight:700; }
+.jb-greeks { background:var(--card-bg); border-radius:8px; overflow:hidden; }
+.jb-greeks th, .jb-greeks td { padding:.4rem .6rem; text-align:center; }
+.jb-greeks th { font-weight:700; border-bottom:1px solid var(--border-color); }
+.jb-actions { display:flex; justify-content:center; margin-top:.8rem; }
 #sim-aviso {
     display:none; margin-top:.7rem; padding:.55rem .9rem;
     border-radius:6px; font-size:.82rem; border:1px solid;
@@ -211,6 +240,52 @@
     Roda: zoom no X (preço) · arraste: mover no X · Shift+roda: zoom no Y (R$) · Shift+arraste: mover no Y · duplo clique: resetar.
     O gráfico mostra o payoff no vencimento mais curto.
   </p>
+
+  <!-- Painel de análise ------------------------------------------- -->
+  <div id="sim-jumba">
+    <div class="jb-top">
+      <div class="jb-fld"><label>Quantidade</label><div class="jb-box" id="jb-qty">—</div></div>
+      <div class="jb-fld"><label title="Prêmio líquido da estrutura por unidade, com os preços das pernas acima. Negativo = crédito, positivo = débito.">Preço</label><div class="jb-box" id="jb-preco">—</div></div>
+      <div class="jb-bl">
+        <div title="Montagem pelo book: compra no ask, venda no bid"><b>Boca:</b> <span id="jb-boca">—</span></div>
+        <div title="Montagem pelo último negócio de cada perna"><b>Último:</b> <span id="jb-ultimo">—</span></div>
+      </div>
+    </div>
+    <div class="jb-papel">
+      <label class="jb-chk" title="Soma ao payoff e às gregas uma posição comprada no ativo, para ver a estrutura com o delta neutralizado. Só afeta esta tela.">
+        <input type="checkbox" id="jb-papel-on" onchange="jbPapelMudou()"> Inserir Papel no Payoff</label>
+      <label class="jb-chk" id="jb-junto-wrap" style="display:none;" title="Inclui o custo do papel (cotação × quantidade) em Preço, Boca e Último">
+        <input type="checkbox" id="jb-papel-junto" onchange="simRecalc()"> Comprar Papel Junto</label>
+      <span class="jb-fld" id="jb-papel-qty-wrap" style="display:none;">
+        <label style="font-size:.72rem;">Quantidade</label>
+        <input type="number" id="jb-papel-qty" min="0" step="1" oninput="simRecalc()"></span>
+      <button type="button" class="btn btn-secondary btn-sm" style="margin-left:auto;"
+              title="Insere o papel na quantidade que zera o delta das opções (na data do slider)" onclick="jbTravaDelta()">Travar o Delta</button>
+    </div>
+    <table class="jb-tab">
+      <thead><tr><th>Ticker</th><th>Strike</th><th>Quantidade</th></tr></thead>
+      <tbody id="jb-tbody"></tbody>
+    </table>
+    <table class="jb-greeks">
+      <thead><tr>
+        <th title="Σ delta × quantidade (em ações equivalentes)">Delta</th>
+        <th title="Variação do delta por R$ 1 no ativo">Gamma</th>
+        <th title="R$ por dia">Theta</th>
+        <th title="R$ por 1 ponto percentual de VI">Vega</th>
+        <th title="Variação do delta por 1 ponto percentual de VI">Vanna</th>
+        <th title="R$ por 1 ponto percentual de juros">Rho</th>
+      </tr></thead>
+      <tbody><tr>
+        <td id="jb-g-delta">—</td><td id="jb-g-gamma">—</td><td id="jb-g-theta">—</td>
+        <td id="jb-g-vega">—</td><td id="jb-g-vanna">—</td><td id="jb-g-rho">—</td>
+      </tr></tbody>
+    </table>
+    <div class="jb-actions">
+      <button type="button" class="btn btn-secondary btn-sm" onclick="jbExportarPnt()"
+              title="Copia tickers, C/V, quantidades e o preço por unidade (TAB) para a área de transferência">Exportar PnT</button>
+    </div>
+    <div class="sim-hint" style="margin-top:.5rem;">Gregas no preço atual do ativo e na data do slider ("Dias para o vencimento"). O papel inserido entra só no payoff e nas gregas desta tela.</div>
+  </div>
 </div>
 
 <!-- ── Modal: abrir simulação salva ────────────────────────────────── -->
@@ -697,6 +772,148 @@ function payoffAt(S, legs, multiExp, refDateStr) {
     return total;
 }
 
+// ── Painel de análise (só esta tela) ──────────────────────────────
+// Perna virtual de papel (ativo) somada ao payoff quando "Inserir Papel no
+// Payoff" está marcado. Não é uma linha da tabela: só existe no desenho/gregas.
+function jbPapelQtd() {
+    var el = document.getElementById('jb-papel-qty');
+    return Math.max(0, parseInt(el && el.value, 10) || 0);
+}
+function legsComPapel(legs) {
+    var on = document.getElementById('jb-papel-on');
+    if (!on || !on.checked || !SPOT_ATUAL) return legs;
+    var q = jbPapelQtd();
+    if (!q || !legs.some(function (l) { return l.type !== 'STOCK' && l.qty > 0; })) return legs;
+    return legs.concat([{ type: 'STOCK', side: 'BUY', qty: q, strike: 0, premium: SPOT_ATUAL,
+                          exp: null, iv: 0, ticker: '', _papel: true }]);
+}
+function lerPernasPlot() { return legsComPapel(lerPernas()); }
+
+function jbDataSel() {
+    var host = document.getElementById('curvas-ctrl-sim');
+    var c = host && host._ctrlData;
+    if (c) return c.dataSel();
+    var h = new Date(); h.setHours(0, 0, 0, 0);
+    return h.toISOString().slice(0, 10);
+}
+// Gregas de uma opção (S, K, T anos, r fração, sigma fração). theta/dia,
+// vega/rho/vanna por 1 ponto percentual.
+function jbGregas(S, K, T, r, sig, isCall) {
+    if (!(T > 0) || !(sig > 0) || !(S > 0) || !(K > 0)) {
+        var itm = isCall ? S > K : S < K;
+        return { delta: itm ? (isCall ? 1 : -1) : 0, gamma: 0, theta: 0, vega: 0, vanna: 0, rho: 0 };
+    }
+    var sq = Math.sqrt(T), d1 = (Math.log(S / K) + (r + 0.5 * sig * sig) * T) / (sig * sq), d2 = d1 - sig * sq;
+    var pdf = Math.exp(-d1 * d1 / 2) / Math.sqrt(2 * Math.PI), disc = Math.exp(-r * T);
+    var t1 = -(S * pdf * sig) / (2 * sq);
+    var thetaAno = isCall ? t1 - r * K * disc * normCDF(d2) : t1 + r * K * disc * normCDF(-d2);
+    return {
+        delta: isCall ? normCDF(d1) : normCDF(d1) - 1,
+        gamma: pdf / (S * sig * sq),
+        theta: thetaAno / 365.25,
+        vega:  S * pdf * sq / 100,
+        vanna: -pdf * d2 / sig / 100,
+        rho:   (isCall ? K * T * disc * normCDF(d2) : -K * T * disc * normCDF(-d2)) / 100
+    };
+}
+function jbSomaGregas(legs, S, dataStr) {
+    var r = SELIC_RATE / 100, ref = new Date(dataStr + 'T00:00:00');
+    var tot = { delta: 0, gamma: 0, theta: 0, vega: 0, vanna: 0, rho: 0 };
+    legs.forEach(function (l) {
+        var sign = l.side === 'BUY' ? 1 : -1;
+        if (l.type === 'STOCK') { tot.delta += sign * l.qty; return; }
+        if (!(l.strike > 0)) return;
+        var T = l.exp ? (new Date(l.exp + 'T00:00:00') - ref) / (365.25 * 86400000) : 0;
+        var g = jbGregas(S, l.strike, T, r, l.iv > 0 ? l.iv : 0.30, l.type === 'CALL');
+        Object.keys(tot).forEach(function (k) { tot[k] += sign * l.qty * g[k]; });
+    });
+    return tot;
+}
+function jbMoeda(v) { return (v < 0 ? '-' : '') + fmtBRL(v); }
+
+function jbAtualiza(legsPlot) {
+    var box = document.getElementById('sim-jumba');
+    var opcoes = legsPlot.filter(function (l) { return l.type !== 'STOCK' && l.qty > 0 && l.strike > 0; });
+    if (!opcoes.length) { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    var qBase = Math.min.apply(null, opcoes.map(function (l) { return l.qty; })) || 1;
+    var papel = legsPlot.filter(function (l) { return l._papel; })[0];
+    var junto = document.getElementById('jb-papel-junto').checked && papel;
+    var custoPapel = junto ? papel.qty * SPOT_ATUAL / qBase : 0;
+
+    var preco = 0, boca = 0, ult = 0;
+    opcoes.forEach(function (l) {
+        var sg = l.side === 'BUY' ? 1 : -1, w = l.qty / qBase;
+        var ds = (l._tr && l._tr.dataset) || {};
+        var bid = parseFloat(ds.bid || 0), ask = parseFloat(ds.ask || 0), last = parseFloat(ds.last || 0);
+        preco += sg * w * l.premium;
+        boca  += sg * w * ((sg > 0 ? ask : bid) || l.premium);
+        ult   += sg * w * (last || l.premium);
+    });
+    preco += custoPapel; boca += custoPapel; ult += custoPapel;
+    document.getElementById('jb-qty').textContent = fmtNum(qBase, 0);
+    document.getElementById('jb-preco').textContent = fmtNum(preco);
+    document.getElementById('jb-boca').textContent = jbMoeda(boca);
+    document.getElementById('jb-ultimo').textContent = jbMoeda(ult);
+
+    document.getElementById('jb-tbody').innerHTML = opcoes.map(function (l) {
+        return '<tr><td>' + escHtml(l.ticker || (l.type + ' ' + fmtNum(l.strike))) + '</td><td>R$ ' + fmtNum(l.strike)
+             + '</td><td>' + (l.side === 'SELL' ? '- ' : '') + fmtNum(l.qty, 0) + '</td></tr>';
+    }).join('') + (papel ? '<tr><td>' + escHtml((document.getElementById('sim-ativo') || {}).value || 'Papel')
+             + '</td><td>—</td><td>' + fmtNum(papel.qty, 0) + '</td></tr>' : '');
+
+    var g = jbSomaGregas(legsPlot, SPOT_ATUAL || 0, jbDataSel());
+    function fmtG(v, d) { return fmtNum(v, d); }
+    document.getElementById('jb-g-delta').textContent = fmtG(g.delta, 2);
+    document.getElementById('jb-g-gamma').textContent = fmtG(g.gamma, 2);
+    document.getElementById('jb-g-theta').textContent = fmtG(g.theta, 2);
+    document.getElementById('jb-g-vega').textContent  = fmtG(g.vega, 2);
+    document.getElementById('jb-g-vanna').textContent = fmtG(g.vanna, 2);
+    document.getElementById('jb-g-rho').textContent   = fmtG(g.rho, 2);
+}
+
+window.jbPapelMudou = function () {
+    var on = document.getElementById('jb-papel-on').checked;
+    document.getElementById('jb-junto-wrap').style.display = on ? '' : 'none';
+    document.getElementById('jb-papel-qty-wrap').style.display = on ? '' : 'none';
+    if (on && !jbPapelQtd()) jbSetaQtdZeraDelta();
+    simRecalc();
+};
+// Quantidade de papel que zera o delta das OPÇÕES (na data do slider)
+function jbSetaQtdZeraDelta() {
+    var base = lerPernas().filter(function (l) { return l.type !== 'STOCK' && l.qty > 0; });
+    if (!base.length || !SPOT_ATUAL) return;
+    var d = jbSomaGregas(base, SPOT_ATUAL, jbDataSel()).delta;
+    document.getElementById('jb-papel-qty').value = Math.max(0, Math.round(-d));
+}
+window.jbTravaDelta = function () {
+    var on = document.getElementById('jb-papel-on');
+    on.checked = true;
+    document.getElementById('jb-junto-wrap').style.display = '';
+    document.getElementById('jb-papel-qty-wrap').style.display = '';
+    jbSetaQtdZeraDelta();
+    simRecalc();
+};
+window.jbExportarPnt = function () {
+    var legs = lerPernas().filter(function (l) { return l.type !== 'STOCK' && l.qty > 0 && l.ticker; });
+    if (!legs.length) { alert('Preencha as pernas primeiro.'); return; }
+    var net = 0;
+    legs.forEach(function (l) { net += (l.side === 'SELL' ? 1 : -1) * l.qty * l.premium; });
+    var spread = Math.abs(net) / (legs[0].qty || 1);
+    var linha = legs.map(function (l) { return l.ticker.toUpperCase(); })
+        .concat(legs.map(function (l) { return l.side === 'BUY' ? 'C' : 'V'; }))
+        .concat(legs.map(function (l) { return l.qty; }))
+        .concat([spread.toFixed(2).replace('.', ',')]).join('\t');
+    function ok() { alert('Copiado para a área de transferência:\n\n' + linha.replace(/\t/g, '  ')); }
+    function fallback() {
+        var ta = document.createElement('textarea'); ta.value = linha; document.body.appendChild(ta);
+        ta.select(); try { document.execCommand('copy'); ok(); } catch (e) { prompt('Copie o texto:', linha); }
+        document.body.removeChild(ta);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, fallback);
+    else fallback();
+};
+
 // ── Recalcula tudo ────────────────────────────────────────────────
 window.simRecalc = function () {
     var legs = lerPernas();
@@ -734,7 +951,7 @@ window.simRecalc = function () {
     document.getElementById('m-dte').textContent =
         exps.length ? (dataBR(exps[0]) + (dte != null ? ' (' + dte + 'd)' : '')) : '—';
 
-    desenha(legs);
+    desenha(legsComPapel(legs));
 };
 
 // ── Gráfico + métricas ────────────────────────────────────────────
@@ -754,7 +971,7 @@ function desenha(legs) {
     try {
         if (PayoffStyle.ligaZoom && !canvas._zoomOn) {
             PayoffStyle.ligaZoom(canvas, canvas._payoffView || (canvas._payoffView = { zoom: 1, pan: 0 }),
-                function () { desenha(lerPernas()); });
+                function () { desenha(lerPernasPlot()); });
             canvas._zoomOn = true;
         }
     } catch (e) {}
@@ -768,6 +985,7 @@ function desenha(legs) {
             document.getElementById(id).textContent = '—';
         });
         document.getElementById('sim-aviso').style.display = 'none';
+        var _jb = document.getElementById('sim-jumba'); if (_jb) _jb.style.display = 'none';
         return;
     }
 
@@ -847,7 +1065,7 @@ function desenha(legs) {
 
     // Curvas teóricas (payoff real / delta / theta) na data do slider
     var _ctrl = PayoffStyle.controleData(document.getElementById('curvas-ctrl-sim'),
-                                         function () { desenha(lerPernas()); });
+                                         function () { desenha(lerPernasPlot()); });
     _ctrl.sincroniza(legs);
     if (_ctrl.ativo()) {
         var _ser = PayoffStyle.serieTeorica(Sarr, legs, _ctrl.dataSel(), SELIC_RATE);
@@ -1011,6 +1229,7 @@ function desenha(legs) {
     })();
 
     canvas._ser = { Sarr: Sarr, Parr: Parr, Smin: Smin, Smax: Smax };
+    jbAtualiza(legs);
 
     // Aviso de trava com vencimentos diferentes
     var aviso = document.getElementById('sim-aviso');
@@ -1064,7 +1283,7 @@ function desenha(legs) {
     canvas.addEventListener('mouseleave', function () { tip.style.display = 'none'; });
 })();
 
-window.addEventListener('resize', function () { desenha(lerPernas()); });
+window.addEventListener('resize', function () { desenha(lerPernasPlot()); });
 
 // ── Salvar / abrir ────────────────────────────────────────────────
 // asNew=true força criar uma simulação nova (id null) mesmo que uma já

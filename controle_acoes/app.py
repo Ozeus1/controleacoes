@@ -4144,6 +4144,41 @@ def _busca_rolagem_alternativas(perna, cadeia, criterios):
     return alternativas
 
 
+def _busca_rolagem_cotacao_atual(perna, cadeia):
+    """Cotação da opção que será ROLADA: último, bid, ask e estimativa
+    Black-Scholes (com a VI da própria série; sem VI, a implícita do último)."""
+    from datetime import date as _date
+    atual = next((o for o in cadeia.get('options') or []
+                  if o['exp'] == perna['exp'] and o['kind'] == perna['opt_type']
+                  and abs(o['strike'] - perna['strike']) < 0.011), None)
+    if not atual:
+        return None
+    spot = cadeia.get('spot') or 0
+    bs = iv = None
+    try:
+        dc = (_date.fromisoformat(perna['exp']) - _date.today()).days
+    except (ValueError, TypeError):
+        dc = 0
+    if spot and dc > 0:
+        T = dc / 365.0
+        r = math.log(1 + _selic() / 100.0)
+        is_call = perna['opt_type'] == 'CALL'
+        sigma = (atual.get('iv') or 0) / 100.0
+        if not (0.005 < sigma < 4.9):
+            ult = atual.get('close') or 0
+            sigma = _implied_vol(spot, perna['strike'], T, r, ult, is_call) if ult >= 0.05 else 0
+        if 0.005 < sigma < 4.9:
+            iv = round(sigma * 100, 2)
+            bs = round(_bs_price(spot, perna['strike'], T, r, sigma, is_call), 2)
+    return {
+        'ticker': atual['symbol'],
+        'ultimo': atual.get('close') or None,
+        'bid': atual.get('bid') or None,
+        'ask': atual.get('ask') or None,
+        'bs': bs, 'iv': iv, 'spot': spot or None,
+    }
+
+
 def _busca_rolagem_subjacente(ticker_opcao, user_id, cadeia_cache):
     """Descobre o ativo-objeto de um ticker de opção digitado à mão.
 
@@ -4244,6 +4279,7 @@ def api_busca_rolagem_buscar():
 
         alternativas = _busca_rolagem_alternativas(perna, cadeia, criterios)
         resultados.append({'input': inp, 'perna_atual': perna, 'alternativas': alternativas,
+                           'cotacao_atual': _busca_rolagem_cotacao_atual(perna, cadeia),
                            'market_open': cadeia.get('market_open', True)})
 
     _now_b = now_brt()

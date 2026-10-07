@@ -52,6 +52,8 @@
 .br-results:empty { margin-top:0; }
 .br-result-card { border:1px solid var(--border-color); border-radius:8px; padding:.85rem 1rem;
     background:var(--hover-bg); }
+.br-cots { display:flex; gap:1.1rem; flex-wrap:wrap; align-items:baseline; margin:.1rem 0 .7rem; font-size:.85rem; }
+.br-cot strong { font-weight:700; }
 .br-result-head { display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap;
     margin-bottom:.6rem; padding-bottom:.5rem; border-bottom:1px solid rgba(255,255,255,.06); }
 .br-result-head strong { font-size:.95rem; }
@@ -520,6 +522,22 @@ function brRenderResultados() {
             + (perna.exp ? ' · vence ' + dataBR(perna.exp) : '') + '</span></div>';
         if (res.error) {
             return '<div class="br-result-card">' + head + '<p class="br-hint">⚠️ ' + escHtml(res.error) + '</p></div>';
+        }
+        // Cotação da opção que será rolada: último, bid, ask e estimativa Black-Scholes
+        var cq = res.cotacao_atual;
+        if (cq) {
+            function chip(lbl, v, tip) {
+                return '<span class="br-cot" title="' + tip + '"><span class="br-hint">' + lbl + '</span> <strong>'
+                     + (v != null ? fmtBRL(v) : '—') + '</strong></span>';
+            }
+            head += '<div class="br-cots">'
+                + chip('Último', cq.ultimo, 'Último negócio da série ' + escHtml(cq.ticker || ''))
+                + chip('Ask', cq.ask, 'Melhor oferta de venda (custo para recomprar a vendida)')
+                + chip('Bid', cq.bid, 'Melhor oferta de compra (valor ao vender a comprada)')
+                + chip('Estimativa BS', cq.bs, 'Preço teórico Black-Scholes' + (cq.iv != null ? ' com VI de ' + fmtNum(cq.iv) + '%' : '')
+                       + (cq.spot ? ' e ativo a R$ ' + fmtNum(cq.spot) : ''))
+                + (cq.iv != null ? '<span class="br-hint">VI ' + fmtNum(cq.iv) + '%</span>' : '')
+                + '</div>';
         }
         var alts = res.alternativas || [];
         if (!alts.length) {

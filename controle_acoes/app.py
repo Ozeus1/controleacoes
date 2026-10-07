@@ -4148,15 +4148,19 @@ def _busca_rolagem_cotacao_atual(perna, cadeia):
     """Cotação da opção que será ROLADA: último, bid, ask e estimativa
     Black-Scholes (com a VI da própria série; sem VI, a implícita do último)."""
     from datetime import date as _date
-    atual = next((o for o in cadeia.get('options') or []
-                  if o['exp'] == perna['exp'] and o['kind'] == perna['opt_type']
-                  and abs(o['strike'] - perna['strike']) < 0.011), None)
+    opcoes = cadeia.get('options') or []
+    # 1º pelo próprio ticker (strike ajustado por proventos pode divergir do da
+    # ficha); 2º por vencimento/tipo/strike.
+    atual = next((o for o in opcoes if o['symbol'] == (perna.get('ticker') or '').upper()), None)         or next((o for o in opcoes
+                 if o['exp'] == perna['exp'] and o['kind'] == perna['opt_type']
+                 and abs(o['strike'] - perna['strike']) < 0.011), None)
     if not atual:
         return None
+    perna_exp, perna_strike = atual['exp'], atual['strike']
     spot = cadeia.get('spot') or 0
     bs = iv = None
     try:
-        dc = (_date.fromisoformat(perna['exp']) - _date.today()).days
+        dc = (_date.fromisoformat(perna_exp) - _date.today()).days
     except (ValueError, TypeError):
         dc = 0
     if spot and dc > 0:
@@ -4166,10 +4170,10 @@ def _busca_rolagem_cotacao_atual(perna, cadeia):
         sigma = (atual.get('iv') or 0) / 100.0
         if not (0.005 < sigma < 4.9):
             ult = atual.get('close') or 0
-            sigma = _implied_vol(spot, perna['strike'], T, r, ult, is_call) if ult >= 0.05 else 0
+            sigma = _implied_vol(spot, perna_strike, T, r, ult, is_call) if ult >= 0.05 else 0
         if 0.005 < sigma < 4.9:
             iv = round(sigma * 100, 2)
-            bs = round(_bs_price(spot, perna['strike'], T, r, sigma, is_call), 2)
+            bs = round(_bs_price(spot, perna_strike, T, r, sigma, is_call), 2)
     return {
         'ticker': atual['symbol'],
         'ultimo': atual.get('close') or None,

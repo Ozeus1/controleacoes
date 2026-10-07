@@ -538,6 +538,8 @@ function brRenderResultados() {
                        + (cq.spot ? ' e ativo a R$ ' + fmtNum(cq.spot) : ''))
                 + (cq.iv != null ? '<span class="br-hint">VI ' + fmtNum(cq.iv) + '%</span>' : '')
                 + '</div>';
+        } else {
+            head += '<div class="br-cots"><span class="br-hint">Cotação da opção atual indisponível na cadeia (série sem dados).</span></div>';
         }
         var alts = res.alternativas || [];
         if (!alts.length) {

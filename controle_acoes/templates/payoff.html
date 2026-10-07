@@ -873,28 +873,39 @@ document.addEventListener('fullscreenchange', function () {
     // Para calendário: referência é o vencimento mais curto
     var refDate = isCalendar ? uniqueExps[0] : (uniqueExps[0] || '');
 
-    // Estimativa de IV implícita de cada perna (prêmio / strike como proxy)
-    // Para valoração BS da perna longa no vencimento da curta
-    function estimateIV(leg) {
-        // IV estimada via ratio prêmio/strike — proxy simples (se não tiver IV real)
-        // Calcula T da perna em anos a partir de hoje
+    // VI de cada perna, para valorar por Black-Scholes a perna que vence DEPOIS
+    // da mais curta. Ordem: (1) VI implícita da cotação ATUAL da opção com o
+    // spot de hoje — é a VI de mercado; (2) VI implícita do preço de entrada
+    // (também com o spot de hoje); (3) 30%. Antes só usava o preço de ENTRADA,
+    // e quando ele ficava abaixo do intrínseco de hoje (ex.: call que já está bem
+    // dentro do dinheiro) a bissecção não tinha solução e devolvia ~0,1% — a perna
+    // longa passava a valer só o intrínseco e o gráfico saía sem valor de tempo.
+    function ivImplicita(leg, alvo) {
         var today = new Date(); today.setHours(0,0,0,0);
         var expD  = leg.exp ? new Date(leg.exp + 'T00:00:00') : today;
         var T     = Math.max((expD - today) / (365.25 * 86400000), 1/365);
-        // Bisect: encontra sigma tal que BS(S0, K, T, sigma) = entry_price
-        // Usa cotação atual do ativo como proxy de S0
         var S0 = spotPrice > 0 ? spotPrice : leg.strike;
         var isCall = leg.type === 'CALL';
-        var target = leg.entry;
-        if (target <= 0) return 0.30; // padrão 30%
-        var lo = 0.001, hi = 5.0;
+        if (!(alvo > 0)) return null;
+        var intr = Math.max(0, isCall ? S0 - leg.strike : leg.strike - S0);
+        if (alvo <= intr * 1.005 && T > 1/365) return null;      // abaixo da paridade: sem solução
+        var lo = 0.01, hi = 5.0;
+        if (blackScholes(S0, leg.strike, T, hi, isCall) < alvo) return null;
         for (var i = 0; i < 60; i++) {
             var mid = (lo + hi) / 2;
-            var val = blackScholes(S0, leg.strike, T, mid, isCall);
-            if (val < target) lo = mid; else hi = mid;
+            if (blackScholes(S0, leg.strike, T, mid, isCall) < alvo) lo = mid; else hi = mid;
             if (hi - lo < 1e-6) break;
         }
-        return (lo + hi) / 2;
+        var v = (lo + hi) / 2;
+        return (v <= 0.011 || v >= 4.9) ? null : v;
+    }
+    var _ivCache = {};
+    function estimateIV(leg) {
+        var k = [leg.type, leg.strike, leg.exp, leg.entry, leg.current].join('|');
+        if (_ivCache[k] != null) return _ivCache[k];
+        var v = ivImplicita(leg, leg.current) || ivImplicita(leg, leg.entry) || 0.30;
+        _ivCache[k] = v;
+        return v;
     }
 
     function netPremium() {
@@ -963,6 +974,11 @@ document.addEventListener('fullscreenchange', function () {
     var strikes = legs.map(function(l){ return l.strike; }).filter(Boolean);
     var minK = strikes.length ? Math.min.apply(null, strikes) : 10;
     var maxK = strikes.length ? Math.max.apply(null, strikes) : 60;
+    // O spot entra na faixa (quando não está longe demais dos strikes) para o gráfico
+    // sempre mostrar onde o ativo está agora.
+    if (spotPrice > 0 && spotPrice >= minK * 0.6 && spotPrice <= maxK * 1.6) {
+        minK = Math.min(minK, spotPrice); maxK = Math.max(maxK, spotPrice);
+    }
     var pad  = Math.max((maxK - minK) * 0.55, maxK * 0.25);
     var SminBase = Math.max(0.01, minK - pad);
     var SmaxBase = maxK + pad;

@@ -52,6 +52,9 @@
 .br-results:empty { margin-top:0; }
 .br-result-card { border:1px solid var(--border-color); border-radius:8px; padding:.85rem 1rem;
     background:var(--hover-bg); }
+.br-tag { display:inline-block; margin-left:.35rem; padding:0 .4rem; border-radius:4px; font-size:.68rem; font-weight:600;
+          background:rgba(148,163,184,.15); color:var(--text-secondary); white-space:nowrap; }
+.br-tag.pos { background:rgba(16,185,129,.15); color:#10b981; }
 .br-cots { display:flex; gap:1.1rem; flex-wrap:wrap; align-items:baseline; margin:.1rem 0 .7rem; font-size:.85rem; }
 .br-cot strong { font-weight:700; }
 .br-result-head { display:flex; align-items:baseline; gap:.6rem; flex-wrap:wrap;
@@ -549,7 +552,8 @@ function brRenderResultados() {
             var jaEscolhida = BR_LINHAS.some(function (l) { return l._ri === ri && l._ai === ai; });
             return '<tr' + (jaEscolhida ? ' class="escolhida"' : '') + '>'
                  + '<td>' + dataBR(a.exp) + '</td>'
-                 + '<td>' + escHtml(a.ticker) + '</td>'
+                 + '<td>' + escHtml(a.ticker) + (a.tag && a.tag !== 'critério'
+                       ? ' <span class="br-tag' + (a.tag.indexOf('crédito') >= 0 ? ' pos' : '') + '">' + escHtml(a.tag) + '</span>' : '') + '</td>'
                  + '<td>' + fmtBRL(a.strike) + '</td>'
                  + '<td>' + (a.dif_strike >= 0 ? '+' : '') + fmtNum(a.dif_strike) + '</td>'
                  + '<td>' + fmtBRL(a.close_price) + brFonte(a.fonte_fech) + '</td>'

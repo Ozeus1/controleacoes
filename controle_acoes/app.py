@@ -4002,7 +4002,7 @@ def _busca_rolagem_vencimentos_elegiveis(cadeia_options, incluir_semanais, profu
 _ULT_MIN = 0.05   # último negócio abaixo disso = série sem negócio de fato
 
 
-def _busca_rolagem_calcula_alternativa(perna, exp, strike, cadeia_by_key, market_open=True):
+def _busca_rolagem_calcula_alternativa(perna, exp, strike, cadeia_by_key, market_open=True, atual_row=None):
     """Monta 1 alternativa de rolagem (perna atual -> vencimento/strike
     alvo), calculando prêmio de fechamento (perna atual, preço de mercado
     corrente) e abertura (perna alvo), e o crédito/débito líquido.
@@ -4017,7 +4017,9 @@ def _busca_rolagem_calcula_alternativa(perna, exp, strike, cadeia_by_key, market
     """
     kind = perna['opt_type']
     alvo = cadeia_by_key.get((exp, kind, round(strike, 2)))
-    atual = cadeia_by_key.get((perna['exp'], kind, round(perna['strike'], 2)))
+    # A opção atual é achada pelo TICKER (o strike da ficha pode vir ajustado por
+    # proventos e não bater com o da cadeia); só depois por vencimento/tipo/strike.
+    atual = atual_row or cadeia_by_key.get((perna['exp'], kind, round(perna['strike'], 2)))
     if not alvo:
         return None
 
@@ -4073,6 +4075,7 @@ def _busca_rolagem_alternativas(perna, cadeia, criterios):
     kind = perna['opt_type'] or 'CALL'
     mesmo_kind = [o for o in options if o['kind'] == kind]
     cadeia_by_key = {(o['exp'], o['kind'], o['strike']): o for o in options}
+    atual_row = next((o for o in options if o['symbol'] == (perna.get('ticker') or '').upper()), None)
     # Pregão fechado: só séries com negócio entram como ALVO (vencimentos e
     # strikes candidatos) — assim o "strike mais próximo" no modo Tempo já
     # é o mais próximo NEGOCIADO, em vez de uma série sem preço que seria
@@ -4098,7 +4101,7 @@ def _busca_rolagem_alternativas(perna, cadeia, criterios):
             if not strikes_disp:
                 continue
             alvo_strike = min(strikes_disp, key=lambda s: abs(s - perna['strike']))
-            alt = _busca_rolagem_calcula_alternativa(perna, exp, alvo_strike, cadeia_by_key, market_open)
+            alt = _busca_rolagem_calcula_alternativa(perna, exp, alvo_strike, cadeia_by_key, market_open, atual_row)
             if alt:
                 alternativas.append(alt)
 
@@ -4110,7 +4113,7 @@ def _busca_rolagem_alternativas(perna, cadeia, criterios):
             abaixo = sorted([s for s in strikes_disp if s < perna['strike']], reverse=True)[:max_dist]
             acima = sorted([s for s in strikes_disp if s > perna['strike']])[:max_dist]
             for s in sorted(abaixo + acima):
-                alt = _busca_rolagem_calcula_alternativa(perna, exp_atual, s, cadeia_by_key, market_open)
+                alt = _busca_rolagem_calcula_alternativa(perna, exp_atual, s, cadeia_by_key, market_open, atual_row)
                 if alt:
                     alternativas.append(alt)
 
@@ -4130,7 +4133,7 @@ def _busca_rolagem_alternativas(perna, cadeia, criterios):
             candidatos.sort(reverse=not is_call)  # mais próximo do strike atual primeiro
             melhor = None
             for s in candidatos:
-                alt = _busca_rolagem_calcula_alternativa(perna, exp, s, cadeia_by_key, market_open)
+                alt = _busca_rolagem_calcula_alternativa(perna, exp, s, cadeia_by_key, market_open, atual_row)
                 if not alt:
                     continue
                 if alt['net_roll_total'] >= 0:
@@ -4140,7 +4143,45 @@ def _busca_rolagem_alternativas(perna, cadeia, criterios):
             if melhor:
                 alternativas.append(melhor)
 
-    alternativas.sort(key=lambda a: a['net_roll_total'], reverse=True)
+    # Sempre, para cada vencimento elegível, duas sugestões extras:
+    #  • strike mais PRÓXIMO do atual, com o custo real da rolagem (mesmo que seja débito);
+    #  • rolagem com CRÉDITO positivo, em qualquer strike (o mais próximo do atual que ainda recebe).
+    ja = {(a['exp'], a['strike']) for a in alternativas}
+    for a in alternativas:
+        a['tag'] = 'critério'
+    for exp in vencs:
+        strikes_disp = sorted(strikes_por_exp.get(exp) or [])
+        if not strikes_disp:
+            continue
+        calc = lambda k: _busca_rolagem_calcula_alternativa(perna, exp, k, cadeia_by_key, market_open, atual_row)
+        # strike mais próximo
+        for k in sorted(strikes_disp, key=lambda k: abs(k - perna['strike'])):
+            alt = calc(k)
+            if alt:
+                alt['tag'] = 'strike mais próximo'
+                existente = next((a for a in alternativas if (a['exp'], a['strike']) == (alt['exp'], alt['strike'])), None)
+                if existente:
+                    existente['tag'] = 'strike mais próximo'
+                else:
+                    alternativas.append(alt); ja.add((alt['exp'], alt['strike']))
+                break
+        # crédito positivo mais próximo do strike atual
+        positivas = []
+        for k in strikes_disp:
+            alt = calc(k)
+            if alt and alt['net_roll_total'] > 0:
+                positivas.append(alt)
+        if positivas:
+            alt = min(positivas, key=lambda a: (abs(a['strike'] - perna['strike']), -a['net_roll_total']))
+            alt['tag'] = 'crédito positivo'
+            existente = next((a for a in alternativas if (a['exp'], a['strike']) == (alt['exp'], alt['strike'])), None)
+            if existente:
+                existente['tag'] = (existente['tag'] + ' + crédito positivo') if existente.get('tag') not in (None, 'critério') else 'crédito positivo'
+            else:
+                alternativas.append(alt)
+
+    ordem_tag = {'strike mais próximo': 0, 'strike mais próximo + crédito positivo': 0, 'crédito positivo': 1}
+    alternativas.sort(key=lambda a: (a['exp'], ordem_tag.get(a.get('tag'), 2), -a['net_roll_total']))
     return alternativas
 
 

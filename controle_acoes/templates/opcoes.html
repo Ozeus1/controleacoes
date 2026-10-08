@@ -1761,11 +1761,40 @@ function editDeltaPut(optId, current) {
             + 'max-height:320px; overflow-y:auto; overflow-x:hidden; display:none;'
             + 'box-sizing:border-box;';
 
+        // Clique dentro do menu NÃO fecha (o handler global do document só fecha
+        // cliques de fora) — dá para marcar/desmarcar várias colunas seguidas.
+        menu.addEventListener('click', function (ev) { ev.stopPropagation(); });
+
+        var topBar = document.createElement('div');
+        topBar.style.cssText = 'display:flex; align-items:center; justify-content:space-between; gap:.5rem;'
+            + 'margin-bottom:.4rem; position:sticky; top:-.5rem; background:var(--card-bg);'
+            + 'padding:.15rem 0 .3rem; border-bottom:1px solid var(--border-color); z-index:1;';
         var title = document.createElement('div');
         title.textContent = 'Colunas visíveis';
-        title.style.cssText = 'font-weight:700; margin-bottom:.4rem; color:var(--text-secondary);'
+        title.style.cssText = 'font-weight:700; color:var(--text-secondary);'
             + 'text-transform:uppercase; font-size:.7rem;';
-        menu.appendChild(title);
+        topBar.appendChild(title);
+        var bulk = document.createElement('div');
+        bulk.style.cssText = 'display:flex; gap:.25rem;';
+        function bulkBtn(txt, tip, fn) {
+            var b = document.createElement('button');
+            b.type = 'button'; b.textContent = txt; b.title = tip;
+            b.className = 'btn btn-sm btn-secondary';
+            b.style.cssText = 'font-size:.7rem; padding:.1rem .4rem;';
+            b.onclick = fn;
+            bulk.appendChild(b);
+        }
+        function setAll(show) {
+            var cur = [];
+            if (!show) for (var k = 1; k < ths.length - 1; k++) cur.push(k);
+            saveHidden(key, cur);
+            applyHidden(table, cur);
+            menu.querySelectorAll('input[type=checkbox]').forEach(function (cb) { cb.checked = show; });
+        }
+        bulkBtn('Todas', 'Mostrar todas as colunas', function () { setAll(true); });
+        bulkBtn('Nenhuma', 'Ocultar todas as colunas opcionais', function () { setAll(false); });
+        topBar.appendChild(bulk);
+        menu.appendChild(topBar);
 
         // 1ª e última coluna ficam de fora da lista — não são ocultáveis.
         for (var i = 1; i < ths.length - 1; i++) {
@@ -1797,17 +1826,13 @@ function editDeltaPut(optId, current) {
             })(i);
         }
 
-        var resetBtn = document.createElement('button');
-        resetBtn.type = 'button';
-        resetBtn.textContent = 'Mostrar todas';
-        resetBtn.className = 'btn btn-sm btn-secondary';
-        resetBtn.style.cssText = 'width:100%; margin-top:.5rem; font-size:.78rem;';
-        resetBtn.onclick = function () {
-            saveHidden(key, []);
-            applyHidden(table, []);
-            menu.querySelectorAll('input[type=checkbox]').forEach(function (cb) { cb.checked = true; });
-        };
-        menu.appendChild(resetBtn);
+        var okBtn = document.createElement('button');
+        okBtn.type = 'button';
+        okBtn.textContent = 'Concluir';
+        okBtn.className = 'btn btn-sm btn-primary';
+        okBtn.style.cssText = 'width:100%; margin-top:.5rem; font-size:.78rem; position:sticky; bottom:-.5rem;';
+        okBtn.onclick = function () { menu.style.display = 'none'; };
+        menu.appendChild(okBtn);
 
         document.body.appendChild(menu);
         return menu;
@@ -1843,9 +1868,15 @@ function editDeltaPut(optId, current) {
             document.querySelectorAll('.cols-menu').forEach(function (m) { m.style.display = 'none'; });
             if (!open) {
                 var r = btn.getBoundingClientRect();
-                menu.style.left = (r.left + window.scrollX) + 'px';
-                menu.style.top = (r.bottom + window.scrollY + 4) + 'px';
                 menu.style.display = 'block';
+                // altura máxima conforme o espaço visível; não passa da borda direita
+                menu.style.maxHeight = Math.max(180, Math.min(420, window.innerHeight - 24)) + 'px';
+                var mw = menu.offsetWidth, mh = menu.offsetHeight;
+                var left = Math.min(r.left, window.innerWidth - mw - 8);
+                var top = r.bottom + 4;
+                if (top + mh > window.innerHeight - 8 && r.top - mh - 4 > 8) top = r.top - mh - 4;   // abre para cima
+                menu.style.left = (Math.max(8, left) + window.scrollX) + 'px';
+                menu.style.top = (top + window.scrollY) + 'px';
             }
         });
 
@@ -1860,6 +1891,9 @@ function editDeltaPut(optId, current) {
 
     document.addEventListener('click', function () {
         document.querySelectorAll('.cols-menu').forEach(function (m) { m.style.display = 'none'; });
+    });
+    document.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape') document.querySelectorAll('.cols-menu').forEach(function (m) { m.style.display = 'none'; });
     });
 })();
 </script>

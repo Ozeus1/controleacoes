@@ -537,9 +537,14 @@ function brRenderResultados() {
                 + chip('Último', cq.ultimo, 'Último negócio da série ' + escHtml(cq.ticker || ''))
                 + chip('Ask', cq.ask, 'Melhor oferta de venda (custo para recomprar a vendida)')
                 + chip('Bid', cq.bid, 'Melhor oferta de compra (valor ao vender a comprada)')
-                + chip('Estimativa BS', cq.bs, 'Preço teórico Black-Scholes' + (cq.iv != null ? ' com VI de ' + fmtNum(cq.iv) + '%' : '')
-                       + (cq.spot ? ' e ativo a R$ ' + fmtNum(cq.spot) : ''))
-                + (cq.iv != null ? '<span class="br-hint">VI ' + fmtNum(cq.iv) + '%</span>' : '')
+                + chip('Estimativa BS', cq.bs, cq.bs != null
+                       ? 'Preço teórico Black-Scholes com VI de ' + fmtNum(cq.iv) + '% (' + escHtml(cq.iv_fonte || '') + ')'
+                         + (cq.spot ? ' e ativo a R$ ' + fmtNum(cq.spot) : '')
+                       : 'Não foi possível calcular: ' + escHtml(cq.motivo || 'dados insuficientes'))
+                + (cq.iv != null ? '<span class="br-hint" title="' + escHtml(cq.iv_fonte || '') + '">VI ' + fmtNum(cq.iv) + '%'
+                       + (cq.iv_fonte && cq.iv_fonte.indexOf('própria') < 0 && cq.iv_fonte.indexOf('último') < 0 ? ' (estimada)' : '') + '</span>'
+                   : (cq.motivo ? '<span class="br-hint">' + escHtml(cq.motivo) + '</span>' : ''))
+                + (cq.spot ? '<span class="br-hint" title="Cotação do ativo usada no cálculo">Ativo R$ ' + fmtNum(cq.spot) + '</span>' : '')
                 + '</div>';
         } else {
             head += '<div class="br-cots"><span class="br-hint">Cotação da opção atual indisponível na cadeia (série sem dados).</span></div>';

@@ -4200,18 +4200,44 @@ def _busca_rolagem_cotacao_atual(perna, cadeia):
     perna_exp, perna_strike = atual['exp'], atual['strike']
     spot = cadeia.get('spot') or 0
     bs = iv = None
+    iv_fonte = motivo = None
     try:
         dc = (_date.fromisoformat(perna_exp) - _date.today()).days
     except (ValueError, TypeError):
         dc = 0
-    if spot and dc > 0:
+    if not spot:
+        motivo = 'sem cotação do ativo'
+    elif dc <= 0:
+        motivo = 'opção vence hoje ou já venceu'
+    else:
         T = dc / 365.0
         r = math.log(1 + _selic() / 100.0)
         is_call = perna['opt_type'] == 'CALL'
         sigma = (atual.get('iv') or 0) / 100.0
-        if not (0.005 < sigma < 4.9):
+        if 0.005 < sigma < 4.9:
+            iv_fonte = 'VI da própria série'
+        else:
+            sigma = 0
             ult = atual.get('close') or 0
-            sigma = _implied_vol(spot, perna_strike, T, r, ult, is_call) if ult >= 0.05 else 0
+            if ult >= 0.05:
+                sg = _implied_vol(spot, perna_strike, T, r, ult, is_call)
+                if 0.005 < sg < 4.9:
+                    sigma, iv_fonte = sg, 'VI implícita do último negócio'
+            if not sigma:
+                # Sem VI na série e sem solução pelo último (série sem negócio, ou último
+                # abaixo do valor intrínseco para este ativo): usa a VI da série vizinha
+                # do mesmo vencimento (strike mais próximo) e, na falta, a mediana da cadeia.
+                viz = sorted([o for o in opcoes if o['exp'] == perna_exp and o['kind'] == perna['opt_type']
+                              and o.get('iv') and 0.5 < o['iv'] < 490],
+                             key=lambda o: abs(o['strike'] - perna_strike))
+                if viz:
+                    sigma, iv_fonte = viz[0]['iv'] / 100.0, 'VI da série vizinha (%s)' % viz[0]['symbol']
+                else:
+                    todas = sorted(o['iv'] for o in opcoes if o.get('iv') and 0.5 < o['iv'] < 490)
+                    if todas:
+                        sigma, iv_fonte = todas[len(todas) // 2] / 100.0, 'mediana das VIs da cadeia'
+            if not sigma:
+                motivo = 'sem VI na cadeia e o último negócio não permite calcular'
         if 0.005 < sigma < 4.9:
             iv = round(sigma * 100, 2)
             bs = round(_bs_price(spot, perna_strike, T, r, sigma, is_call), 2)
@@ -4220,7 +4246,7 @@ def _busca_rolagem_cotacao_atual(perna, cadeia):
         'ultimo': atual.get('close') or None,
         'bid': atual.get('bid') or None,
         'ask': atual.get('ask') or None,
-        'bs': bs, 'iv': iv, 'spot': spot or None,
+        'bs': bs, 'iv': iv, 'iv_fonte': iv_fonte, 'motivo': motivo, 'spot': spot or None,
     }
 
 

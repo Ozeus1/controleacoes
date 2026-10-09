@@ -14,6 +14,51 @@
     <form method="POST">
         <input type="hidden" name="option_type" value="{{ option_type if option_type else (option.option_type if option else 'VENDA_CALL') }}">
 
+{% set auto = (not edit) and option_type == 'VENDA_PUT' %}
+        {% if auto %}
+        {# Venda a seco de PUT (cadastro novo): só ticker, quantidade, valor e data da venda;
+           ativo objeto, strike e vencimento vêm da ficha da opção na OpLab. #}
+        <div class="form-group">
+            <label for="ticker">Ticker da Opção (ex: ABEVM31)</label>
+            <input type="text" id="ticker" name="ticker" class="form-control" required
+                   style="text-transform: uppercase;" autocomplete="off" onblur="aoBuscar()">
+        </div>
+        <div class="form-group">
+            <label for="quantity">Quantidade Vendida</label>
+            <input type="number" id="quantity" name="quantity" class="form-control" required min="1">
+        </div>
+        <div class="row">
+            <div class="col-md-6 form-group">
+                <label for="sale_price">Valor de Venda / Prêmio Recebido (R$)</label>
+                <input type="text" id="sale_price" name="sale_price" class="form-control" required placeholder="0,00">
+                <small id="ao-ult" style="color: var(--text-secondary);"></small>
+            </div>
+            <div class="col-md-6 form-group">
+                <label for="entry_date">Data da Venda</label>
+                <input type="date" id="entry_date" name="entry_date" class="form-control" required>
+            </div>
+        </div>
+        <div id="ao-box" style="border:1px solid var(--border-color); border-radius:8px; padding:.7rem .9rem; margin-top:.4rem;">
+            <div style="font-size:.78rem; color:var(--text-secondary); margin-bottom:.5rem;">
+                Calculado pelo ticker da opção <span id="ao-status"></span>
+            </div>
+            <div class="row">
+                <div class="col-md-4 form-group">
+                    <label for="underlying_asset">Ativo Objeto</label>
+                    <input type="text" id="underlying_asset" name="underlying_asset" class="form-control" readonly style="text-transform: uppercase;">
+                </div>
+                <div class="col-md-4 form-group">
+                    <label for="strike_price">Strike (R$)</label>
+                    <input type="text" id="strike_price" name="strike_price" class="form-control" readonly placeholder="0,00">
+                </div>
+                <div class="col-md-4 form-group">
+                    <label for="expiration_date">Vencimento</label>
+                    <input type="date" id="expiration_date" name="expiration_date" class="form-control" readonly>
+                </div>
+            </div>
+            <div id="ao-erro" style="display:none; color:#f87171; font-size:.82rem;"></div>
+        </div>
+        {% else %}
         <div class="form-group">
             <label for="ticker">Ticker da Opção (ex: ABEVA31)</label>
             <input type="text" id="ticker" name="ticker" class="form-control"
@@ -78,6 +123,7 @@
     {% endif %}
 </div>
 
+{% endif %}
 <div style="display: flex; gap: 1rem; margin-top: 2rem;">
     <button type="submit" class="btn btn-primary" style="flex: 1;">Salvar</button>
     <a href="{{ url_for('opcoes') }}" class="btn btn-danger"
@@ -94,6 +140,56 @@
 {% endif %}
 </form>
 </div>
+{% if option_type == 'VENDA_PUT' and not edit %}
+<script>
+// Busca a ficha da opção (OpLab) e preenche ativo objeto, strike e vencimento.
+// Se for CALL, avisa e limpa; se a busca falhar, libera os campos para digitar à mão.
+var aoUltimoTicker = '';
+function aoLiberaManual(msg) {
+    ['underlying_asset', 'strike_price', 'expiration_date'].forEach(function (id) {
+        var el = document.getElementById(id); el.readOnly = false; el.required = true;
+    });
+    var e = document.getElementById('ao-erro');
+    e.textContent = msg + ' Preencha os campos abaixo manualmente.'; e.style.display = 'block';
+}
+function aoBuscar() {
+    var t = (document.getElementById('ticker').value || '').trim().toUpperCase();
+    if (!t || t === aoUltimoTicker) return;
+    aoUltimoTicker = t;
+    var st = document.getElementById('ao-status'), er = document.getElementById('ao-erro');
+    st.textContent = '⏳ buscando…'; er.style.display = 'none';
+    fetch('/api/busca-opcao/' + encodeURIComponent(t))
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            var d = res.j;
+            if (!res.ok || d.error) { st.textContent = ''; aoLiberaManual('Não consegui buscar ' + t + ' na OpLab (' + (d.error || 'erro') + ').'); return; }
+            var tipo = (d.type || '').toUpperCase();
+            if (tipo && tipo.indexOf('PUT') < 0) {
+                st.textContent = '';
+                ['underlying_asset', 'strike_price', 'expiration_date'].forEach(function (id) { document.getElementById(id).value = ''; });
+                er.textContent = t + ' é uma CALL, não uma PUT. Para vender CALL use "Venda Coberta de Call"; ou confira o ticker da PUT.';
+                er.style.display = 'block';
+                return;
+            }
+            document.getElementById('underlying_asset').value = (d.underlying || '').toUpperCase();
+            document.getElementById('strike_price').value = d.strike != null ? Number(d.strike).toFixed(2).replace('.', ',') : '';
+            document.getElementById('expiration_date').value = (d.expiration || '').slice(0, 10);
+            st.textContent = '✓ ok';
+            var u = document.getElementById('ao-ult');
+            if (d.last) {
+                u.textContent = 'Último negócio: R$ ' + Number(d.last).toFixed(2).replace('.', ',');
+                var sp = document.getElementById('sale_price');
+                if (!sp.value) sp.placeholder = Number(d.last).toFixed(2).replace('.', ',');
+            }
+            if (!document.getElementById('underlying_asset').value || !document.getElementById('strike_price').value
+                || !document.getElementById('expiration_date').value) {
+                aoLiberaManual('A ficha de ' + t + ' veio incompleta.');
+            }
+        })
+        .catch(function () { st.textContent = ''; aoLiberaManual('Falha de rede ao buscar ' + t + '.'); });
+}
+</script>
+{% endif %}
 <script>
     // Default Date to Today if empty
     const dateInput = document.getElementById('entry_date');

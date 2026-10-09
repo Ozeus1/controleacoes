@@ -1711,6 +1711,23 @@ def add_option():
             sale_price_str = request.form.get('sale_price')
             option_type = request.form.get('option_type', 'VENDA_CALL')
 
+            # Venda a seco de PUT: ativo objeto, strike e vencimento saem da ficha da opção
+            # quando não vierem preenchidos (o formulário pede só ticker, qtd, valor e data).
+            if option_type == 'VENDA_PUT' and ticker and not all([underlying, strike_str, expiration_str]):
+                ficha = api_busca_opcao(ticker.strip().upper())
+                if isinstance(ficha, tuple):
+                    flash(f"Não consegui buscar {ticker.upper()} na OpLab para completar os dados; preencha ativo, strike e vencimento.", "warning")
+                    return redirect(url_for('add_option', type=option_type))
+                fd = ficha.get_json() or {}
+                if 'CALL' in (fd.get('type') or '').upper():
+                    flash(f"{ticker.upper()} é uma CALL, não uma PUT.", "danger")
+                    return redirect(url_for('add_option', type=option_type))
+                underlying = underlying or fd.get('underlying') or ''
+                if not strike_str and fd.get('strike') is not None:
+                    strike_str = str(fd['strike'])
+                if not expiration_str and fd.get('expiration'):
+                    expiration_str = str(fd['expiration'])[:10]
+
             if not all([ticker, underlying, quantity_str, strike_str, expiration_str, sale_price_str]):
                 flash("Todos os campos são obrigatórios.", "warning")
                 return redirect(url_for('add_option', type=option_type))

@@ -1857,6 +1857,8 @@ def edit_spread(id):
             sp.pop = float(pop_str.replace(',', '.')) if pop_str else None
 
             db.session.commit()
+            if request.headers.get('X-Requested-With') == 'fetch':
+                return jsonify({'ok': True})      # Salvar da edição: grava e fica na tela
             # Botão "Encerrar operação" salva as edições pendentes primeiro
             # (senão a tela de encerramento abria com os valores antigos do
             # banco, ignorando o que o usuário acabou de digitar) e só
@@ -1865,6 +1867,9 @@ def edit_spread(id):
                 return redirect(url_for('close_spread', id=sp.id))
             flash("Trava atualizada!", "success")
         except Exception as e:
+            db.session.rollback()
+            if request.headers.get('X-Requested-With') == 'fetch':
+                return jsonify({'ok': False, 'error': str(e)}), 400
             flash(f"Erro: {e}", "danger")
         return redirect(url_for('opcoes'))
     return render_template('add_spread.html', spread_type=sp.spread_type, spread=sp, edit=True, today=date.today())
@@ -15084,12 +15089,20 @@ def edit_option(id):
                 opt.current_option_price = float(curr_price_str.replace(',', '.'))
                 
             db.session.commit()
+            if request.headers.get('X-Requested-With') == 'fetch':
+                return jsonify({'ok': True})      # Salvar da edição: grava e fica na tela
             flash("Opção atualizada com sucesso!", "success")
             return redirect(url_for('opcoes'))
             
         except ValueError as ve:
+             db.session.rollback()
+             if request.headers.get('X-Requested-With') == 'fetch':
+                 return jsonify({'ok': False, 'error': f'Erro de formato: {ve}'}), 400
              flash(f"Erro de formato: {ve}", "danger")
         except Exception as e:
+             db.session.rollback()
+             if request.headers.get('X-Requested-With') == 'fetch':
+                 return jsonify({'ok': False, 'error': str(e)}), 400
              flash(f"Erro ao editar: {e}", "danger")
              return redirect(url_for('opcoes'))
              

@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card" style="max-width: 600px; margin: 2rem auto;">
+<div class="card" style="max-width: 600px; margin: 2rem auto; position: relative;">
+    {% if edit and option %}
+    <button type="button" onclick="fecharJanela()" title="Fechar (voltar ao payoff)" aria-label="Fechar"
+            style="position:absolute; top:.6rem; right:.8rem; background:none; border:none; cursor:pointer;
+                   color:var(--text-secondary); font-size:1.15rem; line-height:1; padding:.25rem .4rem; border-radius:6px; opacity:.7;"
+            onmouseover="this.style.opacity='1';" onmouseout="this.style.opacity='.7';">✕</button>
+    {% endif %}
     <h2 style="text-align: center; margin-bottom: 2rem;">
         {% if edit %}Editar Opção{% else %}
             {% if option_type == 'COMPRA_CALL' %}Adicionar Compra a Seco - Call ITM
@@ -11,7 +17,7 @@
         {% endif %}
     </h2>
 
-    <form method="POST">
+    <form method="POST" id="op-form">
         <input type="hidden" name="option_type" value="{{ option_type if option_type else (option.option_type if option else 'VENDA_CALL') }}">
 
 {% set auto = (not edit) and option_type == 'VENDA_PUT' %}
@@ -130,12 +136,20 @@
         style="flex: 1; text-align: center; text-decoration: none;">Cancelar</a>
 </div>
 {% if edit %}
-<div style="margin-top:1rem; text-align:center;">
-    <a href="{{ url_for('close_option', id=option.id) }}"
+<div id="save-status" style="margin-top:.6rem; text-align:center; font-size:.82rem; color:var(--text-secondary); min-height:1.1em;"></div>
+<div style="margin-top:.6rem; display:flex; gap:.6rem; justify-content:center; flex-wrap:wrap;">
+    <button type="button" id="btn-exportar-pnt" onclick="exportarPnt()"
+       title="Copia ticker, C/V, quantidade e preço para DESMONTAR (fechar) a posição"
        style="background:none; border:1px solid var(--border-color);
               color:var(--text-secondary); border-radius:6px; padding:.4rem .8rem;
-              font-size:.82rem; cursor:pointer; text-decoration:none; transition:opacity .15s;"
-       onmouseover="this.style.opacity='.75';" onmouseout="this.style.opacity='1';">🛑 Encerrar operação</a>
+              font-size:.82rem; cursor:pointer; transition:opacity .15s;"
+       onmouseover="this.style.opacity='.75';" onmouseout="this.style.opacity='1';">📋 Exportar Pnt</button>
+    <button type="button" onclick="encerrarOperacao()"
+       title="Salva as cotações da tela e abre o encerramento com os valores salvos"
+       style="background:none; border:1px solid var(--border-color);
+              color:var(--text-secondary); border-radius:6px; padding:.4rem .8rem;
+              font-size:.82rem; cursor:pointer; transition:opacity .15s;"
+       onmouseover="this.style.opacity='.75';" onmouseout="this.style.opacity='1';">🛑 Encerrar operação</button>
 </div>
 {% endif %}
 </form>
@@ -187,6 +201,54 @@ function aoBuscar() {
             }
         })
         .catch(function () { st.textContent = ''; aoLiberaManual('Falha de rede ao buscar ' + t + '.'); });
+}
+</script>
+{% endif %}
+{% if edit and option %}
+<script>
+// Salvar (edição): grava em produção e PERMANECE na tela; o ✕ do canto fecha.
+function salvarOpcao() {
+    var form = document.getElementById('op-form');
+    var st = document.getElementById('save-status');
+    if (!form.reportValidity()) return Promise.resolve(false);
+    st.textContent = '⏳ salvando…';
+    return fetch(form.action || window.location.href, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch' } })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+            if (!j.ok) { st.textContent = ''; alert('Erro ao salvar: ' + (j.error || 'desconhecido')); return false; }
+            var h = new Date();
+            st.textContent = '✓ salvo às ' + ('0' + h.getHours()).slice(-2) + ':' + ('0' + h.getMinutes()).slice(-2);
+            return true;
+        })
+        .catch(function (e) { st.textContent = ''; alert('Falha de rede ao salvar: ' + e); return false; });
+}
+document.getElementById('op-form').addEventListener('submit', function (ev) { ev.preventDefault(); salvarOpcao(); });
+
+function fecharJanela() {
+    var ref = document.referrer || '';
+    if (ref.indexOf('/payoff/option/{{ option.id }}') !== -1) { window.location.href = ref; return; }
+    window.location.href = {{ url_for('payoff_option', id=option.id)|tojson }};
+}
+// Encerrar: grava a cotação atual da tela e abre o encerramento com o valor SALVO
+function encerrarOperacao() {
+    salvarOpcao().then(function (ok) { if (ok) window.location.href = {{ url_for('close_option', id=option.id)|tojson }}; });
+}
+// Exportar Pnt para DESMONTAGEM: lado invertido (vendida → compra de volta; comprada → venda)
+// e preço = cotação atual da opção.
+function exportarPnt() {
+    var tk = (document.getElementById('ticker').value || '').trim().toUpperCase();
+    var qty = parseInt(document.getElementById('quantity').value, 10) || 0;
+    var tipo = document.querySelector('[name=option_type]').value || '';
+    var cur = parseFloat((document.getElementById('current_option_price').value || '0').replace(/\./g, '').replace(',', '.')) || 0;
+    if (!tk || !qty) { alert('Preencha ticker e quantidade.'); return; }
+    if (!cur) { alert('Informe a cotação atual da opção (preço da desmontagem).'); return; }
+    var lado = tipo.indexOf('VENDA') === 0 ? 'C' : 'V';          // desmontar: inverte
+    var linha = [tk, lado, qty, cur.toFixed(2).replace('.', ',')].join(String.fromCharCode(9));
+    var btn = document.getElementById('btn-exportar-pnt'), original = btn.textContent;
+    function ok() { btn.textContent = '✓ Copiado!'; setTimeout(function () { btn.textContent = original; }, 1500); }
+    function fail() { alert('Não foi possível copiar automaticamente. Texto:' + String.fromCharCode(10) + String.fromCharCode(10) + linha); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, fail);
+    else fail();
 }
 </script>
 {% endif %}

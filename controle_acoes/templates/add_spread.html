@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card" style="max-width: 860px; margin: 0 auto; padding: 2rem;">
+<div class="card" style="max-width: 860px; margin: 0 auto; padding: 2rem; position: relative;">
+    {% if edit and spread %}
+    <button type="button" onclick="fecharJanela()" title="Fechar (voltar ao payoff)" aria-label="Fechar"
+            style="position:absolute; top:.6rem; right:.8rem; background:none; border:none; cursor:pointer;
+                   color:var(--text-secondary); font-size:1.15rem; line-height:1; padding:.25rem .4rem; border-radius:6px; opacity:.7;"
+            onmouseover="this.style.opacity='1';" onmouseout="this.style.opacity='.7';">✕</button>
+    {% endif %}
 
     {% if edit %}
     <h2>Editar Trava</h2>
@@ -210,14 +216,21 @@
 
         <div style="display: flex; gap: 1rem; margin-top: 1.5rem; align-items:center; flex-wrap:wrap;">
             <button type="submit" class="btn btn-primary">💾 Salvar</button>
+            {% if edit %}<span id="save-status" style="font-size:.82rem; color:var(--text-secondary);"></span>{% endif %}
             <a href="{{ url_for('opcoes') }}" class="btn btn-secondary">Cancelar</a>
             {% if edit %}
-            <button type="submit" id="btn-encerrar-trava"
+            <button type="button" id="btn-exportar-pnt" onclick="exportarPnt()"
                     style="margin-left:auto; background:none; border:1px solid var(--border-color);
                            color:var(--text-secondary); border-radius:6px; padding:.4rem .8rem;
                            font-size:.82rem; cursor:pointer; transition:opacity .15s;"
                     onmouseover="this.style.opacity='.75';" onmouseout="this.style.opacity='1';"
-                    title="Salva as edições pendentes e abre a tela de encerramento com os valores atualizados">
+                    title="Copia tickers, C/V, quantidades e o preço para DESMONTAR (fechar) a trava">📋 Exportar Pnt</button>
+            <button type="button" id="btn-encerrar-trava" onclick="encerrarTrava()"
+                    style="background:none; border:1px solid var(--border-color);
+                           color:var(--text-secondary); border-radius:6px; padding:.4rem .8rem;
+                           font-size:.82rem; cursor:pointer; transition:opacity .15s;"
+                    onmouseover="this.style.opacity='.75';" onmouseout="this.style.opacity='1';"
+                    title="Salva as cotações da tela e abre o encerramento com os valores salvos">
                 🛑 Encerrar operação</button>
             {% endif %}
         </div>
@@ -230,12 +243,54 @@
 // close_spread em vez de para a lista) — sem isso, a tela de encerramento
 // abria com os valores ANTIGOS do banco, ignorando o que foi editado e
 // ainda não salvo nesta mesma tela.
-var btnEncerrarTrava = document.getElementById('btn-encerrar-trava');
-if (btnEncerrarTrava) {
-    btnEncerrarTrava.addEventListener('click', function () {
-        document.getElementById('next_action').value = 'close';
-    });
+{% if edit and spread %}
+// Salvar (edição): grava em produção e PERMANECE na tela; o ✕ do canto fecha.
+function salvarTrava() {
+    var form = document.getElementById('spread-form');
+    var st = document.getElementById('save-status');
+    if (!form.reportValidity()) return Promise.resolve(false);
+    st.textContent = '⏳ salvando…';
+    return fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch' } })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+            if (!j.ok) { st.textContent = ''; alert('Erro ao salvar: ' + (j.error || 'desconhecido')); return false; }
+            var h = new Date();
+            st.textContent = '✓ salvo às ' + ('0' + h.getHours()).slice(-2) + ':' + ('0' + h.getMinutes()).slice(-2);
+            return true;
+        })
+        .catch(function (e) { st.textContent = ''; alert('Falha de rede ao salvar: ' + e); return false; });
 }
+document.getElementById('spread-form').addEventListener('submit', function (ev) { ev.preventDefault(); salvarTrava(); });
+
+function fecharJanela() {
+    var ref = document.referrer || '';
+    if (ref.indexOf('/payoff/spread/{{ spread.id }}') !== -1) { window.location.href = ref; return; }
+    window.location.href = {{ url_for('payoff_spread', id=spread.id)|tojson }};
+}
+// Encerrar: grava as cotações atuais da tela e abre o encerramento com os valores SALVOS
+function encerrarTrava() {
+    salvarTrava().then(function (ok) { if (ok) window.location.href = {{ url_for('close_spread', id=spread.id)|tojson }}; });
+}
+// Exportar Pnt para DESMONTAGEM: lados invertidos (comprada → V, vendida → C) e preço = custo
+// líquido de fechar com as cotações atuais (recompra da vendida − venda da comprada).
+function exportarPnt() {
+    function v(id) { return parseFloat((document.getElementById(id).value || '0').replace(/\./g, '').replace(',', '.')) || 0; }
+    var tl = (document.getElementById('leg_long_ticker').value || '').trim().toUpperCase();
+    var ts = (document.getElementById('leg_short_ticker').value || '').trim().toUpperCase();
+    var qty = parseInt(document.getElementById('spread-qty').value, 10) || 0;
+    var curL = v('leg_long_current'), curS = v('leg_short_current');
+    if (!tl || !ts || !qty) { alert('Preencha os tickers e a quantidade.'); return; }
+    if (!curL && !curS) { alert('Informe as cotações atuais das duas pernas (preços da desmontagem).'); return; }
+    var spread = Math.abs(curS - curL);
+    var TAB = String.fromCharCode(9);
+    var linha = [tl, ts, 'V', 'C', qty, qty, spread.toFixed(2).replace('.', ',')].join(TAB);
+    var btn = document.getElementById('btn-exportar-pnt'), original = btn.textContent;
+    function ok() { btn.textContent = '✓ Copiado!'; setTimeout(function () { btn.textContent = original; }, 1500); }
+    function fail() { alert('Não foi possível copiar automaticamente. Texto:' + String.fromCharCode(10) + String.fromCharCode(10) + linha); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, fail);
+    else fail();
+}
+{% endif %}
 
 function calcNet() {
     const bought = parseFloat(document.getElementById('leg_long_price').value.replace(',', '.')) || 0;

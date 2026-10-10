@@ -182,6 +182,8 @@
       🔄 Atualizar cotação
     </button>
     <button class="btn btn-secondary btn-sm" onclick="simLimpar()">🗑 Limpar</button>
+    <button class="btn btn-secondary btn-sm" id="btn-pnt-sim" onclick="simExportarPnt(this)"
+            title="Copia tickers, C/V, quantidades e o spread da montagem para armar a estratégia (Pnt)">📋 Exportar Pnt</button>
   </div>
 
   <div style="overflow-x:auto;">
@@ -1439,6 +1441,39 @@ window.simCarregarModal = function () {
         .catch(function () {
             lista.innerHTML = '<p class="sim-hint" style="padding:1rem 0;">⚠️ falha ao carregar a lista.</p>';
         });
+};
+
+
+// Exportar Pnt (MONTAGEM da estrutura): tickers, C/V, quantidades (separados por TAB) e o
+// spread = saldo líquido da montagem (valor absoluto) ÷ quantidade da 1ª perna.
+function exportarPntLegs(pernas, btn) {
+    pernas = pernas.filter(function (l) { return l.ticker && l.qty > 0; });
+    if (!pernas.length) { alert('Preencha ao menos uma perna com ticker e quantidade.'); return; }
+    var net = 0;
+    pernas.forEach(function (l) { net += (l.side === 'SELL' ? 1 : -1) * l.qty * l.premium; });
+    var spread = Math.abs(net) / (pernas[0].qty || 1);
+    var TAB = String.fromCharCode(9);
+    var linha = pernas.map(function (l) { return l.ticker.toUpperCase(); })
+        .concat(pernas.map(function (l) { return l.side === 'BUY' ? 'C' : 'V'; }))
+        .concat(pernas.map(function (l) { return l.qty; }))
+        .concat([spread.toFixed(2).replace('.', ',')]).join(TAB);
+    var original = btn ? btn.textContent : '';
+    function ok() { if (btn) { btn.textContent = '✓ Copiado!'; setTimeout(function () { btn.textContent = original; }, 1500); } }
+    function fail() { alert('Não foi possível copiar automaticamente. Texto:' + String.fromCharCode(10) + String.fromCharCode(10) + linha); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, fail);
+    else fail();
+}
+window.simExportarPnt = function (btn) {
+    var pernas = [];
+    document.querySelectorAll('#sim-body tr.leg-row').forEach(function (tr) {
+        var on = tr.querySelector('.leg-on'); if (on && !on.checked) return;
+        if (tr.querySelector('.leg-type').value === 'STOCK') return;
+        pernas.push({ ticker: (tr.querySelector('.leg-ticker').value || '').trim(),
+                      side: tr.querySelector('.leg-side').value,
+                      qty: parseInt(tr.querySelector('.leg-qty').value, 10) || 0,
+                      premium: parseVal(tr.querySelector('.leg-premium').value) });
+    });
+    exportarPntLegs(pernas, btn);
 };
 
 window.simAbrir = function (id) {

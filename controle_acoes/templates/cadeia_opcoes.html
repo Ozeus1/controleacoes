@@ -204,6 +204,9 @@ table.cadeia td.empty{color:#334155;}
       <button class="btn btn-secondary btn-sm" onclick="addLegC('PUT')">+ Put</button>
       <button class="btn btn-secondary btn-sm" onclick="addLegC('STOCK')">+ Ação</button>
       <button class="btn btn-secondary btn-sm" onclick="clearLegsC()">🗑 Limpar</button>
+      <button class="btn btn-secondary btn-sm" onclick="abrirSimulacaoC()">📂 Abrir simulação</button>
+      <button class="btn btn-secondary btn-sm" id="btn-pnt-cad" onclick="exportarPntCad(this)"
+              title="Copia tickers, C/V, quantidades e o spread da montagem para armar a estratégia (Pnt)">📋 Exportar Pnt</button>
       <button class="btn btn-primary btn-sm" id="sim-save-btn">💾 Salvar</button>
       <button class="btn btn-secondary btn-sm" id="sim-new-btn">+ Nova</button>
     </div>
@@ -985,6 +988,80 @@ document.getElementById('sim-new-btn').addEventListener('click',function(){
   clearLegsC();
 });
 
+
+// Exportar Pnt (MONTAGEM da estrutura): tickers, C/V, quantidades (separados por TAB) e o
+// spread = saldo líquido da montagem (valor absoluto) ÷ quantidade da 1ª perna.
+function exportarPntLegs(pernas, btn) {
+    pernas = pernas.filter(function (l) { return l.ticker && l.qty > 0; });
+    if (!pernas.length) { alert('Preencha ao menos uma perna com ticker e quantidade.'); return; }
+    var net = 0;
+    pernas.forEach(function (l) { net += (l.side === 'SELL' ? 1 : -1) * l.qty * l.premium; });
+    var spread = Math.abs(net) / (pernas[0].qty || 1);
+    var TAB = String.fromCharCode(9);
+    var linha = pernas.map(function (l) { return l.ticker.toUpperCase(); })
+        .concat(pernas.map(function (l) { return l.side === 'BUY' ? 'C' : 'V'; }))
+        .concat(pernas.map(function (l) { return l.qty; }))
+        .concat([spread.toFixed(2).replace('.', ',')]).join(TAB);
+    var original = btn ? btn.textContent : '';
+    function ok() { if (btn) { btn.textContent = '✓ Copiado!'; setTimeout(function () { btn.textContent = original; }, 1500); } }
+    function fail() { alert('Não foi possível copiar automaticamente. Texto:' + String.fromCharCode(10) + String.fromCharCode(10) + linha); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, fail);
+    else fail();
+}
+window.exportarPntCad = function (btn) {
+  var pernas = [];
+  document.querySelectorAll('#legs-body .leg-row').forEach(function (row) {
+    var on = row.querySelector('.leg-on'); if (on && !on.checked) return;
+    if (row.querySelector('[name=leg_type]').value === 'STOCK') return;
+    pernas.push({ ticker: (row.querySelector('[name=leg_ticker]').value || '').trim(),
+                  side: row.querySelector('[name=leg_side]').value,
+                  qty: parseInt(row.querySelector('[name=leg_qty]').value, 10) || 0,
+                  premium: parseValC(row.querySelector('[name=leg_premium]').value) });
+  });
+  exportarPntLegs(pernas, btn);
+};
+
+/* ════ Abrir simulação salva ════ */
+function _escC(t){ return String(t==null?'':t).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+window.abrirSimulacaoC=function(){
+  var modal=document.getElementById('open-sim-modal'); modal.style.display='flex';
+  var lista=document.getElementById('open-sim-lista');
+  lista.innerHTML='<p style="color:var(--text-secondary);padding:1rem 0;">⏳ carregando…</p>';
+  fetch('/api/simulacao/list').then(function(r){return r.json();}).then(function(sims){
+    if(!sims||!sims.length){lista.innerHTML='<p style="color:var(--text-secondary);padding:1rem 0;">Nenhuma simulação salva ainda.</p>';return;}
+    lista.innerHTML=sims.map(function(s){
+      return '<div style="display:flex;align-items:center;gap:.6rem;padding:.45rem .2rem;border-bottom:1px solid rgba(255,255,255,.05);">'
+        +'<div style="flex:1;min-width:0;"><div style="font-weight:600;font-size:.88rem;">'+_escC(s.name)+'</div>'
+        +'<div style="font-size:.75rem;color:var(--text-secondary);">'+_escC(s.underlying||'—')+' · '+_escC(s.created_at)+'</div></div>'
+        +'<button class="btn btn-primary btn-sm" onclick="carregaSimulacaoC('+s.id+')">Abrir</button></div>';
+    }).join('');
+  }).catch(function(){lista.innerHTML='<p style="color:#f87171;padding:1rem 0;">⚠️ falha ao carregar a lista.</p>';});
+};
+window.carregaSimulacaoC=function(id){
+  fetch('/api/simulacao/'+id).then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});}).then(function(res){
+    if(!res.ok||res.j.error){alert('⚠️ '+(res.j.error||'erro ao abrir'));return;}
+    var d=res.j;
+    // vencimentos diferentes: desmarca "Vencimento único" (senão o 1º vencimento colapsaria todas)
+    var exps=[]; (d.legs||[]).forEach(function(l){ if(l.type!=='STOCK'&&l.exp&&exps.indexOf(l.exp)<0) exps.push(l.exp); });
+    var chk=document.getElementById('chk-same-exp');
+    if(chk&&exps.length>1){ chk.checked=false; try{localStorage.setItem('legs-same-exp','0');}catch(e){} }
+    document.getElementById('sim-current-id').value=d.id;
+    document.getElementById('sim-name-input').value=d.name||'';
+    document.getElementById('sim-underlying-input').value=(d.underlying||'').toUpperCase();
+    document.getElementById('legs-body').innerHTML='';
+    (d.legs||[]).forEach(function(l){
+      addLegFilledC(l.type,l.side,l.qty||100,(l.ticker||'').toUpperCase(),
+        (parseFloat(l.premium)||0).toFixed(2).replace('.',','), l.exp||'',
+        l.type==='STOCK'?'':(parseFloat(l.strike)||0).toFixed(2).replace('.',','), l.iv);
+    });
+    if(!document.querySelectorAll('#legs-body .leg-row').length) addLegC('CALL');
+    document.getElementById('open-sim-modal').style.display='none';
+    updateIVVisibilityC(); scheduleRedrawC();
+    var und=(d.underlying||'').toUpperCase();
+    if(und && und!==curTicker) loadCadeia(und);
+  }).catch(function(e){alert('⚠️ falha de rede: '+e);});
+};
+
 /* ════ Format helpers ════ */
 function brl(v){
   if(v===null||v===undefined) return '-';
@@ -1074,4 +1151,15 @@ if(!_prefilled) addLegC('CALL');
 })();
 })();
 </script>
-{% endblock %}
+<!-- Modal: abrir simulação salva -->
+<div id="open-sim-modal" style="display:none;position:fixed;inset:0;z-index:19000;background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;"
+     onclick="if(event.target===this)this.style.display='none'">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,560px);max-height:88vh;display:flex;flex-direction:column;border:1px solid var(--border-color);">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:.8rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <h3 style="margin:0;font-size:1rem;">Simulações salvas</h3>
+      <button onclick="document.getElementById('open-sim-modal').style.display='none'"
+              style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:.6rem 1.1rem 1rem;" id="open-sim-lista"></div>
+  </div>
+</div>{% endblock %}

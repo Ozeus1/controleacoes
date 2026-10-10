@@ -424,6 +424,8 @@
             <button type="button" class="btn btn-sm btn-azul" 
                     onclick="editarEmCadeia()"
                     title="Abre o editor da Cadeia de Opções com estas pernas — serve para qualquer estrutura, mesmo fora dos modelos padrão">🔗 Editar em Cadeia de Opções</button>
+            <button type="button" class="btn btn-secondary btn-sm" id="btn-pnt-sim" onclick="exportarPntSim(this)"
+                    title="Copia tickers, C/V, quantidades e o spread da montagem para armar a estratégia (Pnt)">📋 Exportar Pnt</button>
             <button type="submit" class="btn btn-primary btn-sm">💾 Salvar</button>
             <button type="submit" name="salvar_producao" value="1" class="btn btn-sm btn-laranja"
 
@@ -1563,6 +1565,39 @@ function abrirEmCalculos() {
         return;
     }
     window.location.href = '/venda_puts?' + new URLSearchParams(pl).toString() + '#estrutura';
+}
+
+
+// Exportar Pnt (MONTAGEM da estrutura): tickers, C/V, quantidades (separados por TAB) e o
+// spread = saldo líquido da montagem (valor absoluto) ÷ quantidade da 1ª perna.
+function exportarPntLegs(pernas, btn) {
+    pernas = pernas.filter(function (l) { return l.ticker && l.qty > 0; });
+    if (!pernas.length) { alert('Preencha ao menos uma perna com ticker e quantidade.'); return; }
+    var net = 0;
+    pernas.forEach(function (l) { net += (l.side === 'SELL' ? 1 : -1) * l.qty * l.premium; });
+    var spread = Math.abs(net) / (pernas[0].qty || 1);
+    var TAB = String.fromCharCode(9);
+    var linha = pernas.map(function (l) { return l.ticker.toUpperCase(); })
+        .concat(pernas.map(function (l) { return l.side === 'BUY' ? 'C' : 'V'; }))
+        .concat(pernas.map(function (l) { return l.qty; }))
+        .concat([spread.toFixed(2).replace('.', ',')]).join(TAB);
+    var original = btn ? btn.textContent : '';
+    function ok() { if (btn) { btn.textContent = '✓ Copiado!'; setTimeout(function () { btn.textContent = original; }, 1500); } }
+    function fail() { alert('Não foi possível copiar automaticamente. Texto:' + String.fromCharCode(10) + String.fromCharCode(10) + linha); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, fail);
+    else fail();
+}
+function exportarPntSim(btn) {
+    var pernas = [];
+    document.querySelectorAll('#legs-body .leg-row').forEach(function (row) {
+        var on = row.querySelector('.leg-on'); if (on && !on.checked) return;
+        var tp = row.querySelector('[name=leg_type]').value; if (tp === 'STOCK') return;
+        pernas.push({ ticker: (row.querySelector('[name=leg_ticker]').value || '').trim(),
+                      side: row.querySelector('[name=leg_side]').value,
+                      qty: parseInt(row.querySelector('[name=leg_qty]').value, 10) || 0,
+                      premium: parseVal(row.querySelector('[name=leg_premium]').value) });
+    });
+    exportarPntLegs(pernas, btn);
 }
 
 // ── Editar no simulador da Cadeia de Opções (aceita qualquer estrutura) ──────

@@ -10848,6 +10848,21 @@ def api_simulador_bs_resolver_ticker(symbol):
     raiz = sym[:4]
     uid = current_user.id
 
+    # 1º OpLab (ficha da opção: ativo, strike, vencimento, tipo, spot, IV e último) —
+    # é a fonte que acha qualquer série listada. A BRAPI abaixo fica de reserva.
+    if Settings.get_value('oplab_token', user_id=uid):
+        ficha = api_busca_opcao(sym)
+        if not isinstance(ficha, tuple):
+            fd = ficha.get_json() or {}
+            if fd.get('strike') and fd.get('expiration'):
+                return jsonify({
+                    'underlying': fd.get('underlying') or '', 'strike': fd.get('strike'),
+                    'exp': str(fd.get('expiration'))[:10],
+                    'side': 'PUT' if 'PUT' in (fd.get('type') or '').upper() else 'CALL',
+                    'spot': fd.get('spot_price'), 'iv': fd.get('iv'),      # IV em %
+                    'price': fd.get('last'), 'fonte': 'oplab',
+                })
+
     candidatos = [raiz + '3', raiz + '4', raiz + '11', raiz + '5', raiz + '6']
     for underlying in candidatos:
         ex_data, ex_err = _brapi_opt_get('/expirations', {'underlying': underlying}, uid, timeout=10)
@@ -10867,6 +10882,43 @@ def api_simulador_bs_resolver_ticker(symbol):
                     })
     return jsonify({'error': f'Não encontrei {sym} nos vencimentos abertos de {", ".join(candidatos)}. '
                              'Tente informar o ativo manualmente.'}), 404
+
+
+@app.route('/api/simulador-bs/posicoes')
+@login_required
+def api_simulador_bs_posicoes():
+    """Opções registradas em produção (vendidas e compradas, ainda não vencidas):
+    opções avulsas, pernas de travas e pernas de operações estruturadas abertas."""
+    uid = current_user.id
+    hoje = date.today()
+    itens, vistos = [], set()
+
+    def add(ticker, side, tipo, strike, exp, qty, und, origem):
+        if not ticker or (exp and exp < hoje):
+            return
+        chave = (ticker.upper(), side)
+        if chave in vistos:
+            return
+        vistos.add(chave)
+        itens.append({'ticker': ticker.upper(), 'side': side, 'tipo': tipo, 'strike': strike,
+                      'exp': exp.isoformat() if exp else '', 'qty': qty, 'underlying': (und or '').upper(),
+                      'origem': origem})
+
+    for o in Option.query.filter_by(user_id=uid).all():
+        side = 'SELL' if (o.option_type or '').startswith('VENDA') else 'BUY'
+        tipo = 'PUT' if 'PUT' in (o.option_type or '') else 'CALL'
+        add(o.ticker, side, tipo, o.strike_price, o.expiration_date, o.quantity, o.underlying_asset, 'Opção avulsa')
+    for sp in OptionSpread.query.filter_by(user_id=uid).all():
+        tipo = 'PUT' if 'PUT' in (sp.spread_type or '') else 'CALL'
+        add(sp.leg_long_ticker, 'BUY', tipo, sp.leg_long_strike, sp.expiration_date, sp.quantity, sp.underlying_asset, 'Trava')
+        add(sp.leg_short_ticker, 'SELL', tipo, sp.leg_short_strike, sp.expiration_date, sp.quantity, sp.underlying_asset, 'Trava')
+    for op in StructuredOp.query.filter_by(user_id=uid, status='OPEN').all():
+        for lg in op.legs:
+            if (lg.opt_type or '') in ('CALL', 'PUT'):
+                add(lg.ticker, lg.side, lg.opt_type, lg.strike, lg.expiration_date, lg.quantity,
+                    op.underlying_asset, op.name or 'Estruturada')
+    itens.sort(key=lambda i: (i['exp'], i['ticker']))
+    return jsonify({'posicoes': itens})
 
 
 @app.route('/api/simulador-bs/calcular', methods=['POST'])

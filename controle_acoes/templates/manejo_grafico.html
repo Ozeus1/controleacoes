@@ -1928,7 +1928,30 @@ function mgAplicaPendencias() {
             var opt = Array.prototype.filter.call(strikeSel.options, function (o) {
                 return Math.abs(parseFloat(o.value) - alvo) < 0.001;
             })[0];
+            // Strike salvo não existe na cadeia (dado salvo errado/ajustado por proventos):
+            // acha a série pelo TICKER do braço e usa o strike real dela.
+            var tkOrig = (tr.dataset.tickerOriginal || '').toUpperCase();
+            if (!opt && tkOrig) {
+                var bloco = (CADEIA.expirations || []).filter(function (e) { return e.exp === tr.dataset.pendExp; })[0];
+                var tipo = tr.querySelector('.leg-type').value;
+                var rowT = bloco && (bloco.rows || []).filter(function (r) {
+                    var o = tipo === 'PUT' ? r.put : r.call;
+                    return o && (o.symbol || '').toUpperCase() === tkOrig;
+                })[0];
+                if (rowT) opt = Array.prototype.filter.call(strikeSel.options, function (o) {
+                    return Math.abs(parseFloat(o.value) - rowT.strike) < 0.001;
+                })[0];
+            }
             if (opt) { strikeSel.value = opt.value; mgAplicaStrike(tr, opt.value); }
+            else {
+                // Série fora da cadeia: mantém o que está salvo (ticker e strike visíveis) em vez de esvaziar a linha
+                var tkEl = tr.querySelector('.leg-ticker'); if (tkEl && tkOrig) tkEl.value = tkOrig;
+                if (alvo > 0) {
+                    var op2 = document.createElement('option');
+                    op2.value = String(alvo); op2.textContent = fmtBRL(alvo) + ' (salvo)';
+                    strikeSel.appendChild(op2); strikeSel.value = op2.value;
+                }
+            }
             delete tr.dataset.pendExp; delete tr.dataset.pendStrike;
         });
     } finally {

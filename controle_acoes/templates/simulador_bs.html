@@ -82,10 +82,12 @@
     <div class="sbs-campo">
       <label>Ativo</label>
       <select id="sbs-ativo-sel">
+        <option value="" selected>selecione…</option>
         {% for t in sugestoes %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
-        <option value="__outro__" selected>— outro / manual —</option>
+        <option value="__outro__">— outro / manual —</option>
       </select>
-      <input type="text" id="sbs-ativo" placeholder="Ex.: PETR4" maxlength="10">
+      <input type="text" id="sbs-ativo" placeholder="Digite o ticker (ex.: PETR4)" maxlength="10" style="display:none;">
+      <small id="sbs-ativo-status" style="font-size:.72rem;color:var(--text-secondary);"></small>
     </div>
     <div class="sbs-campo">
       <label title="Preço à vista do ativo">Spot (S)</label>
@@ -93,11 +95,16 @@
     </div>
     <div class="sbs-campo">
       <label title="Preço de exercício">Strike (K)</label>
-      <input type="number" id="sbs-strike" step="0.01" placeholder="Ex.: 48,86">
+      <input type="number" id="sbs-strike" step="0.01" placeholder="Ex.: 48,86" list="sbs-strikes">
+      <datalist id="sbs-strikes"></datalist>
     </div>
     <div class="sbs-campo">
       <label>Vencimento</label>
-      <input type="date" id="sbs-exp">
+      <select id="sbs-exp-sel">
+        <option value="">selecione o ativo…</option>
+        <option value="__manual__">— outra data… —</option>
+      </select>
+      <input type="date" id="sbs-exp" style="display:none;">
     </div>
     <div class="sbs-campo">
       <label title="Volatilidade anualizada usada no cálculo, em %">Volatilidade (σ) %</label>
@@ -198,16 +205,116 @@ btnTicker.addEventListener('click', function () {
     blocoTicker.style.display = 'block';
 });
 
-// ── Campo Ativo: select + campo livre, como nas outras telas ──
+// ── Campo Ativo: select (campo livre só em "outro") + carga automática ──
 var elSel = document.getElementById('sbs-ativo-sel'), elAtivo = document.getElementById('sbs-ativo');
+var elExpSel = document.getElementById('sbs-exp-sel'), elExp = document.getElementById('sbs-exp');
+var SBS_CHAIN = null;      // cadeia do ativo escolhido (vencimentos, strikes, IVs)
+var SBS_LETRAS = [['A','M'],['B','N'],['C','O'],['D','P'],['E','Q'],['F','R'],
+                  ['G','S'],['H','T'],['I','U'],['J','V'],['K','W'],['L','X']];
+
+function sbsAtivoVisivel() { elAtivo.style.display = elSel.value === '__outro__' ? '' : 'none'; }
+function sbsDataBR(iso) { var p = (iso || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso; }
+// Mensal = 3ª sexta (tolerância de 2 dias para feriado), como no Profit: "16/10/2026 (M) - J/V"
+function sbsMensal(iso) {
+    var p = iso.split('-'), y = +p[0], m = +p[1], n = 0, terceira = null;
+    for (var d = 1; d <= 31; d++) {
+        var dt = new Date(y, m - 1, d);
+        if (dt.getMonth() !== m - 1) break;
+        if (dt.getDay() === 5 && ++n === 3) { terceira = dt; break; }
+    }
+    return !!terceira && Math.abs(Math.round((new Date(y, m - 1, +p[2]) - terceira) / 86400000)) <= 2;
+}
+function sbsRotuloExp(iso) {
+    var l = SBS_LETRAS[+iso.split('-')[1] - 1] || ['?', '?'];
+    return sbsDataBR(iso) + ' (' + (sbsMensal(iso) ? 'M' : 'S') + ') - ' + l[0] + '/' + l[1];
+}
+function sbsPreencheVencimentos(exps) {
+    var html = '<option value="">selecione…</option>' + exps.map(function (e) {
+        return '<option value="' + e.exp + '">' + sbsRotuloExp(e.exp) + '</option>';
+    }).join('') + '<option value="__manual__">— outra data… —</option>';
+    elExpSel.innerHTML = html;
+    elExpSel.value = ''; elExp.value = ''; elExp.style.display = 'none';
+}
+function sbsSincronizaExp(iso) {
+    var existe = iso && Array.prototype.some.call(elExpSel.options, function (o) { return o.value === iso; });
+    if (existe) { elExpSel.value = iso; elExp.style.display = 'none'; }
+    else { elExpSel.value = '__manual__'; elExp.style.display = ''; }
+    elExp.value = iso || '';
+}
+elExpSel.addEventListener('change', function () {
+    if (elExpSel.value === '__manual__') { elExp.style.display = ''; elExp.focus(); return; }
+    elExp.style.display = 'none';
+    elExp.value = elExpSel.value;
+    sbsAtualizaStrikeEIV();
+});
+elExp.addEventListener('change', sbsAtualizaStrikeEIV);
+
+// Com vencimento escolhido: sugere os strikes dele e, se o strike digitado existir na
+// cadeia, traz a IV daquela série (CALL ou PUT conforme o Tipo).
+function sbsAtualizaStrikeEIV() {
+    var dl = document.getElementById('sbs-strikes');
+    if (!SBS_CHAIN) return;
+    var bloco = (SBS_CHAIN.expirations || []).filter(function (e) { return e.exp === elExp.value; })[0];
+    dl.innerHTML = bloco ? bloco.rows.map(function (r) { return '<option value="' + r.strike + '">'; }).join('') : '';
+    var K = parseFloat(document.getElementById('sbs-strike').value);
+    if (!bloco || !(K > 0)) return;
+    var row = bloco.rows.filter(function (r) { return Math.abs(r.strike - K) < 0.011; })[0];
+    var o = row && (document.getElementById('sbs-side').value === 'PUT' ? row.put : row.call);
+    if (o && o.iv > 0) {
+        SBS_IV_OPCAO = +o.iv;
+        document.getElementById('sbs-iv').value = SBS_IV_OPCAO.toFixed(2);
+        document.getElementById('sbs-vol-status').textContent = 'IV da série ' + (o.symbol || '') + ': ' + SBS_IV_OPCAO.toFixed(2) + '%';
+        sbsMarcaFonte('iv');
+    }
+}
+document.getElementById('sbs-strike').addEventListener('change', sbsAtualizaStrikeEIV);
+document.getElementById('sbs-side').addEventListener('change', sbsAtualizaStrikeEIV);
+
+// Ativo escolhido: preenche Spot, vencimentos da cadeia e a volatilidade (VH do ativo)
+function sbsCarregaAtivo(ticker) {
+    ticker = (ticker || '').trim().toUpperCase();
+    if (!ticker) return;
+    var st = document.getElementById('sbs-ativo-status');
+    st.textContent = '⏳ buscando spot, vencimentos e volatilidade…';
+    SBS_CHAIN = null; SBS_IV_OPCAO = null; SBS_HV_ATIVO = null;
+    document.getElementById('sbs-strikes').innerHTML = '';
+    var falhas = [];
+    var pCadeia = fetch('/api/cadeia/' + encodeURIComponent(ticker) + '?n=60&weekly=1&n_meses=12')
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            if (!res.ok || res.j.error) { falhas.push('vencimentos'); return fetch('/api/quote_hint/' + encodeURIComponent(ticker))
+                .then(function (r) { return r.json(); })
+                .then(function (q) { if (q && q.price > 0) document.getElementById('sbs-spot').value = q.price; else falhas.push('spot'); }); }
+            SBS_CHAIN = res.j;
+            if (res.j.spot > 0) document.getElementById('sbs-spot').value = res.j.spot; else falhas.push('spot');
+            sbsPreencheVencimentos(res.j.expirations || []);
+        }).catch(function () { falhas.push('vencimentos/spot'); });
+    var pVol = fetch('/api/vol-historica/' + encodeURIComponent(ticker))
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (res) {
+            if (!res.ok || res.j.error || !(res.j.hv > 0)) { falhas.push('volatilidade'); return; }
+            SBS_HV_ATIVO = res.j.hv;
+            document.getElementById('sbs-iv').value = SBS_HV_ATIVO;
+            document.getElementById('sbs-vol-status').textContent = 'VH de ' + ticker + ': ' + SBS_HV_ATIVO.toFixed(2) + '% (' + res.j.janela + ' pregões)';
+            sbsMarcaFonte('hv');
+        }).catch(function () { falhas.push('volatilidade'); });
+    Promise.all([pCadeia, pVol]).then(function () {
+        st.textContent = falhas.length ? '⚠️ não consegui: ' + falhas.join(', ') + ' — preencha à mão' : '✓ dados carregados';
+        if (!SBS_CHAIN) { elExpSel.innerHTML = '<option value="__manual__" selected>— digite a data —</option>'; elExp.style.display = ''; }
+    });
+}
+
 elSel.addEventListener('change', function () {
+    sbsAtivoVisivel();
     if (elSel.value === '__outro__') { elAtivo.value = ''; elAtivo.focus(); return; }
     elAtivo.value = elSel.value;
     sbsInvalidaHV();
+    sbsCarregaAtivo(elSel.value);
 });
 // Trocar de ativo invalida a VH em cache — senão o papel novo herdaria a
 // volatilidade do anterior.
-elAtivo.addEventListener('change', sbsInvalidaHV);
+elAtivo.addEventListener('change', function () { sbsInvalidaHV(); sbsCarregaAtivo(elAtivo.value); });
+elAtivo.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { sbsInvalidaHV(); sbsCarregaAtivo(elAtivo.value); } });
 function sbsInvalidaHV() {
     SBS_HV_ATIVO = null;
     var st = document.getElementById('sbs-vol-status');
@@ -229,9 +336,10 @@ document.getElementById('sbs-buscar-ticker').addEventListener('click', function 
             elAtivo.value = d.underlying;
             elSel.value = Array.prototype.some.call(elSel.options, function (o) { return o.value === d.underlying; })
                 ? d.underlying : '__outro__';
+            sbsAtivoVisivel();
             document.getElementById('sbs-spot').value = d.spot != null ? d.spot : '';
             document.getElementById('sbs-strike').value = d.strike != null ? d.strike : '';
-            document.getElementById('sbs-exp').value = d.exp || '';
+            sbsSincronizaExp(d.exp || '');
             document.getElementById('sbs-iv').value = d.iv != null ? (d.iv * 100).toFixed(2) : '';
             document.getElementById('sbs-side').value = d.side || 'CALL';
             SBS_IV_OPCAO = d.iv != null ? +(d.iv * 100).toFixed(2) : null;

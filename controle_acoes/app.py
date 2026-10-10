@@ -2213,9 +2213,13 @@ def edit_estruturada(id):
                 db.session.add(leg)
 
             db.session.commit()
+            if request.headers.get('X-Requested-With') == 'fetch':
+                return jsonify({'ok': True})      # "Salvar" da edição: grava e fica na tela
             flash('Operação atualizada.', 'success')
         except Exception as e:
             db.session.rollback()
+            if request.headers.get('X-Requested-With') == 'fetch':
+                return jsonify({'ok': False, 'error': str(e)}), 400
             flash(f'Erro: {e}', 'danger')
         return redirect(url_for('opcoes'))
 

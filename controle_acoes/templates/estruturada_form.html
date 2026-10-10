@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="card" style="max-width: 860px; margin: 0 auto; padding: 2rem;">
+<div class="card" style="max-width: 860px; margin: 0 auto; padding: 2rem; position: relative;">
+    {% if edit and op %}
+    <button type="button" onclick="fecharJanela()" title="Fechar (voltar sem sair salvando)" aria-label="Fechar"
+            style="position:absolute; top:.6rem; right:.8rem; background:none; border:none; cursor:pointer;
+                   color:var(--text-secondary); font-size:1.15rem; line-height:1; padding:.25rem .4rem; border-radius:6px; opacity:.7;"
+            onmouseover="this.style.opacity='1';" onmouseout="this.style.opacity='.7';">✕</button>
+    {% endif %}
 
     <h2>{% if edit %}Editar{% else %}Nova{% endif %} {% if intl %}Operação Tastytrade 🇺🇸{% else %}Operação Estruturada{% endif %}</h2>
     {% if intl %}
@@ -15,7 +21,7 @@
         automaticamente o crédito/débito de montagem, lucro máximo, prejuízo máximo e breakeven(s).
     </p>
 
-    <form method="POST" action="{{ url_for('edit_estruturada', id=op.id) if edit else url_for('add_estruturada') }}">
+    <form id="op-form" method="POST" action="{{ url_for('edit_estruturada', id=op.id) if edit else url_for('add_estruturada') }}">
         {% if intl and not edit %}<input type="hidden" name="intl" value="1">{% endif %}
 
         {# ── Dados gerais ── #}
@@ -211,7 +217,8 @@
         </div>
 
         <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center;">
-            <button type="submit" class="btn btn-primary">💾 Salvar Operação</button>
+            <button type="submit" id="btn-salvar-op" class="btn btn-primary">💾 Salvar Operação</button>
+            {% if edit and op %}<span id="save-status" style="font-size:.82rem; color:var(--text-secondary);"></span>{% endif %}
             <a href="{{ url_for('opcoes') }}" class="btn btn-secondary">Cancelar</a>
             <button type="button" id="btn-exportar-pnt"
                     style="{% if not (edit and op) %}margin-left:auto;{% endif %}
@@ -435,12 +442,46 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ── Encerrar operação: mesmo comportamento do botão da tela Operações ─────
 {% if edit and op %}
+// Salvar (edição): grava a operação inteira em produção (inclusive as cotações atuais
+// editadas) e PERMANECE na tela; quem fecha é o ✕ do canto.
+function salvarOperacao() {
+    var form = document.getElementById('op-form');
+    var st = document.getElementById('save-status');
+    if (!form.reportValidity()) return Promise.resolve(false);
+    st.textContent = '⏳ salvando…';
+    return fetch(form.action, { method: 'POST', body: new FormData(form), headers: { 'X-Requested-With': 'fetch' } })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+            if (!j.ok) { st.textContent = ''; alert('Erro ao salvar: ' + (j.error || 'desconhecido')); return false; }
+            var h = new Date();
+            st.textContent = '✓ salvo às ' + ('0' + h.getHours()).slice(-2) + ':' + ('0' + h.getMinutes()).slice(-2);
+            return true;
+        })
+        .catch(function (e) { st.textContent = ''; alert('Falha de rede ao salvar: ' + e); return false; });
+}
+document.getElementById('op-form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    salvarOperacao();
+});
+
+// ✕: volta para a tela de origem (o payoff da operação, quando veio dele)
+function fecharJanela() {
+    var ref = document.referrer || '';
+    if (ref.indexOf('/payoff/estruturada/{{ op.id }}') !== -1) { window.location.href = ref; return; }
+    window.location.href = {{ url_for('payoff_estruturada', id=op.id)|tojson }};
+}
+
+// Encerrar: primeiro grava na produção os valores que estão na tela (cotações atuais
+// = preços de saída) e só então encerra com os valores SALVOS.
 function encerrarOperacao() {
     var nome = {{ op.name|tojson }};
     var ativo = {{ (op.underlying_asset or '—')|tojson }};
-    var pnlTxt = document.getElementById('prev-pnl').textContent;
-    var ok = confirm('Encerrar ' + nome + ' (' + ativo + ')?\n\nLucro atual: ' + pnlTxt);
-    if (ok) document.getElementById('form-encerrar-op').submit();
+    salvarOperacao().then(function (ok) {
+        if (!ok) return;
+        var pnlTxt = document.getElementById('prev-pnl').textContent;
+        var conf = confirm('Encerrar ' + nome + ' (' + ativo + ') com as cotações salvas?\n\nLucro atual: ' + pnlTxt);
+        if (conf) document.getElementById('form-encerrar-op').submit();
+    });
 }
 {% endif %}
 

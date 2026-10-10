@@ -277,10 +277,15 @@ function sbsMontaStrikes() {
     var atm = null;
     bloco.rows.forEach(function (r) { if (atm == null || Math.abs(r.strike - spot) < Math.abs(atm - spot)) atm = r.strike; });
     var atual = elStrike.value;
+    var modoOutro = elStrikeSel.value === '__outro__';
     elStrikeSel.innerHTML = '<option value="">selecione…</option>' + bloco.rows.map(function (r) {
         return '<option value="' + r.strike + '">' + r.strike.toFixed(2).replace('.', ',') + (r.strike === atm && spot ? '  (ATM)' : '') + '</option>';
     }).join('') + '<option value="__outro__">— outro strike… —</option>';
     elStrikeSel.disabled = false; elStrikeSel.style.display = '';
+    if (modoOutro) {            // o usuário está digitando um strike que não está na lista: mantém
+        elStrikeSel.value = '__outro__'; sbsStrikeManual(true);
+        return bloco;
+    }
     var existe = atual && Array.prototype.some.call(elStrikeSel.options, function (o) { return o.value !== '' && Math.abs(parseFloat(o.value) - parseFloat(atual)) < 0.011; });
     if (existe) elStrikeSel.value = Array.prototype.filter.call(elStrikeSel.options, function (o) { return o.value !== '' && Math.abs(parseFloat(o.value) - parseFloat(atual)) < 0.011; })[0].value;
     else { elStrikeSel.value = ''; elStrike.value = ''; }
@@ -307,7 +312,7 @@ function sbsSetStrike(K) {
 // Com vencimento + strike definidos, traz a IV daquela série (CALL ou PUT conforme o Tipo).
 function sbsAtualizaStrikeEIV() {
     if (!SBS_CHAIN) return;
-    var bloco = sbsMontaStrikes();
+    var bloco = (SBS_CHAIN.expirations || []).filter(function (e) { return e.exp === elExp.value; })[0];
     var K = parseFloat(elStrike.value);
     if (!bloco || !(K > 0)) return;
     var row = bloco.rows.filter(function (r) { return Math.abs(r.strike - K) < 0.011; })[0];
@@ -323,13 +328,14 @@ elStrike.addEventListener('change', sbsAtualizaStrikeEIV);
 document.getElementById('sbs-side').addEventListener('change', sbsAtualizaStrikeEIV);
 
 // Ativo escolhido: preenche Spot, vencimentos da cadeia e a volatilidade (VH do ativo)
-function sbsCarregaAtivo(ticker) {
+function sbsCarregaAtivo(ticker, preserva) {
     ticker = (ticker || '').trim().toUpperCase();
     if (!ticker) return;
     var st = document.getElementById('sbs-ativo-status');
     st.textContent = '⏳ buscando spot, vencimentos e volatilidade…';
-    SBS_CHAIN = null; SBS_IV_OPCAO = null; SBS_HV_ATIVO = null;
-    elStrike.value = ''; elStrikeSel.innerHTML = '<option value="">escolha o vencimento…</option>';
+    SBS_CHAIN = null; SBS_HV_ATIVO = null;
+    if (!preserva) { SBS_IV_OPCAO = null; elStrike.value = ''; }
+ elStrikeSel.innerHTML = '<option value="">escolha o vencimento…</option>';
     elStrikeSel.disabled = true; elStrikeSel.style.display = ''; sbsStrikeManual(false);
     var falhas = [];
     var pCadeia = fetch('/api/cadeia/' + encodeURIComponent(ticker) + '?n=60&weekly=1&n_meses=12')
@@ -339,10 +345,16 @@ function sbsCarregaAtivo(ticker) {
                 .then(function (r) { return r.json(); })
                 .then(function (q) { if (q && q.price > 0) document.getElementById('sbs-spot').value = q.price; else falhas.push('spot'); }); }
             SBS_CHAIN = res.j;
-            if (res.j.spot > 0) document.getElementById('sbs-spot').value = res.j.spot; else falhas.push('spot');
+            if (!preserva) {
+                if (res.j.spot > 0) document.getElementById('sbs-spot').value = res.j.spot; else falhas.push('spot');
+            }
             sbsPreencheVencimentos(res.j.expirations || []);
+            if (preserva) {         // ticker da opção: mantém vencimento e strike já resolvidos
+                sbsSincronizaExp(preserva.exp);
+                sbsSetStrike(preserva.strike);
+            }
         }).catch(function () { falhas.push('vencimentos/spot'); });
-    var pVol = fetch('/api/vol-historica/' + encodeURIComponent(ticker))
+    var pVol = preserva ? Promise.resolve() : fetch('/api/vol-historica/' + encodeURIComponent(ticker))
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(function (res) {
             if (!res.ok || res.j.error || !(res.j.hv > 0)) { falhas.push('volatilidade'); return; }
@@ -353,7 +365,7 @@ function sbsCarregaAtivo(ticker) {
         }).catch(function () { falhas.push('volatilidade'); });
     Promise.all([pCadeia, pVol]).then(function () {
         st.textContent = falhas.length ? '⚠️ não consegui: ' + falhas.join(', ') + ' — preencha à mão' : '✓ dados carregados';
-        if (!SBS_CHAIN) { elExpSel.innerHTML = '<option value="__manual__" selected>— digite a data —</option>'; elExp.style.display = ''; sbsStrikeManual(true); elStrikeSel.style.display = 'none'; }
+        if (!SBS_CHAIN && !preserva) { elExpSel.innerHTML = '<option value="__manual__" selected>— digite a data —</option>'; elExp.style.display = ''; sbsStrikeManual(true); elStrikeSel.style.display = 'none'; }
     });
 }
 
@@ -412,6 +424,7 @@ document.getElementById('sbs-buscar-ticker').addEventListener('click', function 
                 ? d.underlying : '__outro__';
             sbsAtivoVisivel();
             document.getElementById('sbs-spot').value = d.spot != null ? d.spot : '';
+            SBS_CHAIN = null;      // a cadeia em memória pode ser de OUTRO ativo
             sbsSincronizaExp(d.exp || '');
             sbsSetStrike(d.strike != null ? d.strike : null);
             // IV: a OpLab devolve em %, a BRAPI (reserva) em fração
@@ -420,7 +433,9 @@ document.getElementById('sbs-buscar-ticker').addEventListener('click', function 
             document.getElementById('sbs-side').value = d.side || 'CALL';
             SBS_IV_OPCAO = ivPct != null ? +ivPct.toFixed(2) : null;
             SBS_HV_ATIVO = null;   // HV é do ativo: recarrega ao trocar de opção
+            document.getElementById('sbs-vol-status').textContent = ivPct != null ? 'IV de ' + sym + ': ' + (+ivPct).toFixed(2) + '%' : '';
             sbsMarcaFonte('iv');
+            if (d.underlying) sbsCarregaAtivo(d.underlying, { exp: d.exp || '', strike: d.strike != null ? +d.strike : null });
         })
         .catch(function (e) { status.textContent = '⚠️ falha de rede: ' + e; });
 });

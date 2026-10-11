@@ -4642,6 +4642,79 @@ def _brapi_opt_list_raw(ticker, user_id, max_days=None):
     return opt_list
 
 
+_EWMA_CACHE = {}   # ticker -> (timestamp, ewma em %)
+
+
+def _oplab_ewma(ticker, token):
+    """EWMA corrente (%) do ativo, de /market/stocks/{ticker}. É a volatilidade que a OpLab
+    usa no 'Teór.' da cadeia (Black-Scholes, T em dias úteis/252, r = Selic) — conferido
+    contra a tela da OpLab (diferença < R$ 0,02). Cache de 10 min."""
+    agora = time.time()
+    hit = _EWMA_CACHE.get(ticker)
+    if hit and agora - hit[0] < 600:
+        return hit[1]
+    val = None
+    try:
+        d = _oplab_get_json(f'/market/stocks/{ticker}', token, timeout=10)
+        if isinstance(d, list):
+            d = d[0] if d else {}
+        v = float((d or {}).get('ewma_current') or 0)
+        val = v if v > 0 else None
+    except Exception:
+        val = None
+    _EWMA_CACHE[ticker] = (agora, val)
+    return val
+
+
+_OPLAB_TEOR_KEYS = ('bs', 'theoretical_price', 'theoretical', 'theo', 'black_scholes', 'bs_price',
+                    'teorico', 'theorical', 'theoretical_value')
+
+
+def _oplab_teorico(o):
+    """Valor teórico (BS) de um item da cadeia OpLab, ou 0. Aceita os nomes de campo
+    conhecidos no topo do item e dentro de 'greeks'."""
+    fontes = [o]
+    if isinstance(o.get('greeks'), dict):
+        fontes.append(o['greeks'])
+    for src in fontes:
+        for k in _OPLAB_TEOR_KEYS:
+            v = src.get(k)
+            try:
+                v = float(v)
+            except (TypeError, ValueError):
+                continue
+            if v > 0:
+                return v
+    return 0.0
+
+
+@app.route('/api/oplab-campos/<ticker>')
+@login_required
+def api_oplab_campos(ticker):
+    """Diagnóstico: quais campos a OpLab devolve de verdade na cadeia de um ativo
+    (nomes e valores de 3 opções negociadas) — para conferir se existe o valor teórico."""
+    ticker = ticker.strip().upper()
+    token = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado.'}), 400
+    try:
+        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+    except OplabApiError as e:
+        return jsonify({'error': str(e)}), 503
+    lista = data if isinstance(data, list) else (data.get('options') or [])
+    negociadas = [o for o in lista if isinstance(o, dict) and float(o.get('close') or 0) > 0]
+    amostra = negociadas[:3] or [o for o in lista if isinstance(o, dict)][:3]
+    campos = sorted({k for o in amostra for k in o.keys()})
+    achou = [{'symbol': o.get('symbol'), 'teorico_encontrado': _oplab_teorico(o)} for o in amostra]
+    def _plano(v):
+        return v if isinstance(v, (int, float, str, bool)) or v is None else (
+            {k: x for k, x in v.items() if isinstance(x, (int, float, str, bool)) or x is None}
+            if isinstance(v, dict) else str(type(v).__name__))
+    return jsonify({'ticker': ticker, 'total_itens': len(lista), 'campos': campos,
+                    'campos_de_teorico_conhecidos': list(_OPLAB_TEOR_KEYS), 'resultado_busca': achou,
+                    'exemplo': [{k: _plano(v) for k, v in o.items()} for o in amostra]})
+
+
 @app.route('/api/cadeia/<ticker>')
 @login_required
 def api_cadeia(ticker):
@@ -4763,6 +4836,8 @@ def api_cadeia(ticker):
     # Normaliza opções
     calls_by_exp = {}
     puts_by_exp  = {}
+    _ewma_ativo = _oplab_ewma(ticker, token)       # % ao ano, p/ o valor teórico (Teór.)
+    _selic_t = _selic() / 100.0
 
     for o in opt_list:
         sym      = str(o.get('symbol') or o.get('ticker') or '').upper()
@@ -4774,7 +4849,9 @@ def api_cadeia(ticker):
         var_pct  = float(o.get('variation') or 0)
         vol_fin  = float(o.get('financial_volume') or o.get('volume_financial') or 0)
         delta    = o.get('delta') or (o.get('greeks') or {}).get('delta') if isinstance(o.get('greeks'), dict) else o.get('delta')
-        teorico  = float(o.get('theoretical_price') or o.get('theo') or 0)
+        # Valor teórico (Black-Scholes) da OpLab: o nome do campo varia conforme o
+        # plano/versão — procura nos nomes conhecidos, no topo e dentro de "greeks".
+        teorico, teorico_src = _oplab_teorico(o), 'oplab'
         liquidez = float(o.get('liquidity') or o.get('liquidity_score') or 0)
         _iv_raw  = o.get('implied_volatility') or o.get('iv') or {}
         _iv_data = _iv_raw if isinstance(_iv_raw, dict) else {'iv': _iv_raw}
@@ -4819,6 +4896,33 @@ def api_cadeia(ticker):
                     if 0.005 < _sigma < 4.9:
                         iv_pct = _sigma * 100
 
+        # Teórico igual ao da OpLab: BS com a EWMA do ativo, T = dias úteis/252 (campo
+        # days_to_maturity da própria cadeia) e r = Selic. A API não devolve esse campo.
+        if not (teorico and teorico > 0) and spot and strike > 0 and _ewma_ativo:
+            try:
+                _dtm = int(o.get('days_to_maturity'))
+            except (TypeError, ValueError):
+                _dtm = None
+            if _dtm is None:
+                try:
+                    _dtm = max(int(round((_date.fromisoformat(due_date) - _date.today()).days * 5 / 7)), 0)
+                except ValueError:
+                    _dtm = 0
+            if _dtm > 0:
+                teorico = _bs_price(spot, strike, _dtm / 252.0, _selic_t, _ewma_ativo / 100.0,
+                                    not ('PUT' in cat or cat == 'P'))
+                teorico_src = 'ewma'
+        # Sem EWMA: estima por Black-Scholes com a VI da própria série (marcado '~' na tela).
+        if not (teorico and teorico > 0) and spot and strike > 0 and iv_pct:
+            try:
+                _dc_t = (_date.fromisoformat(due_date) - _date.today()).days
+            except ValueError:
+                _dc_t = 0
+            _sg = float(iv_pct) * (100 if 0 < float(iv_pct) <= 1.5 else 1) / 100.0
+            if _dc_t > 0 and 0.005 < _sg < 4.9:
+                teorico = _bs_price(spot, strike, _dc_t / 365.0, math.log(1 + _selic() / 100.0), _sg,
+                                    not ('PUT' in cat or cat == 'P'))
+                teorico_src = 'calc'
         row = {
             'symbol':   sym,
             'strike':   round(strike, 2),
@@ -4828,7 +4932,8 @@ def api_cadeia(ticker):
             'var_pct':  round(var_pct, 2),
             'vol_fin':  round(vol_fin, 2),
             'delta':    round(float(delta), 2) if delta is not None else None,
-            'teorico':  round(teorico, 2),
+            'teorico':  round(teorico, 2) if teorico else 0,
+            'teorico_src': teorico_src if teorico else None,
             'liquidez': round(liquidez, 2),
             'iv':       round(float(iv_pct) * (100 if 0 < float(iv_pct) <= 1.5 else 1), 2) if iv_pct is not None else None,
             'mid':      round((bid + ask) / 2, 2) if (bid or ask) else 0,

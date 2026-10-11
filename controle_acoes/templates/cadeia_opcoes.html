@@ -426,11 +426,13 @@ function renderTable(expData,spot){
   var html='<div class="cadeia-wrap"><table class="cadeia"><thead><tr>'
     +'<th class="call-side" style="text-align:left">Cód.Call</th>'
     +'<th class="call-side">Último</th>'
+    +'<th class="call-side" title="Valor teórico: Black-Scholes com a EWMA do ativo, como na OpLab. ~ = estimado com a VI da série">Teór.</th>'
     +'<th class="call-side">Vol.Fin.</th><th class="call-side">Var.</th>'
     +'<th class="call-side">Mid</th><th class="call-side">Bid&nbsp;/&nbsp;Ask</th>'
     +'<th class="strike-col" title="Passe o mouse no strike para ver a distância % até o spot">⇅ Strike</th>'
     +'<th class="put-side">Bid&nbsp;/&nbsp;Ask</th><th class="put-side">Mid</th>'
     +'<th class="put-side">Var.</th><th class="put-side">Vol.Fin.</th>'
+    +'<th class="put-side" title="Valor teórico: Black-Scholes com a EWMA do ativo, como na OpLab. ~ = estimado com a VI da série">Teór.</th>'
     +'<th class="put-side">Último</th>'
     +'<th class="put-side" style="text-align:left">Cód.Put</th>'
     +'</tr></thead><tbody>';
@@ -448,18 +450,18 @@ function renderTable(expData,spot){
     if(c){
       var cE=enc(c.symbol,'CALL','SELL',c.close,s,exp,c.iv);
       html+='<td style="text-align:left"><span class="sym-link" data-opt="'+cE+'" title="VENDER">'+c.symbol+'</span></td>';
-      html+=fV(c.close);
+      html+=fV(c.close)+fTeor(c);
       html+='<td class="val">'+brlK(c.vol_fin)+'</td>'+fVar(c.var_pct)+fV(c.mid||null);
       html+=baCell(c.symbol,'CALL',c.bid,c.ask,s,exp,c.close,c.iv);
-    } else { html+='<td class="empty">—</td>'.repeat(6); }
+    } else { html+='<td class="empty">—</td>'.repeat(7); }
     html+='<td class="'+sClass+'"'+sTitle+'>R$ '+brl(s)+(isSpot?' ◀':'')+'</td>';
     if(p){
       html+=baCell(p.symbol,'PUT',p.bid,p.ask,s,exp,p.close,p.iv);
       html+=fV(p.mid||null)+fVar(p.var_pct)+'<td class="val">'+brlK(p.vol_fin)+'</td>';
-      html+=fV(p.close);
+      html+=fTeor(p)+fV(p.close);
       var pE=enc(p.symbol,'PUT','SELL',p.close,s,exp,p.iv);
       html+='<td style="text-align:left"><span class="sym-link" data-opt="'+pE+'" title="VENDER">'+p.symbol+'</span></td>';
-    } else { html+='<td class="empty">—</td>'.repeat(6); }
+    } else { html+='<td class="empty">—</td>'.repeat(7); }
     html+='</tr>';
   });
   html+='</tbody></table></div>';
@@ -1072,6 +1074,14 @@ function brlK(v){
   if(v>=1e6) return brl(v/1e6)+'M'; if(v>=1e3) return brl(v/1e3)+'k'; return brl(v);
 }
 function fmtDate(s){if(!s) return '-'; var p=s.split('-'); return p[2]+'/'+p[1]+'/'+p[0];}
+// Valor teórico: '~' quando foi estimado pelo servidor (a OpLab não trouxe o campo)
+function fTeor(o){
+  if(!o||!o.teorico) return '<td class="empty">-</td>';
+  var est=o.teorico_src==='calc';
+  var tip=est?' title="Estimado: Black-Scholes com a VI da série (sem a EWMA do ativo)"'
+    :(o.teorico_src==='ewma'?' title="Black-Scholes com a EWMA do ativo (dias úteis/252, r = Selic) — mesmo critério do Teór. da OpLab"':'');
+  return '<td class="val"'+tip+'>'+(est?'~':'')+brl(o.teorico)+'</td>';
+}
 function fV(v){
   if(v===null||v===undefined||v===0) return '<td class="empty">-</td>';
   return '<td class="val">'+brl(v)+'</td>';

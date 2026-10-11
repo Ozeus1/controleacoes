@@ -3185,6 +3185,21 @@ def api_busca_opcao(ticker):
         '_raw':             {k: v for k, v in d.items() if not isinstance(v, (dict, list))},
     }
 
+    # Valor teórico igual ao da OpLab: Black-Scholes com a EWMA do ativo, dias úteis/252, r = Selic.
+    result['teorico'] = None
+    try:
+        _tp = _oplab_teorico(d)
+        if not _tp and underlying and spot_price and result.get('strike'):
+            _ew = _oplab_ewma(underlying, token)
+            _dtm = d.get('days_to_maturity')
+            if _ew and _dtm and int(_dtm) > 0:
+                _is_c = 'PUT' not in str(d.get('category') or d.get('type') or '').upper()
+                _tp = _bs_price(float(spot_price), float(result['strike']), int(_dtm) / 252.0,
+                                _selic() / 100.0, _ew / 100.0, _is_c)
+        result['teorico'] = round(_tp, 2) if _tp else None
+    except Exception:
+        result['teorico'] = None
+
     # bid/ask não-zero do instruments são válidos mesmo se volume=0 (market maker)
     if result['bid'] is None:
         result['bid'] = _f(d.get('bid'))

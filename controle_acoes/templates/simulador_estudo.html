@@ -449,11 +449,12 @@ function novaLinha(tipo) {
       // Fonte da cotação usada no Prêmio (Auto/Bid/Ask/Último).
       + '<td>' + (isStock ? '<span class="sim-hint">—</span>'
           : '<select class="leg-src" onchange="simFonteMudou(this)"'
-            + ' title="Auto: venda usa bid, compra usa ask · Bid/Ask forçam a ponta · Último usa o preço de fechamento/último negócio">'
+            + ' title="Auto: venda usa bid, compra usa ask · Bid/Ask forçam a ponta · Último usa o preço de fechamento/último negócio · Teór. usa o valor teórico (Black-Scholes com a EWMA do ativo, como na OpLab)">'
             + '<option value="auto">Auto</option>'
             + '<option value="bid">Bid</option>'
             + '<option value="ask">Ask</option>'
             + '<option value="last">Últ.</option>'
+            + '<option value="teor">Teór.</option>'
             + '</select>') + '</td>'
       + '<td><input type="text" class="leg-premium" value="0,00" readonly'
       +   (isStock ? ' title="Cotação buscada via OpLab (pregão aberto ou último fechamento)"'
@@ -525,7 +526,7 @@ window.simSideMudou = function (sel) {
     var tr = sel.closest('tr');
     if (tr.dataset.bid || tr.dataset.ask || tr.dataset.last) {
         var lado = sel.value;
-        var fake = { bid_eff: parseFloat(tr.dataset.bid || 0), ask_eff: parseFloat(tr.dataset.ask || 0), close: parseFloat(tr.dataset.last || 0) };
+        var fake = { bid_eff: parseFloat(tr.dataset.bid || 0), ask_eff: parseFloat(tr.dataset.ask || 0), close: parseFloat(tr.dataset.last || 0), teorico: parseFloat(tr.dataset.teor || 0) };
         tr.querySelector('.leg-premium').value = fmtNum(simPrecoDaFonte(tr, fake, lado));
     }
     simRecalc();
@@ -558,6 +559,8 @@ function simPrecoDaFonte(tr, o, lado) {
     var bid = o.bid_eff || o.bid || 0;
     var ask = o.ask_eff || o.ask || 0;
     var last = o.close || 0;
+    var teor = o.teorico || 0;
+    if (src === 'teor') return teor || last || (lado === 'SELL' ? (bid || ask) : (ask || bid)) || 0;
     if (src === 'bid')  return bid || last || ask || 0;
     if (src === 'ask')  return ask || last || bid || 0;
     if (src === 'last') return last || (lado === 'SELL' ? (bid || ask) : (ask || bid)) || 0;
@@ -594,7 +597,7 @@ window.simFonteMudou = function (sel) {
     var ask = parseFloat(tr.dataset.ask || 0);
     var last = parseFloat(tr.dataset.last || 0);
     if (!bid && !ask && !last) { simRecalc(); return; }
-    var fake = { bid_eff: bid, ask_eff: ask, close: last };
+    var fake = { bid_eff: bid, ask_eff: ask, close: last, teorico: parseFloat(tr.dataset.teor || 0) };
     tr.querySelector('.leg-premium').value = fmtNum(simPrecoDaFonte(tr, fake, lado));
     simRecalc();
 };
@@ -639,15 +642,15 @@ function simBuscaTicker(tr, ticker, preservaPremio) {
             tr.dataset.exp = d.expiration || '';
             tr.dataset.strike = d.strike != null ? d.strike : '';
 
-            var o = { bid_eff: d.bid, ask_eff: d.ask, close: d.last };
-            tr.dataset.bid = d.bid || 0; tr.dataset.ask = d.ask || 0; tr.dataset.last = d.last || 0;
+            var o = { bid_eff: d.bid, ask_eff: d.ask, close: d.last, teorico: d.teorico };
+            tr.dataset.bid = d.bid || 0; tr.dataset.ask = d.ask || 0; tr.dataset.last = d.last || 0; tr.dataset.teor = d.teorico || 0;
             var lado = tr.querySelector('.leg-side').value;
             // Ao ABRIR uma simulação salva, o prêmio salvo é mantido (é o preço com que ela
             // foi montada — igual à tela Simulação de Opções); a cotação de hoje fica no tooltip.
             if (preservaPremio) premioEl.value = premioSalvo;
             else premioEl.value = fmtNum(simPrecoDaFonte(tr, o, lado));
             premioEl.title = (preservaPremio ? 'Prêmio salvo ' + premioSalvo + ' · mercado agora: ' : '') +
-                'Bid ' + fmtNum(d.bid || 0) + ' · Ask ' + fmtNum(d.ask || 0) + ' · Último ' + fmtNum(d.last || 0);
+                'Bid ' + fmtNum(d.bid || 0) + ' · Ask ' + fmtNum(d.ask || 0) + ' · Último ' + fmtNum(d.last || 0) + (d.teorico ? ' · Teór. ' + fmtNum(d.teorico) : '');
             // d.iv (de /api/busca-opcao) já vem em formato PERCENTUAL (ex.:
             // 30.29 = 30,29%), mesma convenção de /api/cadeia usada no
             // Simulador normal — multiplicar por 100 aqui inflava a VI em

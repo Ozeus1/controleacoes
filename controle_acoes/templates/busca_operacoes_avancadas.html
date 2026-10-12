@@ -124,6 +124,10 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="straddle_long_put">⚖️📉 Straddle Long Put</button>
     </div>
     <div class="ba-cat">
+      <div class="ba-cat-lbl">🦁 Leão</div>
+      <button class="ba-obtn" data-op="monster_slide">🦁 Monster Slide</button>
+    </div>
+    <div class="ba-cat">
       <div class="ba-cat-lbl">📅 Calendário — Lateral (semanal → mensal · marque "incluir semanais")</div>
       <button class="ba-obtn" data-op="neutral_calendar">🔁 Neutral Calendar (ATM)</button>
       <button class="ba-obtn" data-op="double_calendar">🔁🔁 Double Calendar</button>
@@ -268,6 +272,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     straddle_comprado: '⚖️ Straddle Comprado — compra CALL + PUT ATM (mesmo strike; lucra com movimento forte em qualquer direção)',
     strangle_comprado: '🔗 Strangle Comprado — compra CALL OTM (Δ 0,20–0,30) + PUT OTM (Δ −0,20 a −0,30); mais barato que o straddle',
     guts_long:      '💪 Guts (Long) — compra CALL ITM (Δ 0,70–0,80) + PUT ITM (Δ −0,70 a −0,80); volatilidade com opções ITM',
+    monster_slide:  '🦁 Monster Slide — vende 1 CALL ITM (até 10%) e, com o prêmio, monta ≥ 10 travas de alta com CALLs (compra a 6 posições acima, asa 2); montagem a custo ~zero/crédito; risco ilimitado na alta forte',
     strangle_itm:   '🔗💰 Strangle ITM (vendido) — venda CALL ITM (abaixo do spot) + PUT ITM (acima), ~1–3% ITM cada; lateral/manejo; lucro = gordura (crédito − (K_PUT − K_CALL)); risco ilimitado fora do corredor',
     guts_short:     '💪📉 Guts (Short) — venda CALL ITM + PUT ITM (Δ 0,60–0,70); mercado lateral com IV alta; risco ilimitado nas pontas',
     borboleta_delta: '🦋 Borboleta — compra CALL ITM (Δ ≈ 0,70) + venda 2 CALLs ATM (Δ ≈ 0,50) + compra CALL OTM (Δ ≈ 0,30); lucro máximo no miolo',
@@ -508,7 +513,32 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     return h + '</tbody></table></div>';
   }
 
-  var CUSTOM_TABLES = {box3: box3Table, box4: box4Table, strangle_itm: strangleItmTable,
+  // ── Monster Slide (🦁 Leão) ────────────────────────────────────────────────
+  function monsterTable(rows, expIdx) {
+    if (!rows.length) return '<div class="ba-empty">Nenhuma combinação em que a CALL vendida (até 10% ITM) pague ao menos 10 travas neste vencimento.</div>';
+    var h = '<div class="ba-wrap"><table class="ba-tab"><thead><tr>' +
+      '<th>Pernas (qtd × série)</th><th>Strikes (vendida / comprada / vendida)</th>' +
+      '<th title="Quanto a CALL vendida está dentro do dinheiro">ITM</th>' +
+      '<th title="Nº de travas de alta (compra L / venda H) pagas pelo prêmio da CALL vendida (mínimo 10)">Travas</th>' +
+      '<th title="Distância (em posições de strike) da vendida até a comprada, e asa da trava">Dist. / Asa</th>' +
+      '<th>Montagem</th><th>Lucro máx.</th><th>Perda máx.</th><th>Breakevens</th></tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += '<tr class="ba-row" data-exp="' + expIdx + '" data-row="' + j + '" title="Clique para ver o resumo">' +
+        '<td>' + r.legs.map(legBadge).join(' ') + '</td>' +
+        '<td>' + r.legs.map(function(l) { return fmt(l.k); }).join(' / ') + '</td>' +
+        '<td>' + fmt(r.itm_pct, 1) + '%</td>' +
+        '<td><strong>' + r.n_travas + '</strong> <span style="color:var(--text-secondary);font-size:.78rem;">× ' + brl(r.custo_trava) + '</span></td>' +
+        '<td>' + r.dist + ' / ' + r.asa + '</td>' +
+        '<td><span class="ba-badge ' + (r.is_credit ? 'credit' : 'debit') + '">' + r.montagem + ' ' + brl(Math.abs(r.net)) + '</span></td>' +
+        '<td class="pos"><strong>' + brl(r.max_gain) + '</strong></td>' +
+        '<td class="neg">ILIMITADA ⚠️</td>' +
+        '<td>' + (r.bes.length ? r.bes.map(function(b) { return brl(b); }).join(' · ') : '—') + '</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  var CUSTOM_TABLES = {box3: box3Table, box4: box4Table, strangle_itm: strangleItmTable, monster_slide: monsterTable,
     slide_estrutural: function(rows, expIdx) { return slideTable(rows, expIdx, false); },
     slide_estrutural_put: function(rows, expIdx) { return slideTable(rows, expIdx, true); }};
 

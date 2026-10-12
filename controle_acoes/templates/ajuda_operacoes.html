@@ -179,6 +179,7 @@ var CATS=[
   {id:'cat-renda',nome:'💰 Renda e Proteção'},
   {id:'cat-vol',  nome:'⚖️ Volatilidade e Neutras'},
   {id:'cat-sint', nome:'🧬 Sintéticas e Avançadas'},
+  {id:'cat-leao', nome:'🦁 Leão'},
   {id:'cat-cal',  nome:'📅 Calendário — múltiplos vencimentos (semanal → mensal)'}
 ];
 function B(pg,op){ return pg+'?op='+op; }
@@ -696,6 +697,15 @@ var OPS=[
  busca:B(BO,'seagull_alavancada')},
 
 /* ══ CALENDÁRIO (Vol. 4) ══ */
+{cat:'cat-leao',nome:'Monster Slide',cen:'alta',tipo:'zero',
+ alias:['monster_slide'],
+ tags:['VENDE 1 CALL ITM + ≥ 10 TRAVAS','CUSTO ~ZERO / CRÉDITO','⚠️ RISCO ILIMITADO NA ALTA FORTE'],
+ legs:[{t:'C',q:-1,K:96,p:10.5},{t:'C',q:10,K:102,p:3.4},{t:'C',q:-10,K:104,p:2.3}],
+ mont:'Vende 1 CALL ITM (até 10% dentro do dinheiro) e usa o prêmio dela para montar n travas de alta com CALLs: compra a CALL L, a "dist" posições de strike acima da vendida, e vende a CALL H, "asa" posições acima de L. O prêmio da vendida tem de pagar no mínimo 10 travas (n = ⌊prêmio ÷ custo da trava⌋ ≥ 10), de modo que a montagem sai a custo ~zero ou com crédito.',
+ cenario:'Alta moderada: o lucro máximo aparece entre L e H (as travas pagam a largura × n) e, acima de H, a CALL vendida a descoberto devolve o ganho até o breakeven superior; abaixo da vendida o resultado fica travado no crédito inicial. Funciona melhor em ETFs líquidos como BOVA11.',
+ sel:['CALL vendida: qualquer strike ITM até 10% abaixo do spot (a busca varia a vendida e mantém só as que fecham ≥ 10 travas)','ETF (…11, ex.: BOVA11): compra a 6 posições acima da vendida e asa de 2','Ações: strikes mais espaçados — a busca varre distância 3–6 e asa 1–3 e lista cada variante','Preços executáveis: venda no bid, compra no ask (pregão fechado: último negócio)','Resultado: prêmio da vendida − n × custo da trava ≥ 0'],
+ man:['Receio de alta forte: a CALL vendida fica descoberta — rolar para strike maior ou encerrar parte das travas','Queda: as travas viram pó; o que restou é o crédito da montagem','Perto do vencimento, acompanhar o breakeven superior (acima dele há prejuízo crescente)'],
+ busca:B(BA,'monster_slide')},
 {cat:'cat-cal',nome:'Neutral Calendar Spread (ATM) — Lateral',cen:'lateral',tipo:'debito',
  cal:true,dcS:7,dcL:35,iv:0.30,
  legs:[{t:'C',q:-1,K:100,p:1.8},{t:'C',q:1,K:100,p:4,long:true}],
@@ -857,7 +867,7 @@ var VI_BY_OP={
   booster:'alta',
   vaca_travada:'alta', vaca_tradicional:'alta', vaca_revertida:'neutra',
   boi_coberto:'neutra', vaca_put:'alta',
-  strap:'baixa', strip:'baixa', guts_long:'baixa', guts_short:'alta', strangle_itm:'alta', bull_straddle_ha:'alta', straddle_ha_dual:'alta', straddle_long_put:'alta', bear_straddle_ha:'alta',
+  strap:'baixa', strip:'baixa', guts_long:'baixa', guts_short:'alta', strangle_itm:'alta', monster_slide:'neutra', bull_straddle_ha:'alta', straddle_ha_dual:'alta', straddle_long_put:'alta', bear_straddle_ha:'alta',
   box_spread:'neutra', box3:'neutra', box4:'neutra',
   acao_sintetica:'neutra', short_sintetico:'neutra', risk_reversal:'neutra',
   synthetic_straddle:'baixa', fence:'baixa', fence_alavancada:'baixa', seagull_alavancada:'alta',

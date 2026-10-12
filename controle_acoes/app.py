@@ -7123,6 +7123,81 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: -x['credit_pct'])
             rows = _diversify(rows, lambda x: x['call_symbol'], per_key=2)
 
+        elif op == 'monster_slide':
+            # Monster Slide (🦁 Leão): VENDE 1 CALL ITM (até 10% dentro do dinheiro) e,
+            # com o prêmio dela, MONTA n travas de alta com CALLs (compra L, vende H):
+            #   L = `dist` posições ACIMA da vendida; H = `asa` posições acima de L.
+            # O prêmio da vendida precisa pagar no mínimo 10 travas (n ≥ 10), com a
+            # montagem a custo ~zero ou em crédito: n = ⌊prêmio ÷ custo da trava⌋.
+            # ETF (…11, ex.: BOVA11): dist 6 / asa 2. Ações (strikes mais espaçados e
+            # cadeias mais curtas): varre dist 3–6 e asa 1–3 e deixa cada variante na tabela.
+            # Varre TODAS as CALLs ITM até 10% — "varia a call vendida" até achar combinação.
+            is_etf = ticker.endswith('11')
+            dists = (6,) if is_etf else (3, 4, 5, 6)
+            asas  = (2,) if is_etf else (1, 2, 3)
+            MIN_TRAVAS = 10
+            cs = calls_ok                        # CALLs negociáveis, em ordem de strike
+            for i, Sc in enumerate(cs):
+                itm = (spot - Sc['strike']) / spot
+                if not (0 < itm <= 0.10):
+                    continue
+                prem_s = Sc['bid']
+                for d in dists:
+                    j = i + d
+                    if j >= len(cs):
+                        continue
+                    for a in asas:
+                        k = j + a
+                        if k >= len(cs):
+                            continue
+                        Lc, Hc = cs[j], cs[k]
+                        custo = Lc['ask'] - Hc['bid']        # débito de UMA trava
+                        if custo <= 0.005:
+                            continue
+                        n = int((prem_s + 1e-9) // custo)
+                        if n < MIN_TRAVAS:
+                            continue
+                        net = prem_s - n * custo              # >= 0: crédito (ou ~zero)
+                        qs, qL, qH = -1, n, -n
+                        ks = [Sc['strike'], Lc['strike'], Hc['strike']]
+                        pts = [0.0] + sorted(ks) + [max(ks) * 1.8]
+
+                        def _pay(S_, _ks=ks, _net=net, _n=n):
+                            return (_net - max(0.0, S_ - _ks[0]) + _n * max(0.0, S_ - _ks[1])
+                                    - _n * max(0.0, S_ - _ks[2]))
+                        vals = [_pay(x) for x in pts]
+                        bes = []
+                        for q_ in range(len(pts) - 1):
+                            v0, v1 = vals[q_], vals[q_ + 1]
+                            if ((v0 < 0 <= v1) or (v0 >= 0 > v1)) and abs(v1 - v0) > 1e-9:
+                                bes.append(pts[q_] + (0 - v0) * (pts[q_ + 1] - pts[q_]) / (v1 - v0))
+                        max_gain = max(vals)
+                        if max_gain <= 0:
+                            continue
+                        rows.append({
+                            'legs': [
+                                {'sym': Sc['symbol'], 'tp': 'CALL', 'k': Sc['strike'], 'q': qs,
+                                 'px': round(prem_s, 2), 'delta': _leg_delta_pct(Sc, True, dc / 365.0)},
+                                {'sym': Lc['symbol'], 'tp': 'CALL', 'k': Lc['strike'], 'q': qL,
+                                 'px': round(Lc['ask'], 2), 'delta': _leg_delta_pct(Lc, True, dc / 365.0)},
+                                {'sym': Hc['symbol'], 'tp': 'CALL', 'k': Hc['strike'], 'q': qH,
+                                 'px': round(Hc['bid'], 2), 'delta': _leg_delta_pct(Hc, True, dc / 365.0)},
+                            ],
+                            'net':       round(net, 2),
+                            'is_credit': net > 0.005,
+                            'montagem':  'CRÉDITO' if net > 0.005 else 'ZERO',
+                            'max_gain':  round(max_gain, 2), 'gain_unl': False,
+                            'max_loss':  None, 'loss_unl': True,
+                            'ratio':     None,
+                            'bes':       [round(b, 2) for b in bes],
+                            'n_travas':  n, 'dist': d, 'asa': a,
+                            'itm_pct':   round(itm * 100, 1),
+                            'custo_trava': round(custo, 2),
+                        })
+            # Uma linha por (CALL vendida, dist, asa): maior potencial primeiro
+            rows.sort(key=lambda x: (-x['max_gain'], -x['net']))
+            rows = _diversify(rows, lambda x: (x['legs'][0]['sym'], x['dist'], x['asa']), per_key=1, limit=14)
+
         elif op == 'strangle_itm':
             # Strangle ITM vendido: -1 CALL ITM (strike ABAIXO do spot) + -1 PUT ITM
             # (strike ACIMA do spot), mesmo vencimento. Cada perna ~1–3% ITM.

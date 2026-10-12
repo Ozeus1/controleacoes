@@ -7209,7 +7209,7 @@ def api_busca_operacoes(ticker):
             # Montagem a crédito (ou ~zero).
             is_etf = ticker.endswith('11')
             asas_inf = (2, 3)
-            asas_sup = (4,) if is_etf else (3, 4, 5)
+            asas_sup = (3, 4) if is_etf else (3, 4, 5)
             cs = calls_ok
             put_map = {pp['strike']: pp for pp in puts_ok}
             below = [i for i, c0 in enumerate(cs) if c0['strike'] <= spot]
@@ -7269,7 +7269,78 @@ def api_busca_operacoes(ticker):
                             'centro': Kc,
                         })
             # maior potencial primeiro; na igualdade, asa inferior menor (2 é a preferida)
-            rows.sort(key=lambda x: (-x['max_gain'], x['asa_inf'], x['asa_sup']))
+            # asa inferior 2 é a preferida: vem primeiro; depois o maior potencial
+            rows.sort(key=lambda x: (x['asa_inf'] != 2, -x['max_gain'], x['asa_sup']))
+            rows = _diversify(rows, lambda x: (x['centro'], x['asa_inf'], x['asa_sup']), per_key=1, limit=12)
+
+        elif op == 'broken_wings_short_call':
+            # Broken Wings Short Call (🦁 Leão): espelho do Short Put, com borboleta de PUTs:
+            #   +1 PUT (centro + asa_inf, ITM) · −2 PUT (centro, ATM) · +1 PUT (centro − asa_sup)
+            #   −1 CALL (centro − asa_sup)  [mesmo strike da PUT comprada de baixo].
+            # Asa inferior 2 (ou 3) é a preferida; superior 3–4 (ETF) ou 3–5 (ações), sempre
+            # maior que a inferior. Montagem a crédito (ou ~zero). Risco ilimitado na alta
+            # (CALL vendida descoberta, já ITM) — por isso o lucro máx. fica no ATM.
+            is_etf = ticker.endswith('11')
+            asas_inf = (2, 3)
+            asas_sup = (3, 4) if is_etf else (3, 4, 5)
+            ps = puts_ok
+            call_map = {cc['strike']: cc for cc in calls_ok}
+            below = [i for i, p0 in enumerate(ps) if p0['strike'] <= spot]
+            above = [i for i, p0 in enumerate(ps) if p0['strike'] > spot]
+            centros = ([below[-1]] if below else []) + ([above[0]] if above else [])
+            for ic in centros:
+                Pc = ps[ic]
+                for lo in asas_inf:
+                    for up in asas_sup:
+                        if up <= lo:
+                            continue
+                        ih, il = ic + lo, ic - up
+                        if il < 0 or ih >= len(ps):
+                            continue
+                        Ph, Pl = ps[ih], ps[il]
+                        Cl = call_map.get(Pl['strike'])
+                        if not Cl:
+                            continue
+                        net = -Ph['ask'] + 2 * Pc['bid'] - Pl['ask'] + Cl['bid']
+                        if net < -0.02:                     # só crédito (ou ~zero)
+                            continue
+                        Kh, Kc, Kl = Ph['strike'], Pc['strike'], Pl['strike']
+                        pts = [0.0, Kl, Kc, Kh, Kh * 1.8]
+
+                        def _pay(S_, _net=net, _Kh=Kh, _Kc=Kc, _Kl=Kl):
+                            return (_net + max(0.0, _Kh - S_) - 2 * max(0.0, _Kc - S_)
+                                    + max(0.0, _Kl - S_) - max(0.0, S_ - _Kl))
+                        vals = [_pay(x) for x in pts]
+                        bes = []
+                        for q_ in range(len(pts) - 1):
+                            v0, v1 = vals[q_], vals[q_ + 1]
+                            if ((v0 < 0 <= v1) or (v0 >= 0 > v1)) and abs(v1 - v0) > 1e-9:
+                                bes.append(pts[q_] + (0 - v0) * (pts[q_ + 1] - pts[q_]) / (v1 - v0))
+                        max_gain = max(vals)
+                        if max_gain <= 0:
+                            continue
+                        rows.append({
+                            'legs': [
+                                {'sym': Ph['symbol'], 'tp': 'PUT', 'k': Kh, 'q': 1,
+                                 'px': round(Ph['ask'], 2), 'delta': _leg_delta_pct(Ph, False, dc / 365.0)},
+                                {'sym': Pc['symbol'], 'tp': 'PUT', 'k': Kc, 'q': -2,
+                                 'px': round(Pc['bid'], 2), 'delta': _leg_delta_pct(Pc, False, dc / 365.0)},
+                                {'sym': Pl['symbol'], 'tp': 'PUT', 'k': Kl, 'q': 1,
+                                 'px': round(Pl['ask'], 2), 'delta': _leg_delta_pct(Pl, False, dc / 365.0)},
+                                {'sym': Cl['symbol'], 'tp': 'CALL', 'k': Kl, 'q': -1,
+                                 'px': round(Cl['bid'], 2), 'delta': _leg_delta_pct(Cl, True, dc / 365.0)},
+                            ],
+                            'net':       round(net, 2),
+                            'is_credit': net > 0.005,
+                            'montagem':  'CRÉDITO' if net > 0.005 else 'ZERO',
+                            'max_gain':  round(max_gain, 2), 'gain_unl': False,
+                            'max_loss':  None, 'loss_unl': True,
+                            'ratio':     None,
+                            'bes':       [round(b, 2) for b in bes],
+                            'asa_inf': lo, 'asa_sup': up,
+                            'centro': Kc,
+                        })
+            rows.sort(key=lambda x: (x['asa_inf'] != 2, -x['max_gain'], x['asa_sup']))
             rows = _diversify(rows, lambda x: (x['centro'], x['asa_inf'], x['asa_sup']), per_key=1, limit=12)
 
         elif op == 'strangle_itm':

@@ -127,6 +127,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <div class="ba-cat-lbl">🦁 Leão</div>
       <button class="ba-obtn" data-op="monster_slide">🦁 Monster Slide</button>
       <button class="ba-obtn" data-op="broken_wings_short_put">🦁 Broken Wings Short Put</button>
+      <button class="ba-obtn" data-op="broken_wings_short_call">🦁 Broken Wings Short Call</button>
     </div>
     <div class="ba-cat">
       <div class="ba-cat-lbl">📅 Calendário — Lateral (semanal → mensal · marque "incluir semanais")</div>
@@ -273,6 +274,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     straddle_comprado: '⚖️ Straddle Comprado — compra CALL + PUT ATM (mesmo strike; lucra com movimento forte em qualquer direção)',
     strangle_comprado: '🔗 Strangle Comprado — compra CALL OTM (Δ 0,20–0,30) + PUT OTM (Δ −0,20 a −0,30); mais barato que o straddle',
     guts_long:      '💪 Guts (Long) — compra CALL ITM (Δ 0,70–0,80) + PUT ITM (Δ −0,70 a −0,80); volatilidade com opções ITM',
+    broken_wings_short_call: '🦁 Broken Wings Short Call — +1 PUT (2 posições ITM) −2 PUT (ATM) +1 PUT (asa inferior mais larga) e −1 CALL no strike dessa PUT de baixo; montagem a crédito; risco ilimitado na alta forte (CALL vendida)',
     broken_wings_short_put: '🦁 Broken Wings Short Put — +1 CALL (2 posições ITM) −2 CALL (ATM) +1 CALL (asa superior mais larga, ex.: 4 OTM) e −1 PUT no strike dessa CALL de cima; montagem a crédito; risco na queda forte (PUT vendida)',
     monster_slide:  '🦁 Monster Slide — vende 1 CALL ITM (até 10%) e, com o prêmio, monta ≥ 10 travas de alta com CALLs (compra a 6 posições acima, asa 2); montagem a custo ~zero/crédito; risco ilimitado na alta forte',
     strangle_itm:   '🔗💰 Strangle ITM (vendido) — venda CALL ITM (abaixo do spot) + PUT ITM (acima), ~1–3% ITM cada; lateral/manejo; lucro = gordura (crédito − (K_PUT − K_CALL)); risco ilimitado fora do corredor',
@@ -554,7 +556,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
         '<td>' + r.asa_inf + ' / ' + r.asa_sup + '</td>' +
         '<td><span class="ba-badge ' + (r.is_credit ? 'credit' : 'debit') + '">' + r.montagem + ' ' + brl(Math.abs(r.net)) + '</span></td>' +
         '<td class="pos"><strong>' + brl(r.max_gain) + '</strong></td>' +
-        '<td class="neg">' + brl(r.max_loss) + '</td>' +
+        '<td class="neg">' + (r.loss_unl ? 'ILIMITADA ⚠️' : brl(r.max_loss)) + '</td>' +
         '<td>' + (r.ratio != null ? fmt(r.ratio) : '—') + '</td>' +
         '<td>' + (r.bes.length ? r.bes.map(function(b) { return brl(b); }).join(' · ') : '—') + '</td>' +
         '</tr>';
@@ -562,7 +564,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     return h + '</tbody></table></div>';
   }
 
-  var CUSTOM_TABLES = {box3: box3Table, broken_wings_short_put: bwspTable, box4: box4Table, strangle_itm: strangleItmTable, monster_slide: monsterTable,
+  var CUSTOM_TABLES = {box3: box3Table, broken_wings_short_put: bwspTable, broken_wings_short_call: bwspTable, box4: box4Table, strangle_itm: strangleItmTable, monster_slide: monsterTable,
     slide_estrutural: function(rows, expIdx) { return slideTable(rows, expIdx, false); },
     slide_estrutural_put: function(rows, expIdx) { return slideTable(rows, expIdx, true); }};
 

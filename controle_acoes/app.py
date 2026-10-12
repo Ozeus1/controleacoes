@@ -7198,6 +7198,80 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: (-x['max_gain'], -x['net']))
             rows = _diversify(rows, lambda x: (x['legs'][0]['sym'], x['dist'], x['asa']), per_key=1, limit=14)
 
+        elif op == 'broken_wings_short_put':
+            # Broken Wings Short Put (🦁 Leão): borboleta de CALLs com asa superior mais larga
+            # + PUT vendida no strike da CALL de cima:
+            #   +1 CALL (centro − asa_inf) · −2 CALL (centro, ATM) · +1 CALL (centro + asa_sup)
+            #   −1 PUT (centro + asa_sup).
+            # ETF (…11): asa inferior 2 (ou 3) e superior 4. Ações: inferior 2–3, superior 3–5
+            # (sempre superior > inferior = "asa quebrada"). "Posições" = strikes negociáveis
+            # consecutivos da cadeia. O ATM é testado nos dois strikes que cercam o spot.
+            # Montagem a crédito (ou ~zero).
+            is_etf = ticker.endswith('11')
+            asas_inf = (2, 3)
+            asas_sup = (4,) if is_etf else (3, 4, 5)
+            cs = calls_ok
+            put_map = {pp['strike']: pp for pp in puts_ok}
+            below = [i for i, c0 in enumerate(cs) if c0['strike'] <= spot]
+            above = [i for i, c0 in enumerate(cs) if c0['strike'] > spot]
+            centros = ([below[-1]] if below else []) + ([above[0]] if above else [])
+            for ic in centros:
+                Cc = cs[ic]
+                for lo in asas_inf:
+                    for up in asas_sup:
+                        if up <= lo:
+                            continue
+                        il, iu = ic - lo, ic + up
+                        if il < 0 or iu >= len(cs):
+                            continue
+                        Cl, Cu = cs[il], cs[iu]
+                        Pu = put_map.get(Cu['strike'])
+                        if not Pu:
+                            continue
+                        net = -Cl['ask'] + 2 * Cc['bid'] - Cu['ask'] + Pu['bid']
+                        if net < -0.02:                     # só crédito (ou ~zero)
+                            continue
+                        Kl, Kc, Ku = Cl['strike'], Cc['strike'], Cu['strike']
+                        pts = [0.0, Kl, Kc, Ku, Ku * 1.8]
+
+                        def _pay(S_, _net=net, _Kl=Kl, _Kc=Kc, _Ku=Ku):
+                            return (_net + max(0.0, S_ - _Kl) - 2 * max(0.0, S_ - _Kc)
+                                    + max(0.0, S_ - _Ku) - max(0.0, _Ku - S_))
+                        vals = [_pay(x) for x in pts]
+                        bes = []
+                        for q_ in range(len(pts) - 1):
+                            v0, v1 = vals[q_], vals[q_ + 1]
+                            if ((v0 < 0 <= v1) or (v0 >= 0 > v1)) and abs(v1 - v0) > 1e-9:
+                                bes.append(pts[q_] + (0 - v0) * (pts[q_ + 1] - pts[q_]) / (v1 - v0))
+                        max_gain = max(vals)
+                        max_loss = max(0.0, -min(vals))
+                        if max_gain <= 0:
+                            continue
+                        rows.append({
+                            'legs': [
+                                {'sym': Cl['symbol'], 'tp': 'CALL', 'k': Kl, 'q': 1,
+                                 'px': round(Cl['ask'], 2), 'delta': _leg_delta_pct(Cl, True, dc / 365.0)},
+                                {'sym': Cc['symbol'], 'tp': 'CALL', 'k': Kc, 'q': -2,
+                                 'px': round(Cc['bid'], 2), 'delta': _leg_delta_pct(Cc, True, dc / 365.0)},
+                                {'sym': Cu['symbol'], 'tp': 'CALL', 'k': Ku, 'q': 1,
+                                 'px': round(Cu['ask'], 2), 'delta': _leg_delta_pct(Cu, True, dc / 365.0)},
+                                {'sym': Pu['symbol'], 'tp': 'PUT', 'k': Ku, 'q': -1,
+                                 'px': round(Pu['bid'], 2), 'delta': _leg_delta_pct(Pu, False, dc / 365.0)},
+                            ],
+                            'net':       round(net, 2),
+                            'is_credit': net > 0.005,
+                            'montagem':  'CRÉDITO' if net > 0.005 else 'ZERO',
+                            'max_gain':  round(max_gain, 2), 'gain_unl': False,
+                            'max_loss':  round(max_loss, 2), 'loss_unl': False,
+                            'ratio':     round(max_gain / max_loss, 2) if max_loss > 0.001 else None,
+                            'bes':       [round(b, 2) for b in bes],
+                            'asa_inf': lo, 'asa_sup': up,
+                            'centro': Kc,
+                        })
+            # maior potencial primeiro; na igualdade, asa inferior menor (2 é a preferida)
+            rows.sort(key=lambda x: (-x['max_gain'], x['asa_inf'], x['asa_sup']))
+            rows = _diversify(rows, lambda x: (x['centro'], x['asa_inf'], x['asa_sup']), per_key=1, limit=12)
+
         elif op == 'strangle_itm':
             # Strangle ITM vendido: -1 CALL ITM (strike ABAIXO do spot) + -1 PUT ITM
             # (strike ACIMA do spot), mesmo vencimento. Cada perna ~1–3% ITM.

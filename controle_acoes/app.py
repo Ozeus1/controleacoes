@@ -7203,23 +7203,22 @@ def api_busca_operacoes(ticker):
             # + PUT vendida no strike da CALL de cima:
             #   +1 CALL (centro − asa_inf) · −2 CALL (centro, ATM) · +1 CALL (centro + asa_sup)
             #   −1 PUT (centro + asa_sup).
-            # ETF (…11): asa inferior 2 (ou 3) e superior 4. Ações: inferior 2–3, superior 3–5
-            # (sempre superior > inferior = "asa quebrada"). "Posições" = strikes negociáveis
-            # consecutivos da cadeia. O ATM é testado nos dois strikes que cercam o spot.
+            # Asa interna (ITM→ATM) = METADE da externa (ATM→OTM): 2/4 (preferida), 1/2 ou 3/6.
+            # "Posições" = strikes negociáveis consecutivos. Centro = strike ATM (mais próximo do spot).
             # Montagem a crédito (ou ~zero).
             is_etf = ticker.endswith('11')
-            asas_inf = (2, 3)
-            asas_sup = (3, 4) if is_etf else (3, 4, 5)
+            asas_inf = (1, 2, 3)          # asa interna = METADE da externa
+            asas_sup = (2, 4, 6)
             cs = calls_ok
             put_map = {pp['strike']: pp for pp in puts_ok}
             below = [i for i, c0 in enumerate(cs) if c0['strike'] <= spot]
             above = [i for i, c0 in enumerate(cs) if c0['strike'] > spot]
-            centros = ([below[-1]] if below else []) + ([above[0]] if above else [])
+            centros = [min(below + above, key=lambda i_: abs(cs[i_]['strike'] - spot))] if (below or above) else []
             for ic in centros:
                 Cc = cs[ic]
                 for lo in asas_inf:
                     for up in asas_sup:
-                        if up <= lo:
+                        if up != 2 * lo:
                             continue
                         il, iu = ic - lo, ic + up
                         if il < 0 or iu >= len(cs):
@@ -7277,22 +7276,22 @@ def api_busca_operacoes(ticker):
             # Broken Wings Short Call (🦁 Leão): espelho do Short Put, com borboleta de PUTs:
             #   +1 PUT (centro + asa_inf, ITM) · −2 PUT (centro, ATM) · +1 PUT (centro − asa_sup)
             #   −1 CALL (centro − asa_sup)  [mesmo strike da PUT comprada de baixo].
-            # Asa inferior 2 (ou 3) é a preferida; superior 3–4 (ETF) ou 3–5 (ações), sempre
-            # maior que a inferior. Montagem a crédito (ou ~zero). Risco ilimitado na alta
+            # Asa interna (ITM→ATM) = METADE da externa (ATM→OTM): 2/4 (preferida), 1/2 ou 3/6;
+            # centro = strike ATM (mais próximo do spot). Montagem a crédito (ou ~zero). Risco ilimitado na alta
             # (CALL vendida descoberta, já ITM) — por isso o lucro máx. fica no ATM.
             is_etf = ticker.endswith('11')
-            asas_inf = (2, 3)
-            asas_sup = (3, 4) if is_etf else (3, 4, 5)
+            asas_inf = (1, 2, 3)          # asa interna = METADE da externa
+            asas_sup = (2, 4, 6)
             ps = puts_ok
             call_map = {cc['strike']: cc for cc in calls_ok}
             below = [i for i, p0 in enumerate(ps) if p0['strike'] <= spot]
             above = [i for i, p0 in enumerate(ps) if p0['strike'] > spot]
-            centros = ([below[-1]] if below else []) + ([above[0]] if above else [])
+            centros = [min(below + above, key=lambda i_: abs(ps[i_]['strike'] - spot))] if (below or above) else []
             for ic in centros:
                 Pc = ps[ic]
                 for lo in asas_inf:
                     for up in asas_sup:
-                        if up <= lo:
+                        if up != 2 * lo:
                             continue
                         ih, il = ic + lo, ic - up
                         if il < 0 or ih >= len(ps):

@@ -424,6 +424,10 @@
             <button type="button" class="btn btn-sm btn-azul" 
                     onclick="editarEmCadeia()"
                     title="Abre o editor da Cadeia de Opções com estas pernas — serve para qualquer estrutura, mesmo fora dos modelos padrão">🔗 Editar em Cadeia de Opções</button>
+            <button type="button" class="btn btn-sm btn-azul" onclick="abrirEmPagina('/simulador')"
+                    title="Salva e abre esta estrutura no Simulador (cadeia, vencimentos e strikes em lista)">🎯 Abrir no Simulador</button>
+            <button type="button" class="btn btn-sm btn-azul" onclick="abrirEmPagina('/simulador-estudo')"
+                    title="Salva e abre esta estrutura no Simulador de Estudo (busca por ticker, gregas e papel de hedge)">🔬 Abrir no Estudo</button>
             <button type="button" class="btn btn-secondary btn-sm" id="btn-pnt-sim" onclick="exportarPntSim(this)"
                     title="Copia tickers, C/V, quantidades e o spread da montagem para armar a estratégia (Pnt)">📋 Exportar Pnt</button>
             <button type="submit" class="btn btn-primary btn-sm">💾 Salvar</button>
@@ -1587,6 +1591,18 @@ function exportarPntLegs(pernas, btn) {
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, fail);
     else fail();
 }
+// Atalhos: grava a simulação (nova ou existente) e abre a mesma estrutura em outra tela.
+// A tela de destino lê ?abrir=<id> e carrega a simulação salva.
+function abrirEmPagina(destino) {
+    var form = document.getElementById('sim-form');
+    if (!form.reportValidity()) return;
+    fetch(form.action, { method: 'POST', body: new FormData(form) }).then(function (r) {
+        var m = /\/simulacao_opcoes\/(\d+)\/edit/.exec(r.url);
+        if (!m) { alert('Informe um nome para a simulação antes de abrir em outra tela.'); return; }
+        window.location.href = destino + '?abrir=' + m[1];
+    }).catch(function (e) { alert('Falha ao salvar a simulação: ' + e); });
+}
+
 function exportarPntSim(btn) {
     var pernas = [];
     document.querySelectorAll('#legs-body .leg-row').forEach(function (row) {

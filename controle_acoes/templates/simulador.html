@@ -1565,6 +1565,11 @@ window.simNova = function () {
 
 // Começa com uma linha de CALL, para a tela não abrir vazia.
 simAddPerna('CALL');
+// Atalho vindo da Simulação de Opções: ?abrir=<id> carrega a simulação salva.
+(function () {
+    var id = parseInt(new URLSearchParams(location.search).get('abrir'), 10);
+    if (id > 0) window.simAbrir(id);
+})();
 })();
 </script>
 {% endblock %}

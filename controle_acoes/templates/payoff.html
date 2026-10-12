@@ -555,6 +555,8 @@
                     <th style="padding:.45rem .6rem; text-align:right;">Vencimento</th>
                     <th style="padding:.45rem .6rem; text-align:right;">Preço Entrada</th>
                     <th style="padding:.45rem .6rem; text-align:right;">Cotação Atual</th>
+                    <th style="padding:.45rem .6rem; text-align:right;"
+                        title="Valor teórico (Black-Scholes com a EWMA do ativo, dias úteis/252, r = Selic) — mesmo critério do Teór. da OpLab">Teór.</th>
                     <th style="padding:.45rem .6rem; text-align:right;">Total</th>
                     <th style="padding:.45rem .6rem; text-align:right;">Lucro (R$)</th>
                 </tr>
@@ -617,6 +619,9 @@
                         R$ {{ "%.2f"|format(cur)|replace('.', ',') }}
                         {% endif %}
                     </td>
+                    <td class="leg-teor-cell" style="padding:.4rem .6rem; text-align:right; color:var(--text-secondary);">
+                        {% if leg.teorico is defined and leg.teorico %}R$ {{ "%.2f"|format(leg.teorico)|replace('.', ',') }}{% else %}—{% endif %}
+                    </td>
                     <td class="leg-total-cell {{ 'positive' if total >= 0 else 'negative' }}"
                         style="padding:.4rem .6rem; text-align:right;">
                         R$ {{ "%.2f"|format(total|abs)|replace('.', ',') }}
@@ -631,16 +636,16 @@
             </tbody>
             <tfoot>
                 <tr style="font-weight:bold; background:var(--total-row-bg);">
-                    <td colspan="8" style="padding:.5rem .6rem; text-align:right;">Saldo da montagem:</td>
+                    <td colspan="9" style="padding:.5rem .6rem; text-align:right;">Saldo da montagem:</td>
                     <td id="tfoot-net" style="padding:.5rem .6rem; text-align:right;"></td>
                 </tr>
                 {% if roll_adjustment is defined and roll_adjustment %}
                 <tr style="font-weight:bold; background:rgba(15,23,42,.35);">
-                    <td colspan="8" style="padding:.5rem .6rem; text-align:right;">Resultado carregado das rolagens:</td>
+                    <td colspan="9" style="padding:.5rem .6rem; text-align:right;">Resultado carregado das rolagens:</td>
                     <td id="tfoot-roll-adjustment" style="padding:.5rem .6rem; text-align:right;"></td>
                 </tr>
                 <tr style="font-weight:bold; background:var(--total-row-bg);">
-                    <td colspan="8" style="padding:.5rem .6rem; text-align:right;">Saldo total considerado no payoff:</td>
+                    <td colspan="9" style="padding:.5rem .6rem; text-align:right;">Saldo total considerado no payoff:</td>
                     <td id="tfoot-total-net" style="padding:.5rem .6rem; text-align:right;"></td>
                 </tr>
                 {% endif %}

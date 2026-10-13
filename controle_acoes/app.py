@@ -5,7 +5,7 @@ import sqlite3
 import math
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StudyStrategy, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, RankingVolExcluded, SearchedOption, RtdOptionData, PortfolioSnapshot, PMEvent, AssetTxn
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StudyStrategy, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, RankingVolExcluded, SearchedOption, RtdOptionData, RtdPlanilha, PortfolioSnapshot, PMEvent, AssetTxn
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -2863,6 +2863,73 @@ def api_simulacao_delete(sim_id):
     if not sim:
         return jsonify({'error': 'Não encontrado'}), 404
     db.session.delete(sim); db.session.commit()
+    return jsonify({'ok': True})
+
+
+# ── RTD: planilhas dinâmicas de opções (Opções ▸ Rolagem ▸ RTD) ────────────────
+@app.route('/rtd')
+@login_required
+def rtd_planilha():
+    return render_template('rtd_planilha.html')
+
+
+@app.route('/api/rtd-planilha/list')
+@login_required
+def api_rtd_list():
+    rows = RtdPlanilha.query.filter_by(user_id=current_user.id).order_by(RtdPlanilha.name).all()
+    return jsonify([{'id': r.id, 'name': r.name} for r in rows])
+
+
+@app.route('/api/rtd-planilha/<int:pid>')
+@login_required
+def api_rtd_get(pid):
+    r = RtdPlanilha.query.filter_by(id=pid, user_id=current_user.id).first()
+    if not r:
+        return jsonify({'error': 'Planilha não encontrada'}), 404
+    try:
+        linhas = json.loads(r.data or '[]')
+    except ValueError:
+        linhas = []
+    return jsonify({'id': r.id, 'name': r.name, 'rows': linhas})
+
+
+@app.route('/api/rtd-planilha/save', methods=['POST'])
+@login_required
+def api_rtd_save():
+    d = request.get_json(force=True) or {}
+    name = (d.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Informe um nome para a planilha'}), 400
+    linhas = []
+    for l in (d.get('rows') or [])[:300]:
+        try:
+            qty = float(l.get('qty')) if l.get('qty') not in (None, '') else None
+        except (TypeError, ValueError):
+            qty = None
+        src = l.get('src') if l.get('src') in ('last', 'bid', 'ask', 'teorico') else 'last'
+        linhas.append({'label': str(l.get('label') or '')[:60],
+                       'ticker': str(l.get('ticker') or '').strip().upper()[:20],
+                       'qty': qty, 'src': src})
+    r = None
+    if d.get('id'):
+        r = RtdPlanilha.query.filter_by(id=d['id'], user_id=current_user.id).first()
+    if not r:
+        r = RtdPlanilha(user_id=current_user.id)
+        db.session.add(r)
+    r.name = name[:120]
+    r.data = json.dumps(linhas)
+    db.session.commit()
+    return jsonify({'ok': True, 'id': r.id})
+
+
+@app.route('/api/rtd-planilha/<int:pid>/delete', methods=['POST'])
+@login_required
+def api_rtd_delete(pid):
+    r = RtdPlanilha.query.filter_by(id=pid, user_id=current_user.id).first()
+    if not r:
+        return jsonify({'error': 'Não encontrada'}), 404
+    db.session.delete(r)
+    db.session.commit()
     return jsonify({'ok': True})
 
 

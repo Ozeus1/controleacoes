@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block title %}RTD — Planilha de Opções{% endblock %}
+
+{% block content %}
+<style>
+  .rtd-bar { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:.75rem; }
+  .rtd-bar select, .rtd-bar input[type=text] { background:var(--card-bg,#1e293b); color:var(--text-primary); border:1px solid var(--border-color); border-radius:6px; padding:.35rem .5rem; font-size:.85rem; }
+  .rtd-bar input[type=text] { min-width:220px; }
+  .rtd-wrap { overflow-x:auto; border:1px solid var(--border-color); border-radius:8px; }
+  table.rtd { border-collapse:collapse; width:100%; font-size:.85rem; min-width:1100px; }
+  table.rtd th { background:rgba(255,255,255,.05); color:var(--text-secondary); font-weight:600; text-align:left; padding:.45rem .5rem; border-bottom:1px solid var(--border-color); white-space:nowrap; }
+  table.rtd td { padding:.25rem .4rem; border-bottom:1px solid var(--border-color); white-space:nowrap; }
+  table.rtd td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  table.rtd th.num { text-align:right; }
+  table.rtd input, table.rtd select { background:transparent; color:var(--text-primary); border:1px solid transparent; border-radius:4px; padding:.25rem .3rem; font-size:.85rem; width:100%; }
+  table.rtd input:hover, table.rtd input:focus, table.rtd select:hover, table.rtd select:focus { border-color:var(--border-color); background:var(--card-bg,#1e293b); outline:none; }
+  table.rtd td.rt input { width:110px; } table.rtd td.rl input { width:130px; } table.rtd td.rq input { width:80px; text-align:right; }
+  table.rtd select { width:60px; }
+  .rtd-pos { color:#22c55e; } .rtd-neg { color:#ef4444; } .rtd-err { color:#f59e0b; font-size:.75rem; }
+  .rtd-x { background:none; border:none; color:#ef4444; cursor:pointer; font-size:1rem; }
+  .rtd-foot td { font-weight:700; border-top:2px solid var(--border-color); }
+  .rtd-hint { color:var(--text-secondary); font-size:.78rem; margin-top:.6rem; }
+</style>
+
+<div class="page-header" style="margin-bottom:.75rem;">
+  <h1 style="margin:0;">📊 RTD — Planilha de Opções</h1>
+</div>
+
+<div class="rtd-bar">
+  <select id="rtd-sel" onchange="rtdAbrir(this.value)"><option value="">— planilhas salvas —</option></select>
+  <input type="text" id="rtd-nome" placeholder="Nome da planilha">
+  <button class="btn btn-primary btn-sm" onclick="rtdSalvar()">💾 Salvar</button>
+  <button class="btn btn-secondary btn-sm" onclick="rtdNova()">+ Nova</button>
+  <button class="btn btn-secondary btn-sm" onclick="rtdExcluir()">🗑 Excluir</button>
+  <span style="flex:1"></span>
+  <button class="btn btn-secondary btn-sm" onclick="rtdAtualizarTudo()">🔄 Atualizar tudo</button>
+  <label style="font-size:.8rem;color:var(--text-secondary);"><input type="checkbox" id="rtd-auto" onchange="rtdAuto()"> auto (60 s)</label>
+  <span id="rtd-status" style="font-size:.78rem;color:var(--text-secondary);"></span>
+</div>
+
+<div class="rtd-wrap">
+<table class="rtd no-datatable">
+  <thead><tr>
+    <th>Rótulo Linha</th><th>Ticket</th><th class="num">Strike</th><th class="num">Último</th><th class="num">Bid</th>
+    <th class="num">Ask</th><th class="num">Teórico</th><th class="num">Variação %</th><th class="num">Quantidade</th>
+    <th title="Coluna usada no cálculo do Valor">Fonte</th><th class="num">Valor</th><th>Vencimento</th><th class="num">Prazo</th><th></th>
+  </tr></thead>
+  <tbody id="rtd-body"></tbody>
+  <tfoot><tr class="rtd-foot"><td colspan="10" style="text-align:right;">Total</td><td class="num" id="rtd-total">—</td><td colspan="3"></td></tr></tfoot>
+</table>
+</div>
+<div style="margin-top:.6rem;"><button class="btn btn-secondary btn-sm" onclick="rtdAddLinha()">+ Linha</button></div>
+<div class="rtd-hint">Digite o ticker da opção (Enter) para buscar na OpLab. Quantidade: positiva = venda, negativa = compra.
+  Valor = Quantidade × (Último, Bid, Ask ou Teórico, conforme a Fonte). Prazo = dias corridos de hoje até o vencimento.</div>
+
+<script>
+(function () {
+  var ID = null;
+  var DADOS = {};     // ticker -> dados da OpLab
+  var timer = null;
+
+  function $(i) { return document.getElementById(i); }
+  function fmt(v, d) {
+    if (v === null || v === undefined || v === '' || isNaN(v)) return '—';
+    return Number(v).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function num(s) {
+    if (s === null || s === undefined) return null;
+    s = String(s).trim().replace(/\./g, '').replace(',', '.');
+    if (s === '' || s === '-') return null;
+    var n = parseFloat(s); return isNaN(n) ? null : n;
+  }
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+  function status(t) { $('rtd-status').textContent = t || ''; }
+
+  function addLinha(l) {
+    l = l || {};
+    var tr = document.createElement('tr');
+    tr.className = 'rtd-row';
+    tr.innerHTML =
+      '<td class="rl"><input class="f-label" value="' + esc(l.label) + '"></td>' +
+      '<td class="rt"><input class="f-ticker" value="' + esc(l.ticker) + '" placeholder="ex.: BOVAK190" style="text-transform:uppercase"></td>' +
+      '<td class="num c-strike">—</td><td class="num c-last">—</td><td class="num c-bid">—</td><td class="num c-ask">—</td>' +
+      '<td class="num c-teorico">—</td><td class="num c-var">—</td>' +
+      '<td class="rq"><input class="f-qty" value="' + (l.qty != null ? String(l.qty).replace('.', ',') : '') + '" placeholder="0"></td>' +
+      '<td><select class="f-src">' +
+        ['last:E', 'bid:F', 'ask:G', 'teorico:H'].map(function (o) {
+          var p = o.split(':'); return '<option value="' + p[0] + '"' + ((l.src || 'last') === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
+        }).join('') + '</select></td>' +
+      '<td class="num c-valor">—</td><td class="c-venc">—</td><td class="num c-prazo">—</td>' +
+      '<td><button class="rtd-x" title="Excluir linha">✕</button></td>';
+    $('rtd-body').appendChild(tr);
+    var tk = tr.querySelector('.f-ticker');
+    tk.addEventListener('change', function () { tk.value = tk.value.trim().toUpperCase(); buscar(tk.value, tr); });
+    tk.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); tk.blur(); } });
+    tr.querySelector('.f-qty').addEventListener('input', function () { calc(tr); });
+    tr.querySelector('.f-src').addEventListener('change', function () { calc(tr); });
+    tr.querySelector('.rtd-x').addEventListener('click', function () { tr.remove(); total(); });
+    if (l.ticker && DADOS[l.ticker]) preenche(tr, DADOS[l.ticker]);
+    return tr;
+  }
+
+  function prazo(iso) {
+    if (!iso) return null;
+    var p = String(iso).slice(0, 10).split('-');
+    var v = new Date(+p[0], +p[1] - 1, +p[2]);
+    var h = new Date(); h = new Date(h.getFullYear(), h.getMonth(), h.getDate());
+    return Math.round((v - h) / 86400000);
+  }
+
+  function preenche(tr, d) {
+    var set = function (c, t) { tr.querySelector('.' + c).textContent = t; };
+    if (!d || d.error) {
+      ['c-strike', 'c-last', 'c-bid', 'c-ask', 'c-teorico', 'c-var', 'c-venc', 'c-prazo'].forEach(function (c) { set(c, '—'); });
+      var cell = tr.querySelector('.c-venc'); cell.innerHTML = d && d.error ? '<span class="rtd-err">' + esc(d.error) + '</span>' : '—';
+      calc(tr); return;
+    }
+    set('c-strike', fmt(d.strike, 2)); set('c-last', fmt(d.last, 2)); set('c-bid', fmt(d.bid, 2));
+    set('c-ask', fmt(d.ask, 2)); set('c-teorico', fmt(d.teorico, 4));
+    var v = tr.querySelector('.c-var');
+    v.textContent = d.change_pct == null ? '—' : fmt(d.change_pct, 2) + '%';
+    v.className = 'num c-var ' + (d.change_pct > 0 ? 'rtd-pos' : d.change_pct < 0 ? 'rtd-neg' : '');
+    var venc = d.expiration ? String(d.expiration).slice(0, 10).split('-').reverse().join('/') : '—';
+    tr.querySelector('.c-venc').textContent = venc;
+    var pz = prazo(d.expiration); set('c-prazo', pz == null ? '—' : String(pz));
+    calc(tr);
+  }
+
+  function calc(tr) {
+    var tk = tr.querySelector('.f-ticker').value.trim().toUpperCase();
+    var d = DADOS[tk];
+    var q = num(tr.querySelector('.f-qty').value);
+    var src = tr.querySelector('.f-src').value;
+    var px = d && !d.error ? d[src] : null;
+    var cell = tr.querySelector('.c-valor');
+    if (q == null || px == null) { cell.textContent = '—'; cell.className = 'num c-valor'; cell.dataset.v = ''; }
+    else { var v = q * px; cell.textContent = fmt(v, 2); cell.dataset.v = v; cell.className = 'num c-valor ' + (v > 0 ? 'rtd-pos' : v < 0 ? 'rtd-neg' : ''); }
+    total();
+  }
+
+  function total() {
+    var s = 0, n = 0;
+    document.querySelectorAll('.c-valor').forEach(function (c) { if (c.dataset.v !== undefined && c.dataset.v !== '') { s += parseFloat(c.dataset.v); n++; } });
+    $('rtd-total').textContent = n ? fmt(s, 2) : '—';
+  }
+
+  function buscar(ticker, tr) {
+    if (!ticker) { preenche(tr, null); return Promise.resolve(); }
+    return fetch('/api/busca-opcao/' + encodeURIComponent(ticker))
+      .then(function (r) { return r.json(); })
+      .then(function (j) { DADOS[ticker] = j; document.querySelectorAll('.rtd-row').forEach(function (t) { if (t.querySelector('.f-ticker').value.trim().toUpperCase() === ticker) preenche(t, j); }); })
+      .catch(function (e) { DADOS[ticker] = { error: 'falha de rede' }; preenche(tr, DADOS[ticker]); });
+  }
+
+  window.rtdAddLinha = function () { var tr = addLinha({}); tr.querySelector('.f-label').focus(); };
+
+  window.rtdAtualizarTudo = function () {
+    var ticks = [];
+    document.querySelectorAll('.f-ticker').forEach(function (i) { var t = i.value.trim().toUpperCase(); if (t && ticks.indexOf(t) < 0) ticks.push(t); });
+    var feitos = 0;
+    status('Atualizando 0/' + ticks.length + '…');
+    var fila = ticks.slice();
+    function worker() {
+      var t = fila.shift();
+      if (!t) return Promise.resolve();
+      var tr = Array.prototype.filter.call(document.querySelectorAll('.rtd-row'), function (x) { return x.querySelector('.f-ticker').value.trim().toUpperCase() === t; })[0];
+      return buscar(t, tr).then(function () { feitos++; status('Atualizando ' + feitos + '/' + ticks.length + '…'); return worker(); });
+    }
+    Promise.all([worker(), worker(), worker()]).then(function () {
+      status(ticks.length ? 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR') : '');
+    });
+  };
+
+  window.rtdAuto = function () {
+    if (timer) { clearInterval(timer); timer = null; }
+    if ($('rtd-auto').checked) timer = setInterval(window.rtdAtualizarTudo, 60000);
+  };
+
+  function lerLinhas() {
+    return Array.prototype.map.call(document.querySelectorAll('.rtd-row'), function (tr) {
+      return { label: tr.querySelector('.f-label').value, ticker: tr.querySelector('.f-ticker').value.trim().toUpperCase(),
+               qty: num(tr.querySelector('.f-qty').value), src: tr.querySelector('.f-src').value };
+    });
+  }
+
+  function listar(selecionar) {
+    return fetch('/api/rtd-planilha/list').then(function (r) { return r.json(); }).then(function (l) {
+      $('rtd-sel').innerHTML = '<option value="">— planilhas salvas —</option>' +
+        l.map(function (p) { return '<option value="' + p.id + '">' + esc(p.name) + '</option>'; }).join('');
+      if (selecionar) $('rtd-sel').value = String(selecionar);
+    });
+  }
+
+  window.rtdSalvar = function () {
+    var nome = $('rtd-nome').value.trim();
+    if (!nome) { alert('Informe um nome para a planilha.'); return; }
+    fetch('/api/rtd-planilha/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: ID, name: nome, rows: lerLinhas() }) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (j.error) { alert(j.error); return; } ID = j.id; listar(ID); status('Salvo.'); });
+  };
+
+  window.rtdNova = function () {
+    ID = null; $('rtd-nome').value = ''; $('rtd-sel').value = ''; $('rtd-body').innerHTML = ''; total();
+    addLinha({}); status('');
+  };
+
+  window.rtdExcluir = function () {
+    if (!ID) { alert('Abra uma planilha salva para excluir.'); return; }
+    if (!confirm('Excluir a planilha "' + $('rtd-nome').value + '"?')) return;
+    fetch('/api/rtd-planilha/' + ID + '/delete', { method: 'POST' }).then(function () { listar(); window.rtdNova(); });
+  };
+
+  window.rtdAbrir = function (id) {
+    if (!id) return;
+    fetch('/api/rtd-planilha/' + id).then(function (r) { return r.json(); }).then(function (j) {
+      if (j.error) { alert(j.error); return; }
+      ID = j.id; $('rtd-nome').value = j.name; $('rtd-body').innerHTML = '';
+      (j.rows.length ? j.rows : [{}]).forEach(addLinha);
+      total(); window.rtdAtualizarTudo();
+    });
+  };
+
+  listar(); addLinha({});
+})();
+</script>
+{% endblock %}

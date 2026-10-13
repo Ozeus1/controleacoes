@@ -437,6 +437,17 @@ class StructuredLeg(db.Model):
     last_update    = db.Column(db.DateTime, nullable=True)
 
 
+class RtdPlanilha(db.Model):
+    """Planilha dinâmica (menu Opções/Rolagem/RTD): linhas com ticker de opção, quantidade e fonte do valor."""
+    __tablename__ = 'rtd_planilha'
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    name       = db.Column(db.String(120), default='')
+    data       = db.Column(db.Text, default='[]')   # JSON: [{label, ticker, qty, src}]
+    created_at = db.Column(db.DateTime, default=datetime.now)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+
 class SimulacaoOpcoes(db.Model):
     """Simulação/estudo de operação com opções — gráfico de payoff interativo."""
     __tablename__ = 'simulacao_opcoes'

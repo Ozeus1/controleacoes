@@ -643,6 +643,10 @@ function simPreencheVencimentos(tr) {
         }).join('') : '');
     if (atual && CADEIA && (CADEIA.expirations || []).some(function (e) { return e.exp === atual; })) {
         sel.value = atual;
+    } else if (atual) {
+        // Vencimento fora da lista buscada (ex.: mais longo que os N mensais): mantém o escolhido
+        sel.insertAdjacentHTML('beforeend', '<option value="' + atual + '">' + labelVenc(atual) + '</option>');
+        sel.value = atual;
     }
     var dteEl = tr.querySelector('.leg-dte');
     if (dteEl) {
@@ -787,6 +791,7 @@ function simAplicaStrike(tr, strikeVal) {
     var tipo = tr.querySelector('.leg-type').value;
     var lado = tr.querySelector('.leg-side').value;
     var bloco = (CADEIA.expirations || []).filter(function (e) { return e.exp === exp; })[0];
+    if (!bloco) return;   // vencimento fora da cadeia buscada: mantém ticker/prêmio já salvos
     var strikeNum = parseFloat(strikeVal);
     var row = (bloco && bloco.rows || []).filter(function (r) {
         return Math.abs(r.strike - strikeNum) < 0.001;
@@ -1532,6 +1537,17 @@ function simAplicaPendencias() {
             if (!expSel || !tr.dataset.pendExp) return;
             simPreencheVencimentos(tr);
             if (!(CADEIA.expirations || []).some(function (e) { return e.exp === tr.dataset.pendExp; })) {
+                // Fora da cadeia buscada: mantém vencimento, strike, ticker e prêmio salvos
+                expSel.insertAdjacentHTML('beforeend', '<option value="' + tr.dataset.pendExp + '">' + labelVenc(tr.dataset.pendExp) + '</option>');
+                expSel.value = tr.dataset.pendExp;
+                var kSel = tr.querySelector('.leg-strike-sel');
+                var kv = parseFloat(tr.dataset.pendStrike);
+                if (kSel && kv > 0) {
+                    kSel.innerHTML = '<option value="' + kv + '">' + fmtBRL(kv) + '</option>';
+                    kSel.value = String(kv); kSel.disabled = false;
+                }
+                var dEl = tr.querySelector('.leg-dte');
+                if (dEl) { var dd0 = diasAte(tr.dataset.pendExp); dEl.textContent = dd0 != null ? dd0 + 'd' : '—'; }
                 delete tr.dataset.pendExp; delete tr.dataset.pendStrike;
                 return;
             }

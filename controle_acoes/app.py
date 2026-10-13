@@ -2997,6 +2997,16 @@ def simulador_estudo():
     return render_template('simulador_estudo.html', sims=sims, selic=_selic())
 
 
+@app.route('/simflex')
+@login_required
+def simflex():
+    """SimFlex: montador de estratégias em abas (estilo OpLab) — entrada/saída com VI
+    travada ou preço travado, gregas, curvas (expiração/atual/teórica), σ e probabilidades.
+    Usa as mesmas simulações salvas (SimulacaoOpcoes) do Simulador."""
+    ranking_vol = _ranking_dropdown_rows(current_user.id)
+    return render_template('simflex.html', ranking_vol=ranking_vol, selic=_selic())
+
+
 @app.route('/api/simulacao/<int:sim_id>')
 @login_required
 def api_simulacao_get(sim_id):
@@ -5207,6 +5217,7 @@ def api_cadeia(ticker):
         'weekly':      include_weekly,
         'max_days':    max_days,
         'market_open': _market_open_cadeia,
+        'ewma':        round(_ewma_ativo, 2) if _ewma_ativo else None,
     })
 
 

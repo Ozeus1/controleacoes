@@ -1,0 +1,849 @@
+{% extends "base.html" %}
+{% block title %}SimFlex{% endblock %}
+
+{% block content %}
+<style>
+  .sf { --sf-bg:#1f1f1f; --sf-bg2:#262626; --sf-line:#3a3a3a; --sf-orange:#f59e0b; --sf-blue:#2196f3; --sf-red:#f44336;
+        --sf-green:#22c55e; --sf-txt:#e5e5e5; --sf-mut:#a3a3a3;
+        background:var(--sf-bg); color:var(--sf-txt); border:1px solid var(--sf-line); border-radius:8px; overflow:hidden; }
+  .sf-tabs { display:flex; align-items:stretch; border-bottom:1px solid var(--sf-line); overflow-x:auto; }
+  .sf-tab { display:flex; align-items:center; gap:.45rem; padding:.7rem 1rem; font-size:.8rem; font-weight:600; letter-spacing:.04em;
+            text-transform:uppercase; color:var(--sf-mut); cursor:pointer; border-bottom:3px solid transparent; white-space:nowrap; user-select:none; }
+  .sf-tab:hover { color:var(--sf-txt); }
+  .sf-tab.on { color:var(--sf-blue); border-bottom-color:var(--sf-blue); }
+  .sf-tab .x { color:var(--sf-blue); font-size:1rem; line-height:1; padding:0 .15rem; }
+  .sf-tab.fix { color:var(--sf-txt); }
+  .sf-tab.sep { border-right:1px solid var(--sf-line); }
+  .sf-tab .dirty { color:var(--sf-orange); }
+  .sf-head { display:flex; flex-wrap:wrap; gap:1.2rem; align-items:flex-end; padding:.8rem 1rem; border-bottom:1px solid var(--sf-line); }
+  .sf-grp { display:flex; flex-direction:column; gap:.35rem; }
+  .sf-grp > label { font-size:.85rem; font-weight:600; }
+  .sf-in { background:#141414; color:var(--sf-txt); border:1px solid var(--sf-line); border-radius:3px; padding:.35rem .5rem; font-size:.82rem; }
+  .sf-in.or { color:var(--sf-orange); text-align:right; }
+  .sf-btn { border:none; border-radius:3px; padding:.45rem .9rem; font-size:.72rem; font-weight:700; letter-spacing:.05em; color:#fff; cursor:pointer; text-transform:uppercase; }
+  .sf-btn.blue { background:var(--sf-blue); } .sf-btn.red { background:var(--sf-red); } .sf-btn.green { background:#2e7d32; }
+  .sf-btn.gray { background:#424242; }
+  .sf-btn:hover { filter:brightness(1.12); }
+  .sf-spot { font-size:1.6rem; font-weight:700; color:var(--sf-orange); }
+  .sf-chg { font-size:.75rem; } .sf-time { font-size:.75rem; font-weight:600; }
+  .sf-save { position:relative; margin-left:auto; display:flex; }
+  .sf-save .sf-btn { border-radius:3px 0 0 3px; padding:.6rem 1rem; }
+  .sf-save .dd { border-radius:0 3px 3px 0; border-left:1px solid rgba(255,255,255,.2); padding:.6rem .6rem; }
+  .sf-menu { position:absolute; right:0; top:100%; margin-top:4px; background:#2a2a2a; border:1px solid var(--sf-line); border-radius:4px;
+             min-width:180px; z-index:50; display:none; box-shadow:0 6px 20px rgba(0,0,0,.5); }
+  .sf-menu.on { display:block; }
+  .sf-menu div { padding:.6rem .9rem; font-size:.85rem; cursor:pointer; }
+  .sf-menu div:hover { background:#383838; }
+  .sf-wrap { overflow-x:auto; }
+  table.sf-t { border-collapse:collapse; width:100%; font-size:.8rem; min-width:1500px; }
+  table.sf-t th { font-weight:500; padding:.55rem .35rem; border-bottom:1px solid var(--sf-line); text-align:center; white-space:nowrap; }
+  table.sf-t th.grp { border-left:1px solid var(--sf-line); }
+  table.sf-t td { padding:.25rem .3rem; text-align:center; white-space:nowrap; border-bottom:1px solid #2c2c2c; }
+  table.sf-t td.bl, table.sf-t th.bl { border-left:1px solid var(--sf-line); }
+  table.sf-t tr.off td { opacity:.4; }
+  table.sf-t tfoot td { padding:.45rem .35rem; border-top:1px solid var(--sf-line); }
+  .sf-t input.n, .sf-t select { background:#141414; color:var(--sf-orange); border:1px solid #333; border-radius:3px; padding:.3rem .35rem; font-size:.8rem; }
+  .sf-t input.n { width:74px; text-align:right; }
+  .sf-t input.q { width:72px; }
+  .sf-t select.exp { width:92px; color:var(--sf-txt); }
+  .sf-t select.stk { width:150px; color:var(--sf-txt); }
+  .sf-cv { border:none; border-radius:3px; color:#fff; font-size:.7rem; font-weight:700; width:92px; padding:.45rem 0; cursor:pointer; }
+  .sf-cv.b { background:var(--sf-blue); } .sf-cv.s { background:var(--sf-red); }
+  .sf-lock { background:none; border:none; cursor:pointer; font-size:.95rem; padding:0 .15rem; }
+  .sf-lock.on { color:var(--sf-green); } .sf-lock.off { color:var(--sf-mut); }
+  .sf-del { background:none; border:none; color:var(--sf-red); cursor:pointer; font-size:1rem; }
+  .sf-hdl { cursor:grab; color:var(--sf-mut); padding:0 .2rem; user-select:none; }
+  .sf-itm { color:var(--sf-red); font-weight:700; font-size:.75rem; margin-left:.25rem; }
+  .sf-or { color:var(--sf-orange); }
+  .pos { color:var(--sf-green); } .neg { color:var(--sf-red); }
+  .sf-g.hide { display:none; }
+  .sf-chartbar { display:flex; gap:1.6rem; align-items:center; padding:.55rem 1rem; border-top:1px solid var(--sf-line); position:relative; flex-wrap:wrap; }
+  .sf-dd { position:relative; }
+  .sf-dd > span { cursor:pointer; font-size:.85rem; user-select:none; }
+  .sf-dd .pane { position:absolute; left:0; top:130%; background:#2a2a2a; border:1px solid var(--sf-line); border-radius:4px; padding:.6rem .8rem;
+                 z-index:40; display:none; white-space:nowrap; box-shadow:0 6px 20px rgba(0,0,0,.5); font-size:.82rem; }
+  .sf-dd.on .pane { display:flex; gap:.8rem; align-items:center; flex-wrap:wrap; }
+  .sf-dd .pane label { display:flex; align-items:center; gap:.3rem; cursor:pointer; }
+  .sf-main { display:flex; gap:0; align-items:stretch; }
+  .sf-chartbox { flex:1; min-width:0; position:relative; padding:.2rem .5rem .5rem; }
+  .sf-stats .r > span:last-child { white-space:nowrap; text-align:right; }
+  .sf-stats { width:360px; padding:1rem .9rem; font-size:.92rem; flex-shrink:0; }
+  .sf-stats .r { display:flex; justify-content:space-between; align-items:center; padding:.32rem 0; gap:.5rem; }
+  .sf-stats .r.sep { border-top:1px solid var(--sf-line); }
+  .sf-pill { border-radius:3px; padding:.05rem .35rem; color:#fff; font-size:.85rem; }
+  .sf-pill.g { background:#2e7d32; } .sf-pill.r { background:#e53935; }
+  .sf-sig { position:absolute; top:.1rem; left:50%; transform:translateX(-50%); display:flex; font-size:.9rem; z-index:5; }
+  .sf-sig span { padding:0 .3rem; cursor:pointer; color:#ddd; }
+  .sf-sig span.on { background:#d4a017; color:#fff; }
+  .sf-shot { position:absolute; top:.3rem; right:1.2rem; cursor:pointer; color:var(--sf-mut); font-size:1.1rem; z-index:5; background:none; border:none; }
+  .sf-switch { display:flex; align-items:center; gap:.3rem; font-size:.82rem; margin-left:.6rem; }
+  .sf-switch input { accent-color:var(--sf-blue); }
+  .sf-list { padding:1rem; }
+  .sf-list table { width:100%; border-collapse:collapse; font-size:.85rem; }
+  .sf-list th, .sf-list td { padding:.5rem .6rem; border-bottom:1px solid var(--sf-line); text-align:left; }
+  .sf-list tr:hover td { background:#262626; }
+  .sf-empty { padding:2rem; text-align:center; color:var(--sf-mut); }
+  .sf-hint { font-size:.75rem; color:var(--sf-mut); padding:.3rem 1rem .8rem; }
+  @media (max-width: 900px) { .sf-main { flex-direction:column; } .sf-stats { width:auto; } }
+</style>
+
+<div class="sf" id="sf">
+  <div class="sf-tabs" id="sf-tabs"></div>
+  <div id="sf-body"></div>
+</div>
+
+<datalist id="sf-ativos">
+  {% for rv in ranking_vol %}<option value="{{ rv.ticker }}">{% endfor %}
+</datalist>
+
+<script>
+(function () {
+'use strict';
+var SELIC = {{ selic|default(13.75) }};
+var TABS = [];          // abas abertas
+var CUR = 'list';       // 'list' ou índice da aba
+var NOVAS = 0;
+var GL = {               // preferências do gráfico (globais)
+  teorica: false, expiracao: true, atual: true, area: false, pct: false, sig: 2,
+  probSrc: 'ewma', probManual: 30, slices: [], nMeses: 3, weekly: false, mercado: 'merc', gregas: true
+};
+try { var _g = JSON.parse(localStorage.getItem('simflex_gl') || 'null'); if (_g) { for (var k in _g) GL[k] = _g[k]; } } catch (e) {}
+function salvaGL() { try { localStorage.setItem('simflex_gl', JSON.stringify(GL)); } catch (e) {} }
+
+// ── utilitários ──────────────────────────────────────────────────────────
+function $(id) { return document.getElementById(id); }
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+function fmt(v, d) { if (v == null || isNaN(v)) return '—'; return Number(v).toLocaleString('pt-BR', { minimumFractionDigits: d == null ? 2 : d, maximumFractionDigits: d == null ? 2 : d }); }
+function brl(v) { if (v == null || isNaN(v)) return '—'; return 'R$' + fmt(v, 2); }
+function num(s) { if (s == null) return null; s = String(s).trim().replace(/\./g, '').replace(',', '.'); if (s === '' || s === '-') return null; var n = parseFloat(s); return isNaN(n) ? null : n; }
+function hoje() { var d = new Date(); return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+function dIso(iso) { var p = String(iso).slice(0, 10).split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+function isoD(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+function brD(iso) { return iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—'; }
+// dias úteis (seg–sex) de a (exclusive) até b (inclusive)
+function du(a, b) {
+  if (!(b > a)) return 0;
+  var n = 0, d = new Date(a.getTime());
+  while (d < b) { d.setDate(d.getDate() + 1); var w = d.getDay(); if (w !== 0 && w !== 6) n++; }
+  return n;
+}
+function addDu(a, n) { var d = new Date(a.getTime()); while (n > 0) { d.setDate(d.getDate() + 1); var w = d.getDay(); if (w !== 0 && w !== 6) n--; } return d; }
+
+// ── Black-Scholes ────────────────────────────────────────────────────────
+function ncdf(x) { var t = 1 / (1 + 0.2316419 * Math.abs(x)); var d = 0.3989423 * Math.exp(-x * x / 2);
+  var p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return x > 0 ? 1 - p : p; }
+function npdf(x) { return Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI); }
+function rr() { return Math.log(1 + (TAB() ? TAB().juros : SELIC) / 100); }
+function bs(S, K, T, r, v, call) {
+  if (T <= 0 || v <= 0) return Math.max(0, call ? S - K : K - S);
+  var sq = v * Math.sqrt(T), d1 = (Math.log(S / K) + (r + v * v / 2) * T) / sq, d2 = d1 - sq;
+  return call ? S * ncdf(d1) - K * Math.exp(-r * T) * ncdf(d2) : K * Math.exp(-r * T) * ncdf(-d2) - S * ncdf(-d1);
+}
+function greeks(S, K, T, r, v, call) {
+  if (T <= 0 || v <= 0) { var itm = call ? S > K : S < K; return { d: itm ? (call ? 1 : -1) : 0, g: 0, t: 0, v: 0, r: 0 }; }
+  var sq = v * Math.sqrt(T), d1 = (Math.log(S / K) + (r + v * v / 2) * T) / sq, d2 = d1 - sq, df = Math.exp(-r * T);
+  var th = -S * npdf(d1) * v / (2 * Math.sqrt(T)) + (call ? -r * K * df * ncdf(d2) : r * K * df * ncdf(-d2));
+  return { d: call ? ncdf(d1) : ncdf(d1) - 1, g: npdf(d1) / (S * sq), t: th / 252, v: S * npdf(d1) * Math.sqrt(T) / 100,
+           r: (call ? K * T * df * ncdf(d2) : -K * T * df * ncdf(-d2)) / 100 };
+}
+function iv(S, K, T, r, px, call) {
+  if (!(px > 0) || T <= 0) return null;
+  var lo = 0.005, hi = 5;
+  if (px <= bs(S, K, T, r, lo, call) || px >= bs(S, K, T, r, hi, call)) return null;
+  for (var i = 0; i < 80; i++) { var m = (lo + hi) / 2; if (bs(S, K, T, r, m, call) > px) hi = m; else lo = m; }
+  return (lo + hi) / 2;
+}
+
+// ── estado ───────────────────────────────────────────────────────────────
+function TAB() { return typeof CUR === 'number' ? TABS[CUR] : null; }
+function novaAba(o) {
+  o = o || {};
+  var t = { id: o.id || null, name: o.name || ('Nova ' + (++NOVAS)), ativo: (o.ativo || '').toUpperCase(), spot: null, chg: null, hora: '',
+            chain: null, ewma: null, juros: SELIC, legs: [], dirty: !o.id, notes: o.notes || '' };
+  TABS.push(t);
+  return t;
+}
+function T(leg, from) { return leg.exp ? du(from || hoje(), dIso(leg.exp)) / 252 : 0; }
+function isCall(l) { return l.type === 'CALL'; }
+function sgn(l) { return l.side === 'BUY' ? 1 : -1; }
+function teoVolDe(t, l) { return l.teoVol != null ? l.teoVol : (t.ewma || (l.q && l.q.iv) || null); }
+
+function cotacaoDe(t, l) {
+  // procura a opção na cadeia pelo ticker; senão por vencimento + strike
+  if (!t.chain) return null;
+  var exps = t.chain.expirations || [];
+  for (var i = 0; i < exps.length; i++) {
+    var rows = exps[i].rows || [];
+    for (var j = 0; j < rows.length; j++) {
+      var o = l.type === 'PUT' ? rows[j].put : rows[j].call;
+      if (o && l.ticker && o.symbol === l.ticker) return o;
+    }
+  }
+  var bl = exps.filter(function (e) { return e.exp === l.exp; })[0];
+  var row = bl && (bl.rows || []).filter(function (r) { return Math.abs(r.strike - l.strike) < 0.001; })[0];
+  return row ? (l.type === 'PUT' ? row.put : row.call) : null;
+}
+function precoMercado(l, q, saida) {
+  // saída de uma compra = vender (bid); saída de uma venda = recomprar (ask). Entrada é o contrário.
+  if (!q) return null;
+  var vende = saida ? l.side === 'BUY' : l.side === 'SELL';
+  var m = GL.mercado;
+  if (m === 'ultimo') return q.close || null;
+  if (m === 'medio') return (q.bid && q.ask) ? (q.bid + q.ask) / 2 : (q.close || null);
+  if (m === 'teorico') return q.teorico || null;
+  return (vende ? q.bid_eff : q.ask_eff) || q.close || null;
+}
+function recalcVols(t, l) {
+  if (l.type === 'STOCK' || !t.spot) return;
+  var Tt = T(l), r = rr();
+  if (l.entPx != null && (l.entLock || l.entVol == null)) { var a = iv(t.spot, l.strike, Tt, r, l.entPx, isCall(l)); if (a) l.entVol = a * 100; }
+  if (l.saiPx != null && (l.saiLock || l.saiVol == null)) { var b = iv(t.spot, l.strike, Tt, r, l.saiPx, isCall(l)); if (b) l.saiVol = b * 100; }
+}
+// Atualiza cotações de uma perna a partir da cadeia (respeitando os cadeados).
+function aplicaCotacao(t, l, inicial) {
+  if (l.type === 'STOCK') {
+    if (t.spot) { if (l.entPx == null || (!l.entLock && inicial)) l.entPx = t.spot; if (!l.saiLock || l.saiPx == null) l.saiPx = t.spot; }
+    return;
+  }
+  var q = cotacaoDe(t, l);
+  l.q = q;
+  if (q) { l.ticker = q.symbol; }
+  var pe = precoMercado(l, q, false), ps = precoMercado(l, q, true);
+  if (pe != null && (l.entPx == null || (!l.entLock && inicial))) l.entPx = pe;
+  if (ps != null && (!l.saiLock || l.saiPx == null)) l.saiPx = ps;
+  recalcVols(t, l);
+}
+
+// ── carregamento de cadeia ───────────────────────────────────────────────
+function carregaCadeia(t, cb) {
+  if (!t.ativo) { render(); return; }
+  var st = $('sf-st'); if (st) st.textContent = '⏳ buscando ' + t.ativo + '…';
+  fetch('/api/cadeia/' + encodeURIComponent(t.ativo) + '?n=40&n_meses=' + GL.nMeses + '&weekly=' + (GL.weekly ? 1 : 0))
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+    .then(function (res) {
+      if (!res.ok || res.j.error) { if ($('sf-st')) $('sf-st').textContent = '⚠️ ' + (res.j.error || 'erro na cadeia'); return; }
+      var c = res.j;
+      t.chain = c; t.spot = c.spot; t.chg = c.spot_change; t.ewma = c.ewma || null;
+      t.hora = new Date().toLocaleTimeString('pt-BR');
+      t.legs.forEach(function (l) { aplicaCotacao(t, l, false); });
+      if (cb) cb();
+      render();
+    })
+    .catch(function (e) { if ($('sf-st')) $('sf-st').textContent = '⚠️ falha de rede: ' + e; });
+}
+
+// ── abas ─────────────────────────────────────────────────────────────────
+function renderTabs() {
+  var h = '<div class="sf-tab fix' + (CUR === 'list' ? ' on' : '') + '" data-t="list">📈 Estratégias</div>' +
+          '<div class="sf-tab fix sep" data-t="new">＋ Criar</div>';
+  TABS.forEach(function (t, i) {
+    h += '<div class="sf-tab' + (CUR === i ? ' on' : '') + '" data-t="' + i + '">' + esc(t.name) +
+         (t.dirty ? '<span class="dirty" title="alterações não salvas">●</span>' : '') +
+         '<span class="x" data-x="' + i + '" title="Fechar">✕</span></div>';
+  });
+  $('sf-tabs').innerHTML = h;
+}
+$('sf-tabs').addEventListener('click', function (e) {
+  var x = e.target.closest('[data-x]');
+  if (x) {
+    var i = +x.dataset.x;
+    if (TABS[i].dirty && TABS[i].legs.length && !confirm('Fechar "' + TABS[i].name + '" sem salvar?')) return;
+    TABS.splice(i, 1);
+    if (CUR === i) CUR = TABS.length ? Math.min(i, TABS.length - 1) : 'list';
+    else if (typeof CUR === 'number' && CUR > i) CUR--;
+    lembraAbas(); render(); return;
+  }
+  var el = e.target.closest('[data-t]'); if (!el) return;
+  var v = el.dataset.t;
+  if (v === 'list') CUR = 'list';
+  else if (v === 'new') { novaAba(); CUR = TABS.length - 1; }
+  else CUR = +v;
+  render();
+});
+function lembraAbas() { try { localStorage.setItem('simflex_abas', JSON.stringify(TABS.filter(function (t) { return t.id; }).map(function (t) { return t.id; }))); } catch (e) {} }
+
+// ── lista de estratégias salvas ──────────────────────────────────────────
+function renderLista() {
+  $('sf-body').innerHTML = '<div class="sf-list"><div class="sf-empty">⏳ carregando…</div></div>';
+  fetch('/api/simulacao/list').then(function (r) { return r.json(); }).then(function (l) {
+    if (CUR !== 'list') return;
+    if (!l.length) { $('sf-body').innerHTML = '<div class="sf-empty">Nenhuma estratégia salva. Use “＋ Criar”.</div>'; return; }
+    var h = '<div class="sf-list"><input class="sf-in" id="sf-filtro" placeholder="Filtrar por nome ou ativo…" style="margin-bottom:.7rem;width:260px;">' +
+            '<table class="no-datatable"><thead><tr><th>Nome</th><th>Ativo</th><th>Pernas</th><th>Data</th><th></th></tr></thead><tbody>';
+    l.forEach(function (s) {
+      var pernas = (s.legs || []).map(function (g) { return (g.side === 'BUY' ? '+' : '−') + g.qty + ' ' + (g.type === 'STOCK' ? 'papel' : (g.ticker || g.type)); }).join(' · ');
+      h += '<tr data-busca="' + esc((s.name + ' ' + s.underlying).toLowerCase()) + '"><td><a href="#" data-abrir="' + s.id + '" style="color:var(--sf-blue);">' + esc(s.name) + '</a></td>' +
+           '<td>' + esc(s.underlying) + '</td><td style="color:var(--sf-mut);font-size:.78rem;">' + esc(pernas) + '</td><td>' + esc(s.created_at) + '</td>' +
+           '<td style="text-align:right;"><button class="sf-btn blue" data-abrir="' + s.id + '">Abrir</button> ' +
+           '<button class="sf-btn gray" data-del="' + s.id + '" data-nome="' + esc(s.name) + '">Excluir</button></td></tr>';
+    });
+    $('sf-body').innerHTML = h + '</tbody></table></div>';
+    $('sf-filtro').addEventListener('input', function () {
+      var f = this.value.toLowerCase();
+      document.querySelectorAll('.sf-list tbody tr').forEach(function (tr) { tr.style.display = tr.dataset.busca.indexOf(f) >= 0 ? '' : 'none'; });
+    });
+  });
+}
+$('sf-body').addEventListener('click', function (e) {
+  var a = e.target.closest('[data-abrir]');
+  if (a) { e.preventDefault(); abrir(+a.dataset.abrir); return; }
+  var d = e.target.closest('[data-del]');
+  if (d && confirm('Excluir a estratégia "' + d.dataset.nome + '"?')) {
+    fetch('/api/simulacao/' + d.dataset.del + '/delete', { method: 'POST' }).then(function () { renderLista(); });
+  }
+});
+
+function abrir(id, silencioso) {
+  for (var i = 0; i < TABS.length; i++) if (TABS[i].id === id) { CUR = i; render(); return; }
+  fetch('/api/simulacao/' + id).then(function (r) { return r.json(); }).then(function (d) {
+    if (d.error) { if (!silencioso) alert(d.error); return; }
+    var t = novaAba({ id: d.id, name: d.name, ativo: d.underlying, notes: d.notes });
+    t.dirty = false;
+    t.legs = (d.legs || []).map(function (g) {
+      return { on: true, type: g.type, side: g.side, qty: g.qty, exp: g.exp || '', strike: g.strike, ticker: g.ticker,
+               entPx: g.premium, entVol: g.iv || null, entLock: true, saiPx: null, saiVol: null, saiLock: false, teoVol: null };
+    });
+    CUR = TABS.length - 1; lembraAbas();
+    render(); carregaCadeia(t);
+  });
+}
+
+// ── tela da estratégia ───────────────────────────────────────────────────
+function opcoesVenc(t, l) {
+  var exps = (t.chain && t.chain.expirations || []).map(function (e) { return e.exp; });
+  if (l.exp && exps.indexOf(l.exp) < 0) exps.push(l.exp);
+  exps.sort();
+  return '<option value="">—</option>' + exps.map(function (e) {
+    var p = e.split('-'); return '<option value="' + e + '"' + (e === l.exp ? ' selected' : '') + '>' + p[2] + '-' + p[1] + '-' + p[0].slice(2) + '</option>';
+  }).join('');
+}
+function opcoesStrike(t, l) {
+  var bl = (t.chain && t.chain.expirations || []).filter(function (e) { return e.exp === l.exp; })[0];
+  var h = '<option value="">—</option>', achou = false;
+  ((bl && bl.rows) || []).forEach(function (r) {
+    var o = l.type === 'PUT' ? r.put : r.call; if (!o) return;
+    var sel = Math.abs(r.strike - l.strike) < 0.001; if (sel) achou = true;
+    h += '<option value="' + r.strike + '"' + (sel ? ' selected' : '') + '>' + fmt(r.strike) + ' - ' + o.symbol + '</option>';
+  });
+  if (!achou && l.strike) h += '<option value="' + l.strike + '" selected>' + fmt(l.strike) + ' - ' + esc(l.ticker || '') + '</option>';
+  return h;
+}
+
+function renderAba() {
+  var t = TAB();
+  var chgCls = t.chg > 0 ? 'pos' : t.chg < 0 ? 'neg' : '';
+  var h =
+    '<div class="sf-head">' +
+      '<div class="sf-grp"><label>Ativo</label><div style="display:flex;gap:.6rem;align-items:center;">' +
+        '<input class="sf-in" id="sf-ativo" list="sf-ativos" value="' + esc(t.ativo) + '" placeholder="ex.: BOVA11" style="width:150px;text-transform:uppercase;">' +
+        '<button class="sf-btn gray" id="sf-atu" title="Buscar / atualizar cotações">⟳</button>' +
+        '<span class="sf-spot">' + (t.spot ? fmt(t.spot) : '—') + '</span>' +
+        '<span style="display:flex;flex-direction:column;"><span class="sf-chg ' + chgCls + '">' + (t.chg != null ? fmt(t.chg) + '%' : '') + '</span>' +
+        '<span class="sf-time">' + esc(t.hora) + '</span></span></div></div>' +
+      '<div class="sf-grp"><label>Juros</label><input class="sf-in or" id="sf-juros" value="' + fmt(t.juros, 4) + '" style="width:100px;"></div>' +
+      '<div class="sf-grp"><label>Vencimentos</label><div style="display:flex;gap:.4rem;align-items:center;">' +
+        '<select class="sf-in" id="sf-nmeses">' + [1, 2, 3, 4, 6, 9, 12].map(function (n) { return '<option' + (n === GL.nMeses ? ' selected' : '') + '>' + n + '</option>'; }).join('') + '</select>' +
+        '<label style="font-size:.78rem;display:flex;gap:.25rem;align-items:center;"><input type="checkbox" id="sf-weekly"' + (GL.weekly ? ' checked' : '') + '> semanais</label></div></div>' +
+      '<div class="sf-grp"><label>Agregar pernas</label><div style="display:flex;gap:.5rem;">' +
+        '<button class="sf-btn blue" data-add="STOCK">+Ativo</button><button class="sf-btn blue" data-add="CALL">+Call</button><button class="sf-btn blue" data-add="PUT">+Put</button></div></div>' +
+      '<div class="sf-grp"><label>Execução</label><div style="display:flex;gap:.5rem;">' +
+        '<button class="sf-btn blue" id="sf-montar" title="Entrada = preços de mercado agora (compra no ask, venda no bid) e trava a entrada">Montar</button>' +
+        '<button class="sf-btn red" id="sf-reverter" title="Inverte compra/venda de todas as pernas">Reverter</button></div></div>' +
+      '<div class="sf-save"><button class="sf-btn green" id="sf-salvar">💾 Salvar</button><button class="sf-btn green dd" id="sf-savedd">▾</button>' +
+        '<div class="sf-menu" id="sf-menu"><div data-m="como">💾 Salvar como</div><div data-m="copia">⑂ Criar cópia</div><div data-m="tudo">✔✔ Salvar tudo</div><div data-m="nome">✏️ Renomear</div></div></div>' +
+    '</div>' +
+    '<div id="sf-st" class="sf-hint" style="padding-top:.4rem;"></div>' +
+    '<div class="sf-wrap"><table class="sf-t no-datatable"><thead>' +
+      '<tr><th colspan="7"></th><th colspan="2" class="grp">Teórica</th><th colspan="2" class="grp">Entrada</th><th colspan="2" class="grp">Saída</th><th class="grp"></th>' +
+        '<th colspan="' + (GL.gregas ? 5 : 1) + '" class="grp sf-gh" style="cursor:pointer;" id="sf-gtog">' + (GL.gregas ? '▾' : '▸') + ' Gregas - Saída</th></tr>' +
+      '<tr><th></th><th></th><th><input type="checkbox" id="sf-all" checked></th><th>C/V</th><th>Qtde.</th><th>Série</th><th>Strike / Papel</th>' +
+        '<th class="bl">Volatilidade</th><th>Preço</th><th class="bl">Vol.Impl</th><th>Preço</th><th class="bl">Vol.Impl</th>' +
+        '<th><select id="sf-merc" style="background:transparent;color:var(--sf-txt);border:none;font-size:.8rem;" title="Preço usado na saída/entrada a mercado">' +
+          [['merc', 'Preço Mercado'], ['ultimo', 'Último'], ['medio', 'Médio'], ['teorico', 'Teórico']].map(function (o) { return '<option value="' + o[0] + '"' + (GL.mercado === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') +
+        '</select></th><th class="bl">Resultado</th>' +
+        '<th class="bl sf-g">Delta</th><th class="sf-g">Gama</th><th class="sf-g">Theta</th><th class="sf-g">Vega</th><th class="sf-g">Rho</th></tr>' +
+    '</thead><tbody id="sf-legs"></tbody><tfoot id="sf-foot"></tfoot></table></div>' +
+    '<div class="sf-hint">🔒 = preço travado (não muda ao atualizar cotações); 🔓 = acompanha o mercado. Editar o preço recalcula a VI; editar a VI recalcula o preço (Black-Scholes, d.u./252, juros acima). Arraste ⠿ para reordenar.</div>' +
+    '<div class="sf-chartbar">' +
+      '<div class="sf-dd" id="dd-curvas"><span>Curvas ▾</span><div class="pane">' +
+        ['teorica:Teórica', 'expiracao:Expiração', 'atual:Atual', 'area:Área Lucro/Prejuízo'].map(function (p) { p = p.split(':');
+          return '<label><input type="checkbox" data-c="' + p[0] + '"' + (GL[p[0]] ? ' checked' : '') + '> ' + p[1] + '</label>'; }).join('') + '</div></div>' +
+      '<div class="sf-dd" id="dd-slices"><span>Simular Slices ▾</span><div class="pane" style="flex-direction:column;align-items:flex-start;">' +
+        '<div style="display:flex;gap:.4rem;align-items:center;">+ <input class="sf-in" id="sl-dias" placeholder="dias úteis" style="width:80px;"> d.u. à frente, Δ vol <input class="sf-in" id="sl-vol" placeholder="0" style="width:55px;"> pp ' +
+        '<button class="sf-btn blue" id="sl-add">Adicionar</button></div><div id="sl-lista"></div></div></div>' +
+      '<div class="sf-dd" id="dd-prob"><span>Parâmetros Probabilidade ▾</span><div class="pane">' +
+        'Volatilidade: <select class="sf-in" id="pb-src"><option value="ewma"' + (GL.probSrc === 'ewma' ? ' selected' : '') + '>EWMA do ativo</option>' +
+        '<option value="iv"' + (GL.probSrc === 'iv' ? ' selected' : '') + '>VI média (saída)</option><option value="man"' + (GL.probSrc === 'man' ? ' selected' : '') + '>Manual</option></select>' +
+        '<input class="sf-in" id="pb-man" value="' + fmt(GL.probManual) + '" style="width:60px;"> %</div></div>' +
+      '<label class="sf-switch">$ <input type="checkbox" id="sf-pct"' + (GL.pct ? ' checked' : '') + '> %</label>' +
+    '</div>' +
+    '<div class="sf-main"><div class="sf-chartbox" id="sf-cbox">' +
+      '<div class="sf-sig" id="sf-sig">' + [1, 2, 3].map(function (n) { return '<span data-s="' + n + '"' + (GL.sig === n ? ' class="on"' : '') + '>' + n + 'σ</span>'; }).join('') + '</div>' +
+      '<button class="sf-shot" id="sf-shot" title="Salvar imagem do gráfico">📷</button>' +
+      '<canvas id="sf-cv" style="width:100%;height:560px;display:block;"></canvas></div>' +
+      '<div class="sf-stats" id="sf-stats"></div></div>';
+  $('sf-body').innerHTML = h;
+  renderLegs(); bindAba(); calcula();
+}
+
+function renderLegs() {
+  var t = TAB();
+  var h = '';
+  t.legs.forEach(function (l, i) {
+    var stock = l.type === 'STOCK';
+    var itm = !stock && t.spot && l.strike && (isCall(l) ? l.strike < t.spot : l.strike > t.spot);
+    h += '<tr data-i="' + i + '" class="' + (l.on ? '' : 'off') + '">' +
+      '<td><span class="sf-hdl" draggable="true" title="Arrastar">⠿</span></td>' +
+      '<td><button class="sf-del" data-act="del">✕</button></td>' +
+      '<td><input type="checkbox" data-act="on"' + (l.on ? ' checked' : '') + '></td>' +
+      '<td><button class="sf-cv ' + (l.side === 'BUY' ? 'b' : 's') + '" data-act="side">' + (l.side === 'BUY' ? 'COMPRA' : 'VENDA') + '</button></td>' +
+      '<td><input class="n q" type="number" step="100" data-f="qty" value="' + l.qty + '"></td>' +
+      (stock ? '<td>—</td><td style="text-align:left;">' + esc(t.ativo) + ' <span style="color:var(--sf-mut);font-size:.72rem;">(papel)</span></td>'
+             : '<td><select class="exp" data-f="exp">' + opcoesVenc(t, l) + '</select></td>' +
+               '<td style="text-align:left;"><select class="stk" data-f="strike">' + opcoesStrike(t, l) + '</select>' + (itm ? '<span class="sf-itm">ITM</span>' : '') + '</td>') +
+      (stock ? '<td class="bl">—</td><td>—</td>'
+             : '<td class="bl"><input class="n" data-f="teoVol" value="' + fmt(teoVolDe(t, l)) + '"></td><td class="sf-or c-teo"></td>') +
+      '<td class="bl">' + (stock ? '—' : '<input class="n" data-f="entVol" value="' + fmt(l.entVol) + '">') + '</td>' +
+      '<td><input class="n" data-f="entPx" value="' + fmt(l.entPx, stock ? 2 : 4) + '"> <button class="sf-lock ' + (l.entLock ? 'on' : 'off') + '" data-act="entLock" title="Travar preço de entrada">' + (l.entLock ? '🔒' : '🔓') + '</button></td>' +
+      '<td class="bl">' + (stock ? '—' : '<input class="n" data-f="saiVol" value="' + fmt(l.saiVol) + '">') + '</td>' +
+      '<td><input class="n" data-f="saiPx" value="' + fmt(l.saiPx, stock ? 2 : 4) + '"> <button class="sf-lock ' + (l.saiLock ? 'on' : 'off') + '" data-act="saiLock" title="Travar preço de saída">' + (l.saiLock ? '🔒' : '🔓') + '</button></td>' +
+      '<td class="bl c-res"></td>' +
+      '<td class="bl sf-g c-gd"></td><td class="sf-g c-gg"></td><td class="sf-g c-gt"></td><td class="sf-g c-gv"></td><td class="sf-g c-gr"></td>' +
+      '</tr>';
+  });
+  if (!t.legs.length) h = '<tr><td colspan="19" class="sf-empty">Escolha o ativo e use +Call, +Put ou +Ativo para montar a estratégia.</td></tr>';
+  $('sf-legs').innerHTML = h;
+  document.querySelectorAll('.sf-g, .sf-gh').forEach(function (e) { if (!e.classList.contains('sf-gh')) e.classList.toggle('hide', !GL.gregas); });
+}
+
+function marcaSujo() { var t = TAB(); if (!t.dirty) { t.dirty = true; renderTabs(); } }
+
+function bindAba() {
+  var t = TAB();
+  var carregar = function () { t.ativo = $('sf-ativo').value.trim().toUpperCase(); carregaCadeia(t); };
+  $('sf-ativo').addEventListener('change', function () {
+    var novo = this.value.trim().toUpperCase();
+    if (novo !== t.ativo && t.legs.some(function (l) { return l.type !== 'STOCK'; }) && !confirm('Trocar o ativo remove as pernas de opção. Continuar?')) { this.value = t.ativo; return; }
+    if (novo !== t.ativo) { t.legs = t.legs.filter(function (l) { return l.type === 'STOCK'; }); marcaSujo(); }
+    carregar();
+  });
+  $('sf-ativo').addEventListener('keydown', function (e) { if (e.key === 'Enter') this.blur(); });
+  $('sf-atu').addEventListener('click', carregar);
+  $('sf-juros').addEventListener('change', function () { var v = num(this.value); if (v != null) { t.juros = v; t.legs.forEach(function (l) { recalcVols(t, l); }); renderLegs(); calcula(); } });
+  $('sf-nmeses').addEventListener('change', function () { GL.nMeses = +this.value; salvaGL(); carregaCadeia(t); });
+  $('sf-weekly').addEventListener('change', function () { GL.weekly = this.checked; salvaGL(); carregaCadeia(t); });
+  document.querySelectorAll('[data-add]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (!t.ativo) { alert('Informe o ativo primeiro.'); return; }
+      var tp = b.dataset.add;
+      var exp0 = (t.chain && t.chain.expirations && t.chain.expirations[0]) ? t.chain.expirations[0].exp : '';
+      var ult = t.legs.filter(function (l) { return l.type !== 'STOCK'; }).slice(-1)[0];
+      var l = { on: true, type: tp, side: 'BUY', qty: ult ? ult.qty : (tp === 'STOCK' ? 100 : 1000), exp: tp === 'STOCK' ? '' : (ult ? ult.exp : exp0),
+                strike: 0, ticker: tp === 'STOCK' ? t.ativo : '', entPx: null, entVol: null, entLock: false, saiPx: null, saiVol: null, saiLock: false, teoVol: null };
+      if (tp !== 'STOCK' && t.spot && l.exp) {
+        var bl = t.chain.expirations.filter(function (e) { return e.exp === l.exp; })[0];
+        var best = null; ((bl && bl.rows) || []).forEach(function (r) { var o = tp === 'PUT' ? r.put : r.call; if (o && (!best || Math.abs(r.strike - t.spot) < Math.abs(best - t.spot))) best = r.strike; });
+        if (best) l.strike = best;
+      }
+      t.legs.push(l); aplicaCotacao(t, l, true); marcaSujo(); renderLegs(); calcula();
+    });
+  });
+  $('sf-montar').addEventListener('click', function () {
+    t.legs.forEach(function (l) {
+      if (l.type === 'STOCK') { if (t.spot) l.entPx = t.spot; }
+      else { var p = precoMercado(l, l.q, false); if (p != null) l.entPx = p; l.entVol = null; }
+      l.entLock = true; recalcVols(t, l);
+    });
+    marcaSujo(); renderLegs(); calcula();
+  });
+  $('sf-reverter').addEventListener('click', function () {
+    t.legs.forEach(function (l) { l.side = l.side === 'BUY' ? 'SELL' : 'BUY'; if (!l.saiLock) l.saiPx = null; aplicaCotacao(t, l, false); });
+    marcaSujo(); renderLegs(); calcula();
+  });
+  // salvar
+  $('sf-salvar').addEventListener('click', function () { salvar(t, false); });
+  $('sf-savedd').addEventListener('click', function (e) { e.stopPropagation(); $('sf-menu').classList.toggle('on'); });
+  $('sf-menu').addEventListener('click', function (e) {
+    var m = e.target.closest('[data-m]'); if (!m) return; $('sf-menu').classList.remove('on');
+    if (m.dataset.m === 'como') salvar(t, true);
+    else if (m.dataset.m === 'copia') {
+      var c = novaAba({ name: t.name + ' (cópia)', ativo: t.ativo });
+      c.chain = t.chain; c.spot = t.spot; c.chg = t.chg; c.ewma = t.ewma; c.hora = t.hora; c.juros = t.juros;
+      c.legs = JSON.parse(JSON.stringify(t.legs)); c.legs.forEach(function (l, k) { l.q = t.legs[k].q; });
+      CUR = TABS.length - 1; render();
+    } else if (m.dataset.m === 'tudo') salvarTudo();
+    else if (m.dataset.m === 'nome') { var n = prompt('Nome da estratégia:', t.name); if (n && n.trim()) { t.name = n.trim(); marcaSujo(); renderTabs(); } }
+  });
+  // tabela de pernas
+  var tb = $('sf-legs');
+  tb.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-act]'); if (!b) return;
+    var i = +b.closest('tr').dataset.i, l = t.legs[i];
+    if (b.dataset.act === 'del') t.legs.splice(i, 1);
+    else if (b.dataset.act === 'side') { l.side = l.side === 'BUY' ? 'SELL' : 'BUY'; if (!l.entLock) l.entPx = null; if (!l.saiLock) l.saiPx = null; aplicaCotacao(t, l, true); }
+    else if (b.dataset.act === 'entLock') l.entLock = !l.entLock;
+    else if (b.dataset.act === 'saiLock') { l.saiLock = !l.saiLock; if (!l.saiLock) aplicaCotacao(t, l, false); }
+    else if (b.dataset.act === 'on') { l.on = b.checked; }
+    marcaSujo(); renderLegs(); calcula();
+  });
+  tb.addEventListener('change', function (e) {
+    var f = e.target.dataset.f; if (!f) return;
+    var i = +e.target.closest('tr').dataset.i, l = t.legs[i], v = e.target.value;
+    if (f === 'qty') l.qty = Math.max(0, parseInt(v, 10) || 0);
+    else if (f === 'exp') { l.exp = v; var o = cotacaoMesmoStrike(t, l); l.strike = o ? o.k : 0; l.ticker = ''; if (!l.entLock) l.entPx = null; l.saiPx = l.saiLock ? l.saiPx : null; l.entVol = l.entLock ? l.entVol : null; aplicaCotacao(t, l, true); }
+    else if (f === 'strike') { l.strike = parseFloat(v) || 0; l.ticker = ''; if (!l.entLock) { l.entPx = null; l.entVol = null; } if (!l.saiLock) { l.saiPx = null; l.saiVol = null; } aplicaCotacao(t, l, true); }
+    else if (f === 'teoVol') l.teoVol = num(v);
+    else if (f === 'entPx' || f === 'saiPx') {
+      l[f] = num(v); if (f === 'entPx') { l.entLock = true; l.entVol = null; } else { l.saiLock = true; l.saiVol = null; }
+      recalcVols(t, l);
+    } else if (f === 'entVol' || f === 'saiVol') {
+      var vv = num(v); l[f] = vv;
+      if (vv != null && l.type !== 'STOCK' && t.spot) {
+        var px = bs(t.spot, l.strike, T(l), rr(), vv / 100, isCall(l));
+        if (f === 'entVol') { l.entPx = px; l.entLock = true; } else { l.saiPx = px; l.saiLock = true; }
+      }
+    }
+    marcaSujo(); renderLegs(); calcula();
+  });
+  $('sf-all').addEventListener('change', function () { var on = this.checked; t.legs.forEach(function (l) { l.on = on; }); marcaSujo(); renderLegs(); calcula(); });
+  $('sf-gtog').addEventListener('click', function () { GL.gregas = !GL.gregas; salvaGL(); renderAba(); });
+  $('sf-merc').addEventListener('change', function () { GL.mercado = this.value; salvaGL(); t.legs.forEach(function (l) { if (!l.saiLock) l.saiPx = null; aplicaCotacao(t, l, false); }); renderLegs(); calcula(); });
+  // arrastar para reordenar
+  var arr = null;
+  tb.addEventListener('dragstart', function (e) { var tr = e.target.closest('tr'); if (!tr) return; arr = +tr.dataset.i; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', String(arr)); } catch (x) {} });
+  tb.addEventListener('dragover', function (e) { if (arr != null) e.preventDefault(); });
+  tb.addEventListener('drop', function (e) {
+    e.preventDefault(); var tr = e.target.closest('tr'); if (!tr || arr == null) return;
+    var para = +tr.dataset.i; var l = t.legs.splice(arr, 1)[0]; t.legs.splice(para, 0, l); arr = null; marcaSujo(); renderLegs(); calcula();
+  });
+  // barra do gráfico
+  document.querySelectorAll('.sf-dd > span').forEach(function (s) {
+    s.addEventListener('click', function (e) { e.stopPropagation(); var dd = s.parentNode, on = dd.classList.contains('on');
+      document.querySelectorAll('.sf-dd').forEach(function (x) { x.classList.remove('on'); }); if (!on) dd.classList.add('on'); });
+  });
+  document.querySelectorAll('.sf-dd .pane').forEach(function (p) { p.addEventListener('click', function (e) { e.stopPropagation(); }); });
+  document.querySelectorAll('[data-c]').forEach(function (c) { c.addEventListener('change', function () { GL[c.dataset.c] = c.checked; salvaGL(); calcula(); }); });
+  $('sf-pct').addEventListener('change', function () { GL.pct = this.checked; salvaGL(); calcula(); });
+  $('sf-sig').addEventListener('click', function (e) { var s = e.target.closest('[data-s]'); if (!s) return; GL.sig = +s.dataset.s; salvaGL();
+    document.querySelectorAll('#sf-sig span').forEach(function (x) { x.classList.toggle('on', +x.dataset.s === GL.sig); }); calcula(); });
+  $('pb-src').addEventListener('change', function () { GL.probSrc = this.value; salvaGL(); calcula(); });
+  $('pb-man').addEventListener('change', function () { var v = num(this.value); if (v > 0) { GL.probManual = v; salvaGL(); calcula(); } });
+  $('sl-add').addEventListener('click', function () {
+    var d = parseInt($('sl-dias').value, 10); if (!(d > 0)) return;
+    GL.slices.push({ d: d, dv: num($('sl-vol').value) || 0 }); GL.slices = GL.slices.slice(-4); salvaGL(); listaSlices(); calcula();
+  });
+  $('sl-lista').addEventListener('click', function (e) { var x = e.target.closest('[data-sl]'); if (!x) return; GL.slices.splice(+x.dataset.sl, 1); salvaGL(); listaSlices(); calcula(); });
+  listaSlices();
+  $('sf-shot').addEventListener('click', function () {
+    var a = document.createElement('a'); a.download = 'simflex_' + (t.name || 'grafico').replace(/\W+/g, '_') + '.png'; a.href = $('sf-cv').toDataURL('image/png'); a.click();
+  });
+  bindChart();
+}
+function cotacaoMesmoStrike(t, l) {
+  var bl = (t.chain && t.chain.expirations || []).filter(function (e) { return e.exp === l.exp; })[0];
+  if (!bl) return null;
+  var alvo = l.strike || t.spot || 0, best = null;
+  (bl.rows || []).forEach(function (r) { var o = l.type === 'PUT' ? r.put : r.call; if (o && (best == null || Math.abs(r.strike - alvo) < Math.abs(best - alvo))) best = r.strike; });
+  return best != null ? { k: best } : null;
+}
+var SL_CORES = ['#22d3ee', '#e879f9', '#a3e635', '#fb923c'];
+function listaSlices() {
+  var el = $('sl-lista'); if (!el) return;
+  el.innerHTML = GL.slices.map(function (s, i) {
+    return '<div style="display:flex;gap:.5rem;align-items:center;margin-top:.35rem;"><span style="width:14px;height:3px;background:' + SL_CORES[i % 4] + ';display:inline-block;"></span>' +
+      'D+' + s.d + ' d.u.' + (s.dv ? ' · Δvol ' + fmt(s.dv, 1) + 'pp' : '') + ' <span data-sl="' + i + '" style="cursor:pointer;color:var(--sf-red);">✕</span></div>';
+  }).join('');
+}
+
+// ── salvar ───────────────────────────────────────────────────────────────
+function payload(t, nome, novo) {
+  return { id: novo ? null : t.id, name: nome, underlying: t.ativo, notes: t.notes,
+    legs: t.legs.map(function (l) {
+      return { type: l.type, side: l.side, qty: l.qty, strike: l.type === 'STOCK' ? 0 : l.strike, premium: l.entPx || 0,
+               exp: l.type === 'STOCK' ? '' : l.exp, ticker: l.type === 'STOCK' ? t.ativo : l.ticker, iv: l.entVol || 0 };
+    }) };
+}
+function salvar(t, como, cb) {
+  var nome = t.name;
+  if (como || !t.id) { nome = prompt('Nome da estratégia:', como ? t.name + ' (2)' : t.name); if (!nome || !nome.trim()) return; nome = nome.trim(); }
+  if (!t.ativo) { alert('Informe o ativo.'); return; }
+  fetch('/api/simulacao/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload(t, nome, como)) })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (j.error) { alert(j.error); return; }
+      t.id = j.id; t.name = j.name; t.dirty = false; lembraAbas(); renderTabs();
+      if ($('sf-st')) $('sf-st').textContent = '✓ salvo às ' + new Date().toLocaleTimeString('pt-BR');
+      if (cb) cb();
+    });
+}
+function salvarTudo() {
+  var fila = TABS.filter(function (t) { return t.dirty && t.ativo; });
+  (function prox() { var t = fila.shift(); if (t) salvar(t, false, prox); else render(); })();
+}
+
+// ── cálculos ─────────────────────────────────────────────────────────────
+function legsOn() { return TAB().legs.filter(function (l) { return l.on && l.qty > 0 && (l.type === 'STOCK' || (l.strike > 0 && l.exp)); }); }
+function dataExp(legs) {
+  var e = legs.filter(function (l) { return l.type !== 'STOCK'; }).map(function (l) { return l.exp; }).sort()[0];
+  return e ? dIso(e) : null;
+}
+// P/L da estrutura com o ativo em S na data d, vol = 'sai' | 'teo' (+dv pp)
+function plEm(legs, S, d, modo, dv) {
+  var t = TAB(), r = rr(), tot = 0;
+  legs.forEach(function (l) {
+    var val;
+    if (l.type === 'STOCK') val = S;
+    else {
+      var Tt = du(d, dIso(l.exp)) / 252;
+      var v = (modo === 'teo' ? teoVolDe(t, l) : (l.saiVol || l.entVol || teoVolDe(t, l))) || 30;
+      val = bs(S, l.strike, Tt, r, Math.max(0.5, v + (dv || 0)) / 100, isCall(l));
+    }
+    tot += sgn(l) * l.qty * (val - (l.entPx || 0));
+  });
+  return tot;
+}
+function volProb(legs) {
+  var t = TAB();
+  if (GL.probSrc === 'man') return GL.probManual / 100;
+  if (GL.probSrc === 'iv') {
+    var s = 0, n = 0; legs.forEach(function (l) { if (l.type !== 'STOCK' && l.saiVol) { s += l.saiVol * l.qty; n += l.qty; } });
+    if (n) return s / n / 100;
+  }
+  return (t.ewma || 30) / 100;
+}
+var CALC = null;
+function calcula() {
+  var t = TAB(); if (!t) return;
+  var legs = legsOn(), r = rr(), S = t.spot;
+  // células por perna
+  var tot = { teo: 0, ent: 0, sai: 0, res: 0, d: 0, g: 0, th: 0, v: 0, rh: 0 }, qBase = null;
+  document.querySelectorAll('#sf-legs tr[data-i]').forEach(function (tr) {
+    var l = t.legs[+tr.dataset.i], s = sgn(l), q = l.qty || 0, c = function (cl) { return tr.querySelector('.' + cl); };
+    var teoPx = null, gk = { d: 0, g: 0, t: 0, v: 0, r: 0 };
+    if (l.type === 'STOCK') { gk.d = 1; teoPx = S; }
+    else if (S && l.strike && l.exp) {
+      var Tt = T(l), tv = teoVolDe(t, l);
+      if (tv) teoPx = bs(S, l.strike, Tt, r, tv / 100, isCall(l));
+      var sv = l.saiVol || l.entVol || tv;
+      if (sv) gk = greeks(S, l.strike, Tt, r, sv / 100, isCall(l));
+    }
+    if (c('c-teo')) c('c-teo').textContent = teoPx != null ? fmt(teoPx, 4) : '—';
+    var res = (l.saiPx != null && l.entPx != null) ? s * q * (l.saiPx - l.entPx) : null;
+    c('c-res').textContent = res != null ? fmt(res) : '—'; c('c-res').className = 'bl c-res ' + (res > 0 ? 'pos' : res < 0 ? 'neg' : '');
+    c('c-gd').textContent = fmt(s * q * gk.d); c('c-gg').textContent = fmt(s * q * gk.g); c('c-gt').textContent = fmt(s * q * gk.t);
+    c('c-gv').textContent = fmt(s * q * gk.v); c('c-gr').textContent = fmt(s * q * gk.r);
+    if (!l.on) return;
+    if (l.type !== 'STOCK') qBase = qBase == null ? q : Math.min(qBase, q);
+    tot.teo += s * q * (teoPx || 0); tot.ent += s * q * (l.entPx || 0); tot.sai += s * q * (l.saiPx || 0); tot.res += res || 0;
+    tot.d += s * q * gk.d; tot.g += s * q * gk.g; tot.th += s * q * gk.t; tot.v += s * q * gk.v; tot.rh += s * q * gk.r;
+  });
+  var qb = qBase || 1;
+  var dbcr = function (v, inv) { if (!v) return '—'; var db = inv ? v < 0 : v > 0; return '<span class="' + (db ? 'neg' : 'pos') + '">' + (db ? 'Db ' : 'Cr ') + fmt(Math.abs(v), 4) + '</span>'; };
+  $('sf-foot').innerHTML = t.legs.length ? '<tr><td colspan="7"></td><td class="bl"></td><td>' + dbcr(tot.teo / qb) + '</td><td class="bl"></td><td>' + dbcr(tot.ent / qb) +
+    '</td><td class="bl"></td><td>' + dbcr(-tot.sai / qb) + '</td><td class="bl ' + (tot.res > 0 ? 'pos' : tot.res < 0 ? 'neg' : '') + '">' + fmt(tot.res) + '</td>' +
+    '<td class="bl sf-g">' + fmt(tot.d) + '</td><td class="sf-g">' + fmt(tot.g) + '</td><td class="sf-g">' + fmt(tot.th) + '</td><td class="sf-g">' + fmt(tot.v) + '</td><td class="sf-g">' + fmt(tot.rh) + '</td></tr>' : '';
+  document.querySelectorAll('#sf-foot .sf-g').forEach(function (e) { e.classList.toggle('hide', !GL.gregas); });
+
+  // métricas da estrutura
+  CALC = null;
+  if (!S || !legs.length) { $('sf-stats').innerHTML = '<div class="sf-empty">Sem dados para o gráfico.</div>'; desenha(); return; }
+  var dE = dataExp(legs) || hoje();
+  var duE = du(hoje(), dE);
+  var fExp = function (x) { return plEm(legs, x, dE, 'sai'); };
+  // grade larga para máx./mín. e breakevens
+  var N = 600, xs = [], ys = [];
+  for (var i = 0; i <= N; i++) { var x = S * 4 * i / N; xs.push(x); ys.push(fExp(x)); }
+  var maxG = Math.max.apply(null, ys), minG = Math.min.apply(null, ys);
+  var far = fExp(S * 6) - fExp(S * 4);
+  var gainUnl = far > Math.abs(maxG) * 0.02 + 1, lossUnl = far < -(Math.abs(minG) * 0.02 + 1);
+  var bes = [];
+  for (i = 1; i <= N; i++) { if ((ys[i - 1] < 0 && ys[i] >= 0) || (ys[i - 1] >= 0 && ys[i] < 0)) { bes.push(xs[i - 1] + (0 - ys[i - 1]) * (xs[i] - xs[i - 1]) / (ys[i] - ys[i - 1])); } }
+  // probabilidades (lognormal neutra ao risco)
+  var sig = volProb(legs), Ty = Math.max(duE, 1) / 252, mu = Math.log(S) + (r - sig * sig / 2) * Ty, sd = sig * Math.sqrt(Ty);
+  var pLucro = 0, M = 800;
+  for (i = 0; i < M; i++) {
+    var z0 = -6 + 12 * i / M, z1 = -6 + 12 * (i + 1) / M, zm = (z0 + z1) / 2;
+    if (fExp(Math.exp(mu + sd * zm)) > 0) pLucro += ncdf(z1) - ncdf(z0);
+  }
+  var custoEnt = tot.ent, custoSai = tot.sai;   // saída: > 0 = recebe (Cr)
+  // margem aproximada de vendas descobertas: 15% do ativo + prêmio, pelo lado (CALL ou PUT) mais pesado
+  var mC = 0, mP = 0;
+  legs.forEach(function (l) { if (l.type !== 'STOCK' && l.side === 'SELL') { var m = l.qty * (0.15 * S + (l.entPx || 0)); if (isCall(l)) mC += m; else mP += m; } });
+  var shortsDesc = Math.max(mC, mP);
+  var margem = lossUnl ? shortsDesc : (custoEnt < 0 ? Math.max(0, -minG) : 0);
+  var base = custoEnt > 0 ? custoEnt : (margem > 0 ? margem : Math.abs(custoEnt)) || 1;
+  var cdi = Math.pow(1 + t.juros / 100, Math.max(duE, 1) / 252) - 1;
+  var resAtual = tot.res;
+  CALC = { legs: legs, dE: dE, duE: duE, S: S, sig: sig, Ty: Ty, mu: mu, sd: sd, base: base, resAtual: resAtual, bes: bes };
+  var pill = function (v, txt) { return '<span class="sf-pill ' + (v >= 0 ? 'g' : 'r') + '">' + txt + '</span>'; };
+  var h = '<div class="r"><span>Vencimento</span><span>' + brD(isoD(dE)) + ' (' + duE + ' d.u.)</span></div>' +
+    '<div class="r sep"><span>Max. Lucro</span><span>' + (gainUnl ? pill(1, 'Ilimitado') : '<span class="pos">' + fmt(maxG) + '</span> ' + pill(maxG, fmt(maxG / base * 100) + '%')) + '</span></div>' +
+    '<div class="r"><span>% sobre CDI</span><span>' + (gainUnl ? '—' : fmt(maxG / base / cdi * 100) + '%') + '</span></div>' +
+    '<div class="r"><span>Max. Perda</span><span>' + (lossUnl ? pill(-1, 'Ilimitado') : '<span class="neg">' + fmt(minG) + '</span> ' + pill(-1, fmt(minG / base * 100) + '%')) + '</span></div>' +
+    '<div class="r sep"><span>Prob. de lucro</span><span>' + pill(pLucro >= 0.5 ? 1 : -1, fmt(pLucro * 100) + '%') + '</span></div>' +
+    '<div class="r"><span>Margem aprox.</span><span class="' + (margem > 0 ? 'neg' : '') + '">' + fmt(margem ? -margem : 0) + '</span></div>' +
+    '<div class="r"><span>Break even</span><span>' + (bes.length ? bes.map(function (b) { return fmt(b); }).join(' | ') : '—') + '</span></div>' +
+    '<div class="r sep"><span>Custo entrada</span><span class="' + (custoEnt > 0 ? 'neg' : 'pos') + '">' + (custoEnt > 0 ? 'Db ' : 'Cr ') + fmt(Math.abs(custoEnt)) + '</span></div>' +
+    '<div class="r"><span>Custo saída</span><span class="' + (custoSai < 0 ? 'neg' : 'pos') + '">' + (custoSai < 0 ? 'Db ' : 'Cr ') + fmt(Math.abs(custoSai)) + '</span></div>' +
+    '<div class="r"><span>' + (resAtual >= 0 ? 'Lucro atual' : 'Prejuízo atual') + '</span><span><span class="' + (resAtual >= 0 ? 'pos' : 'neg') + '">' + fmt(resAtual) + '</span> ' + pill(resAtual, fmt(resAtual / base * 100) + '%') + '</span></div>' +
+    '<div class="r sep" style="font-size:.78rem;color:var(--sf-mut);"><span>Vol. probabilidade</span><span>' + fmt(sig * 100) + '% a.a.</span></div>';
+  $('sf-stats').innerHTML = h;
+  desenha();
+}
+
+// ── gráfico ──────────────────────────────────────────────────────────────
+var VIEW = { x0: null, x1: null, y0: null, y1: null }, HOVER = null;
+function faixaPadrao() {
+  var c = CALC, k = Math.max(3.2 * c.sd, 0.15);
+  var lo = c.S * Math.exp(-k), hi = c.S * Math.exp(k);
+  c.legs.forEach(function (l) { if (l.strike) { lo = Math.min(lo, l.strike * 0.95); hi = Math.max(hi, l.strike * 1.05); } });
+  return [lo, hi];
+}
+function desenha() {
+  var cv = $('sf-cv'); if (!cv) return;
+  var dpr = window.devicePixelRatio || 1, W = cv.clientWidth, H = cv.clientHeight;
+  cv.width = W * dpr; cv.height = H * dpr;
+  var g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#1f1f1f'; g.fillRect(0, 0, W, H);
+  if (!CALC) { g.fillStyle = '#888'; g.font = '14px sans-serif'; g.fillText('Monte a estratégia para ver o gráfico.', 30, 40); return; }
+  var c = CALC, t = TAB();
+  var fx = faixaPadrao(); var x0 = VIEW.x0 != null ? VIEW.x0 : fx[0], x1 = VIEW.x1 != null ? VIEW.x1 : fx[1];
+  var L = 92, R = 12, Tp = 28, B = 62, pw = W - L - R, ph = H - Tp - B;
+  var N = Math.max(200, Math.round(pw));
+  var base = c.base, pct = GL.pct;
+  var conv = function (v) { return pct ? v / base * 100 : v; };
+  var curvas = [];
+  var hojeD = hoje();
+  if (GL.expiracao) curvas.push({ nome: brD(isoD(c.dE)), cor: '#ef6c57', f: function (x) { return plEm(c.legs, x, c.dE, 'sai'); }, exp: true });
+  if (GL.atual) curvas.push({ nome: 'Atual', cor: '#e8d06a', f: function (x) { return plEm(c.legs, x, hojeD, 'sai'); } });
+  if (GL.teorica) curvas.push({ nome: 'Teórica', cor: '#7fa8d1', f: function (x) { return plEm(c.legs, x, hojeD, 'teo'); } });
+  GL.slices.forEach(function (s, i) {
+    var dd = addDu(hojeD, s.d); if (dd > c.dE) dd = c.dE;
+    curvas.push({ nome: 'D+' + s.d + (s.dv ? ' (' + (s.dv > 0 ? '+' : '') + fmt(s.dv, 1) + 'pp)' : ''), cor: SL_CORES[i % 4], f: function (x) { return plEm(c.legs, x, dd, 'sai', s.dv); } });
+  });
+  var expF = function (x) { return plEm(c.legs, x, c.dE, 'sai'); };
+  var series = curvas.map(function (cu) { var pts = []; for (var i = 0; i <= N; i++) { var x = x0 + (x1 - x0) * i / N; pts.push([x, conv(cu.f(x))]); } return pts; });
+  var expPts = []; for (var i = 0; i <= N; i++) { var xx = x0 + (x1 - x0) * i / N; expPts.push([xx, conv(expF(xx))]); }
+  var yMin = Infinity, yMax = -Infinity;
+  series.concat([expPts]).forEach(function (s) { s.forEach(function (p) { if (p[1] < yMin) yMin = p[1]; if (p[1] > yMax) yMax = p[1]; }); });
+  if (yMin === yMax) { yMin -= 1; yMax += 1; }
+  var pad = (yMax - yMin) * 0.06; yMin -= pad; yMax += pad;
+  if (VIEW.y0 != null) { yMin = VIEW.y0; yMax = VIEW.y1; }
+  var X = function (x) { return L + (x - x0) / (x1 - x0) * pw; }, Y = function (y) { return Tp + (yMax - y) / (yMax - yMin) * ph; };
+  c._map = { X: X, Y: Y, x0: x0, x1: x1, yMin: yMin, yMax: yMax, L: L, Tp: Tp, pw: pw, ph: ph, curvas: curvas, conv: conv };
+  // σ: faixa sombreada e linhas
+  var k = GL.sig, sLo = c.S * Math.exp(-k * c.sd), sHi = c.S * Math.exp(k * c.sd);
+  g.fillStyle = 'rgba(255,255,255,.035)'; g.fillRect(Math.max(L, X(sLo)), Tp, Math.min(L + pw, X(sHi)) - Math.max(L, X(sLo)), ph);
+  // grade
+  g.strokeStyle = '#2f2f2f'; g.lineWidth = 1; g.font = '12px sans-serif'; g.fillStyle = '#ddd';
+  var py = escolhePasso((yMax - yMin) / 9);
+  for (var yv = Math.ceil(yMin / py) * py; yv <= yMax; yv += py) {
+    var yy = Y(yv);
+    g.beginPath(); g.moveTo(L, yy); g.lineTo(L + pw, yy); g.stroke();
+    g.textAlign = 'right'; g.fillText(pct ? fmt(yv) + '%' : 'R$' + (Math.abs(yv) >= 10000 ? fmt(yv / 1000) + 'K' : fmt(yv)), L - 6, yy + 4);
+  }
+  var passo = escolhePasso((x1 - x0) / 26);
+  for (var xv = Math.ceil(x0 / passo) * passo; xv <= x1; xv += passo) {
+    var xp = X(xv); g.strokeStyle = '#2f2f2f'; g.beginPath(); g.moveTo(xp, Tp); g.lineTo(xp, Tp + ph); g.stroke();
+    g.save(); g.translate(xp + 4, Tp + ph + 8); g.rotate(-Math.PI / 3); g.textAlign = 'right'; g.fillStyle = '#ddd'; g.fillText(fmt(xv), 0, 0); g.restore();
+  }
+  // zero
+  if (yMin < 0 && yMax > 0) { g.strokeStyle = '#9e9e9e'; g.beginPath(); g.moveTo(L, Y(0)); g.lineTo(L + pw, Y(0)); g.stroke(); }
+  // área lucro/prejuízo (sob a curva de expiração)
+  if (GL.area && yMin < 0 && yMax > 0) {
+    [['pos', 'rgba(34,139,34,.45)'], ['neg', 'rgba(178,34,34,.5)']].forEach(function (a) {
+      g.fillStyle = a[1]; g.beginPath(); g.moveTo(X(expPts[0][0]), Y(0));
+      expPts.forEach(function (p) { var y = a[0] === 'pos' ? Math.max(0, p[1]) : Math.min(0, p[1]); g.lineTo(X(p[0]), Y(y)); });
+      g.lineTo(X(expPts[expPts.length - 1][0]), Y(0)); g.closePath(); g.fill();
+    });
+  }
+  // linhas σ e spot
+  g.setLineDash([6, 5]); g.strokeStyle = '#6b7a1f'; g.lineWidth = 1.4;
+  [sLo, sHi].forEach(function (s) { if (s > x0 && s < x1) { g.beginPath(); g.moveTo(X(s), Tp); g.lineTo(X(s), Tp + ph); g.stroke(); } });
+  g.setLineDash([]); g.strokeStyle = '#5b6b1a'; g.lineWidth = 1;
+  g.beginPath(); g.moveTo(X(c.S), Tp); g.lineTo(X(c.S), Tp + ph); g.stroke();
+  g.font = '12px sans-serif'; g.fillStyle = '#7c8f22'; g.textAlign = 'center';
+  [sLo, sHi].forEach(function (s) { if (s > x0 && s < x1) g.fillText(fmt(s), X(s), Tp + ph + 14); });
+  g.fillText('Atual: ' + fmt(c.S), X(c.S), Tp + ph + 14);
+  // probabilidades por região (abaixo, dentro e acima da faixa σ)
+  var pr = function (s) { return ncdf((Math.log(s) - c.mu) / c.sd); };
+  var pLo = pr(sLo), pHi = 1 - pr(sHi);
+  g.fillStyle = '#ffeb3b'; g.font = '13px sans-serif';
+  [[(x0 + Math.min(sLo, x1)) / 2, pLo, sLo > x0], [(Math.max(sLo, x0) + Math.min(sHi, x1)) / 2, 1 - pLo - pHi, true], [(Math.max(sHi, x0) + x1) / 2, pHi, sHi < x1]].forEach(function (p) {
+    if (p[2]) g.fillText(fmt(p[1] * 100) + '%', X(p[0]), Tp + ph - 6);
+  });
+  // resultado atual (tracejado)
+  var ra = conv(c.resAtual);
+  if (ra > yMin && ra < yMax) { g.setLineDash([7, 6]); g.strokeStyle = '#9e9e9e'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(L, Y(ra)); g.lineTo(L + pw, Y(ra)); g.stroke(); g.setLineDash([]); }
+  // curvas
+  g.save(); g.beginPath(); g.rect(L, Tp, pw, ph); g.clip();
+  series.forEach(function (s, j) {
+    g.strokeStyle = curvas[j].cor; g.lineWidth = curvas[j].exp ? 2.2 : 2; g.beginPath();
+    s.forEach(function (p, i) { var px = X(p[0]), py = Y(p[1]); if (i) g.lineTo(px, py); else g.moveTo(px, py); }); g.stroke();
+  });
+  g.restore();
+  // moldura
+  g.strokeStyle = '#3a3a3a'; g.strokeRect(L, Tp, pw, ph);
+  // hover
+  if (HOVER != null && HOVER >= x0 && HOVER <= x1) {
+    var hx = X(HOVER);
+    g.setLineDash([5, 4]); g.strokeStyle = '#bbb'; g.beginPath(); g.moveTo(hx, Tp); g.lineTo(hx, Tp + ph); g.stroke(); g.setLineDash([]);
+    g.fillStyle = '#fff'; g.font = 'bold 13px sans-serif'; g.textAlign = hx > L + pw - 160 ? 'right' : 'left';
+    g.fillText(fmt(HOVER) + '  ' + fmt((HOVER / c.S - 1) * 100) + '%', hx + (g.textAlign === 'right' ? -8 : 8), Tp + 22);
+    // legenda com valores
+    var bw = 240, bh = 10 + curvas.length * 22, bx = hx + 14 + bw > L + pw ? hx - bw - 14 : hx + 14, by = Tp + 34;
+    g.fillStyle = 'rgba(30,30,30,.92)'; g.fillRect(bx, by, bw, bh); g.strokeStyle = '#444'; g.strokeRect(bx, by, bw, bh);
+    g.font = '13px sans-serif';
+    curvas.forEach(function (cu, j) {
+      var v = conv(cu.f(HOVER)), yy = by + 20 + j * 22;
+      g.strokeStyle = cu.cor; g.lineWidth = 2.5; g.beginPath(); g.moveTo(bx + 10, yy - 4); g.lineTo(bx + 34, yy - 4); g.stroke();
+      g.fillStyle = '#eee'; g.textAlign = 'left'; g.fillText(cu.nome, bx + 42, yy);
+      g.fillStyle = v >= 0 ? '#4ade80' : '#f87171'; g.textAlign = 'right'; g.fillText(pct ? fmt(v) + '%' : fmt(v), bx + bw - 10, yy);
+    });
+  }
+}
+function escolhePasso(p) { var e = Math.pow(10, Math.floor(Math.log10(p))), m = p / e; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * e; }
+function bindChart() {
+  var cv = $('sf-cv'), drag = null;
+  cv.addEventListener('mousemove', function (e) {
+    if (!CALC || !CALC._map) return; var m = CALC._map, rc = cv.getBoundingClientRect(), x = e.clientX - rc.left, y = e.clientY - rc.top;
+    if (drag) {
+      var dx = (x - drag.x) / m.pw * (drag.x1 - drag.x0);
+      if (e.shiftKey) { var dy = (y - drag.y) / m.ph * (drag.y1 - drag.y0); VIEW.y0 = drag.y0 + dy; VIEW.y1 = drag.y1 + dy; }
+      else { VIEW.x0 = drag.x0 - dx; VIEW.x1 = drag.x1 - dx; }
+      desenha(); return;
+    }
+    HOVER = (x >= m.L && x <= m.L + m.pw) ? m.x0 + (x - m.L) / m.pw * (m.x1 - m.x0) : null; desenha();
+  });
+  cv.addEventListener('mouseleave', function () { HOVER = null; drag = null; desenha(); });
+  cv.addEventListener('mousedown', function (e) { if (!CALC || !CALC._map) return; var m = CALC._map, rc = cv.getBoundingClientRect();
+    drag = { x: e.clientX - rc.left, y: e.clientY - rc.top, x0: m.x0, x1: m.x1, y0: m.yMin, y1: m.yMax }; });
+  window.addEventListener('mouseup', function () { drag = null; });
+  cv.addEventListener('wheel', function (e) {
+    if (!CALC || !CALC._map) return; e.preventDefault(); var m = CALC._map, f = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+    if (e.shiftKey) { var cy = (m.yMin + m.yMax) / 2; VIEW.y0 = cy - (cy - m.yMin) * f; VIEW.y1 = cy + (m.yMax - cy) * f; }
+    else { var cx = HOVER != null ? HOVER : (m.x0 + m.x1) / 2; VIEW.x0 = cx - (cx - m.x0) * f; VIEW.x1 = cx + (m.x1 - cx) * f; }
+    desenha();
+  }, { passive: false });
+  cv.addEventListener('dblclick', function () { VIEW = { x0: null, x1: null, y0: null, y1: null }; desenha(); });
+}
+window.addEventListener('resize', function () { if (TAB()) desenha(); });
+document.addEventListener('click', function () { document.querySelectorAll('.sf-dd, .sf-menu').forEach(function (x) { x.classList.remove('on'); }); });
+
+// ── render geral ─────────────────────────────────────────────────────────
+function render() {
+  renderTabs();
+  VIEW = { x0: null, x1: null, y0: null, y1: null }; HOVER = null;
+  if (CUR === 'list' || !TAB()) { CUR = 'list'; renderTabs(); renderLista(); return; }
+  renderAba();
+}
+window.addEventListener('beforeunload', function (e) { if (TABS.some(function (t) { return t.dirty && t.legs.length; })) { e.preventDefault(); e.returnValue = ''; } });
+
+// abre as abas salvas da última visita (ou ?abrir=<id>)
+var pedido = parseInt(new URLSearchParams(location.search).get('abrir'), 10);
+var ant = []; try { ant = JSON.parse(localStorage.getItem('simflex_abas') || '[]'); } catch (e) {}
+render();
+(pedido > 0 ? [pedido] : ant).forEach(function (id) { abrir(id, true); });
+})();
+</script>
+{% endblock %}

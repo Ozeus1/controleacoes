@@ -118,6 +118,7 @@ class TradeHistory(db.Model):
 
 class Option(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    obs = db.Column(db.Text, nullable=True)   # anotações livres do acompanhamento (tela de payoff)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, default=1)
     option_type = db.Column(db.String(20), nullable=False, default='VENDA_CALL') # VENDA_CALL, COMPRA_CALL, COMPRA_PUT
     ticker = db.Column(db.String(20), nullable=False) # e.g., PETRA40
@@ -164,6 +165,7 @@ class Option(db.Model):
 class OptionSpread(db.Model):
     __tablename__ = 'option_spread'
     id = db.Column(db.Integer, primary_key=True)
+    obs = db.Column(db.Text, nullable=True)   # anotações livres do acompanhamento (tela de payoff)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     spread_type = db.Column(db.String(20), nullable=False)  # TRAVA_ALTA_PUT, TRAVA_ALTA_CALL, TRAVA_BAIXA_PUT, TRAVA_BAIXA_CALL
     underlying_asset = db.Column(db.String(15), nullable=False)
@@ -405,6 +407,7 @@ class StructuredOp(db.Model):
     """Operação estruturada multi-perna (condors, borboletas, strangles, etc.)."""
     __tablename__ = 'structured_op'
     id            = db.Column(db.Integer, primary_key=True)
+    obs           = db.Column(db.Text, nullable=True)   # anotações livres do acompanhamento (tela de payoff)
     user_id       = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     name                  = db.Column(db.String(100), default='')
     underlying_asset      = db.Column(db.String(15), default='')

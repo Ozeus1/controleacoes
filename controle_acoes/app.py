@@ -411,6 +411,13 @@ def run_migrations():
         except Exception:
             pass  # coluna já existe
 
+    # Observações livres do acompanhamento (tela de payoff)
+    for _table in ("'option'", 'option_spread', 'structured_op'):
+        try:
+            cursor.execute(f"ALTER TABLE {_table} ADD COLUMN obs TEXT")
+        except Exception:
+            pass  # coluna já existe
+
     # StudyStock/StudyIntlStock: observações gerais do papel (livre, separado
     # da descrição de cada estratégia individual)
     for _table in ('study_stock', 'study_intl_stock'):
@@ -15407,6 +15414,7 @@ def payoff_spread(id):
     roll_adjustment, roll_history = _spread_roll_adjustment(sp)
     _legs_com_teorico(legs, sp.underlying_asset, und_price)
     return render_template('payoff.html',
+                           obs_kind='spread', obs_id=sp.id, obs_text=sp.obs or '',
                            pop_save_url=url_for('save_payoff_pop', kind='spread', id=sp.id),
                            title=type_labels.get(sp.spread_type, sp.spread_type),
                            underlying=sp.underlying_asset,
@@ -15470,6 +15478,7 @@ def payoff_estruturada(id):
     if not getattr(op, 'intl', False):
         _legs_com_teorico(legs, op.underlying_asset, und_price)
     return render_template('payoff.html',
+                           obs_kind='estruturada', obs_id=op.id, obs_text=op.obs or '',
                            pop_save_url=url_for('save_payoff_pop', kind='estruturada', id=op.id),
                            title=op.name,
                            underlying=op.underlying_asset or '',
@@ -15511,6 +15520,21 @@ def save_payoff_pop(kind, id):
     rec.pop = round(pop, 1)
     db.session.commit()
     return jsonify({'ok': True, 'pop': rec.pop})
+
+
+@app.route('/api/payoff-obs/<kind>/<int:id>', methods=['POST'])
+@login_required
+def save_payoff_obs(kind, id):
+    """Salva a anotação livre da operação (botão 📝 Obs. das telas de payoff)."""
+    model = {'spread': OptionSpread, 'estruturada': StructuredOp, 'option': Option}.get(kind)
+    if not model:
+        return jsonify({'error': 'tipo desconhecido'}), 400
+    rec = model.query.filter_by(id=id, user_id=current_user.id).first()
+    if not rec:
+        return jsonify({'error': 'Operação não encontrada'}), 404
+    rec.obs = ((request.get_json(silent=True) or {}).get('obs') or '')[:20000]
+    db.session.commit()
+    return jsonify({'ok': True})
 
 
 @app.route('/payoff/option/<int:id>')
@@ -15569,6 +15593,7 @@ def payoff_option(id):
     import json as _json
     _legs_com_teorico(legs, opt.underlying_asset, und_price)
     return render_template('payoff.html',
+                           obs_kind='option', obs_id=opt.id, obs_text=opt.obs or '',
                            title=f"{titles.get(ot, 'Opção')} — {opt.ticker}",
                            underlying=opt.underlying_asset or '',
                            expiration=opt.expiration_date.strftime('%d/%m/%Y') if opt.expiration_date else '',

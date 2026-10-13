@@ -26,6 +26,10 @@
             {% if underlying %}
             <button class="btn btn-outline-info btn-sm" onclick="openChart()">📈 Gráfico {{ underlying }}</button>
             {% endif %}
+            {% if obs_id is defined and obs_id %}
+            <button type="button" id="payoff-obs-btn" class="payoff-obs-btn{{ ' tem-obs' if obs_text|trim else '' }}" onclick="payoffAbreObs()"
+                    title="Anotações desta operação">📝 Obs.</button>
+            {% endif %}
             <button id="payoff-fs-toggle" class="btn btn-secondary btn-sm" onclick="toggleFullscreen()"
                     title="Abrir esta tela em tela cheia">⛶ Expandir</button>
             <a href="{{ url_for('opcoes') }}" class="btn btn-secondary btn-sm">← Voltar</a>
@@ -775,6 +779,10 @@
 var SELIC_RATE = {{ selic if selic is defined else 14.5 }};
 </script>
 <style>
+.payoff-obs-btn { background:none; border:1px solid transparent; color:var(--text-secondary); font-size:.78rem;
+    padding:.3rem .55rem; border-radius:5px; cursor:pointer; white-space:nowrap; }
+.payoff-obs-btn:hover { border-color:var(--border-color); color:var(--text-primary); }
+.payoff-obs-btn.tem-obs { color:#eab308; }
 /* Fallback para quando a Fullscreen API é bloqueada (ex.: iframe sem allow) —
    classe aplicada via JS cobrindo a tela inteira com position:fixed. Cobre a
    tela TODA (título, tabela de pernas, métricas e gráfico), não só o canvas. */
@@ -1493,6 +1501,54 @@ document.addEventListener('fullscreenchange', function () {
     window.closeChart = function() { modal.style.display = 'none'; };
     modal.addEventListener('click', function(e) { if (e.target === modal) closeChart(); });
 })();
+</script>
+{% endif %}
+{% if obs_id is defined and obs_id %}
+<div id="payoff-obs-modal" style="display:none;position:fixed;inset:0;z-index:19100;
+     background:rgba(0,0,0,.78);align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;width:min(96vw,560px);
+              max-height:88vh;display:flex;flex-direction:column;border:1px solid var(--border-color);">
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                padding:.8rem 1.1rem;border-bottom:1px solid var(--border-color);">
+      <h3 style="margin:0;font-size:1rem;">📝 Observações</h3>
+      <button onclick="payoffFechaObs()" style="background:none;border:none;font-size:1.4rem;
+                     color:var(--text-secondary);cursor:pointer;line-height:1;">&times;</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:.8rem 1.1rem;display:flex;flex-direction:column;gap:.5rem;">
+      <p style="margin:0;font-size:.78rem;color:var(--text-secondary);">Anotações livres desta operação (acompanhamento, plano de manejo, cenário…).</p>
+      <textarea id="payoff-obs-text" rows="10" style="width:100%;resize:vertical;background:var(--hover-bg);color:var(--text-primary);
+                       border:1px solid var(--border-color);border-radius:6px;padding:.6rem .7rem;
+                       font-size:.88rem;font-family:inherit;box-sizing:border-box;">{{ obs_text }}</textarea>
+      <div id="payoff-obs-status" style="min-height:1.2em;font-size:.78rem;color:var(--text-secondary);"></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:.5rem;padding:.7rem 1.1rem;border-top:1px solid var(--border-color);">
+      <button class="btn btn-secondary btn-sm" onclick="payoffFechaObs()">Fechar</button>
+      <button class="btn btn-primary btn-sm" onclick="payoffSalvaObs()">💾 Salvar observações</button>
+    </div>
+  </div>
+</div>
+<script>
+window.payoffAbreObs = function () {
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
+    document.getElementById('payoff-obs-status').textContent = '';
+    document.getElementById('payoff-obs-modal').style.display = 'flex';
+    document.getElementById('payoff-obs-text').focus();
+};
+window.payoffFechaObs = function () { document.getElementById('payoff-obs-modal').style.display = 'none'; };
+document.addEventListener('keydown', function (e) { if (e.key === 'Escape') window.payoffFechaObs(); });
+window.payoffSalvaObs = function () {
+    var texto = document.getElementById('payoff-obs-text').value;
+    var st = document.getElementById('payoff-obs-status');
+    st.textContent = '⏳ salvando…';
+    fetch('/api/payoff-obs/{{ obs_kind }}/{{ obs_id }}', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ obs: texto }) })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || res.j.error) { st.textContent = '⚠️ ' + (res.j.error || 'erro ao salvar'); return; }
+        st.textContent = '✓ observações salvas.';
+        document.getElementById('payoff-obs-btn').classList.toggle('tem-obs', !!texto.trim());
+      }).catch(function (e) { st.textContent = '⚠️ falha de rede: ' + e; });
+};
 </script>
 {% endif %}
 {% endblock %}

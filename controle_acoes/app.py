@@ -2880,17 +2880,26 @@ def api_rtd_list():
     return jsonify([{'id': r.id, 'name': r.name} for r in rows])
 
 
+def _rtd_tabelas(raw):
+    """Conteúdo salvo → lista de tabelas [{name, rows}] (formato antigo = lista de linhas)."""
+    try:
+        d = json.loads(raw or '[]')
+    except ValueError:
+        d = []
+    if isinstance(d, dict):
+        d = d.get('tables') or []
+    elif isinstance(d, list) and (not d or 'rows' not in (d[0] or {})):
+        d = [{'name': 'Tabela 1', 'rows': d}]
+    return d
+
+
 @app.route('/api/rtd-planilha/<int:pid>')
 @login_required
 def api_rtd_get(pid):
     r = RtdPlanilha.query.filter_by(id=pid, user_id=current_user.id).first()
     if not r:
         return jsonify({'error': 'Planilha não encontrada'}), 404
-    try:
-        linhas = json.loads(r.data or '[]')
-    except ValueError:
-        linhas = []
-    return jsonify({'id': r.id, 'name': r.name, 'rows': linhas})
+    return jsonify({'id': r.id, 'name': r.name, 'tables': _rtd_tabelas(r.data)})
 
 
 @app.route('/api/rtd-planilha/save', methods=['POST'])
@@ -2900,16 +2909,19 @@ def api_rtd_save():
     name = (d.get('name') or '').strip()
     if not name:
         return jsonify({'error': 'Informe um nome para a planilha'}), 400
-    linhas = []
-    for l in (d.get('rows') or [])[:300]:
-        try:
-            qty = float(l.get('qty')) if l.get('qty') not in (None, '') else None
-        except (TypeError, ValueError):
-            qty = None
-        src = l.get('src') if l.get('src') in ('last', 'bid', 'ask', 'teorico') else 'last'
-        linhas.append({'label': str(l.get('label') or '')[:60],
-                       'ticker': str(l.get('ticker') or '').strip().upper()[:20],
-                       'qty': qty, 'src': src})
+    tabelas = []
+    for t in (d.get('tables') or [])[:30]:
+        linhas = []
+        for l in (t.get('rows') or [])[:300]:
+            try:
+                qty = float(l.get('qty')) if l.get('qty') not in (None, '') else None
+            except (TypeError, ValueError):
+                qty = None
+            src = l.get('src') if l.get('src') in ('last', 'bid', 'ask', 'teorico') else 'last'
+            linhas.append({'label': str(l.get('label') or '')[:60],
+                           'ticker': str(l.get('ticker') or '').strip().upper()[:20],
+                           'qty': qty, 'src': src})
+        tabelas.append({'name': str(t.get('name') or '')[:60], 'rows': linhas})
     r = None
     if d.get('id'):
         r = RtdPlanilha.query.filter_by(id=d['id'], user_id=current_user.id).first()
@@ -2917,7 +2929,7 @@ def api_rtd_save():
         r = RtdPlanilha(user_id=current_user.id)
         db.session.add(r)
     r.name = name[:120]
-    r.data = json.dumps(linhas)
+    r.data = json.dumps({'tables': tabelas})
     db.session.commit()
     return jsonify({'ok': True, 'id': r.id})
 

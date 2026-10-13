@@ -15,7 +15,7 @@
   table.rtd input, table.rtd select { background:transparent; color:var(--text-primary); border:1px solid transparent; border-radius:4px; padding:.25rem .3rem; font-size:.85rem; width:100%; }
   table.rtd input:hover, table.rtd input:focus, table.rtd select:hover, table.rtd select:focus { border-color:var(--border-color); background:var(--card-bg,#1e293b); outline:none; }
   table.rtd td.rt input { width:110px; } table.rtd td.rl input { width:130px; } table.rtd td.rq input { width:80px; text-align:right; }
-  table.rtd select { width:60px; }
+  table.rtd select { width:92px; }
   .rtd-pos { color:#22c55e; } .rtd-neg { color:#ef4444; } .rtd-err { color:#f59e0b; font-size:.75rem; }
   .rtd-x { background:none; border:none; color:#ef4444; cursor:pointer; font-size:1rem; }
   .rtd-foot td { font-weight:700; border-top:2px solid var(--border-color); }
@@ -38,31 +38,30 @@
   <span id="rtd-status" style="font-size:.78rem;color:var(--text-secondary);"></span>
 </div>
 
-<div class="rtd-wrap">
-<table class="rtd no-datatable">
-  <thead><tr>
-    <th>Rótulo Linha</th><th>Ticket</th><th class="num">Strike</th><th class="num">Último</th><th class="num">Bid</th>
-    <th class="num">Ask</th><th class="num">Teórico</th><th class="num">Variação %</th><th class="num">Quantidade</th>
-    <th title="Coluna usada no cálculo do Valor">Fonte</th><th class="num">Valor</th><th>Vencimento</th><th class="num">Prazo</th><th></th>
-  </tr></thead>
-  <tbody id="rtd-body"></tbody>
-  <tfoot><tr class="rtd-foot"><td colspan="10" style="text-align:right;">Total</td><td class="num" id="rtd-total">—</td><td colspan="3"></td></tr></tfoot>
-</table>
+<div id="rtd-tables"></div>
+<div style="margin-top:.75rem; display:flex; gap:.75rem; align-items:center; flex-wrap:wrap;">
+  <button class="btn btn-secondary btn-sm" onclick="rtdAddTabela()">+ Nova tabela</button>
+  <span id="rtd-geral" style="margin-left:auto; font-weight:700;"></span>
 </div>
-<div style="margin-top:.6rem;"><button class="btn btn-secondary btn-sm" onclick="rtdAddLinha()">+ Linha</button></div>
 <div class="rtd-hint">Digite o ticker da opção (Enter) para buscar na OpLab. Quantidade: positiva = venda, negativa = compra.
-  Valor = Quantidade × (Último, Bid, Ask ou Teórico, conforme a Fonte). Prazo = dias corridos de hoje até o vencimento.</div>
+  Valor = Quantidade × (Último, Bid, Ask ou Teórico, conforme a Fonte). Prazo = dias corridos de hoje até o vencimento.
+  Use várias tabelas para separar, por exemplo, "Saída" (a recomprar) e "Entrada" (a montar).</div>
 
 <script>
 (function () {
   var ID = null;
   var DADOS = {};     // ticker -> dados da OpLab
   var timer = null;
+  var SRC = [['last', 'Último'], ['bid', 'Bid'], ['ask', 'Ask'], ['teorico', 'Teórico']];
 
   function $(i) { return document.getElementById(i); }
   function fmt(v, d) {
     if (v === null || v === undefined || v === '' || isNaN(v)) return '—';
     return Number(v).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function brl(v) {
+    if (v === null || v === undefined || isNaN(v)) return '—';
+    return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   }
   function num(s) {
     if (s === null || s === undefined) return null;
@@ -72,8 +71,37 @@
   }
   function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
   function status(t) { $('rtd-status').textContent = t || ''; }
+  function sinal(el, v) { el.className = el.className.replace(/ ?rtd-(pos|neg)/g, '') + (v > 0 ? ' rtd-pos' : v < 0 ? ' rtd-neg' : ''); }
 
-  function addLinha(l) {
+  function addTabela(t) {
+    t = t || {};
+    var box = document.createElement('div');
+    box.className = 'rtd-box';
+    box.style.marginBottom = '1.25rem';
+    box.innerHTML =
+      '<div class="rtd-bar" style="margin-bottom:.4rem;">' +
+        '<input type="text" class="t-name" style="min-width:200px;font-weight:700;" placeholder="Nome da tabela (ex.: Saída)" value="' + esc(t.name) + '">' +
+        '<span style="flex:1"></span>' +
+        '<button class="btn btn-secondary btn-sm t-add">+ Linha</button>' +
+        '<button class="btn btn-secondary btn-sm t-del" title="Excluir esta tabela">🗑 Tabela</button>' +
+      '</div>' +
+      '<div class="rtd-wrap"><table class="rtd no-datatable"><thead><tr>' +
+        '<th>Rótulo Linha</th><th>Ticket</th><th class="num">Strike</th><th class="num">Último</th><th class="num">Bid</th>' +
+        '<th class="num">Ask</th><th class="num">Teórico</th><th class="num">Variação %</th><th class="num">Quantidade</th>' +
+        '<th title="Coluna usada no cálculo do Valor">Fonte</th><th class="num">Valor</th><th>Vencimento</th><th class="num">Prazo</th><th></th>' +
+      '</tr></thead><tbody class="t-body"></tbody>' +
+      '<tfoot><tr class="rtd-foot"><td colspan="10" style="text-align:right;">Total</td><td class="num t-total">—</td><td colspan="3"></td></tr></tfoot>' +
+      '</table></div>';
+    $('rtd-tables').appendChild(box);
+    box.querySelector('.t-add').addEventListener('click', function () { var tr = addLinha(box, {}); tr.querySelector('.f-label').focus(); });
+    box.querySelector('.t-del').addEventListener('click', function () {
+      if (confirm('Excluir a tabela "' + (box.querySelector('.t-name').value || 'sem nome') + '"?')) { box.remove(); geral(); }
+    });
+    (t.rows && t.rows.length ? t.rows : [{}]).forEach(function (l) { addLinha(box, l); });
+    return box;
+  }
+
+  function addLinha(box, l) {
     l = l || {};
     var tr = document.createElement('tr');
     tr.className = 'rtd-row';
@@ -84,18 +112,17 @@
       '<td class="num c-teorico">—</td><td class="num c-var">—</td>' +
       '<td class="rq"><input class="f-qty" value="' + (l.qty != null ? String(l.qty).replace('.', ',') : '') + '" placeholder="0"></td>' +
       '<td><select class="f-src">' +
-        ['last:E', 'bid:F', 'ask:G', 'teorico:H'].map(function (o) {
-          var p = o.split(':'); return '<option value="' + p[0] + '"' + ((l.src || 'last') === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
-        }).join('') + '</select></td>' +
+        SRC.map(function (p) { return '<option value="' + p[0] + '"' + ((l.src || 'last') === p[0] ? ' selected' : '') + '>' + p[1] + '</option>'; }).join('') +
+      '</select></td>' +
       '<td class="num c-valor">—</td><td class="c-venc">—</td><td class="num c-prazo">—</td>' +
       '<td><button class="rtd-x" title="Excluir linha">✕</button></td>';
-    $('rtd-body').appendChild(tr);
+    box.querySelector('.t-body').appendChild(tr);
     var tk = tr.querySelector('.f-ticker');
     tk.addEventListener('change', function () { tk.value = tk.value.trim().toUpperCase(); buscar(tk.value, tr); });
     tk.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); tk.blur(); } });
     tr.querySelector('.f-qty').addEventListener('input', function () { calc(tr); });
     tr.querySelector('.f-src').addEventListener('change', function () { calc(tr); });
-    tr.querySelector('.rtd-x').addEventListener('click', function () { tr.remove(); total(); });
+    tr.querySelector('.rtd-x').addEventListener('click', function () { tr.remove(); total(box); geral(); });
     if (l.ticker && DADOS[l.ticker]) preenche(tr, DADOS[l.ticker]);
     return tr;
   }
@@ -112,16 +139,15 @@
     var set = function (c, t) { tr.querySelector('.' + c).textContent = t; };
     if (!d || d.error) {
       ['c-strike', 'c-last', 'c-bid', 'c-ask', 'c-teorico', 'c-var', 'c-venc', 'c-prazo'].forEach(function (c) { set(c, '—'); });
-      var cell = tr.querySelector('.c-venc'); cell.innerHTML = d && d.error ? '<span class="rtd-err">' + esc(d.error) + '</span>' : '—';
+      tr.querySelector('.c-venc').innerHTML = d && d.error ? '<span class="rtd-err">' + esc(d.error) + '</span>' : '—';
       calc(tr); return;
     }
     set('c-strike', fmt(d.strike, 2)); set('c-last', fmt(d.last, 2)); set('c-bid', fmt(d.bid, 2));
     set('c-ask', fmt(d.ask, 2)); set('c-teorico', fmt(d.teorico, 4));
     var v = tr.querySelector('.c-var');
     v.textContent = d.change_pct == null ? '—' : fmt(d.change_pct, 2) + '%';
-    v.className = 'num c-var ' + (d.change_pct > 0 ? 'rtd-pos' : d.change_pct < 0 ? 'rtd-neg' : '');
-    var venc = d.expiration ? String(d.expiration).slice(0, 10).split('-').reverse().join('/') : '—';
-    tr.querySelector('.c-venc').textContent = venc;
+    sinal(v, d.change_pct);
+    tr.querySelector('.c-venc').textContent = d.expiration ? String(d.expiration).slice(0, 10).split('-').reverse().join('/') : '—';
     var pz = prazo(d.expiration); set('c-prazo', pz == null ? '—' : String(pz));
     calc(tr);
   }
@@ -130,41 +156,54 @@
     var tk = tr.querySelector('.f-ticker').value.trim().toUpperCase();
     var d = DADOS[tk];
     var q = num(tr.querySelector('.f-qty').value);
-    var src = tr.querySelector('.f-src').value;
-    var px = d && !d.error ? d[src] : null;
+    var px = d && !d.error ? d[tr.querySelector('.f-src').value] : null;
     var cell = tr.querySelector('.c-valor');
-    if (q == null || px == null) { cell.textContent = '—'; cell.className = 'num c-valor'; cell.dataset.v = ''; }
-    else { var v = q * px; cell.textContent = fmt(v, 2); cell.dataset.v = v; cell.className = 'num c-valor ' + (v > 0 ? 'rtd-pos' : v < 0 ? 'rtd-neg' : ''); }
-    total();
+    if (q == null || px == null) { cell.textContent = '—'; cell.dataset.v = ''; sinal(cell, 0); }
+    else { var v = q * px; cell.textContent = brl(v); cell.dataset.v = v; sinal(cell, v); }
+    total(tr.closest('.rtd-box'));
+    geral();
   }
 
-  function total() {
+  function soma(root) {
     var s = 0, n = 0;
-    document.querySelectorAll('.c-valor').forEach(function (c) { if (c.dataset.v !== undefined && c.dataset.v !== '') { s += parseFloat(c.dataset.v); n++; } });
-    $('rtd-total').textContent = n ? fmt(s, 2) : '—';
+    root.querySelectorAll('.c-valor').forEach(function (c) { if (c.dataset.v !== undefined && c.dataset.v !== '') { s += parseFloat(c.dataset.v); n++; } });
+    return n ? s : null;
+  }
+  function total(box) {
+    if (!box) return;
+    var s = soma(box), el = box.querySelector('.t-total');
+    el.textContent = s == null ? '—' : brl(s); sinal(el, s || 0);
+  }
+  function geral() {
+    var boxes = document.querySelectorAll('.rtd-box'), el = $('rtd-geral');
+    boxes.forEach(total);
+    var s = soma($('rtd-tables'));
+    el.innerHTML = (boxes.length > 1 && s != null) ? 'Total geral: <span class="' + (s > 0 ? 'rtd-pos' : s < 0 ? 'rtd-neg' : '') + '">' + brl(s) + '</span>' : '';
+  }
+
+  function linhasComTicker(t) {
+    return Array.prototype.filter.call(document.querySelectorAll('.rtd-row'), function (x) { return x.querySelector('.f-ticker').value.trim().toUpperCase() === t; });
   }
 
   function buscar(ticker, tr) {
     if (!ticker) { preenche(tr, null); return Promise.resolve(); }
     return fetch('/api/busca-opcao/' + encodeURIComponent(ticker))
       .then(function (r) { return r.json(); })
-      .then(function (j) { DADOS[ticker] = j; document.querySelectorAll('.rtd-row').forEach(function (t) { if (t.querySelector('.f-ticker').value.trim().toUpperCase() === ticker) preenche(t, j); }); })
-      .catch(function (e) { DADOS[ticker] = { error: 'falha de rede' }; preenche(tr, DADOS[ticker]); });
+      .then(function (j) { DADOS[ticker] = j; linhasComTicker(ticker).forEach(function (t) { preenche(t, j); }); })
+      .catch(function () { DADOS[ticker] = { error: 'falha de rede' }; preenche(tr, DADOS[ticker]); });
   }
 
-  window.rtdAddLinha = function () { var tr = addLinha({}); tr.querySelector('.f-label').focus(); };
+  window.rtdAddTabela = function () { var b = addTabela({ name: '' }); b.querySelector('.t-name').focus(); };
 
   window.rtdAtualizarTudo = function () {
     var ticks = [];
     document.querySelectorAll('.f-ticker').forEach(function (i) { var t = i.value.trim().toUpperCase(); if (t && ticks.indexOf(t) < 0) ticks.push(t); });
-    var feitos = 0;
+    var feitos = 0, fila = ticks.slice();
     status('Atualizando 0/' + ticks.length + '…');
-    var fila = ticks.slice();
     function worker() {
       var t = fila.shift();
       if (!t) return Promise.resolve();
-      var tr = Array.prototype.filter.call(document.querySelectorAll('.rtd-row'), function (x) { return x.querySelector('.f-ticker').value.trim().toUpperCase() === t; })[0];
-      return buscar(t, tr).then(function () { feitos++; status('Atualizando ' + feitos + '/' + ticks.length + '…'); return worker(); });
+      return buscar(t, linhasComTicker(t)[0]).then(function () { feitos++; status('Atualizando ' + feitos + '/' + ticks.length + '…'); return worker(); });
     }
     Promise.all([worker(), worker(), worker()]).then(function () {
       status(ticks.length ? 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR') : '');
@@ -176,10 +215,13 @@
     if ($('rtd-auto').checked) timer = setInterval(window.rtdAtualizarTudo, 60000);
   };
 
-  function lerLinhas() {
-    return Array.prototype.map.call(document.querySelectorAll('.rtd-row'), function (tr) {
-      return { label: tr.querySelector('.f-label').value, ticker: tr.querySelector('.f-ticker').value.trim().toUpperCase(),
-               qty: num(tr.querySelector('.f-qty').value), src: tr.querySelector('.f-src').value };
+  function lerTabelas() {
+    return Array.prototype.map.call(document.querySelectorAll('.rtd-box'), function (box) {
+      return { name: box.querySelector('.t-name').value.trim(),
+        rows: Array.prototype.map.call(box.querySelectorAll('.rtd-row'), function (tr) {
+          return { label: tr.querySelector('.f-label').value, ticker: tr.querySelector('.f-ticker').value.trim().toUpperCase(),
+                   qty: num(tr.querySelector('.f-qty').value), src: tr.querySelector('.f-src').value };
+        }) };
     });
   }
 
@@ -195,14 +237,14 @@
     var nome = $('rtd-nome').value.trim();
     if (!nome) { alert('Informe um nome para a planilha.'); return; }
     fetch('/api/rtd-planilha/save', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: ID, name: nome, rows: lerLinhas() }) })
+      body: JSON.stringify({ id: ID, name: nome, tables: lerTabelas() }) })
       .then(function (r) { return r.json(); })
       .then(function (j) { if (j.error) { alert(j.error); return; } ID = j.id; listar(ID); status('Salvo.'); });
   };
 
   window.rtdNova = function () {
-    ID = null; $('rtd-nome').value = ''; $('rtd-sel').value = ''; $('rtd-body').innerHTML = ''; total();
-    addLinha({}); status('');
+    ID = null; $('rtd-nome').value = ''; $('rtd-sel').value = ''; $('rtd-tables').innerHTML = '';
+    addTabela({ name: 'Tabela 1' }); geral(); status('');
   };
 
   window.rtdExcluir = function () {
@@ -215,13 +257,13 @@
     if (!id) return;
     fetch('/api/rtd-planilha/' + id).then(function (r) { return r.json(); }).then(function (j) {
       if (j.error) { alert(j.error); return; }
-      ID = j.id; $('rtd-nome').value = j.name; $('rtd-body').innerHTML = '';
-      (j.rows.length ? j.rows : [{}]).forEach(addLinha);
-      total(); window.rtdAtualizarTudo();
+      ID = j.id; $('rtd-nome').value = j.name; $('rtd-tables').innerHTML = '';
+      (j.tables.length ? j.tables : [{ name: 'Tabela 1' }]).forEach(addTabela);
+      geral(); window.rtdAtualizarTudo();
     });
   };
 
-  listar(); addLinha({});
+  listar(); addTabela({ name: 'Tabela 1' });
 })();
 </script>
 {% endblock %}

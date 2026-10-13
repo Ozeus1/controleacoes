@@ -4777,6 +4777,30 @@ def _oplab_ewma(ticker, token):
     return val
 
 
+_IVATIVO_CACHE = {}
+
+
+def _oplab_iv_ativo(ticker, token):
+    """VI corrente (%) do ativo (campo iv_current de /market/stocks/{ticker}) — é a
+    volatilidade que a OpLab usa na coluna 'Teórica' e na probabilidade das estratégias.
+    Cache de 10 min."""
+    agora = time.time()
+    hit = _IVATIVO_CACHE.get(ticker)
+    if hit and agora - hit[0] < 600:
+        return hit[1]
+    val = None
+    try:
+        d = _oplab_get_json(f'/market/stocks/{ticker}', token, timeout=10)
+        if isinstance(d, list):
+            d = d[0] if d else {}
+        v = float((d or {}).get('iv_current') or 0)
+        val = v if v > 0 else None
+    except Exception:
+        val = None
+    _IVATIVO_CACHE[ticker] = (agora, val)
+    return val
+
+
 _CHAIN_CACHE = {}   # ativo -> (timestamp, lista de opções da OpLab)
 
 
@@ -5218,6 +5242,7 @@ def api_cadeia(ticker):
         'max_days':    max_days,
         'market_open': _market_open_cadeia,
         'ewma':        round(_ewma_ativo, 2) if _ewma_ativo else None,
+        'iv_ativo':    (round(_oplab_iv_ativo(ticker, token), 2) if _oplab_iv_ativo(ticker, token) else None),
     })
 
 

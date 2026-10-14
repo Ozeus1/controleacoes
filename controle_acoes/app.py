@@ -2833,6 +2833,7 @@ def api_simulacao_save():
 @app.route('/api/simulacao/list')
 @login_required
 def api_simulacao_list():
+    _garante_migracao_sims(current_user.id)
     sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id)\
                                 .order_by(SimulacaoOpcoes.created_at.desc()).all()
     result = []
@@ -14968,11 +14969,48 @@ def _calc_simulacao_metrics(sim):
         return None
 
 
+def _garante_migracao_sims(uid):
+    """Copia, uma única vez por usuário, as simulações antigas de Venda de Put (PutSale) e Colar
+    (CollarSimulation) para a tabela global de simulações (SimulacaoOpcoes), para que abram no SimFlex,
+    no Simulador etc. As linhas antigas ficam intactas (outras telas ainda leem PutSale)."""
+    chave = 'migr_putsale_collar_v1'
+    if Settings.get_value(chave, user_id=uid):
+        return
+    try:
+        for ps in PutSale.query.filter_by(user_id=uid).order_by(PutSale.id).all():
+            sim = SimulacaoOpcoes(user_id=uid, name=f'Venda de Put {ps.ticker}'[:120], underlying=ps.underlying_asset or '',
+                                  notes=ps.notes or '', created_at=ps.created_at or datetime.now())
+            db.session.add(sim)
+            db.session.flush()
+            db.session.add(SimulacaoLeg(sim_id=sim.id, leg_type='PUT', side='SELL', quantity=ps.quantity or 100,
+                                        strike=ps.strike, premium=ps.premium, expiration=ps.expiration_date,
+                                        ticker=ps.ticker, iv=0.0))
+        for c in CollarSimulation.query.filter_by(user_id=uid).order_by(CollarSimulation.id).all():
+            sim = SimulacaoOpcoes(user_id=uid, name=f'Colar {c.underlying_asset}'[:120], underlying=c.underlying_asset,
+                                  notes=c.notes or '', created_at=c.created_at or datetime.now())
+            db.session.add(sim)
+            db.session.flush()
+            q = c.quantity or 100
+            db.session.add(SimulacaoLeg(sim_id=sim.id, leg_type='STOCK', side='BUY', quantity=q, strike=0.0,
+                                        premium=c.stock_price, expiration=None, ticker=c.underlying_asset, iv=0.0))
+            db.session.add(SimulacaoLeg(sim_id=sim.id, leg_type='PUT', side='BUY', quantity=q, strike=c.put_strike,
+                                        premium=c.put_premium, expiration=c.expiration_date, ticker=c.put_ticker, iv=0.0))
+            db.session.add(SimulacaoLeg(sim_id=sim.id, leg_type='CALL', side='SELL', quantity=q, strike=c.call_strike,
+                                        premium=c.call_premium, expiration=c.expiration_date, ticker=c.call_ticker, iv=0.0))
+        s = Settings.query.filter_by(key=chave, user_id=uid).first() or Settings(key=chave, user_id=uid)
+        s.value = '1'
+        db.session.add(s)
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        app.logger.exception('Falha ao migrar simulações de Venda de Put/Colar para as simulações globais')
+
+
 @app.route('/venda_puts')
 @login_required
 def venda_puts():
-    items   = PutSale.query.filter_by(user_id=current_user.id).order_by(PutSale.created_at.desc()).all()
-    collars = CollarSimulation.query.filter_by(user_id=current_user.id).order_by(CollarSimulation.created_at.desc()).all()
+    _garante_migracao_sims(current_user.id)
+    items = collars = []
     # Simulações de Opções SALVAS (rascunhos/estudos — tabela SimulacaoOpcoes,
     # a mesma da tela "Simulação de Opções"), com estrutura (2+ pernas ou
     # perna de opção). As operações REAIS (StructuredOp) continuam só em
@@ -14982,7 +15020,7 @@ def venda_puts():
         raw_sims = SimulacaoOpcoes.query.filter_by(user_id=current_user.id)\
             .order_by(SimulacaoOpcoes.created_at.desc()).all()
         for sim in raw_sims:
-            if len(sim.legs or []) < 2:
+            if len(sim.legs or []) < 1:
                 continue
             metrics = _calc_simulacao_metrics(sim)
             if metrics:

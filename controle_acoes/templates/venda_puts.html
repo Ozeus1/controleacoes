@@ -56,227 +56,8 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         <a href="#" id="vp-back-btn" class="btn btn-secondary btn-sm" style="display:none;">← Voltar para a estratégia</a>
     </div>
 
-    <div class="calc-tabs">
-        <button class="calc-tab {% if not edit_collar %}active{% endif %}" onclick="switchTab('put',this)">🔽 Venda de Puts</button>
-        <button class="calc-tab {% if edit_collar %}active{% endif %}" onclick="switchTab('collar',this)" id="tab-collar">📐 Colar</button>
-        <button class="calc-tab" onclick="switchTab('estrutura',this)" id="tab-estrutura">🧩 Estruturas</button>
-    </div>
-
-    {# ══════════════════════════════════════════════════════ ABA: VENDA DE PUTS #}
-    <div class="calc-pane {% if not edit_collar %}active{% endif %}" id="pane-put">
-        <form method="POST"
-              action="{{ url_for('venda_puts_edit', id=edit.id) if edit else url_for('venda_puts_new') }}"
-              id="put-form">
-            <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:.75rem; align-items:end;">
-                <div style="grid-column:span 2; min-width:260px;">
-                    <label class="form-label">Ticker da Opção</label>
-                    <div style="display:flex; gap:.35rem;">
-                        <input class="form-control" name="ticker" id="inp-ticker" required style="text-transform:uppercase; flex:1;"
-                               value="{{ edit.ticker if edit else '' }}" placeholder="ex: PETRB20">
-                        <button type="button" class="btn btn-secondary btn-sm" id="btn-fetch-opt"
-                                style="white-space:nowrap; padding:.375rem .6rem;" title="Buscar dados da opção via OpLab">🔍</button>
-                    </div>
-                </div>
-                <div>
-                    <label class="form-label">Ativo Subjacente</label>
-                    <input class="form-control" name="underlying_asset" required style="text-transform:uppercase"
-                           value="{{ edit.underlying_asset if edit else '' }}" placeholder="ex: PETR4">
-                </div>
-                <div>
-                    <label class="form-label">Cotação do Ativo (R$)</label>
-                    <input class="form-control" name="underlying_price" type="number" step="0.01" min="0"
-                           id="inp-spot"
-                           value="{{ '%.2f'|format(edit.underlying_price) if edit and edit.underlying_price else '' }}"
-                           placeholder="ex: 38,50">
-                </div>
-                <div>
-                    <label class="form-label">Strike (R$)</label>
-                    <input class="form-control" name="strike" type="number" step="0.01" min="0" required
-                           id="inp-strike"
-                           value="{{ '%.2f'|format(edit.strike) if edit else '' }}" placeholder="ex: 35,00">
-                </div>
-                <div>
-                    <label class="form-label">Prêmio recebido (R$)</label>
-                    <input class="form-control" name="premium" type="number" step="0.01" min="0" required
-                           id="inp-premium"
-                           value="{{ '%.2f'|format(edit.premium) if edit else '' }}" placeholder="ex: 0,80">
-                </div>
-                <div>
-                    <label class="form-label">Quantidade</label>
-                    <input class="form-control" name="quantity" type="number" min="0" step="100" required
-                           id="inp-qty"
-                           value="{{ edit.quantity if edit else 100 }}">
-                </div>
-                <div>
-                    <label class="form-label">Vencimento</label>
-                    <input class="form-control" name="expiration_date" type="date" required
-                           id="inp-exp"
-                           value="{{ edit.expiration_date.strftime('%Y-%m-%d') if edit else '' }}">
-                </div>
-                <div>
-                    <label class="form-label">Data de Entrada</label>
-                    <input class="form-control" name="entry_date" type="date"
-                           id="inp-entry"
-                           value="{{ edit.entry_date.strftime('%Y-%m-%d') if edit and edit.entry_date else today.strftime('%Y-%m-%d') }}">
-                </div>
-                <div style="grid-column:1/-1;">
-                    <label class="form-label">Observações</label>
-                    <input class="form-control" name="notes" maxlength="200"
-                           value="{{ edit.notes if edit else '' }}" placeholder="Opcional">
-                </div>
-            </div>
-
-            <div id="metrics-panel" style="margin-top:1.25rem; display:none;">
-                <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:.75rem;">
-                    <div class="metric-box"><span class="metric-label">Noção (Notional)</span><span class="metric-value" id="m-notion">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Prêmio Total Recebido</span><span class="metric-value" id="m-total">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Prazo (dias úteis)</span><span class="metric-value" id="m-days">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Remuneração % a.m.</span><span class="metric-value" id="m-rem-am">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Remuneração % a.a.</span><span class="metric-value" id="m-rem-aa">—</span></div>
-                    <div class="metric-box"><span class="metric-label">% do CDI (a.a.)</span><span class="metric-value" id="m-cdi">—</span></div>
-                    <div class="metric-box" id="box-dist"><span class="metric-label">Distância ao Strike (OTM)</span><span class="metric-value" id="m-dist">—</span></div>
-                    <div class="metric-box" id="box-itm" style="display:none;"><span class="metric-label">Quanto entrou ITM</span><span class="metric-value" id="m-itm">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Break-even</span><span class="metric-value" id="m-be">—</span></div>
-                </div>
-            </div>
-
-            <div style="margin-top:1rem; display:flex; gap:.5rem; flex-wrap:wrap;">
-                <button type="submit" class="btn btn-primary">{{ '💾 Salvar Edição' if edit else '➕ Salvar' }}</button>
-                {% if edit %}<a href="{{ url_for('venda_puts') }}" class="btn btn-secondary">✖ Cancelar</a>{% endif %}
-            </div>
-        </form>
-    </div>
-
-    {# ══════════════════════════════════════════════════════ ABA: COLAR #}
-    <div class="calc-pane {% if edit_collar %}active{% endif %}" id="pane-collar">
-        <form method="POST"
-              action="{{ url_for('collar_edit', id=edit_collar.id) if edit_collar else url_for('collar_new') }}"
-              id="collar-form">
-
-            {# Grade de entradas — campos em destaque = entradas do usuário #}
-            <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(155px,1fr)); gap:.75rem; align-items:end;">
-
-                {# Ação #}
-                <div>
-                    <label class="form-label" style="font-weight:700;">Ativo (Ação)</label>
-                    <input class="form-control" id="c-ativo" name="underlying_asset" required style="text-transform:uppercase"
-                           value="{{ edit_collar.underlying_asset if edit_collar else '' }}" placeholder="ex: BRAP4">
-                </div>
-                <div>
-                    <label class="form-label" style="font-weight:700;">Cotação da Ação (R$)</label>
-                    <input class="form-control" name="stock_price" type="number" step="0.01" min="0" required
-                           id="c-stock" value="{{ '%.2f'|format(edit_collar.stock_price) if edit_collar else '' }}"
-                           placeholder="ex: 22,17" oninput="collarCalc()">
-                </div>
-                <div>
-                    <label class="form-label" style="font-weight:700;">Quantidade</label>
-                    <input class="form-control" name="quantity" type="number" min="1" required
-                           id="c-qty" value="{{ edit_collar.quantity if edit_collar else 100 }}"
-                           oninput="collarCalc()">
-                </div>
-
-                {# PUT comprada #}
-                <div>
-                    <label class="form-label" style="font-weight:700; color:var(--danger-color);">PUT — Ticker</label>
-                    <input class="form-control" name="put_ticker" required style="text-transform:uppercase"
-                           value="{{ edit_collar.put_ticker if edit_collar else '' }}" placeholder="ex: BRAPT22">
-                </div>
-                <div>
-                    <label class="form-label" style="font-weight:700; color:var(--danger-color);">PUT — Strike (R$)</label>
-                    <div style="display:flex; gap:.2rem;">
-                        <input class="form-control" name="put_strike" type="number" step="0.01" min="0" required
-                               id="c-put-k" value="{{ '%.2f'|format(edit_collar.put_strike) if edit_collar else '' }}"
-                               placeholder="ex: 22,20" oninput="collarCalc()">
-                        <button type="button" class="btn btn-secondary btn-sm" title="Escolher da cadeia de opções"
-                                onclick="abreCadeiaCampos('PUT', false, 'c-ativo', 'put_ticker', 'c-put-k', 'c-put-p')"
-                                style="padding:.15rem .4rem;">🔎</button>
-                    </div>
-                </div>
-                <div>
-                    <label class="form-label" style="font-weight:700; color:var(--danger-color);">PUT — Prêmio pago (R$)</label>
-                    <input class="form-control" name="put_premium" type="number" step="0.01" min="0" required
-                           id="c-put-p" value="{{ '%.2f'|format(edit_collar.put_premium) if edit_collar else '' }}"
-                           placeholder="ex: 0,78" oninput="collarCalc()">
-                </div>
-
-                {# CALL vendida #}
-                <div>
-                    <label class="form-label" style="font-weight:700; color:var(--accent-color,#3b82f6);">CALL — Ticker</label>
-                    <input class="form-control" name="call_ticker" required style="text-transform:uppercase"
-                           value="{{ edit_collar.call_ticker if edit_collar else '' }}" placeholder="ex: BRAPH2">
-                </div>
-                <div>
-                    <label class="form-label" style="font-weight:700; color:var(--accent-color,#3b82f6);">CALL — Strike (R$)</label>
-                    <div style="display:flex; gap:.2rem;">
-                        <input class="form-control" name="call_strike" type="number" step="0.01" min="0" required
-                               id="c-call-k" value="{{ '%.2f'|format(edit_collar.call_strike) if edit_collar else '' }}"
-                               placeholder="ex: 23,20" oninput="collarCalc()">
-                        <button type="button" class="btn btn-secondary btn-sm" title="Escolher da cadeia de opções"
-                                onclick="abreCadeiaCampos('CALL', true, 'c-ativo', 'call_ticker', 'c-call-k', 'c-call-p')"
-                                style="padding:.15rem .4rem;">🔎</button>
-                    </div>
-                </div>
-                <div>
-                    <label class="form-label" style="font-weight:700; color:var(--accent-color,#3b82f6);">CALL — Prêmio receb. (R$)</label>
-                    <input class="form-control" name="call_premium" type="number" step="0.01" min="0" required
-                           id="c-call-p" value="{{ '%.2f'|format(edit_collar.call_premium) if edit_collar else '' }}"
-                           placeholder="ex: 0,66" oninput="collarCalc()">
-                </div>
-
-                {# Datas #}
-                <div>
-                    <label class="form-label">Vencimento</label>
-                    <input class="form-control" name="expiration_date" type="date" required
-                           id="c-exp"
-                           value="{{ edit_collar.expiration_date.strftime('%Y-%m-%d') if edit_collar else '' }}"
-                           oninput="collarCalc()">
-                </div>
-                <div>
-                    <label class="form-label">Data de Entrada</label>
-                    <input class="form-control" name="entry_date" type="date"
-                           id="c-entry"
-                           value="{{ edit_collar.entry_date.strftime('%Y-%m-%d') if edit_collar and edit_collar.entry_date else today.strftime('%Y-%m-%d') }}">
-                </div>
-                <div style="grid-column:1/-1;">
-                    <label class="form-label">Observações</label>
-                    <input class="form-control" name="notes" maxlength="200"
-                           value="{{ edit_collar.notes if edit_collar else '' }}" placeholder="Opcional">
-                </div>
-            </div>
-
-            {# Painel de métricas do colar #}
-            <div id="collar-metrics" style="margin-top:1.25rem; display:none;">
-                <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(185px,1fr)); gap:.75rem;">
-                    <div class="metric-box"><span class="metric-label">Custo total da ação</span><span class="metric-value" id="cm-stock-cost">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Custo líquido (ação + PUT − CALL)</span><span class="metric-value" id="cm-net-cost">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Break-even (preço da ação)</span><span class="metric-value" id="cm-be">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Lucro máximo</span><span class="metric-value positive" id="cm-max-gain">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Perda máxima</span><span class="metric-value negative" id="cm-max-loss">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Lucro máx. %</span><span class="metric-value positive" id="cm-gain-pct">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Prazo (dias corridos)</span><span class="metric-value" id="cm-days">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Lucro máx. % a.m.</span><span class="metric-value" id="cm-rem-am">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Lucro máx. % a.a.</span><span class="metric-value" id="cm-rem-aa">—</span></div>
-                    <div class="metric-box"><span class="metric-label">% CDI (a.a.)</span><span class="metric-value" id="cm-cdi">—</span></div>
-                    <div class="metric-box"><span class="metric-label">Relação lucro/prejuízo</span><span class="metric-value" id="cm-ratio">—</span></div>
-                </div>
-            </div>
-
-            {# Gráfico de payoff do colar #}
-            <div id="c-chart-wrap" style="display:none; position:relative; margin-top:1.25rem;
-                 background:var(--hover-bg); border:1px solid var(--border-color); border-radius:8px; overflow:hidden;">
-                <canvas id="c-chart" style="display:block; width:100%;"></canvas>
-                <div id="c-chart-tip" class="pf-tip"></div>
-            </div>
-
-            <div style="margin-top:1rem; display:flex; gap:.5rem; flex-wrap:wrap;">
-                <button type="submit" class="btn btn-primary">{{ '💾 Salvar Edição' if edit_collar else '➕ Salvar Colar' }}</button>
-                {% if edit_collar %}<a href="{{ url_for('venda_puts') }}#collar" class="btn btn-secondary">✖ Cancelar</a>{% endif %}
-            </div>
-        </form>
-    </div>
-
-    {# ══════════════════════════════════════════════════════ ABA: ESTRUTURAS #}
-    <div class="calc-pane" id="pane-estrutura">
+    {# Venda de Put e Colar agora são operações da lista de Estruturas abaixo (salvam nas simulações globais). #}
+    <div class="calc-pane active" id="pane-estrutura">
         <div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(165px,1fr)); gap:.75rem; align-items:end;">
             <div style="grid-column:span 2; min-width:230px;">
                 <label class="form-label" style="font-weight:700;">Operação</label>
@@ -467,145 +248,6 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
   </div>
 </div>
 
-{# ══════════════════════════════════════════════════════ TABELA: PUTS SALVAS #}
-{% if items %}
-<div class="card" id="put-saved">
-    <h3 style="margin-bottom:1rem;">Simulações Salvas — Venda de Puts</h3>
-    <div class="table-scroll">
-        <table class="no-datatable" style="width:100%; font-size:.88rem;">
-            <thead>
-                <tr>
-                    <th>Ticker</th><th>Subjacente</th><th>Cotação</th><th>Strike</th>
-                    <th>Prêmio</th><th>Qtd</th><th>Vencimento</th><th>Entrada</th>
-                    <th>Noção</th><th>Prêmio Total</th><th>Prazo (du)</th>
-                    <th>Rem. a.m.</th><th>Rem. a.a.</th><th>% CDI</th>
-                    <th>Dist./ITM</th><th>Break-even</th><th>Ações</th>
-                </tr>
-            </thead>
-            <tbody>
-            {% for p in items %}
-            {% set entry_d = p.entry_date or today %}
-            {% set exp_d   = p.expiration_date %}
-            {% set du      = [(exp_d - today).days, 1] | max %}
-            {% set du_entry= [(exp_d - entry_d).days, 1] | max %}
-            {% set notion  = p.strike * p.quantity %}
-            {% set total_prem = p.premium * p.quantity %}
-            {% set rem_periodo = (p.premium / p.strike) if p.strike > 0 else 0 %}
-            {% set rem_aa  = (((1 + rem_periodo) ** (252.0 / du_entry)) - 1) * 100 %}
-            {% set rem_am  = (((1 + rem_periodo) ** (21.0 / du_entry)) - 1) * 100 %}
-            {% set pct_cdi = (rem_aa / selic * 100) if selic > 0 else 0 %}
-            {% set be      = p.strike - p.premium %}
-            {% set spot    = p.underlying_price %}
-            {% set dist    = ((spot - p.strike) / p.strike * 100) if (spot and p.strike > 0) else None %}
-            {% set itm_val = (p.strike - spot) if (spot and spot < p.strike) else None %}
-            <tr class="{{ 'table-warning' if spot and spot < p.strike else '' }}">
-                <td><strong>{{ p.ticker }}</strong></td>
-                <td>{{ p.underlying_asset }}</td>
-                <td>{{ 'R$ %.2f'|format(spot)|replace('.',',') if spot else '—' }}</td>
-                <td>{{ 'R$ %.2f'|format(p.strike)|replace('.',',') }}</td>
-                <td>{{ 'R$ %.2f'|format(p.premium)|replace('.',',') }}</td>
-                <td>{{ p.quantity }}</td>
-                <td>{{ p.expiration_date | date_fmt }}</td>
-                <td>{{ p.entry_date | date_fmt if p.entry_date else '—' }}</td>
-                <td>{{ 'R$ %.2f'|format(notion)|replace('.',',') }}</td>
-                <td>{{ 'R$ %.2f'|format(total_prem)|replace('.',',') }}</td>
-                <td>{{ du }}</td>
-                <td class="{{ 'positive' if rem_am > 0 else '' }}">{{ '%.2f'|format(rem_am)|replace('.',',') }}%</td>
-                <td class="{{ 'positive' if rem_aa > 0 else '' }}">{{ '%.2f'|format(rem_aa)|replace('.',',') }}%</td>
-                <td class="{{ 'positive' if pct_cdi > 100 else '' }}">{{ '%.0f'|format(pct_cdi) }}%</td>
-                <td>
-                    {% if dist is not none %}
-                        {% if dist >= 0 %}
-                            <span class="positive">+{{ '%.1f'|format(dist)|replace('.',',') }}% OTM</span>
-                        {% else %}
-                            <span class="negative">{{ '%.1f'|format(dist)|replace('.',',') }}% ITM{% if itm_val %} / R$ {{ '%.2f'|format(itm_val)|replace('.',',') }}{% endif %}</span>
-                        {% endif %}
-                    {% else %}—{% endif %}
-                </td>
-                <td>{{ 'R$ %.2f'|format(be)|replace('.',',') }}</td>
-                <td class="actions" style="white-space:nowrap;">
-                    <button class="btn btn-sm btn-azul" onclick="openTVChart('{{ p.underlying_asset }}')" title="Gráfico" >📈</button>
-                    <a href="{{ url_for('venda_puts_edit', id=p.id) }}" class="btn btn-sm btn-secondary">✏️</a>
-                    <form method="POST" action="{{ url_for('venda_puts_delete', id=p.id) }}"
-                          style="display:inline;" onsubmit="return confirm('Excluir?')">
-                        <button type="submit" class="btn btn-sm btn-danger">🗑</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endif %}
-
-{# ══════════════════════════════════════════════════════ TABELA: COLARES SALVOS #}
-{% if collars %}
-<div class="card" id="collar" style="margin-top:1.5rem;">
-    <h3 style="margin-bottom:1rem;">Simulações Salvas — Colar</h3>
-    <div class="table-scroll">
-        <table class="no-datatable" style="width:100%; font-size:.88rem;">
-            <thead>
-                <tr>
-                    <th>Ativo</th><th>Cotação</th><th>Qtd</th>
-                    <th>PUT</th><th>K PUT</th><th>Prêm. PUT</th>
-                    <th>CALL</th><th>K CALL</th><th>Prêm. CALL</th>
-                    <th>Custo Líquido</th><th>Break-even</th>
-                    <th>Lucro máx.</th><th>Perda máx.</th>
-                    <th>Lucro máx.%</th><th>Rem. a.m.</th><th>Rem. a.a.</th><th>% CDI</th>
-                    <th>Prazo (d.c.)</th><th>Vencimento</th><th>Ações</th>
-                </tr>
-            </thead>
-            <tbody>
-            {% for c in collars %}
-            {% set entry_d  = c.entry_date or today %}
-            {% set dc       = [(c.expiration_date - today).days, 1] | max %}
-            {% set dc_entry = [(c.expiration_date - entry_d).days, 1] | max %}
-            {% set net_opt  = (c.put_premium - c.call_premium) * c.quantity %}
-            {% set stock_cost = c.stock_price * c.quantity %}
-            {% set net_cost = stock_cost + net_opt %}
-            {% set be       = c.stock_price + c.put_premium - c.call_premium %}
-            {% set max_gain = (c.call_strike - c.stock_price - c.put_premium + c.call_premium) * c.quantity %}
-            {% set max_loss = (c.stock_price + c.put_premium - c.call_premium - c.put_strike) * c.quantity %}
-            {% set gain_pct = (max_gain / net_cost * 100) if net_cost > 0 else 0 %}
-            {% set rem_am  = (((1 + gain_pct/100) ** (30.0 / dc_entry)) - 1) * 100 %}
-            {% set rem_aa  = (((1 + gain_pct/100) ** (365.0 / dc_entry)) - 1) * 100 %}
-            {% set pct_cdi = (rem_aa / selic * 100) if selic > 0 else 0 %}
-            <tr>
-                <td><strong>{{ c.underlying_asset }}</strong></td>
-                <td>{{ 'R$ %.2f'|format(c.stock_price)|replace('.',',') }}</td>
-                <td>{{ c.quantity }}</td>
-                <td><span class="ticker-badge" style="background:rgba(239,68,68,.15);color:var(--danger-color);">{{ c.put_ticker }}</span></td>
-                <td>{{ 'R$ %.2f'|format(c.put_strike)|replace('.',',') }}</td>
-                <td class="negative">{{ 'R$ %.2f'|format(c.put_premium)|replace('.',',') }}</td>
-                <td><span class="ticker-badge" style="background:rgba(56,189,248,.15);color:#60a5fa;">{{ c.call_ticker }}</span></td>
-                <td>{{ 'R$ %.2f'|format(c.call_strike)|replace('.',',') }}</td>
-                <td class="positive">{{ 'R$ %.2f'|format(c.call_premium)|replace('.',',') }}</td>
-                <td>{{ 'R$ %.2f'|format(net_cost)|replace('.',',') }}</td>
-                <td>{{ 'R$ %.2f'|format(be)|replace('.',',') }}</td>
-                <td class="positive">{{ 'R$ %.2f'|format(max_gain)|replace('.',',') }}</td>
-                <td class="negative">{{ 'R$ %.2f'|format(max_loss|abs)|replace('.',',') }}</td>
-                <td class="positive">{{ '%.2f'|format(gain_pct)|replace('.',',') }}%</td>
-                <td class="{{ 'positive' if rem_am > 0 else '' }}">{{ '%.2f'|format(rem_am)|replace('.',',') }}%</td>
-                <td class="{{ 'positive' if rem_aa > 0 else '' }}">{{ '%.2f'|format(rem_aa)|replace('.',',') }}%</td>
-                <td class="{{ 'positive' if pct_cdi > 100 else '' }}">{{ '%.0f'|format(pct_cdi) }}%</td>
-                <td>{{ dc }}</td>
-                <td>{{ c.expiration_date | date_fmt }}</td>
-                <td class="actions" style="white-space:nowrap;">
-                    <a href="{{ url_for('collar_edit', id=c.id) }}" class="btn btn-sm btn-secondary">✏️</a>
-                    <form method="POST" action="{{ url_for('collar_delete', id=c.id) }}"
-                          style="display:inline;" onsubmit="return confirm('Excluir colar?')">
-                        <button type="submit" class="btn btn-sm btn-danger">🗑</button>
-                    </form>
-                </td>
-            </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</div>
-{% endif %}
-
 {# ══════════════════════ TABELA: SIMULAÇÕES SALVAS — ESTRUTURAS ═════════════ #}
 {# Rascunhos/estudos (tabela SimulacaoOpcoes, a mesma da tela "Simulação de
    Opções") com 2+ pernas. As operações REAIS (StructuredOp) continuam só
@@ -613,7 +255,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
 {% if simulacoes_estrutura %}
 <div class="card" id="simulacoes-estrutura" style="margin-top:1.5rem;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem; flex-wrap:wrap; gap:.5rem;">
-        <h3 style="margin:0;">Simulações Salvas — Estruturas</h3>
+        <h3 style="margin:0;">Simulações Salvas</h3>
         <a href="{{ url_for('simulacao_new') }}" class="btn btn-primary btn-sm">+ Nova Simulação</a>
     </div>
     <div class="table-scroll">
@@ -675,6 +317,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 </td>
                 <td class="actions" style="white-space:nowrap;">
                     <a href="{{ url_for('simulacao_edit', id=sim.id) }}" class="btn btn-sm btn-primary" title="Editar / ver gráfico">✏️</a>
+                    <a href="{{ url_for('simflex') }}?abrir={{ sim.id }}" class="btn btn-sm btn-azul" title="Abrir no SimFlex">🧩</a>
                     <form action="{{ url_for('simulacao_delete', id=sim.id) }}" method="post" style="display:inline;">
                         <button type="submit" class="btn btn-sm btn-danger" title="Excluir"
                                 onclick="return confirm('Excluir esta simulação?')">🗑️</button>
@@ -726,31 +369,13 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         return Math.max(Math.round(cal * 5 / 7), 1);
     }
 
-    // ── Abas ─────────────────────────────────────────────────────────────────
-    window.switchTab = function(tab, btn) {
-        document.querySelectorAll('.calc-tab').forEach(function(t){ t.classList.remove('active'); });
-        document.querySelectorAll('.calc-pane').forEach(function(p){ p.classList.remove('active'); });
-        btn.classList.add('active');
-        document.getElementById('pane-' + tab).classList.add('active');
-        location.hash = (tab === 'put') ? '' : tab;
-        // Redesenha o gráfico com a largura real do painel agora visível
-        if (tab === 'collar' && typeof collarCalc === 'function') collarCalc();
-        if (tab === 'estrutura' && typeof estruturaCalc === 'function') estruturaCalc();
-        atualizaCotacaoAtiva();
-    };
-
     // ── Cotação do ativo da aba ativa ─────────────────────────────────────────
     // Cada aba tem seu próprio campo de ativo; o painel do topo segue a aba
     // visível para não mostrar a cotação de um papel que não está sendo editado.
     var _vpQuoteTk = null;   // ticker já carregado (evita refazer a busca à toa)
 
     function campoAtivoDaAba() {
-        var ativa = document.querySelector('.calc-pane.active');
-        if (!ativa) return null;
-        if (ativa.id === 'pane-put')       return document.querySelector('#put-form [name=underlying_asset]');
-        if (ativa.id === 'pane-collar')    return document.getElementById('c-ativo');
-        if (ativa.id === 'pane-estrutura') return document.getElementById('e-ativo');
-        return null;
+        return document.getElementById('e-ativo');
     }
 
     window.atualizaCotacaoAtiva = function() {
@@ -777,10 +402,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 document.getElementById('vp-quote-px').textContent = fmtBRL(d.price);
                 // Preenche a cotação da aba se ainda estiver vazia — evita digitar
                 // à mão um número que acabamos de buscar. Valor já informado fica.
-                var campoSpot = {'pane-put': 'inp-spot', 'pane-collar': 'c-stock',
-                                 'pane-estrutura': 'e-spot'};
-                var ativa = document.querySelector('.calc-pane.active');
-                var spotEl = ativa ? document.getElementById(campoSpot[ativa.id]) : null;
+                var spotEl = document.getElementById('e-spot');
                 if (spotEl && !toFloat(spotEl.value)) {
                     spotEl.value = Number(d.price).toFixed(2);
                     spotEl.dispatchEvent(new Event('input'));
@@ -803,150 +425,6 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
     document.getElementById('vp-quote-chart').addEventListener('click', function() {
         if (_vpQuoteTk) openTVChart(_vpQuoteTk);
     });
-
-    // ── Cálculo Venda de Put ──────────────────────────────────────────────────
-    function recalcPut() {
-        var strike  = toFloat(document.getElementById('inp-strike').value);
-        var premium = toFloat(document.getElementById('inp-premium').value);
-        var qty     = toFloat(document.getElementById('inp-qty').value);
-        var spot    = toFloat(document.getElementById('inp-spot').value);
-        var expStr  = document.getElementById('inp-exp').value;
-        var entStr  = document.getElementById('inp-entry').value;
-        var panel   = document.getElementById('metrics-panel');
-        if (!strike || !premium || !qty || !expStr) { panel.style.display = 'none'; return; }
-        var today  = new Date(); today.setHours(0,0,0,0);
-        var exp    = new Date(expStr + 'T00:00:00');
-        var entry  = entStr ? new Date(entStr + 'T00:00:00') : today;
-        var du     = calcDU(today, exp);
-        var duEnt  = calcDU(entry, exp);
-        var notion    = strike * qty;
-        var totalPrem = premium * qty;
-        var remPer    = premium / strike;
-        var remAA     = (Math.pow(1 + remPer, WDY / duEnt) - 1) * 100;
-        var remAM     = (Math.pow(1 + remPer, WDM / duEnt) - 1) * 100;
-        var pctCDI    = SELIC > 0 ? remAA / SELIC * 100 : 0;
-        var be        = strike - premium;
-        document.getElementById('m-notion').textContent  = fmtBRL(notion);
-        document.getElementById('m-total').textContent   = fmtBRL(totalPrem);
-        document.getElementById('m-days').textContent    = du + ' du';
-        document.getElementById('m-rem-am').textContent  = fmtPct(remAM);
-        document.getElementById('m-rem-aa').textContent  = fmtPct(remAA);
-        document.getElementById('m-cdi').textContent     = fmtPct(pctCDI, 0);
-        document.getElementById('m-be').textContent      = fmtBRL(be);
-        var boxDist = document.getElementById('box-dist');
-        var boxItm  = document.getElementById('box-itm');
-        if (spot && strike > 0) {
-            var distPct = (spot - strike) / strike * 100;
-            var mDist = document.getElementById('m-dist');
-            if (distPct >= 0) {
-                mDist.textContent = '+' + fmtPct(distPct, 1) + ' OTM';
-                mDist.style.color = 'var(--positive-color, #4caf50)';
-                boxDist.style.display = ''; boxItm.style.display = 'none';
-            } else {
-                mDist.textContent = fmtPct(distPct, 1) + ' ITM';
-                mDist.style.color = 'var(--danger-color, #ef4444)';
-                boxDist.style.display = ''; boxItm.style.display = '';
-                document.getElementById('m-itm').textContent = fmtBRL(strike - spot) + ' (' + fmtPct(Math.abs(distPct), 1) + ')';
-            }
-        } else {
-            boxDist.style.display = 'none'; boxItm.style.display = 'none';
-        }
-        panel.style.display = '';
-    }
-    ['inp-strike','inp-premium','inp-qty','inp-spot','inp-exp','inp-entry'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) el.addEventListener('input', recalcPut);
-    });
-    recalcPut();
-
-    // ── Passo da Quantidade: unidade p/ BOVA11, centena p/ demais ─────────────
-    var qtyUserTouched = {{ 'true' if edit else 'false' }};
-    function updateQtyStep() {
-        var underlying = (document.querySelector('#put-form [name=underlying_asset]').value || '').trim().toUpperCase();
-        var qtyEl = document.getElementById('inp-qty');
-        var step = (underlying === 'BOVA11') ? 1 : 100;
-        var prevStep = parseInt(qtyEl.step, 10) || 100;
-        qtyEl.step = step;
-        if (!qtyUserTouched) {
-            qtyEl.value = step;
-        } else if (step !== prevStep) {
-            var cur = toFloat(qtyEl.value);
-            if (cur != null) qtyEl.value = Math.max(step, Math.round(cur / step) * step);
-        }
-    }
-    document.getElementById('inp-qty').addEventListener('input', function() { qtyUserTouched = true; });
-    document.querySelector('#put-form [name=underlying_asset]').addEventListener('input', updateQtyStep);
-
-    // Mesmo critério na aba Estruturas: as setinhas andam de 100 em 100
-    // (lote padrão de opções), exceto em BOVA11, que negocia por unidade.
-    (function() {
-        var eAtivo = document.getElementById('e-ativo');
-        var eQty   = document.getElementById('e-qty');
-        if (!eAtivo || !eQty) return;
-        function updateEstruturaQtyStep() {
-            var step = ((eAtivo.value || '').trim().toUpperCase() === 'BOVA11') ? 1 : 100;
-            if (parseInt(eQty.step, 10) === step) return;
-            eQty.step = step;
-            var cur = parseFloat(String(eQty.value).replace(',', '.'));
-            if (!isNaN(cur) && cur > 0) {
-                eQty.value = Math.max(step, Math.round(cur / step) * step);
-            }
-        }
-        eAtivo.addEventListener('input', updateEstruturaQtyStep);
-        updateEstruturaQtyStep();
-    })();
-
-    // ── Pré-preenchimento da venda de put via URL (vindo de Busca de Operações) ─
-    (function() {
-        var q = new URLSearchParams(location.search);
-        if (q.get('vp') !== '1') return;
-        function setP(sel, val) {
-            var el = document.querySelector(sel);
-            if (el && val != null && val !== '') el.value = val;
-        }
-        setP('#put-form [name=ticker]',           (q.get('ticker') || '').toUpperCase());
-        setP('#put-form [name=underlying_asset]', (q.get('ativo')  || '').toUpperCase());
-        setP('#inp-spot',    q.get('spot'));
-        setP('#inp-strike',  q.get('k'));
-        setP('#inp-premium', q.get('prem'));
-        setP('#inp-qty',     q.get('qty'));
-        setP('#inp-exp',     q.get('exp'));
-        recalcPut();
-    })();
-
-    // ── Buscar dados da opção via OpLab a partir do ticker ────────────────────
-    (function() {
-        var btn = document.getElementById('btn-fetch-opt');
-        if (!btn) return;
-        var btnDefault = btn.textContent;
-        btn.addEventListener('click', function() {
-            var ticker = (document.getElementById('inp-ticker').value || '').trim().toUpperCase();
-            if (!ticker) return;
-            btn.disabled = true;
-            fetch('/api/busca-opcao/' + encodeURIComponent(ticker))
-                .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
-                .then(function(res) {
-                    if (!res.ok || res.j.error) {
-                        alert(res.j.error || 'Erro ao buscar opção.');
-                        return;
-                    }
-                    var d = res.j;
-                    if (d.underlying) { document.querySelector('#put-form [name=underlying_asset]').value = d.underlying.toUpperCase(); updateQtyStep(); }
-                    if (d.spot_price != null) document.getElementById('inp-spot').value = d.spot_price;
-                    if (d.strike != null) document.getElementById('inp-strike').value = d.strike;
-                    var premium = (d.last != null && d.last > 0) ? d.last
-                                  : ((d.bid != null && d.ask != null) ? Math.round((d.bid + d.ask) / 2 * 100) / 100
-                                     : (d.bid != null ? d.bid : d.ask));
-                    if (premium != null) document.getElementById('inp-premium').value = premium;
-                    if (d.expiration) document.getElementById('inp-exp').value = String(d.expiration).slice(0, 10);
-                    recalcPut();
-                })
-                .catch(function(e) {
-                    alert('Falha na requisição: ' + e);
-                })
-                .finally(function() { btn.disabled = false; btn.textContent = btnDefault; });
-        });
-    })();
 
     // ── Black-Scholes p/ barra de métricas do gráfico ─────────────────────────
     function normCdfJ(x) {
@@ -1248,76 +726,6 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         return {lo: lo * 0.88, hi: hi * 1.1};
     }
 
-    // ── Cálculo Colar ─────────────────────────────────────────────────────────
-    window.collarCalc = function() {
-        var stock   = toFloat(document.getElementById('c-stock').value);
-        var qty     = toFloat(document.getElementById('c-qty').value);
-        var putK    = toFloat(document.getElementById('c-put-k').value);
-        var putP    = toFloat(document.getElementById('c-put-p').value);
-        var callK   = toFloat(document.getElementById('c-call-k').value);
-        var callP   = toFloat(document.getElementById('c-call-p').value);
-        var expStr  = document.getElementById('c-exp').value;
-        var entStr  = document.getElementById('c-entry').value;
-        var panel   = document.getElementById('collar-metrics');
-        if (!stock || !qty || !putK || !putP || !callK || !callP || !expStr) {
-            panel.style.display = 'none';
-            var cw = document.getElementById('c-chart-wrap');
-            if (cw) cw.style.display = 'none';
-            return;
-        }
-        var today  = new Date(); today.setHours(0,0,0,0);
-        var exp    = new Date(expStr + 'T00:00:00');
-        var entry  = entStr ? new Date(entStr + 'T00:00:00') : today;
-
-        // Prazo em dias corridos (compatível com Selic mensal)
-        var dc     = Math.max(Math.round((exp - today) / 86400000), 1);
-        var dcEnt  = Math.max(Math.round((exp - entry) / 86400000), 1);
-
-        var stockCost  = stock * qty;
-        var netOptCost = (putP - callP) * qty;   // débito líquido das opções
-        var netCost    = stockCost + netOptCost;
-
-        var be      = stock + putP - callP;
-        var maxGain = (callK - stock - putP + callP) * qty;
-        var maxLoss = (stock + putP - callP - putK) * qty;  // valor positivo = perda
-
-        // Rendimento do lucro máx. sobre custo líquido — base mensal (30 d.c.)
-        var gainPct = netCost > 0 ? maxGain / netCost * 100 : 0;
-        var remAM   = (Math.pow(1 + gainPct / 100, 30 / dcEnt) - 1) * 100;
-        var remAA   = (Math.pow(1 + gainPct / 100, 365 / dcEnt) - 1) * 100;
-        var pctCDI  = SELIC > 0 ? remAA / SELIC * 100 : 0;
-        var absLoss = Math.abs(maxLoss);
-        var ratio   = absLoss > 0.001 ? maxGain / absLoss : 0;
-
-        document.getElementById('cm-stock-cost').textContent = fmtBRL(stockCost);
-        document.getElementById('cm-net-cost').textContent   = fmtBRL(netCost);
-        document.getElementById('cm-be').textContent         = fmtBRL(be);
-        document.getElementById('cm-max-gain').textContent   = fmtBRL(maxGain);
-        document.getElementById('cm-max-loss').textContent   = fmtBRL(absLoss);
-        document.getElementById('cm-gain-pct').textContent   = fmtPct(gainPct);
-        document.getElementById('cm-days').textContent       = dc + ' d.c.';
-        document.getElementById('cm-rem-am').textContent     = fmtPct(remAM);
-        document.getElementById('cm-rem-aa').textContent     = fmtPct(remAA);
-        document.getElementById('cm-cdi').textContent        = fmtPct(pctCDI, 0);
-        document.getElementById('cm-ratio').textContent      = ratio.toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
-        panel.style.display = '';
-
-        // Gráfico de payoff do colar
-        var bePS = stock + putP - callP;   // custo líquido por ação
-        var rng = payoffRange([putK, callK], stock);
-        drawPayoff('c-chart', 'c-chart-tip', 'c-chart-wrap', function(S) {
-            return qty * (S + Math.max(0, putK - S) - Math.max(0, S - callK) - bePS);
-        }, {
-            lo: rng.lo, hi: rng.hi, spot: stock, T: dc / 365, qty: qty,
-            legs: [{t: 'STOCK', s: 1, q: 1},
-                   {t: 'PUT',  s: 1,  q: 1, K: putK,  prem: putP},
-                   {t: 'CALL', s: -1, q: 1, K: callK, prem: callP}],
-            strikes: [{k: putK, label: 'PUT ' + putK.toLocaleString('pt-BR')},
-                      {k: callK, label: 'CALL ' + callK.toLocaleString('pt-BR')}]
-        });
-    };
-    collarCalc();
-
     // ── Aba Estruturas: fence, seagull, travas ────────────────────────────────
     var E_CFG = {
         // Fence: já possuo as ações. A CALL vendida (coberta) financia a trava
@@ -1412,6 +820,8 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         strip:                   { nome: 'Strip', legs: ['CALL — COMPRA', 'PUT — COMPRA 2×', null, null], q: [1, 2], t: ['C', 'P'], lg: [0, 0] },
         synth_strangle:          { nome: 'Short Call Synthetic Strangle', legs: ['AÇÃO — COMPRA', 'CALL — VENDA', 'CALL — VENDA', null], q: [1, -1, -1], t: ['S', 'C', 'C'], lg: [0, 0, 0], stock: true },
         synthetic_straddle:      { nome: 'Synthetic Straddle', legs: ['AÇÃO — COMPRA', 'PUT — COMPRA 2×', null, null], q: [1, 2], t: ['S', 'P'], lg: [0, 0], stock: true },
+        venda_put:               { nome: 'Venda de PUT (a seco)', legs: ['PUT — VENDA', null, null, null], q: [-1], t: ['P'], lg: [0] },
+        colar:                   { nome: 'Colar (ação + PUT comprada + CALL vendida)', legs: ['AÇÃO — COMPRA', 'PUT — COMPRA', 'CALL — VENDA', null], q: [1, 1, -1], t: ['S', 'P', 'C'], lg: [0, 0, 0], stock: true },
         venda_coberta:           { nome: 'Venda Coberta (Covered Call)', legs: ['AÇÃO — COMPRA', 'CALL — VENDA', null, null], q: [1, -1], t: ['S', 'C'], lg: [0, 0], stock: true },
     };
 
@@ -2092,8 +1502,11 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             });
             // Só há perda ilimitada na queda se o payoff CAI quando S→0, isto é,
             // se a inclinação à esquerda for positiva (sobe com S, cai sem ele).
-            var perdaBaixaInf = incBaixaU > 0.0001;
-            var ganhoBaixaInf = incBaixaU < -0.0001;
+            // Na queda o ativo só chega a zero: o resultado em S=0 já está na grade
+            // (ptsU começa em 0), então a perda/ganho à esquerda é LIMITADO — ex.: PUT
+            // vendida perde no máximo (strike − prêmio) × qtd. Só a alta é ilimitada.
+            var perdaBaixaInf = false;
+            var ganhoBaixaInf = false;
             var ksOrdU = pernasU.filter(function(l) { return l.t !== 'S'; })
                                 .map(function(l) { return l.K; })
                                 .sort(function(a, b) { return a - b; });
@@ -2656,43 +2069,28 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         estruturaOpChanged();
     })();
 
+    // Links antigos das telas de Busca: ?vp=1 (Venda de Put) e ?cp=1 (Colar) abrem a operação equivalente aqui.
+    (function() {
+        var q = new URLSearchParams(location.search);
+        function setV(id, val) { var el = document.getElementById(id); if (el && val != null && val !== '') el.value = val; }
+        var up = function(v) { return (v || '').toUpperCase(); };
+        if (q.get('vp') === '1') {
+            setV('e-op', 'venda_put'); setV('e-ativo', up(q.get('ativo'))); setV('e-spot', q.get('spot'));
+            setV('e-qty', q.get('qty')); setV('e-exp', q.get('exp'));
+            setV('e-a-t', up(q.get('ticker'))); setV('e-a-k', q.get('k')); setV('e-a-p', q.get('prem'));
+        } else if (q.get('cp') === '1') {
+            setV('e-op', 'colar'); setV('e-ativo', up(q.get('ativo'))); setV('e-spot', q.get('spot'));
+            setV('e-qty', q.get('qty')); setV('e-exp', q.get('exp'));
+            setV('e-b-t', up(q.get('pt'))); setV('e-b-k', q.get('pk')); setV('e-b-p', q.get('pp'));
+            setV('e-c-t', up(q.get('ct'))); setV('e-c-k', q.get('ck')); setV('e-c-p', q.get('cprem'));
+        }
+    })();
+
     // Estado inicial dos rótulos das pernas
     estruturaOpChanged();
 
-    if (location.hash === '#estrutura') {
-        var tabE = document.getElementById('tab-estrutura');
-        if (tabE) switchTab('estrutura', tabE);
-    }
-
-    // ── Pré-preenchimento do colar via URL (vindo de Busca de Operações) ─────
-    (function() {
-        var q = new URLSearchParams(location.search);
-        if (q.get('cp') !== '1') return;
-        function setIf(sel, val) {
-            var el = document.querySelector(sel);
-            if (el && val != null && val !== '') el.value = val;
-        }
-        setIf('#pane-collar [name=underlying_asset]', (q.get('ativo') || '').toUpperCase());
-        setIf('#c-stock',  q.get('spot'));
-        setIf('#c-qty',    q.get('qty'));
-        setIf('#pane-collar [name=put_ticker]',  (q.get('pt') || '').toUpperCase());
-        setIf('#c-put-k',  q.get('pk'));
-        setIf('#c-put-p',  q.get('pp'));
-        setIf('#pane-collar [name=call_ticker]', (q.get('ct') || '').toUpperCase());
-        setIf('#c-call-k', q.get('ck'));
-        setIf('#c-call-p', q.get('cprem'));
-        setIf('#c-exp',    q.get('exp'));
-        collarCalc();
-    })();
-
-    // ── Activa aba correta ao carregar ────────────────────────────────────────
-    if (location.hash === '#collar') {
-        var tabBtn = document.getElementById('tab-collar');
-        if (tabBtn) switchTab('collar', tabBtn);
-    }
-
     // ── Cotação: segue o campo de ativo de cada aba ───────────────────────────
-    ['#put-form [name=underlying_asset]', '#c-ativo', '#e-ativo'].forEach(function(sel) {
+    ['#e-ativo'].forEach(function(sel) {
         var el = document.querySelector(sel);
         if (!el) return;
         // 'change' (e não 'input') pra não disparar uma busca por letra digitada.
@@ -2707,13 +2105,6 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
     window.closeTVChart = function() { modal.style.display = 'none'; };
     modal.addEventListener('click', function(e) { if (e.target === modal) closeTVChart(); });
 
-    // ── Rola para seção colar quando hash está presente ────────────────────────
-    if (location.hash === '#collar') {
-        setTimeout(function() {
-            var el = document.getElementById('collar');
-            if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
-        }, 200);
-    }
 })();
 </script>
 {% endblock %}

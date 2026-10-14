@@ -84,6 +84,29 @@
   .sf-list tr:hover td { background:#262626; }
   .sf-empty { padding:2rem; text-align:center; color:var(--sf-mut); }
   .sf-hint { font-size:.75rem; color:var(--sf-mut); padding:.3rem 1rem .8rem; }
+  .sf-hist { border-top:1px solid var(--sf-line); padding:.9rem 1rem 1rem; }
+  .sf-hist h4 { margin:0 0 .7rem; font-size:.95rem; display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
+  .sf-hist h4 .tag { font-size:.7rem; font-weight:600; padding:.1rem .45rem; border-radius:3px; background:rgba(96,165,250,.15); color:#60a5fa; }
+  .sf-eq { display:flex; align-items:stretch; gap:.5rem; flex-wrap:wrap; margin-bottom:.8rem; }
+  .sf-eq .box { background:var(--sf-bg2); border:1px solid var(--sf-line); border-radius:6px; padding:.55rem .8rem; min-width:170px; }
+  .sf-eq .box small { display:block; color:var(--sf-mut); font-size:.72rem; margin-bottom:.15rem; }
+  .sf-eq .box b { font-size:1.05rem; }
+  .sf-eq .op { align-self:center; font-size:1.3rem; color:var(--sf-mut); padding:0 .1rem; }
+  .sf-eq .box.tot { border-color:#60a5fa; }
+  .sf-tl { position:relative; margin:.3rem 0 0 .6rem; padding-left:1.4rem; border-left:2px solid var(--sf-line); }
+  .sf-ev { position:relative; margin-bottom:.75rem; background:var(--sf-bg2); border:1px solid var(--sf-line); border-radius:6px; padding:.55rem .75rem; }
+  .sf-ev::before { content:attr(data-n); position:absolute; left:-2.15rem; top:.5rem; width:1.4rem; height:1.4rem; border-radius:50%;
+                   background:#3b82f6; color:#fff; font-size:.72rem; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .sf-ev .hd { display:flex; justify-content:space-between; gap:.6rem; flex-wrap:wrap; font-size:.85rem; }
+  .sf-ev .hd .dt { color:var(--sf-mut); font-size:.75rem; }
+  .sf-ev .bd { font-size:.8rem; color:#cfcfcf; margin-top:.3rem; line-height:1.55; }
+  .sf-ev .pl { font-weight:700; white-space:nowrap; }
+  .sf-ev.nc { opacity:.65; }
+  .sf-leg { display:inline-block; padding:.02rem .35rem; border-radius:3px; font-size:.72rem; font-weight:700; margin-right:.2rem; }
+  .sf-leg.c { background:rgba(59,130,246,.18); color:#60a5fa; } .sf-leg.v { background:rgba(248,113,113,.16); color:#f87171; }
+  .sf-hgrid { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr); gap:1rem; }
+  .sf-obs { white-space:pre-wrap; background:var(--sf-bg2); border:1px dashed var(--sf-line); border-radius:6px; padding:.6rem .8rem; font-size:.82rem; }
+  @media (max-width: 900px) { .sf-hgrid { grid-template-columns:1fr; } }
   @media (max-width: 900px) { .sf-main { flex-direction:column; } .sf-stats { width:auto; } }
 </style>
 
@@ -176,7 +199,8 @@ function TAB() { return typeof CUR === 'number' ? TABS[CUR] : null; }
 function novaAba(o) {
   o = o || {};
   var t = { id: o.id || null, name: o.name || ('Nova ' + (++NOVAS)), ativo: (o.ativo || '').toUpperCase(), spot: null, chg: null, hora: '',
-            chain: null, ewma: null, ivAtivo: null, juros: SELIC, legs: [], dirty: !o.id, notes: o.notes || '' };
+            chain: null, ewma: null, ivAtivo: null, juros: SELIC, legs: [], dirty: !o.id, notes: o.notes || '',
+            hist: o.hist || null, carry: 0, useCarry: true };
   TABS.push(t);
   return t;
 }
@@ -382,6 +406,7 @@ function renderAba() {
         '<th class="bl sf-g">Delta</th><th class="sf-g">Gama</th><th class="sf-g">Theta</th><th class="sf-g">Vega</th><th class="sf-g">Rho</th></tr>' +
     '</thead><tbody id="sf-legs"></tbody><tfoot id="sf-foot"></tfoot></table></div>' +
     '<div class="sf-hint">🔒 = preço travado (não muda ao atualizar cotações); 🔓 = acompanha o mercado. Editar o preço recalcula a VI; editar a VI recalcula o preço (Black-Scholes, d.u./252, juros acima). Arraste ⠿ para reordenar.</div>' +
+    '<div id="sf-hist"></div>' +
     '<div class="sf-chartbar">' +
       '<div class="sf-dd" id="dd-curvas"><span>Curvas ▾</span><div class="pane">' +
         ['teorica:Teórica', 'expiracao:Expiração', 'atual:Atual', 'area:Área Lucro/Prejuízo'].map(function (p) { p = p.split(':');
@@ -402,7 +427,7 @@ function renderAba() {
       '<canvas id="sf-cv" style="width:100%;height:560px;display:block;"></canvas></div>' +
       '<div class="sf-stats" id="sf-stats"></div></div>';
   $('sf-body').innerHTML = h;
-  renderLegs(); bindAba(); calcula();
+  renderLegs(); bindAba(); calcula(); renderHist();
 }
 
 function renderLegs() {
@@ -638,6 +663,7 @@ function plEm(legs, S, d, modo, dv) {
     }
     tot += sgn(l) * l.qty * (val - (l.entPx || 0));
   });
+  if (t.hist && t.useCarry) tot += t.carry;
   return tot;
 }
 function volProb(legs) {
@@ -714,7 +740,7 @@ function calcula() {
   // base do %: débito pago; no crédito, margem − crédito recebido (capital efetivamente comprometido)
   var base = custoEnt > 0 ? custoEnt : (margem + custoEnt > 0 ? margem + custoEnt : Math.abs(custoEnt)) || 1;
   var cdi = Math.pow(1 + t.juros / 100, Math.max(duE, 1) / 252) - 1;
-  var resAtual = tot.res;
+  var resAtual = tot.res + ((t.hist && t.useCarry) ? t.carry : 0);
   CALC = { legs: legs, dE: dE, duE: duE, S: S, sig: sig, Ty: Ty, mu: mu, sd: sd, base: base, resAtual: resAtual, bes: bes };
   var pill = function (v, txt) { return '<span class="sf-pill ' + (v >= 0 ? 'g' : 'r') + '">' + txt + '</span>'; };
   var h = '<div class="r"><span>Vencimento</span><span>' + brD(isoD(dE)) + ' (' + duE + ' d.u.)</span></div>' +
@@ -730,6 +756,7 @@ function calcula() {
     '<div class="r sep" style="font-size:.78rem;color:var(--sf-mut);"><span>Vol. probabilidade</span><span>' + fmt(sig * 100) + '% a.a.</span></div>';
   $('sf-stats').innerHTML = h;
   desenha();
+  if (t.hist) renderHist();
 }
 
 // ── gráfico ──────────────────────────────────────────────────────────────
@@ -880,11 +907,128 @@ function render() {
 }
 window.addEventListener('beforeunload', function (e) { if (TABS.some(function (t) { return t.dirty && t.legs.length; })) { e.preventDefault(); e.returnValue = ''; } });
 
+// ── Histórico da operação (estrutura vinda da produção) ─────────────────
+function brlS(v) { return (v >= 0 ? '+' : '−') + 'R$ ' + fmt(Math.abs(v)); }
+function legTag(side) { return '<span class="sf-leg ' + (side === 'SELL' ? 'v' : 'c') + '">' + (side === 'SELL' ? 'V' : 'C') + '</span>'; }
+function eventosDe(h, legs) {
+  var ev = [];
+  (h.extrato || []).forEach(function (m) {
+    var fechada = m.tipo === 'Encerrada';
+    ev.push({ data: m.data || '', titulo: (fechada ? '🗑️ Perna encerrada' : '🔄 Perna substituída'),
+      corpo: legTag(m.side) + '<b>' + esc(m.ticker) + '</b> × ' + m.quantity + ': entrou a R$ ' + fmt(m.entrada) + ' e saiu a R$ ' + fmt(m.saida) +
+             (m.novo ? '<br>➜ entrou no lugar ' + legTag(m.side) + '<b>' + esc(m.novo) + '</b>' + (m.novo_premio != null ? ' a R$ ' + fmt(m.novo_premio) : '') : ''),
+      pnl: +m.pnl || 0, conta: m.contabiliza !== false });
+  });
+  (h.rolagens || []).forEach(function (r) {
+    if (r.old_long_ticker != null) {        // rolagem de trava
+      var q = +r.quantity || 1;
+      var pnl = ((+r.old_short_price || 0) - (+r.old_long_price || 0) + (+r.close_long_price || 0) - (+r.close_short_price || 0)) * q;
+      ev.push({ data: r.rolled_at || '', titulo: '🔁 Rolagem da trava' + (r.roll_type ? ' (' + esc(r.roll_type) + ')' : ''),
+        corpo: 'Fechou ' + legTag('BUY') + '<b>' + esc(r.old_long_ticker) + '</b> ' + fmt(r.old_long_price) + ' → ' + fmt(r.close_long_price) +
+               ' e ' + legTag('SELL') + '<b>' + esc(r.old_short_ticker) + '</b> ' + fmt(r.old_short_price) + ' → ' + fmt(r.close_short_price) +
+               '<br>➜ abriu ' + legTag('BUY') + '<b>' + esc(r.new_long_ticker) + '</b> a ' + fmt(r.new_long_price) + ' e ' + legTag('SELL') + '<b>' + esc(r.new_short_ticker) + '</b> a ' + fmt(r.new_short_price) +
+               (r.new_exp ? ' (venc. ' + brD(r.new_exp) + ')' : '') + (r.notes ? '<br><i>' + esc(r.notes) + '</i>' : ''),
+        pnl: pnl, conta: true });
+    } else if (r.old_ticker != null) {      // rolagem de opção individual
+      var op = legs.filter(function (l) { return l.type !== 'STOCK'; })[0] || { side: 'SELL', qty: 100 };
+      var pn = (op.side === 'SELL' ? (+r.old_premium || 0) - (+r.close_premium || 0) : (+r.close_premium || 0) - (+r.old_premium || 0)) * (op.qty || 0);
+      ev.push({ data: r.rolled_at || '', titulo: '🔁 Rolagem da opção' + (r.roll_type ? ' (' + esc(r.roll_type) + ')' : ''),
+        corpo: legTag(op.side) + '<b>' + esc(r.old_ticker) + '</b> (K ' + fmt(r.old_strike) + (r.old_exp ? ', ' + brD(r.old_exp) : '') + '): entrou a ' + fmt(r.old_premium) + ', zerada a ' + fmt(r.close_premium) +
+               '<br>➜ nova ' + legTag(op.side) + '<b>' + esc(r.new_ticker) + '</b> (K ' + fmt(r.new_strike) + (r.new_exp ? ', ' + brD(r.new_exp) : '') + ') a ' + fmt(r.new_premium) +
+               (r.notes ? '<br><i>' + esc(r.notes) + '</i>' : ''),
+        pnl: pn, conta: true, opcao: true });
+    }
+  });
+  var acc = 0; ev.forEach(function (e) { if (e.conta) acc += e.pnl; e.saldo = acc; });
+  return ev;
+}
+function sparkSaldo(ev) {
+  if (ev.length < 1) return '';
+  var vals = [0].concat(ev.map(function (e) { return e.saldo; })), W = 260, H = 70, mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals);
+  if (mn === mx) { mn -= 1; mx += 1; }
+  var X = function (i) { return 8 + i * (W - 16) / Math.max(1, vals.length - 1); }, Y = function (v) { return 8 + (mx - v) / (mx - mn) * (H - 16); };
+  var pts = vals.map(function (v, i) { return X(i) + ',' + Y(v); }).join(' ');
+  var ult = vals[vals.length - 1], cor = ult >= 0 ? '#34d399' : '#f87171';
+  return '<svg width="' + W + '" height="' + H + '" style="display:block;">' +
+    '<line x1="0" x2="' + W + '" y1="' + Y(0) + '" y2="' + Y(0) + '" stroke="#555" stroke-dasharray="4 3"/>' +
+    '<polyline fill="none" stroke="' + cor + '" stroke-width="2.2" points="' + pts + '"/>' +
+    vals.map(function (v, i) { return '<circle cx="' + X(i) + '" cy="' + Y(v) + '" r="3.2" fill="' + cor + '"/>'; }).join('') + '</svg>';
+}
+function renderHist() {
+  var t = TAB(), el = $('sf-hist'); if (!el) return;
+  if (!t || !t.hist) { el.innerHTML = ''; return; }
+  var h = t.hist, ev = eventosDe(h, t.legs);
+  var montagem = 0; t.legs.forEach(function (l) { if (l.on) montagem += -sgn(l) * l.qty * (l.entPx || 0); });   // > 0 = crédito
+  var aberto = 0; t.legs.forEach(function (l) { if (l.on && l.saiPx != null && l.entPx != null) aberto += sgn(l) * l.qty * (l.saiPx - l.entPx); });
+  var carry = t.carry, total = montagem + carry, agora = aberto + carry;
+  var cls = function (v) { return v >= 0 ? 'pos' : 'neg'; };
+  var html = '<div class="sf-hist"><h4>📚 Histórico da operação <span class="tag">produção</span>' +
+    (h.origem ? '<a href="' + esc(h.origem) + '" style="font-size:.75rem;color:#60a5fa;font-weight:400;">↩ voltar ao acompanhamento</a>' : '') +
+    '<label style="margin-left:auto;font-size:.78rem;font-weight:400;display:flex;gap:.35rem;align-items:center;cursor:pointer;white-space:nowrap;">' +
+      '<input type="checkbox" id="sf-carry"' + (t.useCarry ? ' checked' : '') + '> somar o resultado carregado nas curvas e métricas</label></h4>' +
+    '<div class="sf-eq">' +
+      '<div class="box"><small>Montagem atual (pernas abertas)</small><b class="' + cls(montagem) + '">' + (montagem >= 0 ? 'Crédito ' : 'Débito ') + 'R$ ' + fmt(Math.abs(montagem)) + '</b></div>' +
+      '<div class="op">+</div>' +
+      '<div class="box"><small>Resultado carregado (rolagens/manejos)</small><b class="' + cls(carry) + '">' + brlS(carry) + '</b></div>' +
+      '<div class="op">=</div>' +
+      '<div class="box tot"><small>Saldo total da operação</small><b class="' + cls(total) + '">' + brlS(total) + '</b></div>' +
+      '<div class="op" style="margin-left:.6rem;">·</div>' +
+      '<div class="box"><small>Se zerar tudo agora (aberto + carregado)</small><b class="' + cls(agora) + '">' + brlS(agora) + '</b></div>' +
+    '</div>';
+  html += '<div class="sf-hgrid"><div>';
+  if (ev.length) {
+    html += '<div style="font-size:.82rem;color:var(--sf-mut);margin-bottom:.4rem;">Linha do tempo — cada passo fechou pernas antigas; o lucro/prejuízo realizado fica “carregado” na estrutura atual.</div><div class="sf-tl">';
+    ev.forEach(function (e, i) {
+      html += '<div class="sf-ev' + (e.conta ? '' : ' nc') + '" data-n="' + (i + 1) + '"><div class="hd"><span><b>' + e.titulo + '</b> <span class="dt">' + esc(e.data) + '</span></span>' +
+        '<span><span class="pl ' + cls(e.pnl) + '">' + brlS(e.pnl) + '</span> <span class="dt">· saldo ' + brlS(e.saldo) + '</span></span></div>' +
+        '<div class="bd">' + e.corpo + (e.conta ? '' : '<br><span style="color:var(--sf-mut);">(já lançado no Histórico de trades — fora do saldo carregado)</span>') +
+        (e.opcao ? '<br><span style="color:var(--sf-mut);">(rolagem de opção individual: resultado calculado aqui; a tela de acompanhamento não o soma)</span>' : '') + '</div></div>';
+    });
+    html += '<div class="sf-ev" data-n="★" style="border-color:#60a5fa;"><div class="hd"><b>📍 Estrutura atual</b><span class="dt">pernas abertas na tabela acima</span></div>' +
+      '<div class="bd">' + t.legs.filter(function (l) { return l.on; }).map(function (l) { return legTag(l.side) + '<b>' + esc(l.type === 'STOCK' ? t.ativo : l.ticker) + '</b> × ' + l.qty + ' a R$ ' + fmt(l.entPx); }).join(' &nbsp; ') + '</div></div>';
+    html += '</div>';
+  } else {
+    html += '<div style="font-size:.85rem;color:var(--sf-mut);">Nenhuma rolagem ou manejo registrado — a estrutura está como foi montada.</div>';
+  }
+  html += '</div><div>';
+  if (ev.length) html += '<div style="font-size:.82rem;color:var(--sf-mut);margin-bottom:.3rem;">Evolução do resultado carregado</div>' + sparkSaldo(ev);
+  html += '<div style="font-size:.78rem;color:var(--sf-mut);margin:.7rem 0 .3rem;">Como ler</div><ul style="font-size:.78rem;color:#cfcfcf;margin:0;padding-left:1.1rem;line-height:1.55;">' +
+    '<li>As curvas mostram o resultado <b>da operação inteira</b> quando “somar o carregado” está ligado (deslocadas pelo saldo das rolagens).</li>' +
+    '<li>Desligando, vê-se só a estrutura atual, como se tivesse sido montada hoje pelos preços de entrada.</li>' +
+    '<li>Breakeven, lucro/perda máx. e probabilidade acompanham essa escolha.</li></ul>';
+  if (h.obs) html += '<div style="font-size:.78rem;color:var(--sf-mut);margin:.7rem 0 .3rem;">📝 Observações da operação</div><div class="sf-obs">' + esc(h.obs) + '</div>';
+  html += '</div></div></div>';
+  el.innerHTML = html;
+  $('sf-carry').addEventListener('change', function () { t.useCarry = this.checked; calcula(); renderHist(); });
+}
+
+function importarDaProducao() {
+  var d = null;
+  try { d = JSON.parse(localStorage.getItem('simflex_import') || 'null'); localStorage.removeItem('simflex_import'); } catch (e) { d = null; }
+  if (!d || !d.legs) return false;
+  var t = novaAba({ name: '📌 ' + (d.name || d.ativo), ativo: d.ativo, hist: { origem: d.origem, extrato: d.extrato || [], rolagens: d.rolagens || [], obs: d.obs || '' } });
+  t.dirty = false;
+  t.legs = d.legs.map(function (g) {
+    var tp = (g.opt_type || 'CALL').toUpperCase();
+    return { on: true, type: tp === 'STOCK' ? 'STOCK' : tp, side: g.side, qty: +g.quantity || 0, exp: tp === 'STOCK' ? '' : (g.expiration_date || ''),
+             strike: +g.strike || 0, ticker: g.ticker, entPx: +g.entry_price || 0, entVol: null, entLock: true,
+             saiPx: null, saiVol: null, saiLock: false, teoVol: null };
+  });
+  // resultado carregado: o mesmo da tela de acompanhamento + rolagens de opção individual
+  var ev = eventosDe(t.hist, t.legs), extraOp = 0;
+  ev.forEach(function (e) { if (e.opcao) extraOp += e.pnl; });
+  t.carry = (+d.rollAdjustment || 0) + extraOp;
+  CUR = TABS.length - 1;
+  render(); carregaCadeia(t);
+  return true;
+}
+
 // abre as abas salvas da última visita (ou ?abrir=<id>)
 var pedido = parseInt(new URLSearchParams(location.search).get('abrir'), 10);
 var ant = []; try { ant = JSON.parse(localStorage.getItem('simflex_abas') || '[]'); } catch (e) {}
 render();
 (pedido > 0 ? [pedido] : ant).forEach(function (id) { abrir(id, true); });
+if (new URLSearchParams(location.search).get('importar')) importarDaProducao();
 })();
 </script>
 {% endblock %}

@@ -15529,6 +15529,7 @@ def payoff_estruturada(id):
                            today=date.today(),
                            roll_adjustment=roll_adjustment,
                            roll_extrato=roll_extrato,
+                           roll_extrato_json=_json.dumps(roll_extrato, default=str, ensure_ascii=False),
                            legs_json=_json.dumps(legs))
 
 
@@ -15640,6 +15641,7 @@ def payoff_option(id):
                            T_days=t_days,
                            days_nearest=t_days,
                            legs_json=_json.dumps(legs),
+                           roll_history_json=opt.roll_history or '[]',
                            edit_url=url_for('edit_option', id=opt.id))
 
 

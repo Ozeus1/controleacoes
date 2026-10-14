@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div id="payoff-fullscreen-wrap">
-<div class="card" style="max-width:960px; margin:0 auto; padding:1.5rem;">
+<div class="card" style="max-width:1440px; width:100%; margin:0 auto; padding:1.5rem;">
 
     <div style="display:flex; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1.2rem;">
         <div>
@@ -26,6 +26,8 @@
             {% if underlying %}
             <button class="btn btn-outline-info btn-sm" onclick="openChart()">📈 Gráfico {{ underlying }}</button>
             {% endif %}
+            <button type="button" class="btn btn-sm btn-azul" onclick="abrirNoSimFlex()"
+                    title="Abre esta estrutura no SimFlex (curvas, gregas, probabilidades) com o histórico de rolagens e manejos">🧩 SimFlex</button>
             {% if obs_id is defined and obs_id %}
             <button type="button" id="payoff-obs-btn" class="payoff-obs-btn{{ ' tem-obs' if obs_text|trim else '' }}" onclick="payoffAbreObs()"
                     title="Anotações desta operação">📝 Obs.</button>
@@ -1551,4 +1553,22 @@ window.payoffSalvaObs = function () {
 };
 </script>
 {% endif %}
+<script>
+// Abre a estrutura no SimFlex (nova aba), levando pernas, rolagens/manejos e observações.
+window.abrirNoSimFlex = function () {
+    var dados = {
+        origem: location.pathname,
+        name: {{ title|default('')|tojson }},
+        ativo: {{ underlying|default('')|tojson }},
+        legs: {{ legs_json | safe }},
+        rollAdjustment: {{ roll_adjustment|default(0)|tojson }},
+        extrato: {{ (roll_extrato_json if roll_extrato_json is defined else '[]') | safe }},
+        rolagens: {{ (roll_history_json if roll_history_json is defined and roll_history_json else '[]') | safe }},
+        obs: {{ (obs_text if obs_text is defined else '')|tojson }}
+    };
+    try { localStorage.setItem('simflex_import', JSON.stringify(dados)); }
+    catch (e) { alert('Não foi possível preparar os dados para o SimFlex: ' + e); return; }
+    window.open('/simflex?importar=1', '_blank');
+};
+</script>
 {% endblock %}

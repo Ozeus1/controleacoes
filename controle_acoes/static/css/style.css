@@ -23,12 +23,14 @@
     --info-color: #4dabff;
     --border-color: #222c3d;
     --nav-active: #00e08a;
+    --nav-accent: #2196f3;         /* azul do SimFlex — menu e nome do site */
+    --nav-accent-soft: rgba(33, 150, 243, 0.14);
     --table-header-bg: #131a26;
     --input-bg: #0c1119;
     --input-color: #f2f6fc;
     --hover-bg: rgba(255, 255, 255, 0.028);
     --zebra-bg: rgba(255, 255, 255, 0.014);  /* listra de linha ímpar — mais discreta que --hover-bg */
-    --dropdown-hover: rgba(0, 224, 138, 0.10);
+    --dropdown-hover: rgba(33, 150, 243, 0.10);
     --toggle-bg: rgba(255, 255, 255, 0.06);
     --nav-mobile-border: rgba(255, 255, 255, 0.06);
     --indicator-price-color: #ffffff;
@@ -57,12 +59,14 @@
     --info-color: #0b74d4;
     --border-color: #d9e1ec;
     --nav-active: #00874f;
+    --nav-accent: #1976d2;
+    --nav-accent-soft: rgba(25, 118, 210, 0.12);
     --table-header-bg: #e8eef6;
     --input-bg: #ffffff;
     --input-color: #0b1220;
     --hover-bg: rgba(0, 0, 0, 0.03);
     --zebra-bg: rgba(0, 0, 0, 0.018);  /* listra de linha ímpar — mais discreta que --hover-bg */
-    --dropdown-hover: rgba(0, 135, 79, 0.10);
+    --dropdown-hover: rgba(25, 118, 210, 0.10);
     --toggle-bg: rgba(0, 0, 0, 0.06);
     --nav-mobile-border: rgba(0, 0, 0, 0.08);
     --indicator-price-color: #0b1220;
@@ -198,8 +202,8 @@ header {
 }
 
 .main-nav a.active {
-    color: var(--accent-color);
-    border-bottom-color: var(--accent-color);
+    color: var(--nav-accent);
+    border-bottom-color: var(--nav-accent);
 }
 
 /* ── Submenus do nav (Ações / Opções) ── */
@@ -276,10 +280,10 @@ header {
 }
 
 .nav-dropdown-menu a.active {
-    background: var(--accent-soft);
-    color: var(--accent-color);
+    background: var(--nav-accent-soft);
+    color: var(--nav-accent);
     border-bottom: none !important;
-    box-shadow: inset 2px 0 0 var(--accent-color);
+    box-shadow: inset 2px 0 0 var(--nav-accent);
 }
 
 /* Desktop: abre via classe .open controlada por JS (click).
@@ -928,7 +932,7 @@ label {
 
 .dropdown-content a:hover {
     background-color: var(--dropdown-hover);
-    color: var(--accent-color);
+    color: var(--nav-accent);
 }
 
 .dropdown.open .dropdown-content {
@@ -1018,7 +1022,7 @@ label {
     .main-nav > a.active,
     .main-nav > .nav-dropdown > .nav-dropdown-toggle.active {
         background: var(--hover-bg);
-        border-left: 3px solid var(--accent-color);
+        border-left: 3px solid var(--nav-accent);
         border-bottom-color: var(--nav-mobile-border);
         color: var(--text-primary);
     }

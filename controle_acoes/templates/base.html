@@ -328,19 +328,9 @@
                                    class="{{ 'active' if request.endpoint == 'ranking_volatilidade' and request.args.get('busca_liquidez') else '' }}">💧 Liquidez</a>
                                 <a href="{{ url_for('busca_opcao') }}"
                                    class="{{ 'active' if request.endpoint == 'busca_opcao' else '' }}">🔍 Opções</a>
-                                {# Estruturas: sub-submenu Comuns (busca_operacoes) / Avançadas (busca_operacoes_avancadas) #}
-                                <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['busca_operacoes','busca_operacoes_avancadas'] else '' }}">
-                                    <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['busca_operacoes','busca_operacoes_avancadas'] else '' }}"
-                                       onclick="toggleNavDrop(this,event)">
-                                        🎯 Estruturas <span class="nav-caret nav-caret-sub">▸</span>
-                                    </a>
-                                    <div class="nav-dropdown-menu nav-submenu">
-                                        <a href="{{ url_for('busca_operacoes') }}"
-                                           class="{{ 'active' if request.endpoint == 'busca_operacoes' else '' }}">🎯 Comuns</a>
-                                        <a href="{{ url_for('busca_operacoes_avancadas') }}"
-                                           class="{{ 'active' if request.endpoint == 'busca_operacoes_avancadas' else '' }}">🚀 Avançadas</a>
-                                    </div>
-                                </div>
+                                {# Estruturas: uma página só, com as abas Comuns / Avançadas (busca_operacoes e busca_operacoes_avancadas) #}
+                                <a href="{{ url_for('busca_operacoes') }}"
+                                   class="{{ 'active' if request.endpoint in ['busca_operacoes','busca_operacoes_avancadas'] else '' }}">🎯 Estruturas</a>
                                 {# Longas: sub-submenu Lançamento Coberto / Venda de Put #}
                                 <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['lancamento_coberto','venda_put_longa'] else '' }}">
                                     <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['lancamento_coberto','venda_put_longa'] else '' }}"

@@ -331,19 +331,9 @@
                                 {# Estruturas: uma página só, com as abas Comuns / Avançadas (busca_operacoes e busca_operacoes_avancadas) #}
                                 <a href="{{ url_for('busca_operacoes') }}"
                                    class="{{ 'active' if request.endpoint in ['busca_operacoes','busca_operacoes_avancadas'] else '' }}">🎯 Estruturas</a>
-                                {# Longas: sub-submenu Lançamento Coberto / Venda de Put #}
-                                <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['lancamento_coberto','venda_put_longa'] else '' }}">
-                                    <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['lancamento_coberto','venda_put_longa'] else '' }}"
-                                       onclick="toggleNavDrop(this,event)">
-                                        🛡️ Longas <span class="nav-caret nav-caret-sub">▸</span>
-                                    </a>
-                                    <div class="nav-dropdown-menu nav-submenu">
-                                        <a href="{{ url_for('lancamento_coberto') }}"
-                                           class="{{ 'active' if request.endpoint == 'lancamento_coberto' else '' }}">📋 Lançamento Coberto</a>
-                                        <a href="{{ url_for('venda_put_longa') }}"
-                                           class="{{ 'active' if request.endpoint == 'venda_put_longa' else '' }}">🛡️ Venda de Put</a>
-                                    </div>
-                                </div>
+                                {# Longas: uma página só, com as abas Lançamento Coberto / Venda de Put #}
+                                <a href="{{ url_for('lancamento_coberto') }}"
+                                   class="{{ 'active' if request.endpoint in ['lancamento_coberto','venda_put_longa'] else '' }}">🛡️ Longas</a>
                             </div>
                         </div>
                         {# Walls: item pai com submenu FYT / Mapa de Opções / Market Gamma / BGT Bands / Trader IND/DOL #}

@@ -53,6 +53,7 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
 {% endblock %}
 
 {% block content %}
+{% include '_longas_tabs.html' %}
 <div class="card" style="padding:1.2rem 1.4rem;">
 
   <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.4rem;">
@@ -262,6 +263,7 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       ['strike',   'Strike', ''],
       ['itm_pct',  'ITM/OTM', ''],
       ['premium',  'Prêmio (últ.)', ''],
+      ['teorico',  'Teór.', 'Valor teórico (Black-Scholes com a EWMA do ativo, dias úteis/252, r = Selic) — mesmo critério da OpLab'],
       ['bid',      'Bid', 'Melhor oferta de compra (quem quer comprar a PUT)'],
       ['ask',      'Ask', 'Melhor oferta de venda (quem quer vender a PUT)'],
       ['custo_ef', 'Custo ef. (BE)', 'Strike − prêmio = preço de equilíbrio se exercido'],
@@ -296,6 +298,7 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         '<td>' + brl(r.strike) + '</td>' +
         '<td class="' + (isItm ? 'neg' : 'pos') + '">' + (isItm ? '−' : '+') + fmt(Math.abs(r.itm_pct), 1) + '% ' + (isItm ? 'ITM' : 'OTM') + '</td>' +
         '<td class="pos">' + brl(r.premium) + '</td>' +
+        '<td style="color:var(--text-secondary);">' + (r.teorico ? brl(r.teorico) : '—') + '</td>' +
         '<td>' + (r.bid != null ? brl(r.bid) : '—') + '</td>' +
         '<td>' + (r.ask != null ? brl(r.ask) : '—') + '</td>' +
         '<td>' + brl(r.custo_ef) + '</td>' +

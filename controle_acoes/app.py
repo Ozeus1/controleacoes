@@ -4801,6 +4801,36 @@ def _oplab_iv_ativo(ticker, token):
     return val
 
 
+def _teorico_serie(o, spot, strike, due_iso, is_call, ewma, selic_pct):
+    """Valor teórico de uma série da cadeia (mesmo critério da 'Teór.' da OpLab): campo da API;
+    senão Black-Scholes com a EWMA do ativo, dias úteis/252 e r = Selic; senão com a VI da própria série."""
+    try:
+        tp = _oplab_teorico(o)
+        if tp and tp > 0:
+            return round(tp, 2)
+        if not (spot and strike > 0):
+            return None
+        if ewma:
+            try:
+                dtm = int(o.get('days_to_maturity'))
+            except (TypeError, ValueError):
+                dtm = None
+            if dtm is None:
+                dtm = max(int(round((date.fromisoformat(due_iso) - date.today()).days * 5 / 7)), 0)
+            if dtm > 0:
+                return round(_bs_price(spot, strike, dtm / 252.0, selic_pct / 100.0, ewma / 100.0, is_call), 2)
+        iv_raw = o.get('implied_volatility') or o.get('iv') or {}
+        ivv = (iv_raw.get('iv') or iv_raw.get('current')) if isinstance(iv_raw, dict) else iv_raw
+        dc = (date.fromisoformat(due_iso) - date.today()).days
+        if ivv and dc > 0:
+            sg = float(ivv) * (100 if 0 < float(ivv) <= 1.5 else 1) / 100.0
+            if 0.005 < sg < 4.9:
+                return round(_bs_price(spot, strike, dc / 365.0, math.log(1 + selic_pct / 100.0), sg, is_call), 2)
+    except Exception:
+        pass
+    return None
+
+
 _CHAIN_CACHE = {}   # ativo -> (timestamp, lista de opções da OpLab)
 
 
@@ -8649,6 +8679,7 @@ def api_lancamento_coberto(ticker):
     today  = _date.today()
     selic  = _selic()
     r_cont = math.log(1 + selic / 100.0)
+    _ewma_lc = _oplab_ewma(ticker, token)
 
     def _third_friday(y, m):
         count, day = 0, 1
@@ -8733,6 +8764,7 @@ def api_lancamento_coberto(ticker):
             'strike':    round(strike, 2),
             'itm_pct':   round((spot - strike) / spot * 100, 1),   # >0 = ITM
             'premium':   round(close, 2),
+            'teorico':   _teorico_serie(o, spot, strike, due, True, _ewma_lc, selic),
             'bid':       round(bid, 2) if bid else None,
             'ask':       round(ask, 2) if ask else None,
             'custo':     round(custo, 2),                          # custo líquido = BE
@@ -14619,6 +14651,7 @@ def api_venda_put_longa(ticker):
     )
     vol_mediana = _vols_put[len(_vols_put) // 2] if _vols_put else 0.0
 
+    _ewma_pl = _oplab_ewma(ticker, token)
     rows = []
     for o in opt_list:
         cat = str(o.get('category') or o.get('type') or '').upper()
@@ -14696,6 +14729,7 @@ def api_venda_put_longa(ticker):
             'strike':    round(strike, 2),
             'itm_pct':   round((strike - spot) / spot * 100, 1),   # >0 = ITM (put)
             'premium':   round(close, 2),
+            'teorico':   _teorico_serie(o, spot, strike, due, False, _ewma_pl, selic),
             'bid':       round(bid, 2) if bid else None,
             'ask':       round(ask, 2) if ask else None,
             'custo_ef':  round(custo_ef, 2),                       # BE se exercido

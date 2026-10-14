@@ -24,6 +24,9 @@
   .sf-btn.blue { background:var(--sf-blue); } .sf-btn.red { background:var(--sf-red); } .sf-btn.green { background:#2e7d32; }
   .sf-btn.gray { background:#424242; }
   .sf-btn:hover { filter:brightness(1.12); }
+  .sf-upd { background:none; border:1px solid var(--sf-line); color:var(--sf-mut); border-radius:4px; padding:.25rem .6rem; font-size:.72rem; cursor:pointer; white-space:nowrap; }
+  .sf-upd:hover { color:var(--sf-txt); border-color:var(--sf-mut); }
+  .sf-upd.busy { opacity:.55; pointer-events:none; }
   .sf-spot { font-size:1.6rem; font-weight:700; color:var(--sf-orange); }
   .sf-chg { font-size:.75rem; } .sf-time { font-size:.75rem; font-weight:600; }
   .sf-save { position:relative; margin-left:auto; display:flex; }
@@ -260,10 +263,11 @@ function aplicaCotacao(t, l, inicial) {
 function carregaCadeia(t, cb) {
   if (!t.ativo) { render(); return; }
   var st = $('sf-st'); if (st) st.textContent = '⏳ buscando ' + t.ativo + '…';
+  var bt = $('sf-atu'); if (bt) bt.classList.add('busy');
   fetch('/api/cadeia/' + encodeURIComponent(t.ativo) + '?n=40&n_meses=' + GL.nMeses + '&weekly=' + (GL.weekly ? 1 : 0))
     .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
     .then(function (res) {
-      if (!res.ok || res.j.error) { if ($('sf-st')) $('sf-st').textContent = '⚠️ ' + (res.j.error || 'erro na cadeia'); return; }
+      if (!res.ok || res.j.error) { if ($('sf-st')) $('sf-st').textContent = '⚠️ ' + (res.j.error || 'erro na cadeia'); if ($('sf-atu')) $('sf-atu').classList.remove('busy'); return; }
       var c = res.j;
       t.chain = c; t.spot = c.spot; t.chg = c.spot_change; t.ewma = c.ewma || null; t.ivAtivo = c.iv_ativo || null;
       t.hora = new Date().toLocaleTimeString('pt-BR');
@@ -271,7 +275,7 @@ function carregaCadeia(t, cb) {
       if (cb) cb();
       render();
     })
-    .catch(function (e) { if ($('sf-st')) $('sf-st').textContent = '⚠️ falha de rede: ' + e; });
+    .catch(function (e) { if ($('sf-st')) $('sf-st').textContent = '⚠️ falha de rede: ' + e; if ($('sf-atu')) $('sf-atu').classList.remove('busy'); });
 }
 
 // ── abas ─────────────────────────────────────────────────────────────────
@@ -378,7 +382,7 @@ function renderAba() {
     '<div class="sf-head">' +
       '<div class="sf-grp"><label>Ativo</label><div style="display:flex;gap:.6rem;align-items:center;">' +
         '<input class="sf-in" id="sf-ativo" list="sf-ativos" value="' + esc(t.ativo) + '" placeholder="ex.: BOVA11" style="width:150px;text-transform:uppercase;">' +
-        '<button class="sf-btn gray" id="sf-atu" title="Buscar / atualizar cotações">⟳</button>' +
+        '<button class="sf-upd" id="sf-atu" title="Busca de novo as cotações do ativo e das opções (preços de saída, VI, gregas e gráfico). Preços de entrada travados 🔒 são mantidos.">↻ Atualizar cotação</button>' +
         '<span class="sf-spot">' + (t.spot ? fmt(t.spot) : '—') + '</span>' +
         '<span style="display:flex;flex-direction:column;"><span class="sf-chg ' + chgCls + '">' + (t.chg != null ? fmt(t.chg) + '%' : '') + '</span>' +
         '<span class="sf-time">' + esc(t.hora) + '</span></span></div></div>' +

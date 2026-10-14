@@ -1,18 +1,3 @@
-{# Abas Comuns / Avançadas da busca de estruturas (mesmo visual das abas do SimFlex) #}
-<style>
-  .est-tabs { display:flex; align-items:stretch; border:1px solid var(--border-color); border-bottom:none; border-radius:8px 8px 0 0;
-              background:var(--card-bg); overflow-x:auto; margin-bottom:-1px; }
-  .est-tab { display:flex; align-items:center; gap:.45rem; padding:.7rem 1.1rem; font-size:.8rem; font-weight:600; letter-spacing:.04em;
-             text-transform:uppercase; color:var(--text-secondary); text-decoration:none; border-bottom:3px solid transparent; white-space:nowrap; }
-  .est-tab:hover { color:var(--text-primary); }
-  .est-tab.on { color:var(--nav-accent); border-bottom-color:var(--nav-accent); }
-  .est-tab + .est-tab { border-left:1px solid var(--border-color); }
-  .est-tabs + .card { border-top-left-radius:0; border-top-right-radius:0; }
-</style>
-{% set _tk = request.args.get('ticker') %}
-<div class="est-tabs">
-  <a class="est-tab {{ 'on' if request.endpoint == 'busca_operacoes' else '' }}"
-     href="{{ url_for('busca_operacoes') }}{{ '?ticker=' ~ _tk if _tk else '' }}">🎯 Comuns</a>
-  <a class="est-tab {{ 'on' if request.endpoint == 'busca_operacoes_avancadas' else '' }}"
-     href="{{ url_for('busca_operacoes_avancadas') }}{{ '?ticker=' ~ _tk if _tk else '' }}">🚀 Avançadas</a>
-</div>
+{# Abas Comuns / Avançadas da busca de estruturas #}
+{% set abas = [('busca_operacoes', '🎯 Comuns'), ('busca_operacoes_avancadas', '🚀 Avançadas')] %}
+{% include '_abas_pagina.html' %}

@@ -243,7 +243,8 @@ function exportarPnt() {
     if (!tk || !qty) { alert('Preencha ticker e quantidade.'); return; }
     if (!cur) { alert('Informe a cotação atual da opção (preço da desmontagem).'); return; }
     var lado = tipo.indexOf('VENDA') === 0 ? 'C' : 'V';          // desmontar: inverte
-    var linha = [tk, lado, qty, cur.toFixed(2).replace('.', ',')].join(String.fromCharCode(9));
+    var coef = (lado === 'C' ? 1 : -1) * cur;   // + paga (recompra) · − recebe (venda)
+    var linha = [tk, lado, qty, coef.toFixed(2).replace('.', ',')].join(String.fromCharCode(9));
     var btn = document.getElementById('btn-exportar-pnt'), original = btn.textContent;
     function ok() { btn.textContent = '✓ Copiado!'; setTimeout(function () { btn.textContent = original; }, 1500); }
     function fail() { alert('Não foi possível copiar automaticamente. Texto:' + String.fromCharCode(10) + String.fromCharCode(10) + linha); }

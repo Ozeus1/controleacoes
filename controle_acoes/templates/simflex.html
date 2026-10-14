@@ -588,7 +588,7 @@ function bindAba() {
   });
   bindChart();
 }
-// Pnt: tickers, C/V, quantidades e spread (|saldo| ÷ qtd da 1ª perna), separados por TAB
+// Pnt: tickers, C/V, quantidades e coeficiente com sinal (+ paga / − recebe; saldo ÷ qtd da 1ª perna), separados por TAB
 function copiaPnt(pernas, oque) {
   pernas = pernas.filter(function (l) { return l.ticker && l.qty > 0; });
   if (!pernas.length) return;
@@ -597,7 +597,7 @@ function copiaPnt(pernas, oque) {
   var linha = pernas.map(function (l) { return l.ticker.toUpperCase(); })
     .concat(pernas.map(function (l) { return l.side === 'BUY' ? 'C' : 'V'; }))
     .concat(pernas.map(function (l) { return l.qty; }))
-    .concat([(Math.abs(net) / (pernas[0].qty || 1)).toFixed(2).replace('.', ',')]).join(TABc);
+    .concat([(-net / (pernas[0].qty || 1)).toFixed(2).replace('.', ',')]).join(TABc);
   var msg = function () { var st = $('sf-st'); if (st) st.textContent = '📋 Ordem de ' + oque + ' copiada para o Pnt: ' + linha.split(TABc).join('  '); };
   var fail = function () { prompt('Copie a ordem de ' + oque + ' (Pnt):', linha); };
   if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(function () { setTimeout(msg, 50); }, fail); else fail();

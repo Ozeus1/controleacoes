@@ -281,7 +281,7 @@ function exportarPnt() {
     var curL = v('leg_long_current'), curS = v('leg_short_current');
     if (!tl || !ts || !qty) { alert('Preencha os tickers e a quantidade.'); return; }
     if (!curL && !curS) { alert('Informe as cotações atuais das duas pernas (preços da desmontagem).'); return; }
-    var spread = Math.abs(curS - curL);
+    var spread = curS - curL;   // + paga para desmontar (débito) · − recebe (crédito)
     var TAB = String.fromCharCode(9);
     var linha = [tl, ts, 'V', 'C', qty, qty, spread.toFixed(2).replace('.', ',')].join(TAB);
     var btn = document.getElementById('btn-exportar-pnt'), original = btn.textContent;

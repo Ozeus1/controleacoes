@@ -398,11 +398,11 @@ function exportarPnt() {
         qtys.push(qty);
     });
 
-    // Spread por ação: saldo total da montagem (valor absoluto) dividido
+    // Spread por ação: saldo total da montagem (com sinal: + paga, − recebe) dividido
     // pela quantidade da 1ª perna — mesma referência mostrada no preview
     // "Saldo da montagem" (R$ totais) mas normalizada por lote/ação.
     var qtyRef = qtys[0] || 1;
-    var spreadPorAcao = Math.abs(net) / qtyRef;
+    var spreadPorAcao = -net / qtyRef;   // + paga (débito) · − recebe (crédito)
 
     var linha = tickers.concat(sides).concat(qtys)
         .concat([spreadPorAcao.toFixed(2).replace('.', ',')])

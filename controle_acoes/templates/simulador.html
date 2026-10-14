@@ -1453,13 +1453,13 @@ window.simCarregarModal = function () {
 
 
 // Exportar Pnt (MONTAGEM da estrutura): tickers, C/V, quantidades (separados por TAB) e o
-// spread = saldo líquido da montagem (valor absoluto) ÷ quantidade da 1ª perna.
+// coeficiente = saldo líquido da montagem ÷ quantidade da 1ª perna, COM SINAL: + paga (débito), − recebe (crédito).
 function exportarPntLegs(pernas, btn) {
     pernas = pernas.filter(function (l) { return l.ticker && l.qty > 0; });
     if (!pernas.length) { alert('Preencha ao menos uma perna com ticker e quantidade.'); return; }
     var net = 0;
     pernas.forEach(function (l) { net += (l.side === 'SELL' ? 1 : -1) * l.qty * l.premium; });
-    var spread = Math.abs(net) / (pernas[0].qty || 1);
+    var spread = -net / (pernas[0].qty || 1);   // + paga (débito) · − recebe (crédito)
     var TAB = String.fromCharCode(9);
     var linha = pernas.map(function (l) { return l.ticker.toUpperCase(); })
         .concat(pernas.map(function (l) { return l.side === 'BUY' ? 'C' : 'V'; }))

@@ -979,7 +979,7 @@ window.jbExportarPnt = function () {
     if (!legs.length) { alert('Preencha as pernas primeiro.'); return; }
     var net = 0;
     legs.forEach(function (l) { net += (l.side === 'SELL' ? 1 : -1) * l.qty * l.premium; });
-    var spread = Math.abs(net) / (legs[0].qty || 1);
+    var spread = -net / (legs[0].qty || 1);   // + paga (débito) · − recebe (crédito)
     var linha = legs.map(function (l) { return l.ticker.toUpperCase(); })
         .concat(legs.map(function (l) { return l.side === 'BUY' ? 'C' : 'V'; }))
         .concat(legs.map(function (l) { return l.qty; }))

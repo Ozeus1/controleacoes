@@ -2524,7 +2524,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         });
 
         var qtyRef = qtys[0] || 1;
-        var spreadPorAcao = Math.abs(net) / qtyRef;
+        var spreadPorAcao = -net / qtyRef;   // + paga (débito) · − recebe (crédito)
         var linha = tickers.concat(sides).concat(qtys)
             .concat([spreadPorAcao.toFixed(2).replace('.', ',')])
             .join('\t');

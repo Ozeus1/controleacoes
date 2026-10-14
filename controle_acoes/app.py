@@ -21282,6 +21282,29 @@ def update_intl_quotes():
 
 # --- User Management & Security ---
 
+@app.after_request
+def _gzip_resposta(resp):
+    """Comprime HTML/JSON/JS/CSS quando o navegador aceita — as páginas de busca têm 110–150 KB.
+    Não mexe em respostas já comprimidas, em streaming ou em arquivos enviados direto."""
+    try:
+        if (resp.status_code != 200 or resp.direct_passthrough or 'Content-Encoding' in resp.headers
+                or 'gzip' not in request.headers.get('Accept-Encoding', '')):
+            return resp
+        if resp.mimetype not in ('text/html', 'application/json', 'application/javascript', 'text/javascript', 'text/css'):
+            return resp
+        dados = resp.get_data()
+        if len(dados) < 1024:
+            return resp
+        import gzip as _gz
+        resp.set_data(_gz.compress(dados, compresslevel=5))
+        resp.headers['Content-Encoding'] = 'gzip'
+        resp.headers['Content-Length'] = str(len(resp.get_data()))
+        resp.headers.add('Vary', 'Accept-Encoding')
+    except Exception:
+        pass
+    return resp
+
+
 @app.before_request
 def check_user_status():
     if current_user.is_authenticated:

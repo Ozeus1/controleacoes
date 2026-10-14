@@ -16803,13 +16803,35 @@ def swingtrade():
 # Preço Médio didático — PM ajustado por dividendos, lucro de opções e
 # compras financiadas com lucro (ações a PM zero). Swing trade fica de fora.
 # ─────────────────────────────────────────────────────────────────────────────
-def _pm_earned_items(user_id, ticker):
+def _pm_ctx(user_id):
+    from sqlalchemy.orm import joinedload
+    """Dados do Preço Médio carregados de uma vez (a tela chamava _pm_state por ativo e cada
+    chamada refazia dezenas de consultas — centenas no total): trades, proventos, ativos e eventos."""
+    divs = {}
+    for d in Dividend.query.join(Asset).options(joinedload(Dividend.asset)).filter(Asset.user_id == user_id).all():
+        divs.setdefault(d.ticker, []).append(d)
+    evs = {}
+    for e in PMEvent.query.filter_by(user_id=user_id).order_by(PMEvent.created_at, PMEvent.id).all():
+        evs.setdefault(e.ticker, []).append(e)
+    ativos = Asset.query.filter_by(user_id=user_id).all()
+    return {
+        'trades': TradeHistory.query.filter_by(user_id=user_id).all(),
+        'divs': divs,
+        'evs': evs,
+        'asset_tickers': {a.ticker for a in ativos},
+        'pm_assets': {a.ticker: a for a in ativos if a.type in ('ACAO', 'FII') and a.strategy != 'SWING'},
+        'roots': [(a.ticker or '').upper() for a in ativos
+                  if a.type in ('ACAO', 'FII') and a.strategy != 'SWING' and (a.quantity or 0) > 0],
+    }
+
+
+def _pm_earned_items(user_id, ticker, ctx=None):
     """Créditos ganhos pelo ticker: dividendos recebidos + lucro/prejuízo de
     opções realizadas do ativo (TradeHistory 'Opções' via underlying).
     Swing trade NÃO entra — evento aleatório, não ligado ao papel."""
+    ctx = ctx or _pm_ctx(user_id)
     items = []
-    for d in Dividend.query.join(Asset).filter(
-            Asset.user_id == user_id, Dividend.ticker == ticker).all():
+    for d in ctx['divs'].get(ticker, []):
         if not d.amount or d.amount <= 0:
             continue
         if not _dividend_owned(d):
@@ -16830,18 +16852,14 @@ def _pm_earned_items(user_id, ticker):
     # subjacente em notes: close_estruturada usa "{subjacente} | ..." (1º
     # segmento); close_spread usa "{spread_type} | {subjacente} | ..." (2º).
     root = ticker[:4].upper()
-    same_root = Asset.query.filter(Asset.user_id == user_id,
-                                   Asset.type.in_(('ACAO', 'FII')),
-                                   Asset.strategy != 'SWING',
-                                   Asset.quantity > 0,
-                                   Asset.ticker.like(root + '%')).count()
+    same_root = sum(1 for tk in ctx['roots'] if tk.startswith(root))
 
     def _norm_und(v):
         """Underlying comparável: sem espaços, maiúsculo e sem sufixo .SA."""
         v = (v or '').strip().upper()
         return v[:-3] if v.endswith('.SA') else v
 
-    for th in TradeHistory.query.filter_by(user_id=user_id).all():
+    for th in ctx['trades']:
         est   = (th.strategy or '').strip().upper()
         und   = _norm_und(th.underlying)
         tk_th = (th.ticker or '').strip().upper()
@@ -16857,8 +16875,7 @@ def _pm_earned_items(user_id, ticker):
             continue
         if und == ticker:
             match = True
-        elif und and Asset.query.filter(Asset.user_id == user_id,
-                                        Asset.ticker == und).count():
+        elif und and und in ctx['asset_tickers']:
             match = False          # o underlying aponta para OUTRO papel da carteira
         else:
             # underlying ausente ou que não corresponde a nenhum ativo: cai nos
@@ -16880,18 +16897,16 @@ def _pm_earned_items(user_id, ticker):
     return items
 
 
-def _pm_state(user_id, ticker):
+def _pm_state(user_id, ticker, ctx=None):
     """Estado do PM ajustado de um ticker: eventos, créditos, pool e custo."""
-    a = Asset.query.filter(Asset.user_id == user_id, Asset.ticker == ticker,
-                           Asset.type.in_(('ACAO', 'FII')),
-                           Asset.strategy != 'SWING').first()
-    evs = (PMEvent.query.filter_by(user_id=user_id, ticker=ticker)
-           .order_by(PMEvent.created_at, PMEvent.id).all())
+    ctx = ctx or _pm_ctx(user_id)
+    a = ctx['pm_assets'].get(ticker)
+    evs = list(ctx['evs'].get(ticker, []))
     used_keys  = {e.source_key for e in evs if e.source_key}
     # Créditos marcados IGNORADO (ex.: evento anterior à posição atual) saem
     # completamente da varredura: não contam como ganhos, pool nem pendência.
     ignored_keys = {e.source_key for e in evs if e.kind == 'IGNORADO' and e.source_key}
-    earned  = [i for i in _pm_earned_items(user_id, ticker)
+    earned  = [i for i in _pm_earned_items(user_id, ticker, ctx)
                if i['key'] not in ignored_keys]
     pending = [i for i in earned if i['key'] not in used_keys]
 
@@ -16926,8 +16941,9 @@ def _pm_rows(user_id):
                                 Asset.strategy != 'SWING',
                                 Asset.quantity > 0).order_by(Asset.ticker).all()
     rows = {'ACAO': [], 'FII': []}
+    ctx = _pm_ctx(user_id)
     for a in assets:
-        _a, evs, earned, pending, pool, custo_of, custo_aj = _pm_state(user_id, a.ticker)
+        _a, evs, earned, pending, pool, custo_of, custo_aj = _pm_state(user_id, a.ticker, ctx)
         pm_aj = custo_aj / a.quantity if a.quantity else 0
         cot = a.current_price or 0
         lucro_rs = (cot - pm_aj) * a.quantity if cot else 0
@@ -17183,10 +17199,10 @@ def _pm_eventos_divergentes(user_id):
     valor atual)]. Acontece quando o trade/provento é editado depois de
     aplicado — o evento fica congelado no valor antigo."""
     fora = []
-    for tk in {e.ticker for e in PMEvent.query.filter_by(user_id=user_id).all()}:
-        evs = PMEvent.query.filter_by(user_id=user_id, ticker=tk).all()
+    ctx = _pm_ctx(user_id)
+    for tk, evs in ctx['evs'].items():
         ignor = {e.source_key for e in evs if e.kind == 'IGNORADO' and e.source_key}
-        atual = {i['key']: i['valor'] for i in _pm_earned_items(user_id, tk)
+        atual = {i['key']: i['valor'] for i in _pm_earned_items(user_id, tk, ctx)
                  if i['key'] not in ignor}
         for e in evs:
             if e.kind in ('MANUAL', 'IGNORADO', 'COMPRA_LUCRO') or not e.source_key:

@@ -90,7 +90,7 @@
   }
 
   var CORES_WALL = { clWall: '#a3e635', clMidWall: '#94a3b8', clMidWallFibo: '#475569',
-                     clFlip: '#facc15', clMaxGamma: '#34d399', clMinGamma: '#f87171' };
+                     clFlip: '#fbbf24', clMaxGamma: '#34d399', clMinGamma: '#f87171' };
   var NOMES_WALL = { clWall: 'Wall', clMidWall: 'MidWall', clMidWallFibo: 'Fibo 11,8%',
                      clFlip: 'Flip', clMaxGamma: 'Gama máximo', clMinGamma: 'Gama mínimo' };
 
@@ -366,7 +366,7 @@
     return '<span><i style="display:inline-block;width:10px;height:10px;background:#a3e635;border-radius:2px;"></i> Walls</span>' +
       '<span><i style="display:inline-block;width:10px;height:10px;background:#94a3b8;border-radius:2px;"></i> MidWall</span>' +
       '<span><i style="display:inline-block;width:10px;height:2px;background:#475569;"></i> Fibo 11,8%</span>' +
-      '<span><i style="display:inline-block;width:10px;height:10px;background:#facc15;border-radius:2px;"></i> Flip</span>' +
+      '<span><i style="display:inline-block;width:10px;height:10px;background:#fbbf24;border-radius:2px;"></i> Flip</span>' +
       '<span><i style="display:inline-block;width:10px;height:10px;background:#34d399;border-radius:2px;"></i> Gama máx.</span>' +
       '<span><i style="display:inline-block;width:10px;height:10px;background:#f87171;border-radius:2px;"></i> Gama mín.</span>';
   }

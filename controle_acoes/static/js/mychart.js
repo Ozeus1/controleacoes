@@ -745,7 +745,7 @@ function _updateHoverUI() {
         if (!tip || !he) return;
         tip.innerHTML = '<strong>' + fmtDate(c.t) + '</strong>'
             + '  A:<span style="color:#94a3b8">' + fmtPrice(c.o) + '</span>'
-            + '  H:<span style="color:#4ade80">' + fmtPrice(c.h) + '</span>'
+            + '  H:<span style="color:#34d399">' + fmtPrice(c.h) + '</span>'
             + '  L:<span style="color:#f87171">' + fmtPrice(c.l) + '</span>'
             + '  F:<strong>' + fmtPrice(c.c) + '</strong>'
             + '  V:<span style="color:#94a3b8">'
@@ -1404,7 +1404,7 @@ function _draw() {
     for (var i = 0; i < vis.length; i++) {
         var c    = vis[i];
         var bull = c.c >= c.o;
-        var col  = bull ? '#26a69a' : '#ef5350';
+        var col  = bull ? '#26a69a' : '#ef4444';
         var xc   = xPx(i);
         ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.setLineDash([]);
         ctx.beginPath(); ctx.moveTo(xc, yPx(c.h)); ctx.lineTo(xc, yPx(c.l)); ctx.stroke();
@@ -1419,12 +1419,12 @@ function _draw() {
     (_linesHidden[_state.ticker] ? [] : (_lines[_state.ticker] || [])).forEach(function(ln, idx) {
         var p1  = _data2px(ln.x1, ln.y1), p2 = _data2px(ln.x2, ln.y2);
         var sel = _selLine && _selLine.idx === idx;
-        ctx.strokeStyle = sel ? '#facc15' : (ln.color || '#3b82f6');
+        ctx.strokeStyle = sel ? '#fbbf24' : (ln.color || '#3b82f6');
         ctx.lineWidth   = sel ? 2.5 : (ln.width || 1.5);
         ctx.setLineDash([]);
         ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
         // Extremidades
-        ctx.fillStyle = sel ? '#facc15' : (ln.color || '#3b82f6');
+        ctx.fillStyle = sel ? '#fbbf24' : (ln.color || '#3b82f6');
         ctx.beginPath(); ctx.arc(p1.x, p1.y, sel ? 5 : 3, 0, 2*Math.PI); ctx.fill();
         ctx.beginPath(); ctx.arc(p2.x, p2.y, sel ? 5 : 3, 0, 2*Math.PI); ctx.fill();
         // Label de instrução quando selecionada
@@ -1432,7 +1432,7 @@ function _draw() {
             var mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2 - 10;
             ctx.fillStyle = 'rgba(30,41,59,.85)';
             ctx.fillRect(mx - 82, my - 12, 164, 18);
-            ctx.fillStyle = '#facc15'; ctx.font = '10px Inter,sans-serif'; ctx.textAlign = 'center';
+            ctx.fillStyle = '#fbbf24'; ctx.font = '10px Inter,sans-serif'; ctx.textAlign = 'center';
             ctx.fillText('arrastar=mover  ○=redimensionar  Del=excluir', mx, my);
         }
     });
@@ -1475,7 +1475,7 @@ function _draw() {
     var lastClose = vis[vis.length - 1].c;
     var yLast     = yPx(lastClose);
     var prevClose = vis.length > 1 ? vis[vis.length - 2].c : lastClose;
-    var lastColor = lastClose >= prevClose ? '#26a69a' : '#ef5350';
+    var lastColor = lastClose >= prevClose ? '#26a69a' : '#ef4444';
     ctx.strokeStyle = lastColor; ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
     ctx.beginPath(); ctx.moveTo(padL, yLast); ctx.lineTo(W - padR, yLast); ctx.stroke();
     ctx.setLineDash([]);
@@ -1493,7 +1493,7 @@ function _draw() {
     document.getElementById('mc-price').textContent = 'R$ ' + fmtPrice(hdrPrice);
     var chgEl = document.getElementById('mc-change');
     chgEl.textContent = (hdrChg >= 0 ? '+' : '') + hdrChg.toFixed(2).replace('.', ',') + '%';
-    chgEl.style.color = hdrChg >= 0 ? '#26a69a' : '#ef5350';
+    chgEl.style.color = hdrChg >= 0 ? '#26a69a' : '#ef4444';
 
     document.getElementById('mc-status').textContent =
         vis.length + ' candles  |  ' + fmtDate(vis[0].t) + ' – ' + fmtDate(vis[vis.length-1].t)
@@ -1580,7 +1580,7 @@ MyChart.openInline = function(containerId, ticker, isIntl) {
         dMA(ma50,'#f87171',1); dMA(ma20,'#60a5fa',1); dMA(ma8,'#fbbf24',.8);
         var cw2=Math.max(1,Math.min(10,cW/vis.length*.7));
         for(var i=0;i<vis.length;i++){
-            var c=vis[i],bull=c.c>=c.o,col=bull?'#26a69a':'#ef5350';
+            var c=vis[i],bull=c.c>=c.o,col=bull?'#26a69a':'#ef4444';
             var xc=xp(i);
             ctx.strokeStyle=col;ctx.lineWidth=1;ctx.setLineDash([]);
             ctx.beginPath();ctx.moveTo(xc,yp(c.h));ctx.lineTo(xc,yp(c.l));ctx.stroke();

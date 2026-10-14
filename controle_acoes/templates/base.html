@@ -28,7 +28,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="MyInvest">
     <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/icon-192.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=48">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=49">
     <!-- Custom override for DataTables to match theme -->
     <style>
         .dataTables_wrapper .dataTables_length,
@@ -445,7 +445,7 @@
                     textSecondary: s.getPropertyValue('--text-secondary').trim(),
                     border: s.getPropertyValue('--border-color').trim(),
                     grid: light ? 'rgba(15,23,42,.08)' : 'rgba(148,163,184,.13)',
-                    accentLine: light ? '#b45309' : '#facc15'   // linha "Total" (âmbar legível nos 2 temas)
+                    accentLine: light ? '#b45309' : '#fbbf24'   // linha "Total" (âmbar legível nos 2 temas)
                 };
             }
             var themeColors = getThemeColors();
@@ -565,7 +565,7 @@
             });
         });
     </script>
-    <script src="{{ url_for('static', filename='js/mychart.js') }}?v=2"></script>
+    <script src="{{ url_for('static', filename='js/mychart.js') }}?v=3"></script>
     <script src="{{ url_for('static', filename='js/ticker_browser.js') }}?v=3"></script>
     {% block extra_scripts %}{% endblock %}
     <script>
@@ -793,7 +793,7 @@
     <span style="color:#94a3b8">Último</span> <span id="qhg-price" style="font-weight:600"></span>
     <span style="color:#94a3b8">Var %</span>  <span id="qhg-change"></span>
     <span style="color:#94a3b8">Ask</span>    <span id="qhg-ask" style="color:#f87171"></span>
-    <span style="color:#94a3b8">Bid</span>    <span id="qhg-bid" style="color:#4ade80"></span>
+    <span style="color:#94a3b8">Bid</span>    <span id="qhg-bid" style="color:#34d399"></span>
     <span id="qhg-trades-label" style="color:#94a3b8;display:none">Negócios</span> <span id="qhg-trades" style="display:none"></span>
   </div>
   <div id="qhg-loading" style="color:#94a3b8;text-align:center;padding:.3rem 0">carregando…</div>
@@ -827,7 +827,7 @@
     document.getElementById('qhg-name').textContent=d.name!==d.ticker?d.name:'';
     document.getElementById('qhg-price').textContent=fmt(d.price);
     var cel=document.getElementById('qhg-change');
-    cel.textContent=fmtPct(d.change); cel.style.color=d.change>=0?'#4ade80':'#f87171';
+    cel.textContent=fmtPct(d.change); cel.style.color=d.change>=0?'#34d399':'#f87171';
     document.getElementById('qhg-ask').textContent=d.ask>0?fmt(d.ask):'—';
     document.getElementById('qhg-bid').textContent=d.bid>0?fmt(d.bid):'—';
     var tl=document.getElementById('qhg-trades-label'); var tv=document.getElementById('qhg-trades');

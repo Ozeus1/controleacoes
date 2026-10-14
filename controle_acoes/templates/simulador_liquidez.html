@@ -542,7 +542,7 @@
     <span style="color:#94a3b8">Último</span>  <span id="qh-price" style="font-weight:600"></span>
     <span style="color:#94a3b8">Var %</span>   <span id="qh-change"></span>
     <span style="color:#94a3b8">Ask</span>     <span id="qh-ask" style="color:#f87171"></span>
-    <span style="color:#94a3b8">Bid</span>     <span id="qh-bid" style="color:#4ade80"></span>
+    <span style="color:#94a3b8">Bid</span>     <span id="qh-bid" style="color:#34d399"></span>
     <span id="qh-trades-label" style="color:#94a3b8;display:none">Negócios</span>
     <span id="qh-trades" style="display:none"></span>
   </div>
@@ -646,13 +646,13 @@ function _slRenderChain(calls, puts, spot){
     function celVar(o){
       var v = parseFloat(o.var_pct) || 0;
       return '<td style="text-align:right;padding:.25rem .4rem;color:'
-        + (v>=0?'#4ade80':'#f87171') + '">' + (v>=0?'+':'') + fmtN_sl(v) + '%</td>';
+        + (v>=0?'#34d399':'#f87171') + '">' + (v>=0?'+':'') + fmtN_sl(v) + '%</td>';
     }
     function celBA(o){
       var bid = o.bid != null ? fmtN_sl(o.bid) : '-';
       var ask = o.ask != null ? fmtN_sl(o.ask) : '-';
       return '<td style="text-align:right;padding:.25rem .4rem">'
-        + '<span style="color:#4ade80">' + bid + '</span>'
+        + '<span style="color:#34d399">' + bid + '</span>'
         + '<span style="color:#64748b"> / </span>'
         + '<span style="color:#f87171">' + ask + '</span></td>';
     }
@@ -697,13 +697,13 @@ function _slRenderLiq(d){
 
   var hasLiq = (d.vol_total_call + d.vol_total_put) > 0;
   var liqLabel = hasLiq
-    ? '<span style="color:#4ade80;font-weight:700">✓ Possui liquidez</span>'
+    ? '<span style="color:#34d399;font-weight:700">✓ Possui liquidez</span>'
     : '<span style="color:#f87171;font-weight:700">✗ Sem liquidez expressiva</span>';
 
   var spotHtml = '';
   if(d.spot_price != null){
     var chg = d.spot_change != null ? d.spot_change : 0;
-    var chgColor = chg >= 0 ? '#4ade80' : '#f87171';
+    var chgColor = chg >= 0 ? '#34d399' : '#f87171';
     var chgStr = (chg >= 0 ? '+' : '') + parseFloat(chg).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + '%';
     spotHtml = '<div style="background:rgba(255,255,255,.07);border-radius:6px;padding:.4rem .8rem;display:flex;align-items:center;gap:.5rem">'
       + '<span style="color:var(--text-secondary);font-size:.8rem">Spot</span>'
@@ -2004,7 +2004,7 @@ simAddPerna('CALL');
     document.getElementById('qh-name').textContent=d.name!==d.ticker?d.name:'';
     document.getElementById('qh-price').textContent=fmt(d.price);
     var cel=document.getElementById('qh-change');
-    cel.textContent=fmtPct(d.change); cel.style.color=d.change>=0?'#4ade80':'#f87171';
+    cel.textContent=fmtPct(d.change); cel.style.color=d.change>=0?'#34d399':'#f87171';
     document.getElementById('qh-ask').textContent=d.ask>0?fmt(d.ask):'—';
     document.getElementById('qh-bid').textContent=d.bid>0?fmt(d.bid):'—';
     var tl=document.getElementById('qh-trades-label'),tv=document.getElementById('qh-trades');

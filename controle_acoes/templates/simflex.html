@@ -3,8 +3,8 @@
 
 {% block content %}
 <style>
-  .sf { --sf-bg:#1f1f1f; --sf-bg2:#262626; --sf-line:#3a3a3a; --sf-orange:#f59e0b; --sf-blue:#2196f3; --sf-red:#f44336;
-        --sf-green:#22c55e; --sf-txt:#e5e5e5; --sf-mut:#a3a3a3;
+  .sf { --sf-bg:#1f1f1f; --sf-bg2:#262626; --sf-line:#3a3a3a; --sf-orange:#f59e0b; --sf-blue:#3b82f6; --sf-red:#ef4444;
+        --sf-green:#34d399; --sf-txt:#e5e5e5; --sf-mut:#a3a3a3;
         background:var(--sf-bg); color:var(--sf-txt); border:1px solid var(--sf-line); border-radius:8px; overflow:hidden; }
   .sf-tabs { display:flex; align-items:stretch; border-bottom:1px solid var(--sf-line); overflow-x:auto; }
   .sf-tab { display:flex; align-items:center; gap:.45rem; padding:.7rem 1rem; font-size:.8rem; font-weight:600; letter-spacing:.04em;
@@ -839,7 +839,7 @@ function desenha() {
       var v = conv(cu.f(HOVER)), yy = by + 20 + j * 22;
       g.strokeStyle = cu.cor; g.lineWidth = 2.5; g.beginPath(); g.moveTo(bx + 10, yy - 4); g.lineTo(bx + 34, yy - 4); g.stroke();
       g.fillStyle = '#eee'; g.textAlign = 'left'; g.fillText(cu.nome, bx + 42, yy);
-      g.fillStyle = v >= 0 ? '#4ade80' : '#f87171'; g.textAlign = 'right'; g.fillText(pct ? fmt(v) + '%' : fmt(v), bx + bw - 10, yy);
+      g.fillStyle = v >= 0 ? '#34d399' : '#f87171'; g.textAlign = 'right'; g.fillText(pct ? fmt(v) + '%' : fmt(v), bx + bw - 10, yy);
     });
   }
 }

@@ -168,7 +168,7 @@
 <div style="display:flex;gap:.5rem;margin-bottom:.85rem;flex-wrap:wrap;">
   {% for l in listas %}
   <a href="{{ url_for('ranking_volatilidade', lista=l.key|lower) }}" onclick="localStorage.setItem('rv-lista','{{ l.key|lower }}')"
-     class="btn btn-sm" style="{{ 'background:#0ea5e9;color:#fff;font-weight:700;' if lista == l.key|lower
+     class="btn btn-sm" style="{{ 'background:#3b82f6;color:#fff;font-weight:700;' if lista == l.key|lower
         else 'background:var(--hover-bg);color:var(--text-secondary);' }}">{{ '💧 ' if l.key == 'LIQ' else ('🌐 ' if l.key == 'GERAL' else '📋 ') }}{{ l.nome }}</a>
   {% endfor %}
   <a href="{{ url_for('config') }}#tl-section" class="btn btn-sm" title="Editar nomes, ativos e quais listas aparecem nas listas suspensas"
@@ -483,7 +483,7 @@
     <span style="color:#94a3b8">Último</span>  <span id="qh-price" style="font-weight:600"></span>
     <span style="color:#94a3b8">Var %</span>   <span id="qh-change"></span>
     <span style="color:#94a3b8">Ask</span>     <span id="qh-ask" style="color:#f87171"></span>
-    <span style="color:#94a3b8">Bid</span>     <span id="qh-bid" style="color:#4ade80"></span>
+    <span style="color:#94a3b8">Bid</span>     <span id="qh-bid" style="color:#34d399"></span>
     <span id="qh-trades-label" style="color:#94a3b8;display:none">Negócios</span> <span id="qh-trades" style="display:none"></span>
   </div>
   <div id="qh-loading" style="color:#94a3b8;text-align:center;padding:.3rem 0">carregando…</div>
@@ -613,7 +613,7 @@
     document.getElementById('qh-name').textContent=d.name!==d.ticker?d.name:'';
     document.getElementById('qh-price').textContent=fmt(d.price);
     var cel=document.getElementById('qh-change');
-    cel.textContent=fmtPct(d.change); cel.style.color=d.change>=0?'#4ade80':'#f87171';
+    cel.textContent=fmtPct(d.change); cel.style.color=d.change>=0?'#34d399':'#f87171';
     document.getElementById('qh-ask').textContent=d.ask>0?fmt(d.ask):'—';
     document.getElementById('qh-bid').textContent=d.bid>0?fmt(d.bid):'—';
     var tl=document.getElementById('qh-trades-label'); var tv=document.getElementById('qh-trades');
@@ -722,7 +722,7 @@
         var tr=document.createElement('tr'); tr.dataset.due=due; tr.style.display='none';
         tb.appendChild(tr); return;
       }
-      var varColor = parseFloat(o.var_pct)>=0 ? '#4ade80' : '#f87171';
+      var varColor = parseFloat(o.var_pct)>=0 ? '#34d399' : '#f87171';
       var venc = fmtDate(due);
       // % distância strike vs spot
       var spotPctHtml = '—';
@@ -770,7 +770,7 @@
     var spotHtml = '';
     if(d.spot_price != null){
       var chg = d.spot_change != null ? d.spot_change : 0;
-      var chgColor = chg >= 0 ? '#4ade80' : '#f87171';
+      var chgColor = chg >= 0 ? '#34d399' : '#f87171';
       var chgStr = (chg >= 0 ? '+' : '') + parseFloat(chg).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + '%';
       spotHtml = '<div style="background:rgba(255,255,255,.07);border-radius:6px;padding:.4rem .8rem;display:flex;align-items:center;gap:.5rem">'
         + '<span style="color:var(--text-secondary);font-size:.8rem">Spot</span>'
@@ -864,14 +864,14 @@
     // Resumo linha 1: liquidez + totais
     var hasLiq = (d.vol_total_call + d.vol_total_put) > 0;
     var liqLabel = hasLiq
-      ? '<span style="color:#4ade80;font-weight:700">✓ Possui liquidez</span>'
+      ? '<span style="color:#34d399;font-weight:700">✓ Possui liquidez</span>'
       : '<span style="color:#f87171;font-weight:700">✗ Sem liquidez expressiva</span>';
 
     // Cotação do ativo
     var spotHtml = '';
     if(d.spot_price != null){
       var chg = d.spot_change != null ? d.spot_change : 0;
-      var chgColor = chg >= 0 ? '#4ade80' : '#f87171';
+      var chgColor = chg >= 0 ? '#34d399' : '#f87171';
       var chgStr = (chg >= 0 ? '+' : '') + parseFloat(chg).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}) + '%';
       spotHtml = '<div style="background:rgba(255,255,255,.07);border-radius:6px;padding:.4rem .8rem;display:flex;align-items:center;gap:.5rem">'
         + '<span style="color:var(--text-secondary);font-size:.8rem">Spot</span>'

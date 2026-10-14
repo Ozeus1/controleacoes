@@ -25,7 +25,7 @@
 .mg-card .val{font-size:1.15rem;font-weight:700;color:var(--text-primary);}
 .mg-card .sub{font-size:.72rem;color:var(--text-secondary);}
 .mg-card .val.pos{color:#34d399;} .mg-card .val.neg{color:#f87171;}
-.mg-card .val.flip{color:#facc15;}
+.mg-card .val.flip{color:#fbbf24;}
 
 .mg-chart{position:relative;height:400px;background:var(--card-bg);
   border:1px solid var(--border-color);border-radius:8px;padding:.6rem;margin-bottom:.4rem;}
@@ -101,7 +101,7 @@
     <div id="mg-info" class="mg-nota"></div>
 
     <div class="mg-legenda">
-      <span><i class="mg-dot" style="background:#facc15;"></i> CALL + PUT</span>
+      <span><i class="mg-dot" style="background:#fbbf24;"></i> CALL + PUT</span>
       <span><i class="mg-dot" style="background:#60a5fa;height:3px;"></i> CALL</span>
       <span><i class="mg-dot" style="background:#f87171;height:3px;"></i> PUT</span>
       <span><i class="mg-dot" style="background:rgba(52,211,153,.5);"></i> gama positivo — volatilidade contida</span>
@@ -137,7 +137,7 @@
     <div class="mg-legenda">
       <span><i class="mg-dot" style="background:#f87171;"></i> Vencimento atual</span>
       <span><i class="mg-dot" style="background:#fb923c;"></i> Próximo vencimento</span>
-      <span><i class="mg-dot" style="background:#facc15;"></i> Demais vencimentos</span>
+      <span><i class="mg-dot" style="background:#fbbf24;"></i> Demais vencimentos</span>
       <label style="cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;"
              title="Limita a 6 vencimentos seguintes em vez de todos — mais rápido, menos completo.">
         <input type="checkbox" id="mg-walls-rapido" style="cursor:pointer;margin:0;">
@@ -189,7 +189,7 @@
     <p><strong style="color:#f87171;">Gama negativo (área vermelha):</strong> o inverso. Quando o
     ativo cai, o formador vende; quando sobe, compra. Ele atua <em>a favor</em> da tendência e
     <strong>amplifica</strong> os movimentos — o efeito "sobe de escada, desce de elevador".</p>
-    <p><strong style="color:#facc15;">Flip (gama = 0):</strong> o ponto onde a curva cruza o zero.
+    <p><strong style="color:#fbbf24;">Flip (gama = 0):</strong> o ponto onde a curva cruza o zero.
     É o nível para o qual o preço tende a gravitar na ausência de força direcional, e seu
     rompimento costuma marcar mudança de regime.</p>
   </div>
@@ -378,12 +378,12 @@
     var tick=css.getPropertyValue('--text-secondary')||'#94a3b8';
 
     var refs=[{v:d.spot, cor:'#60a5fa', txt:'Spot: '+money(d.spot), tracejada:false}];
-    if(d.flip!=null) refs.push({v:d.flip, cor:'#facc15', txt:'Flip: '+money(d.flip), tracejada:true});
+    if(d.flip!=null) refs.push({v:d.flip, cor:'#fbbf24', txt:'Flip: '+money(d.flip), tracejada:true});
 
     chCurva=new Chart(ctx,{
       type:'line',
       data:{labels:labels, datasets:[
-        {label:'CALL + PUT', data:tot, borderColor:'#facc15', borderWidth:2,
+        {label:'CALL + PUT', data:tot, borderColor:'#fbbf24', borderWidth:2,
          pointRadius:0, tension:.35, fill:{target:{value:0}},
          backgroundColor:function(c){
            // Verde acima do zero, vermelho abaixo. Na primeira passada o
@@ -502,7 +502,7 @@
          backgroundColor:'#fb923c', stack:'g',
          barPercentage:0.7, categoryPercentage:0.6, maxBarThickness:50},
         {label:'Demais vencimentos', data:walls.map(function(w){return w.demais;}),
-         backgroundColor:'#facc15', stack:'g',
+         backgroundColor:'#fbbf24', stack:'g',
          barPercentage:0.7, categoryPercentage:0.6, maxBarThickness:50}
       ]},
       options:{

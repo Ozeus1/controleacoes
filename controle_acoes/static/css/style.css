@@ -13,31 +13,33 @@
     --surface-2: #161d2b;          /* camada acima do card (inputs, chips) */
     --text-primary: #f2f6fc;
     --text-secondary: #8b9bb4;
-    --accent-color: #00e08a;       /* verde-menta — cor de ação/destaque */
-    --accent-hover: #24f5a3;
-    --accent-contrast: #04120c;    /* texto sobre fundo accent */
-    --accent-soft: rgba(0, 224, 138, 0.12);
-    --success-color: #00e08a;
-    --danger-color: #ff4d6d;
-    --warning-color: #ffb340;
-    --info-color: #4dabff;
+    /* Paleta harmonizada (família 400 do Tailwind: mesma luminosidade/saturação):
+       esmeralda (ação/ganho) · coral (perda) · azul (menu/marca) · âmbar (alerta). */
+    --accent-color: #34d399;       /* esmeralda — cor de ação/destaque */
+    --accent-hover: #6ee7b7;
+    --accent-contrast: #052e1f;    /* texto sobre fundo accent */
+    --accent-soft: rgba(52, 211, 153, 0.12);
+    --success-color: #34d399;
+    --danger-color: #f87171;
+    --warning-color: #fbbf24;
+    --info-color: #60a5fa;
     --border-color: #222c3d;
-    --nav-active: #00e08a;
-    --nav-accent: #2196f3;         /* azul do SimFlex — menu e nome do site */
-    --nav-accent-soft: rgba(33, 150, 243, 0.14);
+    --nav-active: #34d399;
+    --nav-accent: #60a5fa;         /* azul — menu e nome do site */
+    --nav-accent-soft: rgba(96, 165, 250, 0.14);
     --table-header-bg: #131a26;
     --input-bg: #0c1119;
     --input-color: #f2f6fc;
     --hover-bg: rgba(255, 255, 255, 0.028);
     --zebra-bg: rgba(255, 255, 255, 0.014);  /* listra de linha ímpar — mais discreta que --hover-bg */
-    --dropdown-hover: rgba(33, 150, 243, 0.10);
+    --dropdown-hover: rgba(96, 165, 250, 0.10);
     --toggle-bg: rgba(255, 255, 255, 0.06);
     --nav-mobile-border: rgba(255, 255, 255, 0.06);
     --indicator-price-color: #ffffff;
     --shadow-color: rgba(0, 0, 0, 0.5);
     --indicators-border: rgba(255, 255, 255, 0.08);
     --total-row-bg: rgba(255, 255, 255, 0.05);
-    --focus-ring: rgba(0, 224, 138, 0.35);
+    --focus-ring: rgba(52, 211, 153, 0.35);
 }
 
 /* Light Theme */
@@ -49,31 +51,31 @@
     --text-secondary: #55647c;
     /* Verde mais fechado que o do dark: sobre fundo branco, o menta vivo
        fica em ~3:1 e reprova em texto — este mantém o tom e passa AA. */
-    --accent-color: #00874f;
-    --accent-hover: #046c43;
+    --accent-color: #047857;
+    --accent-hover: #065f46;
     --accent-contrast: #ffffff;
-    --accent-soft: rgba(0, 135, 79, 0.12);
-    --success-color: #00874f;
-    --danger-color: #e2264a;
-    --warning-color: #d97706;
-    --info-color: #0b74d4;
+    --accent-soft: rgba(4, 120, 87, 0.12);
+    --success-color: #047857;
+    --danger-color: #dc2626;
+    --warning-color: #b45309;
+    --info-color: #2563eb;
     --border-color: #d9e1ec;
-    --nav-active: #00874f;
-    --nav-accent: #1976d2;
-    --nav-accent-soft: rgba(25, 118, 210, 0.12);
+    --nav-active: #047857;
+    --nav-accent: #2563eb;
+    --nav-accent-soft: rgba(37, 99, 235, 0.10);
     --table-header-bg: #e8eef6;
     --input-bg: #ffffff;
     --input-color: #0b1220;
     --hover-bg: rgba(0, 0, 0, 0.03);
     --zebra-bg: rgba(0, 0, 0, 0.018);  /* listra de linha ímpar — mais discreta que --hover-bg */
-    --dropdown-hover: rgba(25, 118, 210, 0.10);
+    --dropdown-hover: rgba(37, 99, 235, 0.08);
     --toggle-bg: rgba(0, 0, 0, 0.06);
     --nav-mobile-border: rgba(0, 0, 0, 0.08);
     --indicator-price-color: #0b1220;
     --shadow-color: rgba(15, 30, 60, 0.10);
     --indicators-border: rgba(0, 0, 0, 0.1);
     --total-row-bg: rgba(0, 0, 0, 0.05);
-    --focus-ring: rgba(0, 135, 79, 0.30);
+    --focus-ring: rgba(4, 120, 87, 0.30);
 }
 
 * {
@@ -595,13 +597,13 @@ tr.bg-primary.text-white td,
    tema, mas no mesmo padrão translúcido (o sólido com texto branco caía
    a 2.77:1, ilegível). */
 .btn-chart {
-    background-color: rgba(14, 165, 233, 0.14) !important;
-    border: 1px solid rgba(14, 165, 233, 0.32) !important;
-    color: #38bdf8 !important;
+    background-color: rgba(96, 165, 250, 0.14) !important;
+    border: 1px solid rgba(96, 165, 250, 0.32) !important;
+    color: #60a5fa !important;
 }
 
 .btn-chart:hover {
-    background-color: rgba(14, 165, 233, 0.24) !important;
+    background-color: rgba(96, 165, 250, 0.24) !important;
 }
 
 /* Botões de atalho com cor própria (Radar, Manejo, IV/Gregas etc.) —
@@ -616,11 +618,11 @@ tr.bg-primary.text-white td,
 .btn-violeta:hover { background-color: rgba(167, 139, 250, 0.26) !important; }
 
 .btn-azul {
-    background-color: rgba(56, 189, 248, 0.14) !important;
-    border: 1px solid rgba(56, 189, 248, 0.32) !important;
-    color: #38bdf8 !important;
+    background-color: rgba(96, 165, 250, 0.14) !important;
+    border: 1px solid rgba(96, 165, 250, 0.32) !important;
+    color: #60a5fa !important;
 }
-.btn-azul:hover { background-color: rgba(56, 189, 248, 0.24) !important; }
+.btn-azul:hover { background-color: rgba(96, 165, 250, 0.24) !important; }
 
 .btn-laranja {
     background-color: rgba(251, 191, 36, 0.16) !important;
@@ -630,11 +632,11 @@ tr.bg-primary.text-white td,
 .btn-laranja:hover { background-color: rgba(251, 191, 36, 0.26) !important; }
 
 .btn-verde {
-    background-color: rgba(16, 185, 129, 0.16) !important;
-    border: 1px solid rgba(16, 185, 129, 0.34) !important;
-    color: #10b981 !important;
+    background-color: rgba(52, 211, 153, 0.16) !important;
+    border: 1px solid rgba(52, 211, 153, 0.34) !important;
+    color: #34d399 !important;
 }
-.btn-verde:hover { background-color: rgba(16, 185, 129, 0.26) !important; }
+.btn-verde:hover { background-color: rgba(52, 211, 153, 0.26) !important; }
 
 .btn-teal {
     background-color: rgba(45, 212, 191, 0.16) !important;

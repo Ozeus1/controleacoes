@@ -36,7 +36,7 @@
 .tf-card .val{font-size:1.1rem;font-weight:700;color:var(--text-primary);}
 .tf-card .sub{font-size:.72rem;color:var(--text-secondary);}
 .tf-card .val.pos{color:#34d399;} .tf-card .val.neg{color:#f87171;}
-.tf-card .val.flip{color:#facc15;}
+.tf-card .val.flip{color:#fbbf24;}
 .tf-nota{font-size:.78rem;color:var(--text-secondary);margin:.5rem 0;}
 @media (max-width:820px){.tf-duplo{grid-template-columns:1fr;}}
 @media (max-width:640px){.tf-filtros{grid-template-columns:1fr;}
@@ -123,7 +123,7 @@
     <div class="tf-legenda">
       <span><i class="tf-dot" style="background:#f87171;"></i> Vencimento atual</span>
       <span><i class="tf-dot" style="background:#fb923c;"></i> Próximo vencimento</span>
-      <span><i class="tf-dot" style="background:#facc15;"></i> Demais vencimentos</span>
+      <span><i class="tf-dot" style="background:#fbbf24;"></i> Demais vencimentos</span>
       <label style="cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;white-space:nowrap;"
              title="Limita a 6 vencimentos seguintes em vez de todos — mais rápido, menos completo.">
         <input type="checkbox" id="tf-walls-rapido" style="cursor:pointer;margin:0;">
@@ -377,7 +377,7 @@
       type:'line',
       data:{labels:labels, datasets:[{
         label:'CALL + PUT', data:d.curva.map(function(p){return p.total;}),
-        borderColor:'#facc15', borderWidth:2, pointRadius:0, tension:.35,
+        borderColor:'#fbbf24', borderWidth:2, pointRadius:0, tension:.35,
         fill:{target:{value:0}},
         backgroundColor:function(c){
           var ch=c.chart,a=ch.chartArea;
@@ -437,7 +437,7 @@
          backgroundColor:'#fb923c', stack:'g',
          barPercentage:0.7, categoryPercentage:0.6, maxBarThickness:50},
         {label:'Demais vencimentos', data:walls.map(function(w){return w.demais;}),
-         backgroundColor:'#facc15', stack:'g',
+         backgroundColor:'#fbbf24', stack:'g',
          barPercentage:0.7, categoryPercentage:0.6, maxBarThickness:50}
       ]},
       options:{responsive:true,maintainAspectRatio:false,layout:{padding:{top:22}},

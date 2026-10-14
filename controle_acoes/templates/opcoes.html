@@ -652,7 +652,7 @@
     </div>
 
     {% if intl %}
-    <div style="margin: 0 1rem 1rem 1rem; padding: 0.6rem 1rem; background: rgba(14,165,233,0.12); border-left: 3px solid #0ea5e9; border-radius: 4px; font-size: 0.85rem; color: var(--text-secondary);">
+    <div style="margin: 0 1rem 1rem 1rem; padding: 0.6rem 1rem; background: rgba(14,165,233,0.12); border-left: 3px solid #3b82f6; border-radius: 4px; font-size: 0.85rem; color: var(--text-secondary);">
         🇺🇸 Opções internacionais em <strong>US$</strong> — prêmios atualizados <strong>manualmente</strong>
         (✏️ Editar → "Cotação atual" de cada perna). Apenas a cotação do ativo subjacente é buscada no Yahoo
         pelo "Atualizar Cotações".
@@ -1601,7 +1601,7 @@ function editDeltaPut(optId, current) {
     <span style="color:#94a3b8;">Último</span>  <span id="qh-price" style="font-weight:600;"></span>
     <span style="color:#94a3b8;">Var %</span>   <span id="qh-change"></span>
     <span style="color:#94a3b8;">Ask</span>     <span id="qh-ask" style="color:#f87171;"></span>
-    <span style="color:#94a3b8;">Bid</span>     <span id="qh-bid" style="color:#4ade80;"></span>
+    <span style="color:#94a3b8;">Bid</span>     <span id="qh-bid" style="color:#34d399;"></span>
     <span id="qh-trades-label" style="color:#94a3b8;display:none;">Negócios</span> <span id="qh-trades" style="display:none;"></span>
   </div>
   <div id="qh-loading" style="color:#94a3b8; text-align:center; padding:.3rem 0;">carregando…</div>
@@ -1663,7 +1663,7 @@ function editDeltaPut(optId, current) {
         document.getElementById('qh-price').textContent  = fmt(d.price);
         var cel = document.getElementById('qh-change');
         cel.textContent  = fmtPct(d.change);
-        cel.style.color  = d.change >= 0 ? '#4ade80' : '#f87171';
+        cel.style.color  = d.change >= 0 ? '#34d399' : '#f87171';
         document.getElementById('qh-ask').textContent    = d.ask > 0 ? fmt(d.ask) : '—';
         document.getElementById('qh-bid').textContent    = d.bid > 0 ? fmt(d.bid) : '—';
         var tl=document.getElementById('qh-trades-label'); var tv=document.getElementById('qh-trades');

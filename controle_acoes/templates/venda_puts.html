@@ -19,7 +19,7 @@ table.no-datatable th, table.no-datatable td {
 }
 table.no-datatable th:last-child, table.no-datatable td:last-child { text-align: right; }
 .positive { color: var(--positive-color, #4caf50); }
-.negative { color: var(--danger-color, #f44336); }
+.negative { color: var(--danger-color, #ef4444); }
 .pf-tip{display:none;position:absolute;background:var(--card-bg,#1e293b);border:1px solid var(--border-color);
   border-radius:6px;padding:.3rem .6rem;font-size:.8rem;pointer-events:none;white-space:nowrap;z-index:10;}
 .pf-mbar{display:flex;flex-wrap:wrap;gap:1.4rem;padding:.55rem 1rem;border-bottom:1px solid var(--border-color);
@@ -50,7 +50,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
             <span id="vp-quote-px" style="font-weight:700;"></span>
             <span id="vp-quote-var" style="font-size:.85rem;font-weight:600;"></span>
             <button type="button" class="btn btn-sm" id="vp-quote-chart" title="Abrir gráfico de preços"
-                    style="background:#0ea5e9;color:#fff;padding:.15rem .5rem;">📈 Gráfico</button>
+                    style="background:#3b82f6;color:#fff;padding:.15rem .5rem;">📈 Gráfico</button>
             <span id="vp-quote-when" style="font-size:.72rem;color:var(--text-secondary);"></span>
         </div>
         <a href="#" id="vp-back-btn" class="btn btn-secondary btn-sm" style="display:none;">← Voltar para a estratégia</a>
@@ -578,7 +578,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 <td><span class="ticker-badge" style="background:rgba(239,68,68,.15);color:var(--danger-color);">{{ c.put_ticker }}</span></td>
                 <td>{{ 'R$ %.2f'|format(c.put_strike)|replace('.',',') }}</td>
                 <td class="negative">{{ 'R$ %.2f'|format(c.put_premium)|replace('.',',') }}</td>
-                <td><span class="ticker-badge" style="background:rgba(56,189,248,.15);color:#38bdf8;">{{ c.call_ticker }}</span></td>
+                <td><span class="ticker-badge" style="background:rgba(56,189,248,.15);color:#60a5fa;">{{ c.call_ticker }}</span></td>
                 <td>{{ 'R$ %.2f'|format(c.call_strike)|replace('.',',') }}</td>
                 <td class="positive">{{ 'R$ %.2f'|format(c.call_premium)|replace('.',',') }}</td>
                 <td>{{ 'R$ %.2f'|format(net_cost)|replace('.',',') }}</td>
@@ -844,7 +844,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
                 boxDist.style.display = ''; boxItm.style.display = 'none';
             } else {
                 mDist.textContent = fmtPct(distPct, 1) + ' ITM';
-                mDist.style.color = 'var(--danger-color, #f44336)';
+                mDist.style.color = 'var(--danger-color, #ef4444)';
                 boxDist.style.display = ''; boxItm.style.display = '';
                 document.getElementById('m-itm').textContent = fmtBRL(strike - spot) + ' (' + fmtPct(Math.abs(distPct), 1) + ')';
             }
@@ -1199,7 +1199,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         ctx.beginPath();
         ctx.moveTo(X(xs[0]), Y(ys[0]));
         for (i = 1; i <= N; i++) ctx.lineTo(X(xs[i]), Y(ys[i]));
-        ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.stroke();
+        ctx.strokeStyle = '#60a5fa'; ctx.lineWidth = 2; ctx.stroke();
         ctx.lineWidth = 1;
 
         // strikes (tracejado)
@@ -1216,13 +1216,13 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         // cotação atual
         if (cfg.spot && cfg.spot >= cfg.lo && cfg.spot <= cfg.hi) {
             ctx.setLineDash([2, 3]);
-            ctx.strokeStyle = '#38bdf8';
+            ctx.strokeStyle = '#60a5fa';
             ctx.beginPath(); ctx.moveTo(X(cfg.spot), PAD.t); ctx.lineTo(X(cfg.spot), H - PAD.b); ctx.stroke();
             ctx.setLineDash([]);
             var pv = payoff(cfg.spot);
             ctx.beginPath(); ctx.arc(X(cfg.spot), Y(pv), 4, 0, 2 * Math.PI);
             ctx.fillStyle = '#fff'; ctx.fill();
-            ctx.strokeStyle = '#38bdf8'; ctx.stroke();
+            ctx.strokeStyle = '#60a5fa'; ctx.stroke();
         }
 
         // tooltip

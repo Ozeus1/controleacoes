@@ -12486,6 +12486,194 @@ def api_fyt(ticker):
     })
 
 
+@app.route('/api/fyt-straddle-ha/<ticker>')
+@login_required
+def api_fyt_straddle_ha(ticker):
+    """Scanner de Short Straddle HA (Hedge Assimétrico).
+    Vende CALL + PUT no mesmo strike (vencimento das vendidas) e usa o crédito para comprar,
+    num vencimento posterior, N opções OTM de um lado só (CALLs = HA de Call; PUTs = HA de Put).
+    Parâmetros: tipo=call|put · exp_v=0..2 (mensal da vendida) · exp_c=1..4 (meses depois da vendida) ·
+    dist=todos|R$ (distância strike da comprada ↔ strike do straddle) · qtd_min (inteiro, mínimo de
+    comprada por straddle) · k_min/k_max (faixa do strike do straddle)."""
+    ticker = ticker.strip().upper()
+    usar_brapi = request.args.get('source') == 'brapi'
+    token = None
+    if not usar_brapi:
+        token = Settings.get_value('oplab_token', user_id=current_user.id)
+        if not token:
+            return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    if not spot:
+        return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
+
+    def _int(name, default, lo, hi):
+        try:
+            v = int(request.args.get(name, default))
+        except (TypeError, ValueError):
+            v = default
+        return min(max(v, lo), hi)
+
+    def _num(name, default):
+        try:
+            return float(str(request.args.get(name, default)).replace(',', '.'))
+        except (TypeError, ValueError):
+            return default
+
+    tipo = 'put' if (request.args.get('tipo') or 'call').lower() == 'put' else 'call'
+    # "Todos" varre a mesma amplitude do filtro: R$ 0–12 (BOVA11/SMAL11) ou R$ 0–3 (demais ativos)
+    dist_max = 12.0 if ticker in ('BOVA11', 'SMAL11') else 3.0
+    exp_v_i = _int('exp_v', 0, 0, 2)
+    off_c = _int('exp_c', 1, 1, 4)
+    qtd_min = _int('qtd_min', 2, 1, 50)
+    dist_raw = (request.args.get('dist') or 'todos').strip().lower()
+    dist = None if dist_raw in ('', 'todos') else _num('dist', 0.0)
+    k_min = _num('k_min', spot * 0.9)
+    k_max = _num('k_max', spot * 1.1)
+    if k_max < k_min:
+        k_min, k_max = k_max, k_min
+
+    if usar_brapi:
+        try:
+            opt_list = _brapi_opt_list_raw(ticker, current_user.id)
+        except OplabApiError as e:
+            return jsonify({'error': str(e)}), 502
+        except Exception:
+            app.logger.exception('api_fyt_straddle_ha (brapi) error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia via BRAPI.'}), 500
+    else:
+        try:
+            data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+        except OplabApiError as e:
+            return jsonify({'error': str(e), 'status': e.status_code}), 503
+        except Exception:
+            app.logger.exception('api_fyt_straddle_ha error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+        opt_list = data if isinstance(data, list) else (
+            data.get('options') or data.get('calls', []) + data.get('puts', []) or [])
+
+    from datetime import date as _date
+    today = _date.today()
+
+    def _third_friday(y, m):
+        count, day = 0, 1
+        while True:
+            d = _date(y, m, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    return d
+            day += 1
+
+    def _is_monthly(exp_str):
+        d = _date.fromisoformat(exp_str)
+        return abs((d - _third_friday(d.year, d.month)).days) <= 2
+
+    calls, puts = {}, {}
+    for o in opt_list:
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        is_put = 'PUT' in cat or cat == 'P'
+        strike = float(o.get('strike') or 0)
+        due = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due:
+            due = due.split('T')[0]
+        sym = str(o.get('symbol') or o.get('ticker') or '').upper()
+        if not due or strike <= 0 or not sym:
+            continue
+        try:
+            if _date.fromisoformat(due) <= today or not _is_monthly(due):
+                continue
+        except ValueError:
+            continue
+        (puts if is_put else calls).setdefault(due, {})[round(strike, 2)] = {
+            'symbol': sym, 'strike': round(strike, 2),
+            'bid': round(float(o.get('bid') or 0), 2), 'ask': round(float(o.get('ask') or 0), 2),
+            'close': round(float(o.get('close') or 0), 2)}
+
+    monthlies = sorted(set(calls) & set(puts))
+    if not monthlies:
+        return jsonify({'error': f'Nenhum vencimento mensal com CALLs e PUTs para {ticker}.'}), 404
+    exps_out = [{'exp': e, 'dc': max((_date.fromisoformat(e) - today).days, 0),
+                 'label': ('Vencimento atual' if i == 0 else f'Vencimento +{i} mês' + ('es' if i > 1 else ''))}
+                for i, e in enumerate(monthlies)]
+    if exp_v_i >= len(monthlies) or exp_v_i + off_c >= len(monthlies):
+        return jsonify({'error': 'Vencimento escolhido não disponível para este ativo.',
+                        'expirations': exps_out}), 404
+    exp_v = monthlies[exp_v_i]
+    exp_c = monthlies[exp_v_i + off_c]
+
+    _now_b = now_brt()
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+
+    def _eff(rw):
+        bid, ask, last = rw['bid'], rw['ask'], rw['close']
+        last_ok = last if last >= 0.05 else None
+        has_book = bid >= 0.05 and ask >= 0.05
+        if not market_open:
+            return {'bid': last_ok, 'ask': last_ok, 'src': 'ultimo', 'boca': has_book}
+        b = bid if bid >= 0.05 else last_ok
+        a = ask if ask >= 0.05 else last_ok
+        src = 'book' if has_book else 'ultimo'
+        if has_book and last_ok and (ask - bid) > max(0.10, 0.25 * (bid + ask) / 2):
+            b = a = last_ok
+            src = 'ultimo'
+        return {'bid': b, 'ask': a, 'src': src, 'boca': has_book}
+
+    longs = puts[exp_c] if tipo == 'put' else calls[exp_c]
+    dc_v = max((_date.fromisoformat(exp_v) - today).days, 1)
+    dc_c = max((_date.fromisoformat(exp_c) - today).days, 1)
+    rows = []
+    for k in sorted(set(calls[exp_v]) & set(puts[exp_v])):
+        if not (k_min <= k <= k_max):
+            continue
+        sc, sp_ = calls[exp_v][k], puts[exp_v][k]
+        ec, ep = _eff(sc), _eff(sp_)
+        if market_open and not (ec['boca'] and ep['boca']):
+            continue
+        if not ec['bid'] or not ep['bid']:
+            continue
+        credito = round(ec['bid'] + ep['bid'], 2)
+        # Perna longa OTM do mesmo lado: CALL com strike >= K ou PUT com strike <= K
+        for lk, lg in longs.items():
+            d_ = round((lk - k) if tipo == 'call' else (k - lk), 2)
+            if d_ < -0.001:
+                continue
+            if dist is not None and abs(d_ - dist) > 0.004:
+                continue
+            if dist is None and d_ > dist_max + 0.004:
+                continue
+            el = _eff(lg)
+            if market_open and not el['boca']:
+                continue
+            if not el['ask'] or el['ask'] <= 0:
+                continue
+            mult = credito / el['ask']
+            n = int(mult + 1e-9)
+            if n < qtd_min:
+                continue
+            custo_asa = round(n * el['ask'], 2)
+            rows.append({
+                'strike': k, 'call_symbol': sc['symbol'], 'put_symbol': sp_['symbol'],
+                'call_px': round(ec['bid'], 2), 'put_px': round(ep['bid'], 2),
+                'credito': credito,
+                'long_symbol': lg['symbol'], 'long_strike': lk, 'long_px': round(el['ask'], 2),
+                'long_src': el['src'],
+                'dist': d_, 'mult': round(mult, 2), 'n': n,
+                'custo_asa': custo_asa, 'residual': round(credito - custo_asa, 2),
+                'k_dist': round((k - spot) / spot * 100, 1),
+            })
+    # Mais alavancagem primeiro; depois asa mais próxima e strike mais perto do spot
+    rows.sort(key=lambda r: (-r['n'], r['dist'], abs(r['strike'] - spot)))
+    rows = _fyt_diversify(rows, lambda r: r['strike'], per_key=3, limit=80)
+    return jsonify({
+        'ticker': ticker, 'spot': spot, 'spot_change': spot_change, 'tipo': tipo,
+        'market_open': market_open, 'expirations': exps_out,
+        'exp_v': exp_v, 'exp_c': exp_c, 'dc_v': dc_v, 'dc_c': dc_c,
+        'k_min': round(k_min, 2), 'k_max': round(k_max, 2),
+        'rows': rows, 'total': len(rows), 'source': 'brapi' if usar_brapi else 'oplab',
+    })
+
+
 @app.route('/api/fyt-thl/<ticker>')
 @login_required
 def api_fyt_thl(ticker):
@@ -25373,6 +25561,9 @@ def api_chart_lines(ticker):
         return jsonify({'ok': True})
 
 
+_HINT_FICHA = {}   # ticker -> (timestamp, (strike, vencimento ISO, CALL/PUT, estilo)) — ficha da opção p/ o hint
+
+
 @app.route('/api/quote_hint/<ticker>')
 @login_required
 def api_quote_hint(ticker):
@@ -25394,6 +25585,7 @@ def api_quote_hint(ticker):
 
     price = change = ask = bid = 0.0
     trades = None   # nº negócios no dia (só para opções)
+    o_strike = o_exp = o_tipo = o_estilo = None   # ficha da opção (strike, vencimento ISO, CALL/PUT, americana/europeia)
     name  = ticker
     is_option = False
     # preço do último negócio salvo no banco (fallback quando close==0 no dia)
@@ -25413,6 +25605,9 @@ def api_quote_hint(ticker):
                 db_last_price = float(opt.current_option_price)
             change = float(opt.daily_change or 0)
             name   = f'{opt.option_type} K={opt.strike_price:.2f} venc {opt.expiration_date.strftime("%d/%m/%y") if opt.expiration_date else "?"}'
+            o_strike = float(opt.strike_price or 0) or None
+            o_exp = opt.expiration_date.isoformat() if opt.expiration_date else None
+            o_tipo = 'PUT' if 'PUT' in (opt.option_type or '').upper() else 'CALL'
     except Exception:
         pass
 
@@ -25514,8 +25709,13 @@ def api_quote_hint(ticker):
         except Exception:
             pass
 
-        # Chamada 2: /market/instruments/{ticker} para negócios do dia
-        if trades is None:
+        # Chamada 2: /market/instruments/{ticker} — negócios do dia e a ficha da opção
+        # (strike, vencimento, CALL/PUT e se é americana ou europeia). Sempre consultada: a ficha
+        # não muda, então fica em cache de 1 dia por ticker.
+        _ficha = _HINT_FICHA.get(ticker)
+        if _ficha and time.time() - _ficha[0] < 86400:
+            o_strike, o_exp, o_tipo, o_estilo = _ficha[1]
+        if trades is None or o_estilo is None or o_strike is None or o_exp is None:
             try:
                 r2 = _oplab_session.get(
                     f'{_oplab_base}/market/instruments/{ticker}',
@@ -25524,6 +25724,29 @@ def api_quote_hint(ticker):
                 )
                 if r2.status_code == 200:
                     d2 = r2.json()
+                    if isinstance(d2, list):
+                        d2 = d2[0] if d2 else {}
+                    try:
+                        _k2 = float(d2.get('strike') or 0)
+                        if _k2 > 0:
+                            o_strike = _k2
+                        _due2 = str(d2.get('due_date') or d2.get('expiration_date') or '')[:10]
+                        if _due2:
+                            o_exp = _due2
+                        _cat2 = str(d2.get('category') or d2.get('option_type') or d2.get('type') or '').upper()
+                        if 'PUT' in _cat2:
+                            o_tipo = 'PUT'
+                        elif 'CALL' in _cat2:
+                            o_tipo = 'CALL'
+                        _mt = ' '.join(str(d2.get(k) or '') for k in ('maturity_type', 'exercise_type', 'style', 'option_style')).upper()
+                        if 'AMER' in _mt:
+                            o_estilo = 'Americana'
+                        elif 'EURO' in _mt:
+                            o_estilo = 'Europeia'
+                        if o_strike and o_exp and o_estilo:
+                            _HINT_FICHA[ticker] = (time.time(), (o_strike, o_exp, o_tipo, o_estilo))
+                    except Exception:
+                        pass
                     for _tk in ('trades', 'num_trades', 'trade_count', 'negotiations',
                                 'quantity', 'volume', 'deals', 'qtd_negocios',
                                 'number_of_trades', 'negocios', 'qtd',
@@ -25554,6 +25777,11 @@ def api_quote_hint(ticker):
             'ask':       round(ask,    2),
             'bid':       round(bid,    2),
             'is_option': True,
+            'strike':    round(o_strike, 2) if o_strike else None,
+            'expiration': o_exp,
+            'dte':       ((date.fromisoformat(o_exp[:10]) - date.today()).days if o_exp else None),
+            'tipo':      o_tipo,
+            'estilo':    o_estilo,
         }
         if trades is not None:
             resp['trades'] = trades

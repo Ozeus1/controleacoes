@@ -1008,10 +1008,14 @@ function renderHist() {
 
 function importarDaProducao() {
   var d = null;
-  try { d = JSON.parse(localStorage.getItem('simflex_import') || 'null'); localStorage.removeItem('simflex_import'); } catch (e) { d = null; }
+  // O item fica 20 s no armazenamento (e não é apagado na hora): a primeira visita ao SimFlex pode recarregar a
+  // página uma vez (instalação do service worker) e o segundo carregamento ainda precisa dos dados.
+  try { d = JSON.parse(localStorage.getItem('simflex_import') || 'null'); setTimeout(function () { try { localStorage.removeItem('simflex_import'); } catch (e) {} }, 20000); } catch (e) { d = null; }
   if (!d || !d.legs) return false;
-  var t = novaAba({ name: '📌 ' + (d.name || d.ativo), ativo: d.ativo, hist: { origem: d.origem, extrato: d.extrato || [], rolagens: d.rolagens || [], obs: d.obs || '' } });
-  t.dirty = false;
+  var t = novaAba(d.novo
+    ? { name: d.name || d.ativo, ativo: d.ativo }                       // estrutura nova (vinda de uma busca): sem histórico
+    : { name: '📌 ' + (d.name || d.ativo), ativo: d.ativo, hist: { origem: d.origem, extrato: d.extrato || [], rolagens: d.rolagens || [], obs: d.obs || '' } });
+  t.dirty = !!d.novo;
   t.legs = d.legs.map(function (g) {
     var tp = (g.opt_type || 'CALL').toUpperCase();
     return { on: true, type: tp === 'STOCK' ? 'STOCK' : tp, side: g.side, qty: +g.quantity || 0, exp: tp === 'STOCK' ? '' : (g.expiration_date || ''),
@@ -1019,8 +1023,8 @@ function importarDaProducao() {
              saiPx: null, saiVol: null, saiLock: false, teoVol: null };
   });
   // resultado carregado: o mesmo da tela de acompanhamento + rolagens de opção individual
-  var ev = eventosDe(t.hist, t.legs), extraOp = 0;
-  ev.forEach(function (e) { if (e.opcao) extraOp += e.pnl; });
+  var extraOp = 0;
+  if (t.hist) eventosDe(t.hist, t.legs).forEach(function (e) { if (e.opcao) extraOp += e.pnl; });
   t.carry = (+d.rollAdjustment || 0) + extraOp;
   CUR = TABS.length - 1;
   render(); carregaCadeia(t);

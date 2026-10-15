@@ -1597,6 +1597,7 @@ function editDeltaPut(optId, current) {
     pointer-events:none; transition:opacity .12s;">
   <div style="font-weight:700; font-size:.9rem; margin-bottom:.35rem;" id="qh-ticker"></div>
   <div style="color:#94a3b8; font-size:.72rem; margin-bottom:.4rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px;" id="qh-name"></div>
+  <div id="qh-ficha"></div>
   <div style="display:grid; grid-template-columns:1fr 1fr; gap:.2rem .7rem;">
     <span style="color:#94a3b8;">Último</span>  <span id="qh-price" style="font-weight:600;"></span>
     <span style="color:#94a3b8;">Var %</span>   <span id="qh-change"></span>
@@ -1615,8 +1616,27 @@ function editDeltaPut(optId, current) {
     function fmt(v){ return 'R$ '+parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
     function fmtPct(v){ var f=parseFloat(v); return (f>=0?'+':'')+f.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%'; }
 
+
+    // Ficha da opção: CALL/PUT, americana/europeia, strike e vencimento (com os dias que faltam)
+    function fichaHtml(d){
+        if(!d || !d.is_option || (!d.strike && !d.expiration && !d.estilo && !d.tipo)) return '';
+        var pill = function(t, c){ return '<span style="display:inline-block;padding:.04rem .4rem;border-radius:4px;font-size:.68rem;font-weight:700;margin-right:.3rem;background:'+c[0]+';color:'+c[1]+';">'+t+'</span>'; };
+        var h = '<div style="margin:.15rem 0 .45rem;">';
+        if(d.tipo) h += pill(d.tipo, d.tipo==='PUT' ? ['rgba(248,113,113,.16)','#f87171'] : ['rgba(52,211,153,.16)','#34d399']);
+        h += pill(d.estilo || 'estilo n/d', d.estilo==='Europeia' ? ['rgba(167,139,250,.18)','#a78bfa'] : (d.estilo ? ['rgba(96,165,250,.18)','#60a5fa'] : ['rgba(148,163,184,.14)','#94a3b8']));
+        h += '</div><div style="display:grid;grid-template-columns:auto 1fr;gap:.15rem .8rem;margin-bottom:.45rem;padding-bottom:.45rem;border-bottom:1px solid #334155;">';
+        if(d.strike) h += '<span style="color:#94a3b8;">Strike</span><span style="font-weight:700;">'+fmt(d.strike)+'</span>';
+        if(d.expiration){
+            var p = String(d.expiration).slice(0,10).split('-');
+            var dias = d.dte != null ? ' <span style="color:'+(d.dte<=7?'#f87171':(d.dte<=30?'#fbbf24':'#94a3b8'))+';font-size:.74rem;">('+d.dte+'d)</span>' : '';
+            h += '<span style="color:#94a3b8;">Vencimento</span><span style="font-weight:700;">'+p[2]+'/'+p[1]+'/'+p[0]+dias+'</span>';
+        }
+        return h + '</div>';
+    }
+
     function showHint(ticker, x, y){
         active = ticker;
+        document.getElementById('qh-ficha').innerHTML = '';
         document.getElementById('qh-ticker').textContent = ticker;
         document.getElementById('qh-name').textContent   = '';
         document.getElementById('qh-price').textContent  = '';
@@ -1659,7 +1679,9 @@ function editDeltaPut(optId, current) {
             document.getElementById('qh-trades').style.display='none';
             return;
         }
-        document.getElementById('qh-name').textContent   = d.name !== d.ticker ? d.name : '';
+        var fh = fichaHtml(d);
+        document.getElementById('qh-ficha').innerHTML = fh;
+        document.getElementById('qh-name').textContent   = (!fh && d.name !== d.ticker) ? d.name : '';
         document.getElementById('qh-price').textContent  = fmt(d.price);
         var cel = document.getElementById('qh-change');
         cel.textContent  = fmtPct(d.change);

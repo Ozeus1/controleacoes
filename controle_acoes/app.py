@@ -13301,6 +13301,176 @@ def api_fyt_box3(ticker):
     })
 
 
+def _box4_eff(rw, market_open):
+    """Preços executáveis de uma série para o Box de 4 Pontas: no pregão exige book dos dois lados;
+    fora dele (ou com spread abusivo) usa o último negócio."""
+    bid, ask, last = rw['bid'], rw['ask'], rw['close']
+    last_ok = last if last >= 0.05 else None
+    has_book = bid >= 0.05 and ask >= 0.05
+    if not market_open:
+        return {'bid': last_ok, 'ask': last_ok, 'src': 'ultimo', 'boca': has_book}
+    b = bid if bid >= 0.05 else last_ok
+    a_ = ask if ask >= 0.05 else last_ok
+    src = 'book' if has_book else 'ultimo'
+    if has_book and last_ok and (ask - bid) > max(0.10, 0.25 * (bid + ask) / 2):
+        b = a_ = last_ok
+        src = 'ultimo'
+    return {'bid': b, 'ask': a_, 'src': src, 'boca': has_book}
+
+
+def _box4_ativo(tk, ym, modo, token, uid, selic_per, market_open):
+    """Melhor Box de 4 Pontas (um par de strikes A<B) de um ativo no mês `ym` (AAAA-MM), ou None."""
+    from datetime import date as _d
+    try:
+        chain = _oplab_chain_cached(tk, token)
+    except Exception:
+        return None
+    spot = None
+    calls, puts = {}, {}
+    exp_sel = None
+    for o in chain:
+        if not isinstance(o, dict):
+            continue
+        due = str(o.get('due_date') or o.get('expiration_date') or '')[:10]
+        if len(due) != 10 or due[:7] != ym:
+            continue
+        try:
+            dd = _d.fromisoformat(due)
+        except ValueError:
+            continue
+        # só mensal (3ª sexta ± 2 dias)
+        cnt, day = 0, 1
+        while True:
+            x = _d(dd.year, dd.month, day)
+            if x.weekday() == 4:
+                cnt += 1
+                if cnt == 3:
+                    break
+            day += 1
+        if abs((dd - x).days) > 2:
+            continue
+        strike = float(o.get('strike') or 0)
+        sym = str(o.get('symbol') or o.get('ticker') or '').upper()
+        if strike <= 0 or not sym:
+            continue
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        exp_sel = due
+        if spot is None:
+            try:
+                spot = float(o.get('spot_price') or 0) or None
+            except (TypeError, ValueError):
+                spot = None
+        mt = str(o.get('maturity_type') or '').upper()
+        rec = {'symbol': sym, 'strike': round(strike, 2),
+               'bid': round(float(o.get('bid') or 0), 2), 'ask': round(float(o.get('ask') or 0), 2),
+               'close': round(float(o.get('close') or 0), 2),
+               'estilo': 'AM' if 'AMER' in mt else ('EU' if 'EURO' in mt else None)}
+        (puts if ('PUT' in cat or cat == 'P') else calls)[rec['strike']] = rec
+    ks = sorted(set(calls) & set(puts))
+    if len(ks) < 2:
+        return None
+    if not spot:
+        try:
+            with app.app_context():
+                spot = _get_underlying_quote(tk, uid)[0]
+        except Exception:
+            spot = None
+    if not spot:
+        return None
+    ef = {k: (_box4_eff(calls[k], market_open), _box4_eff(puts[k], market_open)) for k in ks}
+    deb = modo == 'debito'
+    melhor = None
+    for i, ka in enumerate(ks):
+        ca, pa_ = ef[ka]
+        for kb in ks[i + 1:]:
+            cb, pb = ef[kb]
+            if market_open and not (ca['boca'] and pa_['boca'] and cb['boca'] and pb['boca']):
+                continue
+            asa = round(kb - ka, 2)
+            if deb:
+                if None in (ca['ask'], pa_['bid'], cb['bid'], pb['ask']):
+                    continue
+                premio = ca['ask'] - pa_['bid'] - cb['bid'] + pb['ask']
+                if premio <= 0.01:
+                    continue
+                ret = (asa - premio) / premio * 100
+                chave = ret                                     # maior é melhor
+            else:
+                if None in (ca['bid'], pa_['ask'], cb['ask'], pb['bid']):
+                    continue
+                premio = ca['bid'] - pa_['ask'] - cb['ask'] + pb['bid']     # crédito recebido
+                if premio <= 0.01:
+                    continue
+                ret = (asa / premio - 1) * 100                  # taxa implícita do "empréstimo"
+                chave = -ret                                    # menor taxa é melhor
+            if melhor is None or chave > melhor[0]:
+                melhor = (chave, ka, kb, asa, premio, ret)
+    if not melhor:
+        return None
+    _, ka, kb, asa, premio, ret = melhor
+    legs = [  # (série, lado no box comprado) — o lado é invertido no box vendido
+        (calls[ka], 'BUY', 'CALL'), (puts[ka], 'SELL', 'PUT'), (calls[kb], 'SELL', 'CALL'), (puts[kb], 'BUY', 'PUT')]
+    ef_l = [ef[ka][0], ef[ka][1], ef[kb][0], ef[kb][1]]
+    out_legs = []
+    for (rec, lado, tp), e in zip(legs, ef_l):
+        side = lado if deb else ('SELL' if lado == 'BUY' else 'BUY')
+        px = e['ask'] if side == 'BUY' else e['bid']
+        out_legs.append({'symbol': rec['symbol'], 'tipo': tp, 'side': side, 'strike': rec['strike'],
+                         'px': round(px, 2), 'estilo': rec['estilo'], 'src': e['src']})
+    return {
+        'ativo': tk, 'spot': round(spot, 2), 'exp': exp_sel, 'ka': ka, 'kb': kb, 'asa': asa,
+        'premio': round(premio, 2), 'retorno': round(ret, 2),
+        'pct_cdi': round(ret / selic_per * 100, 1) if (deb and selic_per > 0) else None,
+        'legs': out_legs, 'src': 'ultimo' if any(l['src'] == 'ultimo' for l in out_legs) else 'book',
+    }
+
+
+@app.route('/api/fyt-box4')
+@login_required
+def api_fyt_box4():
+    """Scanner de Box de 4 Pontas (arbitragem de juros só com opções) sobre os ativos das suas listas.
+    modo=debito (box comprado: paga e recebe a asa no vencimento) | credito (box vendido: recebe e devolve a asa).
+    ym=AAAA-MM do vencimento MENSAL. Débito: ordena por retorno; crédito: pela menor taxa implícita."""
+    modo = 'credito' if (request.args.get('modo') or 'debito').lower() == 'credito' else 'debito'
+    ym = (request.args.get('ym') or '')[:7]
+    if len(ym) != 7 or ym[4] != '-':
+        return jsonify({'error': 'Informe o vencimento (mês).'}), 400
+    uid = current_user.id
+    token = Settings.get_value('oplab_token', user_id=uid)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado'}), 400
+    tickers = list(dict.fromkeys(['BOVA11', 'SMAL11'] + _ranking_dropdown_tickers(uid)))[:40]
+    selic = _selic()
+    from datetime import date as _d
+    y, m = int(ym[:4]), int(ym[5:7])
+    cnt, dia = 0, 1
+    while True:
+        ult = _d(y, m, dia)
+        if ult.weekday() == 4:
+            cnt += 1
+            if cnt == 3:
+                break
+        dia += 1
+    dc = max((ult - _d.today()).days, 1)
+    selic_per = ((1 + selic / 100) ** (dc / 365.0) - 1) * 100
+    _nb = now_brt()
+    market_open = (_nb.weekday() < 5 and (10, 0) <= (_nb.hour, _nb.minute) < (16, 30))
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _one(tk):
+        try:
+            return _box4_ativo(tk, ym, modo, token, uid, selic_per, market_open)
+        except Exception:
+            app.logger.exception('box4 %s', tk)
+            return None
+
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        res = [r for r in ex.map(_one, tickers) if r]
+    res.sort(key=lambda r: r['retorno'], reverse=(modo == 'debito'))
+    return jsonify({'modo': modo, 'ym': ym, 'rows': res, 'total': len(res), 'varridos': len(tickers),
+                    'market_open': market_open, 'selic': round(selic, 2), 'selic_per': round(selic_per, 2)})
+
+
 @app.route('/api/fyt-thl/<ticker>')
 @login_required
 def api_fyt_thl(ticker):

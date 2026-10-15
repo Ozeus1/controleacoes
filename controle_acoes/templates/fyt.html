@@ -97,7 +97,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   </p>
 
   <!-- Ativo -->
-  <div class="fyt-campo" style="margin-bottom:.9rem;max-width:260px;">
+  <div class="fyt-campo" id="fyt-ativo-wrap" style="margin-bottom:.9rem;max-width:260px;">
     <label for="fyt-ticker">Ativo subjacente</label>
     <select id="fyt-ticker">
       <option value="BOVA11">BOVA11</option>
@@ -133,6 +133,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <option value="straddle_ha">⚖️ Short Straddle HA (Hedge Assimétrico)</option>
         <option value="slide">🛝 Slide Estrutural</option>
         <option value="box3">📦 Box de 3 Pontas</option>
+        <option value="box4">📦 Box de 4 Pontas (melhores oportunidades)</option>
       </select>
     </div>
 
@@ -622,6 +623,21 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       </div>
     </div>
 
+    <!-- Filtros do Box de 4 Pontas -->
+    <div id="fyt-filtros-b4" style="display:none;">
+      <div class="fyt-campo">
+        <label for="fyt-b4-modo" title="Débito: box comprado (paga e recebe a diferença dos strikes). Crédito: box vendido (recebe agora e devolve a diferença)">Operação</label>
+        <select id="fyt-b4-modo"><option value="debito" selected>Operação de Débito</option><option value="credito">Operação de Crédito</option></select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-b4-ym" title="Somente vencimentos mensais (3ª sexta-feira)">Vencimento (mensais)</label>
+        <select id="fyt-b4-ym"></select>
+      </div>
+      <div class="fyt-campo"><label>&nbsp;</label>
+        <span style="font-size:.78rem;color:var(--text-secondary);padding-top:.2rem;">Varre os ativos das suas listas e mostra o melhor box de cada um.</span>
+      </div>
+    </div>
+
     <div class="fyt-campo" style="flex-direction:row;align-items:center;gap:.4rem;justify-content:flex-end;">
       <input type="checkbox" id="fyt-usar-brapi" autocomplete="off" style="width:auto;cursor:pointer;">
       <label for="fyt-usar-brapi" style="text-transform:none;font-size:.8rem;cursor:pointer;opacity:.75;"
@@ -763,6 +779,62 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       <ul>
         <li>Uma versão com as quatro pontas (<strong>Box Spread</strong> e <strong>Box 3/4 Pontas</strong>) está na <a href="/busca-operacoes-avancadas" style="color:#818cf8;">Busca de Operações Avançadas</a>.</li>
         <li>O ganho considera preço do ativo + PUT (ask) − CALL (bid); a linha marcada separa os strikes abaixo e acima do preço atual.</li>
+      </ul>
+    </div>
+  </div>
+
+
+  <div class="fyt-ajuda" id="fyt-ajuda-b4" style="display:none;">
+    <div class="fyt-ajuda-top">
+      <h4>Scanner de Box 4 Pontas</h4>
+      <div class="fyt-atabs">
+        <span class="fyt-atab on" data-p="mecanica">Mecânica</span>
+        <span class="fyt-atab" data-p="cd">Crédito vs Débito</span>
+        <span class="fyt-atab" data-p="colunas">Colunas</span>
+        <span class="fyt-atab" data-p="exemplo">Exemplo</span>
+        <span class="fyt-atab" data-p="controles">Controles</span>
+      </div>
+    </div>
+    <div class="fyt-apane on" data-p="mecanica">
+      <h5>ℹ️ O que é o Box de 4 Pontas?</h5>
+      <p>Estratégia de arbitragem de juros utilizando <strong>apenas opções</strong> (sem compra do ativo à vista). Combina 4 pernas em dois strikes (A e B), replicando uma aplicação financeira sintética.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin:.6rem 0;">
+        <div><strong style="color:#a5b4fc;">Lado A (strike baixo)</strong><ul><li style="color:#34d399;">Comprar CALL (A)</li><li style="color:#f87171;">Vender PUT (A)</li></ul></div>
+        <div><strong style="color:#a5b4fc;">Lado B (strike alto)</strong><ul><li style="color:#f87171;">Vender CALL (B)</li><li style="color:#34d399;">Comprar PUT (B)</li></ul></div>
+      </div>
+      <p style="font-style:italic;color:var(--text-secondary);font-size:.82rem;">No vencimento o ganho é exatamente <strong>(Strike B − Strike A)</strong>. Se o custo de montagem for menor que essa diferença, a sobra é a sua taxa de juros.</p>
+    </div>
+    <div class="fyt-apane" data-p="cd">
+      <h5>📋 Os 2 modos</h5>
+      <ul>
+        <li><strong style="color:#34d399;">Operação de Crédito (Box Vendido):</strong> você <strong>recebe</strong> na montagem e devolve a diferença dos strikes no vencimento. Equivale a um empréstimo com taxa implícita — interessante quando mais barato que alternativas de crédito.</li>
+        <li><strong style="color:#60a5fa;">Operação de Débito (Box Comprado):</strong> você <strong>paga</strong> na montagem e recebe os strikes no vencimento. Renda fixa sintética — retorno acima do CDI = arbitragem.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="colunas">
+      <h5>📊 Colunas da tabela</h5>
+      <ul>
+        <li><strong>Strike:</strong> os dois strikes da estrutura (A – B).</li>
+        <li><strong>Asa (wing):</strong> distância em R$ entre os dois strikes (B − A). A "asa" define o valor máximo de liquidação — quanto mais larga, maior o volume financeiro movimentado.</li>
+        <li><strong>Prêmio:</strong> custo líquido de montagem das 4 pernas (preços reais do book — bid/ask). No crédito, é o valor recebido.</li>
+        <li><strong>Retorno:</strong> taxa implícita da operação. <span style="color:#34d399;">Verde</span> = positivo, <span style="color:#f87171;">vermelho</span> = negativo. No débito vem acompanhado do equivalente em % do CDI proporcional ao prazo; no crédito é a taxa do empréstimo (menor é melhor).</li>
+        <li><strong>Opção:</strong> as 4 séries (+ comprada, − vendida) e o estilo de cada uma: <span style="color:#60a5fa;">AM</span> americana, <span style="color:#a78bfa;">EU</span> europeia.</li>
+      </ul>
+      <div class="nota"><strong>⚠️ Alertas de execução:</strong><br><span style="color:#f87171;">Taxas B3:</span> 4 pernas = pesados emolumentos. A taxa líquida precisa superar o CDI com folga.<br><span style="color:#fbbf24;">PNT:</span> utilize a Plataforma de Negociação de Travas para executar todas as pernas simultaneamente.</div>
+    </div>
+    <div class="fyt-apane" data-p="exemplo">
+      <h5>🧮 Exemplo prático</h5>
+      <p><strong>PETR4</strong> — Strike A = R$ 36, Strike B = R$ 40, Asa = R$ 4,00 — DTE 30 dias<br><span style="color:var(--text-secondary);font-size:.78rem;">(Operação de Débito — Box Comprado)</span></p>
+      <p><strong style="color:#60a5fa;">Montagem (4 pernas):</strong><br>+C Call A (R$ 36): paga R$ 3,80<br>−V Put A (R$ 36): recebe R$ 0,50<br>−V Call B (R$ 40): recebe R$ 1,20<br>+C Put B (R$ 40): paga R$ 2,80<br><strong>Custo líquido (prêmio):</strong> 3,80 − 0,50 − 1,20 + 2,80 = <strong style="color:#fbbf24;">R$ 4,90 (débito)</strong></p>
+      <p><strong style="color:#34d399;">Desmontagem (vencimento):</strong> as 4 pernas se liquidam e você recebe exatamente Strike B − Strike A = R$ 4,00.<br><strong>Resultado:</strong> 4,00 − 4,90 = <strong style="color:#f87171;">R$ 0,90 de prejuízo</strong>.<br><span style="color:var(--text-secondary);font-size:.78rem;">Neste exemplo o box não vale a pena (custo &gt; asa). Procure os de retorno positivo e acima do CDI.</span></p>
+    </div>
+    <div class="fyt-apane" data-p="controles">
+      <h5>🎛️ Controles</h5>
+      <ul>
+        <li><strong>Operação:</strong> Débito (box comprado) ou Crédito (box vendido).</li>
+        <li><strong>Vencimento:</strong> apenas mensais (3ª sexta-feira); os semanais não entram.</li>
+        <li><strong>Buscar:</strong> varre os ativos das suas listas e devolve o melhor par de strikes de cada um, ordenado pelo retorno (débito) ou pela menor taxa (crédito).</li>
+        <li>Clique em uma linha para ver o detalhamento, abrir no <strong>SimFlex</strong> ou exportar para o <strong>Pnt</strong>.</li>
       </ul>
     </div>
   </div>
@@ -991,6 +1063,10 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('fyt-ajuda-sl').style.display        = (v === 'slide') ? '' : 'none';
     document.getElementById('fyt-filtros-bx').style.display      = (v === 'box3') ? 'contents' : 'none';
     document.getElementById('fyt-ajuda-bx').style.display        = (v === 'box3') ? '' : 'none';
+    document.getElementById('fyt-filtros-b4').style.display     = (v === 'box4') ? 'contents' : 'none';
+    document.getElementById('fyt-ajuda-b4').style.display       = (v === 'box4') ? '' : 'none';
+    document.getElementById('fyt-ativo-wrap').style.display     = (v === 'box4') ? 'none' : '';
+    if (v === 'box4') b4Prepara();
     if (v === 'box3') bxPrepara();
     if (v === 'slide') slPrepara();
     if (v === 'straddle_ha') shaPrepara();
@@ -1025,6 +1101,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     return (elTicker.value || '').trim().toUpperCase();
   }
   function buscar() {
+    if (opSel.value === 'box4') { buscarBox4(); return; }
     setTicker(tickerAtual());
     if (!currentTicker) {
       errBox.textContent = '⚠️ Escolha um ativo antes de buscar.';
@@ -1840,6 +1917,118 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     };
   }
 
+  // ── Box de 4 Pontas (varre os ativos das listas) ───────────────────────────
+  var B4_MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  function b4Prepara() {
+    var sel = document.getElementById('fyt-b4-ym');
+    if (sel.options.length) return;
+    var hoje = new Date(), h = '';
+    for (var i = 0; i < 9; i++) {
+      var d = new Date(hoje.getFullYear(), hoje.getMonth() + i, 1), n = 0, dia = 1, t;
+      for (;; dia++) { t = new Date(d.getFullYear(), d.getMonth(), dia); if (t.getDay() === 5 && ++n === 3) break; }
+      if (t < new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate())) continue;
+      var ym = t.getFullYear() + '-' + ('0' + (t.getMonth() + 1)).slice(-2);
+      h += '<option value="' + ym + '">' + ('0' + t.getDate()).slice(-2) + ' ' + B4_MESES[t.getMonth()] + ' ' + String(t.getFullYear()).slice(2) + ' (M)</option>';
+    }
+    sel.innerHTML = h;
+  }
+  function buscarBox4() {
+    var modo = document.getElementById('fyt-b4-modo').value, ym = document.getElementById('fyt-b4-ym').value;
+    loading.style.display = 'block'; loading.textContent = '⏳ Varrendo os ativos das suas listas…';
+    errBox.style.display = 'none'; hintBox.style.display = 'none'; results.innerHTML = ''; spotEl.innerHTML = '';
+    fetch('/api/fyt-box4?' + new URLSearchParams({modo: modo, ym: ym}).toString())
+      .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+      .then(function(res) {
+        loading.style.display = 'none'; loading.textContent = '⏳ Varrendo a cadeia de opções…';
+        if (!res.ok || res.j.error) { errBox.textContent = '⚠️ ' + (res.j.error || 'Erro ao buscar.'); errBox.style.display = 'block'; return; }
+        currentEstrutura = 'box4'; renderBox4(res.j);
+      })
+      .catch(function(e) { loading.style.display = 'none'; errBox.textContent = '⚠️ Falha na requisição: ' + e; errBox.style.display = 'block'; });
+  }
+  function b4Curto(sym, ativo) { return sym.slice(Math.min(4, ativo.length)); }
+  function b4Estilo(e) {
+    return e === 'AM' ? '<span style="font-size:.62rem;font-weight:700;color:#60a5fa;background:rgba(96,165,250,.15);border-radius:3px;padding:0 .25rem;">AM</span>'
+         : e === 'EU' ? '<span style="font-size:.62rem;font-weight:700;color:#a78bfa;background:rgba(167,139,250,.15);border-radius:3px;padding:0 .25rem;">EU</span>' : '';
+  }
+  function renderBox4(d) {
+    lastData = d;
+    var deb = d.modo === 'debito';
+    if (!d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">Nenhum box com preços nos quatro lados em ' +
+        d.varridos + ' ativos para este vencimento. Tente outro mês' + (d.market_open ? ' (no pregão exige-se book nas quatro pontas)' : '') + '.</div>';
+      return;
+    }
+    var h = '<div style="background:var(--hover-bg,#0f172a);border-radius:8px;padding:.7rem 1rem;margin:.2rem 0 .8rem;font-size:.85rem;">' +
+      (deb ? '<strong>OPERAÇÃO DE DÉBITO</strong>: montagem de box comprado, pagando por ele, com o objetivo de retorno sobre o investimento e receber o valor referente à diferença entre os strikes na desmontagem.'
+           : '<strong>OPERAÇÃO DE CRÉDITO</strong>: montagem de box vendido, recebendo agora e devolvendo a diferença entre os strikes no vencimento (empréstimo sintético). Menor taxa é melhor.') +
+      '</div><div style="font-size:.78rem;color:var(--text-secondary);margin-bottom:.4rem;">' + d.rows.length + ' de ' + d.varridos + ' ativos · Selic no período: ' + fmt(d.selic_per) + '%' +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') + '</div>';
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr><th>Ativo</th><th style="text-align:left;">Opção</th><th>Spot</th><th>Strike</th><th>Asa</th>' +
+      '<th title="' + (deb ? 'Custo líquido de montagem' : 'Crédito recebido na montagem') + '">Prêmio</th>' +
+      '<th title="' + (deb ? 'Retorno sobre o prêmio até o vencimento' : 'Taxa implícita do empréstimo (menor é melhor)') + '">' + (deb ? 'Retorno' : 'Taxa') + '</th></tr></thead><tbody>';
+    d.rows.forEach(function(r, i) {
+      var bom = deb ? r.retorno > 0 : r.retorno < d.selic_per;
+      h += '<tr data-i="' + i + '" title="Clique para ver o detalhamento">' +
+        '<td style="color:#60a5fa;">' + r.ativo + '</td><td style="text-align:left;white-space:nowrap;">' +
+        r.legs.map(function(l) { return '<span class="' + (l.side === 'BUY' ? 'pos' : 'neg') + '">' + (l.side === 'BUY' ? '+' : '−') + b4Curto(l.symbol, r.ativo) + '</span> ' + b4Estilo(l.estilo); }).join(' &nbsp;') +
+        '</td><td>' + brl(r.spot) + '</td><td>' + brl(r.ka) + ' - ' + brl(r.kb) + '</td><td>' + brl(r.asa) + '</td><td>' + brl(r.premio) + '</td>' +
+        '<td class="' + (bom ? 'pos' : 'neg') + '"><strong>' + fmt(r.retorno) + '%</strong>' +
+          (r.pct_cdi != null ? '<br><span style="font-size:.7rem;color:var(--text-secondary);">' + fmt(r.pct_cdi, 0) + '% CDI</span>' : '') + '</td></tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) { tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); }); });
+  }
+  function refreshModalB4() {
+    var r = lastData.rows[modalIdx], deb = lastData.modo === 'debito';
+    var q = parseInt(document.getElementById('fytm-qty').value) || 100;
+    document.getElementById('fytm-title').textContent = 'Box de 4 Pontas ' + (deb ? '(débito)' : '(crédito)') + ' ' + r.ativo + ' — ' + brl(r.ka) + ' / ' + brl(r.kb);
+    var boxes = r.legs.map(function(l) {
+      return [(l.side === 'BUY' ? 'Compra ' : 'Venda ') + q + '× ' + l.symbol + ' (' + l.tipo + ' K ' + fmt(l.strike) + ')' + (l.estilo ? ' · ' + (l.estilo === 'AM' ? 'americana' : 'europeia') : ''),
+              brl(l.px * q), l.side === 'BUY' ? 'neg' : 'pos'];
+    });
+    boxes = boxes.concat([
+      [deb ? 'Custo da montagem (prêmio)' : 'Crédito recebido', brl(r.premio * q), deb ? 'neg' : 'pos'],
+      ['Valor na desmontagem (asa)', brl(r.asa * q), deb ? 'pos' : 'neg'],
+      [deb ? 'Resultado travado' : 'Custo do empréstimo', brl(Math.abs(deb ? (r.asa - r.premio) : (r.asa - r.premio)) * q), (deb ? r.asa - r.premio : r.premio - r.asa) >= 0 ? 'pos' : 'neg'],
+      [deb ? 'Retorno no período' : 'Taxa implícita no período', fmt(r.retorno) + '%' + (r.pct_cdi != null ? ' (' + fmt(r.pct_cdi, 0) + '% do CDI)' : ''), ''],
+      ['Selic no período', fmt(lastData.selic_per) + '%', ''],
+      ['Vencimento', dateBR(r.exp), '']
+    ]);
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span><span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+    var L = r.legs.map(function(l) { return {ticker: l.symbol, side: l.side, opt_type: l.tipo, quantity: q, strike: l.strike, entry_price: l.px, expiration_date: r.exp}; });
+    var nome = 'Box 4 Pontas ' + (deb ? 'débito ' : 'crédito ') + r.ativo + ' ' + r.ka + '-' + r.kb;
+    document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + new URLSearchParams({sim: '1', ativo: r.ativo, nome: nome,
+      legs: L.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')}).toString();
+    var calc = document.getElementById('fytm-calc');
+    calc.onclick = null; calc.removeAttribute('target');
+    if (deb) {   // o motor "Box Spread" da aba Estruturas é o box comprado: +CALL A · −CALL B · −PUT A · +PUT B
+      var c = r.legs;
+      calc.style.display = '';
+      calc.href = '/venda_puts?' + new URLSearchParams({st: '1', op: 'box_spread', ativo: r.ativo, spot: r.spot, qty: q, exp: r.exp,
+        at: c[0].symbol, ak: c[0].strike, ap: c[0].px, bt: c[2].symbol, bk: c[2].strike, bp: c[2].px,
+        ct2: c[1].symbol, ck2: c[1].strike, cp2: c[1].px, dt: c[3].symbol, dk: c[3].strike, dp: c[3].px}).toString() + '#estrutura';
+    } else { calc.style.display = 'none'; }
+    var sf = document.getElementById('fytm-sf');
+    sf.style.display = '';
+    sf.onclick = function() {
+      try { localStorage.setItem('simflex_import', JSON.stringify({origem: '', name: nome, ativo: r.ativo, novo: true, legs: L})); }
+      catch (e) { alert('Não foi possível preparar o SimFlex: ' + e); return; }
+      window.open('/simflex?importar=1', '_blank');
+    };
+    var pnt = document.getElementById('fytm-pnt');
+    pnt.style.display = '';
+    pnt.onclick = function() {
+      var T = String.fromCharCode(9), coef = (deb ? r.premio : -r.premio).toFixed(2).replace('.', ',');
+      var linha = r.legs.map(function(l) { return l.symbol; }).concat(r.legs.map(function(l) { return l.side === 'BUY' ? 'C' : 'V'; }))
+        .concat(r.legs.map(function() { return q; })).concat([coef]).join(T);
+      var ok = function() { pnt.textContent = '✓ Copiado!'; setTimeout(function() { pnt.textContent = '📋 Exportar Pnt'; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, function() { prompt('Copie (Pnt):', linha); });
+      else prompt('Copie (Pnt):', linha);
+    };
+  }
+
   // ── Box de 3 Pontas ─────────────────────────────────────────────────────
   var bxReady = false, bxTickerPrep = '';
   function bxDual() {
@@ -2309,6 +2498,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (currentEstrutura === 'straddle_ha') { refreshModalSha(); return; }
     if (currentEstrutura === 'slide') { refreshModalSl(); return; }
     if (currentEstrutura === 'box3') { refreshModalBx(); return; }
+    if (currentEstrutura === 'box4') { refreshModalB4(); return; }
     if (currentEstrutura === 'booster') { refreshModalBo(); return; }
     var r = lastData.rows[modalIdx];
     var q = parseInt(document.getElementById('fytm-qty').value) || 100;

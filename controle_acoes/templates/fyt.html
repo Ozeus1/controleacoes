@@ -2433,7 +2433,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     var L = [{ticker: lastData.ticker, side: 'BUY', opt_type: 'STOCK', quantity: q, strike: 0, entry_price: lastData.spot, expiration_date: ''}].concat(Lop);
     var nome = (r.s_fence ? 'Collar+Fence ' : 'Collar ') + lastData.ticker + ' ' + r.kp + '/' + r.kc;
     document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + new URLSearchParams({sim: '1', ativo: lastData.ticker, nome: nome,
-      legs: Lop.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')}).toString();
+      legs: L.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')}).toString();
     var calc = document.getElementById('fytm-calc');
     calc.onclick = null; calc.removeAttribute('target');
     if (mesmo) {
@@ -2570,7 +2570,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     var Lop = L.slice(1);
     var nome = 'Fence ' + lastData.ticker + ' ' + r.k1 + '/' + r.k2 + '/' + r.k3;
     document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + new URLSearchParams({sim: '1', ativo: lastData.ticker, nome: nome,
-      legs: Lop.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')}).toString();
+      legs: L.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')}).toString();
     var calc = document.getElementById('fytm-calc');
     calc.onclick = null; calc.removeAttribute('target'); calc.style.display = '';
     calc.href = '/venda_puts?' + new URLSearchParams({st: '1', op: 'fence', ativo: lastData.ticker, spot: lastData.spot, qty: q, exp: lastData.exp,

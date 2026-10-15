@@ -13947,6 +13947,8 @@ def api_fyt_collar(ticker):
         if alvo == 'call' and not (a_min <= kc <= a_max):
             continue
         for kp, put in ps.items():
+            if kc <= kp + 0.004:
+                continue                    # collar: a CALL vendida fica ACIMA da PUT comprada (senão o payoff se inverte)
             central = round((kp + kc) / 2, 2)
             if alvo == 'put' and not (a_min <= kp <= a_max):
                 continue

@@ -123,7 +123,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     <div class="fyt-campo">
       <label for="fyt-op">Estrutura</label>
       <select id="fyt-op">
-        <option value="booster">🚀 Booster / Ratio (CALLs)</option>
+        <option value="booster">🚀 Booster / Ratio</option>
         <option value="thl">📐 THL (Trava de Alta Diagonal)</option>
         <option value="mannerheim">🛡️ Linha de Mannerheim</option>
         <option value="trava_alta">📈 Trava de Alta</option>
@@ -910,6 +910,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     <div style="margin-top:1.2rem; display:flex; gap:.6rem; flex-wrap:wrap;">
       <a id="fytm-calc" href="#" class="btn btn-primary btn-sm">🧮 Abrir em Cálculos de Opções</a>
       <a id="fytm-cadeia" href="#" class="btn btn-secondary btn-sm">🔗 Editar em Cadeia de Opções</a>
+      <button id="fytm-sf" type="button" class="btn btn-secondary btn-sm" style="display:none;">🧩 Abrir no SimFlex</button>
       <button id="fytm-pnt" type="button" class="btn btn-secondary btn-sm" style="display:none;">📋 Exportar Pnt</button>
       <button class="btn btn-secondary btn-sm" onclick="fytCloseModal()">Fechar</button>
     </div>
@@ -1948,10 +1949,14 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     ];
     var nome = 'Box 3 Pontas ' + lastData.ticker + ' K' + fmt(r.strike);
     document.getElementById('fytm-cadeia').style.display = 'none';
+    // Cálculos de Opções (aba Estruturas): operação "Box de 3 Pontas" (ativo + PUT + CALL no mesmo strike)
     var calc = document.getElementById('fytm-calc');
-    calc.textContent = '🧩 Abrir no SimFlex'; calc.removeAttribute('target'); calc.href = '#';
-    calc.onclick = function(ev) {
-      ev.preventDefault();
+    calc.onclick = null; calc.removeAttribute('target');
+    calc.href = '/venda_puts?' + new URLSearchParams({st: '1', op: 'box3pontas', ativo: lastData.ticker, spot: lastData.spot, qty: q,
+      exp: lastData.exp, bt: r.put_symbol, bk: r.strike, bp: r.put_px, ct2: r.call_symbol, ck2: r.strike, cp2: r.call_px}).toString() + '#estrutura';
+    var sf = document.getElementById('fytm-sf');
+    sf.style.display = '';
+    sf.onclick = function() {
       try { localStorage.setItem('simflex_import', JSON.stringify({origem: '', name: nome, ativo: lastData.ticker, novo: true, legs: L})); }
       catch (e) { alert('Não foi possível preparar o SimFlex: ' + e); return; }
       window.open('/simflex?importar=1', '_blank');
@@ -2293,6 +2298,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     var _cb = document.getElementById('fytm-calc');
     _cb.onclick = null; _cb.textContent = '🧮 Abrir em Cálculos de Opções'; _cb.style.display = '';
     document.getElementById('fytm-pnt').style.display = 'none';
+    document.getElementById('fytm-sf').style.display = 'none';
     document.getElementById('fytm-cadeia').style.display = '';
     if (currentEstrutura === 'thl') { refreshModalThl(); return; }
     if (currentEstrutura === 'mannerheim') { refreshModalMann(); return; }

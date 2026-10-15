@@ -820,6 +820,7 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         strip:                   { nome: 'Strip', legs: ['CALL — COMPRA', 'PUT — COMPRA 2×', null, null], q: [1, 2], t: ['C', 'P'], lg: [0, 0] },
         synth_strangle:          { nome: 'Short Call Synthetic Strangle', legs: ['AÇÃO — COMPRA', 'CALL — VENDA', 'CALL — VENDA', null], q: [1, -1, -1], t: ['S', 'C', 'C'], lg: [0, 0, 0], stock: true },
         synthetic_straddle:      { nome: 'Synthetic Straddle', legs: ['AÇÃO — COMPRA', 'PUT — COMPRA 2×', null, null], q: [1, 2], t: ['S', 'P'], lg: [0, 0], stock: true },
+        box3pontas:              { nome: 'Box de 3 Pontas (ativo + PUT comprada + CALL vendida, mesmo strike)', legs: ['AÇÃO — COMPRA', 'PUT — COMPRA', 'CALL — VENDA', null], q: [1, 1, -1], t: ['S', 'P', 'C'], lg: [0, 0, 0], stock: true },
         venda_put:               { nome: 'Venda de PUT (a seco)', legs: ['PUT — VENDA', null, null, null], q: [-1], t: ['P'], lg: [0] },
         colar:                   { nome: 'Colar (ação + PUT comprada + CALL vendida)', legs: ['AÇÃO — COMPRA', 'PUT — COMPRA', 'CALL — VENDA', null], q: [1, 1, -1], t: ['S', 'P', 'C'], lg: [0, 0, 0], stock: true },
         venda_coberta:           { nome: 'Venda Coberta (Covered Call)', legs: ['AÇÃO — COMPRA', 'CALL — VENDA', null, null], q: [1, -1], t: ['S', 'C'], lg: [0, 0], stock: true },

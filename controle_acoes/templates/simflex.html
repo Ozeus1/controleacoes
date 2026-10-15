@@ -349,7 +349,11 @@ function abrir(id, silencioso) {
       return { on: true, type: g.type, side: g.side, qty: g.qty, exp: g.exp || '', strike: g.strike, ticker: g.ticker,
                entPx: g.premium, entVol: g.iv || null, entLock: true, saiPx: null, saiVol: null, saiLock: false, teoVol: null };
     });
-    CUR = TABS.length - 1; lembraAbas();
+    lembraAbas();
+    // Abas restauradas em segundo plano (silencioso) não tiram o foco da aba que o usuário está vendo
+    // (ex.: a estrutura que acabou de ser enviada de outra tela)
+    if (silencioso && typeof CUR === 'number') { renderTabs(); carregaCadeia(t); return; }
+    CUR = TABS.length - 1;
     render(); carregaCadeia(t);
   });
 }
@@ -668,7 +672,9 @@ function plEm(legs, S, d, modo, dv) {
     tot += sgn(l) * l.qty * (val - (l.entPx || 0));
   });
   if (t.hist && t.useCarry) tot += t.carry;
-  return tot;
+  // arredonda ao centavo: estruturas de resultado constante (box, conversão) davam ruído de ponto flutuante
+  // que, ampliado pela escala do gráfico, virava um serrilhado enorme
+  return Math.round(tot * 100) / 100;
 }
 function volProb(legs) {
   var t = TAB();
@@ -750,7 +756,7 @@ function calcula() {
   var h = '<div class="r"><span>Vencimento</span><span>' + brD(isoD(dE)) + ' (' + duE + ' d.u.)</span></div>' +
     '<div class="r sep"><span>Max. Lucro</span><span>' + (gainUnl ? pill(1, 'Ilimitado') : '<span class="pos">' + fmt(maxG) + '</span> ' + pill(maxG, fmt(maxG / base * 100) + '%')) + '</span></div>' +
     '<div class="r"><span>% sobre CDI</span><span>' + (gainUnl ? '—' : fmt(maxG / base / cdi * 100) + '%') + '</span></div>' +
-    '<div class="r"><span>Max. Perda</span><span>' + (lossUnl ? pill(-1, 'Ilimitado') : '<span class="neg">' + fmt(minG) + '</span> ' + pill(-1, fmt(minG / base * 100) + '%')) + '</span></div>' +
+    '<div class="r"><span>Max. Perda</span><span>' + (lossUnl ? pill(-1, 'Ilimitado') : (minG >= 0 ? '<span style="color:var(--sf-mut);">sem perda</span>' : '<span class="neg">' + fmt(minG) + '</span> ' + pill(-1, fmt(minG / base * 100) + '%'))) + '</span></div>' +
     '<div class="r sep"><span>Prob. de lucro</span><span>' + pill(pLucro >= 0.5 ? 1 : -1, fmt(pLucro * 100) + '%') + '</span></div>' +
     '<div class="r"><span>Margem aprox.</span><span class="' + (margem > 0 ? 'neg' : '') + '">' + fmt(margem ? -margem : 0) + '</span></div>' +
     '<div class="r"><span>Break even</span><span>' + (bes.length ? bes.map(function (b) { return fmt(b); }).join(' | ') : '—') + '</span></div>' +

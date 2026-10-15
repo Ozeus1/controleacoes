@@ -132,6 +132,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <option value="broken_wing">🪽 Broken Wing Short PUT</option>
         <option value="straddle_ha">⚖️ Short Straddle HA (Hedge Assimétrico)</option>
         <option value="slide">🛝 Slide Estrutural</option>
+        <option value="box3">📦 Box de 3 Pontas</option>
       </select>
     </div>
 
@@ -600,6 +601,27 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       </div>
     </div>
 
+    <!-- Filtros do Box de 3 Pontas -->
+    <div id="fyt-filtros-bx" style="display:none;">
+      <div class="fyt-campo">
+        <label for="fyt-bx-exp">Vencimento</label>
+        <select id="fyt-bx-exp">
+          <option value="0" selected>Vencimento atual</option>
+          <option value="1">Vencimento +1 mês</option>
+          <option value="2">Vencimento +2 meses</option>
+        </select>
+      </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label title="Faixa do strike (CALL vendida e PUT comprada, sempre no mesmo strike). Arraste os dois controles">Strike</label>
+        <div class="fyt-kvals"><span id="fyt-bx-k-lo">—</span><span id="fyt-bx-k-hi">—</span></div>
+        <div class="fyt-dual">
+          <div class="trilho"></div><div class="faixa" id="fyt-bx-k-faixa"></div>
+          <input type="range" id="fyt-bx-k-a" min="0" max="100" step="0.01" value="0">
+          <input type="range" id="fyt-bx-k-b" min="0" max="100" step="0.01" value="100">
+        </div>
+      </div>
+    </div>
+
     <div class="fyt-campo" style="flex-direction:row;align-items:center;gap:.4rem;justify-content:flex-end;">
       <input type="checkbox" id="fyt-usar-brapi" autocomplete="off" style="width:auto;cursor:pointer;">
       <label for="fyt-usar-brapi" style="text-transform:none;font-size:.8rem;cursor:pointer;opacity:.75;"
@@ -685,6 +707,62 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <li>Guia da operação: <a href="{{ url_for('ajuda_operacoes') }}?op=booster" style="color:#818cf8;">Entenda a operação</a>.</li>
         <li>Com a comprada em vencimento posterior, a assunção é <strong>estimada</strong> pelo valor intrínseco no vencimento das vendidas.</li>
         <li>Clique em uma linha para ver o detalhamento e abrir no <strong>SimFlex</strong> ou na Cadeia de Opções.</li>
+      </ul>
+    </div>
+  </div>
+
+
+  <div class="fyt-ajuda" id="fyt-ajuda-bx" style="display:none;">
+    <div class="fyt-ajuda-top">
+      <h4>Box de 3 Pontas</h4>
+      <div class="fyt-atabs">
+        <span class="fyt-atab on" data-p="conceito">Conceito</span>
+        <span class="fyt-atab" data-p="filtros">Filtros e Colunas</span>
+        <span class="fyt-atab" data-p="risco">Risco</span>
+        <span class="fyt-atab" data-p="mais">Saiba Mais</span>
+      </div>
+    </div>
+    <div class="fyt-apane on" data-p="conceito">
+      <h5>ℹ️ O que é o Box de 3 Pontas?</h5>
+      <p>O <strong>Box de 3 Pontas</strong> é uma operação de <strong>renda fixa sintética</strong>. Combina o ativo-objeto (comprado ou já em custódia) com uma PUT comprada e uma CALL vendida no mesmo strike.</p>
+      <p>Exemplo: <code>+1k PETR4  +1k PETRM378  −1k PETRA378</code> → ativo comprado + PUT comprada + CALL vendida, ambas no strike R$ 37,80. O resultado no vencimento é fixo, independente da direção do ativo.</p>
+      <p>O critério de montagem é buscar o <strong>maior ganho potencial</strong> em ativos com liquidez suficiente nas opções, aproveitando distorções de preço e aluguel do ativo-objeto.</p>
+      <div class="nota"><strong>📌 Tributação:</strong> se levada ao vencimento e exercida, a operação é tributada como <strong>renda fixa</strong>. Atenção aos custos de exercício, que podem consumir boa parte da rentabilidade.</div>
+      <p style="font-size:.78rem;color:var(--text-secondary);">Esta estrutura considera que você possua o ativo subjacente, ou o compre pelo valor atual.</p>
+    </div>
+    <div class="fyt-apane" data-p="filtros">
+      <h5>🎛️ Filtros e colunas</h5>
+      <ul>
+        <li><strong>Vencimento:</strong> ciclo de vencimento (atual, +1 ou +2 meses).</li>
+        <li><strong>Strike:</strong> filtra a faixa de strikes da CALL vendida / PUT comprada.</li>
+      </ul>
+      <h5>📊 Colunas da tabela</h5>
+      <ul>
+        <li><strong>Tickers:</strong> mostra apenas os tickers das opções (PUT e CALL). O ativo-objeto é implícito na operação.</li>
+        <li><strong>Call vendida / Put comprada:</strong> strikes da CALL vendida e da PUT comprada (sempre no mesmo strike no Box de 3 Pontas).</li>
+        <li><strong>Ganho potencial:</strong> rentabilidade percentual da operação até o vencimento — equivalente à "taxa" embutida (mostro também a taxa ao ano).</li>
+        <li><strong>Último:</strong> último preço negociado da estrutura (PUT − CALL, pelos últimos negócios).</li>
+        <li><strong>Boca:</strong> custo da montagem agredindo o book (PUT no ask − CALL no bid). Negativo = as opções rendem crédito.</li>
+      </ul>
+      <h5>🔍 Detalhe (ao clicar na linha)</h5>
+      <ul>
+        <li>Pernas com ticker, strike e quantidade (ativo + PUT + CALL), custo da montagem, resultado travado em R$ e %, comparação com a Selic do período, e exportação para o PnT.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="risco">
+      <h5>⚠️ Risco e gestão</h5>
+      <div class="risco" style="border-left-color:#34d399;background:rgba(52,211,153,.08);"><strong>Risco travado:</strong> o resultado é <strong>fixo no vencimento</strong>, independente da direção do ativo. Por isso é classificada como renda fixa sintética.</div>
+      <ul>
+        <li><strong style="color:#fbbf24;">Custos de exercício:</strong> taxas de exercício e emolumentos podem consumir boa parte da rentabilidade, especialmente em operações de menor notional. Avalie o ganho líquido.</li>
+        <li><strong style="color:#fbbf24;">Liquidez:</strong> operações com pouca liquidez nas opções podem resultar em spreads largos, reduzindo o ganho efetivo na montagem.</li>
+        <li><strong style="color:#fbbf24;">Distorções temporárias:</strong> o scanner ajuda a identificar distorções de preço ou de aluguel do ativo — essas janelas tendem a ser <strong>curtas</strong>, exigindo agilidade na montagem.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="mais">
+      <h5>📖 Saiba mais</h5>
+      <ul>
+        <li>Uma versão com as quatro pontas (<strong>Box Spread</strong> e <strong>Box 3/4 Pontas</strong>) está na <a href="/busca-operacoes-avancadas" style="color:#818cf8;">Busca de Operações Avançadas</a>.</li>
+        <li>O ganho considera preço do ativo + PUT (ask) − CALL (bid); a linha marcada separa os strikes abaixo e acima do preço atual.</li>
       </ul>
     </div>
   </div>
@@ -832,6 +910,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     <div style="margin-top:1.2rem; display:flex; gap:.6rem; flex-wrap:wrap;">
       <a id="fytm-calc" href="#" class="btn btn-primary btn-sm">🧮 Abrir em Cálculos de Opções</a>
       <a id="fytm-cadeia" href="#" class="btn btn-secondary btn-sm">🔗 Editar em Cadeia de Opções</a>
+      <button id="fytm-pnt" type="button" class="btn btn-secondary btn-sm" style="display:none;">📋 Exportar Pnt</button>
       <button class="btn btn-secondary btn-sm" onclick="fytCloseModal()">Fechar</button>
     </div>
   </div>
@@ -909,6 +988,9 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('fyt-ajuda-sha').style.display       = (v === 'straddle_ha') ? '' : 'none';
     document.getElementById('fyt-filtros-sl').style.display      = (v === 'slide') ? 'contents' : 'none';
     document.getElementById('fyt-ajuda-sl').style.display        = (v === 'slide') ? '' : 'none';
+    document.getElementById('fyt-filtros-bx').style.display      = (v === 'box3') ? 'contents' : 'none';
+    document.getElementById('fyt-ajuda-bx').style.display        = (v === 'box3') ? '' : 'none';
+    if (v === 'box3') bxPrepara();
     if (v === 'slide') slPrepara();
     if (v === 'straddle_ha') shaPrepara();
     thlWeeklyWrap.style.display = (v === 'thl') ? 'flex' : 'none';
@@ -1012,6 +1094,15 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       });
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-borboleta/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'box3') {
+      var bk = bxDual();
+      q = new URLSearchParams({
+        exp:   document.getElementById('fyt-bx-exp').value,
+        k_min: bxReady ? bk[0] : '',
+        k_max: bxReady ? bk[1] : ''
+      });
+      if (usarBrapi) q.set('source', 'brapi');
+      url = '/api/fyt-box3/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'slide') {
       var kk = slDual('k'), pp = slDual('p');
       q = new URLSearchParams({
@@ -1095,6 +1186,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         else if (estrutura === 'broken_wing') renderBrokenWing(res.j);
         else if (estrutura === 'straddle_ha') { shaAjustaFaixa(res.j.spot); renderStraddleHa(res.j); }
         else if (estrutura === 'slide') { slAjustaFaixa(res.j.spot); renderSlide(res.j); }
+        else if (estrutura === 'box3') { bxAjustaFaixa(res.j.spot); renderBox3(res.j); }
         else { boAjustaFaixa(res.j.spot); renderBooster(res.j); }
       })
       .catch(function(e) {
@@ -1747,6 +1839,135 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     };
   }
 
+  // ── Box de 3 Pontas ─────────────────────────────────────────────────────
+  var bxReady = false, bxTickerPrep = '';
+  function bxDual() {
+    var lo = parseFloat(document.getElementById('fyt-bx-k-a').value), hi = parseFloat(document.getElementById('fyt-bx-k-b').value);
+    return lo <= hi ? [lo, hi] : [hi, lo];
+  }
+  function bxDesenha() {
+    var a = document.getElementById('fyt-bx-k-a');
+    var mn = parseFloat(a.min), mx = parseFloat(a.max), r = bxDual(), span = (mx - mn) || 1;
+    var f = document.getElementById('fyt-bx-k-faixa');
+    f.style.left = ((r[0] - mn) / span * 100) + '%';
+    f.style.width = ((r[1] - r[0]) / span * 100) + '%';
+    document.getElementById('fyt-bx-k-lo').textContent = brl(r[0]);
+    document.getElementById('fyt-bx-k-hi').textContent = brl(r[1]);
+  }
+  ['k-a', 'k-b'].forEach(function(x) { document.getElementById('fyt-bx-' + x).addEventListener('input', bxDesenha); });
+  function bxPoeFaixa(spot) {
+    var lo = Math.floor(spot * 0.8), hi = Math.ceil(spot * 1.2);
+    ['fyt-bx-k-a', 'fyt-bx-k-b'].forEach(function(id) { var el = document.getElementById(id); el.min = lo; el.max = hi; });
+    document.getElementById('fyt-bx-k-a').value = Math.round(spot * 0.9 * 100) / 100;
+    document.getElementById('fyt-bx-k-b').value = Math.round(spot * 1.1 * 100) / 100;
+    bxReady = true; bxDesenha();
+  }
+  function bxPrepara() {
+    var tk = tickerAtual();
+    if (!tk || tk === bxTickerPrep) return;
+    bxTickerPrep = tk; bxReady = false;
+    fetch('/api/quote_hint/' + encodeURIComponent(tk)).then(function(r) { return r.json(); }).then(function(d) {
+      if (tickerAtual() !== tk || !d || !d.price) return;
+      bxPoeFaixa(d.price);
+    }).catch(function() { bxTickerPrep = ''; });
+  }
+  function bxAjustaFaixa(spot) { if (!bxReady && spot) bxPoeFaixa(spot); }
+  elTicker.addEventListener('change', function() { if (opSel.value === 'box3') { bxTickerPrep = ''; bxPrepara(); } });
+  elTickerL.addEventListener('change', function() { if (opSel.value === 'box3') { bxTickerPrep = ''; bxPrepara(); } });
+
+  function renderBox3(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
+          (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>' : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">' +
+        'Nenhum Box de 3 Pontas na faixa de strikes escolhida (CALL e PUT precisam ter o mesmo strike e boca nos dois lados). ' +
+        'Amplie a faixa ou troque o vencimento.</div>';
+      return;
+    }
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">' +
+      '📦 <strong>Box de 3 Pontas</strong> · 📆 Vencimento: <strong>' + dateBR(d.exp) + '</strong> (' + d.dc + 'd) · ' +
+      'Selic no período: ' + fmt(d.selic_per) + '%' +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') +
+      ' · <strong>' + d.rows.length + '</strong> strike(s)</div>';
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th title="PUT comprada e CALL vendida (o ativo-objeto é implícito)">Tickers</th>' +
+      '<th title="Strike da CALL vendida">Call vendida</th><th title="Strike da PUT comprada (o mesmo)">Put comprada</th>' +
+      '<th title="Resultado travado até o vencimento sobre o capital (ativo + PUT − CALL)">Ganho potencial</th>' +
+      '<th title="PUT − CALL pelos últimos negócios (negativo = crédito)">Último</th>' +
+      '<th title="PUT no ask − CALL no bid (negativo = crédito)">Boca</th>' +
+      '</tr></thead><tbody>';
+    var marcou = false;
+    d.rows.forEach(function(r, i) {
+      var sep = (!marcou && r.strike > d.spot) ? ' style="border-top:2px solid #e2e8f0;"' : '';
+      if (sep) marcou = true;
+      h += '<tr data-i="' + i + '"' + sep + ' title="Clique para ver o detalhamento">' +
+        '<td style="text-align:left;"><span class="fyt-badge buy">+' + r.put_symbol + '</span> <span class="fyt-badge sell">−' + r.call_symbol + '</span></td>' +
+        '<td><strong>' + brl(r.strike) + '</strong><br><span style="font-size:.72rem;color:var(--text-secondary);">' + pct(r.k_dist) + '</span></td>' +
+        '<td>' + brl(r.strike) + '</td>' +
+        '<td class="' + (r.ganho_pct >= 0 ? 'pos' : 'neg') + '"><strong>' + fmt(r.ganho_pct) + '%</strong>' +
+            (r.taxa_aa != null ? '<br><span style="font-size:.72rem;color:var(--text-secondary);">' + fmt(r.taxa_aa, 1) + '% a.a.</span>' : '') + '</td>' +
+        '<td>' + (r.ultimo == null ? '—' : brl(r.ultimo)) + '</td>' +
+        '<td>' + brl(r.boca) + (r.src === 'ultimo' ? '<br><span style="font-size:.7rem;color:var(--text-secondary);">últ.</span>' : '') + '</td>' +
+        '</tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) {
+      tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); });
+    });
+  }
+
+  function refreshModalBx() {
+    var r = lastData.rows[modalIdx];
+    var q = parseInt(document.getElementById('fytm-qty').value) || 100;
+    document.getElementById('fytm-title').textContent =
+      'Box de 3 Pontas ' + lastData.ticker + ' — K ' + fmt(r.strike) + ' · ' + r.put_symbol + ' / ' + r.call_symbol;
+    var cap = r.custo * q, gan = r.ganho * q;
+    var boxes = [
+      ['Compra ' + q + '× ' + lastData.ticker + ' (ativo)', brl(lastData.spot * q), 'neg'],
+      ['Compra ' + q + '× ' + r.put_symbol + ' (PUT K ' + fmt(r.strike) + ')', brl(r.put_px * q), 'neg'],
+      ['Venda ' + q + '× ' + r.call_symbol + ' (CALL K ' + fmt(r.strike) + ')', brl(r.call_px * q), 'pos'],
+      ['Capital da operação', brl(cap), ''],
+      ['Resultado travado no vencimento', brl(gan), gan >= 0 ? 'pos' : 'neg'],
+      ['Ganho potencial', fmt(r.ganho_pct) + '%' + (r.taxa_aa != null ? ' (' + fmt(r.taxa_aa, 1) + '% a.a.)' : ''), r.ganho_pct >= 0 ? 'pos' : 'neg'],
+      ['Contra a Selic do período', (r.vs_selic >= 0 ? '+' : '') + fmt(r.vs_selic) + ' p.p. (Selic ' + fmt(lastData.selic_per) + '%)', r.vs_selic >= 0 ? 'pos' : 'neg'],
+      ['Preço líquido das opções (boca)', (r.boca < 0 ? 'crédito ' : 'débito ') + brl(Math.abs(r.boca)) + ' por ação', ''],
+      ['Vencimento', dateBR(lastData.exp) + ' (' + lastData.dc + ' d.c.)', '']
+    ];
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
+             '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+    var L = [
+      {ticker: lastData.ticker, side: 'BUY',  opt_type: 'STOCK', quantity: q, strike: 0, entry_price: lastData.spot, expiration_date: ''},
+      {ticker: r.put_symbol,    side: 'BUY',  opt_type: 'PUT',   quantity: q, strike: r.strike, entry_price: r.put_px,  expiration_date: lastData.exp},
+      {ticker: r.call_symbol,   side: 'SELL', opt_type: 'CALL',  quantity: q, strike: r.strike, entry_price: r.call_px, expiration_date: lastData.exp}
+    ];
+    var nome = 'Box 3 Pontas ' + lastData.ticker + ' K' + fmt(r.strike);
+    document.getElementById('fytm-cadeia').style.display = 'none';
+    var calc = document.getElementById('fytm-calc');
+    calc.textContent = '🧩 Abrir no SimFlex'; calc.removeAttribute('target'); calc.href = '#';
+    calc.onclick = function(ev) {
+      ev.preventDefault();
+      try { localStorage.setItem('simflex_import', JSON.stringify({origem: '', name: nome, ativo: lastData.ticker, novo: true, legs: L})); }
+      catch (e) { alert('Não foi possível preparar o SimFlex: ' + e); return; }
+      window.open('/simflex?importar=1', '_blank');
+    };
+    // Exportar Pnt: tickers, C/V, quantidades e coeficiente com sinal (+ paga / − recebe) = capital por ação
+    var pnt = document.getElementById('fytm-pnt');
+    pnt.style.display = '';
+    pnt.onclick = function() {
+      var T = String.fromCharCode(9);
+      var linha = [lastData.ticker, r.put_symbol, r.call_symbol, 'C', 'C', 'V', q, q, q, r.custo.toFixed(2).replace('.', ',')].join(T);
+      var ok = function() { pnt.textContent = '✓ Copiado!'; setTimeout(function() { pnt.textContent = '📋 Exportar Pnt'; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, function() { prompt('Copie (Pnt):', linha); });
+      else prompt('Copie (Pnt):', linha);
+    };
+  }
+
   // ── Booster / Ratio (novo scanner) ───────────────────────────────────────
   var boReady = false, boTickerPrep = '';
   function boDual(w) {
@@ -2071,6 +2292,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     // restaura o botão "Abrir em Cálculos" (o Short Straddle HA o troca por "Abrir no SimFlex")
     var _cb = document.getElementById('fytm-calc');
     _cb.onclick = null; _cb.textContent = '🧮 Abrir em Cálculos de Opções'; _cb.style.display = '';
+    document.getElementById('fytm-pnt').style.display = 'none';
+    document.getElementById('fytm-cadeia').style.display = '';
     if (currentEstrutura === 'thl') { refreshModalThl(); return; }
     if (currentEstrutura === 'mannerheim') { refreshModalMann(); return; }
     if (currentEstrutura === 'trava_alta') { refreshModalTrava(); return; }
@@ -2079,6 +2302,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (currentEstrutura === 'broken_wing') { refreshModalBrokenWing(); return; }
     if (currentEstrutura === 'straddle_ha') { refreshModalSha(); return; }
     if (currentEstrutura === 'slide') { refreshModalSl(); return; }
+    if (currentEstrutura === 'box3') { refreshModalBx(); return; }
     if (currentEstrutura === 'booster') { refreshModalBo(); return; }
     var r = lastData.rows[modalIdx];
     var q = parseInt(document.getElementById('fytm-qty').value) || 100;

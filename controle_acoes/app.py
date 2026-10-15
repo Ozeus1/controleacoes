@@ -13145,6 +13145,162 @@ def api_fyt_booster(ticker):
     })
 
 
+@app.route('/api/fyt-box3/<ticker>')
+@login_required
+def api_fyt_box3(ticker):
+    """Scanner de Box de 3 Pontas (renda fixa sintética): ativo (comprado ou em custódia) + PUT comprada +
+    CALL vendida no MESMO strike K. No vencimento o resultado é fixo: K − (ativo + PUT − CALL).
+    Parâmetros: exp=0..2 (mensal atual, +1, +2) · k_min/k_max (faixa do strike)."""
+    ticker = ticker.strip().upper()
+    usar_brapi = request.args.get('source') == 'brapi'
+    token = None
+    if not usar_brapi:
+        token = Settings.get_value('oplab_token', user_id=current_user.id)
+        if not token:
+            return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    if not spot:
+        return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
+
+    def _num(name, default):
+        try:
+            return float(str(request.args.get(name, default)).replace(',', '.'))
+        except (TypeError, ValueError):
+            return default
+
+    try:
+        exp_i = min(max(int(request.args.get('exp', 0)), 0), 2)
+    except (TypeError, ValueError):
+        exp_i = 0
+    k_min = _num('k_min', spot * 0.9)
+    k_max = _num('k_max', spot * 1.1)
+    if k_max < k_min:
+        k_min, k_max = k_max, k_min
+
+    if usar_brapi:
+        try:
+            opt_list = _brapi_opt_list_raw(ticker, current_user.id)
+        except OplabApiError as e:
+            return jsonify({'error': str(e)}), 502
+        except Exception:
+            app.logger.exception('api_fyt_box3 (brapi) error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia via BRAPI.'}), 500
+    else:
+        try:
+            data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+        except OplabApiError as e:
+            return jsonify({'error': str(e), 'status': e.status_code}), 503
+        except Exception:
+            app.logger.exception('api_fyt_box3 error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+        opt_list = data if isinstance(data, list) else (
+            data.get('options') or data.get('calls', []) + data.get('puts', []) or [])
+
+    from datetime import date as _date
+    today = _date.today()
+
+    def _third_friday(y, m):
+        count, day = 0, 1
+        while True:
+            d = _date(y, m, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    return d
+            day += 1
+
+    def _is_monthly(exp_str):
+        d = _date.fromisoformat(exp_str)
+        return abs((d - _third_friday(d.year, d.month)).days) <= 2
+
+    calls, puts = {}, {}
+    for o in opt_list:
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        is_put = 'PUT' in cat or cat == 'P'
+        strike = float(o.get('strike') or 0)
+        due = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due:
+            due = due.split('T')[0]
+        sym = str(o.get('symbol') or o.get('ticker') or '').upper()
+        if not due or strike <= 0 or not sym:
+            continue
+        try:
+            if _date.fromisoformat(due) <= today or not _is_monthly(due):
+                continue
+        except ValueError:
+            continue
+        (puts if is_put else calls).setdefault(due, {})[round(strike, 2)] = {
+            'symbol': sym, 'strike': round(strike, 2),
+            'bid': round(float(o.get('bid') or 0), 2), 'ask': round(float(o.get('ask') or 0), 2),
+            'close': round(float(o.get('close') or 0), 2)}
+
+    monthlies = sorted(set(calls) & set(puts))
+    if not monthlies:
+        return jsonify({'error': f'Nenhum vencimento mensal com CALLs e PUTs para {ticker}.'}), 404
+    exps_out = [{'exp': e, 'dc': max((_date.fromisoformat(e) - today).days, 0),
+                 'label': ('Vencimento atual' if i == 0 else f'Vencimento +{i} mês' + ('es' if i > 1 else ''))}
+                for i, e in enumerate(monthlies)]
+    if exp_i >= len(monthlies):
+        return jsonify({'error': 'Vencimento escolhido não disponível para este ativo.',
+                        'expirations': exps_out}), 404
+    exp = monthlies[exp_i]
+    dc = max((_date.fromisoformat(exp) - today).days, 1)
+    selic = _selic()
+    selic_per = ((1 + selic / 100) ** (dc / 365.0) - 1) * 100
+
+    _now_b = now_brt()
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+
+    def _eff(rw):
+        bid, ask, last = rw['bid'], rw['ask'], rw['close']
+        last_ok = last if last >= 0.05 else None
+        has_book = bid >= 0.05 and ask >= 0.05
+        if not market_open:
+            return {'bid': last_ok, 'ask': last_ok, 'src': 'ultimo', 'boca': has_book}
+        b = bid if bid >= 0.05 else last_ok
+        a = ask if ask >= 0.05 else last_ok
+        src = 'book' if has_book else 'ultimo'
+        if has_book and last_ok and (ask - bid) > max(0.10, 0.25 * (bid + ask) / 2):
+            b = a = last_ok
+            src = 'ultimo'
+        return {'bid': b, 'ask': a, 'src': src, 'boca': has_book}
+
+    rows = []
+    for k in sorted(set(calls[exp]) & set(puts[exp])):
+        if not (k_min <= k <= k_max):
+            continue
+        c, p_ = calls[exp][k], puts[exp][k]
+        ec, ep = _eff(c), _eff(p_)
+        if market_open and not (ec['boca'] and ep['boca']):
+            continue
+        if not ec['bid'] or not ep['ask']:
+            continue
+        boca = round(ep['ask'] - ec['bid'], 2)               # < 0 = as opções rendem crédito
+        custo = spot + boca                                   # capital total por ação
+        if custo <= 0:
+            continue
+        ganho = k - custo                                     # resultado fixo no vencimento, por ação
+        ganho_pct = ganho / custo * 100
+        taxa_aa = ((1 + ganho_pct / 100) ** (365.0 / dc) - 1) * 100 if ganho_pct > -99 else None
+        ultimo = round(p_['close'] - c['close'], 2) if (p_['close'] >= 0.05 and c['close'] >= 0.05) else None
+        rows.append({
+            'strike': k, 'call_symbol': c['symbol'], 'put_symbol': p_['symbol'],
+            'call_px': round(ec['bid'], 2), 'put_px': round(ep['ask'], 2),
+            'boca': boca, 'ultimo': ultimo, 'custo': round(custo, 2), 'ganho': round(ganho, 2),
+            'ganho_pct': round(ganho_pct, 2),
+            'taxa_aa': round(taxa_aa, 2) if taxa_aa is not None else None,
+            'vs_selic': round(ganho_pct - selic_per, 2),
+            'src': 'ultimo' if 'ultimo' in (ec['src'], ep['src']) else 'book',
+            'k_dist': round((k - spot) / spot * 100, 1),
+        })
+    return jsonify({
+        'ticker': ticker, 'spot': spot, 'spot_change': spot_change, 'market_open': market_open,
+        'expirations': exps_out, 'exp': exp, 'dc': dc, 'selic': round(selic, 2), 'selic_per': round(selic_per, 2),
+        'rows': rows, 'total': len(rows), 'source': 'brapi' if usar_brapi else 'oplab',
+    })
+
+
 @app.route('/api/fyt-thl/<ticker>')
 @login_required
 def api_fyt_thl(ticker):

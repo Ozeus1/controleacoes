@@ -131,6 +131,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <option value="borboleta">🦋 Borboleta</option>
         <option value="broken_wing">🪽 Broken Wing Short PUT</option>
         <option value="straddle_ha">⚖️ Short Straddle HA (Hedge Assimétrico)</option>
+        <option value="slide">🛝 Slide Estrutural</option>
       </select>
     </div>
 
@@ -528,6 +529,56 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       </div>
     </div>
 
+    <!-- Filtros do Slide Estrutural -->
+    <div id="fyt-filtros-sl" style="display:none;">
+      <div class="fyt-campo">
+        <label for="fyt-sl-tipo" title="Call = Slide de CALLs (altista). Put = Slide de PUTs (baixista)">Tipo</label>
+        <select id="fyt-sl-tipo"><option value="call" selected>Call</option><option value="put">Put</option></select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-sl-exp-v" title="Mensal das duas opções vendidas">Vencimento vendidas</label>
+        <select id="fyt-sl-exp-v"><option value="0" selected>Vencimento atual</option><option value="1">Vencimento atual +1</option></select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-sl-exp-c" title="Vencimento da comprada, em meses depois do vencimento das vendidas (calendário embutido)">Vencimento comprada</label>
+        <select id="fyt-sl-exp-c">
+          <option value="0" selected>Venc. vendidas +0</option>
+          <option value="1">Venc. vendidas +1</option>
+          <option value="2">Venc. vendidas +2</option>
+        </select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-sl-asa-cv" title="Asa CV: distância entre a comprada e a primeira vendida (K2 − K1)">Asa CV</label>
+        <select id="fyt-sl-asa-cv"></select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-sl-asa-vv" title="Asa VV: distância entre as duas vendidas (K3 − K2)">Asa VV</label>
+        <select id="fyt-sl-asa-vv"></select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-sl-range" title="Distância mínima (R$) entre a comprada e a assunção — a largura total do Slide">Range mín.</label>
+        <input type="number" id="fyt-sl-range" min="0" step="0.25" value="0">
+      </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label title="Faixa do strike da comprada. Arraste os dois controles">Comprada (strike)</label>
+        <div class="fyt-kvals"><span id="fyt-sl-k-lo">—</span><span id="fyt-sl-k-hi">—</span></div>
+        <div class="fyt-dual">
+          <div class="trilho"></div><div class="faixa" id="fyt-sl-k-faixa"></div>
+          <input type="range" id="fyt-sl-k-a" min="0" max="100" step="0.01" value="0">
+          <input type="range" id="fyt-sl-k-b" min="0" max="100" step="0.01" value="100">
+        </div>
+      </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label title="Preço líquido da montagem por ação: positivo = débito, negativo = crédito">Preço (R$)</label>
+        <div class="fyt-kvals"><span id="fyt-sl-p-lo">—</span><span id="fyt-sl-p-hi">—</span></div>
+        <div class="fyt-dual">
+          <div class="trilho"></div><div class="faixa" id="fyt-sl-p-faixa"></div>
+          <input type="range" id="fyt-sl-p-a" min="-5" max="5" step="0.01" value="-0.1">
+          <input type="range" id="fyt-sl-p-b" min="-5" max="5" step="0.01" value="0.1">
+        </div>
+      </div>
+    </div>
+
     <div class="fyt-campo" style="flex-direction:row;align-items:center;gap:.4rem;justify-content:flex-end;">
       <input type="checkbox" id="fyt-usar-brapi" autocomplete="off" style="width:auto;cursor:pointer;">
       <label for="fyt-usar-brapi" style="text-transform:none;font-size:.8rem;cursor:pointer;opacity:.75;"
@@ -547,6 +598,68 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   <div id="fyt-error"></div>
   <div id="fyt-hint">Escolha um ativo e clique em <strong>Buscar</strong> para varrer a cadeia.</div>
   <div id="fyt-results"></div>
+
+
+  <div class="fyt-ajuda" id="fyt-ajuda-sl" style="display:none;">
+    <div class="fyt-ajuda-top">
+      <h4>Slide Estrutural</h4>
+      <div class="fyt-atabs">
+        <span class="fyt-atab on" data-p="conceito">Conceito</span>
+        <span class="fyt-atab" data-p="variantes">Variantes</span>
+        <span class="fyt-atab" data-p="filtros">Filtros e Colunas</span>
+        <span class="fyt-atab" data-p="risco">Risco</span>
+        <span class="fyt-atab" data-p="mais">Saiba Mais</span>
+      </div>
+    </div>
+    <div class="fyt-apane on" data-p="conceito">
+      <h5>ℹ️ O que é o Slide Estrutural?</h5>
+      <p>O <strong>Slide Estrutural</strong> é uma estratégia direcional de intervalo, montada com 3 pernas: <strong>+1 opção comprada</strong> e <strong>−2 opções vendidas</strong> em strikes consecutivos, formando um "escorregador" de lucro.</p>
+      <p>A maximização ocorre na <strong>faixa entre os strikes vendidos</strong>. A montagem é a custo zero ou próximo (ZCC), podendo inclusive gerar crédito. Admite calendário embutido (comprada em vencimento posterior).</p>
+      <div class="nota"><strong>📌 Operação de intervalo:</strong> diferente de uma trava simples, o Slide cria uma faixa de lucro estendida entre as vendidas. O investidor aposta que o ativo ficará nessa "rampa" até o vencimento.</div>
+    </div>
+    <div class="fyt-apane" data-p="variantes">
+      <h5>📋 Variantes (Tipo)</h5>
+      <ul>
+        <li><strong style="color:#f87171;">Put (viés baixista):</strong> +1 PUT comprada (ATM/ITM), −1 PUT vendida 1, −1 PUT vendida 2 (mais OTM). Maximiza se o ativo cair até a faixa entre as vendidas. Risco na <strong style="color:#f87171;">queda forte</strong> (PUT descoberta → assunção de compra do ativo).</li>
+        <li><strong style="color:#34d399;">Call (viés altista):</strong> +1 CALL comprada (ATM/ITM), −1 CALL vendida 1, −1 CALL vendida 2 (mais OTM). Maximiza se o ativo subir até a faixa entre as vendidas. Risco na <strong style="color:#f87171;">alta forte</strong> (CALL descoberta → obrigação de venda do ativo).</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="filtros">
+      <h5>🎛️ Filtros</h5>
+      <ul>
+        <li><strong>Tipo (Put / Call):</strong> alterna entre Slide de PUT (baixista) e Slide de CALL (altista).</li>
+        <li><strong>Vencimento vendidas / comprada:</strong> permite montar calendário embutido (comprada em vencimento posterior, para maior Vega/Theta).</li>
+        <li><strong>Asa CV (comprada–vendida):</strong> distância entre a opção comprada e a primeira vendida (trava primária).</li>
+        <li><strong>Asa VV (vendida–vendida):</strong> distância entre as duas vendidas. Define o tamanho do "degrau" e a zona de risco exposta.</li>
+        <li><strong>Range mín.:</strong> distância mínima entre a comprada e a assunção (largura total do Slide).</li>
+        <li><strong>Comprada / Preço:</strong> faixa de strike da comprada e faixa de preço líquido (−5 a 5; negativo = crédito).</li>
+      </ul>
+      <h5>📊 Colunas da tabela</h5>
+      <ul>
+        <li><strong>Comprada / Vendida 1 / Vendida 2:</strong> strikes exatos das 3 pernas (em escadinha direcional).</li>
+        <li><strong>Assunção:</strong> ponto onde o lucro se esgota e inicia a zona de risco.</li>
+        <li><strong>Asas:</strong> formato CV:VV da estrutura (ex.: 1:2,5 significa Asa CV = R$ 1,00, Asa VV = R$ 2,50).</li>
+        <li><strong>Range:</strong> distância total entre comprada e assunção (faixa útil do Slide).</li>
+        <li><strong>Último / Boca:</strong> preço líquido pelos últimos negócios e pela boca (compra no ask, venda no bid).</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="risco">
+      <h5>⚠️ Risco e gestão</h5>
+      <div class="risco"><strong>Opção descoberta (proporção −2 / +1):</strong> o Slide carrega uma perna desbalanceada (líquido −1 vendida). <strong>Put:</strong> queda extrema → assunção de compra. <strong>Call:</strong> alta extrema → obrigação de venda.</div>
+      <ul>
+        <li><strong style="color:#fbbf24;">Mitigações:</strong> i) ter recursos integrais para assumir; ii) travar com opção excedente; iii) stop loss rigoroso.</li>
+        <li><strong style="color:#fbbf24;">Margens de garantia:</strong> exige margem pela exposição vendida líquida (proporção +1/−2).</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="mais">
+      <h5>📖 Saiba mais</h5>
+      <ul>
+        <li>O <strong>Slide Estrutural</strong> também está na <a href="/busca-operacoes-avancadas" style="color:#818cf8;">Busca de Operações Avançadas</a>, com o guia no <a href="{{ url_for('ajuda_operacoes') }}" style="color:#818cf8;">Guia de Operações</a>.</li>
+        <li>Com a comprada em vencimento posterior, a assunção é <strong>estimada</strong> pelo valor intrínseco no vencimento das vendidas; o ganho real tende a ser um pouco maior pelo valor de tempo que a comprada ainda tem.</li>
+        <li>Clique em uma linha para ver o detalhamento e abrir no <strong>SimFlex</strong> (curvas, gregas e probabilidades).</li>
+      </ul>
+    </div>
+  </div>
 
   <div class="fyt-ajuda" id="fyt-ajuda-sha" style="display:none;">
     <div class="fyt-ajuda-top">
@@ -712,6 +825,9 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('fyt-filtros-bwb').style.display     = (v === 'broken_wing') ? 'contents' : 'none';
     document.getElementById('fyt-filtros-sha').style.display     = (v === 'straddle_ha') ? 'contents' : 'none';
     document.getElementById('fyt-ajuda-sha').style.display       = (v === 'straddle_ha') ? '' : 'none';
+    document.getElementById('fyt-filtros-sl').style.display      = (v === 'slide') ? 'contents' : 'none';
+    document.getElementById('fyt-ajuda-sl').style.display        = (v === 'slide') ? '' : 'none';
+    if (v === 'slide') slPrepara();
     if (v === 'straddle_ha') shaPrepara();
     thlWeeklyWrap.style.display = (v === 'thl') ? 'flex' : 'none';
   }
@@ -814,6 +930,21 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       });
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-borboleta/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'slide') {
+      var kk = slDual('k'), pp = slDual('p');
+      q = new URLSearchParams({
+        tipo:      document.getElementById('fyt-sl-tipo').value,
+        exp_v:     document.getElementById('fyt-sl-exp-v').value,
+        exp_c:     document.getElementById('fyt-sl-exp-c').value,
+        asa_cv:    document.getElementById('fyt-sl-asa-cv').value,
+        asa_vv:    document.getElementById('fyt-sl-asa-vv').value,
+        range_min: document.getElementById('fyt-sl-range').value || '0',
+        k_min:     slKReady ? kk[0] : '',
+        k_max:     slKReady ? kk[1] : '',
+        p_min:     pp[0], p_max: pp[1]
+      });
+      if (usarBrapi) q.set('source', 'brapi');
+      url = '/api/fyt-slide/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'straddle_ha') {
       var kv = shaFaixa();
       q = new URLSearchParams({
@@ -877,6 +1008,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         else if (estrutura === 'borboleta') renderBorboleta(res.j);
         else if (estrutura === 'broken_wing') renderBrokenWing(res.j);
         else if (estrutura === 'straddle_ha') { shaAjustaFaixa(res.j.spot); renderStraddleHa(res.j); }
+        else if (estrutura === 'slide') { slAjustaFaixa(res.j.spot); renderSlide(res.j); }
         else render(res.j);
       })
       .catch(function(e) {
@@ -1423,10 +1555,12 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   elTicker.addEventListener('change', function() { if (opSel.value === 'straddle_ha') { shaTickerPrep = ''; shaPrepara(); } });
   elTickerL.addEventListener('change', function() { if (opSel.value === 'straddle_ha') { shaTickerPrep = ''; shaPrepara(); } });
 
-  document.getElementById('fyt-sha-tabs').addEventListener('click', function(ev) {
-    var t = ev.target.closest('.fyt-atab'); if (!t) return;
-    [].forEach.call(document.querySelectorAll('#fyt-sha-tabs .fyt-atab'), function(x) { x.classList.toggle('on', x === t); });
-    [].forEach.call(document.querySelectorAll('#fyt-ajuda-sha .fyt-apane'), function(x) { x.classList.toggle('on', x.dataset.p === t.dataset.p); });
+  [].forEach.call(document.querySelectorAll('.fyt-ajuda'), function(box) {
+    box.querySelector('.fyt-atabs').addEventListener('click', function(ev) {
+      var t = ev.target.closest('.fyt-atab'); if (!t) return;
+      [].forEach.call(box.querySelectorAll('.fyt-atab'), function(x) { x.classList.toggle('on', x === t); });
+      [].forEach.call(box.querySelectorAll('.fyt-apane'), function(x) { x.classList.toggle('on', x.dataset.p === t.dataset.p); });
+    });
   });
 
   function renderStraddleHa(d) {
@@ -1527,6 +1661,156 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     };
   }
 
+  // ── Slide Estrutural ────────────────────────────────────────────────────
+  var slKReady = false, slTickerPrep = '';
+
+  // dois controles de faixa: p = preço (−5..5), k = strike da comprada
+  function slDual(w) {
+    var a = document.getElementById('fyt-sl-' + w + '-a'), b = document.getElementById('fyt-sl-' + w + '-b');
+    var lo = parseFloat(a.value), hi = parseFloat(b.value);
+    return lo <= hi ? [lo, hi] : [hi, lo];
+  }
+  function slDesenha(w) {
+    var a = document.getElementById('fyt-sl-' + w + '-a'), b = document.getElementById('fyt-sl-' + w + '-b');
+    var mn = parseFloat(a.min), mx = parseFloat(a.max), r = slDual(w), span = (mx - mn) || 1;
+    var f = document.getElementById('fyt-sl-' + w + '-faixa');
+    f.style.left = ((r[0] - mn) / span * 100) + '%';
+    f.style.width = ((r[1] - r[0]) / span * 100) + '%';
+    document.getElementById('fyt-sl-' + w + '-lo').textContent = brl(r[0]);
+    document.getElementById('fyt-sl-' + w + '-hi').textContent = brl(r[1]);
+  }
+  ['k-a', 'k-b'].forEach(function(x) { document.getElementById('fyt-sl-' + x).addEventListener('input', function() { slDesenha('k'); }); });
+  ['p-a', 'p-b'].forEach(function(x) { document.getElementById('fyt-sl-' + x).addEventListener('input', function() { slDesenha('p'); }); });
+  slDesenha('p');
+
+  function slAsaOpcoes() {
+    var etf = SHA_ETFS.indexOf(tickerAtual()) >= 0, h = '<option value="todos">Todos</option>';
+    if (etf) { for (var v = 1; v <= 12; v++) h += '<option value="' + v + '">R$ ' + fmt(v) + '</option>'; }
+    else { for (var u = 0.5; u <= 3 + 1e-9; u += 0.25) h += '<option value="' + u + '">R$ ' + fmt(u) + '</option>'; }
+    ['fyt-sl-asa-cv', 'fyt-sl-asa-vv'].forEach(function(id) {
+      var sel = document.getElementById(id), atual = sel.value;
+      sel.innerHTML = h;
+      if ([].slice.call(sel.options).some(function(o) { return o.value === atual; })) sel.value = atual;
+    });
+  }
+  function slPoeFaixaK(spot) {
+    var lo = Math.floor(spot * 0.8), hi = Math.ceil(spot * 1.2);
+    ['fyt-sl-k-a', 'fyt-sl-k-b'].forEach(function(id) { var el = document.getElementById(id); el.min = lo; el.max = hi; });
+    document.getElementById('fyt-sl-k-a').value = Math.round(spot * 0.9 * 100) / 100;
+    document.getElementById('fyt-sl-k-b').value = Math.round(spot * 1.1 * 100) / 100;
+    slKReady = true; slDesenha('k');
+  }
+  function slPrepara() {
+    slAsaOpcoes();
+    var tk = tickerAtual();
+    if (!tk || tk === slTickerPrep) return;
+    slTickerPrep = tk; slKReady = false;
+    fetch('/api/quote_hint/' + encodeURIComponent(tk)).then(function(r) { return r.json(); }).then(function(d) {
+      if (tickerAtual() !== tk || !d || !d.price) return;
+      slPoeFaixaK(d.price);
+    }).catch(function() { slTickerPrep = ''; });
+  }
+  function slAjustaFaixa(spot) { if (!slKReady && spot) slPoeFaixaK(spot); }
+  elTicker.addEventListener('change', function() { if (opSel.value === 'slide') { slTickerPrep = ''; slPrepara(); } });
+  elTickerL.addEventListener('change', function() { if (opSel.value === 'slide') { slTickerPrep = ''; slPrepara(); } });
+
+  function renderSlide(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
+          (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>' : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">' +
+        'Nenhum Slide atende aos filtros. Tente "Todos" nas asas, ampliar a faixa de strikes ou de preço, ' +
+        'ou reduzir o range mínimo.</div>';
+      return;
+    }
+    var tp = d.tipo === 'put' ? 'PUT' : 'CALL';
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">' +
+      '🛝 <strong>Slide Estrutural de ' + tp + '</strong> · 📆 Vendidas: <strong>' + dateBR(d.exp_v) + '</strong> (' + d.dc_v + 'd) · ' +
+      'Comprada: <strong>' + dateBR(d.exp_c) + '</strong> (' + d.dc_c + 'd)' +
+      (d.mesmo_venc ? '' : ' · <span title="Com a comprada em vencimento posterior, a assunção é estimada pelo valor intrínseco">calendário (assunção estimada)</span>') +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') +
+      ' · <strong>' + d.rows.length + '</strong> montagem(ns)</div>';
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th>Tickers</th><th title="Strike da opção comprada">Comprada</th><th>Vendida 1</th><th>Vendida 2</th>' +
+      '<th title="Preço em que o lucro se esgota e começa a zona de risco">Assunção</th>' +
+      '<th title="Asa CV : Asa VV">Asas</th><th title="Distância entre a comprada e a assunção">Range</th>' +
+      '<th title="Preço líquido pelos últimos negócios (positivo = débito)">Último</th>' +
+      '<th title="Preço líquido pela boca: compra no ask, venda no bid (positivo = débito)">Boca</th>' +
+      '</tr></thead><tbody>';
+    d.rows.forEach(function(r, i) {
+      var pc = function(v) { return v == null ? '—' : '<span class="' + (v <= 0 ? 'pos' : '') + '">' + (v > 0 ? '' : '') + fmt(v) + '</span>'; };
+      h += '<tr data-i="' + i + '" title="Clique para ver o detalhamento">' +
+        '<td style="text-align:left;"><span class="fyt-badge buy">+1× ' + r.s1 + '</span> ' +
+            '<span class="fyt-badge sell">−1× ' + r.s2 + '</span> <span class="fyt-badge sell">−1× ' + r.s3 + '</span></td>' +
+        '<td>' + brl(r.k1) + '<br><span style="font-size:.72rem;color:var(--text-secondary);">' + pct(r.k1_dist) + '</span></td>' +
+        '<td>' + brl(r.k2) + '</td><td>' + brl(r.k3) + '</td>' +
+        '<td>' + brl(r.assuncao) + '<br><span style="font-size:.72rem;color:var(--text-secondary);">' + pct(r.assunc_dist) + '</span></td>' +
+        '<td>' + fmt(r.asa_cv) + ' : ' + fmt(r.asa_vv) + '</td>' +
+        '<td>' + brl(r.range) + '</td>' +
+        '<td>' + pc(r.ultimo) + '</td>' +
+        '<td><strong class="' + (r.preco <= 0 ? 'pos' : '') + '">' + fmt(r.preco) + '</strong>' +
+            (r.src === 'ultimo' ? '<br><span style="font-size:.7rem;color:var(--text-secondary);">últ.</span>' : '') + '</td>' +
+        '</tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) {
+      tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); });
+    });
+  }
+
+  function refreshModalSl() {
+    var r = lastData.rows[modalIdx];
+    var q = parseInt(document.getElementById('fytm-qty').value) || 100;
+    var call = lastData.tipo !== 'put', tp = call ? 'CALL' : 'PUT';
+    document.getElementById('fytm-title').textContent =
+      'Slide Estrutural de ' + tp + ' ' + lastData.ticker + ' — ' + r.s1 + ' / ' + r.s2 + ' / ' + r.s3;
+    var credito = r.preco < 0;
+    var boxes = [
+      ['Compra ' + q + '× ' + r.s1 + ' (K ' + fmt(r.k1) + ')', brl(r.p1 * q), 'neg'],
+      ['Venda ' + q + '× ' + r.s2 + ' (K ' + fmt(r.k2) + ')', brl(r.p2 * q), 'pos'],
+      ['Venda ' + q + '× ' + r.s3 + ' (K ' + fmt(r.k3) + ')', brl(r.p3 * q), 'pos'],
+      [credito ? 'Crédito recebido' : 'Custo da montagem (débito)', brl(Math.abs(r.preco) * q), credito ? 'pos' : 'neg'],
+      ['Lucro máximo (entre os strikes vendidos)', brl(r.lucro_max * q), 'pos'],
+      ['Assunção (lucro se esgota)', brl(r.assuncao) + ' (' + pct(r.assunc_dist) + ')', 'neg'],
+      ['Range (comprada → assunção)', brl(r.range), ''],
+      ['Asas CV : VV', fmt(r.asa_cv) + ' : ' + fmt(r.asa_vv), ''],
+      [call ? 'Risco: alta forte (1 CALL descoberta)' : 'Risco: queda forte (1 PUT descoberta)', 'além da assunção', 'neg'],
+      ['Vencimento vendidas', dateBR(lastData.exp_v) + ' (' + lastData.dc_v + ' d.c.)', ''],
+      ['Vencimento comprada', dateBR(lastData.exp_c) + ' (' + lastData.dc_c + ' d.c.)', '']
+    ];
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
+             '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+    var legs = [
+      [r.s1, tp, 'BUY',  q, r.p1, r.k1, lastData.exp_c].join(','),
+      [r.s2, tp, 'SELL', q, r.p2, r.k2, lastData.exp_v].join(','),
+      [r.s3, tp, 'SELL', q, r.p3, r.k3, lastData.exp_v].join(',')
+    ].join('|');
+    var qs = new URLSearchParams({sim: '1', ativo: lastData.ticker,
+      nome: 'Slide Estrutural ' + tp + ' ' + lastData.ticker, legs: legs});
+    document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + qs.toString();
+    var calc = document.getElementById('fytm-calc');
+    calc.textContent = '🧩 Abrir no SimFlex';
+    calc.removeAttribute('target');
+    calc.href = '#';
+    calc.onclick = function(ev) {
+      ev.preventDefault();
+      var dados = {origem: '', name: 'Slide Estrutural ' + tp + ' ' + lastData.ticker, ativo: lastData.ticker, novo: true,
+        legs: [
+          {ticker: r.s1, side: 'BUY',  opt_type: tp, quantity: q, strike: r.k1, entry_price: r.p1, expiration_date: lastData.exp_c},
+          {ticker: r.s2, side: 'SELL', opt_type: tp, quantity: q, strike: r.k2, entry_price: r.p2, expiration_date: lastData.exp_v},
+          {ticker: r.s3, side: 'SELL', opt_type: tp, quantity: q, strike: r.k3, entry_price: r.p3, expiration_date: lastData.exp_v}
+        ]};
+      try { localStorage.setItem('simflex_import', JSON.stringify(dados)); } catch (e) { alert('Não foi possível preparar o SimFlex: ' + e); return; }
+      window.open('/simflex?importar=1', '_blank');
+    };
+  }
+
   // ── Modal ─────────────────────────────────────────────────────────────
   var modalIdx = null;
   function openModal(i) {
@@ -1554,6 +1838,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (currentEstrutura === 'borboleta') { refreshModalBorboleta(); return; }
     if (currentEstrutura === 'broken_wing') { refreshModalBrokenWing(); return; }
     if (currentEstrutura === 'straddle_ha') { refreshModalSha(); return; }
+    if (currentEstrutura === 'slide') { refreshModalSl(); return; }
     var r = lastData.rows[modalIdx];
     var q = parseInt(document.getElementById('fytm-qty').value) || 100;
 

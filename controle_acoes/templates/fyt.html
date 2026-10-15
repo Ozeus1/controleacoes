@@ -136,6 +136,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <option value="box4">📦 Box de 4 Pontas (melhores oportunidades)</option>
         <option value="seagull">🕊 Seagull (Gaivota de alta)</option>
         <option value="fence">🚧 Fence (Cerca)</option>
+        <option value="collar">🛡️ Collar (com Fence opcional)</option>
       </select>
     </div>
 
@@ -732,6 +733,55 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       </div>
     </div>
 
+    <!-- Filtros do Collar -->
+    <div id="fyt-filtros-cl" style="display:none;">
+      <div class="fyt-campo">
+        <label for="fyt-cl-exp" title="Vencimento da CALL vendida">Vencimento</label>
+        <select id="fyt-cl-exp">
+          <option value="0" selected>Vencimento atual</option><option value="1">Vencimento atual +1</option><option value="2">Vencimento atual +2</option>
+        </select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-cl-offp" title="Vencimento da PUT comprada em relação ao da CALL vendida (+0 = mesmo mês; +1… = PUT mais longa, para rolar a CALL mês a mês)">Vencimento Put</label>
+        <select id="fyt-cl-offp">
+          <option value="0" selected>Venc. vendidas +0 meses</option><option value="1">Venc. vendidas +1 mês</option>
+          <option value="2">Venc. vendidas +2 meses</option><option value="3">Venc. vendidas +3 meses</option>
+        </select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-cl-risco" title="Risco máximo aceito (%): distância percentual entre o preço atual e o strike da PUT, somada ao custo de montagem">Risco máx. (%)</label>
+        <input type="number" id="fyt-cl-risco" step="0.1" value="3">
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-cl-fence" title="Não vender = Collar puro. R$ x abaixo = Fence com PUT vendida x reais abaixo da PUT comprada. Usar range = faixa de strikes da PUT vendida à sua escolha">Venda de Put (Fence)</label>
+        <select id="fyt-cl-fence"></select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-cl-alvo" title="Qual strike a faixa abaixo filtra">Filtrar faixa por</label>
+        <select id="fyt-cl-alvo">
+          <option value="call" selected>Call vendida</option><option value="central">Ponto central</option><option value="put">Put comprada</option>
+        </select>
+      </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label id="fyt-cl-a-lbl" title="Faixa de strikes do item escolhido ao lado. Arraste os dois controles">Faixa (call vendida)</label>
+        <div class="fyt-kvals"><span id="fyt-cl-a-lo">—</span><span id="fyt-cl-a-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-cl-a-faixa"></div>
+          <input type="range" id="fyt-cl-a-a" min="0" max="100" step="0.01" value="0"><input type="range" id="fyt-cl-a-b" min="0" max="100" step="0.01" value="100"></div>
+      </div>
+      <div class="fyt-campo" id="fyt-cl-f-wrap" style="grid-column:span 2;min-width:260px;display:none;">
+        <label title="Faixa de strikes da PUT vendida (Fence)">PUT vendida (range)</label>
+        <div class="fyt-kvals"><span id="fyt-cl-f-lo">—</span><span id="fyt-cl-f-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-cl-f-faixa"></div>
+          <input type="range" id="fyt-cl-f-a" min="0" max="100" step="0.01" value="0"><input type="range" id="fyt-cl-f-b" min="0" max="100" step="0.01" value="100"></div>
+      </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label title="Custo líquido das opções por ação: positivo = débito, negativo = crédito (o ativo não entra)">Preço (R$)</label>
+        <div class="fyt-kvals"><span id="fyt-cl-p-lo">—</span><span id="fyt-cl-p-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-cl-p-faixa"></div>
+          <input type="range" id="fyt-cl-p-a" min="-5" max="5" step="0.01" value="-0.5"><input type="range" id="fyt-cl-p-b" min="-5" max="5" step="0.01" value="0.1"></div>
+      </div>
+    </div>
+
     <div class="fyt-campo" style="flex-direction:row;align-items:center;gap:.4rem;justify-content:flex-end;">
       <input type="checkbox" id="fyt-usar-brapi" autocomplete="off" style="width:auto;cursor:pointer;">
       <label for="fyt-usar-brapi" style="text-transform:none;font-size:.8rem;cursor:pointer;opacity:.75;"
@@ -1045,6 +1095,71 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     </div>
   </div>
 
+
+  <div class="fyt-ajuda" id="fyt-ajuda-cl" style="display:none;">
+    <div class="fyt-ajuda-top">
+      <h4>Collar</h4>
+      <div class="fyt-atabs">
+        <span class="fyt-atab on" data-p="conceito">Conceito</span>
+        <span class="fyt-atab" data-p="variantes">Variantes</span>
+        <span class="fyt-atab" data-p="filtros">Filtros e Colunas</span>
+        <span class="fyt-atab" data-p="risco">Risco</span>
+        <span class="fyt-atab" data-p="mais">Saiba Mais</span>
+      </div>
+    </div>
+    <div class="fyt-apane on" data-p="conceito">
+      <h5>ℹ️ O que é o Collar?</h5>
+      <p>O <strong>Collar</strong> é uma estratégia de <strong>proteção patrimonial</strong> com participação limitada na alta. Combina o ativo em carteira com uma PUT comprada (proteção) e uma CALL vendida (financiamento), geralmente a custo zero ou próximo disso.</p>
+      <p>Exemplo: <code>+PETR4  +PUT R$ 24,01  −CALL R$ 25,01</code> → o investidor fica protegido abaixo de R$ 24,01 e participa da alta até R$ 25,01. Ganho limitado, mas continua recebendo <strong>dividendos, JCP e bônus de subscrição</strong>.</p>
+      <p>O viés da operação é ajustável: mais proteção = menor ganho máximo. Se aceitar uma faixa de risco maior, o lucro potencial será maior. Ideal para <strong>expectativas de baixa ou lateralidade</strong>.</p>
+      <p style="font-size:.78rem;color:var(--text-secondary);">Esta estrutura considera que você possua o ativo subjacente, ou o compre pelo valor atual.</p>
+    </div>
+    <div class="fyt-apane" data-p="variantes">
+      <h5>📋 Variantes</h5>
+      <ul>
+        <li><strong style="color:#34d399;">Collar básico (2 pontas):</strong> ativo + PUT comprada + CALL vendida. Risco limitado ao gap entre o preço atual e o strike da PUT.<br><span style="color:var(--text-secondary);font-size:.78rem;">Filtro: Venda de Put (Fence) = Não vender</span></li>
+        <li><strong style="color:#60a5fa;">Fence (3 pontas):</strong> collar básico + <strong>PUT vendida bem OTM</strong>. O crédito extra financia melhor a estrutura, gerando custo zero ou até crédito. Em contrapartida, a proteção é parcial — na queda abaixo da PUT vendida, assume-se a compra do ativo.<br><span style="color:var(--text-secondary);font-size:.78rem;">Filtro: Venda de Put (Fence) ≠ Não vender</span></li>
+        <li><strong style="color:#a78bfa;">PUT mais longa (rolagem):</strong> comprar a PUT com vencimento mais longo e rolar a CALL vendida mês a mês. Permite colher prêmios por vários meses. Ideal para <strong>lateralidade</strong>.<br><span style="color:var(--text-secondary);font-size:.78rem;">Filtro: Vencimento Put ≥ +1</span></li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="filtros">
+      <h5>🎛️ Filtros e colunas</h5>
+      <ul>
+        <li><strong>Vencimento:</strong> ciclo da CALL vendida (atual, +1, +2).</li>
+        <li><strong>Vencimento Put:</strong> vencimento da PUT comprada em relação à vendida (+0 = mesmo mês, +1 = próximo, etc.).</li>
+        <li><strong>Risco máx. (%):</strong> distância percentual entre o preço atual e o strike da PUT, somado ao custo de montagem. Define o máximo aceitável de perdas.</li>
+        <li><strong>Venda de Put (Fence):</strong> "Não vender" = Collar puro. Selecionar um valor = Fence com PUT vendida a esta distância abaixo da PUT comprada. "Usar range" = faixa de strikes personalizada.</li>
+        <li><strong>Faixa de strikes / Preço:</strong> filtra por Call vendida, Put comprada ou Ponto central e pela faixa de preço da estrutura.</li>
+      </ul>
+      <h5>📊 Colunas da tabela</h5>
+      <ul>
+        <li><strong>Call vendida / Put comprada:</strong> strikes das opções. Os tickers mostram apenas as opções (ativo implícito).</li>
+        <li><strong>Put vendida:</strong> aparece somente quando o Fence está ativo.</li>
+        <li><strong>Proteção:</strong> percentual da posição protegido pela PUT comprada (strike ÷ preço atual). 100% = proteção total a partir do preço atual.</li>
+        <li><strong>Risco:</strong> percentual máximo de perda (gap até a PUT + custo). Zero ou negativo = custo zero / crédito.</li>
+        <li><strong>Ganho máximo:</strong> percentual de lucro máximo se o ativo fechar acima da CALL vendida no vencimento.</li>
+        <li><strong>Último / Boca:</strong> custo das opções pelos últimos negócios / pela boca (compra no ask, venda no bid).</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="risco">
+      <h5>⚠️ Risco e gestão</h5>
+      <div class="risco" style="border-left-color:#34d399;background:rgba(52,211,153,.08);"><strong>Risco controlado:</strong> no Collar puro, o risco é <strong>limitado</strong> — a PUT comprada protege integralmente abaixo do seu strike. O lucro da PUT pode ser convertido em compra de mais ações com dinheiro do mercado.</div>
+      <ul>
+        <li><strong style="color:#fbbf24;">Ganho limitado:</strong> acima da CALL vendida, não há mais participação na alta. Tradeoff: proteção × upside.</li>
+        <li><strong style="color:#fbbf24;">Fence — proteção parcial:</strong> a PUT vendida extra (Fence) expõe o investidor em caso de crash abaixo desse strike. Avalie se os recursos para assumir a compra estão disponíveis.</li>
+        <li><strong style="color:#34d399;">Dividendos preservados:</strong> o investidor mantém o ativo em carteira e continua recebendo dividendos, JCP e bônus de subscrição durante a vigência da estrutura.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="mais">
+      <h5>📖 Saiba mais</h5>
+      <ul>
+        <li>O Collar também está na <a href="/busca-operacoes" style="color:#818cf8;">Busca de Operações</a>, com o guia no <a href="{{ url_for('ajuda_operacoes') }}" style="color:#818cf8;">Guia de Operações</a>.</li>
+        <li>Com a PUT em vencimento posterior ao da CALL, o ganho e a perda são estimados no vencimento da CALL (a PUT ainda tem valor de tempo).</li>
+        <li>Clique numa linha para ver o detalhe e abrir no <strong>SimFlex</strong> (payoff e gregas, com o ativo), nos Cálculos de Opções ou exportar para o Pnt.</li>
+      </ul>
+    </div>
+  </div>
+
   <div class="fyt-ajuda" id="fyt-ajuda-sl" style="display:none;">
     <div class="fyt-ajuda-top">
       <h4>Slide Estrutural</h4>
@@ -1275,6 +1390,9 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('fyt-ajuda-sg').style.display       = (v === 'seagull') ? '' : 'none';
     document.getElementById('fyt-filtros-fc').style.display     = (v === 'fence') ? 'contents' : 'none';
     document.getElementById('fyt-ajuda-fc').style.display       = (v === 'fence') ? '' : 'none';
+    document.getElementById('fyt-filtros-cl').style.display     = (v === 'collar') ? 'contents' : 'none';
+    document.getElementById('fyt-ajuda-cl').style.display       = (v === 'collar') ? '' : 'none';
+    if (v === 'collar') clPrepara();
     if (v === 'fence') fcPrepara();
     if (v === 'seagull') sgPrepara();
     document.getElementById('fyt-ativo-wrap').style.display     = (v === 'box4') ? 'none' : '';
@@ -1384,6 +1502,23 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       });
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-borboleta/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'collar') {
+      var ca = clDual('a'), cp = clDual('p'), cf = clDual('f');
+      var fv = document.getElementById('fyt-cl-fence').value;
+      q = new URLSearchParams({
+        exp_v:     document.getElementById('fyt-cl-exp').value,
+        off_p:     document.getElementById('fyt-cl-offp').value,
+        risco_max: document.getElementById('fyt-cl-risco').value || '3',
+        fence:     fv,
+        f_min:     (fv === 'range' && clReady) ? cf[0] : '',
+        f_max:     (fv === 'range' && clReady) ? cf[1] : '',
+        alvo:      document.getElementById('fyt-cl-alvo').value,
+        a_min:     clReady ? ca[0] : '',
+        a_max:     clReady ? ca[1] : '',
+        p_min:     cp[0], p_max: cp[1]
+      });
+      if (usarBrapi) q.set('source', 'brapi');
+      url = '/api/fyt-collar/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'fence') {
       var fa = fcDual('a'), fp = fcDual('p');
       q = new URLSearchParams({
@@ -1505,6 +1640,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         else if (estrutura === 'box3') { bxAjustaFaixa(res.j.spot); renderBox3(res.j); }
         else if (estrutura === 'seagull') { sgAjustaFaixa(res.j.spot); renderSeagull(res.j); }
         else if (estrutura === 'fence') { fcAjustaFaixa(res.j.spot); renderFence(res.j); }
+        else if (estrutura === 'collar') { clAjustaFaixa(res.j.spot); renderCollar(res.j); }
         else { boAjustaFaixa(res.j.spot); renderBooster(res.j); }
       })
       .catch(function(e) {
@@ -2154,6 +2290,174 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         ]};
       try { localStorage.setItem('simflex_import', JSON.stringify(dados)); } catch (e) { alert('Não foi possível preparar o SimFlex: ' + e); return; }
       window.open('/simflex?importar=1', '_blank');
+    };
+  }
+
+  // ── Collar ─────────────────────────────────────────────────────────────
+  var clReady = false, clTickerPrep = '';
+  function clDual(w) {
+    var lo = parseFloat(document.getElementById('fyt-cl-' + w + '-a').value), hi = parseFloat(document.getElementById('fyt-cl-' + w + '-b').value);
+    return lo <= hi ? [lo, hi] : [hi, lo];
+  }
+  function clDesenha(w) {
+    var a = document.getElementById('fyt-cl-' + w + '-a');
+    var mn = parseFloat(a.min), mx = parseFloat(a.max), r = clDual(w), span = (mx - mn) || 1;
+    var f = document.getElementById('fyt-cl-' + w + '-faixa');
+    f.style.left = ((r[0] - mn) / span * 100) + '%';
+    f.style.width = ((r[1] - r[0]) / span * 100) + '%';
+    document.getElementById('fyt-cl-' + w + '-lo').textContent = brl(r[0]);
+    document.getElementById('fyt-cl-' + w + '-hi').textContent = brl(r[1]);
+  }
+  ['a-a', 'a-b'].forEach(function(x) { document.getElementById('fyt-cl-' + x).addEventListener('input', function() { clDesenha('a'); }); });
+  ['p-a', 'p-b'].forEach(function(x) { document.getElementById('fyt-cl-' + x).addEventListener('input', function() { clDesenha('p'); }); });
+  clDesenha('p');
+  document.getElementById('fyt-cl-alvo').addEventListener('change', function() {
+    var t = {central: 'ponto central', call: 'call vendida', put: 'put comprada'}[this.value];
+    document.getElementById('fyt-cl-a-lbl').textContent = 'Faixa (' + t + ')';
+  });
+  function clPoeFaixa(spot) {
+    var lo = Math.floor(spot * 0.8), hi = Math.ceil(spot * 1.2);
+    ['fyt-cl-a-a', 'fyt-cl-a-b'].forEach(function(id) { var el = document.getElementById(id); el.min = lo; el.max = hi; });
+    document.getElementById('fyt-cl-a-a').value = Math.round(spot * 0.9 * 100) / 100;
+    document.getElementById('fyt-cl-a-b').value = Math.round(spot * 1.1 * 100) / 100;
+    clReady = true; clDesenha('a'); clPoeF(spot);
+  }
+  function clPrepara() {
+    var tk = tickerAtual();
+    if (!tk || tk === clTickerPrep) return;
+    clTickerPrep = tk; clReady = false;
+    fetch('/api/quote_hint/' + encodeURIComponent(tk)).then(function(r) { return r.json(); }).then(function(d) {
+      if (tickerAtual() !== tk || !d || !d.price) return;
+      clPoeFaixa(d.price);
+    }).catch(function() { clTickerPrep = ''; });
+  }
+  function clAjustaFaixa(spot) { if (!clReady && spot) clPoeFaixa(spot); }
+  elTicker.addEventListener('change', function() { if (opSel.value === 'collar') { clTickerPrep = ''; clPrepara(); } });
+  elTickerL.addEventListener('change', function() { if (opSel.value === 'collar') { clTickerPrep = ''; clPrepara(); } });
+
+  function clPoeF(spot) {
+    var lo = Math.floor(spot * 0.5), hi = Math.ceil(spot * 1.0);
+    ['fyt-cl-f-a', 'fyt-cl-f-b'].forEach(function(id) { var el = document.getElementById(id); el.min = lo; el.max = hi; });
+    document.getElementById('fyt-cl-f-a').value = Math.round(spot * 0.7 * 100) / 100;
+    document.getElementById('fyt-cl-f-b').value = Math.round(spot * 0.9 * 100) / 100;
+    clDesenha('f');
+  }
+  ['f-a', 'f-b'].forEach(function(x) { document.getElementById('fyt-cl-' + x).addEventListener('input', function() { clDesenha('f'); }); });
+  function clOpcoesFence() {
+    var etf = ['BOVA11', 'SMAL11'].indexOf(tickerAtual()) >= 0, sel = document.getElementById('fyt-cl-fence'), atual = sel.value;
+    var h = '<option value="nao">Não vender</option><option value="range">Usar range</option>', v;
+    if (etf) { for (v = 4; v <= 20; v++) h += '<option value="' + v + '">R$ ' + fmt(v) + ' abaixo</option>'; }
+    else { for (v = 0.5; v <= 4 + 1e-9; v += 0.25) h += '<option value="' + v + '">R$ ' + fmt(v) + ' abaixo</option>'; }
+    sel.innerHTML = h;
+    if ([].slice.call(sel.options).some(function(o) { return o.value === atual; })) sel.value = atual;
+  }
+  document.getElementById('fyt-cl-fence').addEventListener('change', function() {
+    document.getElementById('fyt-cl-f-wrap').style.display = this.value === 'range' ? '' : 'none';
+  });
+  var _clPrepOrig = clPrepara;
+  clPrepara = function() { clOpcoesFence(); _clPrepOrig(); };
+
+  function renderCollar(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
+          (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>' : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">' +
+        'Nenhum Collar atende aos filtros. Aumente o risco máximo, amplie a faixa de strikes ou o intervalo de preço.</div>';
+      return;
+    }
+    var fence = d.fence, mesmo = d.exp_c === d.exp_p;
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">' +
+      '🛡️ <strong>Collar' + (fence ? ' + Fence' : '') + '</strong> (com o ativo) · 📆 CALL: <strong>' + dateBR(d.exp_c) + '</strong> (' + d.dc_c + 'd)' +
+      (mesmo ? '' : ' · PUT: <strong>' + dateBR(d.exp_p) + '</strong> (' + d.dc_p + 'd)') +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') +
+      ' · <strong>' + d.rows.length + '</strong> montagem(ns)</div>';
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th>Tickers</th><th title="Strike da CALL vendida (teto do ganho)">Call vendida</th><th title="Strike da PUT comprada (proteção)">Put comprada</th>' +
+      (fence ? '<th title="Strike da PUT vendida (Fence)">Put vendida</th>' : '') +
+      '<th title="Strike da PUT ÷ preço atual: parcela da posição protegida">Proteção</th>' +
+      '<th title="Perda máxima até a PUT + custo, em % do preço atual">Risco</th>' +
+      '<th title="Ganho máximo se o ativo fechar acima da CALL vendida, em % do preço atual">Ganho máximo</th>' +
+      '<th title="Custo das opções pelos últimos negócios (negativo = crédito)">Último</th>' +
+      '<th title="Custo das opções pela boca (negativo = crédito)">Boca</th></tr></thead><tbody>';
+    var marcou = false;
+    d.rows.forEach(function(r, i) {
+      var sep = (!marcou && r.kc > d.spot) ? ' style="border-top:2px solid #e2e8f0;"' : '';
+      if (sep) marcou = true;
+      h += '<tr data-i="' + i + '"' + sep + ' title="Clique para ver o detalhamento">' +
+        '<td style="text-align:left;"><span class="fyt-badge buy">+' + r.s_put + '</span> <span class="fyt-badge sell">−' + r.s_call + '</span>' +
+            (r.s_fence ? ' <span class="fyt-badge sell">−' + r.s_fence + '</span>' : '') + '</td>' +
+        '<td><strong>' + brl(r.kc) + '</strong></td><td>' + brl(r.kp) + '</td>' + (fence ? '<td>' + (r.kv != null ? brl(r.kv) : '—') + '</td>' : '') +
+        '<td>' + fmt(r.protecao) + '%</td>' +
+        '<td class="' + (r.risco <= 0 ? 'pos' : '') + '">' + fmt(r.risco) + '%</td>' +
+        '<td class="' + (r.ganho > 0 ? 'pos' : '') + '">' + (r.ganho > 0 ? fmt(r.ganho) + '%' : '—') + '</td>' +
+        '<td>' + (r.ultimo == null ? '—' : '<span class="' + (r.ultimo <= 0 ? 'pos' : '') + '">' + brl(r.ultimo) + '</span>') + '</td>' +
+        '<td><strong class="' + (r.preco <= 0 ? 'pos' : '') + '">' + brl(r.preco) + '</strong>' +
+            (r.src === 'ultimo' ? '<br><span style="font-size:.7rem;color:var(--text-secondary);">últ.</span>' : '') + '</td></tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) { tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); }); });
+  }
+
+  function refreshModalCl() {
+    var r = lastData.rows[modalIdx];
+    var q = parseInt(document.getElementById('fytm-qty').value) || 100;
+    var cred = r.preco < 0, mesmo = lastData.exp_c === lastData.exp_p;
+    document.getElementById('fytm-title').textContent = 'Collar' + (r.s_fence ? ' + Fence' : '') + ' ' + lastData.ticker + ' — ' + r.s_put + ' / ' + r.s_call;
+    var boxes = [
+      ['Ativo em carteira (' + q + '× ' + lastData.ticker + ')', brl(lastData.spot * q), ''],
+      ['Compra ' + q + '× ' + r.s_put + ' (PUT K ' + fmt(r.kp) + (mesmo ? '' : ' · ' + dateBR(lastData.exp_p)) + ')', brl(r.p_put * q), 'neg'],
+      ['Venda ' + q + '× ' + r.s_call + ' (CALL K ' + fmt(r.kc) + ')', brl(r.p_call * q), 'pos']
+    ];
+    if (r.s_fence) boxes.push(['Venda ' + q + '× ' + r.s_fence + ' (PUT K ' + fmt(r.kv) + ')', brl(r.p_fence * q), 'pos']);
+    boxes = boxes.concat([
+      [cred ? 'Crédito das opções' : 'Custo das opções (débito)', brl(Math.abs(r.preco) * q), cred ? 'pos' : 'neg'],
+      ['Ganho máximo (acima da CALL vendida)', brl(r.ganho_max * q) + ' (' + fmt(r.ganho) + '%)', r.ganho_max > 0 ? 'pos' : 'neg'],
+      ['Perda máxima até a PUT comprada', r.perda_max > 0 ? brl(r.perda_max * q) + ' (' + fmt(r.risco) + '%)' : 'nenhuma (crédito cobre o gap)', r.perda_max > 0 ? 'neg' : 'pos'],
+      ['Proteção', fmt(r.protecao) + '% do preço atual (a partir de ' + brl(r.kp) + ')', ''],
+      [r.s_fence ? 'Abaixo da PUT vendida (' + brl(r.kv) + ')' : 'Abaixo da PUT comprada', r.s_fence ? 'proteção acaba: assume-se a compra' : 'protegido integralmente', r.s_fence ? 'neg' : 'pos'],
+      ['Vencimento da CALL', dateBR(lastData.exp_c) + ' (' + lastData.dc_c + ' d.c.)', '']
+    ]);
+    if (!mesmo) boxes.push(['Vencimento da PUT', dateBR(lastData.exp_p) + ' (' + lastData.dc_p + ' d.c.) — resultado estimado no venc. da CALL', '']);
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span><span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+    var Lop = [
+      {ticker: r.s_put,  side: 'BUY',  opt_type: 'PUT',  quantity: q, strike: r.kp, entry_price: r.p_put,  expiration_date: lastData.exp_p},
+      {ticker: r.s_call, side: 'SELL', opt_type: 'CALL', quantity: q, strike: r.kc, entry_price: r.p_call, expiration_date: lastData.exp_c}
+    ];
+    if (r.s_fence) Lop.push({ticker: r.s_fence, side: 'SELL', opt_type: 'PUT', quantity: q, strike: r.kv, entry_price: r.p_fence, expiration_date: lastData.exp_p});
+    var L = [{ticker: lastData.ticker, side: 'BUY', opt_type: 'STOCK', quantity: q, strike: 0, entry_price: lastData.spot, expiration_date: ''}].concat(Lop);
+    var nome = (r.s_fence ? 'Collar+Fence ' : 'Collar ') + lastData.ticker + ' ' + r.kp + '/' + r.kc;
+    document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + new URLSearchParams({sim: '1', ativo: lastData.ticker, nome: nome,
+      legs: Lop.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')}).toString();
+    var calc = document.getElementById('fytm-calc');
+    calc.onclick = null; calc.removeAttribute('target');
+    if (mesmo) {
+      calc.style.display = '';
+      calc.href = '/venda_puts?' + new URLSearchParams(r.s_fence
+        ? {st: '1', op: 'fence', ativo: lastData.ticker, spot: lastData.spot, qty: q, exp: lastData.exp_c, at: r.s_put, ak: r.kp, ap: r.p_put, bt: r.s_fence, bk: r.kv, bp: r.p_fence, ct2: r.s_call, ck2: r.kc, cp2: r.p_call}
+        : {st: '1', op: 'colar', ativo: lastData.ticker, spot: lastData.spot, qty: q, exp: lastData.exp_c, bt: r.s_put, bk: r.kp, bp: r.p_put, ct2: r.s_call, ck2: r.kc, cp2: r.p_call}).toString() + '#estrutura';
+    } else { calc.style.display = 'none'; }
+    var sf = document.getElementById('fytm-sf');
+    sf.style.display = '';
+    sf.onclick = function() {
+      try { localStorage.setItem('simflex_import', JSON.stringify({origem: '', name: nome, ativo: lastData.ticker, novo: true, legs: L})); }
+      catch (e) { alert('Não foi possível preparar o SimFlex: ' + e); return; }
+      window.open('/simflex?importar=1', '_blank');
+    };
+    var pnt = document.getElementById('fytm-pnt');
+    pnt.style.display = '';
+    pnt.onclick = function() {
+      var T = String.fromCharCode(9);
+      var linha = Lop.map(function(l) { return l.ticker; }).concat(Lop.map(function(l) { return l.side === 'BUY' ? 'C' : 'V'; }))
+        .concat(Lop.map(function() { return q; })).concat([r.preco.toFixed(2).replace('.', ',')]).join(T);
+      var ok = function() { pnt.textContent = '✓ Copiado!'; setTimeout(function() { pnt.textContent = '📋 Exportar Pnt'; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, function() { prompt('Copie (Pnt):', linha); });
+      else prompt('Copie (Pnt):', linha);
     };
   }
 
@@ -3004,6 +3308,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (currentEstrutura === 'box4') { refreshModalB4(); return; }
     if (currentEstrutura === 'seagull') { refreshModalSg(); return; }
     if (currentEstrutura === 'fence') { refreshModalFc(); return; }
+    if (currentEstrutura === 'collar') { refreshModalCl(); return; }
     if (currentEstrutura === 'booster') { refreshModalBo(); return; }
     var r = lastData.rows[modalIdx];
     var q = parseInt(document.getElementById('fytm-qty').value) || 100;

@@ -16,6 +16,13 @@
 .fyt-campo{display:flex;flex-direction:column;gap:.3rem;}
 .fyt-campo label{font-size:.75rem;color:var(--text-secondary);font-weight:600;
   text-transform:uppercase;letter-spacing:.03em;}
+.fyt-ms{position:relative;}
+.fyt-ms-btn{width:100%;text-align:left;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:5px;padding:.35rem .5rem;font-size:.85rem;cursor:pointer;}
+.fyt-ms-lista{position:absolute;z-index:30;top:calc(100% + 2px);left:0;min-width:100%;background:var(--card-bg);border:1px solid var(--border-color);border-radius:6px;box-shadow:0 8px 24px rgba(0,0,0,.35);padding:.25rem 0;}
+.fyt-ms-lista label{display:flex;align-items:center;gap:.5rem;padding:.4rem .75rem;font-size:.85rem;font-weight:400;color:var(--text-primary);text-transform:none;letter-spacing:0;cursor:pointer;white-space:nowrap;}
+.fyt-campo .fyt-ms-lista label{justify-content:flex-start;text-align:left;}
+.fyt-campo .fyt-ms-lista input[type=checkbox]{width:auto;padding:0;margin:0;accent-color:#60a5fa;}
+.fyt-ms-lista label:hover{background:rgba(96,165,250,.18);}
 .fyt-campo select,.fyt-campo input{background:var(--card-bg);color:var(--text-primary);
   border:1px solid var(--border-color);border-radius:5px;padding:.35rem .5rem;font-size:.85rem;}
 .fyt-chips{display:flex;flex-wrap:wrap;gap:.3rem;}
@@ -714,7 +721,10 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     <div id="fyt-filtros-sx" style="display:none;">
       <div class="fyt-campo">
         <label for="fyt-sx-exp">Vencimento</label>
-        <select id="fyt-sx-exp"><option value="0" selected>Vencimento atual</option><option value="1">Atual +1</option><option value="2">Atual +2</option></select>
+        <div class="fyt-ms" id="fyt-sx-exp">
+          <button type="button" class="fyt-ms-btn" id="fyt-sx-exp-btn">Selecione...</button>
+          <div class="fyt-ms-lista" id="fyt-sx-exp-lista" style="display:none;"></div>
+        </div>
       </div>
       <div class="fyt-campo">
         <label for="fyt-sx-ctol" title="Quanto o centro do strangle, (strike CALL + strike PUT) ÷ 2, pode se afastar do preço do ativo (ATM)">Centro ≈ ativo (± %)</label>
@@ -1438,7 +1448,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     <div class="fyt-apane" data-p="filtros">
       <h5>🎛️ Filtros</h5>
       <ul>
-        <li><strong>Vencimento:</strong> atual, +1 ou +2 (mensais).</li>
+        <li><strong>Vencimento:</strong> lista dos próximos vencimentos mensais (ex.: 19/11/2026 (M) - K/W, em que K/W são as letras da CALL/PUT do mês); dá para marcar mais de um.</li>
         <li><strong>Centro ≈ ativo (± %):</strong> o centro do strangle, (strike CALL + strike PUT) ÷ 2, deve ficar aproximadamente no preço do ativo (ATM); este campo é o afastamento máximo permitido, em % do ativo (padrão 1%).</li>
         <li><strong>Delta (slider):</strong> faixa de distância (R$) entre o strike da CALL e o da PUT. O limite superior padrão é 20% do ativo (BOVA11 = R$ 40); para outras ações é proporcional ao preço.</li>
         <li>Regra fixa: só entram pares com custo de compra menor ou igual ao delta.</li>
@@ -1776,6 +1786,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-mannerheim-esp/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'sx') {
+      if (!window.__SX.exps().length) { errBox.textContent = 'Selecione ao menos um vencimento.'; errBox.style.display = 'block'; return; }
       q = window.__SX.query();
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-sx/' + encodeURIComponent(currentTicker) + '?' + q.toString();
@@ -3367,10 +3378,48 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     }
     function reprep() { if (opSel.value === 'sx') { tkPrep = ''; prepara(); } }
     elTicker.addEventListener('change', reprep); elTickerL.addEventListener('change', reprep);
+    // vencimentos mensais (3ª sexta) dos próximos meses, no formato "19/11/2026 (M) - K/W" (letras CALL/PUT do mês)
+    var expLista = $('exp-lista'), expBtn = $('exp-btn');
+    (function() {
+      var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+      var y = hoje.getFullYear(), m = hoje.getMonth(), n = 0, h = '';
+      // feriado de B3 que pode cair na 3ª sexta: fixos + Sexta-feira Santa; nesse caso o vencimento antecipa p/ o pregão anterior
+      var feriadoB3 = function(dt) {
+        var ds = ('0' + (dt.getMonth() + 1)).slice(-2) + '-' + ('0' + dt.getDate()).slice(-2);
+        if (['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-24', '12-25', '12-31'].indexOf(ds) >= 0) return true;
+        var Y = dt.getFullYear(), a = Y % 19, b = Math.floor(Y / 100), c = Y % 100, dd = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25),
+            g = Math.floor((b - f + 1) / 3), hh = (19 * a + b - dd - g + 15) % 30, i = Math.floor(c / 4), k = c % 4,
+            l = (32 + 2 * e + 2 * i - hh - k) % 7, mm = Math.floor((a + 11 * hh + 22 * l) / 451),
+            pm = Math.floor((hh + l - 7 * mm + 114) / 31), pd = ((hh + l - 7 * mm + 114) % 31) + 1;
+        var sexSanta = new Date(Y, pm - 1, pd - 2);
+        return sexSanta.getMonth() === dt.getMonth() && sexSanta.getDate() === dt.getDate();
+      };
+      while (n < 4) {
+        var d = new Date(y, m, 1), sex = 0;
+        while (true) { if (d.getDay() === 5 && ++sex === 3) break; d.setDate(d.getDate() + 1); }
+        while (feriadoB3(d) || d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
+        if (d > hoje) {
+          var iso = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+          h += '<label><input type="checkbox" value="' + iso + '"' + (n === 0 ? ' checked' : '') + '> ' + dateBR(iso) + ' (M) - ' +
+            'ABCDEFGHIJKL'.charAt(d.getMonth()) + '/' + 'MNOPQRSTUVWX'.charAt(d.getMonth()) + '</label>';
+          n++;
+        }
+        m++; if (m > 11) { m = 0; y++; }
+      }
+      expLista.innerHTML = h;
+    })();
+    function expSel() { return [].slice.call(expLista.querySelectorAll('input:checked')).map(function(c) { return c.value; }); }
+    function expResumo() {
+      var v = expSel();
+      expBtn.textContent = v.length === 0 ? 'Selecione...' : v.map(function(x) { return dateBR(x).slice(0, 5); }).join(', ');
+    }
+    expLista.addEventListener('change', expResumo); expResumo();
+    expBtn.addEventListener('click', function(e) { e.stopPropagation(); expLista.style.display = expLista.style.display === 'none' ? '' : 'none'; });
+    document.addEventListener('click', function(e) { if (!$('exp').contains(e.target)) expLista.style.display = 'none'; });
     return {
-      prepara: prepara, ajusta: function(spot) { if (!ready && spot) poe(spot); },
+      prepara: prepara, ajusta: function(spot) { if (!ready && spot) poe(spot); }, exps: expSel,
       query: function() { var d = dual();
-        return new URLSearchParams({ exp: $('exp').value, c_tol: $('ctol').value === '' ? '1' : $('ctol').value, d_min: ready ? d[0] : '0', d_max: ready ? d[1] : '1000' }); }
+        return new URLSearchParams({ exps: expSel().join(','), c_tol: $('ctol').value === '' ? '1' : $('ctol').value, d_min: ready ? d[0] : '0', d_max: ready ? d[1] : '1000' }); }
     };
   }
   window.__SX = sxUI();
@@ -3387,16 +3436,17 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         'Amplie a faixa de delta ou tente outro vencimento.</div>';
       return;
     }
-    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">🧷 <strong>Strangle de Cobertura</strong> · 📆 Vencimento: <strong>' + dateBR(d.exp) + '</strong> (' + d.dc + 'd)' +
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">🧷 <strong>Strangle de Cobertura</strong> · 📆 Vencimento(s): <strong>' + (d.exps || [d.exp]).map(dateBR).join(', ') + '</strong>' +
       (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') + ' · <strong>' + d.rows.length + '</strong> par(es) com custo ≤ delta</div>';
     h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
-      '<th>Tickers</th><th title="Strike da CALL ITM comprada">Call</th><th title="Strike da PUT ITM comprada">Put</th>' +
+      '<th>Tickers</th><th>Vencimento</th><th title="Strike da CALL ITM comprada">Call</th><th title="Strike da PUT ITM comprada">Put</th>' +
       '<th title="Distância entre os strikes = valor mínimo no vencimento">Delta</th><th title="Ask da CALL + ask da PUT">Custo</th>' +
       '<th title="Delta − custo">Lucro travado</th><th title="Lucro travado ÷ custo">Retorno</th>' +
       '<th title="Custo pelos últimos negócios">Último</th><th title="Custo pela boca (ask)">Boca</th></tr></thead><tbody>';
     d.rows.forEach(function(r, i) {
       h += '<tr data-i="' + i + '" title="Clique para ver o detalhamento">' +
         '<td style="text-align:left;"><span class="fyt-badge buy">+' + r.s_call + '</span> <span class="fyt-badge buy">+' + r.s_put + '</span></td>' +
+        '<td>' + dateBR(r.exp) + '<br><span style="font-size:.7rem;color:var(--text-secondary);">' + r.dc + 'd</span></td>' +
         '<td>' + brl(r.kc) + '</td><td>' + brl(r.kp) + '</td><td>' + brl(r.delta) + '</td><td>' + brl(r.custo) + '</td>' +
         '<td class="pos"><strong>' + brl(r.lucro) + '</strong></td><td>' + fmt(r.ret, 1) + '%</td>' +
         '<td>' + (r.ultimo == null ? '—' : brl(r.ultimo)) + '</td>' +
@@ -3417,21 +3467,21 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       ['Delta (valor mínimo no vencimento)', brl(r.delta * q), 'pos'],
       ['Lucro mínimo travado', brl(r.lucro * q) + ' (' + fmt(r.ret, 1) + '% sobre o custo)', 'pos'],
       ['Zona de resultado constante', 'entre ' + brl(r.kc) + ' e ' + brl(r.kp) + ' (fora dela o resultado só aumenta)', ''],
-      ['Vencimento', dateBR(lastData.exp) + ' (' + lastData.dc + ' d.c.)', '']
+      ['Vencimento', dateBR(r.exp) + ' (' + r.dc + ' d.c.)', '']
     ];
     document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
       return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span><span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
     }).join('');
     var L = [
-      {ticker: r.s_call, side: 'BUY', opt_type: 'CALL', quantity: q, strike: r.kc, entry_price: r.p_call, expiration_date: lastData.exp},
-      {ticker: r.s_put,  side: 'BUY', opt_type: 'PUT',  quantity: q, strike: r.kp, entry_price: r.p_put,  expiration_date: lastData.exp}
+      {ticker: r.s_call, side: 'BUY', opt_type: 'CALL', quantity: q, strike: r.kc, entry_price: r.p_call, expiration_date: r.exp},
+      {ticker: r.s_put,  side: 'BUY', opt_type: 'PUT',  quantity: q, strike: r.kp, entry_price: r.p_put,  expiration_date: r.exp}
     ];
     var nome = 'Strangle de Cobertura ' + lastData.ticker + ' ' + r.kc + '/' + r.kp;
     document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + new URLSearchParams({sim: '1', ativo: lastData.ticker, nome: nome,
       legs: L.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')}).toString();
     var calc = document.getElementById('fytm-calc');
     calc.onclick = null; calc.removeAttribute('target'); calc.style.display = '';
-    calc.href = '/venda_puts?' + new URLSearchParams({st: '1', ativo: lastData.ticker, spot: lastData.spot, qty: q, exp: lastData.exp, op: 'livre',
+    calc.href = '/venda_puts?' + new URLSearchParams({st: '1', ativo: lastData.ticker, spot: lastData.spot, qty: q, exp: r.exp, op: 'livre',
       livre_legs: 'C:1|P:1', livre_nome: nome,
       at: r.s_call, ak: r.kc, ap: r.p_call, bt: r.s_put, bk: r.kp, bp: r.p_put}).toString() + '#estrutura';
     var sf = document.getElementById('fytm-sf'); sf.style.display = '';

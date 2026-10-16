@@ -14560,7 +14560,7 @@ def api_fyt_sx(ticker):
     No vencimento a estrutura vale no mínimo delta = K_p − K_c (constante entre os strikes, maior fora deles).
     Regra: custo de compra (ask CALL + ask PUT) <= delta → lucro mínimo travado = delta − custo.
     O centro (K_c+K_p)/2 deve ficar aproximadamente no ativo: |centro − ativo| <= c_tol % do ativo (padrão 1%).
-    Parâmetros: exp=0..2 · d_min/d_max (R$, distância entre os strikes) · c_tol (%)."""
+    Parâmetros: exps=AAAA-MM-DD,... (um ou mais vencimentos mensais) · d_min/d_max (R$, distância entre os strikes) · c_tol (%)."""
     ticker = ticker.strip().upper()
     usar_brapi = request.args.get('source') == 'brapi'
     token = None
@@ -14580,10 +14580,7 @@ def api_fyt_sx(ticker):
         except (TypeError, ValueError):
             return default
 
-    try:
-        exp_i = min(max(int(request.args.get('exp', 0)), 0), 2)
-    except (TypeError, ValueError):
-        exp_i = 0
+    exps_req = [e.strip() for e in (request.args.get('exps') or '').split(',') if e.strip()]
     d_min, d_max = max(0.0, _num('d_min', 0.0)), _num('d_max', 1e9)
     if d_max < d_min:
         d_min, d_max = d_max, d_min
@@ -14651,52 +14648,66 @@ def api_fyt_sx(ticker):
         return jsonify({'error': f'Nenhum vencimento mensal com CALLs e PUTs para {ticker}.'}), 404
     exps_out = [{'exp': e, 'dc': max((_date.fromisoformat(e) - today).days, 0),
                  'label': ('Vencimento atual' if i == 0 else f'Vencimento +{i}')} for i, e in enumerate(monthlies)]
-    if exp_i >= len(monthlies):
+    # vencimentos pedidos (datas AAAA-MM-DD; casa com o mensal da cadeia a até 3 dias); sem pedido = o mais curto
+    sel = []
+    for e in exps_req:
+        try:
+            de = _date.fromisoformat(e)
+        except ValueError:
+            continue
+        m = min(monthlies, key=lambda x: abs((_date.fromisoformat(x) - de).days))
+        if abs((_date.fromisoformat(m) - de).days) <= 3 and m not in sel:
+            sel.append(m)
+    if not sel and not exps_req:
+        sel = monthlies[:1]
+    if not sel:
         return jsonify({'error': 'Vencimento escolhido não disponível para este ativo.', 'expirations': exps_out}), 404
-    exp = monthlies[exp_i]
-    dc = max((_date.fromisoformat(exp) - today).days, 1)
+    sel.sort()
 
     _now_b = now_brt()
     market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
-    cs, ps = calls[exp], puts[exp]
     rows = []
-    for kc, call in cs.items():
-        if kc > spot:                      # CALL ITM: strike abaixo do ativo
-            continue
-        ec = _box4_eff(call, market_open)
-        if (market_open and not ec['boca']) or not ec['ask']:
-            continue
-        for kp, put in ps.items():
-            if kp < spot:                  # PUT ITM: strike acima do ativo
-                continue
-            delta = round(kp - kc, 2)
-            if delta <= 0.004 or not (d_min - 0.004 <= delta <= d_max + 0.004):
-                continue
-            if abs((kc + kp) / 2 - spot) / spot * 100 > c_tol + 1e-9:     # centro ~ ativo (ATM)
-                continue
-            ep = _box4_eff(put, market_open)
-            if (market_open and not ep['boca']) or not ep['ask']:
-                continue
-            custo = round(ec['ask'] + ep['ask'], 2)
-            if custo > delta + 1e-9:
-                continue
-            lucro = round(delta - custo, 2)
-            cc, cp = call['close'], put['close']
-            ultimo = round(cc + cp, 2) if min(cc, cp) >= 0.05 else None
-            rows.append({
-                'kc': kc, 'kp': kp, 'delta': delta, 'central': round((kc + kp) / 2, 2),
-                's_call': call['symbol'], 's_put': put['symbol'],
-                'p_call': round(ec['ask'], 2), 'p_put': round(ep['ask'], 2),
-                'c_dev': round(((kc + kp) / 2 - spot) / spot * 100, 2),
-                'custo': custo, 'lucro': lucro, 'ret': round(lucro / custo * 100, 1), 'preco': custo, 'ultimo': ultimo,
-                'src': 'ultimo' if 'ultimo' in (ec['src'], ep['src']) else 'book',
-                'dist_c': round((spot - kc) / spot * 100, 1), 'dist_p': round((kp - spot) / spot * 100, 1),
-            })
-    rows.sort(key=lambda r: (-r['ret'], r['kc'], r['kp']))
-    rows = _fyt_diversify(rows, lambda r: (r['kc'], r['kp']), per_key=1, limit=80)
+    for exp in sel:
+      dc = max((_date.fromisoformat(exp) - today).days, 1)
+      cs, ps = calls[exp], puts[exp]
+      for kc, call in cs.items():
+          if kc > spot:                      # CALL ITM: strike abaixo do ativo
+              continue
+          ec = _box4_eff(call, market_open)
+          if (market_open and not ec['boca']) or not ec['ask']:
+              continue
+          for kp, put in ps.items():
+              if kp < spot:                  # PUT ITM: strike acima do ativo
+                  continue
+              delta = round(kp - kc, 2)
+              if delta <= 0.004 or not (d_min - 0.004 <= delta <= d_max + 0.004):
+                  continue
+              if abs((kc + kp) / 2 - spot) / spot * 100 > c_tol + 1e-9:     # centro ~ ativo (ATM)
+                  continue
+              ep = _box4_eff(put, market_open)
+              if (market_open and not ep['boca']) or not ep['ask']:
+                  continue
+              custo = round(ec['ask'] + ep['ask'], 2)
+              if custo > delta + 1e-9:
+                  continue
+              lucro = round(delta - custo, 2)
+              cc, cp = call['close'], put['close']
+              ultimo = round(cc + cp, 2) if min(cc, cp) >= 0.05 else None
+              rows.append({
+                  'exp': exp, 'dc': dc, 'kc': kc, 'kp': kp, 'delta': delta, 'central': round((kc + kp) / 2, 2),
+                  's_call': call['symbol'], 's_put': put['symbol'],
+                  'p_call': round(ec['ask'], 2), 'p_put': round(ep['ask'], 2),
+                  'c_dev': round(((kc + kp) / 2 - spot) / spot * 100, 2),
+                  'custo': custo, 'lucro': lucro, 'ret': round(lucro / custo * 100, 1), 'preco': custo, 'ultimo': ultimo,
+                  'src': 'ultimo' if 'ultimo' in (ec['src'], ep['src']) else 'book',
+                  'dist_c': round((spot - kc) / spot * 100, 1), 'dist_p': round((kp - spot) / spot * 100, 1),
+              })
+    rows.sort(key=lambda r: (-r['ret'], r['exp'], r['kc'], r['kp']))
+    rows = _fyt_diversify(rows, lambda r: (r['exp'], r['kc'], r['kp']), per_key=1, limit=120)
     return jsonify({
         'ticker': ticker, 'spot': spot, 'spot_change': spot_change, 'market_open': market_open,
-        'expirations': exps_out, 'exp': exp, 'dc': dc, 'rows': rows, 'total': len(rows),
+        'expirations': exps_out, 'exps': sel, 'exp': sel[0],
+        'dc': max((_date.fromisoformat(sel[0]) - today).days, 1), 'rows': rows, 'total': len(rows),
         'source': 'brapi' if usar_brapi else 'oplab',
     })
 

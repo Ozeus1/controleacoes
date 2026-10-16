@@ -226,44 +226,22 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     <!-- Filtros da Linha de Mannerheim -->
     <div id="fyt-filtros-mann" style="display:none;">
       <div class="fyt-campo">
-        <label for="fyt-mann-tipo" title="Tipo da opção vendida a descoberto. PUT = Tradicional (THLs de CALL, viés alta/lateral). CALL = Reversa (THLs de PUT, viés baixa/lateral)">
-          Tipo (vendida a descoberto)</label>
-        <select id="fyt-mann-tipo">
-          <option value="put" selected>PUT — Tradicional (THLs de CALL)</option>
-          <option value="call">CALL — Reversa (THLs de PUT)</option>
-        </select>
+        <label for="fyt-mn-exp-v" title="Ciclo da opção vendida a descoberto e da perna curta das THLs">Vencimento vendidas</label>
+        <select id="fyt-mn-exp-v"><option value="0" selected>Vencimento atual</option><option value="1">Vencimento +1 mês</option></select>
       </div>
-
       <div class="fyt-campo">
-        <label for="fyt-mann-exp-v" title="Ciclo da opção vendida a descoberto e da perna curta das THLs">
-          Vencimento das vendidas</label>
-        <select id="fyt-mann-exp-v">
-          <option value="0" selected>Próximo mensal</option>
-          <option value="1">Mensal +1</option>
-        </select>
+        <label for="fyt-mn-off" title="Meses à frente para a perna longa das THLs">Vencimento comprada</label>
+        <select id="fyt-mn-off"><option value="1" selected>Venc. vendidas +1 mês</option><option value="2">Venc. vendidas +2 meses</option><option value="3">Venc. vendidas +3 meses</option></select>
       </div>
-
       <div class="fyt-campo">
-        <label for="fyt-mann-exp-c" title="Meses à frente para a perna longa das THLs">
-          Vencimento das compradas</label>
-        <select id="fyt-mann-exp-c">
-          <option value="all" selected>Todos (+1 a +3)</option>
-          <option value="1">+1 mês</option>
-          <option value="2">+2 meses</option>
-          <option value="3">+3 meses</option>
-        </select>
+        <label for="fyt-mn-min" title="Proporção mínima de THLs por opção vendida. Recomenda-se ≥ 2,6 na Tradicional e ≥ 3 na Reversa">Mín. THLs</label>
+        <input type="number" id="fyt-mn-min" min="0" step="0.1" value="1">
       </div>
-
-      <div class="fyt-campo">
-        <label for="fyt-mann-strike-pct" title="Faixa de strikes varrida em torno do preço do ativo (ex.: 10 = de 10% ITM a 10% OTM)">
-          Variação do strike (± %)</label>
-        <input type="number" id="fyt-mann-strike-pct" min="0.5" max="50" step="0.5" value="10">
-      </div>
-
-      <div class="fyt-campo">
-        <label for="fyt-mann-min-thl" title="Proporção mínima de THLs por opção vendida. Recomenda-se ≥ 2,6 na Tradicional e ≥ 3 na Reversa. Vazio = traz todas">
-          Mín. THLs</label>
-        <input type="number" id="fyt-mann-min-thl" min="0" step="0.1" placeholder="vazio = todas">
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label title="Faixa de strikes ATM. Arraste os dois controles">Strikes</label>
+        <div class="fyt-kvals"><span id="fyt-mn-k-lo">—</span><span id="fyt-mn-k-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-mn-k-faixa"></div>
+          <input type="range" id="fyt-mn-k-a" min="0" max="100" step="0.01" value="0"><input type="range" id="fyt-mn-k-b" min="0" max="100" step="0.01" value="100"></div>
       </div>
     </div>
 
@@ -1156,6 +1134,67 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     </div>
   </div>
 
+
+  <div class="fyt-ajuda" id="fyt-ajuda-mn" style="display:none;">
+    <div class="fyt-ajuda-top">
+      <h4>Linha de Mannerheim</h4>
+      <div class="fyt-atabs">
+        <span class="fyt-atab on" data-p="conceito">Conceito</span>
+        <span class="fyt-atab" data-p="variantes">Variantes</span>
+        <span class="fyt-atab" data-p="filtros">Filtros e Colunas</span>
+        <span class="fyt-atab" data-p="risco">Risco</span>
+        <span class="fyt-atab" data-p="mais">Saiba Mais</span>
+      </div>
+    </div>
+    <div class="fyt-apane on" data-p="conceito">
+      <h5>ℹ️ O que é a Linha de Mannerheim?</h5>
+      <p>A <strong>Linha de Mannerheim</strong> combina a venda a descoberto de uma opção ATM com a aplicação do recurso em <strong>Travas Horizontais de Linha (THLs)</strong> do mês seguinte, com financeiro total próximo de zero.</p>
+      <p>A <strong>maximização</strong> ocorre nas proximidades do strike da opção vendida, nos últimos dias para o vencimento — quando a opção vendida "pozinha" e sobram as THLs com valor temporal.</p>
+      <div class="nota" style="border-left-color:#60a5fa;background:rgba(96,165,250,.08);"><strong>📐 Proporção mínima:</strong> busque montar no mínimo <strong>2,6 THLs</strong> para cada opção vendida a descoberto, nas proximidades ATM. Quanto mais THLs por vendida, menor o risco de queda forte.</div>
+    </div>
+    <div class="fyt-apane" data-p="variantes">
+      <h5>📋 Variantes</h5>
+      <ul>
+        <li><strong style="color:#34d399;">Tradicional (lado esquerdo da tabela):</strong> vende <strong>PUT a descoberto</strong> + compra THLs de <strong>CALL</strong>. Viés de alta ou lateral. Risco na queda forte (PUT descoberta).<br><span style="color:var(--text-secondary);font-size:.78rem;">Ex.: −1k PETRM430 +3,3k PETRB233 −3,3k PETRA430</span></li>
+        <li><strong style="color:#f87171;">Reversa (lado direito da tabela):</strong> vende <strong>CALL a descoberto</strong> + compra THLs de <strong>PUT</strong>. Viés de baixa ou lateral. Risco na alta forte (CALL descoberta) e na queda forte (PUTs DITM exigem desembolso para desmontar).<br><span style="color:var(--text-secondary);font-size:.78rem;">Ex.: −1k PETRA368 +4,3k PETRN205 −4,3k PETRM368</span></li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="filtros">
+      <h5>🎛️ Filtros e colunas</h5>
+      <ul>
+        <li><strong>Vencimento vendidas:</strong> ciclo da opção vendida a descoberto e das THLs curtas.</li>
+        <li><strong>Vencimento comprada:</strong> meses à frente para as THLs longas (+1, +2, +3).</li>
+        <li><strong>Mín. THLs:</strong> proporção mínima de THLs por opção vendida. Recomenda-se ≥ 2,6 para Tradicional e ≥ 3 para Reversa.</li>
+        <li><strong>Slider de strikes:</strong> filtra o intervalo de strikes ATM.</li>
+      </ul>
+      <h5>📊 Colunas da tabela</h5>
+      <div class="nota" style="border-left-color:#818cf8;background:rgba(129,140,248,.08);">A tabela é <strong>espelhada</strong>: lado esquerdo = Tradicional (PUT vendida + THLs de CALL), coluna central = <strong>Strike</strong>, lado direito = Reversa (CALL vendida + THLs de PUT).</div>
+      <ul>
+        <li><strong>Tickers:</strong> opção vendida + composição das THLs (vendida e comprada do calendário).</li>
+        <li><strong>THLs:</strong> quantidade de THLs financiadas pela opção vendida.</li>
+        <li><strong>Último / Boca:</strong> custo total da montagem. Negativo = crédito.</li>
+        <li><strong>Strike:</strong> o strike das opções (centralizado e em destaque quando próximo ao preço do ativo).</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="risco">
+      <h5>⚠️ Risco e gestão</h5>
+      <div class="risco"><strong>Opção vendida a descoberto:</strong><br><strong>Tradicional:</strong> queda forte do ativo → PUT vendida acumula prejuízo.<br><strong>Reversa:</strong> alta forte → CALL vendida acumula prejuízo. Queda forte → PUTs DITM exigem desembolso para desmontar.</div>
+      <ul>
+        <li><strong style="color:#34d399;">Mitigações:</strong> i) ter recursos para assumir a compra/venda; ii) ter opção excedente para travar; iii) stop loss.</li>
+        <li><strong style="color:#fbbf24;">Margens de garantia:</strong> a opção vendida a descoberto exige margem na B3. Verifique antes de executar.</li>
+        <li><strong style="color:#34d399;">THLs como proteção:</strong> se o ativo se mover lateralmente, as THLs geram lucro e compensam parcialmente o risco da vendida. Mais THLs = mais proteção.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="mais">
+      <h5>📖 Saiba mais</h5>
+      <ul>
+        <li>A THL individual (calendário de mesmo strike) tem a sua própria busca no FYT: <strong>THL / Calendário</strong>.</li>
+        <li>Cada lado mostra, por strike, a melhor montagem encontrada (mais THLs por vendida). A quantidade inteira de THLs é a que se monta na prática.</li>
+        <li>Clique numa célula (lado esquerdo ou direito) para ver o detalhamento, abrir no SimFlex ou exportar para o Pnt.</li>
+      </ul>
+    </div>
+  </div>
+
   <div class="fyt-ajuda" id="fyt-ajuda-sl" style="display:none;">
     <div class="fyt-ajuda-top">
       <h4>Slide Estrutural</h4>
@@ -1399,6 +1438,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (v === 'slide') slPrepara();
     if (v === 'straddle_ha') shaPrepara();
     thlWeeklyWrap.style.display = 'none';
+    document.getElementById('fyt-ajuda-mn').style.display = (v === 'mannerheim') ? '' : 'none';
+    if (v === 'mannerheim' && window.__MN) window.__MN.prepara();
     document.getElementById('fyt-ajuda-tc').style.display = (v === 'thl') ? '' : 'none';
     if (v === 'thl' && window.__TC) window.__TC.prepara();
   }
@@ -1447,15 +1488,9 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-thl-cal/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'mannerheim') {
-      q = new URLSearchParams({
-        tipo:       document.getElementById('fyt-mann-tipo').value,
-        exp_v:      document.getElementById('fyt-mann-exp-v').value,
-        exp_c:      document.getElementById('fyt-mann-exp-c').value,
-        strike_pct: document.getElementById('fyt-mann-strike-pct').value || '10',
-        min_thl:    document.getElementById('fyt-mann-min-thl').value || ''
-      });
+      q = window.__MN.query();
       if (usarBrapi) q.set('source', 'brapi');
-      url = '/api/fyt-mannerheim/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+      url = '/api/fyt-mannerheim-esp/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'trava_alta' || estrutura === 'trava_baixa') {
       var TX = estrutura === 'trava_alta' ? window.__TA : window.__TB;
       q = TX.query();
@@ -1602,7 +1637,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         }
         currentEstrutura = estrutura;
         if (estrutura === 'thl') { window.__TC.ajusta(res.j.spot); renderThlCal(res.j); }
-        else if (estrutura === 'mannerheim') renderMann(res.j);
+        else if (estrutura === 'mannerheim') { window.__MN.ajusta(res.j.spot); renderMannEsp(res.j); }
         else if (estrutura === 'trava_alta') { window.__TA.ajusta(res.j.spot); renderTravaN(res.j, false); }
         else if (estrutura === 'trava_baixa') { window.__TB.ajusta(res.j.spot); renderTravaN(res.j, true); }
         else if (estrutura === 'borboleta') renderBorboleta(res.j);
@@ -2643,6 +2678,117 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     };
   }
 
+  // ── Linha de Mannerheim (tabela espelhada Tradicional | strike | Reversa) ──────
+  var mannSel = null;
+  function mannUI() {
+    var $ = function(id) { return document.getElementById('fyt-mn-' + id); }, ready = false, tkPrep = '';
+    function dual() { var lo = parseFloat($('k-a').value), hi = parseFloat($('k-b').value); return lo <= hi ? [lo, hi] : [hi, lo]; }
+    function desenha() {
+      var mn = parseFloat($('k-a').min), mx = parseFloat($('k-a').max), r = dual(), span = (mx - mn) || 1, f = $('k-faixa');
+      f.style.left = ((r[0] - mn) / span * 100) + '%'; f.style.width = ((r[1] - r[0]) / span * 100) + '%';
+      $('k-lo').textContent = brl(r[0]); $('k-hi').textContent = brl(r[1]);
+    }
+    ['k-a', 'k-b'].forEach(function(x) { $(x).addEventListener('input', desenha); });
+    function poe(spot) {
+      var lo = Math.floor(spot * 0.8), hi = Math.ceil(spot * 1.2);
+      ['k-a', 'k-b'].forEach(function(x) { $(x).min = lo; $(x).max = hi; });
+      $('k-a').value = Math.round(spot * 0.9 * 100) / 100; $('k-b').value = Math.round(spot * 1.1 * 100) / 100;
+      ready = true; desenha();
+    }
+    function prepara() {
+      var tk = tickerAtual(); if (!tk || tk === tkPrep) return; tkPrep = tk; ready = false;
+      fetch('/api/quote_hint/' + encodeURIComponent(tk)).then(function(r) { return r.json(); }).then(function(d) {
+        if (tickerAtual() === tk && d && d.price) poe(d.price);
+      }).catch(function() { tkPrep = ''; });
+    }
+    function reprep() { if (opSel.value === 'mannerheim') { tkPrep = ''; prepara(); } }
+    elTicker.addEventListener('change', reprep); elTickerL.addEventListener('change', reprep);
+    return {
+      prepara: prepara, ajusta: function(spot) { if (!ready && spot) poe(spot); },
+      query: function() { var k = dual(); return new URLSearchParams({ exp_v: $('exp-v').value, off_c: $('off').value, min_thl: $('min').value || '',
+        a_min: ready ? k[0] : '', a_max: ready ? k[1] : '' }); }
+    };
+  }
+  window.__MN = mannUI();
+
+  function mannTick(x) {   // "−vendida N * (−thl curta +thl longa)"
+    return '<span class="fyt-badge sell">−' + x.vend_symbol + '</span> ' + fmt(x.n_thl, 1) + ' × (<span class="fyt-badge sell">−' + x.thl_v_symbol +
+      '</span> <span class="fyt-badge buy">+' + x.thl_c_symbol + '</span>)';
+  }
+  function renderMannEsp(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' + (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>' : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">Nenhuma montagem atende aos filtros. ' +
+        'Reduza o mínimo de THLs, amplie a faixa de strikes ou troque o vencimento das compradas.</div>';
+      return;
+    }
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">🛡️ <strong>Linha de Mannerheim</strong> · 📆 Vendidas: <strong>' + dateBR(d.exp_v) + '</strong> (' + d.dc_v + 'd)' +
+      (d.exp_c ? ' · THLs compradas: <strong>' + dateBR(d.exp_c) + '</strong>' : '') +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') + ' · Tradicional (esq.) | Reversa (dir.)</div>';
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th style="text-align:left;">Tickers (Tradicional)</th><th title="THLs financiadas por opção vendida">THLs</th><th>Último</th><th>Boca</th>' +
+      '<th style="text-align:center;background:rgba(148,163,184,.12);">Strike</th>' +
+      '<th>Boca</th><th>Último</th><th>THLs</th><th style="text-align:right;">Tickers (Reversa)</th></tr></thead><tbody>';
+    var marcou = false;
+    d.rows.forEach(function(r, i) {
+      var sep = (!marcou && r.strike > d.spot) ? 'border-top:2px solid #e2e8f0;' : '';
+      if (sep) marcou = true;
+      var ult = function(x) { return x.vend_ult == null ? '-' : fmt(x.vend_ult); };
+      var lado = function(x, side) {
+        var t = ' data-i="' + i + '" data-s="' + side + '"';
+        if (!x) return ['<td' + t + '>-</td>', '<td' + t + '>-</td>', '<td' + t + '>-</td>', '<td' + t + '>-</td>'];
+        return ['<td' + t + ' style="text-align:' + (side === 'trad' ? 'left' : 'right') + ';white-space:nowrap;cursor:pointer;">' + mannTick(x) + '</td>',
+          '<td' + t + ' style="cursor:pointer;">' + fmt(x.n_thl, 1) + '</td>', '<td' + t + ' style="cursor:pointer;">' + (x.fin_ultimo == null ? '-' : fmt(x.fin_ultimo)) + '</td>',
+          '<td' + t + ' style="cursor:pointer;"><strong class="' + (x.financeiro <= 0 ? 'pos' : '') + '">' + fmt(x.financeiro) + '</strong></td>'];
+      };
+      var c = lado(r.trad, 'trad'), p = lado(r.rev, 'rev');
+      h += '<tr style="' + sep + '">' + c[0] + c[1] + c[2] + c[3] +
+        '<td style="text-align:center;background:rgba(148,163,184,.12);"><strong>' + brl(r.strike) + '</strong></td>' + p[3] + p[2] + p[1] + p[0] + '</tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+    results.querySelectorAll('td[data-s]').forEach(function(td) {
+      td.addEventListener('click', function() {
+        var r = lastData.rows[parseInt(td.dataset.i)], x = r[td.dataset.s];
+        if (!x) return;
+        mannSel = {row: x, side: td.dataset.s}; openModal(parseInt(td.dataset.i));
+      });
+    });
+  }
+
+  function refreshModalMannEsp() {
+    if (!mannSel) return;
+    var saved = lastData, x = mannSel.row, trad = mannSel.side === 'trad';
+    var lastTmp = Object.assign({}, saved, {rows: [x], variante: x.variante, tipo_vendida: x.tipo_vendida, tipo_thl: x.tipo_thl});
+    lastData = lastTmp; var oi = modalIdx; modalIdx = 0;
+    try { refreshModalMann(); } finally { lastData = saved; modalIdx = oi; }
+    var q = parseInt(document.getElementById('fytm-qty').value) || 100, n = x.n_thl_int, tp = x.tipo_thl;
+    var L = [
+      {ticker: x.vend_symbol, side: 'SELL', opt_type: x.tipo_vendida, quantity: q, strike: x.strike, entry_price: x.vend_px, expiration_date: saved.exp_v},
+      {ticker: x.thl_c_symbol, side: 'BUY', opt_type: tp, quantity: n * q, strike: x.strike, entry_price: x.thl_c_px, expiration_date: x.exp_c},
+      {ticker: x.thl_v_symbol, side: 'SELL', opt_type: tp, quantity: n * q, strike: x.strike, entry_price: x.thl_v_px, expiration_date: saved.exp_v}
+    ];
+    var nome = 'Mannerheim ' + (trad ? 'tradicional' : 'reversa') + ' ' + saved.ticker + ' K' + x.strike;
+    var sf = document.getElementById('fytm-sf'); sf.style.display = '';
+    sf.onclick = function() {
+      try { localStorage.setItem('simflex_import', JSON.stringify({origem: '', name: nome, ativo: saved.ticker, novo: true, legs: L})); }
+      catch (e) { alert('Não foi possível preparar o SimFlex: ' + e); return; }
+      window.open('/simflex?importar=1', '_blank');
+    };
+    var pnt = document.getElementById('fytm-pnt'); pnt.style.display = '';
+    pnt.onclick = function() {
+      var T = String.fromCharCode(9);
+      var linha = L.map(function(l) { return l.ticker; }).concat(L.map(function(l) { return l.side === 'BUY' ? 'C' : 'V'; }))
+        .concat(L.map(function(l) { return l.quantity; })).concat([x.financeiro.toFixed(2).replace('.', ',')]).join(T);
+      var ok = function() { pnt.textContent = '✓ Copiado!'; setTimeout(function() { pnt.textContent = '📋 Exportar Pnt'; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, function() { prompt('Copie (Pnt):', linha); });
+      else prompt('Copie (Pnt):', linha);
+    };
+  }
+
   // ── Fence ─────────────────────────────────────────────────────────────
   var fcReady = false, fcTickerPrep = '';
   function fcDual(w) {
@@ -3479,7 +3625,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('fytm-sf').style.display = 'none';
     document.getElementById('fytm-cadeia').style.display = '';
     if (currentEstrutura === 'thl') { refreshModalThlCal(); return; }
-    if (currentEstrutura === 'mannerheim') { refreshModalMann(); return; }
+    if (currentEstrutura === 'mannerheim') { refreshModalMannEsp(); return; }
     if (currentEstrutura === 'trava_alta') { refreshModalTrava(); return; }
     if (currentEstrutura === 'trava_baixa') { refreshModalTravaBaixa(); return; }
     if (currentEstrutura === 'borboleta') { refreshModalBorboleta(); return; }

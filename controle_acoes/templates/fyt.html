@@ -137,6 +137,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <option value="seagull">🕊 Seagull (Gaivota de alta)</option>
         <option value="fence">🚧 Fence (Cerca)</option>
         <option value="collar">🛡️ Collar (com Fence opcional)</option>
+        <option value="ssc">🔗 Short Strangle Coberto</option>
       </select>
     </div>
 
@@ -669,6 +670,42 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <div class="fyt-kvals"><span id="fyt-cl-p-lo">—</span><span id="fyt-cl-p-hi">—</span></div>
         <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-cl-p-faixa"></div>
           <input type="range" id="fyt-cl-p-a" min="-5" max="5" step="0.01" value="-0.5"><input type="range" id="fyt-cl-p-b" min="-5" max="5" step="0.01" value="0.1"></div>
+      </div>
+    </div>
+
+    <!-- Filtros do Short Strangle Coberto -->
+    <div id="fyt-filtros-ss" style="display:none;">
+      <div class="fyt-campo">
+        <label for="fyt-ss-tipo" title="Call: asa = CALL comprada (risco na queda). Put (reverso): asa = PUT comprada (risco na alta)">Tipo</label>
+        <select id="fyt-ss-tipo"><option value="call" selected>Call</option><option value="put">Put</option></select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-ss-exp">Vencimento</label>
+        <select id="fyt-ss-exp"><option value="0" selected>Vencimento Atual</option><option value="1">Vencimento +1 mês</option><option value="2">Vencimento +2 meses</option></select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-ss-range" title="Largura mínima (R$) entre os strikes vendidos: tamanho da asa = devolução mínima">Range mín.</label>
+        <input type="number" id="fyt-ss-range" min="0" step="0.25" value="0">
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-ss-lr" title="Lucro máximo (V.E.) ÷ range, em %. Quanto maior, mais eficiente a estrutura">Lucro/Range mín. (%)</label>
+        <input type="number" id="fyt-ss-lr" min="0" step="1" value="40">
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-ss-alvo" title="Qual strike a faixa abaixo filtra">Filtrar faixa por</label>
+        <select id="fyt-ss-alvo"><option value="put" selected>Put strike</option><option value="call">Call strike</option><option value="central">Ponto central</option></select>
+      </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label id="fyt-ss-a-lbl" title="Faixa de strikes. Arraste os dois controles">Faixa (put strike)</label>
+        <div class="fyt-kvals"><span id="fyt-ss-a-lo">—</span><span id="fyt-ss-a-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-ss-a-faixa"></div>
+          <input type="range" id="fyt-ss-a-a" min="0" max="100" step="0.01" value="0"><input type="range" id="fyt-ss-a-b" min="0" max="100" step="0.01" value="100"></div>
+      </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label title="Lucro máximo (valor extrínseco) por ação: embolso − devolução">Lucro máximo (V.E.)</label>
+        <div class="fyt-kvals"><span id="fyt-ss-p-lo">—</span><span id="fyt-ss-p-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-ss-p-faixa"></div>
+          <input type="range" id="fyt-ss-p-a" min="0" max="10" step="0.01" value="0.5"><input type="range" id="fyt-ss-p-b" min="0" max="10" step="0.01" value="10"></div>
       </div>
     </div>
 
@@ -1298,6 +1335,69 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     </div>
   </div>
 
+
+  <div class="fyt-ajuda" id="fyt-ajuda-ss" style="display:none;">
+    <div class="fyt-ajuda-top">
+      <h4>Short Strangle Coberto</h4>
+      <div class="fyt-atabs">
+        <span class="fyt-atab on" data-p="conceito">Conceito</span>
+        <span class="fyt-atab" data-p="variantes">Variantes</span>
+        <span class="fyt-atab" data-p="filtros">Filtros e Colunas</span>
+        <span class="fyt-atab" data-p="risco">Risco</span>
+        <span class="fyt-atab" data-p="mais">Saiba Mais</span>
+      </div>
+    </div>
+    <div class="fyt-apane on" data-p="conceito">
+      <h5>ℹ️ O que é o Short Strangle Coberto?</h5>
+      <p>O <strong>Short Strangle Coberto</strong> é uma operação de capital que <strong>retira dinheiro do mercado</strong>, mas exige devolver parte dele (tamanho da asa). O ganho máximo é o <strong>Valor Extrínseco (V.E.)</strong> da estrutura.</p>
+      <p>A montagem consiste em vender um Strangle (CALL + PUT) e comprar uma asa de proteção do lado com risco limitado, resultando em uma estrutura de 3 pernas com embolso inicial (crédito).</p>
+      <p>O filtro <strong>Tipo</strong> alterna entre as duas variantes.</p>
+      <div class="nota"><strong>📌 Duas perguntas fundamentais:</strong> 1) Em que preço aceito comprar/vender o ativo? 2) Qual a motivação? (ganhar V.E., trocar risco, reduzir margens, hedge dual, financiar opções longas).</div>
+    </div>
+    <div class="fyt-apane" data-p="variantes">
+      <h5>📋 Variantes (tipo)</h5>
+      <ul>
+        <li><strong style="color:#34d399;">Call (Strangle Coberto):</strong> −PUT, −CALL e +CALL (asa de proteção na alta). Os dois strikes vendidos ficam "no dinheiro": a CALL vendida abaixo da PUT vendida.<br><span style="color:var(--text-secondary);font-size:.78rem;">Ex.: −M32 −A30 +A32 → embolso R$ 3,60 / devolução R$ 2,00 / V.E. = R$ 1,60.</span><br>Risco na <strong style="color:#f87171;">queda forte</strong> (PUT descoberta → assunção de compra).</li>
+        <li><strong style="color:#f87171;">Put (Strangle Coberto Reverso):</strong> −CALL, −PUT e +PUT (asa de proteção na baixa).<br><span style="color:var(--text-secondary);font-size:.78rem;">Ex.: −A22 −M24 +M22 → payoff espelhado (lucro acima da PUT vendida).</span><br>Risco na <strong style="color:#f87171;">alta forte</strong> (CALL descoberta → obrigação de entrega). Ideal para quem tem ativo em custódia.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="filtros">
+      <h5>🎛️ Filtros</h5>
+      <ul>
+        <li><strong>Tipo (Call / Put):</strong> alterna entre Strangle Coberto (Call) e Reverso (Put).</li>
+        <li><strong>Vencimento:</strong> mês de expiração das opções da estrutura.</li>
+        <li><strong>Range mín.:</strong> largura mínima entre os strikes vendidos (tamanho da asa = devolução mínima).</li>
+        <li><strong>Lucro/Range mín. (%):</strong> relação entre o V.E. capturado e o tamanho da asa. Quanto maior, mais eficiente a estrutura.</li>
+        <li><strong>Lucro máximo (V.E.) (slider):</strong> faixa de valor extrínseco desejado.</li>
+        <li><strong>Slider de strikes:</strong> por Call strike, Put strike ou Ponto central.</li>
+      </ul>
+      <h5>📊 Colunas da tabela</h5>
+      <ul>
+        <li><strong>Call / Ponto central / Put:</strong> strikes das 3 pernas e o ponto médio da estrutura.</li>
+        <li><strong>Range:</strong> tamanho da asa (devolução mínima obrigatória).</li>
+        <li><strong>Lucro máximo (V.E.):</strong> valor extrínseco total = embolso − devolução.</li>
+        <li><strong>Lucro/Range:</strong> eficiência da estrutura (V.E. ÷ range).</li>
+        <li><strong>Último / Boca:</strong> custo pelo último negócio / pela boca (negativo = embolso).</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="risco">
+      <h5>⚠️ Risco e gestão</h5>
+      <div class="risco"><strong>Risco direcional (perna descoberta):</strong><br><strong>Call:</strong> queda forte → PUT descoberta → assunção de compra do ativo.<br><strong>Put (reverso):</strong> alta forte → CALL descoberta → obrigação de vender o ativo.</div>
+      <ul>
+        <li><strong style="color:#fbbf24;">Mitigações:</strong> i) ter o caixa integral para a compra; ii) travar com opção excedente; iii) stop loss rigoroso.</li>
+        <li><strong style="color:#fbbf24;">Margens de garantia:</strong> a B3 exige margem pela perna a descoberto. Verifique seu lastro disponível na corretora.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="mais">
+      <h5>📖 Saiba mais</h5>
+      <ul>
+        <li>O resultado no vencimento é plano entre os dois strikes vendidos e igual a (embolso − devolução) = V.E.; só a perna descoberta gera perda fora dessa zona.</li>
+        <li>Variantes de strangle sem asa (Strangle ITM, Guts) estão na <a href="/busca-operacoes-avancadas" style="color:#818cf8;">Busca de Operações Avançadas</a>.</li>
+        <li>Clique numa linha para ver o detalhe, abrir no <strong>SimFlex</strong> ou exportar para o <strong>Pnt</strong>.</li>
+      </ul>
+    </div>
+  </div>
+
   <div class="fyt-ajuda" id="fyt-ajuda-sl" style="display:none;">
     <div class="fyt-ajuda-top">
       <h4>Slide Estrutural</h4>
@@ -1541,6 +1641,9 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (v === 'slide') slPrepara();
     if (v === 'straddle_ha') shaPrepara();
     thlWeeklyWrap.style.display = 'none';
+    document.getElementById('fyt-filtros-ss').style.display = (v === 'ssc') ? 'contents' : 'none';
+    document.getElementById('fyt-ajuda-ss').style.display = (v === 'ssc') ? '' : 'none';
+    if (v === 'ssc' && window.__SS) window.__SS.prepara();
     document.getElementById('fyt-ajuda-bw').style.display = (v === 'broken_wing') ? '' : 'none';
     if (v === 'broken_wing' && window.__BW) window.__BW.prepara();
     document.getElementById('fyt-ajuda-bf').style.display = (v === 'borboleta') ? '' : 'none';
@@ -1598,6 +1701,10 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       q = window.__MN.query();
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-mannerheim-esp/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'ssc') {
+      q = window.__SS.query();
+      if (usarBrapi) q.set('source', 'brapi');
+      url = '/api/fyt-ssc/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'trava_alta' || estrutura === 'trava_baixa') {
       var TX = estrutura === 'trava_alta' ? window.__TA : window.__TB;
       q = TX.query();
@@ -1657,6 +1764,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         else if (estrutura === 'seagull') { sgAjustaFaixa(res.j.spot); renderSeagull(res.j); }
         else if (estrutura === 'fence') { fcAjustaFaixa(res.j.spot); renderFence(res.j); }
         else if (estrutura === 'collar') { clAjustaFaixa(res.j.spot); renderCollar(res.j); }
+        else if (estrutura === 'ssc') { window.__SS.ajusta(res.j.spot); renderSsc(res.j); }
         else { boAjustaFaixa(res.j.spot); renderBooster(res.j); }
       })
       .catch(function(e) {
@@ -3035,6 +3143,126 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     };
   }
 
+  // ── Short Strangle Coberto ──────────────────────────────────────────────────────
+  function sscUI() {
+    var $ = function(id) { return document.getElementById('fyt-ss-' + id); }, ready = false, tkPrep = '';
+    function dual(w) { var lo = parseFloat($(w + '-a').value), hi = parseFloat($(w + '-b').value); return lo <= hi ? [lo, hi] : [hi, lo]; }
+    function desenha(w) {
+      var mn = parseFloat($(w + '-a').min), mx = parseFloat($(w + '-a').max), r = dual(w), span = (mx - mn) || 1, f = $(w + '-faixa');
+      f.style.left = ((r[0] - mn) / span * 100) + '%'; f.style.width = ((r[1] - r[0]) / span * 100) + '%';
+      $(w + '-lo').textContent = brl(r[0]); $(w + '-hi').textContent = brl(r[1]);
+    }
+    ['a-a', 'a-b'].forEach(function(x) { $(x).addEventListener('input', function() { desenha('a'); }); });
+    ['p-a', 'p-b'].forEach(function(x) { $(x).addEventListener('input', function() { desenha('p'); }); });
+    desenha('p');
+    $('alvo').addEventListener('change', function() { $('a-lbl').textContent = 'Faixa (' + ({put: 'put strike', call: 'call strike', central: 'ponto central'})[this.value] + ')'; });
+    function poe(spot) {
+      var lo = Math.floor(spot * 0.8), hi = Math.ceil(spot * 1.2);
+      ['a-a', 'a-b'].forEach(function(x) { $(x).min = lo; $(x).max = hi; });
+      $('a-a').value = Math.round(spot * 0.9 * 100) / 100; $('a-b').value = Math.round(spot * 1.1 * 100) / 100;
+      ready = true; desenha('a');
+    }
+    function prepara() {
+      var tk = tickerAtual(); if (!tk || tk === tkPrep) return; tkPrep = tk; ready = false;
+      fetch('/api/quote_hint/' + encodeURIComponent(tk)).then(function(r) { return r.json(); }).then(function(d) {
+        if (tickerAtual() === tk && d && d.price) poe(d.price);
+      }).catch(function() { tkPrep = ''; });
+    }
+    function reprep() { if (opSel.value === 'ssc') { tkPrep = ''; prepara(); } }
+    elTicker.addEventListener('change', reprep); elTickerL.addEventListener('change', reprep);
+    return {
+      prepara: prepara, ajusta: function(spot) { if (!ready && spot) poe(spot); },
+      query: function() { var a = dual('a'), p = dual('p');
+        return new URLSearchParams({ tipo: $('tipo').value, exp: $('exp').value, range_min: $('range').value || '0', lr_min: $('lr').value || '0',
+          alvo: $('alvo').value, a_min: ready ? a[0] : '', a_max: ready ? a[1] : '', ve_min: p[0], ve_max: p[1] }); }
+    };
+  }
+  window.__SS = sscUI();
+
+  function renderSsc(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' + (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>' : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">Nenhum Short Strangle Coberto atende aos filtros. ' +
+        'Reduza o Lucro/Range mínimo, o range mínimo, ou amplie a faixa de strikes e de V.E.</div>';
+      return;
+    }
+    var call = d.tipo !== 'put';
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">🔗 <strong>Short Strangle Coberto' + (call ? '' : ' Reverso') + '</strong> · 📆 Vencimento: <strong>' + dateBR(d.exp) + '</strong> (' + d.dc + 'd)' +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') + ' · <strong>' + d.rows.length + '</strong> montagem(ns)</div>';
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th>Tickers</th><th title="Strike da CALL vendida">Call</th><th title="Ponto médio entre os strikes vendidos">Ponto central</th><th title="Strike da PUT vendida">Put</th>' +
+      '<th title="Tamanho da asa = devolução mínima (strike da put − strike da call)">Range</th>' +
+      '<th title="Valor extrínseco total = embolso − devolução">Lucro máximo (V.E.)</th><th title="V.E. ÷ range">Lucro/Range</th>' +
+      '<th title="Custo pelos últimos negócios (negativo = embolso)">Último</th><th title="Custo pela boca (negativo = embolso)">Boca</th></tr></thead><tbody>';
+    var marcou = false;
+    d.rows.forEach(function(r, i) {
+      var sep = (!marcou && r.central > d.spot) ? ' style="border-top:2px solid #e2e8f0;"' : '';
+      if (sep) marcou = true;
+      h += '<tr data-i="' + i + '"' + sep + ' title="Clique para ver o detalhamento">' +
+        '<td style="text-align:left;"><span class="fyt-badge sell">−' + r.s_put + '</span> <span class="fyt-badge sell">−' + r.s_call + '</span> <span class="fyt-badge buy">+' + r.s_wing + '</span></td>' +
+        '<td>' + brl(r.kc) + '</td><td>' + brl(r.central) + '</td><td>' + brl(r.kp) + '</td><td>' + brl(r.range) + '</td>' +
+        '<td class="pos"><strong>' + brl(r.ve) + '</strong></td><td>' + fmt(r.lr, 0) + '%</td>' +
+        '<td>' + (r.ultimo == null ? '—' : '<span class="' + (r.ultimo <= 0 ? 'pos' : '') + '">' + brl(r.ultimo) + '</span>') + '</td>' +
+        '<td><strong class="pos">' + brl(r.preco) + '</strong>' + (r.src === 'ultimo' ? '<br><span style="font-size:.7rem;color:var(--text-secondary);">últ.</span>' : '') + '</td></tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) { tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); }); });
+  }
+
+  function refreshModalSs() {
+    var r = lastData.rows[modalIdx], q = parseInt(document.getElementById('fytm-qty').value) || 100, call = lastData.tipo !== 'put', tw = r.tw;
+    document.getElementById('fytm-title').textContent = 'Short Strangle Coberto' + (call ? '' : ' Reverso') + ' ' + lastData.ticker + ' — ' + r.s_put + ' / ' + r.s_call + ' / ' + r.s_wing;
+    var boxes = [
+      ['Venda ' + q + '× ' + r.s_call + ' (CALL K ' + fmt(r.kc) + ')', brl(r.p_call * q), 'pos'],
+      ['Venda ' + q + '× ' + r.s_put + ' (PUT K ' + fmt(r.kp) + ')', brl(r.p_put * q), 'pos'],
+      ['Compra ' + q + '× ' + r.s_wing + ' (' + tw + ' K ' + fmt(tw === 'CALL' ? r.kp : r.kc) + ' — asa de proteção)', brl(r.p_wing * q), 'neg'],
+      ['Embolso inicial (crédito)', brl(r.embolso * q), 'pos'],
+      ['Devolução mínima (range)', brl(r.range * q), 'neg'],
+      ['Lucro máximo (V.E.)', brl(r.ve * q) + ' (' + fmt(r.lr, 0) + '% do range)', 'pos'],
+      ['Zona de lucro máximo', call ? 'acima de ' + brl(r.kc) + ' (resultado constante)' : 'abaixo de ' + brl(r.kp) + ' (resultado constante)', ''],
+      ['Breakeven', brl(r.be) + (call ? ' (abaixo dele a PUT descoberta gera prejuízo)' : ' (acima dele a CALL descoberta gera prejuízo)'), ''],
+      ['Risco', call ? 'queda forte: PUT descoberta (assunção de compra)' : 'alta forte: CALL descoberta (obrigação de entrega)', 'neg'],
+      ['Posição do ativo', (lastData.spot >= r.kc && lastData.spot <= r.kp) ? 'entre os strikes vendidos (ambas ITM): o embolso é só valor extrínseco' : 'fora dos strikes vendidos: parte do embolso é valor intrínseco, o lucro máx. exige o ativo terminar ' + (call ? 'acima de ' + brl(r.kc) : 'abaixo de ' + brl(r.kp)), (lastData.spot >= r.kc && lastData.spot <= r.kp) ? '' : 'neg'],
+      ['Vencimento', dateBR(lastData.exp) + ' (' + lastData.dc + ' d.c.)', '']
+    ];
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span><span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+    var kw = tw === 'CALL' ? r.kp : r.kc;
+    var L = [
+      {ticker: r.s_call, side: 'SELL', opt_type: 'CALL', quantity: q, strike: r.kc, entry_price: r.p_call, expiration_date: lastData.exp},
+      {ticker: r.s_put,  side: 'SELL', opt_type: 'PUT',  quantity: q, strike: r.kp, entry_price: r.p_put,  expiration_date: lastData.exp},
+      {ticker: r.s_wing, side: 'BUY',  opt_type: tw,     quantity: q, strike: kw,   entry_price: r.p_wing, expiration_date: lastData.exp}
+    ];
+    var nome = 'Short Strangle Coberto ' + (call ? 'Call ' : 'Put ') + lastData.ticker + ' ' + r.kc + '/' + r.kp;
+    document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + new URLSearchParams({sim: '1', ativo: lastData.ticker, nome: nome,
+      legs: L.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')}).toString();
+    var calc = document.getElementById('fytm-calc');
+    calc.onclick = null; calc.removeAttribute('target'); calc.style.display = '';
+    calc.href = '/venda_puts?' + new URLSearchParams({st: '1', ativo: lastData.ticker, spot: lastData.spot, qty: q, exp: lastData.exp, op: 'livre',
+      livre_legs: 'C:-1|P:-1|' + tw[0] + ':1', livre_nome: nome,
+      at: r.s_call, ak: r.kc, ap: r.p_call, bt: r.s_put, bk: r.kp, bp: r.p_put, ct2: r.s_wing, ck2: kw, cp2: r.p_wing}).toString() + '#estrutura';
+    var sf = document.getElementById('fytm-sf'); sf.style.display = '';
+    sf.onclick = function() {
+      try { localStorage.setItem('simflex_import', JSON.stringify({origem: '', name: nome, ativo: lastData.ticker, novo: true, legs: L})); }
+      catch (e) { alert('Não foi possível preparar o SimFlex: ' + e); return; }
+      window.open('/simflex?importar=1', '_blank');
+    };
+    var pnt = document.getElementById('fytm-pnt'); pnt.style.display = '';
+    pnt.onclick = function() {
+      var T = String.fromCharCode(9);
+      var linha = L.map(function(l) { return l.ticker; }).concat(L.map(function(l) { return l.side === 'BUY' ? 'C' : 'V'; }))
+        .concat(L.map(function() { return q; })).concat([r.preco.toFixed(2).replace('.', ',')]).join(T);
+      var ok = function() { pnt.textContent = '✓ Copiado!'; setTimeout(function() { pnt.textContent = '📋 Exportar Pnt'; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, function() { prompt('Copie (Pnt):', linha); });
+      else prompt('Copie (Pnt):', linha);
+    };
+  }
+
   // ── Fence ─────────────────────────────────────────────────────────────
   var fcReady = false, fcTickerPrep = '';
   function fcDual(w) {
@@ -3883,6 +4111,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (currentEstrutura === 'seagull') { refreshModalSg(); return; }
     if (currentEstrutura === 'fence') { refreshModalFc(); return; }
     if (currentEstrutura === 'collar') { refreshModalCl(); return; }
+    if (currentEstrutura === 'ssc') { refreshModalSs(); return; }
     if (currentEstrutura === 'booster') { refreshModalBo(); return; }
     var r = lastData.rows[modalIdx];
     var q = parseInt(document.getElementById('fytm-qty').value) || 100;

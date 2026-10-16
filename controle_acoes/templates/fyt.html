@@ -129,7 +129,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <option value="trava_alta">📈 Trava de Alta</option>
         <option value="trava_baixa">📉 Trava de Baixa</option>
         <option value="borboleta">🦋 Borboleta</option>
-        <option value="broken_wing">🪽 Broken Wing Short PUT</option>
+        <option value="broken_wing">🪽 Broken Wings Short</option>
         <option value="straddle_ha">⚖️ Short Straddle HA (Hedge Assimétrico)</option>
         <option value="slide">🛝 Slide Estrutural</option>
         <option value="box3">📦 Box de 3 Pontas</option>
@@ -352,50 +352,51 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       </div>
     </div>
 
-    <!-- Filtros do Broken Wing Short PUT -->
+    <!-- Filtros do Broken Wings Short -->
     <div id="fyt-filtros-bwb" style="display:none;">
       <div class="fyt-campo">
-        <label for="fyt-bwb-exp">Vencimento</label>
-        <select id="fyt-bwb-exp">
-          <option value="0" selected>Vencimento Atual</option>
-          <option value="1">Mensal +1</option>
-          <option value="2">Mensal +2</option>
-        </select>
+        <label for="fyt-bw-tipo" title="Short Put: BWB de CALLs + PUT vendida na cobertura. Short Call: BWB de PUTs + CALL vendida na cobertura">Tipo</label>
+        <select id="fyt-bw-tipo"><option value="put" selected>Short Put</option><option value="call">Short Call</option></select>
       </div>
-
       <div class="fyt-campo">
-        <label>Asa (R$)</label>
-        <div class="fyt-asa">
-          <input type="number" id="fyt-bwb-asa-min" min="0" max="20" step="0.25" value="1">
-          <span style="color:var(--text-secondary);">até</span>
-          <input type="number" id="fyt-bwb-asa-max" min="0" max="20" step="0.25" value="4">
-        </div>
+        <label for="fyt-bw-exp-v" title="Vencimento das opções vendidas (miolo e a opção vendida da cobertura)">Vencimento vendidas</label>
+        <select id="fyt-bw-exp-v"><option value="0" selected>Vencimento Atual</option><option value="1">Vencimento +1 mês</option><option value="2">Vencimento +2 meses</option></select>
       </div>
-
       <div class="fyt-campo">
-        <label title="Distância K3−K2: o strike da cobertura/venda da Put em relação à vendida (miolo). A PUT vendida sempre coincide com este strike">
-          Cobertura / Venda da Put (R$)</label>
-        <div class="fyt-asa">
-          <input type="number" id="fyt-bwb-cob-min" min="0" max="30" step="0.5" value="2">
-          <span style="color:var(--text-secondary);">até</span>
-          <input type="number" id="fyt-bwb-cob-max" min="0" max="30" step="0.5" value="8">
-        </div>
+        <label for="fyt-bw-off" title="Vencimento das compradas (asa e cobertura), em meses depois do vencimento das vendidas. +0 = todas no mesmo vencimento">Vencimento compradas</label>
+        <select id="fyt-bw-off"><option value="0" selected>Venc. vendidas +0 meses</option><option value="1">Venc. vendidas +1 mês</option><option value="2">Venc. vendidas +2 meses</option></select>
       </div>
-
       <div class="fyt-campo">
-        <label for="fyt-bwb-strike-pct" title="Faixa de strikes varrida em torno do spot para o strike do miolo (vendido), em %">
-          Faixa do miolo (± %)</label>
-        <input type="number" id="fyt-bwb-strike-pct" min="1" max="50" step="1" value="15">
+        <label for="fyt-bw-prop" title="Compradas : vendidas no miolo (a cobertura compra a diferença)">Proporção</label>
+        <select id="fyt-bw-prop"><option value="todos" selected>Todos</option><option value="1:2">1:2</option><option value="2:3">2:3</option><option value="3:4">3:4</option><option value="4:5">4:5</option></select>
       </div>
-
       <div class="fyt-campo">
-        <label title="Crédito líquido total da montagem (BWB + Put vendida), em R$. Negativo = crédito recebido — a estrutura nasce quase sempre no crédito">
-          Preço (R$)</label>
-        <div class="fyt-asa">
-          <input type="number" id="fyt-bwb-preco-min" step="0.5" value="-6">
-          <span style="color:var(--text-secondary);">até</span>
-          <input type="number" id="fyt-bwb-preco-max" step="0.5" value="2">
-        </div>
+        <label for="fyt-bw-asa" title="Distância entre o strike comprado inferior e o vendido. BOVA11/SMAL11: R$ 0 a 12; demais: R$ 0 a 3 (passo 0,25)">Asa</label>
+        <select id="fyt-bw-asa"></select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-bw-range" title="Amplitude mínima (R$) entre a asa comprada e a cobertura">Range mín.</label>
+        <input type="number" id="fyt-bw-range" min="0" step="0.25" value="0">
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-bw-cob" title="Distância da cobertura BWB em relação à vendida. A opção vendida (PUT no Short Put, CALL no Short Call) sempre coincide com este strike. R$ 0 = qualquer distância">Cobertura / Venda da opção</label>
+        <select id="fyt-bw-cob"></select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-bw-alvo" title="Qual strike a faixa abaixo filtra">Filtrar faixa por</label>
+        <select id="fyt-bw-alvo"><option value="k1" selected>Compradas</option><option value="k2">Vendidas</option><option value="k3">Cobertura / Venda</option></select>
+      </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label id="fyt-bw-a-lbl" title="Faixa de strikes. Arraste os dois controles">Faixa (compradas)</label>
+        <div class="fyt-kvals"><span id="fyt-bw-a-lo">—</span><span id="fyt-bw-a-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-bw-a-faixa"></div>
+          <input type="range" id="fyt-bw-a-a" min="0" max="100" step="0.01" value="0"><input type="range" id="fyt-bw-a-b" min="0" max="100" step="0.01" value="100"></div>
+      </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label title="Custo líquido da montagem por ação (negativo = crédito; a estrutura nasce quase sempre no crédito)">Preço (R$)</label>
+        <div class="fyt-kvals"><span id="fyt-bw-p-lo">—</span><span id="fyt-bw-p-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-bw-p-faixa"></div>
+          <input type="range" id="fyt-bw-p-a" min="-6" max="2" step="0.01" value="-2"><input type="range" id="fyt-bw-p-b" min="-6" max="2" step="0.01" value="-1"></div>
       </div>
     </div>
 
@@ -1238,6 +1239,65 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     </div>
   </div>
 
+
+  <div class="fyt-ajuda" id="fyt-ajuda-bw" style="display:none;">
+    <div class="fyt-ajuda-top">
+      <h4>Broken Wings Short</h4>
+      <div class="fyt-atabs">
+        <span class="fyt-atab on" data-p="conceito">Conceito</span>
+        <span class="fyt-atab" data-p="filtros">Filtros e Colunas</span>
+        <span class="fyt-atab" data-p="risco">Risco</span>
+        <span class="fyt-atab" data-p="mais">Saiba Mais</span>
+      </div>
+    </div>
+    <div class="fyt-apane on" data-p="conceito">
+      <h5>ℹ️ O que é a Broken Wings Short?</h5>
+      <p>A <strong>Broken Wing Short PUT</strong> é uma estrutura de <strong>crédito</strong>, ideal para mercado lateral ou de alta. Combina uma <strong>BWB de CALL</strong> com uma <strong>PUT vendida</strong> no mesmo strike da cobertura.</p>
+      <p>Exemplo: <code>+A21  −2×A24  +A28  −PUT A28</code> → BWB de CALL (comprada inferior, 2 vendidas, cobertura superior) + PUT vendida coincidindo com a cobertura. O crédito recebido gera uma faixa de ganho entre a comprada inferior e a cobertura.</p>
+      <p>A variante <strong>Short Call</strong> é o espelho: BWB de <strong>PUTs</strong> (asa mais larga para baixo) + <strong>CALL vendida</strong> no strike da cobertura — ideal para mercado lateral ou de baixa.</p>
+      <p>Também pode ser utilizada como <strong>manejo de PUT ITM vendida</strong>, integrando a BWB em strikes mais baixos. A volatilidade mais alta favorece montagens com range maior.</p>
+    </div>
+    <div class="fyt-apane" data-p="filtros">
+      <h5>🎛️ Filtros e colunas</h5>
+      <ul>
+        <li><strong>Tipo:</strong> Short Put (BWB de CALLs + PUT vendida) ou Short Call (BWB de PUTs + CALL vendida).</li>
+        <li><strong>Venc. vendidas / compradas:</strong> controla os vencimentos das opções vendidas e das compradas. Quando compradas = +0, todas no mesmo vencimento.</li>
+        <li><strong>Proporção:</strong> 1:2 (clássico), 2:3, 3:4, 4:5. "Todos" mostra tudo.</li>
+        <li><strong>Asa:</strong> distância entre o strike comprado inferior e o vendido.</li>
+        <li><strong>Range mín.:</strong> filtra montagens com amplitude de lucro mínima.</li>
+        <li><strong>Cobertura / venda da opção:</strong> distância da cobertura BWB em relação à vendida. A opção vendida <strong>sempre coincide</strong> com este strike.</li>
+        <li><strong>Slider de strikes:</strong> filtra o intervalo de strikes (compradas, vendidas, cobertura/venda).</li>
+        <li><strong>Slider de preço:</strong> filtra a faixa de crédito recebido (valores negativos = crédito). Amplie para ver mais resultados.</li>
+      </ul>
+      <h5>📊 Colunas da tabela</h5>
+      <ul>
+        <li><strong>Comprada:</strong> strike da opção comprada inferior (asa).</li>
+        <li><strong>Vendida:</strong> strike das opções vendidas (miolo da BWB).</li>
+        <li><strong>Assunção:</strong> strike onde o delta da BWB (sem a cobertura) zera. Acima (Short Put) ou abaixo (Short Call) deste ponto, paga-se apenas o delta negativo da cobertura.</li>
+        <li><strong>Cobertura / venda:</strong> strike da cobertura BWB = strike da opção vendida.</li>
+        <li><strong>Asa / Range / Último / Boca:</strong> distância entre strikes, amplitude, último preço e custo agredindo o book.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="risco">
+      <h5>⚠️ Risco e gestão</h5>
+      <div class="risco"><strong>Risco principal (Short Put):</strong> <strong>queda forte</strong> do ativo — a PUT vendida fica descoberta e pode gerar prejuízo significativo. Exige margens de garantia. <strong>Short Call:</strong> o risco é a <strong>alta forte</strong> (CALL vendida descoberta).</div>
+      <ul>
+        <li><strong style="color:#fbbf24;">Além da cobertura:</strong> paga-se apenas o delta negativo da BWB (diferença entre cobertura e assunção). Risco limitado nesta direção.</li>
+        <li><strong style="color:#34d399;">Mitigações:</strong> i) ter os recursos integrais para assumir a compra do ativo (Short Put) ou a venda (Short Call); ii) ter opção excedente para travar; ou iii) estabelecer stop loss.</li>
+        <li><strong style="color:#fbbf24;">Proporções altas (1:3, 1:4):</strong> maior crédito, mas a assunção fica punitiva. Avalie a margem exigida antes de executar.</li>
+        <li><strong style="color:#60a5fa;">Manejo de PUT ITM:</strong> se já tiver PUT vendida ITM, pode integrar a BWB em strikes mais baixos para ampliar a faixa de ganho e reduzir o prejuízo da PUT.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="mais">
+      <h5>📖 Saiba mais</h5>
+      <ul>
+        <li>As versões do 🦁 Leão (Broken Wings Short Put e Short Call) também estão na <a href="/busca-operacoes-avancadas" style="color:#818cf8;">Busca de Operações Avançadas</a>, com asa preferida 2 e cobertura 4.</li>
+        <li>Quando as compradas ficam em vencimento posterior, o resultado no vencimento das vendidas é estimado.</li>
+        <li>Clique numa linha para ver o detalhe, abrir no <strong>SimFlex</strong> ou exportar para o <strong>Pnt</strong>.</li>
+      </ul>
+    </div>
+  </div>
+
   <div class="fyt-ajuda" id="fyt-ajuda-sl" style="display:none;">
     <div class="fyt-ajuda-top">
       <h4>Slide Estrutural</h4>
@@ -1481,6 +1541,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (v === 'slide') slPrepara();
     if (v === 'straddle_ha') shaPrepara();
     thlWeeklyWrap.style.display = 'none';
+    document.getElementById('fyt-ajuda-bw').style.display = (v === 'broken_wing') ? '' : 'none';
+    if (v === 'broken_wing' && window.__BW) window.__BW.prepara();
     document.getElementById('fyt-ajuda-bf').style.display = (v === 'borboleta') ? '' : 'none';
     if (v === 'borboleta' && window.__BF) window.__BF.prepara();
     document.getElementById('fyt-ajuda-mn').style.display = (v === 'mannerheim') ? '' : 'none';
@@ -1546,18 +1608,9 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-borboleta/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'broken_wing') {
-      q = new URLSearchParams({
-        exp:           document.getElementById('fyt-bwb-exp').value,
-        asa_min:       document.getElementById('fyt-bwb-asa-min').value || '1',
-        asa_max:       document.getElementById('fyt-bwb-asa-max').value || '4',
-        cobertura_min: document.getElementById('fyt-bwb-cob-min').value || '2',
-        cobertura_max: document.getElementById('fyt-bwb-cob-max').value || '8',
-        strike_pct:    document.getElementById('fyt-bwb-strike-pct').value || '15',
-        preco_min:     document.getElementById('fyt-bwb-preco-min').value || '-6',
-        preco_max:     document.getElementById('fyt-bwb-preco-max').value || '2'
-      });
+      q = window.__BW.query();
       if (usarBrapi) q.set('source', 'brapi');
-      url = '/api/fyt-broken-wing/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+      url = '/api/fyt-bws/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else {
       var ka = boDual('a'), kp = boDual('p');
       q = new URLSearchParams({
@@ -1597,7 +1650,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         else if (estrutura === 'trava_alta') { window.__TA.ajusta(res.j.spot); renderTravaN(res.j, false); }
         else if (estrutura === 'trava_baixa') { window.__TB.ajusta(res.j.spot); renderTravaN(res.j, true); }
         else if (estrutura === 'borboleta') { window.__BF.ajusta(res.j.spot); renderBorbN(res.j); }
-        else if (estrutura === 'broken_wing') renderBrokenWing(res.j);
+        else if (estrutura === 'broken_wing') { window.__BW.ajusta(res.j.spot); renderBws(res.j); }
         else if (estrutura === 'straddle_ha') { shaAjustaFaixa(res.j.spot); renderStraddleHa(res.j); }
         else if (estrutura === 'slide') { slAjustaFaixa(res.j.spot); renderSlide(res.j); }
         else if (estrutura === 'box3') { bxAjustaFaixa(res.j.spot); renderBox3(res.j); }
@@ -2848,6 +2901,140 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     };
   }
 
+  // ── Broken Wings Short (Put / Call) ─────────────────────────────────────────────
+  function bwsUI() {
+    var $ = function(id) { return document.getElementById('fyt-bw-' + id); }, ready = false, tkPrep = '';
+    function dual(w) { var lo = parseFloat($(w + '-a').value), hi = parseFloat($(w + '-b').value); return lo <= hi ? [lo, hi] : [hi, lo]; }
+    function desenha(w) {
+      var mn = parseFloat($(w + '-a').min), mx = parseFloat($(w + '-a').max), r = dual(w), span = (mx - mn) || 1, f = $(w + '-faixa');
+      f.style.left = ((r[0] - mn) / span * 100) + '%'; f.style.width = ((r[1] - r[0]) / span * 100) + '%';
+      $(w + '-lo').textContent = brl(r[0]); $(w + '-hi').textContent = brl(r[1]);
+    }
+    ['a-a', 'a-b'].forEach(function(x) { $(x).addEventListener('input', function() { desenha('a'); }); });
+    ['p-a', 'p-b'].forEach(function(x) { $(x).addEventListener('input', function() { desenha('p'); }); });
+    desenha('p');
+    $('alvo').addEventListener('change', function() { $('a-lbl').textContent = 'Faixa (' + ({k1: 'compradas', k2: 'vendidas', k3: 'cobertura / venda'})[this.value] + ')'; });
+    function opcoes() {
+      var etf = ['BOVA11', 'SMAL11'].indexOf(tickerAtual()) >= 0, v, a = '<option value="todos">Todos</option>', c = '<option value="todos">R$ 0 (todas)</option>';
+      if (etf) { for (v = 1; v <= 12; v++) a += '<option value="' + v + '">R$ ' + fmt(v) + '</option>'; for (v = 4; v <= 8; v++) c += '<option value="' + v + '">R$ ' + fmt(v) + '</option>'; }
+      else { for (v = 0.25; v <= 3 + 1e-9; v += 0.25) a += '<option value="' + v + '">R$ ' + fmt(v) + '</option>'; for (v = 1; v <= 2 + 1e-9; v += 0.25) c += '<option value="' + v + '">R$ ' + fmt(v) + '</option>'; }
+      [['asa', a], ['cob', c]].forEach(function(pr) { var sel = $(pr[0]), at = sel.value; sel.innerHTML = pr[1];
+        if ([].slice.call(sel.options).some(function(o) { return o.value === at; })) sel.value = at; });
+    }
+    function poe(spot) {
+      var lo = Math.floor(spot * 0.8), hi = Math.ceil(spot * 1.2);
+      ['a-a', 'a-b'].forEach(function(x) { $(x).min = lo; $(x).max = hi; });
+      $('a-a').value = Math.round(spot * 0.9 * 100) / 100; $('a-b').value = Math.round(spot * 1.1 * 100) / 100;
+      ready = true; desenha('a');
+    }
+    function prepara() {
+      opcoes();
+      var tk = tickerAtual(); if (!tk || tk === tkPrep) return; tkPrep = tk; ready = false;
+      fetch('/api/quote_hint/' + encodeURIComponent(tk)).then(function(r) { return r.json(); }).then(function(d) {
+        if (tickerAtual() === tk && d && d.price) poe(d.price);
+      }).catch(function() { tkPrep = ''; });
+    }
+    function reprep() { if (opSel.value === 'broken_wing') { tkPrep = ''; prepara(); } }
+    elTicker.addEventListener('change', reprep); elTickerL.addEventListener('change', reprep);
+    return {
+      prepara: prepara, ajusta: function(spot) { if (!ready && spot) poe(spot); },
+      query: function() { var a = dual('a'), p = dual('p');
+        return new URLSearchParams({ tipo: $('tipo').value, exp_v: $('exp-v').value, off_c: $('off').value, prop: $('prop').value, asa: $('asa').value,
+          cob: $('cob').value, range_min: $('range').value || '0', alvo: $('alvo').value, a_min: ready ? a[0] : '', a_max: ready ? a[1] : '', p_min: p[0], p_max: p[1] }); }
+    };
+  }
+  window.__BW = bwsUI();
+
+  function renderBws(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' + (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>' : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">Nenhuma montagem atende aos filtros. ' +
+        'Amplie a faixa de preço (a estrutura nasce no crédito), escolha "Todos" em asa e proporção ou reduza o range mínimo.</div>';
+      return;
+    }
+    var tp = d.tipo === 'call' ? 'Short Call' : 'Short Put';
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">🪽 <strong>Broken Wings ' + tp + '</strong> · 📆 Vendidas: <strong>' + dateBR(d.exp_v) + '</strong> (' + d.dc_v + 'd)' +
+      (d.mesmo_venc ? '' : ' · Compradas: <strong>' + dateBR(d.exp_c) + '</strong> (' + d.dc_c + 'd)') +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') + ' · <strong>' + d.rows.length + '</strong> montagem(ns)</div>';
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th>Tickers</th><th title="Opção comprada inferior (asa)">Comprada</th><th title="Opções vendidas (miolo)">Vendida</th>' +
+      '<th title="Strike onde o delta da BWB (sem a cobertura) zera">Assunção</th>' +
+      '<th title="Cobertura BWB = strike da opção vendida">Cobertura / Venda</th><th>Proporção</th><th>Asa</th><th>Range</th>' +
+      '<th title="Custo pelos últimos negócios (negativo = crédito)">Último</th><th title="Custo pela boca (negativo = crédito)">Boca</th></tr></thead><tbody>';
+    var marcou = false;
+    d.rows.forEach(function(r, i) {
+      var sep = (!marcou && r.k1 > d.spot) ? ' style="border-top:2px solid #e2e8f0;"' : '';
+      if (sep) marcou = true;
+      h += '<tr data-i="' + i + '"' + sep + ' title="Clique para ver o detalhamento">' +
+        '<td style="text-align:left;"><span class="fyt-badge buy">+' + r.qc + '× ' + r.s1 + '</span> <span class="fyt-badge sell">−' + r.qv + '× ' + r.s2 + '</span> ' +
+          '<span class="fyt-badge buy">+' + r.n3 + '× ' + r.s3 + '</span> <span class="fyt-badge sell">−' + r.n3 + '× ' + r.s4 + '</span></td>' +
+        '<td><strong>' + brl(r.k1) + '</strong></td><td>' + brl(r.k2) + '</td><td>' + (r.assuncao != null ? brl(r.assuncao) : '—') + '</td><td>' + brl(r.k3) + '</td>' +
+        '<td>' + r.prop.replace(':', ' : ') + '</td><td>' + brl(r.asa) + '</td><td>' + brl(r.range) + '</td>' +
+        '<td>' + (r.ultimo == null ? '—' : '<span class="' + (r.ultimo <= 0 ? 'pos' : '') + '">' + brl(r.ultimo) + '</span>') + '</td>' +
+        '<td><strong class="' + (r.preco <= 0 ? 'pos' : '') + '">' + brl(r.preco) + '</strong>' + (r.src === 'ultimo' ? '<br><span style="font-size:.7rem;color:var(--text-secondary);">últ.</span>' : '') + '</td></tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) { tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); }); });
+  }
+
+  function refreshModalBws() {
+    var r = lastData.rows[modalIdx], q = parseInt(document.getElementById('fytm-qty').value) || 100;
+    var put = lastData.tipo !== 'call', tb = put ? 'CALL' : 'PUT', to = put ? 'PUT' : 'CALL', mesmo = lastData.mesmo_venc, cred = r.preco < 0;
+    document.getElementById('fytm-title').textContent = 'Broken Wings Short ' + (put ? 'Put' : 'Call') + ' ' + lastData.ticker + ' — ' + r.s1 + ' / ' + r.s2 + ' / ' + r.s3;
+    var boxes = [
+      ['Compra ' + (r.qc * q) + '× ' + r.s1 + ' (' + tb + ' K ' + fmt(r.k1) + (mesmo ? '' : ' · ' + dateBR(lastData.exp_c)) + ')', brl(r.p1 * r.qc * q), 'neg'],
+      ['Venda ' + (r.qv * q) + '× ' + r.s2 + ' (' + tb + ' K ' + fmt(r.k2) + ')', brl(r.p2 * r.qv * q), 'pos'],
+      ['Cobertura: compra ' + (r.n3 * q) + '× ' + r.s3 + ' (' + tb + ' K ' + fmt(r.k3) + (mesmo ? '' : ' · ' + dateBR(lastData.exp_c)) + ')', brl(r.p3 * r.n3 * q), 'neg'],
+      ['Venda ' + (r.n3 * q) + '× ' + r.s4 + ' (' + to + ' K ' + fmt(r.k3) + ')', brl(r.p4 * r.n3 * q), 'pos'],
+      [cred ? 'Crédito recebido' : 'Custo da montagem (débito)', brl(Math.abs(r.preco) * q), cred ? 'pos' : 'neg'],
+      ['Lucro máximo', brl(r.lucro_max * q), 'pos'],
+      ['Assunção (delta da BWB zera)', r.assuncao != null ? brl(r.assuncao) : '—', ''],
+      ['Risco', put ? 'queda forte: PUT vendida descoberta abaixo de ' + brl(r.k3) : 'alta forte: CALL vendida descoberta acima de ' + brl(r.k3), 'neg'],
+      ['Asa / Cobertura / Range', brl(r.asa) + ' / ' + brl(r.cob) + ' / ' + brl(r.range), ''],
+      ['Vencimento vendidas', dateBR(lastData.exp_v) + ' (' + lastData.dc_v + ' d.c.)', '']
+    ];
+    if (!mesmo) boxes.push(['Vencimento compradas', dateBR(lastData.exp_c) + ' (' + lastData.dc_c + ' d.c.) — resultado estimado no venc. das vendidas', '']);
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span><span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+    var L = [
+      {ticker: r.s1, side: 'BUY',  opt_type: tb, quantity: r.qc * q, strike: r.k1, entry_price: r.p1, expiration_date: lastData.exp_c},
+      {ticker: r.s2, side: 'SELL', opt_type: tb, quantity: r.qv * q, strike: r.k2, entry_price: r.p2, expiration_date: lastData.exp_v},
+      {ticker: r.s3, side: 'BUY',  opt_type: tb, quantity: r.n3 * q, strike: r.k3, entry_price: r.p3, expiration_date: lastData.exp_c},
+      {ticker: r.s4, side: 'SELL', opt_type: to, quantity: r.n3 * q, strike: r.k3, entry_price: r.p4, expiration_date: lastData.exp_v}
+    ];
+    var nome = 'Broken Wings Short ' + (put ? 'Put ' : 'Call ') + lastData.ticker + ' ' + r.k1 + '/' + r.k2 + '/' + r.k3;
+    document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + new URLSearchParams({sim: '1', ativo: lastData.ticker, nome: nome,
+      legs: L.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')}).toString();
+    var calc = document.getElementById('fytm-calc');
+    calc.onclick = null; calc.removeAttribute('target');
+    if (mesmo) {
+      calc.style.display = '';
+      calc.href = '/venda_puts?' + new URLSearchParams({st: '1', ativo: lastData.ticker, spot: lastData.spot, qty: q, exp: lastData.exp_v, op: 'livre',
+        livre_legs: tb[0] + ':' + r.qc + '|' + tb[0] + ':' + (-r.qv) + '|' + tb[0] + ':' + r.n3 + '|' + to[0] + ':' + (-r.n3), livre_nome: nome,
+        at: r.s1, ak: r.k1, ap: r.p1, bt: r.s2, bk: r.k2, bp: r.p2, ct2: r.s3, ck2: r.k3, cp2: r.p3, dt: r.s4, dk: r.k3, dp: r.p4}).toString() + '#estrutura';
+    } else { calc.style.display = 'none'; }
+    var sf = document.getElementById('fytm-sf'); sf.style.display = '';
+    sf.onclick = function() {
+      try { localStorage.setItem('simflex_import', JSON.stringify({origem: '', name: nome, ativo: lastData.ticker, novo: true, legs: L})); }
+      catch (e) { alert('Não foi possível preparar o SimFlex: ' + e); return; }
+      window.open('/simflex?importar=1', '_blank');
+    };
+    var pnt = document.getElementById('fytm-pnt'); pnt.style.display = '';
+    pnt.onclick = function() {
+      var T = String.fromCharCode(9);
+      var linha = L.map(function(l) { return l.ticker; }).concat(L.map(function(l) { return l.side === 'BUY' ? 'C' : 'V'; }))
+        .concat(L.map(function(l) { return l.quantity; })).concat([r.preco.toFixed(2).replace('.', ',')]).join(T);
+      var ok = function() { pnt.textContent = '✓ Copiado!'; setTimeout(function() { pnt.textContent = '📋 Exportar Pnt'; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, function() { prompt('Copie (Pnt):', linha); });
+      else prompt('Copie (Pnt):', linha);
+    };
+  }
+
   // ── Fence ─────────────────────────────────────────────────────────────
   var fcReady = false, fcTickerPrep = '';
   function fcDual(w) {
@@ -3688,7 +3875,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (currentEstrutura === 'trava_alta') { refreshModalTrava(); return; }
     if (currentEstrutura === 'trava_baixa') { refreshModalTravaBaixa(); return; }
     if (currentEstrutura === 'borboleta') { refreshModalBorbN(); return; }
-    if (currentEstrutura === 'broken_wing') { refreshModalBrokenWing(); return; }
+    if (currentEstrutura === 'broken_wing') { refreshModalBws(); return; }
     if (currentEstrutura === 'straddle_ha') { refreshModalSha(); return; }
     if (currentEstrutura === 'slide') { refreshModalSl(); return; }
     if (currentEstrutura === 'box3') { refreshModalBx(); return; }

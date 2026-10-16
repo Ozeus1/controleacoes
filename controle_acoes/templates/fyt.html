@@ -290,115 +290,74 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       </div>
     </div>
 
-    <!-- Filtros da Trava de Alta -->
+    <!-- Filtros da Trava de Alta / Baixa -->
     <div id="fyt-filtros-trava" style="display:none;">
       <div class="fyt-campo">
-        <label for="fyt-trava-tipo" title="Débito: compra CALL menor + vende CALL maior. Crédito: vende PUT maior + compra PUT menor (proteção)">
-          Tipo</label>
-        <select id="fyt-trava-tipo">
-          <option value="debito" selected>Débito (CALLs)</option>
-          <option value="credito">Crédito (PUTs)</option>
-        </select>
+        <label for="fyt-ta-tipo" title="Débito: paga na montagem. Crédito: recebe na montagem">Tipo</label>
+        <select id="fyt-ta-tipo"><option value="debito" selected>Débito (Call)</option><option value="credito">Crédito (Put)</option></select>
       </div>
-
       <div class="fyt-campo">
-        <label for="fyt-trava-exp">Vencimento</label>
-        <select id="fyt-trava-exp">
-          <option value="0" selected>Próximo mensal</option>
-          <option value="1">Mensal +1</option>
-          <option value="2">Mensal +2</option>
-        </select>
+        <label for="fyt-ta-exp">Vencimento</label>
+        <select id="fyt-ta-exp"><option value="0" selected>Vencimento Atual</option><option value="1">Vencimento +1 mês</option><option value="2">Vencimento +2 meses</option></select>
       </div>
-
       <div class="fyt-campo">
-        <label>Tamanho da trava (R$)</label>
-        <div class="fyt-asa">
-          <input type="number" id="fyt-trava-tam-min" min="0" step="0.5" value="4">
-          <span style="color:var(--text-secondary);">até</span>
-          <input type="number" id="fyt-trava-tam-max" min="0" step="0.5" value="12">
-        </div>
+        <label for="fyt-ta-tam" title="Distância entre os strikes. BOVA11/SMAL11: R$ 4 a 12; demais: R$ 1 a 3 (passo 0,25)">Tamanho</label>
+        <select id="fyt-ta-tam"></select>
       </div>
-
       <div class="fyt-campo">
-        <label title="Débito: ganho máximo / custo. Crédito: perda máxima / crédito (invertido)">
-          Risco (1:X)</label>
-        <div class="fyt-asa">
-          <input type="number" id="fyt-trava-risco-min" min="0.1" step="0.1" value="1">
-          <span style="color:var(--text-secondary);">até</span>
-          <input type="number" id="fyt-trava-risco-max" min="0.1" step="0.1" value="6">
-        </div>
+        <label for="fyt-ta-rr" title="Relação mínima risco : retorno — ganho máximo ÷ perda máxima (1:3 = ganha ao menos 3 para cada 1 arriscado)">Risco/Retorno mínimo</label>
+        <select id="fyt-ta-rr"><option value="todos">Todos</option><option value="1">1:1</option><option value="2">1:2</option><option value="3" selected>1:3</option><option value="4">1:4</option><option value="5">1:5</option><option value="6">1:6</option><option value="7">1:7</option><option value="8">1:8</option><option value="9">1:9</option><option value="10">1:10</option></select>
       </div>
-
       <div class="fyt-campo">
-        <label for="fyt-trava-strike-pct" title="Faixa da perna de referência (comprada no débito, vendida no crédito), em % do spot">
-          Faixa da perna de refer. (± %)</label>
-        <input type="number" id="fyt-trava-strike-pct" min="1" max="60" step="1" value="40">
+        <label for="fyt-ta-alvo" title="Qual strike a faixa abaixo filtra">Filtrar faixa por</label>
+        <select id="fyt-ta-alvo"><option value="comprada" selected>Comprada</option><option value="vendida">Vendida</option></select>
       </div>
-
-      <div class="fyt-campo">
-        <label title="Financeiro da montagem em R$. Negativo = crédito recebido, positivo = débito pago">
-          Preço (R$)</label>
-        <div class="fyt-asa">
-          <input type="number" id="fyt-trava-preco-min" step="0.5" value="-8">
-          <span style="color:var(--text-secondary);">até</span>
-          <input type="number" id="fyt-trava-preco-max" step="0.5" value="8">
-        </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label id="fyt-ta-a-lbl" title="Faixa de strikes. Arraste os dois controles">Faixa (comprada)</label>
+        <div class="fyt-kvals"><span id="fyt-ta-a-lo">—</span><span id="fyt-ta-a-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-ta-a-faixa"></div>
+          <input type="range" id="fyt-ta-a-a" min="0" max="100" step="0.01" value="0"><input type="range" id="fyt-ta-a-b" min="0" max="100" step="0.01" value="100"></div>
+      </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label title="Preço líquido da montagem por ação: positivo = débito, negativo = crédito">Preço (R$)</label>
+        <div class="fyt-kvals"><span id="fyt-ta-p-lo">—</span><span id="fyt-ta-p-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-ta-p-faixa"></div>
+          <input type="range" id="fyt-ta-p-a" min="-5" max="5" step="0.01" value="-4"><input type="range" id="fyt-ta-p-b" min="-5" max="5" step="0.01" value="4"></div>
       </div>
     </div>
 
-    <!-- Filtros da Trava de Baixa -->
     <div id="fyt-filtros-travabaixa" style="display:none;">
       <div class="fyt-campo">
-        <label for="fyt-travab-tipo" title="Débito: compra PUT maior + vende PUT menor. Crédito: vende CALL menor + compra CALL maior (proteção)">
-          Tipo</label>
-        <select id="fyt-travab-tipo">
-          <option value="debito" selected>Débito (PUTs)</option>
-          <option value="credito">Crédito (CALLs)</option>
-        </select>
+        <label for="fyt-tb-tipo" title="Débito: paga na montagem. Crédito: recebe na montagem">Tipo</label>
+        <select id="fyt-tb-tipo"><option value="debito" selected>Débito (Put)</option><option value="credito">Crédito (Call)</option></select>
       </div>
-
       <div class="fyt-campo">
-        <label for="fyt-travab-exp">Vencimento</label>
-        <select id="fyt-travab-exp">
-          <option value="0" selected>Próximo mensal</option>
-          <option value="1">Mensal +1</option>
-          <option value="2">Mensal +2</option>
-        </select>
+        <label for="fyt-tb-exp">Vencimento</label>
+        <select id="fyt-tb-exp"><option value="0" selected>Vencimento Atual</option><option value="1">Vencimento +1 mês</option><option value="2">Vencimento +2 meses</option></select>
       </div>
-
       <div class="fyt-campo">
-        <label>Tamanho da trava (R$)</label>
-        <div class="fyt-asa">
-          <input type="number" id="fyt-travab-tam-min" min="0" step="0.5" value="4">
-          <span style="color:var(--text-secondary);">até</span>
-          <input type="number" id="fyt-travab-tam-max" min="0" step="0.5" value="12">
-        </div>
+        <label for="fyt-tb-tam" title="Distância entre os strikes. BOVA11/SMAL11: R$ 4 a 12; demais: R$ 1 a 3 (passo 0,25)">Tamanho</label>
+        <select id="fyt-tb-tam"></select>
       </div>
-
       <div class="fyt-campo">
-        <label title="Débito: ganho máximo / custo. Crédito: perda máxima / crédito (invertido)">
-          Risco (1:X)</label>
-        <div class="fyt-asa">
-          <input type="number" id="fyt-travab-risco-min" min="0.1" step="0.1" value="1">
-          <span style="color:var(--text-secondary);">até</span>
-          <input type="number" id="fyt-travab-risco-max" min="0.1" step="0.1" value="6">
-        </div>
+        <label for="fyt-tb-rr" title="Relação mínima risco : retorno — ganho máximo ÷ perda máxima (1:3 = ganha ao menos 3 para cada 1 arriscado)">Risco/Retorno mínimo</label>
+        <select id="fyt-tb-rr"><option value="todos">Todos</option><option value="1">1:1</option><option value="2">1:2</option><option value="3" selected>1:3</option><option value="4">1:4</option><option value="5">1:5</option><option value="6">1:6</option><option value="7">1:7</option><option value="8">1:8</option><option value="9">1:9</option><option value="10">1:10</option></select>
       </div>
-
       <div class="fyt-campo">
-        <label for="fyt-travab-strike-pct" title="Faixa da perna de referência (comprada no débito, vendida no crédito), em % do spot">
-          Faixa da perna de refer. (± %)</label>
-        <input type="number" id="fyt-travab-strike-pct" min="1" max="60" step="1" value="40">
+        <label for="fyt-tb-alvo" title="Qual strike a faixa abaixo filtra">Filtrar faixa por</label>
+        <select id="fyt-tb-alvo"><option value="comprada" selected>Comprada</option><option value="vendida">Vendida</option></select>
       </div>
-
-      <div class="fyt-campo">
-        <label title="Financeiro da montagem em R$. Negativo = crédito recebido, positivo = débito pago">
-          Preço (R$)</label>
-        <div class="fyt-asa">
-          <input type="number" id="fyt-travab-preco-min" step="0.5" value="-8">
-          <span style="color:var(--text-secondary);">até</span>
-          <input type="number" id="fyt-travab-preco-max" step="0.5" value="8">
-        </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label id="fyt-tb-a-lbl" title="Faixa de strikes. Arraste os dois controles">Faixa (comprada)</label>
+        <div class="fyt-kvals"><span id="fyt-tb-a-lo">—</span><span id="fyt-tb-a-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-tb-a-faixa"></div>
+          <input type="range" id="fyt-tb-a-a" min="0" max="100" step="0.01" value="0"><input type="range" id="fyt-tb-a-b" min="0" max="100" step="0.01" value="100"></div>
+      </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label title="Preço líquido da montagem por ação: positivo = débito, negativo = crédito">Preço (R$)</label>
+        <div class="fyt-kvals"><span id="fyt-tb-p-lo">—</span><span id="fyt-tb-p-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-tb-p-faixa"></div>
+          <input type="range" id="fyt-tb-p-a" min="-5" max="5" step="0.01" value="-4"><input type="range" id="fyt-tb-p-b" min="-5" max="5" step="0.01" value="4"></div>
       </div>
     </div>
 
@@ -1376,6 +1335,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('fyt-filtros-mann').style.display    = (v === 'mannerheim') ? 'contents' : 'none';
     document.getElementById('fyt-filtros-trava').style.display   = (v === 'trava_alta') ? 'contents' : 'none';
     document.getElementById('fyt-filtros-travabaixa').style.display = (v === 'trava_baixa') ? 'contents' : 'none';
+    if (v === 'trava_alta' && window.__TA) window.__TA.prepara();
+    if (v === 'trava_baixa' && window.__TB) window.__TB.prepara();
     document.getElementById('fyt-filtros-borboleta').style.display = (v === 'borboleta') ? 'contents' : 'none';
     document.getElementById('fyt-filtros-bwb').style.display     = (v === 'broken_wing') ? 'contents' : 'none';
     document.getElementById('fyt-filtros-sha').style.display     = (v === 'straddle_ha') ? 'contents' : 'none';
@@ -1461,34 +1422,11 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       });
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-mannerheim/' + encodeURIComponent(currentTicker) + '?' + q.toString();
-    } else if (estrutura === 'trava_alta') {
-      q = new URLSearchParams({
-        tipo:        document.getElementById('fyt-trava-tipo').value,
-        exp:         document.getElementById('fyt-trava-exp').value,
-        tamanho_min: document.getElementById('fyt-trava-tam-min').value || '4',
-        tamanho_max: document.getElementById('fyt-trava-tam-max').value || '12',
-        risco_min:   document.getElementById('fyt-trava-risco-min').value || '1',
-        risco_max:   document.getElementById('fyt-trava-risco-max').value || '6',
-        strike_pct:  document.getElementById('fyt-trava-strike-pct').value || '40',
-        preco_min:   document.getElementById('fyt-trava-preco-min').value || '-8',
-        preco_max:   document.getElementById('fyt-trava-preco-max').value || '8'
-      });
+    } else if (estrutura === 'trava_alta' || estrutura === 'trava_baixa') {
+      var TX = estrutura === 'trava_alta' ? window.__TA : window.__TB;
+      q = TX.query();
       if (usarBrapi) q.set('source', 'brapi');
-      url = '/api/fyt-trava-alta/' + encodeURIComponent(currentTicker) + '?' + q.toString();
-    } else if (estrutura === 'trava_baixa') {
-      q = new URLSearchParams({
-        tipo:        document.getElementById('fyt-travab-tipo').value,
-        exp:         document.getElementById('fyt-travab-exp').value,
-        tamanho_min: document.getElementById('fyt-travab-tam-min').value || '4',
-        tamanho_max: document.getElementById('fyt-travab-tam-max').value || '12',
-        risco_min:   document.getElementById('fyt-travab-risco-min').value || '1',
-        risco_max:   document.getElementById('fyt-travab-risco-max').value || '6',
-        strike_pct:  document.getElementById('fyt-travab-strike-pct').value || '40',
-        preco_min:   document.getElementById('fyt-travab-preco-min').value || '-8',
-        preco_max:   document.getElementById('fyt-travab-preco-max').value || '8'
-      });
-      if (usarBrapi) q.set('source', 'brapi');
-      url = '/api/fyt-trava-baixa/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+      url = (estrutura === 'trava_alta' ? '/api/fyt-trava-alta/' : '/api/fyt-trava-baixa/') + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'borboleta') {
       q = new URLSearchParams({
         tipo:        document.getElementById('fyt-borb-tipo').value,
@@ -1631,8 +1569,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         currentEstrutura = estrutura;
         if (estrutura === 'thl') renderThl(res.j);
         else if (estrutura === 'mannerheim') renderMann(res.j);
-        else if (estrutura === 'trava_alta') renderTrava(res.j);
-        else if (estrutura === 'trava_baixa') renderTravaBaixa(res.j);
+        else if (estrutura === 'trava_alta') { window.__TA.ajusta(res.j.spot); renderTravaN(res.j, false); }
+        else if (estrutura === 'trava_baixa') { window.__TB.ajusta(res.j.spot); renderTravaN(res.j, true); }
         else if (estrutura === 'borboleta') renderBorboleta(res.j);
         else if (estrutura === 'broken_wing') renderBrokenWing(res.j);
         else if (estrutura === 'straddle_ha') { shaAjustaFaixa(res.j.spot); renderStraddleHa(res.j); }
@@ -2459,6 +2397,94 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, function() { prompt('Copie (Pnt):', linha); });
       else prompt('Copie (Pnt):', linha);
     };
+  }
+
+  // ── Trava de Alta / Baixa (filtros novos: tamanho, risco/retorno mínimo, faixa de strike e preço) ──
+  function travaUI(pf) {
+    var $ = function(id) { return document.getElementById('fyt-' + pf + '-' + id); };
+    var ready = false, tkPrep = '';
+    function dual(w) { var lo = parseFloat($(w + '-a').value), hi = parseFloat($(w + '-b').value); return lo <= hi ? [lo, hi] : [hi, lo]; }
+    function desenha(w) {
+      var mn = parseFloat($(w + '-a').min), mx = parseFloat($(w + '-a').max), r = dual(w), span = (mx - mn) || 1;
+      var f = $(w + '-faixa'); f.style.left = ((r[0] - mn) / span * 100) + '%'; f.style.width = ((r[1] - r[0]) / span * 100) + '%';
+      $(w + '-lo').textContent = brl(r[0]); $(w + '-hi').textContent = brl(r[1]);
+    }
+    ['a-a', 'a-b'].forEach(function(x) { $(x).addEventListener('input', function() { desenha('a'); }); });
+    ['p-a', 'p-b'].forEach(function(x) { $(x).addEventListener('input', function() { desenha('p'); }); });
+    desenha('p');
+    $('alvo').addEventListener('change', function() { $('a-lbl').textContent = 'Faixa (' + this.value + ')'; });
+    function opcoesTam() {
+      var etf = ['BOVA11', 'SMAL11'].indexOf(tickerAtual()) >= 0, sel = $('tam'), atual = sel.value, h = '<option value="todos">Todos</option>', v;
+      if (etf) { for (v = 4; v <= 12; v++) h += '<option value="' + v + '">R$ ' + fmt(v) + '</option>'; }
+      else { for (v = 1; v <= 3 + 1e-9; v += 0.25) h += '<option value="' + v + '">R$ ' + fmt(v) + '</option>'; }
+      sel.innerHTML = h;
+      if ([].slice.call(sel.options).some(function(o) { return o.value === atual; })) sel.value = atual;
+    }
+    function poeFaixa(spot) {
+      var lo = Math.floor(spot * 0.8), hi = Math.ceil(spot * 1.2);
+      ['a-a', 'a-b'].forEach(function(x) { $(x).min = lo; $(x).max = hi; });
+      $('a-a').value = Math.round(spot * 0.9 * 100) / 100; $('a-b').value = Math.round(spot * 1.1 * 100) / 100;
+      ready = true; desenha('a');
+    }
+    function prepara() {
+      opcoesTam();
+      var tk = tickerAtual();
+      if (!tk || tk === tkPrep) return;
+      tkPrep = tk; ready = false;
+      fetch('/api/quote_hint/' + encodeURIComponent(tk)).then(function(r) { return r.json(); }).then(function(d) {
+        if (tickerAtual() === tk && d && d.price) poeFaixa(d.price);
+      }).catch(function() { tkPrep = ''; });
+    }
+    function reprep() { if ((pf === 'ta' && opSel.value === 'trava_alta') || (pf === 'tb' && opSel.value === 'trava_baixa')) { tkPrep = ''; prepara(); } }
+    elTicker.addEventListener('change', reprep); elTickerL.addEventListener('change', reprep);
+    return {
+      prepara: prepara,
+      ajusta: function(spot) { if (!ready && spot) poeFaixa(spot); },
+      query: function() {
+        var a = dual('a'), p = dual('p');
+        return new URLSearchParams({ novo: '1', tipo: $('tipo').value, exp: $('exp').value, tamanho: $('tam').value, rr_min: $('rr').value,
+          alvo: $('alvo').value, a_min: ready ? a[0] : '', a_max: ready ? a[1] : '', preco_min: p[0], preco_max: p[1] });
+      }
+    };
+  }
+  window.__TA = travaUI('ta'); window.__TB = travaUI('tb');
+
+  function renderTravaN(d, baixa) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' + (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>' : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">Nenhuma trava atende aos filtros. ' +
+        'Escolha "Todos" no tamanho, reduza o risco/retorno mínimo, ou amplie a faixa de strikes e de preço.</div>';
+      return;
+    }
+    var isDeb = d.tipo === 'debito';
+    var tp = baixa ? (isDeb ? 'Débito · PUTs' : 'Crédito · CALLs') : (isDeb ? 'Débito · CALLs' : 'Crédito · PUTs');
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">' + (baixa ? '📉' : '📈') +
+      ' <strong>Trava de ' + (baixa ? 'Baixa' : 'Alta') + ' (' + tp + ')</strong> · 📆 Vencimento: <strong>' + dateBR(d.exp) + '</strong> (' + d.dc + 'd)' +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') + ' · <strong>' + d.rows.length + '</strong> montagem(ns)</div>';
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th>Tickers</th><th title="Strike da opção comprada">Comprada</th><th title="Strike da opção vendida">Vendida</th>' +
+      '<th title="Risco : retorno líquido — ganho máximo ÷ perda máxima">Risco/Retorno líquido</th>' +
+      '<th title="Distância entre os strikes">Tamanho</th>' +
+      '<th title="Preço líquido pelos últimos negócios (positivo = débito)">Último</th>' +
+      '<th title="Preço líquido pela boca: compra no ask, venda no bid (positivo = débito, negativo = crédito)">Boca</th></tr></thead><tbody>';
+    var marcou = false;
+    d.rows.forEach(function(r, i) {
+      var sep = (!marcou && r.buy_strike > d.spot) ? ' style="border-top:2px solid #e2e8f0;"' : '';
+      if (sep) marcou = true;
+      h += '<tr data-i="' + i + '"' + sep + ' title="Clique para ver o detalhamento">' +
+        '<td style="text-align:left;"><span class="fyt-badge buy">+' + r.buy_symbol + '</span> <span class="fyt-badge sell">−' + r.sell_symbol + '</span></td>' +
+        '<td><strong>' + brl(r.buy_strike) + '</strong></td><td>' + brl(r.sell_strike) + '</td>' +
+        '<td>' + (r.rr != null ? '1 : ' + fmt(r.rr, 1) : '—') + '</td><td>' + brl(r.width) + '</td>' +
+        '<td>' + (r.ultimo == null ? '—' : '<span class="' + (r.ultimo <= 0 ? 'pos' : '') + '">' + brl(r.ultimo) + '</span>') + '</td>' +
+        '<td><strong class="' + (r.custo <= 0 ? 'pos' : '') + '">' + brl(r.custo) + '</strong>' +
+          ((r.buy_src === 'ultimo' || r.sell_src === 'ultimo') ? '<br><span style="font-size:.7rem;color:var(--text-secondary);">últ.</span>' : '') + '</td></tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) { tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); }); });
   }
 
   // ── Fence ─────────────────────────────────────────────────────────────

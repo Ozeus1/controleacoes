@@ -14759,6 +14759,35 @@ def api_fyt_trava_alta(ticker):
     if preco_max < preco_min:
         preco_min, preco_max = preco_max, preco_min
 
+    # Modo novo (novo=1): tamanho exato (ou Todos), risco/retorno mínimo 1:N (N = ganho máx. ÷ perda máx.),
+    # faixa de strikes da comprada ou da vendida.
+    novo = request.args.get('novo') == '1'
+    rr_min = 0.0
+    alvo = 'comprada'
+    a_min = a_max = None
+    if novo:
+        _dmax = 12.0 if ticker in ('BOVA11', 'SMAL11') else 3.0
+        _t = (request.args.get('tamanho') or 'todos').strip().lower()
+        if _t in ('', 'todos'):
+            tamanho_min, tamanho_max = 0.0, _dmax
+        else:
+            try:
+                tamanho_min = tamanho_max = float(_t.replace(',', '.'))
+            except ValueError:
+                tamanho_min, tamanho_max = 0.0, _dmax
+        _r = (request.args.get('rr_min') or 'todos').strip().lower()
+        try:
+            rr_min = 0.0 if _r in ('', 'todos') else float(_r.replace(',', '.'))
+        except ValueError:
+            rr_min = 0.0
+        alvo = 'vendida' if (request.args.get('alvo') or '').lower() == 'vendida' else 'comprada'
+        _am, _aM = request.args.get('a_min'), request.args.get('a_max')
+        if _am not in (None, '') and _aM not in (None, ''):
+            try:
+                a_min, a_max = sorted((float(_am), float(_aM)))
+            except ValueError:
+                a_min = a_max = None
+
     # ── Cadeia ───────────────────────────────────────────────────────────
     if usar_brapi:
         try:
@@ -14905,7 +14934,7 @@ def api_fyt_trava_alta(ticker):
     # ambas ficam perto do spot e são a perna que "escolhe" a montagem.
     lo_k = spot * (1 - strike_pct / 100.0)
     hi_k = spot * (1 + strike_pct / 100.0)
-    ref_cands = [o for o in opts if lo_k <= o['strike'] <= hi_k]
+    ref_cands = [o for o in opts if lo_k <= o['strike'] <= hi_k] if not novo else list(opts)
 
     rows = []
     for ref in ref_cands:
@@ -14950,7 +14979,7 @@ def api_fyt_trava_alta(ticker):
                     continue
                 max_loss = custo
                 ratio = max_gain / custo
-                if ratio < risco_min or ratio > risco_max:
+                if (not novo) and (ratio < risco_min or ratio > risco_max):
                     continue
                 be = ref['strike'] + custo
                 buy_row, sell_row = ref, outro
@@ -14972,13 +15001,20 @@ def api_fyt_trava_alta(ticker):
                 max_gain = credito
                 # Risco/crédito invertido: quanto se arrisca por R$1 de crédito
                 ratio = max_loss / credito
-                if ratio < risco_min or ratio > risco_max:
+                if (not novo) and (ratio < risco_min or ratio > risco_max):
                     continue
                 be = ref['strike'] - credito
                 buy_row, sell_row = outro, ref
                 buy_px, sell_px = out_px, ref_px
                 e_buy, e_sell = e_out, e_ref
 
+            if novo:
+                _rr = max_gain / max_loss if max_loss > 0 else 0.0
+                if _rr + 1e-9 < rr_min:
+                    continue
+                _ks = buy_row['strike'] if alvo == 'comprada' else sell_row['strike']
+                if a_min is not None and not (a_min - 0.004 <= _ks <= a_max + 0.004):
+                    continue
             iv = _iv_est(buy_row, T) or _iv_est(sell_row, T) or 0.35
             p_above = _pop_above(be, T, iv)
             pop = ev = ev_pct = None
@@ -15005,6 +15041,9 @@ def api_fyt_trava_alta(ticker):
                 'max_gain':    round(max_gain, 2),
                 'max_loss':    round(max_loss, 2),
                 'ratio':       round(ratio, 2),
+                'rr':          round(max_gain / max_loss, 2) if max_loss > 0 else None,
+                'ultimo':      (round(buy_row['close'] - sell_row['close'], 2)
+                                if (buy_row['close'] >= 0.05 and sell_row['close'] >= 0.05) else None),
                 'breakeven':   round(be, 2),
                 'be_dist':     round((be - spot) / spot * 100, 2),
                 'pop':         round(pop, 1) if pop is not None else None,
@@ -15026,7 +15065,11 @@ def api_fyt_trava_alta(ticker):
         rows.sort(key=lambda x: (x['ratio'], -x['liq']))
     else:
         rows.sort(key=lambda x: (x['ratio'], -x['liq']))
-    rows = _fyt_diversify(rows, lambda x: x['buy_symbol'], per_key=3, limit=60)
+    if novo:
+        rows.sort(key=lambda x: (x['buy_strike'], x['sell_strike']))
+        rows = _fyt_diversify(rows, lambda x: x['buy_symbol'], per_key=4, limit=80)
+    else:
+        rows = _fyt_diversify(rows, lambda x: x['buy_symbol'], per_key=3, limit=60)
 
     return jsonify({
         'ticker': ticker, 'spot': spot, 'spot_change': spot_change,
@@ -15120,6 +15163,35 @@ def api_fyt_trava_baixa(ticker):
     preco_max = _num('preco_max', 8.0)
     if preco_max < preco_min:
         preco_min, preco_max = preco_max, preco_min
+
+    # Modo novo (novo=1): tamanho exato (ou Todos), risco/retorno mínimo 1:N (N = ganho máx. ÷ perda máx.),
+    # faixa de strikes da comprada ou da vendida.
+    novo = request.args.get('novo') == '1'
+    rr_min = 0.0
+    alvo = 'comprada'
+    a_min = a_max = None
+    if novo:
+        _dmax = 12.0 if ticker in ('BOVA11', 'SMAL11') else 3.0
+        _t = (request.args.get('tamanho') or 'todos').strip().lower()
+        if _t in ('', 'todos'):
+            tamanho_min, tamanho_max = 0.0, _dmax
+        else:
+            try:
+                tamanho_min = tamanho_max = float(_t.replace(',', '.'))
+            except ValueError:
+                tamanho_min, tamanho_max = 0.0, _dmax
+        _r = (request.args.get('rr_min') or 'todos').strip().lower()
+        try:
+            rr_min = 0.0 if _r in ('', 'todos') else float(_r.replace(',', '.'))
+        except ValueError:
+            rr_min = 0.0
+        alvo = 'vendida' if (request.args.get('alvo') or '').lower() == 'vendida' else 'comprada'
+        _am, _aM = request.args.get('a_min'), request.args.get('a_max')
+        if _am not in (None, '') and _aM not in (None, ''):
+            try:
+                a_min, a_max = sorted((float(_am), float(_aM)))
+            except ValueError:
+                a_min = a_max = None
 
     # ── Cadeia ───────────────────────────────────────────────────────────
     if usar_brapi:
@@ -15270,7 +15342,7 @@ def api_fyt_trava_baixa(ticker):
     # montagem (espelho exato da Trava de Alta).
     lo_k = spot * (1 - strike_pct / 100.0)
     hi_k = spot * (1 + strike_pct / 100.0)
-    ref_cands = [o for o in opts if lo_k <= o['strike'] <= hi_k]
+    ref_cands = [o for o in opts if lo_k <= o['strike'] <= hi_k] if not novo else list(opts)
 
     rows = []
     for ref in ref_cands:
@@ -15317,7 +15389,7 @@ def api_fyt_trava_baixa(ticker):
                     continue
                 max_loss = custo
                 ratio = max_gain / custo
-                if ratio < risco_min or ratio > risco_max:
+                if (not novo) and (ratio < risco_min or ratio > risco_max):
                     continue
                 be = ref['strike'] - custo        # ganha ABAIXO do breakeven
                 buy_row, sell_row = ref, outro
@@ -15339,13 +15411,20 @@ def api_fyt_trava_baixa(ticker):
                 max_gain = credito
                 # Risco/crédito invertido: quanto se arrisca por R$1 de crédito
                 ratio = max_loss / credito
-                if ratio < risco_min or ratio > risco_max:
+                if (not novo) and (ratio < risco_min or ratio > risco_max):
                     continue
                 be = ref['strike'] + credito       # ganha ABAIXO do breakeven
                 buy_row, sell_row = outro, ref
                 buy_px, sell_px = out_px, ref_px
                 e_buy, e_sell = e_out, e_ref
 
+            if novo:
+                _rr = max_gain / max_loss if max_loss > 0 else 0.0
+                if _rr + 1e-9 < rr_min:
+                    continue
+                _ks = buy_row['strike'] if alvo == 'comprada' else sell_row['strike']
+                if a_min is not None and not (a_min - 0.004 <= _ks <= a_max + 0.004):
+                    continue
             iv = _iv_est(buy_row, T) or _iv_est(sell_row, T) or 0.35
             p_below = _pop_below(be, T, iv)
             pop = ev = ev_pct = None
@@ -15372,6 +15451,9 @@ def api_fyt_trava_baixa(ticker):
                 'max_gain':    round(max_gain, 2),
                 'max_loss':    round(max_loss, 2),
                 'ratio':       round(ratio, 2),
+                'rr':          round(max_gain / max_loss, 2) if max_loss > 0 else None,
+                'ultimo':      (round(buy_row['close'] - sell_row['close'], 2)
+                                if (buy_row['close'] >= 0.05 and sell_row['close'] >= 0.05) else None),
                 'breakeven':   round(be, 2),
                 'be_dist':     round((be - spot) / spot * 100, 2),
                 'pop':         round(pop, 1) if pop is not None else None,
@@ -15389,7 +15471,11 @@ def api_fyt_trava_baixa(ticker):
 
     # Ordena pela relação crescente, como na Trava de Alta.
     rows.sort(key=lambda x: (x['ratio'], -x['liq']))
-    rows = _fyt_diversify(rows, lambda x: x['buy_symbol'], per_key=3, limit=60)
+    if novo:
+        rows.sort(key=lambda x: (x['buy_strike'], x['sell_strike']))
+        rows = _fyt_diversify(rows, lambda x: x['buy_symbol'], per_key=4, limit=80)
+    else:
+        rows = _fyt_diversify(rows, lambda x: x['buy_symbol'], per_key=3, limit=60)
 
     return jsonify({
         'ticker': ticker, 'spot': spot, 'spot_change': spot_change,

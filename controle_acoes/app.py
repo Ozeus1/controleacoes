@@ -14559,7 +14559,8 @@ def api_fyt_sx(ticker):
     """Strangle de Cobertura: COMPRA de uma CALL ITM (K_c abaixo do ativo) e de uma PUT ITM (K_p acima do ativo).
     No vencimento a estrutura vale no mínimo delta = K_p − K_c (constante entre os strikes, maior fora deles).
     Regra: custo de compra (ask CALL + ask PUT) <= delta → lucro mínimo travado = delta − custo.
-    Parâmetros: exp=0..2 · d_min/d_max (R$, distância entre os strikes)."""
+    O centro (K_c+K_p)/2 deve ficar aproximadamente no ativo: |centro − ativo| <= c_tol % do ativo (padrão 1%).
+    Parâmetros: exp=0..2 · d_min/d_max (R$, distância entre os strikes) · c_tol (%)."""
     ticker = ticker.strip().upper()
     usar_brapi = request.args.get('source') == 'brapi'
     token = None
@@ -14586,6 +14587,7 @@ def api_fyt_sx(ticker):
     d_min, d_max = max(0.0, _num('d_min', 0.0)), _num('d_max', 1e9)
     if d_max < d_min:
         d_min, d_max = d_max, d_min
+    c_tol = max(0.0, _num('c_tol', 1.0))
 
     if usar_brapi:
         try:
@@ -14670,6 +14672,8 @@ def api_fyt_sx(ticker):
             delta = round(kp - kc, 2)
             if delta <= 0.004 or not (d_min - 0.004 <= delta <= d_max + 0.004):
                 continue
+            if abs((kc + kp) / 2 - spot) / spot * 100 > c_tol + 1e-9:     # centro ~ ativo (ATM)
+                continue
             ep = _box4_eff(put, market_open)
             if (market_open and not ep['boca']) or not ep['ask']:
                 continue
@@ -14683,6 +14687,7 @@ def api_fyt_sx(ticker):
                 'kc': kc, 'kp': kp, 'delta': delta, 'central': round((kc + kp) / 2, 2),
                 's_call': call['symbol'], 's_put': put['symbol'],
                 'p_call': round(ec['ask'], 2), 'p_put': round(ep['ask'], 2),
+                'c_dev': round(((kc + kp) / 2 - spot) / spot * 100, 2),
                 'custo': custo, 'lucro': lucro, 'ret': round(lucro / custo * 100, 1), 'preco': custo, 'ultimo': ultimo,
                 'src': 'ultimo' if 'ultimo' in (ec['src'], ep['src']) else 'book',
                 'dist_c': round((spot - kc) / spot * 100, 1), 'dist_p': round((kp - spot) / spot * 100, 1),

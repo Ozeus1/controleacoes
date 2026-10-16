@@ -716,6 +716,10 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <label for="fyt-sx-exp">Vencimento</label>
         <select id="fyt-sx-exp"><option value="0" selected>Vencimento atual</option><option value="1">Atual +1</option><option value="2">Atual +2</option></select>
       </div>
+      <div class="fyt-campo">
+        <label for="fyt-sx-ctol" title="Quanto o centro do strangle, (strike CALL + strike PUT) ÷ 2, pode se afastar do preço do ativo (ATM)">Centro ≈ ativo (± %)</label>
+        <input type="number" id="fyt-sx-ctol" min="0" step="0.25" value="1">
+      </div>
       <div class="fyt-campo" style="grid-column:span 3;min-width:320px;">
         <label title="Distância (R$) entre o strike da CALL e o da PUT. Padrão: 20% do ativo (BOVA11 = R$ 40)">Delta (distância entre os strikes)</label>
         <div class="fyt-kvals"><span id="fyt-sx-d-lo">—</span><span id="fyt-sx-d-hi">—</span></div>
@@ -1427,7 +1431,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     </div>
     <div class="fyt-apane on" data-p="conceito">
       <h5>ℹ️ O que é o Strangle de Cobertura?</h5>
-      <p>Compra de uma <strong>CALL ITM</strong> (strike abaixo do ativo) e de uma <strong>PUT ITM</strong> (strike acima do ativo). A distância entre os dois strikes é o <strong>delta</strong>; cada perna fica, em média, a delta/2 do ativo.</p>
+      <p>Compra de uma <strong>CALL ITM</strong> (strike abaixo do ativo) e de uma <strong>PUT ITM</strong> (strike acima do ativo). A distância entre os dois strikes é o <strong>delta</strong>; o centro fica aproximadamente no preço do ativo (ATM), logo cada perna fica a cerca de delta/2 dele.</p>
       <p>No vencimento a estrutura vale <strong>no mínimo o delta</strong> (entre os strikes o resultado é constante e igual a strike da PUT − strike da CALL; fora deles só aumenta). A busca traz os pares em que o <strong>custo de compra ≤ delta</strong>, ou seja, com lucro mínimo travado.</p>
       <div class="nota"><strong>📌 Lucro travado</strong> = delta − custo de compra (ask da CALL + ask da PUT).</div>
     </div>
@@ -1435,6 +1439,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       <h5>🎛️ Filtros</h5>
       <ul>
         <li><strong>Vencimento:</strong> atual, +1 ou +2 (mensais).</li>
+        <li><strong>Centro ≈ ativo (± %):</strong> o centro do strangle, (strike CALL + strike PUT) ÷ 2, deve ficar aproximadamente no preço do ativo (ATM); este campo é o afastamento máximo permitido, em % do ativo (padrão 1%).</li>
         <li><strong>Delta (slider):</strong> faixa de distância (R$) entre o strike da CALL e o da PUT. O limite superior padrão é 20% do ativo (BOVA11 = R$ 40); para outras ações é proporcional ao preço.</li>
         <li>Regra fixa: só entram pares com custo de compra menor ou igual ao delta.</li>
       </ul>
@@ -3365,7 +3370,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     return {
       prepara: prepara, ajusta: function(spot) { if (!ready && spot) poe(spot); },
       query: function() { var d = dual();
-        return new URLSearchParams({ exp: $('exp').value, d_min: ready ? d[0] : '0', d_max: ready ? d[1] : '1000' }); }
+        return new URLSearchParams({ exp: $('exp').value, c_tol: $('ctol').value === '' ? '1' : $('ctol').value, d_min: ready ? d[0] : '0', d_max: ready ? d[1] : '1000' }); }
     };
   }
   window.__SX = sxUI();
@@ -3407,6 +3412,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     var boxes = [
       ['Compra ' + q + '× ' + r.s_call + ' (CALL ITM K ' + fmt(r.kc) + ', ' + fmt(r.dist_c, 1) + '% abaixo do ativo)', brl(r.p_call * q), 'neg'],
       ['Compra ' + q + '× ' + r.s_put + ' (PUT ITM K ' + fmt(r.kp) + ', ' + fmt(r.dist_p, 1) + '% acima do ativo)', brl(r.p_put * q), 'neg'],
+      ['Centro do strangle', brl(r.central) + ' (' + (r.c_dev >= 0 ? '+' : '') + fmt(r.c_dev, 2) + '% do ativo)', ''],
       ['Custo total', brl(r.custo * q), 'neg'],
       ['Delta (valor mínimo no vencimento)', brl(r.delta * q), 'pos'],
       ['Lucro mínimo travado', brl(r.lucro * q) + ' (' + fmt(r.ret, 1) + '% sobre o custo)', 'pos'],

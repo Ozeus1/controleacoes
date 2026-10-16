@@ -716,14 +716,13 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <label for="fyt-sx-exp">Vencimento</label>
         <select id="fyt-sx-exp"><option value="0" selected>Vencimento atual</option><option value="1">Atual +1</option><option value="2">Atual +2</option></select>
       </div>
-      <div class="fyt-campo">
-        <label for="fyt-sx-dmin" title="Distância mínima (R$) entre o strike da CALL e o da PUT">Delta de (R$)</label>
-        <input type="number" id="fyt-sx-dmin" min="0" step="0.25" value="1">
+      <div class="fyt-campo" style="grid-column:span 3;min-width:320px;">
+        <label title="Distância (R$) entre o strike da CALL e o da PUT. Padrão: 20% do ativo (BOVA11 = R$ 40)">Delta (distância entre os strikes)</label>
+        <div class="fyt-kvals"><span id="fyt-sx-d-lo">—</span><span id="fyt-sx-d-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-sx-d-faixa"></div>
+          <input type="range" id="fyt-sx-d-a" min="0" max="100" step="0.5" value="0"><input type="range" id="fyt-sx-d-b" min="0" max="100" step="0.5" value="100"></div>
       </div>
-      <div class="fyt-campo">
-        <label for="fyt-sx-dmax" title="Distância máxima (R$) entre o strike da CALL e o da PUT">Delta até (R$)</label>
-        <input type="number" id="fyt-sx-dmax" min="0" step="0.25" value="10">
-      </div>
+    </div>
     </div>
 
     <div class="fyt-campo" style="flex-direction:row;align-items:center;gap:.4rem;justify-content:flex-end;">
@@ -1436,7 +1435,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       <h5>🎛️ Filtros</h5>
       <ul>
         <li><strong>Vencimento:</strong> atual, +1 ou +2 (mensais).</li>
-        <li><strong>Delta de / até:</strong> faixa de distância (R$) entre o strike da CALL e o da PUT.</li>
+        <li><strong>Delta (slider):</strong> faixa de distância (R$) entre o strike da CALL e o da PUT. O limite superior padrão é 20% do ativo (BOVA11 = R$ 40); para outras ações é proporcional ao preço.</li>
         <li>Regra fixa: só entram pares com custo de compra menor ou igual ao delta.</li>
       </ul>
       <h5>📊 Colunas</h5>
@@ -1713,6 +1712,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (v === 'ssc' && window.__SS) window.__SS.prepara();
     document.getElementById('fyt-filtros-sx').style.display = (v === 'sx') ? 'contents' : 'none';
     document.getElementById('fyt-ajuda-sx').style.display = (v === 'sx') ? '' : 'none';
+    if (v === 'sx' && window.__SX) window.__SX.prepara();
     document.getElementById('fyt-ajuda-bw').style.display = (v === 'broken_wing') ? '' : 'none';
     if (v === 'broken_wing' && window.__BW) window.__BW.prepara();
     document.getElementById('fyt-ajuda-bf').style.display = (v === 'borboleta') ? '' : 'none';
@@ -1771,7 +1771,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-mannerheim-esp/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'sx') {
-      q = new URLSearchParams({ exp: document.getElementById('fyt-sx-exp').value, d_min: document.getElementById('fyt-sx-dmin').value || '0', d_max: document.getElementById('fyt-sx-dmax').value || '1000' });
+      q = window.__SX.query();
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-sx/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'ssc') {
@@ -1837,7 +1837,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         else if (estrutura === 'seagull') { sgAjustaFaixa(res.j.spot); renderSeagull(res.j); }
         else if (estrutura === 'fence') { fcAjustaFaixa(res.j.spot); renderFence(res.j); }
         else if (estrutura === 'collar') { clAjustaFaixa(res.j.spot); renderCollar(res.j); }
-        else if (estrutura === 'sx') renderSx(res.j);
+        else if (estrutura === 'sx') { window.__SX.ajusta(res.j.spot); renderSx(res.j); }
         else if (estrutura === 'ssc') { window.__SS.ajusta(res.j.spot); renderSsc(res.j); }
         else { boAjustaFaixa(res.j.spot); renderBooster(res.j); }
       })
@@ -3336,6 +3336,39 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       else prompt('Copie (Pnt):', linha);
     };
   }
+
+  // ── Strangle de Cobertura: slider de delta ──────────────────────────────────────
+  // Padrão = 20% do ativo arredondado (BOVA11 ≈ R$ 205 → R$ 40); ações mais baratas ficam proporcionais.
+  function sxUI() {
+    var $ = function(id) { return document.getElementById('fyt-sx-' + id); }, ready = false, tkPrep = '';
+    function dual() { var lo = parseFloat($('d-a').value), hi = parseFloat($('d-b').value); return lo <= hi ? [lo, hi] : [hi, lo]; }
+    function desenha() {
+      var mn = parseFloat($('d-a').min), mx = parseFloat($('d-a').max), r = dual(), span = (mx - mn) || 1, f = $('d-faixa');
+      f.style.left = ((r[0] - mn) / span * 100) + '%'; f.style.width = ((r[1] - r[0]) / span * 100) + '%';
+      $('d-lo').textContent = brl(r[0]); $('d-hi').textContent = brl(r[1]);
+    }
+    ['d-a', 'd-b'].forEach(function(x) { $(x).addEventListener('input', desenha); });
+    function poe(spot) {
+      var step = spot >= 100 ? 5 : (spot >= 20 ? 1 : 0.5), padrao = Math.max(step, Math.round(spot * 0.2 / step) * step);
+      var mx = Math.ceil(spot * 0.4 / step) * step, passo = spot >= 20 ? 0.5 : 0.1;
+      ['d-a', 'd-b'].forEach(function(x) { $(x).min = 0; $(x).max = mx; $(x).step = passo; });
+      $('d-a').value = 0; $('d-b').value = padrao; ready = true; desenha();
+    }
+    function prepara() {
+      var tk = tickerAtual(); if (!tk || tk === tkPrep) return; tkPrep = tk; ready = false;
+      fetch('/api/quote_hint/' + encodeURIComponent(tk)).then(function(r) { return r.json(); }).then(function(d) {
+        if (tickerAtual() === tk && d && d.price) poe(d.price);
+      }).catch(function() { tkPrep = ''; });
+    }
+    function reprep() { if (opSel.value === 'sx') { tkPrep = ''; prepara(); } }
+    elTicker.addEventListener('change', reprep); elTickerL.addEventListener('change', reprep);
+    return {
+      prepara: prepara, ajusta: function(spot) { if (!ready && spot) poe(spot); },
+      query: function() { var d = dual();
+        return new URLSearchParams({ exp: $('exp').value, d_min: ready ? d[0] : '0', d_max: ready ? d[1] : '1000' }); }
+    };
+  }
+  window.__SX = sxUI();
 
   // ── Strangle de Cobertura ───────────────────────────────────────────────────────
   function renderSx(d) {

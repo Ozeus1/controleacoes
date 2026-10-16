@@ -319,61 +319,36 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     <!-- Filtros da Borboleta -->
     <div id="fyt-filtros-borboleta" style="display:none;">
       <div class="fyt-campo">
-        <label for="fyt-borb-tipo" title="Call = viés de alta (a ação precisa subir até o miolo). Put = viés de baixa (precisa cair até o miolo)">
-          Tipo</label>
-        <select id="fyt-borb-tipo">
-          <option value="call" selected>Call</option>
-          <option value="put">Put</option>
-        </select>
+        <label for="fyt-bf-tipo" title="Call = viés de alta. Put = viés de baixa">Tipo</label>
+        <select id="fyt-bf-tipo"><option value="call" selected>Call</option><option value="put">Put</option></select>
       </div>
-
       <div class="fyt-campo">
-        <label for="fyt-borb-exp">Vencimento</label>
-        <select id="fyt-borb-exp">
-          <option value="0" selected>Vencimento Atual</option>
-          <option value="1">Mensal +1</option>
-          <option value="2">Mensal +2</option>
-        </select>
+        <label for="fyt-bf-exp">Vencimento</label>
+        <select id="fyt-bf-exp"><option value="0" selected>Vencimento Atual</option><option value="1">Vencimento +1 mês</option><option value="2">Vencimento +2 meses</option></select>
       </div>
-
       <div class="fyt-campo">
-        <label for="fyt-borb-asa" title="Um valor fixo busca só borboletas SIMÉTRICAS (asas iguais dos dois lados do miolo). 'Todos' busca também ASSIMÉTRICAS (asas de tamanhos diferentes)">
-          Asa</label>
-        <select id="fyt-borb-asa">
-          <option value="todos" selected>Todos</option>
-          <option value="1">R$ 1,00 (simétrica)</option>
-          <option value="1.5">R$ 1,50 (simétrica)</option>
-          <option value="2">R$ 2,00 (simétrica)</option>
-          <option value="2.5">R$ 2,50 (simétrica)</option>
-          <option value="3">R$ 3,00 (simétrica)</option>
-          <option value="4">R$ 4,00 (simétrica)</option>
-          <option value="5">R$ 5,00 (simétrica)</option>
-        </select>
+        <label for="fyt-bf-asa" title="Todos = qualquer combinação, inclusive assimétricas. Um valor = borboleta simétrica (asas iguais). BOVA11/SMAL11: R$ 4 a 12; demais: R$ 1 a 3 (passo 0,25)">Asa</label>
+        <select id="fyt-bf-asa"></select>
       </div>
-
       <div class="fyt-campo">
-        <label>Faixa de asa (R$)</label>
-        <div class="fyt-asa">
-          <input type="number" id="fyt-borb-asa-min" min="0" max="20" step="0.25" value="1">
-          <span style="color:var(--text-secondary);">até</span>
-          <input type="number" id="fyt-borb-asa-max" min="0" max="20" step="0.25" value="6">
-        </div>
+        <label for="fyt-bf-range" title="Amplitude mínima (R$) entre a comprada 1 e a comprada 2 — evita montagens muito apertadas">Range mín.</label>
+        <input type="number" id="fyt-bf-range" min="0" step="0.25" value="0">
       </div>
-
       <div class="fyt-campo">
-        <label for="fyt-borb-strike-pct" title="Faixa de strikes varrida em torno do spot para o strike do miolo (vendido), em %">
-          Faixa do miolo (± %)</label>
-        <input type="number" id="fyt-borb-strike-pct" min="1" max="50" step="1" value="15">
+        <label for="fyt-bf-alvo" title="Qual strike a faixa abaixo filtra">Filtrar faixa por</label>
+        <select id="fyt-bf-alvo"><option value="k1" selected>Comprada 1</option><option value="k2">Vendida (miolo)</option><option value="k3">Comprada 2</option></select>
       </div>
-
-      <div class="fyt-campo">
-        <label title="Custo de montagem (débito) aceito, em R$ — a Borboleta clássica é sempre um débito pequeno">
-          Preço (R$)</label>
-        <div class="fyt-asa">
-          <input type="number" id="fyt-borb-preco-min" min="0" step="0.1" value="0">
-          <span style="color:var(--text-secondary);">até</span>
-          <input type="number" id="fyt-borb-preco-max" step="0.1" value="6">
-        </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label id="fyt-bf-a-lbl" title="Faixa de strikes. Arraste os dois controles">Faixa (comprada 1)</label>
+        <div class="fyt-kvals"><span id="fyt-bf-a-lo">—</span><span id="fyt-bf-a-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-bf-a-faixa"></div>
+          <input type="range" id="fyt-bf-a-a" min="0" max="100" step="0.01" value="0"><input type="range" id="fyt-bf-a-b" min="0" max="100" step="0.01" value="100"></div>
+      </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label title="Custo de montagem (débito) por ação">Preço (R$)</label>
+        <div class="fyt-kvals"><span id="fyt-bf-p-lo">—</span><span id="fyt-bf-p-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-bf-p-faixa"></div>
+          <input type="range" id="fyt-bf-p-a" min="0" max="6" step="0.01" value="0.1"><input type="range" id="fyt-bf-p-b" min="0" max="6" step="0.01" value="0.3"></div>
       </div>
     </div>
 
@@ -1195,6 +1170,74 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     </div>
   </div>
 
+
+  <div class="fyt-ajuda" id="fyt-ajuda-bf" style="display:none;">
+    <div class="fyt-ajuda-top">
+      <h4>Borboleta (Butterfly)</h4>
+      <div class="fyt-atabs">
+        <span class="fyt-atab on" data-p="conceito">Conceito</span>
+        <span class="fyt-atab" data-p="variantes">Variantes</span>
+        <span class="fyt-atab" data-p="filtros">Filtros e Colunas</span>
+        <span class="fyt-atab" data-p="risco">Risco</span>
+        <span class="fyt-atab" data-p="mais">Saiba Mais</span>
+      </div>
+    </div>
+    <div class="fyt-apane on" data-p="conceito">
+      <h5>ℹ️ O que é a Borboleta?</h5>
+      <p>A <strong>Borboleta (Butterfly)</strong> é uma estrutura de 3 pernas com <strong>risco limitado ao custo de montagem</strong> e lucro máximo concentrado no strike vendido (miolo).</p>
+      <p>Montagem clássica (simétrica): <code>+A27  −2×A29  +A31</code> → compra 1 asa inferior, vende 2 no miolo, compra 1 asa superior. A maximização do ganho ocorre nas proximidades do miolo vendido no vencimento.</p>
+      <p>Importante: a ação <strong>não precisa chegar no miolo</strong> para a operação dar lucro — basta que se movimente rapidamente na direção do strike vendido nos dias seguintes à montagem.</p>
+    </div>
+    <div class="fyt-apane" data-p="variantes">
+      <h5>📋 Variantes da estrutura</h5>
+      <p>Todas saem da <strong>mesma tela</strong> — basta alterar os filtros:</p>
+      <ul>
+        <li><strong style="color:#34d399;">Simétrica (padrão):</strong> asas equidistantes do miolo. Risco = custo de montagem. Ganho máximo = distância da asa − custo.<br><span style="color:var(--text-secondary);font-size:.78rem;">Filtro: Asa = valor fixo (ex.: R$ 2,00)</span></li>
+        <li><strong style="color:#60a5fa;">Assimétrica (asa variável):</strong> asas com distâncias diferentes ao miolo. Permite ajustar o viés direcional e o payoff.<br><span style="color:var(--text-secondary);font-size:.78rem;">Filtro: Asa = Todos</span></li>
+        <li><strong style="color:#a78bfa;">CALL vs PUT:</strong> Borboleta de <strong>CALL</strong> = viés de alta (a ação precisa subir até o miolo). Borboleta de <strong>PUT</strong> = viés de baixa (a ação precisa cair até o miolo).<br><span style="color:var(--text-secondary);font-size:.78rem;">Filtro: Tipo = Call / Put</span></li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="filtros">
+      <h5>🎛️ Filtros e colunas</h5>
+      <ul>
+        <li><strong>Tipo:</strong> Call ou Put.</li>
+        <li><strong>Vencimento:</strong> seleciona o ciclo de vencimento (atual, +1, +2 meses).</li>
+        <li><strong>Asa:</strong> distância entre o miolo e cada asa. "Todos" mostra todas as combinações, incluindo assimétricas.</li>
+        <li><strong>Range mín.:</strong> filtra borboletas com amplitude de lucro mínima (evita montagens muito apertadas).</li>
+        <li><strong>Slider de strikes:</strong> filtra o intervalo de strikes (Comprada 1, Vendidas, Comprada 2).</li>
+        <li><strong>Slider de preço:</strong> filtra a faixa de preço (custo) da estrutura.</li>
+      </ul>
+      <h5>📊 Colunas da tabela</h5>
+      <ul>
+        <li><strong>Comprada / Vendida / Comprada:</strong> strikes das 3 pernas (asa inferior, miolo, asa superior).</li>
+        <li><strong>Proporção:</strong> 1:2 na clássica (1 comprada, 2 vendidas, 1 comprada).</li>
+        <li><strong>Asa:</strong> distância em R$ entre as pernas (nas assimétricas, as duas asas).</li>
+        <li><strong>Range:</strong> amplitude entre a comprada 1 e a comprada 2.</li>
+        <li><strong>Último:</strong> último preço negociado da estrutura.</li>
+        <li><strong>Boca:</strong> custo da montagem agredindo o book — quanto menor, melhor a relação risco/retorno.</li>
+      </ul>
+      <h5>🔍 Detalhe</h5>
+      <p style="font-size:.8rem;color:var(--text-secondary);">Ao clicar numa linha: pernas e quantidades, ganho e perda máximos, breakevens, Cálculos de Opções, SimFlex (payoff e gregas) e Exportar Pnt.</p>
+    </div>
+    <div class="fyt-apane" data-p="risco">
+      <h5>⚠️ Risco e gestão</h5>
+      <div class="risco" style="border-left-color:#34d399;background:rgba(52,211,153,.08);"><strong>Risco limitado:</strong> o prejuízo máximo da Borboleta está <strong>limitado ao valor desembolsado</strong> na montagem. Não há risco de chamada de margem adicional.</div>
+      <ul>
+        <li><strong style="color:#fbbf24;">Atenção ao spread (bid/ask):</strong> resultados com rentabilidade muito alta dependem de cotações com pouca liquidez. O custo real de montagem via robô PNT pode divergir da boca apresentada.</li>
+        <li><strong style="color:#fbbf24;">Tempo é seu inimigo:</strong> o Theta trabalha contra a borboleta nos primeiros dias. O ganho se materializa à medida que a ação se aproxima do miolo e o vencimento se aproxima.</li>
+        <li><strong style="color:#fbbf24;">Direção + timing:</strong> a borboleta exige acertar direção e timing — a ação precisa se movimentar na direção do miolo antes do vencimento.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="mais">
+      <h5>📖 Saiba mais</h5>
+      <ul>
+        <li>Com a Borboleta, o ganho máximo é a asa menos o custo; o breakeven fica a "custo" de distância de cada asa.</li>
+        <li>Variantes com 4 pernas (Broken Wing, Iron Butterfly) estão na <a href="/busca-operacoes-avancadas" style="color:#818cf8;">Busca de Operações Avançadas</a>.</li>
+        <li>Clique numa linha para abrir no <strong>SimFlex</strong> ou exportar para o <strong>Pnt</strong>.</li>
+      </ul>
+    </div>
+  </div>
+
   <div class="fyt-ajuda" id="fyt-ajuda-sl" style="display:none;">
     <div class="fyt-ajuda-top">
       <h4>Slide Estrutural</h4>
@@ -1438,6 +1481,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (v === 'slide') slPrepara();
     if (v === 'straddle_ha') shaPrepara();
     thlWeeklyWrap.style.display = 'none';
+    document.getElementById('fyt-ajuda-bf').style.display = (v === 'borboleta') ? '' : 'none';
+    if (v === 'borboleta' && window.__BF) window.__BF.prepara();
     document.getElementById('fyt-ajuda-mn').style.display = (v === 'mannerheim') ? '' : 'none';
     if (v === 'mannerheim' && window.__MN) window.__MN.prepara();
     document.getElementById('fyt-ajuda-tc').style.display = (v === 'thl') ? '' : 'none';
@@ -1497,98 +1542,9 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       if (usarBrapi) q.set('source', 'brapi');
       url = (estrutura === 'trava_alta' ? '/api/fyt-trava-alta/' : '/api/fyt-trava-baixa/') + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'borboleta') {
-      q = new URLSearchParams({
-        tipo:        document.getElementById('fyt-borb-tipo').value,
-        exp:         document.getElementById('fyt-borb-exp').value,
-        asa:         document.getElementById('fyt-borb-asa').value || 'todos',
-        asa_min:     document.getElementById('fyt-borb-asa-min').value || '1',
-        asa_max:     document.getElementById('fyt-borb-asa-max').value || '6',
-        strike_pct:  document.getElementById('fyt-borb-strike-pct').value || '15',
-        preco_min:   document.getElementById('fyt-borb-preco-min').value || '0',
-        preco_max:   document.getElementById('fyt-borb-preco-max').value || '6'
-      });
+      q = window.__BF.query();
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-borboleta/' + encodeURIComponent(currentTicker) + '?' + q.toString();
-    } else if (estrutura === 'collar') {
-      var ca = clDual('a'), cp = clDual('p'), cf = clDual('f');
-      var fv = document.getElementById('fyt-cl-fence').value;
-      q = new URLSearchParams({
-        exp_v:     document.getElementById('fyt-cl-exp').value,
-        off_p:     document.getElementById('fyt-cl-offp').value,
-        risco_max: document.getElementById('fyt-cl-risco').value || '3',
-        fence:     fv,
-        f_min:     (fv === 'range' && clReady) ? cf[0] : '',
-        f_max:     (fv === 'range' && clReady) ? cf[1] : '',
-        alvo:      document.getElementById('fyt-cl-alvo').value,
-        a_min:     clReady ? ca[0] : '',
-        a_max:     clReady ? ca[1] : '',
-        p_min:     cp[0], p_max: cp[1]
-      });
-      if (usarBrapi) q.set('source', 'brapi');
-      url = '/api/fyt-collar/' + encodeURIComponent(currentTicker) + '?' + q.toString();
-    } else if (estrutura === 'fence') {
-      var fa = fcDual('a'), fp = fcDual('p');
-      q = new URLSearchParams({
-        exp:     document.getElementById('fyt-fc-exp').value,
-        dist:    String(Math.max(0, parseInt(document.getElementById('fyt-fc-dist').value, 10) || 0)),
-        asa_min: String(Math.max(0, parseInt(document.getElementById('fyt-fc-asa').value, 10) || 0)),
-        alvo:    document.getElementById('fyt-fc-alvo').value,
-        a_min:   fcReady ? fa[0] : '',
-        a_max:   fcReady ? fa[1] : '',
-        p_min:   fp[0], p_max: fp[1]
-      });
-      if (usarBrapi) q.set('source', 'brapi');
-      url = '/api/fyt-fence/' + encodeURIComponent(currentTicker) + '?' + q.toString();
-    } else if (estrutura === 'seagull') {
-      var sa = sgDual('a'), sp = sgDual('p');
-      q = new URLSearchParams({
-        exp:     document.getElementById('fyt-sg-exp').value,
-        dist:    String(Math.max(0, parseInt(document.getElementById('fyt-sg-dist').value, 10) || 0)),
-        asa_min: String(Math.max(0, parseInt(document.getElementById('fyt-sg-asa').value, 10) || 0)),
-        alvo:    document.getElementById('fyt-sg-alvo').value,
-        a_min:   sgReady ? sa[0] : '',
-        a_max:   sgReady ? sa[1] : '',
-        p_min:   sp[0], p_max: sp[1]
-      });
-      if (usarBrapi) q.set('source', 'brapi');
-      url = '/api/fyt-seagull/' + encodeURIComponent(currentTicker) + '?' + q.toString();
-    } else if (estrutura === 'box3') {
-      var bk = bxDual();
-      q = new URLSearchParams({
-        exp:   document.getElementById('fyt-bx-exp').value,
-        k_min: bxReady ? bk[0] : '',
-        k_max: bxReady ? bk[1] : ''
-      });
-      if (usarBrapi) q.set('source', 'brapi');
-      url = '/api/fyt-box3/' + encodeURIComponent(currentTicker) + '?' + q.toString();
-    } else if (estrutura === 'slide') {
-      var kk = slDual('k'), pp = slDual('p');
-      q = new URLSearchParams({
-        tipo:      document.getElementById('fyt-sl-tipo').value,
-        exp_v:     document.getElementById('fyt-sl-exp-v').value,
-        exp_c:     document.getElementById('fyt-sl-exp-c').value,
-        asa_cv:    document.getElementById('fyt-sl-asa-cv').value,
-        asa_vv:    document.getElementById('fyt-sl-asa-vv').value,
-        range_min: document.getElementById('fyt-sl-range').value || '0',
-        k_min:     slKReady ? kk[0] : '',
-        k_max:     slKReady ? kk[1] : '',
-        p_min:     pp[0], p_max: pp[1]
-      });
-      if (usarBrapi) q.set('source', 'brapi');
-      url = '/api/fyt-slide/' + encodeURIComponent(currentTicker) + '?' + q.toString();
-    } else if (estrutura === 'straddle_ha') {
-      var kv = shaFaixa();
-      q = new URLSearchParams({
-        tipo:    document.getElementById('fyt-sha-tipo').value,
-        exp_v:   document.getElementById('fyt-sha-exp-v').value,
-        exp_c:   document.getElementById('fyt-sha-exp-c').value,
-        dist:    document.getElementById('fyt-sha-dist').value,
-        qtd_min: String(Math.max(1, parseInt(document.getElementById('fyt-sha-qtd').value, 10) || 2)),
-        k_min:   kv[0] != null ? kv[0] : '',
-        k_max:   kv[1] != null ? kv[1] : ''
-      });
-      if (usarBrapi) q.set('source', 'brapi');
-      url = '/api/fyt-straddle-ha/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'broken_wing') {
       q = new URLSearchParams({
         exp:           document.getElementById('fyt-bwb-exp').value,
@@ -1640,7 +1596,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         else if (estrutura === 'mannerheim') { window.__MN.ajusta(res.j.spot); renderMannEsp(res.j); }
         else if (estrutura === 'trava_alta') { window.__TA.ajusta(res.j.spot); renderTravaN(res.j, false); }
         else if (estrutura === 'trava_baixa') { window.__TB.ajusta(res.j.spot); renderTravaN(res.j, true); }
-        else if (estrutura === 'borboleta') renderBorboleta(res.j);
+        else if (estrutura === 'borboleta') { window.__BF.ajusta(res.j.spot); renderBorbN(res.j); }
         else if (estrutura === 'broken_wing') renderBrokenWing(res.j);
         else if (estrutura === 'straddle_ha') { shaAjustaFaixa(res.j.spot); renderStraddleHa(res.j); }
         else if (estrutura === 'slide') { slAjustaFaixa(res.j.spot); renderSlide(res.j); }
@@ -2789,6 +2745,109 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     };
   }
 
+  // ── Borboleta (filtros novos: asa, range mínimo, faixa de strike e preço) ────────
+  function borbUI() {
+    var $ = function(id) { return document.getElementById('fyt-bf-' + id); }, ready = false, tkPrep = '';
+    function dual(w) { var lo = parseFloat($(w + '-a').value), hi = parseFloat($(w + '-b').value); return lo <= hi ? [lo, hi] : [hi, lo]; }
+    function desenha(w) {
+      var mn = parseFloat($(w + '-a').min), mx = parseFloat($(w + '-a').max), r = dual(w), span = (mx - mn) || 1, f = $(w + '-faixa');
+      f.style.left = ((r[0] - mn) / span * 100) + '%'; f.style.width = ((r[1] - r[0]) / span * 100) + '%';
+      $(w + '-lo').textContent = brl(r[0]); $(w + '-hi').textContent = brl(r[1]);
+    }
+    ['a-a', 'a-b'].forEach(function(x) { $(x).addEventListener('input', function() { desenha('a'); }); });
+    ['p-a', 'p-b'].forEach(function(x) { $(x).addEventListener('input', function() { desenha('p'); }); });
+    desenha('p');
+    $('alvo').addEventListener('change', function() { $('a-lbl').textContent = 'Faixa (' + ({k1: 'comprada 1', k2: 'vendida', k3: 'comprada 2'})[this.value] + ')'; });
+    function opcoesAsa() {
+      var etf = ['BOVA11', 'SMAL11'].indexOf(tickerAtual()) >= 0, sel = $('asa'), atual = sel.value, h = '<option value="todos">Todos</option>', v;
+      if (etf) { for (v = 4; v <= 12; v++) h += '<option value="' + v + '">R$ ' + fmt(v) + '</option>'; }
+      else { for (v = 1; v <= 3 + 1e-9; v += 0.25) h += '<option value="' + v + '">R$ ' + fmt(v) + '</option>'; }
+      sel.innerHTML = h;
+      if ([].slice.call(sel.options).some(function(o) { return o.value === atual; })) sel.value = atual;
+    }
+    function poe(spot) {
+      var lo = Math.floor(spot * 0.8), hi = Math.ceil(spot * 1.2);
+      ['a-a', 'a-b'].forEach(function(x) { $(x).min = lo; $(x).max = hi; });
+      $('a-a').value = Math.round(spot * 0.9 * 100) / 100; $('a-b').value = Math.round(spot * 1.1 * 100) / 100;
+      ready = true; desenha('a');
+    }
+    function prepara() {
+      opcoesAsa();
+      var tk = tickerAtual(); if (!tk || tk === tkPrep) return; tkPrep = tk; ready = false;
+      fetch('/api/quote_hint/' + encodeURIComponent(tk)).then(function(r) { return r.json(); }).then(function(d) {
+        if (tickerAtual() === tk && d && d.price) poe(d.price);
+      }).catch(function() { tkPrep = ''; });
+    }
+    function reprep() { if (opSel.value === 'borboleta') { tkPrep = ''; prepara(); } }
+    elTicker.addEventListener('change', reprep); elTickerL.addEventListener('change', reprep);
+    return {
+      prepara: prepara, ajusta: function(spot) { if (!ready && spot) poe(spot); },
+      query: function() { var a = dual('a'), p = dual('p');
+        return new URLSearchParams({ novo: '1', tipo: $('tipo').value, exp: $('exp').value, asa: $('asa').value, range_min: $('range').value || '0',
+          alvo: $('alvo').value, a_min: ready ? a[0] : '', a_max: ready ? a[1] : '', preco_min: p[0], preco_max: p[1] }); }
+    };
+  }
+  window.__BF = borbUI();
+
+  function renderBorbN(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' + (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>' : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">Nenhuma borboleta atende aos filtros. ' +
+        'Escolha "Todos" na asa, reduza o range mínimo ou amplie a faixa de strikes e de preço.</div>';
+      return;
+    }
+    var tp = d.tipo === 'put' ? 'PUT' : 'CALL';
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">🦋 <strong>Borboleta de ' + tp + '</strong> · 📆 Vencimento: <strong>' + dateBR(d.exp) + '</strong> (' + d.dc + 'd)' +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') + ' · <strong>' + d.rows.length + '</strong> montagem(ns)</div>';
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th>Tickers</th><th title="Asa inferior (comprada)">Comprada</th><th title="Miolo (vendido 2×)">Vendida</th><th title="Asa superior (comprada)">Comprada</th>' +
+      '<th>Proporção</th><th title="Distância entre as pernas">Asa</th><th title="Distância entre as duas compradas">Range</th>' +
+      '<th title="Custo pelos últimos negócios">Último</th><th title="Custo pela boca: compra no ask, venda no bid">Boca</th></tr></thead><tbody>';
+    var marcou = false;
+    d.rows.forEach(function(r, i) {
+      var sep = (!marcou && r.k1_strike > d.spot) ? ' style="border-top:2px solid #e2e8f0;"' : '';
+      if (sep) marcou = true;
+      h += '<tr data-i="' + i + '"' + sep + ' title="Clique para ver o detalhamento">' +
+        '<td style="text-align:left;"><span class="fyt-badge buy">+' + r.k1_symbol + '</span> <span class="fyt-badge sell">−2 × ' + r.k2_symbol + '</span> <span class="fyt-badge buy">+' + r.k3_symbol + '</span></td>' +
+        '<td><strong>' + brl(r.k1_strike) + '</strong></td><td>' + brl(r.k2_strike) + '</td><td>' + brl(r.k3_strike) + '</td><td>1:2</td>' +
+        '<td>' + (r.asa1 === r.asa2 ? brl(r.asa1) : fmt(r.asa1) + ' / ' + fmt(r.asa2)) + '</td><td>' + brl(r.range) + '</td>' +
+        '<td>' + (r.ultimo == null ? '—' : brl(r.ultimo)) + '</td>' +
+        '<td><strong>' + brl(r.custo) + '</strong>' + ((r.k1_src === 'ultimo' || r.k2_src === 'ultimo' || r.k3_src === 'ultimo') ? '<br><span style="font-size:.7rem;color:var(--text-secondary);">últ.</span>' : '') + '</td></tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) { tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); }); });
+  }
+
+  function refreshModalBorbN() {
+    refreshModalBorboleta();
+    var r = lastData.rows[modalIdx], q = parseInt(document.getElementById('fytm-qty').value) || 100, tp = lastData.tipo === 'put' ? 'PUT' : 'CALL';
+    var L = [
+      {ticker: r.k1_symbol, side: 'BUY',  opt_type: tp, quantity: q,     strike: r.k1_strike, entry_price: r.k1_px, expiration_date: lastData.exp},
+      {ticker: r.k2_symbol, side: 'SELL', opt_type: tp, quantity: 2 * q, strike: r.k2_strike, entry_price: r.k2_px, expiration_date: lastData.exp},
+      {ticker: r.k3_symbol, side: 'BUY',  opt_type: tp, quantity: q,     strike: r.k3_strike, entry_price: r.k3_px, expiration_date: lastData.exp}
+    ];
+    var nome = 'Borboleta ' + tp + ' ' + lastData.ticker + ' ' + r.k1_strike + '/' + r.k2_strike + '/' + r.k3_strike;
+    var sf = document.getElementById('fytm-sf'); sf.style.display = '';
+    sf.onclick = function() {
+      try { localStorage.setItem('simflex_import', JSON.stringify({origem: '', name: nome, ativo: lastData.ticker, novo: true, legs: L})); }
+      catch (e) { alert('Não foi possível preparar o SimFlex: ' + e); return; }
+      window.open('/simflex?importar=1', '_blank');
+    };
+    var pnt = document.getElementById('fytm-pnt'); pnt.style.display = '';
+    pnt.onclick = function() {
+      var T = String.fromCharCode(9);
+      var linha = L.map(function(l) { return l.ticker; }).concat(L.map(function(l) { return l.side === 'BUY' ? 'C' : 'V'; }))
+        .concat(L.map(function(l) { return l.quantity; })).concat([r.custo.toFixed(2).replace('.', ',')]).join(T);
+      var ok = function() { pnt.textContent = '✓ Copiado!'; setTimeout(function() { pnt.textContent = '📋 Exportar Pnt'; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, function() { prompt('Copie (Pnt):', linha); });
+      else prompt('Copie (Pnt):', linha);
+    };
+  }
+
   // ── Fence ─────────────────────────────────────────────────────────────
   var fcReady = false, fcTickerPrep = '';
   function fcDual(w) {
@@ -3628,7 +3687,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (currentEstrutura === 'mannerheim') { refreshModalMannEsp(); return; }
     if (currentEstrutura === 'trava_alta') { refreshModalTrava(); return; }
     if (currentEstrutura === 'trava_baixa') { refreshModalTravaBaixa(); return; }
-    if (currentEstrutura === 'borboleta') { refreshModalBorboleta(); return; }
+    if (currentEstrutura === 'borboleta') { refreshModalBorbN(); return; }
     if (currentEstrutura === 'broken_wing') { refreshModalBrokenWing(); return; }
     if (currentEstrutura === 'straddle_ha') { refreshModalSha(); return; }
     if (currentEstrutura === 'slide') { refreshModalSl(); return; }

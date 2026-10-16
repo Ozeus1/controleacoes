@@ -16138,6 +16138,29 @@ def api_fyt_borboleta(ticker):
     if preco_max < preco_min:
         preco_min, preco_max = preco_max, preco_min
 
+    # Modo novo (novo=1): asa única (ou Todos = qualquer combinação, inclusive assimétricas), range mínimo
+    # (K3 − K1) e faixa de strikes da comprada 1, das vendidas (miolo) ou da comprada 2.
+    novo = request.args.get('novo') == '1'
+    range_min = 0.0
+    alvo = 'k1'
+    a_min = a_max = None
+    if novo:
+        _dmax = 12.0 if ticker in ('BOVA11', 'SMAL11') else 3.0
+        if asa_fixa is None:
+            asa_min, asa_max = 0.01, _dmax
+        else:
+            asa_min = asa_max = asa_fixa
+        range_min = max(0.0, _num('range_min', 0.0))
+        alvo = (request.args.get('alvo') or 'k1').lower()
+        if alvo not in ('k1', 'k2', 'k3'):
+            alvo = 'k1'
+        _am, _aM = request.args.get('a_min'), request.args.get('a_max')
+        try:
+            if _am not in (None, '') and _aM not in (None, ''):
+                a_min, a_max = sorted((float(_am), float(_aM)))
+        except ValueError:
+            a_min = a_max = None
+
     # ── Cadeia ───────────────────────────────────────────────────────────
     if usar_brapi:
         try:
@@ -16267,7 +16290,7 @@ def api_fyt_borboleta(ticker):
     # candidatos de asa dentro de [asa_min, asa_max] de distância de K2.
     lo_k = spot * (1 - strike_pct / 100.0)
     hi_k = spot * (1 + strike_pct / 100.0)
-    k2_cands = [o for o in opts if lo_k <= o['strike'] <= hi_k]
+    k2_cands = [o for o in opts if lo_k <= o['strike'] <= hi_k] if not novo else list(opts)
 
     rows = []
     iv_cache = {}
@@ -16355,6 +16378,12 @@ def api_fyt_borboleta(ticker):
                     if d2_lo is not None and d2_hi is not None:
                         pop = (_norm_cdf(d2_lo) - _norm_cdf(d2_hi)) * 100
 
+                if novo:
+                    if (k3['strike'] - k1['strike']) + 1e-9 < range_min:
+                        continue
+                    _ks = {'k1': k1, 'k2': k2, 'k3': k3}[alvo]['strike']
+                    if a_min is not None and not (a_min - 0.004 <= _ks <= a_max + 0.004):
+                        continue
                 liq = min(k1.get('vol_fin') or 0, k2.get('vol_fin') or 0, k3.get('vol_fin') or 0)
                 rows.append({
                     'is_simetrica': asa1 == asa2,
@@ -16365,6 +16394,9 @@ def api_fyt_borboleta(ticker):
                     'k3_symbol': k3['symbol'], 'k3_strike': k3['strike'],
                     'k3_px': round(k3_px, 2), 'k3_bid': e_k3['bid_raw'], 'k3_ask': e_k3['ask_raw'], 'k3_src': e_k3['src'],
                     'asa1': asa1, 'asa2': asa2,
+                    'range': round(k3['strike'] - k1['strike'], 2),
+                    'ultimo': (round(k1['close'] + k3['close'] - 2 * k2['close'], 2)
+                               if min(k1['close'], k2['close'], k3['close']) >= 0.05 else None),
                     'custo': custo,
                     'lucro_max': round(lucro_max, 2),
                     'ratio': round(lucro_max / custo, 2) if custo > 0.005 else None,
@@ -16384,8 +16416,12 @@ def api_fyt_borboleta(ticker):
 
     # Menor custo primeiro (mais alavancada), com melhor relação como
     # desempate e liquidez como critério final.
-    rows.sort(key=lambda x: (x['custo'], -(x['ratio'] or 0), -x['liq']))
-    rows = _fyt_diversify(rows, lambda x: x['k2_symbol'], per_key=4, limit=80)
+    if novo:
+        rows.sort(key=lambda x: (x['k1_strike'], x['k2_strike'], x['k3_strike']))
+        rows = _fyt_diversify(rows, lambda x: x['k2_symbol'], per_key=6, limit=80)
+    else:
+        rows.sort(key=lambda x: (x['custo'], -(x['ratio'] or 0), -x['liq']))
+        rows = _fyt_diversify(rows, lambda x: x['k2_symbol'], per_key=4, limit=80)
 
     return jsonify({
         'ticker': ticker, 'spot': spot, 'spot_change': spot_change,

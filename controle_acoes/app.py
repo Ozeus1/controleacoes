@@ -14559,7 +14559,7 @@ def api_fyt_sx(ticker):
     """Strangle de Cobertura: COMPRA de uma CALL ITM (K_c abaixo do ativo) e de uma PUT ITM (K_p acima do ativo).
     No vencimento a estrutura vale no mínimo delta = K_p − K_c (constante entre os strikes, maior fora deles).
     Regra: custo de compra (ask CALL + ask PUT) <= delta → lucro mínimo travado = delta − custo.
-    O centro (K_c+K_p)/2 deve ficar aproximadamente no ativo: |centro − ativo| <= c_tol % do ativo (padrão 1%).
+    O centro (K_c+K_p)/2 deve ficar aproximadamente no ativo: |centro − ativo| <= c_tol % do ativo (padrão 5%).
     Parâmetros: exps=AAAA-MM-DD,... (um ou mais vencimentos mensais) · d_min/d_max (R$, distância entre os strikes) · c_tol (%)."""
     ticker = ticker.strip().upper()
     usar_brapi = request.args.get('source') == 'brapi'
@@ -14584,7 +14584,7 @@ def api_fyt_sx(ticker):
     d_min, d_max = max(0.0, _num('d_min', 0.0)), _num('d_max', 1e9)
     if d_max < d_min:
         d_min, d_max = d_max, d_min
-    c_tol = max(0.0, _num('c_tol', 1.0))
+    c_tol = max(0.0, _num('c_tol', 5.0))
 
     if usar_brapi:
         try:

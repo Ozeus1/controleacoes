@@ -138,6 +138,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <option value="fence">🚧 Fence (Cerca)</option>
         <option value="collar">🛡️ Collar (com Fence opcional)</option>
         <option value="ssc">🔗 Short Strangle Coberto</option>
+        <option value="sx">🧷 Strangle de Cobertura</option>
       </select>
     </div>
 
@@ -706,6 +707,22 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <div class="fyt-kvals"><span id="fyt-ss-p-lo">—</span><span id="fyt-ss-p-hi">—</span></div>
         <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-ss-p-faixa"></div>
           <input type="range" id="fyt-ss-p-a" min="0" max="10" step="0.01" value="0.5"><input type="range" id="fyt-ss-p-b" min="0" max="10" step="0.01" value="10"></div>
+      </div>
+    </div>
+
+    <!-- Filtros do Strangle de Cobertura -->
+    <div id="fyt-filtros-sx" style="display:none;">
+      <div class="fyt-campo">
+        <label for="fyt-sx-exp">Vencimento</label>
+        <select id="fyt-sx-exp"><option value="0" selected>Vencimento atual</option><option value="1">Atual +1</option><option value="2">Atual +2</option></select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-sx-dmin" title="Distância mínima (R$) entre o strike da CALL e o da PUT">Delta de (R$)</label>
+        <input type="number" id="fyt-sx-dmin" min="0" step="0.25" value="1">
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-sx-dmax" title="Distância máxima (R$) entre o strike da CALL e o da PUT">Delta até (R$)</label>
+        <input type="number" id="fyt-sx-dmax" min="0" step="0.25" value="10">
       </div>
     </div>
 
@@ -1398,6 +1415,56 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     </div>
   </div>
 
+
+  <div class="fyt-ajuda" id="fyt-ajuda-sx" style="display:none;">
+    <div class="fyt-ajuda-top">
+      <h4>Strangle de Cobertura</h4>
+      <div class="fyt-atabs">
+        <span class="fyt-atab on" data-p="conceito">Conceito</span>
+        <span class="fyt-atab" data-p="filtros">Filtros e Colunas</span>
+        <span class="fyt-atab" data-p="risco">Risco</span>
+        <span class="fyt-atab" data-p="mais">Saiba Mais</span>
+      </div>
+    </div>
+    <div class="fyt-apane on" data-p="conceito">
+      <h5>ℹ️ O que é o Strangle de Cobertura?</h5>
+      <p>Compra de uma <strong>CALL ITM</strong> (strike abaixo do ativo) e de uma <strong>PUT ITM</strong> (strike acima do ativo). A distância entre os dois strikes é o <strong>delta</strong>; cada perna fica, em média, a delta/2 do ativo.</p>
+      <p>No vencimento a estrutura vale <strong>no mínimo o delta</strong> (entre os strikes o resultado é constante e igual a strike da PUT − strike da CALL; fora deles só aumenta). A busca traz os pares em que o <strong>custo de compra ≤ delta</strong>, ou seja, com lucro mínimo travado.</p>
+      <div class="nota"><strong>📌 Lucro travado</strong> = delta − custo de compra (ask da CALL + ask da PUT).</div>
+    </div>
+    <div class="fyt-apane" data-p="filtros">
+      <h5>🎛️ Filtros</h5>
+      <ul>
+        <li><strong>Vencimento:</strong> atual, +1 ou +2 (mensais).</li>
+        <li><strong>Delta de / até:</strong> faixa de distância (R$) entre o strike da CALL e o da PUT.</li>
+        <li>Regra fixa: só entram pares com custo de compra menor ou igual ao delta.</li>
+      </ul>
+      <h5>📊 Colunas</h5>
+      <ul>
+        <li><strong>Call / Put:</strong> strikes comprados (CALL abaixo e PUT acima do ativo).</li>
+        <li><strong>Delta:</strong> distância entre os strikes (valor mínimo da estrutura no vencimento).</li>
+        <li><strong>Custo:</strong> ask da CALL + ask da PUT.</li>
+        <li><strong>Lucro travado / Retorno:</strong> delta − custo, e % sobre o custo.</li>
+        <li><strong>Último / Boca:</strong> custo pelo último negócio / pela boca.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="risco">
+      <h5>⚠️ Risco</h5>
+      <div class="risco">O piso (delta) só vale no vencimento. Antes disso o valor de mercado da estrutura pode ficar abaixo do custo.</div>
+      <ul>
+        <li>Pares com lucro travado muito alto costumam ter pouca liquidez — confira a boca e o volume.</li>
+        <li>Corretagem e emolumentos reduzem o lucro travado.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="mais">
+      <h5>📖 Saiba mais</h5>
+      <ul>
+        <li>É o espelho comprado do Short Strangle Coberto: lá se recebe o embolso e devolve o delta; aqui se paga o custo e recebe o delta.</li>
+        <li>Clique numa linha para ver o detalhe, abrir no <strong>SimFlex</strong> ou exportar para o <strong>Pnt</strong>.</li>
+      </ul>
+    </div>
+  </div>
+
   <div class="fyt-ajuda" id="fyt-ajuda-sl" style="display:none;">
     <div class="fyt-ajuda-top">
       <h4>Slide Estrutural</h4>
@@ -1644,6 +1711,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('fyt-filtros-ss').style.display = (v === 'ssc') ? 'contents' : 'none';
     document.getElementById('fyt-ajuda-ss').style.display = (v === 'ssc') ? '' : 'none';
     if (v === 'ssc' && window.__SS) window.__SS.prepara();
+    document.getElementById('fyt-filtros-sx').style.display = (v === 'sx') ? 'contents' : 'none';
+    document.getElementById('fyt-ajuda-sx').style.display = (v === 'sx') ? '' : 'none';
     document.getElementById('fyt-ajuda-bw').style.display = (v === 'broken_wing') ? '' : 'none';
     if (v === 'broken_wing' && window.__BW) window.__BW.prepara();
     document.getElementById('fyt-ajuda-bf').style.display = (v === 'borboleta') ? '' : 'none';
@@ -1701,6 +1770,10 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       q = window.__MN.query();
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-mannerheim-esp/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'sx') {
+      q = new URLSearchParams({ exp: document.getElementById('fyt-sx-exp').value, d_min: document.getElementById('fyt-sx-dmin').value || '0', d_max: document.getElementById('fyt-sx-dmax').value || '1000' });
+      if (usarBrapi) q.set('source', 'brapi');
+      url = '/api/fyt-sx/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'ssc') {
       q = window.__SS.query();
       if (usarBrapi) q.set('source', 'brapi');
@@ -1764,6 +1837,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         else if (estrutura === 'seagull') { sgAjustaFaixa(res.j.spot); renderSeagull(res.j); }
         else if (estrutura === 'fence') { fcAjustaFaixa(res.j.spot); renderFence(res.j); }
         else if (estrutura === 'collar') { clAjustaFaixa(res.j.spot); renderCollar(res.j); }
+        else if (estrutura === 'sx') renderSx(res.j);
         else if (estrutura === 'ssc') { window.__SS.ajusta(res.j.spot); renderSsc(res.j); }
         else { boAjustaFaixa(res.j.spot); renderBooster(res.j); }
       })
@@ -3263,6 +3337,81 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     };
   }
 
+  // ── Strangle de Cobertura ───────────────────────────────────────────────────────
+  function renderSx(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' + (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>' : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">Nenhum par com custo de compra ≤ delta nesta faixa. ' +
+        'Amplie a faixa de delta ou tente outro vencimento.</div>';
+      return;
+    }
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">🧷 <strong>Strangle de Cobertura</strong> · 📆 Vencimento: <strong>' + dateBR(d.exp) + '</strong> (' + d.dc + 'd)' +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') + ' · <strong>' + d.rows.length + '</strong> par(es) com custo ≤ delta</div>';
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th>Tickers</th><th title="Strike da CALL ITM comprada">Call</th><th title="Strike da PUT ITM comprada">Put</th>' +
+      '<th title="Distância entre os strikes = valor mínimo no vencimento">Delta</th><th title="Ask da CALL + ask da PUT">Custo</th>' +
+      '<th title="Delta − custo">Lucro travado</th><th title="Lucro travado ÷ custo">Retorno</th>' +
+      '<th title="Custo pelos últimos negócios">Último</th><th title="Custo pela boca (ask)">Boca</th></tr></thead><tbody>';
+    d.rows.forEach(function(r, i) {
+      h += '<tr data-i="' + i + '" title="Clique para ver o detalhamento">' +
+        '<td style="text-align:left;"><span class="fyt-badge buy">+' + r.s_call + '</span> <span class="fyt-badge buy">+' + r.s_put + '</span></td>' +
+        '<td>' + brl(r.kc) + '</td><td>' + brl(r.kp) + '</td><td>' + brl(r.delta) + '</td><td>' + brl(r.custo) + '</td>' +
+        '<td class="pos"><strong>' + brl(r.lucro) + '</strong></td><td>' + fmt(r.ret, 1) + '%</td>' +
+        '<td>' + (r.ultimo == null ? '—' : brl(r.ultimo)) + '</td>' +
+        '<td><strong>' + brl(r.preco) + '</strong>' + (r.src === 'ultimo' ? '<br><span style="font-size:.7rem;color:var(--text-secondary);">últ.</span>' : '') + '</td></tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) { tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); }); });
+  }
+
+  function refreshModalSx() {
+    var r = lastData.rows[modalIdx], q = parseInt(document.getElementById('fytm-qty').value) || 100;
+    document.getElementById('fytm-title').textContent = 'Strangle de Cobertura ' + lastData.ticker + ' — ' + r.s_call + ' / ' + r.s_put;
+    var boxes = [
+      ['Compra ' + q + '× ' + r.s_call + ' (CALL ITM K ' + fmt(r.kc) + ', ' + fmt(r.dist_c, 1) + '% abaixo do ativo)', brl(r.p_call * q), 'neg'],
+      ['Compra ' + q + '× ' + r.s_put + ' (PUT ITM K ' + fmt(r.kp) + ', ' + fmt(r.dist_p, 1) + '% acima do ativo)', brl(r.p_put * q), 'neg'],
+      ['Custo total', brl(r.custo * q), 'neg'],
+      ['Delta (valor mínimo no vencimento)', brl(r.delta * q), 'pos'],
+      ['Lucro mínimo travado', brl(r.lucro * q) + ' (' + fmt(r.ret, 1) + '% sobre o custo)', 'pos'],
+      ['Zona de resultado constante', 'entre ' + brl(r.kc) + ' e ' + brl(r.kp) + ' (fora dela o resultado só aumenta)', ''],
+      ['Vencimento', dateBR(lastData.exp) + ' (' + lastData.dc + ' d.c.)', '']
+    ];
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span><span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+    var L = [
+      {ticker: r.s_call, side: 'BUY', opt_type: 'CALL', quantity: q, strike: r.kc, entry_price: r.p_call, expiration_date: lastData.exp},
+      {ticker: r.s_put,  side: 'BUY', opt_type: 'PUT',  quantity: q, strike: r.kp, entry_price: r.p_put,  expiration_date: lastData.exp}
+    ];
+    var nome = 'Strangle de Cobertura ' + lastData.ticker + ' ' + r.kc + '/' + r.kp;
+    document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + new URLSearchParams({sim: '1', ativo: lastData.ticker, nome: nome,
+      legs: L.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')}).toString();
+    var calc = document.getElementById('fytm-calc');
+    calc.onclick = null; calc.removeAttribute('target'); calc.style.display = '';
+    calc.href = '/venda_puts?' + new URLSearchParams({st: '1', ativo: lastData.ticker, spot: lastData.spot, qty: q, exp: lastData.exp, op: 'livre',
+      livre_legs: 'C:1|P:1', livre_nome: nome,
+      at: r.s_call, ak: r.kc, ap: r.p_call, bt: r.s_put, bk: r.kp, bp: r.p_put}).toString() + '#estrutura';
+    var sf = document.getElementById('fytm-sf'); sf.style.display = '';
+    sf.onclick = function() {
+      try { localStorage.setItem('simflex_import', JSON.stringify({origem: '', name: nome, ativo: lastData.ticker, novo: true, legs: L})); }
+      catch (e) { alert('Não foi possível preparar o SimFlex: ' + e); return; }
+      window.open('/simflex?importar=1', '_blank');
+    };
+    var pnt = document.getElementById('fytm-pnt'); pnt.style.display = '';
+    pnt.onclick = function() {
+      var T = String.fromCharCode(9);
+      var linha = L.map(function(l) { return l.ticker; }).concat(L.map(function() { return 'C'; }))
+        .concat(L.map(function() { return q; })).concat([r.preco.toFixed(2).replace('.', ',')]).join(T);
+      var ok = function() { pnt.textContent = '✓ Copiado!'; setTimeout(function() { pnt.textContent = '📋 Exportar Pnt'; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, function() { prompt('Copie (Pnt):', linha); });
+      else prompt('Copie (Pnt):', linha);
+    };
+  }
+
   // ── Fence ─────────────────────────────────────────────────────────────
   var fcReady = false, fcTickerPrep = '';
   function fcDual(w) {
@@ -4112,6 +4261,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (currentEstrutura === 'fence') { refreshModalFc(); return; }
     if (currentEstrutura === 'collar') { refreshModalCl(); return; }
     if (currentEstrutura === 'ssc') { refreshModalSs(); return; }
+    if (currentEstrutura === 'sx') { refreshModalSx(); return; }
     if (currentEstrutura === 'booster') { refreshModalBo(); return; }
     var r = lastData.rows[modalIdx];
     var q = parseInt(document.getElementById('fytm-qty').value) || 100;

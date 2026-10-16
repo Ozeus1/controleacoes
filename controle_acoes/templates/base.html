@@ -317,9 +317,9 @@
                         </div>
                         <a href="{{ url_for('ranking_volatilidade') }}"
                            class="{{ 'active' if request.endpoint == 'ranking_volatilidade' and not request.args.get('busca_liquidez') else '' }}">📊 Ranking de Volatilidade</a>
-                        {# Busca: item pai agrupando Liquidez / Opções / Estruturas / Longas #}
-                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['busca_opcao','busca_operacoes','busca_operacoes_avancadas','lancamento_coberto','venda_put_longa'] or (request.endpoint == 'ranking_volatilidade' and request.args.get('busca_liquidez')) else '' }}">
-                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['busca_opcao','busca_operacoes','busca_operacoes_avancadas','lancamento_coberto','venda_put_longa'] or (request.endpoint == 'ranking_volatilidade' and request.args.get('busca_liquidez')) else '' }}"
+                        {# Busca: item pai agrupando Liquidez / Opções / Estruturas / Longas / Trade (FYT) #}
+                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['busca_opcao','busca_operacoes','busca_operacoes_avancadas','lancamento_coberto','venda_put_longa','fyt'] or (request.endpoint == 'ranking_volatilidade' and request.args.get('busca_liquidez')) else '' }}">
+                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['busca_opcao','busca_operacoes','busca_operacoes_avancadas','lancamento_coberto','venda_put_longa','fyt'] or (request.endpoint == 'ranking_volatilidade' and request.args.get('busca_liquidez')) else '' }}"
                                onclick="toggleNavDrop(this,event)">
                                 🔍 Busca <span class="nav-caret nav-caret-sub">▸</span>
                             </a>
@@ -334,17 +334,17 @@
                                 {# Longas: uma página só, com as abas Lançamento Coberto / Venda de Put #}
                                 <a href="{{ url_for('lancamento_coberto') }}"
                                    class="{{ 'active' if request.endpoint in ['lancamento_coberto','venda_put_longa'] else '' }}">🛡️ Longas</a>
+                                <a href="{{ url_for('fyt') }}"
+                                   class="{{ 'active' if request.endpoint == 'fyt' else '' }}">🧬 Trade</a>
                             </div>
                         </div>
-                        {# Walls: item pai com submenu FYT / Mapa de Opções / Market Gamma / BGT Bands / Trader IND/DOL #}
-                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','put_call_ratio','trader_futuros','volume_anomalo'] else '' }}">
-                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','put_call_ratio','trader_futuros','volume_anomalo'] else '' }}"
+                        {# Walls: item pai com submenu Mapa de Opções / Market Gamma / BGT Bands / Trader IND/DOL #}
+                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','put_call_ratio','trader_futuros','volume_anomalo'] else '' }}">
+                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','put_call_ratio','trader_futuros','volume_anomalo'] else '' }}"
                                onclick="toggleNavDrop(this,event)">
                                 🧱 Walls <span class="nav-caret nav-caret-sub">▸</span>
                             </a>
                             <div class="nav-dropdown-menu nav-submenu">
-                                <a href="{{ url_for('fyt') }}"
-                                   class="{{ 'active' if request.endpoint == 'fyt' else '' }}">🧬 FYT</a>
                                 <a href="{{ url_for('mapa_opcoes') }}"
                                    class="{{ 'active' if request.endpoint == 'mapa_opcoes' else '' }}">🗺️ Mapa de Opções</a>
                                 <a href="{{ url_for('market_gamma') }}"

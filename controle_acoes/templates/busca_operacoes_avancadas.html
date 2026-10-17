@@ -129,6 +129,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="monster_slide">🦁 Monster Slide</button>
       <button class="ba-obtn" data-op="broken_wings_short_put">🦁 Broken Wings Short Put</button>
       <button class="ba-obtn" data-op="broken_wings_short_call">🦁 Broken Wings Short Call</button>
+      <button class="ba-obtn" data-op="strangle_cobertura">🦁 Strangle de Cobertura</button>
     </div>
     <div class="ba-cat">
       <div class="ba-cat-lbl">📅 Calendário — Lateral (semanal → mensal · marque "incluir semanais")</div>
@@ -195,6 +196,16 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
         <option value="debito" selected>de Débito (aplicação)</option>
         <option value="credito">de Crédito (captação)</option>
       </select>
+    </label>
+    <!-- Strangle de Cobertura: asa (distância entre os strikes) — vazio = automática (BOVA11 = 40) -->
+    <label id="ba-asa-wrap" style="display:none;align-items:center;gap:.45rem;
+           font-size:.83rem;color:var(--text-secondary);cursor:pointer;padding-bottom:.4rem;"
+           title="Distância entre o strike da CALL e o da PUT. Vazio = automática: BOVA11 = R$ 40; outros ativos ≈ 20% do preço">
+      Asa (R$):
+      <input type="number" id="ba-asa" value="" min="0" step="0.5" placeholder="auto"
+             style="width:80px;background:var(--card-bg);color:var(--text-primary);
+                    border:1px solid var(--border-color);border-radius:5px;
+                    padding:.2rem .4rem;font-size:.82rem;">
     </label>
     <!-- Slide Estrutural: amplitude mínima da estrutura (C − A) -->
     <label id="ba-rangemin-wrap" style="display:none;align-items:center;gap:.45rem;
@@ -277,6 +288,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     guts_long:      '💪 Guts (Long) — compra CALL ITM (Δ 0,70–0,80) + PUT ITM (Δ −0,70 a −0,80); volatilidade com opções ITM',
     broken_wings_short_call: '🦁 Broken Wings Short Call — +1 PUT (2 posições ITM) −2 PUT (ATM) +1 PUT (asa externa = 2× a interna) e −1 CALL no strike dessa PUT de baixo; montagem a crédito; risco ilimitado na alta forte (CALL vendida)',
     broken_wings_short_put: '🦁 Broken Wings Short Put — +1 CALL (2 posições ITM) −2 CALL (ATM) +1 CALL (asa externa = 2× a interna, ex.: 4 OTM) e −1 PUT no strike dessa CALL de cima; montagem a crédito; risco na queda forte (PUT vendida)',
+    strangle_cobertura: '🦁 Strangle de Cobertura — compra 1 CALL ITM + 1 PUT ITM com asa (distância entre os strikes) de R$ 40 no BOVA11 (outros ativos: proporcional, ≈ 20% do preço) e centro ≈ ativo (±5%); no vencimento vale no mínimo a asa, então o que importa é custo ≤ asa (lucro travado = asa − custo); ganho ilimitado fora dos strikes',
     monster_slide:  '🦁 Monster Slide — vende 1 CALL ITM (até 10%) e, com o prêmio, monta ≥ 10 travas de alta com CALLs (compra a 6 posições acima, asa 2); montagem a custo ~zero/crédito; risco ilimitado na alta forte',
     strangle_itm:   '🔗💰 Strangle ITM (vendido) — venda CALL ITM (abaixo do spot) + PUT ITM (acima), ~1–3% ITM cada; lateral/manejo; lucro = gordura (crédito − (K_PUT − K_CALL)); risco ilimitado fora do corredor',
     guts_short:     '💪📉 Guts (Short) — venda CALL ITM + PUT ITM (Δ 0,60–0,70); mercado lateral com IV alta; risco ilimitado nas pontas',
@@ -565,7 +577,34 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     return h + '</tbody></table></div>';
   }
 
-  var CUSTOM_TABLES = {box3: box3Table, broken_wings_short_put: bwspTable, broken_wings_short_call: bwspTable, box4: box4Table, strangle_itm: strangleItmTable, monster_slide: monsterTable,
+  // ── Strangle de Cobertura (🦁 Leão) ──────────────────────────────────────────
+  function strangleCobTable(rows, expIdx) {
+    if (!rows.length) return '<div class="ba-empty">Nenhum par CALL ITM + PUT ITM com essa asa e centro próximo do ativo neste vencimento. Ajuste a asa (R$) ou escolha outro vencimento.</div>';
+    var h = '<div class="ba-wrap"><table class="ba-tab"><thead><tr>' +
+      '<th>Pernas (qtd × série)</th><th>Strikes (CALL / PUT)</th>' +
+      '<th title="Distância entre os strikes = valor mínimo da estrutura no vencimento">Asa</th>' +
+      '<th title="Ponto médio dos strikes e quanto ele se afasta do ativo">Centro</th>' +
+      '<th title="ITM de cada perna em relação ao ativo">ITM (CALL / PUT)</th>' +
+      '<th>Custo (débito)</th>' +
+      '<th title="Asa − custo: positivo = lucro travado (custo ≤ asa); negativo = quanto se paga acima do valor mínimo">Resultado mín.</th>' +
+      '<th>Breakevens</th></tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += '<tr class="ba-row" data-exp="' + expIdx + '" data-row="' + j + '" title="Clique para ver o resumo">' +
+        '<td>' + r.legs.map(legBadge).join(' ') + '</td>' +
+        '<td>' + fmt(r.legs[0].k) + ' / ' + fmt(r.legs[1].k) + '</td>' +
+        '<td>' + brl(r.asa) + '</td>' +
+        '<td>' + brl(r.centro) + ' <span style="color:var(--text-secondary);font-size:.8em;">(' + (r.centro_dev > 0 ? '+' : '') + fmt(r.centro_dev, 1) + '%)</span></td>' +
+        '<td>' + fmt(r.call_itm, 1) + '% / ' + fmt(r.put_itm, 1) + '%</td>' +
+        '<td><span class="ba-badge debit">DÉBITO ' + brl(r.custo) + '</span></td>' +
+        '<td class="' + (r.res_min >= 0 ? 'pos' : 'neg') + '"><strong>' + brl(r.res_min) + '</strong>' +
+          (r.regra_ok ? ' <span title="Custo ≤ asa: lucro travado no vencimento">✅</span>' : '') + '</td>' +
+        '<td>' + (r.bes.length ? r.bes.map(function(b) { return brl(b); }).join(' · ') : '—') + '</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  var CUSTOM_TABLES = {box3: box3Table, broken_wings_short_put: bwspTable, broken_wings_short_call: bwspTable, box4: box4Table, strangle_itm: strangleItmTable, monster_slide: monsterTable, strangle_cobertura: strangleCobTable,
     slide_estrutural: function(rows, expIdx) { return slideTable(rows, expIdx, false); },
     slide_estrutural_put: function(rows, expIdx) { return slideTable(rows, expIdx, true); }};
 
@@ -789,6 +828,9 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       extra = '&box_mode=' + document.getElementById('ba-boxmode').value;
     } else if (currentOp === 'slide_estrutural' || currentOp === 'slide_estrutural_put') {
       extra = '&range_min=' + (document.getElementById('ba-rangemin').value || 0);
+    } else if (currentOp === 'strangle_cobertura') {
+      var asaV = document.getElementById('ba-asa').value;
+      if (asaV) extra = '&asa=' + encodeURIComponent(asaV);
     }
     if (document.getElementById('ba-usar-brapi').checked) extra += '&source=brapi';
     fetch('/api/busca-operacoes/' + encodeURIComponent(ticker) +
@@ -824,6 +866,8 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       (currentOp === 'box4') ? 'inline-flex' : 'none';
     document.getElementById('ba-rangemin-wrap').style.display =
       (currentOp === 'slide_estrutural' || currentOp === 'slide_estrutural_put') ? 'inline-flex' : 'none';
+    document.getElementById('ba-asa-wrap').style.display =
+      (currentOp === 'strangle_cobertura') ? 'inline-flex' : 'none';
   }
   syncOpFilters();
 
@@ -850,6 +894,9 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     if (currentTicker) load(currentTicker);
   });
   document.getElementById('ba-rangemin').addEventListener('change', function() {
+    if (currentTicker) load(currentTicker);
+  });
+  document.getElementById('ba-asa').addEventListener('change', function() {
     if (currentTicker) load(currentTicker);
   });
   document.getElementById('ba-buscar-btn').addEventListener('click', function() {

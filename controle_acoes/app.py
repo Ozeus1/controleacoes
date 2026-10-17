@@ -7551,6 +7551,65 @@ def api_busca_operacoes(ticker):
             rows.sort(key=lambda x: (-x['gordura_pct'], abs(x['call_itm'] - x['put_itm'])))
             rows = _diversify(rows, lambda x: x['legs'][0]['sym'], per_key=2, limit=12)
 
+        elif op == 'strangle_cobertura':
+            # Strangle de Cobertura (🦁 Leão): COMPRA 1 CALL ITM (strike abaixo do spot) + 1 PUT ITM (strike acima).
+            # "Asa" = distância entre os strikes (K_PUT − K_CALL). BOVA11: asa 40; demais ativos proporcional
+            # (≈ 20% do preço, arredondado à grade: 5 / 1 / 0,50 conforme o preço) — ou o valor informado em `asa`.
+            # Centro (K_CALL+K_PUT)/2 ≈ spot (±5%). No vencimento a estrutura vale no MÍNIMO a asa (resultado
+            # constante entre os strikes), então resultado mínimo = asa − custo; custo ≤ asa = lucro travado.
+            T = dc / 365.0
+            try:
+                asa_req = float(str(request.args.get('asa') or '').replace(',', '.'))
+            except ValueError:
+                asa_req = 0.0
+            if asa_req > 0:
+                asa = asa_req
+            else:
+                _passo = 5.0 if spot >= 100 else (1.0 if spot >= 20 else 0.5)
+                asa = max(_passo, round(spot * 0.20 / _passo) * _passo)
+            call_c = [c for c in calls_ok if c['strike'] <= spot]
+            put_c = [p for p in puts_ok if p['strike'] >= spot]
+            for c in call_c:
+                for p in put_c:
+                    delta_k = round(p['strike'] - c['strike'], 2)
+                    if abs(delta_k - asa) > 0.004:
+                        continue
+                    centro = (c['strike'] + p['strike']) / 2.0
+                    if abs(centro - spot) / spot > 0.05:
+                        continue
+                    custo = c['ask'] + p['ask']
+                    res_min = delta_k - custo
+                    be_low, be_up = p['strike'] - custo, c['strike'] + custo
+                    rows.append({
+                        'legs': [
+                            {'sym': c['symbol'], 'tp': 'CALL', 'k': c['strike'], 'q': 1,
+                             'px': round(c['ask'], 2), 'delta': _leg_delta_pct(c, True, T)},
+                            {'sym': p['symbol'], 'tp': 'PUT', 'k': p['strike'], 'q': 1,
+                             'px': round(p['ask'], 2), 'delta': _leg_delta_pct(p, False, T)},
+                        ],
+                        'net':       round(-custo, 2),
+                        'is_credit': False,
+                        'montagem':  'DÉBITO',
+                        'max_gain':  round(max(res_min, 0.0), 2),
+                        'gain_unl':  True,
+                        'max_loss':  round(max(-res_min, 0.0), 2),
+                        'loss_unl':  False,
+                        'ratio':     None,
+                        'bes':       [round(be_low, 2), round(be_up, 2)] if res_min < 0 else [],
+                        'asa':       delta_k,
+                        'custo':     round(custo, 2),
+                        'res_min':   round(res_min, 2),
+                        'res_min_pct': round(res_min / custo * 100, 2) if custo > 0 else None,
+                        'centro':    round(centro, 2),
+                        'centro_dev': round((centro - spot) / spot * 100, 2),
+                        'call_itm':  round((spot - c['strike']) / spot * 100, 1),
+                        'put_itm':   round((p['strike'] - spot) / spot * 100, 1),
+                        'regra_ok':  res_min >= -0.004,
+                    })
+            # Melhor resultado mínimo primeiro: quem cumpre custo ≤ asa (lucro travado) fica no topo
+            rows.sort(key=lambda x: (-x['res_min'], abs(x['centro_dev'])))
+            rows = _diversify(rows, lambda x: x['legs'][0]['sym'], per_key=1, limit=12)
+
         elif op == 'zebra':
             # ZEBRA (Zero Extrinsic Back Ratio): compra 2 CALLs ITM (Δ ≈ 0,70)
             # + venda 1 CALL ATM (Δ ≈ 0,50). Delta total ≈ +1,0 e extrínseco

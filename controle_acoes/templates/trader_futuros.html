@@ -118,7 +118,7 @@
       <h3 class="tf-titulo" style="margin:1.4rem 0 0;">Jumba Walls — gama por strike e vencimento</h3>
       <button type="button" id="tf-exportar" class="btn btn-secondary btn-sm">⬇️ Exportar Walls</button>
       <button type="button" id="tf-ver-grafico" class="btn btn-secondary btn-sm">📈 Ver Gráfico</button>
-      <button type="button" id="tf-grafico-ext" class="btn btn-secondary btn-sm" title="Abre o gráfico completo do ativo (acoes.receberbemevinhos.com.br), candles de 5min, já com os walls desenhados como linhas horizontais (Ibovespa à vista / Dólar à vista)">🌐 Gráfico Completo</button>
+      <button type="button" id="tf-grafico-ext" class="btn btn-secondary btn-sm" title="Abre o gráfico completo do ativo (acoes.receberbemevinhos.com.br), candles de 5min, já com os walls desenhados como linhas horizontais (WINFUT / DOLFUT)">🌐 Gráfico Completo</button>
     </div>
     <p class="tf-sub">Vencimento selecionado, o próximo, e os demais somados</p>
     <div class="tf-legenda">
@@ -566,12 +566,13 @@
     });
   };
 
-  // ── Gráfico Completo: gráfico externo do índice/dólar à vista com os walls (mesmas linhas do gráfico interno) ──
+  // ── Gráfico Completo: gráfico externo do mini índice (WINFUT) / dólar (DOLFUT) com os walls (mesmas linhas do gráfico interno) ──
   document.getElementById('tf-grafico-ext').onclick=function(){
     if(!lastData || !lastData.walls || !lastData.walls.length){
       showErr('Gere o gráfico antes de abrir o gráfico completo.'); return;
     }
-    var simbolo=(lastData.ativo==='DOL')?'USDBRL=X':'^BVSP';
+    // o site do gráfico usa o contrato contínuo (mesmos nomes do GetAsset do indicador), não o à vista
+    var simbolo=(lastData.ativo==='DOL')?'DOLFUT':'WINFUT';
     abrirGraficoCompletoWalls(simbolo, function(){ return lastData; })
       .catch(function(e){ showErr(e.message||'Não foi possível abrir o gráfico.'); });
   };

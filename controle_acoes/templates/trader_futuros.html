@@ -118,6 +118,7 @@
       <h3 class="tf-titulo" style="margin:1.4rem 0 0;">Jumba Walls — gama por strike e vencimento</h3>
       <button type="button" id="tf-exportar" class="btn btn-secondary btn-sm">⬇️ Exportar Walls</button>
       <button type="button" id="tf-ver-grafico" class="btn btn-secondary btn-sm">📈 Ver Gráfico</button>
+      <button type="button" id="tf-grafico-ext" class="btn btn-secondary btn-sm" title="Abre o gráfico completo do ativo (acoes.receberbemevinhos.com.br), candles de 5min, já com os walls desenhados como linhas horizontais (Ibovespa à vista / Dólar à vista)">🌐 Gráfico Completo</button>
     </div>
     <p class="tf-sub">Vencimento selecionado, o próximo, e os demais somados</p>
     <div class="tf-legenda">
@@ -152,6 +153,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="{{ url_for('static', filename='js/walls_export.js') }}"></script>
 <script src="{{ url_for('static', filename='js/walls_chart_modal.js') }}"></script>
+<script src="{{ url_for('static', filename='js/walls_ext.js') }}"></script>
 <script>
 (function(){
   var elA=document.getElementById('tf-ativo'), elE=document.getElementById('tf-exp');
@@ -562,6 +564,16 @@
       dia: dia,
       spot: lastData.spot
     });
+  };
+
+  // ── Gráfico Completo: gráfico externo do índice/dólar à vista com os walls (mesmas linhas do gráfico interno) ──
+  document.getElementById('tf-grafico-ext').onclick=function(){
+    if(!lastData || !lastData.walls || !lastData.walls.length){
+      showErr('Gere o gráfico antes de abrir o gráfico completo.'); return;
+    }
+    var simbolo=(lastData.ativo==='DOL')?'USDBRL=X':'^BVSP';
+    abrirGraficoCompletoWalls(simbolo, function(){ return lastData; })
+      .catch(function(e){ showErr(e.message||'Não foi possível abrir o gráfico.'); });
   };
 
   var qs=new URLSearchParams(location.search);

@@ -116,6 +116,7 @@
       <div style="display:flex;gap:.5rem;">
         <button type="button" id="mg-exportar" class="btn btn-secondary btn-sm">⬇️ Exportar Walls</button>
         <button type="button" id="mg-ver-grafico" class="btn btn-secondary btn-sm">📈 Ver Gráfico</button>
+        <button type="button" id="mg-grafico-ext" class="btn btn-secondary btn-sm" title="Abre o gráfico completo do ativo (acoes.receberbemevinhos.com.br), candles de 5min, já com os walls desenhados como linhas horizontais">🌐 Gráfico Completo</button>
       </div>
     </div>
     <p class="mg-nota" style="margin-top:.4rem;">
@@ -209,6 +210,7 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="{{ url_for('static', filename='js/walls_export.js') }}"></script>
 <script src="{{ url_for('static', filename='js/walls_chart_modal.js') }}"></script>
+<script src="{{ url_for('static', filename='js/walls_ext.js') }}"></script>
 <script>
 (function(){
   var elT=document.getElementById('mg-ticker'), elTL=document.getElementById('mg-ticker-livre');
@@ -618,6 +620,15 @@
       dia: dia,
       spot: lastData.spot
     });
+  };
+
+  // ── Gráfico Completo: gráfico externo do ativo com os walls (mesmas linhas do gráfico interno) ──
+  document.getElementById('mg-grafico-ext').onclick=function(){
+    if(!lastData || !lastData.paredes || !lastData.paredes.length){
+      showErr('Gere o gráfico antes de abrir o gráfico completo.'); return;
+    }
+    abrirGraficoCompletoWalls(lastData.ticker, function(){ return lastData; })
+      .catch(function(e){ showErr(e.message||'Não foi possível abrir o gráfico.'); });
   };
 
   // Abas da explicação

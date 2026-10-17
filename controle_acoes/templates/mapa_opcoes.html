@@ -210,6 +210,8 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
                 title="Gera o indicador NTSL (Profit) com os strikes de maior posição em aberto como walls">⬇️ Exportar Walls</button>
         <button type="button" id="mo-ver-grafico" class="btn btn-secondary btn-sm"
                 title="Candles de 5min do último dia útil com os walls do dia útil anterior">📈 Ver Gráfico</button>
+        <button type="button" id="mo-grafico-ext" class="btn btn-secondary btn-sm"
+                title="Abre o gráfico completo do ativo (acoes.receberbemevinhos.com.br) já com os walls desenhados como linhas horizontais">🌐 Gráfico Completo</button>
       </span>
     </div>
     <div id="mo-brush-wrap">
@@ -725,6 +727,31 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
         baixarTxt(gerarWallsNTSL(pl, [pl.ticker]), 'walls_'+pl.ticker+'.txt');
       });
     });
+  };
+
+  // Gráfico completo externo: mesmo link do botão "Graf" do site (?action=ticker&view=TICKER?num=N) + sufixo
+  // _sup(preço,cor,texto;...) com os walls — abaixo do spot = Suporte (verde), acima = Resistencia (vermelho).
+  document.getElementById('mo-grafico-ext').onclick=function(){
+    if(!lastData || !lastData.barras || !lastData.barras.length){ showErr('Gere o mapa antes de abrir o gráfico.'); return; }
+    var btn=this;
+    var win=window.open('about:blank','_blank');     // abre já no clique (evita o bloqueio de pop-up) e redireciona depois
+    var aberto=false;
+    comBotao(btn, '⏳ Abrindo…', function(){
+      var abs=(!lastData.modo || lastData.modo==='abs') ? Promise.resolve(lastData) : mapaAbsoluto(elData.value||'');
+      return abs.then(function(m){
+        var pl=wallsPayload(m), top=extrairTop16Walls(pl), spot=Number(pl.spot);
+        if(!top.length) throw new Error('Sem posições em aberto para montar os walls.');
+        var sup=top.map(function(w){
+          var abaixo=isFinite(spot) ? w.strike<spot : true;
+          return Number(w.strike).toFixed(2)+','+(abaixo?'green':'red')+','+(abaixo?'Suporte':'Resistencia');
+        }).join(';');
+        var meta=document.querySelector('meta[name="receberbem-num"]'), num=meta?(meta.content||'').trim():'';
+        var url='https://acoes.receberbemevinhos.com.br/?action=ticker&view='+encodeURIComponent(pl.ticker)
+          +(num?('?num='+encodeURIComponent(num)):'')+'_sup('+sup+')';
+        aberto=true;
+        if(win){ win.location.href=url; } else { window.open(url,'_blank'); }
+      });
+    }).then(function(){ if(!aberto && win){ win.close(); } });
   };
 
   document.getElementById('mo-ver-grafico').onclick=function(){

@@ -205,6 +205,12 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
       <span style="font-size:.75rem;color:var(--text-secondary);white-space:nowrap;">
         arraste as alças abaixo, ou roda do mouse/arraste no gráfico
       </span>
+      <span style="display:inline-flex;gap:.5rem;margin-left:auto;">
+        <button type="button" id="mo-exportar" class="btn btn-secondary btn-sm"
+                title="Gera o indicador NTSL (Profit) com os strikes de maior posição em aberto como walls">⬇️ Exportar Walls</button>
+        <button type="button" id="mo-ver-grafico" class="btn btn-secondary btn-sm"
+                title="Candles de 5min do último dia útil com os walls do dia útil anterior">📈 Ver Gráfico</button>
+      </span>
     </div>
     <div id="mo-brush-wrap">
       <div id="mo-brush-track">
@@ -281,6 +287,8 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<script src="{{ url_for('static', filename='js/walls_export.js') }}"></script>
+<script src="{{ url_for('static', filename='js/walls_chart_modal.js') }}"></script>
 <script>
 (function(){
   // Registro explícito do plugin de zoom — o UMD normalmente se auto-registra
@@ -659,6 +667,85 @@ table.mo-tab tr:hover{background:rgba(37,99,235,.12);}
       .catch(function(){ elLoad.style.display='none'; showErr('Falha de rede.'); elHint.style.display='block'; });
   }
   document.getElementById('mo-buscar').onclick=buscar;
+
+  // ── Exportar Walls / Ver Gráfico ────────────────────────────────────────
+  // Walls = strikes com maior posição em aberto (total) do lado escolhido (CALL/PUT), sempre em valores
+  // absolutos — mesmo com a tela em "Variação", as barras de variação não servem de wall.
+  function isoDia(dt){ return dt.getFullYear()+'-'+('0'+(dt.getMonth()+1)).slice(-2)+'-'+('0'+dt.getDate()).slice(-2); }
+  function somaDias(iso, n){ var p=iso.split('-'); var dt=new Date(+p[0], +p[1]-1, +p[2]+n); return isoDia(dt); }
+  // dia útil de pregão: pula fim de semana e feriado (proximoDiaUtilISO vem de walls_export.js)
+  function ehDiaUtil(iso){ return proximoDiaUtilISO(somaDias(iso,-1))===iso; }
+  function diaUtilAnterior(iso){ var d=somaDias(iso,-1); while(!ehDiaUtil(d)) d=somaDias(d,-1); return d; }
+  // último dia útil: hoje, se for pregão e já passou das 10h; senão o pregão anterior
+  function ultimoDiaUtil(){
+    var agora=new Date(), hoje=isoDia(agora);
+    if(ehDiaUtil(hoje) && agora.getHours()>=10) return hoje;
+    return diaUtilAnterior(hoje);
+  }
+
+  // Mapa em valores absolutos (soma dos vencimentos selecionados) das posições de uma data (vazio = mais recente)
+  function mapaAbsoluto(dataISO){
+    var t=tickerAtual();
+    var exps=(lastData && lastData.exps_combinados) ? lastData.exps_combinados.slice()
+            : (lastData && lastData.exp ? [lastData.exp] : expSelecionados.slice());
+    if(!t || !exps.length) return Promise.reject(new Error('Escolha o ativo e ao menos um vencimento.'));
+    return Promise.all(exps.map(function(e){
+      return fetch('/api/mapa-opcoes/'+encodeURIComponent(t)+'?exp='+encodeURIComponent(e)+'&side='+side+'&modo=abs'
+          +(dataISO?('&data='+encodeURIComponent(dataISO)):''))
+        .then(function(r){ return r.json().then(function(j){ return {ok:r.ok, exp:e, j:j}; }); });
+    })).then(function(rs){
+      var m=agregaMapas(rs);
+      if(!m){ throw new Error((rs[0]&&rs[0].j&&rs[0].j.error)||'Sem posições em aberto para essa data.'); }
+      return m;
+    });
+  }
+
+  function wallsPayload(m){
+    return {
+      ticker: m.ticker, spot: m.spot, data_ref: m.data_ref,
+      paredes: (m.barras||[]).filter(function(b){ return b && isFinite(b.strike) && isFinite(b.total); })
+                .map(function(b){ return {strike:b.strike, total:b.total}; })
+    };
+  }
+
+  function comBotao(btn, textoEspera, fn){
+    var orig=btn.textContent; btn.disabled=true; btn.textContent=textoEspera; clearErr();
+    return fn().catch(function(e){ showErr(e && e.message ? e.message : 'Falha ao processar.'); })
+      .then(function(){ btn.disabled=false; btn.textContent=orig; });
+  }
+
+  document.getElementById('mo-exportar').onclick=function(){
+    if(!lastData || !lastData.barras || !lastData.barras.length){ showErr('Gere o mapa antes de exportar.'); return; }
+    var btn=this;
+    comBotao(btn, '⏳ Exportando…', function(){
+      var abs=(!lastData.modo || lastData.modo==='abs') ? Promise.resolve(lastData) : mapaAbsoluto(elData.value||'');
+      return abs.then(function(m){
+        var pl=wallsPayload(m);
+        if(!pl.paredes.length) throw new Error('Sem posições em aberto para exportar.');
+        baixarTxt(gerarWallsNTSL(pl, [pl.ticker]), 'walls_'+pl.ticker+'.txt');
+      });
+    });
+  };
+
+  document.getElementById('mo-ver-grafico').onclick=function(){
+    if(!lastData || !lastData.barras || !lastData.barras.length){ showErr('Gere o mapa antes de ver o gráfico.'); return; }
+    var btn=this;
+    var diaCandles=ultimoDiaUtil(), diaWalls=diaUtilAnterior(diaCandles);
+    comBotao(btn, '⏳ Carregando…', function(){
+      return mapaAbsoluto(diaWalls).then(function(m){
+        var pl=wallsPayload(m);
+        if(!pl.paredes.length) throw new Error('Sem posições em aberto em '+dataBR(diaWalls)+' para montar os walls.');
+        var refTxt=dataBR(m.data_ref||diaWalls);
+        abrirGraficoWalls({
+          titulo: pl.ticker+' — candles de '+dataBR(diaCandles)+' · walls das posições de '+refTxt,
+          endpoint: '/api/walls-candles/'+encodeURIComponent(pl.ticker)+'?dia='+encodeURIComponent(diaCandles)+'&simbolo='+encodeURIComponent(pl.ticker),
+          dados: pl,
+          dia: diaCandles,
+          spot: pl.spot
+        });
+      });
+    });
+  };
 
   function render(d){
     var lbl=d.side==='call'?'CALL':'PUT';

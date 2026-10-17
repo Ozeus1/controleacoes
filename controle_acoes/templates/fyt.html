@@ -1798,6 +1798,86 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       q = window.__BF.query();
       if (usarBrapi) q.set('source', 'brapi');
       url = '/api/fyt-borboleta/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'collar') {
+      var ca = clDual('a'), cp = clDual('p'), cf = clDual('f');
+      var fv = document.getElementById('fyt-cl-fence').value;
+      q = new URLSearchParams({
+        exp_v:     document.getElementById('fyt-cl-exp').value,
+        off_p:     document.getElementById('fyt-cl-offp').value,
+        risco_max: document.getElementById('fyt-cl-risco').value || '3',
+        fence:     fv,
+        f_min:     (fv === 'range' && clReady) ? cf[0] : '',
+        f_max:     (fv === 'range' && clReady) ? cf[1] : '',
+        alvo:      document.getElementById('fyt-cl-alvo').value,
+        a_min:     clReady ? ca[0] : '',
+        a_max:     clReady ? ca[1] : '',
+        p_min:     cp[0], p_max: cp[1]
+      });
+      if (usarBrapi) q.set('source', 'brapi');
+      url = '/api/fyt-collar/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'fence') {
+      var fa = fcDual('a'), fp = fcDual('p');
+      q = new URLSearchParams({
+        exp:     document.getElementById('fyt-fc-exp').value,
+        dist:    String(Math.max(0, parseInt(document.getElementById('fyt-fc-dist').value, 10) || 0)),
+        asa_min: String(Math.max(0, parseInt(document.getElementById('fyt-fc-asa').value, 10) || 0)),
+        alvo:    document.getElementById('fyt-fc-alvo').value,
+        a_min:   fcReady ? fa[0] : '',
+        a_max:   fcReady ? fa[1] : '',
+        p_min:   fp[0], p_max: fp[1]
+      });
+      if (usarBrapi) q.set('source', 'brapi');
+      url = '/api/fyt-fence/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'seagull') {
+      var sa = sgDual('a'), sp = sgDual('p');
+      q = new URLSearchParams({
+        exp:     document.getElementById('fyt-sg-exp').value,
+        dist:    String(Math.max(0, parseInt(document.getElementById('fyt-sg-dist').value, 10) || 0)),
+        asa_min: String(Math.max(0, parseInt(document.getElementById('fyt-sg-asa').value, 10) || 0)),
+        alvo:    document.getElementById('fyt-sg-alvo').value,
+        a_min:   sgReady ? sa[0] : '',
+        a_max:   sgReady ? sa[1] : '',
+        p_min:   sp[0], p_max: sp[1]
+      });
+      if (usarBrapi) q.set('source', 'brapi');
+      url = '/api/fyt-seagull/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'box3') {
+      var bk = bxDual();
+      q = new URLSearchParams({
+        exp:   document.getElementById('fyt-bx-exp').value,
+        k_min: bxReady ? bk[0] : '',
+        k_max: bxReady ? bk[1] : ''
+      });
+      if (usarBrapi) q.set('source', 'brapi');
+      url = '/api/fyt-box3/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'slide') {
+      var kk = slDual('k'), pp = slDual('p');
+      q = new URLSearchParams({
+        tipo:      document.getElementById('fyt-sl-tipo').value,
+        exp_v:     document.getElementById('fyt-sl-exp-v').value,
+        exp_c:     document.getElementById('fyt-sl-exp-c').value,
+        asa_cv:    document.getElementById('fyt-sl-asa-cv').value,
+        asa_vv:    document.getElementById('fyt-sl-asa-vv').value,
+        range_min: document.getElementById('fyt-sl-range').value || '0',
+        k_min:     slKReady ? kk[0] : '',
+        k_max:     slKReady ? kk[1] : '',
+        p_min:     pp[0], p_max: pp[1]
+      });
+      if (usarBrapi) q.set('source', 'brapi');
+      url = '/api/fyt-slide/' + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'straddle_ha') {
+      var kv = shaFaixa();
+      q = new URLSearchParams({
+        tipo:    document.getElementById('fyt-sha-tipo').value,
+        exp_v:   document.getElementById('fyt-sha-exp-v').value,
+        exp_c:   document.getElementById('fyt-sha-exp-c').value,
+        dist:    document.getElementById('fyt-sha-dist').value,
+        qtd_min: String(Math.max(1, parseInt(document.getElementById('fyt-sha-qtd').value, 10) || 2)),
+        k_min:   kv[0] != null ? kv[0] : '',
+        k_max:   kv[1] != null ? kv[1] : ''
+      });
+      if (usarBrapi) q.set('source', 'brapi');
+      url = '/api/fyt-straddle-ha/' + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'broken_wing') {
       q = window.__BW.query();
       if (usarBrapi) q.set('source', 'brapi');

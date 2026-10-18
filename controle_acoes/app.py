@@ -22838,6 +22838,15 @@ def config():
             else:
                 flash('Atualização de opções de volta à OpLab.', 'success')
 
+        elif action == 'save_mt5_interval':
+            try:
+                m = int(request.form.get('mt5_interval', '2'))
+            except ValueError:
+                m = 2
+            if m in (2, 3, 5):
+                Settings.set_value('mt5_interval', str(m), user_id=current_user.id)
+                flash(f'MT5 na VPS: atualização a cada {m} min no pregão.', 'success')
+
         elif action == 'save_radar_key':
             key = request.form.get('radar_api_key', '').strip()
             if key and not key.startswith('radar_'):
@@ -22897,6 +22906,7 @@ def config():
                            receberbem_num=receberbem_num,
                            diario_trade_token_ok=diario_trade_token_ok,
                            radar_key_propria=radar_key_propria,
+                           mt5_interval=_mt5_interval_min(current_user.id),
                            ticker_map_text=ticker_map_text,
                            option_map_text=option_map_text,
                            selic_rate=selic_rate,
@@ -27045,10 +27055,21 @@ def mt5_radar_refresh(uid, max_wait=150):
 _mt5_radar_state = {}     # uid -> {'busy', 'ok', 'msg', 'ts', 'ini'}
 
 
-def _mt5_radar_intervalo():
-    """30 s no pregão (o coletor varre a cada 20 s); fora dele, a cada 10 min."""
+def _mt5_interval_min(uid):
+    """Intervalo de atualização escolhido pelo usuário no modo MT5 (2, 3 ou 5 min; padrão 2)."""
+    try:
+        m = int(Settings.get_value('mt5_interval', user_id=uid, default='2'))
+    except (TypeError, ValueError):
+        m = 2
+    return m if m in (2, 3, 5) else 2
+
+
+def _mt5_radar_intervalo(uid):
+    """No pregão: o intervalo escolhido (2/3/5 min); fora dele, a cada 10 min."""
     n = now_brt()
-    return 30 if (n.weekday() < 5 and (9, 50) <= (n.hour, n.minute) < (18, 15)) else 600
+    if n.weekday() < 5 and (9, 50) <= (n.hour, n.minute) < (18, 15):
+        return _mt5_interval_min(uid) * 60
+    return 600
 
 
 def _mt5_radar_kick(uid, force=False):
@@ -27057,7 +27078,7 @@ def _mt5_radar_kick(uid, force=False):
     agora = time.time()
     if st['busy'] and agora - st['ini'] > 240:
         st['busy'] = False                      # pedido travado: libera
-    if st['busy'] or (not force and agora - st['ini'] < _mt5_radar_intervalo()):
+    if st['busy'] or (not force and agora - st['ini'] < _mt5_radar_intervalo(uid)):
         return st
     st['busy'], st['ini'] = True, agora
 
@@ -27073,6 +27094,20 @@ def _mt5_radar_kick(uid, force=False):
 
     threading.Thread(target=_run, daemon=True).start()
     return st
+
+
+@app.route('/api/mt5-intervalo', methods=['POST'])
+@login_required
+def api_mt5_intervalo():
+    """Grava o intervalo de atualização do modo MT5 (2, 3 ou 5 minutos)."""
+    try:
+        m = int((request.get_json(silent=True) or {}).get('minutes'))
+    except (TypeError, ValueError):
+        m = 0
+    if m not in (2, 3, 5):
+        return jsonify({'error': 'Escolha 2, 3 ou 5 minutos.'}), 400
+    Settings.set_value('mt5_interval', str(m), user_id=current_user.id)
+    return jsonify({'ok': True, 'minutes': m})
 
 
 @app.route('/api/mt5-radar/teste', methods=['POST'])
@@ -27600,6 +27635,7 @@ def api_current_quotes():
         'oplab_enabled':     oplab_auto,
         'oplab_interval_ms': oplab_interval * 60 * 1000,
         'mt5_status':        ({'ok': mt5_st['ok'], 'msg': mt5_st['msg'], 'busy': mt5_st['busy']} if mt5_st else None),
+        'mt5_interval_min':  _mt5_interval_min(uid),
     })
 
 

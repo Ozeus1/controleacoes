@@ -488,7 +488,7 @@ document.getElementById('oplab-test-btn').addEventListener('click', function() {
     <p style="color:var(--text-secondary); font-size:.88rem; margin-bottom:1rem;">
         Com o modo <strong>MT5 na VPS</strong> ativo, o site pede ao Radar as cotações do MetaTrader 5 da sua VPS e grava no banco.
         O pedido entra numa fila, o coletor do MT5 varre a fila a cada ~20 s e o site consulta o resultado — por isso a atualização
-        leva de ~20 s a 1 min (e renova sozinha a cada ~30 s no pregão enquanto uma tela de cotações estiver aberta).
+        leva de ~20 s a 1 min (e renova sozinha no pregão, no intervalo escolhido abaixo, enquanto uma tela de cotações estiver aberta).
         Usa a <strong>chave de integração do Radar</strong> (começa com <code>radar_</code>, em "API da análise gráfica"; guarde-a aqui ou em <code>RADAR_API_KEY</code> no .env) —
         não a chave gráfica de seis dígitos nem a do coletor.
     </p>
@@ -501,6 +501,15 @@ document.getElementById('oplab-test-btn').addEventListener('click', function() {
         </div>
         <button type="submit" class="btn btn-primary">Salvar chave</button>
         <button type="button" id="mt5-teste-btn" class="btn btn-secondary">Testar com PETR4</button>
+    </form>
+    <form method="POST" action="{{ url_for('config') }}" style="display:flex; gap:.75rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem;">
+        <input type="hidden" name="action" value="save_mt5_interval">
+        <label for="mt5_interval" style="margin:0;">Atualizar ações, ETFs e opções a cada</label>
+        <select id="mt5_interval" name="mt5_interval" style="width:auto; margin:0;">
+            {% for m in (2, 3, 5) %}<option value="{{ m }}" {{ 'selected' if mt5_interval == m else '' }}>{{ m }} min</option>{% endfor %}
+        </select>
+        <button type="submit" class="btn btn-secondary btn-sm">Salvar intervalo</button>
+        <span style="color:var(--text-secondary); font-size:.82rem;">(no pregão, seg–sex 9h50–18h15; fora dele, a cada 10 min). A escolha também pode ser feita no selo ⚡ das telas Ações e Opções.</span>
     </form>
     <div id="mt5-teste-res" style="display:none; margin-bottom:1rem; padding:.75rem 1rem; border-radius:8px;
          background:var(--hover-bg); border:1px solid var(--border-color); font-size:.85rem; white-space:pre-wrap;"></div>

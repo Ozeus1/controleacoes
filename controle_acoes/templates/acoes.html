@@ -712,10 +712,35 @@
         b.textContent = text;
         document.body.appendChild(b);
     }
+    function makeMt5Badge(data) {
+        if (document.getElementById('live-badge')) return;
+        var b = document.createElement('div');
+        b.id = 'live-badge';
+        b.style.cssText = 'position:fixed;bottom:1rem;right:1rem;background:var(--success-color);color:#fff;padding:0.35rem 0.9rem;border-radius:20px;font-size:0.85rem;z-index:9999;box-shadow:0 2px 8px rgba(0,0,0,0.3);display:flex;align-items:center;gap:.4rem;';
+        b.innerHTML = '<span>⚡ MT5 ao vivo · atualiza a cada</span>' +
+            '<select id="mt5-int" title="Intervalo de atualização das cotações (ações, ETFs e opções)" style="background:rgba(0,0,0,.28);color:#fff;border:none;border-radius:10px;padding:.1rem .35rem;font-size:.82rem;cursor:pointer;">' +
+            '<option value="2">2 min</option><option value="3">3 min</option><option value="5">5 min</option></select>' +
+            '<span id="mt5-st"></span>';
+        document.body.appendChild(b);
+        var sel = b.querySelector('select');
+        sel.value = String(data.mt5_interval_min || 2);
+        sel.addEventListener('change', function() {
+            fetch("{{ url_for('api_mt5_intervalo') }}", {method: 'POST', headers: {'Content-Type': 'application/json'},
+                  body: JSON.stringify({minutes: parseInt(sel.value, 10)})}).catch(function() {});
+        });
+        updMt5Badge(data);
+    }
+    function updMt5Badge(data) {
+        var s = data.mt5_status, st = document.getElementById('mt5-st'), b = document.getElementById('live-badge');
+        if (!s || !st) return;
+        st.textContent = s.busy ? '⏳' : (s.ok === false ? '⚠️' : (s.ok ? '✓' : ''));
+        if (b) b.title = s.msg || '';
+    }
     var _timer = null;
     function poll(isMt5) {
         fetch(POLL_URL).then(r => r.json()).then(function(data) {
             if (data.mode === 'mt5' || data.oplab_enabled) applyQuotes(data.assets);
+            if (data.mode === 'mt5') updMt5Badge(data);
         }).catch(function(){});
     }
     fetch(POLL_URL).then(r => r.json()).then(function(data) {
@@ -724,7 +749,7 @@
         applyQuotes(data.assets);
         var interval = data.mode === 'mt5' ? MT5_INTERVAL : data.oplab_interval_ms;
         _timer = setInterval(poll, interval);
-        if (data.mode === 'mt5') makeBadge('⚡ MT5 ao vivo', 'var(--success-color)');
+        if (data.mode === 'mt5') makeMt5Badge(data);
         else makeBadge('🔄 OpLab ' + (data.oplab_interval_ms/60000) + 'min', '#2563eb');
     }).catch(function(){});
 })();

@@ -80,9 +80,9 @@
                         border: 2px solid {{ 'var(--success-color)' if quote_mode == 'mt5' else 'var(--border-color)' }};
                         background: {{ 'var(--hover-bg)' if quote_mode == 'mt5' else 'var(--card-bg)' }};">
                 <div style="font-size:1.3rem;">⚡</div>
-                <strong>MT5 Feeder (Tempo Real)</strong>
+                <strong>MT5 na VPS (Radar)</strong>
                 <p style="color:var(--text-secondary); font-size:.85rem; margin:.4rem 0 0;">
-                    Dados do MetaTrader 5 em tempo real. Requer feeder rodando no PC.
+                    Cotações do MetaTrader 5 que roda na sua VPS, pedidas pelo site ao Radar (renova a cada ~30 s no pregão).
                 </p>
                 {% if quote_mode == 'mt5' %}<span style="display:inline-block;margin-top:.5rem;padding:.15rem .6rem;background:var(--success-color);color:white;border-radius:20px;font-size:.75rem;">✓ Ativo</span>{% endif %}
             </div>
@@ -94,7 +94,7 @@
             <button type="submit" name="quote_mode" value="brapi" class="btn btn-secondary"
                     style="{{ 'background-color:#f59e0b;color:white;' if quote_mode == 'brapi' else '' }}"
                     {{ 'title="Configure a chave de API (BRAPI) acima"' if not brapi_ok else '' }}>Usar BRAPI</button>
-            <button type="submit" name="quote_mode" value="mt5"   class="btn {{ 'btn-success' if quote_mode == 'mt5'   else 'btn-secondary' }}">Usar MT5 Feeder</button>
+            <button type="submit" name="quote_mode" value="mt5"   class="btn {{ 'btn-success' if quote_mode == 'mt5'   else 'btn-secondary' }}">Usar MT5 na VPS</button>
         </form>
     </div>
 
@@ -480,58 +480,77 @@ document.getElementById('oplab-test-btn').addEventListener('click', function() {
 </script>
 
 <div style="border-top: 1px solid var(--border-color); padding-top: 2rem; margin-top: 2rem;">
-    <div style="display:flex; align-items:center; flex-wrap:wrap; gap:1rem; margin-bottom:1rem;">
-        <h3 style="margin:0;">Gerador de config.py para MT5 Feeder</h3>
-        <div style="display:flex; gap:.5rem; flex-wrap:wrap; margin-left:auto;">
-            <a href="{{ url_for('download_config_py') }}" class="btn btn-primary btn-sm">
-                ⬇️ Baixar config.py
-            </a>
-        </div>
+    <div style="display:flex; align-items:center; flex-wrap:wrap; gap:.75rem; margin-bottom:.75rem;">
+        <h3 style="margin:0;">MT5 na VPS (Radar)</h3>
+        <span style="padding:.2rem .7rem; border-radius:20px; font-size:.78rem; border:1px solid var(--border-color);
+              color:var(--text-secondary);">{{ 'chave configurada' if radar_key_propria else 'chave NÃO configurada' }}</span>
     </div>
+    <p style="color:var(--text-secondary); font-size:.88rem; margin-bottom:1rem;">
+        Com o modo <strong>MT5 na VPS</strong> ativo, o site pede ao Radar as cotações do MetaTrader 5 da sua VPS e grava no banco.
+        O pedido entra numa fila, o coletor do MT5 varre a fila a cada ~20 s e o site consulta o resultado — por isso a atualização
+        leva de ~20 s a 1 min (e renova sozinha a cada ~30 s no pregão enquanto uma tela de cotações estiver aberta).
+        Usa a <strong>chave de integração do Radar</strong> (começa com <code>radar_</code>, em "API da análise gráfica"; guarde-a aqui ou em <code>RADAR_API_KEY</code> no .env) —
+        não a chave gráfica de seis dígitos nem a do coletor.
+    </p>
+    <form method="POST" action="{{ url_for('config') }}" style="display:flex; gap:.75rem; flex-wrap:wrap; align-items:flex-end; margin-bottom:1rem;">
+        <input type="hidden" name="action" value="save_radar_key">
+        <div class="form-group" style="margin:0; flex:1; min-width:280px;">
+            <label for="radar_api_key">Chave de integração do Radar</label>
+            <input type="password" id="radar_api_key" name="radar_api_key" placeholder="radar_…"
+                   autocomplete="off" style="margin-bottom:0;">
+        </div>
+        <button type="submit" class="btn btn-primary">Salvar chave</button>
+        <button type="button" id="mt5-teste-btn" class="btn btn-secondary">Testar com PETR4</button>
+    </form>
+    <div id="mt5-teste-res" style="display:none; margin-bottom:1rem; padding:.75rem 1rem; border-radius:8px;
+         background:var(--hover-bg); border:1px solid var(--border-color); font-size:.85rem; white-space:pre-wrap;"></div>
 
     <div style="background:var(--hover-bg); border:1px solid var(--border-color); border-radius:8px;
                 padding:.75rem 1rem; margin-bottom:1.5rem; font-size:.85rem; color:var(--text-secondary);">
-        Fontes incluídas automaticamente:
+        Símbolos pedidos ao MT5 (até 50 por pedido):
         <strong style="color:var(--text-primary);">
             Carteira (Ações/FIIs/ETFs) · Opções lançadas · Pernas de Estruturadas abertas · Venda de Puts · Ativos subjacentes
         </strong>
     </div>
 
     <div style="margin-bottom: 1.5rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-            <strong>TICKER_MAP</strong>
-            <button onclick="copyText('tickerMapBlock', this)" class="btn btn-secondary btn-sm">Copiar</button>
-        </div>
+        <strong>Ativos</strong>
         <pre id="tickerMapBlock" style="background: var(--bg-color); color: var(--text-primary); padding: 1rem;
              border-radius: 0.5rem; border: 1px solid var(--border-color); font-family: monospace;
-             white-space: pre; overflow-x: auto; font-size: 0.85rem; max-height:300px;">{{ ticker_map_text }}</pre>
+             white-space: pre; overflow-x: auto; font-size: 0.85rem; max-height:240px; margin-top:.5rem;">{{ ticker_map_text }}</pre>
     </div>
-
     <div style="margin-bottom: 1.5rem;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-            <strong>OPTION_MAP</strong>
-            <button onclick="copyText('optionMapBlock', this)" class="btn btn-secondary btn-sm">Copiar</button>
-        </div>
+        <strong>Opções</strong>
         <pre id="optionMapBlock" style="background: var(--bg-color); color: var(--text-primary); padding: 1rem;
              border-radius: 0.5rem; border: 1px solid var(--border-color); font-family: monospace;
-             white-space: pre; overflow-x: auto; font-size: 0.85rem; max-height:300px;">{{ option_map_text }}</pre>
+             white-space: pre; overflow-x: auto; font-size: 0.85rem; max-height:240px; margin-top:.5rem;">{{ option_map_text }}</pre>
     </div>
 
     <script>
-    function copyText(id, btn) {
-        const text = document.getElementById(id).textContent;
-        navigator.clipboard.writeText(text).then(function() {
-            const orig = btn.textContent;
-            btn.textContent = '✓ Copiado!';
-            btn.classList.add('btn-success');
-            btn.classList.remove('btn-secondary');
-            setTimeout(function() {
-                btn.textContent = orig;
-                btn.classList.remove('btn-success');
-                btn.classList.add('btn-secondary');
-            }, 2000);
-        });
-    }
+    document.getElementById('mt5-teste-btn').addEventListener('click', function () {
+        var btn = this, box = document.getElementById('mt5-teste-res');
+        btn.disabled = true; box.style.display = 'block'; box.textContent = '⏳ Pedido enviado ao MT5… (o coletor responde em até ~20 s)';
+        fetch('/api/mt5-radar/teste', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'PETR4' }) })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (!j.ok) { box.textContent = '⚠️ ' + (j.error || 'falha ao pedir'); btn.disabled = false; return; }
+                var t0 = Date.now();
+                (function consulta() {
+                    fetch('/api/mt5-radar/teste/' + encodeURIComponent(j.id)).then(function (r) { return r.json(); }).then(function (s) {
+                        if (s.ok && s.state === 'done') {
+                            var q = ((s.result || {}).quotes || [])[0] || {};
+                            box.textContent = '✅ MT5 respondeu\n' + JSON.stringify(q, null, 2); btn.disabled = false; return;
+                        }
+                        if (!s.ok || s.state === 'error' || s.state === 'expired') {
+                            box.textContent = '⚠️ ' + (s.error || s.state || 'falha'); btn.disabled = false; return;
+                        }
+                        if (Date.now() - t0 > 150000) { box.textContent = '⚠️ Sem resposta em 150 s — o coletor do MT5 está ativo e o símbolo existe na corretora?'; btn.disabled = false; return; }
+                        setTimeout(consulta, 4000);
+                    }).catch(function (e) { box.textContent = '⚠️ ' + e; btn.disabled = false; });
+                })();
+            })
+            .catch(function (e) { box.textContent = '⚠️ ' + e; btn.disabled = false; });
+    });
     </script>
 </div>
 

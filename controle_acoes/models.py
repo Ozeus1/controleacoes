@@ -204,7 +204,7 @@ class Settings(db.Model):
     
     # Unique constraint combo ideally: (user_id, key)
 
-    _ENCRYPTED_KEYS = {'brapi_token', 'oplab_token', 'diario_trade_token'}
+    _ENCRYPTED_KEYS = {'brapi_token', 'oplab_token', 'diario_trade_token', 'radar_api_key'}
 
     @staticmethod
     def get_value(key, user_id, default=None):

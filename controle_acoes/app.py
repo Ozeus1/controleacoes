@@ -22788,7 +22788,7 @@ def config():
                     return redirect(url_for('config'))
             if mode in ('yahoo', 'mt5', 'brapi'):
                 Settings.set_value('quote_mode', mode, user_id=current_user.id)
-                label = {'yahoo': 'Yahoo Finance', 'mt5': 'MT5 Feeder', 'brapi': 'BRAPI'}[mode]
+                label = {'yahoo': 'Yahoo Finance', 'mt5': 'MT5 na VPS (Radar)', 'brapi': 'BRAPI'}[mode]
                 flash(f'Modo de cotação alterado para: {label}', 'success')
 
         elif action == 'save_selic':
@@ -22838,6 +22838,16 @@ def config():
             else:
                 flash('Atualização de opções de volta à OpLab.', 'success')
 
+        elif action == 'save_radar_key':
+            key = request.form.get('radar_api_key', '').strip()
+            if key and not key.startswith('radar_'):
+                flash('A chave de integração do Radar começa com "radar_".', 'warning')
+            elif key:
+                Settings.set_value('radar_api_key', key, user_id=current_user.id)
+                flash('Chave do Radar (MT5 na VPS) salva com sucesso!', 'success')
+            else:
+                flash('Chave não pode ser vazia.', 'warning')
+
         elif action == 'save_receberbem_num':
             num = request.form.get('receberbem_num', '').strip()
             if num.isdigit():
@@ -22866,6 +22876,8 @@ def config():
                                             user_id=current_user.id, default='false') == 'true'
     receberbem_num  = Settings.get_value('receberbem_num', user_id=current_user.id, default='')
     diario_trade_token_ok = bool(Settings.get_value('diario_trade_token', user_id=current_user.id))
+    radar_key_propria = bool(Settings.get_value('radar_api_key', user_id=current_user.id)
+                             or os.environ.get('RADAR_API_KEY'))
 
     uid = current_user.id
     _, _, ticker_map_text, option_map_text = _build_ticker_maps(uid)
@@ -22884,78 +22896,12 @@ def config():
                            opt_fallback_brapi=opt_fallback_brapi,
                            receberbem_num=receberbem_num,
                            diario_trade_token_ok=diario_trade_token_ok,
+                           radar_key_propria=radar_key_propria,
                            ticker_map_text=ticker_map_text,
                            option_map_text=option_map_text,
                            selic_rate=selic_rate,
                            test_result=test_result,
                            success=test_success)
-
-@app.route('/download_config_py')
-@login_required
-def download_config_py():
-    """Gera e retorna o arquivo config.py completo para o mt5_feeder."""
-    from flask import Response
-    uid = current_user.id
-
-    asset_tickers, option_tickers, _, _ = _build_ticker_maps(uid)
-
-    ticker_lines = sorted(
-        [f'    "{t}": "{t}",  # {tp}' for t, tp in asset_tickers],
-        key=lambda x: x.strip()
-    )
-    option_lines = sorted(
-        [f'    "{t}": "{t}",  # {info}' for t, info in option_tickers.items()],
-        key=lambda x: x.strip()
-    )
-
-    api_url = request.host_url.rstrip('/') + '/api/update_quotes'
-    mt5_key = Settings.get_value('mt5_api_key', user_id=uid, default='chave_mtq5_2026') or 'chave_mtq5_2026'
-
-    content = f'''# config.py — gerado automaticamente em {now_brt().strftime("%d/%m/%Y %H:%M")}
-# Coloque este arquivo na pasta mt5_feeder/ ao lado de mt5_feeder.py
-# NÃO compartilhe este arquivo (contém chave de API).
-
-# URL do endpoint no VPS
-API_URL = "{api_url}"
-
-# API Key — deve coincidir com MT5_API_KEY no .env do servidor
-API_KEY = "{mt5_key}"
-
-# ID do usuário no site (normalmente 1 para o admin)
-USER_ID = {uid}
-
-# Intervalo de atualização em segundos
-INTERVALO_SEGUNDOS = 30
-
-# Mapeamento: "TICKER_NO_SITE" -> "SÍMBOLO_NO_MT5"
-TICKER_MAP = {{
-{chr(10).join(ticker_lines)}
-}}
-
-# Mapeamento de opções: "TICKER_OPÇÃO" -> "SÍMBOLO_NO_MT5"
-OPTION_MAP = {{
-{chr(10).join(option_lines)}
-}}
-'''
-    return Response(
-        content,
-        mimetype='text/plain',
-        headers={'Content-Disposition': 'attachment; filename=config.py'}
-    )
-
-
-@app.route('/download_mt5_feeder_py')
-@login_required
-def download_mt5_feeder_py():
-    """Retorna o arquivo mt5_feeder.py para download direto."""
-    from flask import send_file
-    feeder_path = os.path.join(basedir, 'mt5_feeder', 'mt5_feeder.py')
-    if not os.path.exists(feeder_path):
-        flash('Arquivo mt5_feeder.py não encontrado no servidor.', 'danger')
-        return redirect(url_for('config'))
-    return send_file(feeder_path, as_attachment=True, download_name='mt5_feeder.py',
-                     mimetype='text/plain')
-
 
 @app.route('/test_api', methods=['POST'])
 @login_required
@@ -23981,10 +23927,9 @@ def update_quotes():
             final_msg += f'BRAPI: {count}/{tried} ativo(s). '
         else:
             # ETFs são sempre cotados pelo Yahoo (a OpLab não os cobre aqui).
-            etf_count, etf_tried, errs = update_all_assets_logic(only_types={'ETF'})
-            if etf_tried:
-                final_msg += f'ETFs via Yahoo: {etf_count}/{etf_tried}. '
-            final_msg += 'Ações/FIIs via MT5 Feeder. '
+            # MT5 na VPS (Radar): o pedido sai agora e o resultado é gravado em segundo plano (~20–60 s)
+            _mt5_radar_kick(current_user.id, force=True)
+            final_msg += 'MT5 (VPS): atualização solicitada — as cotações chegam em até ~1 min. '
 
         intl_success, intl_msgs = update_intl_quotes_logic(current_user.id)
         if intl_success:
@@ -24074,12 +24019,14 @@ def update_quotes_async():
                         final_msg += 'Intl: falha. '
                 elif quote_mode == 'mt5':
                     # ETFs são sempre cotados pelo Yahoo (a OpLab não os cobre aqui).
-                    etf_count, etf_tried, errs = update_all_assets_logic(
-                        user_id=user_id, only_types={'ETF'}
-                    )
-                    if etf_tried:
-                        final_msg += f'ETFs via Yahoo: {etf_count}/{etf_tried}. '
-                    final_msg += 'Ações/FIIs via MT5 Feeder. '
+                    errs = []
+                    try:
+                        final_msg += mt5_radar_refresh(user_id, max_wait=120)['msg'] + '. '
+                    except Exception as e_mt5:
+                        final_msg += f'MT5 (VPS) falhou: {e_mt5}. ETFs via Yahoo. '
+                        etf_count, etf_tried, errs = update_all_assets_logic(
+                            user_id=user_id, only_types={'ETF'}
+                        )
                     intl_success, _ = update_intl_quotes_logic(user_id)
 
                 # Foto do patrimônio do dia com os preços recém-atualizados
@@ -26869,54 +26816,28 @@ def update_market_indices():
 
 # --- MT5 Quote Feed API ---
 
-def _check_api_key():
-    """Returns True if the X-API-Key header matches MT5_API_KEY env var."""
-    api_key = request.headers.get('X-API-Key', '')
-    expected_key = os.environ.get('MT5_API_KEY', '')
-    return expected_key and api_key == expected_key
-
-
-@app.route('/api/update_quotes', methods=['POST'])
-def api_update_quotes():
-    """
-    Receives quote updates from a local MT5 feeder script.
-    Requires API key authentication via header: X-API-Key.
-    Body (JSON):
-    {
-        "user_id": 1,
-        "quotes":  {"PETR4": 38.50, "VALE3": 92.10},       # asset prices
-        "changes": {"PETR4": 1.25, "VALE3": -0.80},        # daily change % (optional)
-        "options": {"PETRA40": 0.45, "VALEF92": 1.20}      # option current prices (optional)
-    }
-    """
-    from flask import jsonify
-
-    if not _check_api_key():
-        return jsonify({'error': 'Unauthorized'}), 401
-
-    data = request.get_json()
-    if not data or 'quotes' not in data:
-        return jsonify({'error': 'Invalid payload — need at least quotes key'}), 400
-
-    user_id = int(data.get('user_id', 1))
+def _apply_mt5_quotes(user_id, quotes, changes, options_prices):
+    """Grava cotações (ativos e opções) vindas do MT5 em todas as tabelas do usuário.
+    quotes/changes/options_prices: {ticker: valor}. Sem variação (changes) para o ativo = mantém a salva."""
+    updated_assets, not_found_assets, updated_options, not_found_options = [], [], [], []
     now = now_brt()
 
     # ── Assets ────────────────────────────────────────────────────────────────
-    quotes  = data.get('quotes', {})
-    changes = data.get('changes', {})
-    updated_assets, not_found_assets = [], []
 
     for ticker, price in quotes.items():
         ticker = ticker.upper()
         price_f  = float(price)
-        change_f = float(changes.get(ticker, changes.get(ticker.lower(), 0)))
+        _chg_raw = changes.get(ticker, changes.get(ticker.lower()))
+        has_chg  = _chg_raw is not None          # sem variação informada: mantém a que já está salva
+        change_f = float(_chg_raw) if has_chg else 0.0
         found = False
 
         # 1. Atualiza Asset em carteira
         asset = Asset.query.filter_by(ticker=ticker, user_id=user_id).first()
         if asset:
             asset.current_price = price_f
-            asset.daily_change  = change_f
+            if has_chg:
+                asset.daily_change = change_f
             asset.last_update   = now
             found = True
 
@@ -26924,7 +26845,8 @@ def api_update_quotes():
         ops = StructuredOp.query.filter_by(underlying_asset=ticker, user_id=user_id, status='OPEN').all()
         for op in ops:
             op.underlying_price  = price_f
-            op.underlying_change = change_f
+            if has_chg:
+                op.underlying_change = change_f
             found = True
 
         # 3. Atualiza StudyOption
@@ -26942,7 +26864,8 @@ def api_update_quotes():
         # 5. Atualiza OptionSpread (underlying das travas)
         for sp in OptionSpread.query.filter_by(underlying_asset=ticker, user_id=user_id).all():
             sp.underlying_price  = price_f
-            sp.underlying_change = float(changes.get(ticker, changes.get(ticker.lower(), 0)))
+            if has_chg:
+                sp.underlying_change = change_f
             found = True
 
         if found:
@@ -26951,8 +26874,6 @@ def api_update_quotes():
             not_found_assets.append(ticker)
 
     # ── Options ───────────────────────────────────────────────────────────────
-    options_prices = data.get('options', {})
-    updated_options, not_found_options = [], []
 
     for ticker, price in options_prices.items():
         ticker  = ticker.upper()
@@ -27003,12 +26924,218 @@ def api_update_quotes():
 
     db.session.commit()
 
-    return jsonify({
-        'status': 'ok',
+    return {
         'updated_assets':  updated_assets,
         'updated_options': updated_options,
         'not_found_assets':  not_found_assets,
         'not_found_options': not_found_options,
+    }
+
+
+# ── MT5 na VPS, via Radar (mt5-market.php) ────────────────────────────────────────────────
+# O site pede as cotações ao Radar (POST, fila), o coletor do MT5 responde em até ~20 s e o site
+# consulta o resultado (GET). Autenticação: Bearer com a chave de integração "radar_..." (Configuração
+# ou variável de ambiente RADAR_API_KEY no .env do servidor — nunca no código).
+_RADAR_MT5_URL = 'https://acoes.receberbemevinhos.com.br/mt5-market.php'
+
+
+class Mt5RadarError(Exception):
+    pass
+
+
+def _radar_mt5_headers(uid):
+    key = (Settings.get_value('radar_api_key', user_id=uid) or os.environ.get('RADAR_API_KEY') or '').strip()
+    if not key:
+        raise Mt5RadarError('chave de integração do Radar não configurada (Configuração > MT5 na VPS)')
+    return {'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'}
+
+
+def _radar_mt5_pedir(uid, body):
+    """POST do pedido; devolve o id (HTTP 202)."""
+    try:
+        r = requests.post(_RADAR_MT5_URL, json=body, headers=_radar_mt5_headers(uid), timeout=20)
+    except requests.RequestException as e:
+        raise Mt5RadarError(f'falha de rede ao pedir ao MT5: {e}')
+    try:
+        j = r.json()
+    except ValueError:
+        j = {}
+    if r.status_code not in (200, 202):
+        raise Mt5RadarError(f'Radar HTTP {r.status_code}: ' + str(j.get('error') or j.get('message') or r.text[:160]))
+    rid = (j.get('request') or {}).get('id') or j.get('id')
+    if not rid:
+        raise Mt5RadarError('o Radar não devolveu o id do pedido')
+    return rid
+
+
+def _radar_mt5_consultar(uid, rid):
+    """GET do pedido; devolve o dict request (state, result, error)."""
+    try:
+        r = requests.get(_RADAR_MT5_URL, params={'id': rid}, headers=_radar_mt5_headers(uid), timeout=20)
+        j = r.json()
+    except (requests.RequestException, ValueError) as e:
+        raise Mt5RadarError(f'falha ao consultar o pedido: {e}')
+    return j.get('request') or {}
+
+
+def _radar_mt5_esperar(uid, ids, max_wait=150, intervalo=4):
+    """Consulta os pedidos a cada `intervalo` s até concluírem. Devolve (resultados {id: result}, erros [str], pendentes set)."""
+    pend, out, erros = set(ids), {}, []
+    t0 = time.time()
+    while pend and time.time() - t0 < max_wait:
+        time.sleep(intervalo)
+        for rid in list(pend):
+            req = _radar_mt5_consultar(uid, rid)
+            st = req.get('state')
+            if st == 'done':
+                out[rid] = req.get('result') or {}
+                pend.discard(rid)
+            elif st in ('error', 'expired'):
+                erros.append(str(req.get('error') or ('pedido expirou' if st == 'expired' else 'erro no MT5')))
+                pend.discard(rid)
+    return out, erros, pend
+
+
+def mt5_radar_refresh(uid, max_wait=150):
+    """Pede ao MT5 da VPS a última cotação de todos os ativos e opções em uso e grava no banco."""
+    asset_tickers, option_tickers, _t, _o = _build_ticker_maps(uid)
+    ativos = sorted({t for t, _tp in asset_tickers})
+    opcoes = sorted(option_tickers)
+    simbolos = ativos + opcoes
+    if not simbolos:
+        return {'n_assets': 0, 'n_options': 0, 'msg': 'MT5 (VPS): nenhum ativo/opção para atualizar.'}
+    ids = [_radar_mt5_pedir(uid, {'kind': 'quotes', 'symbols': simbolos[k:k + 50]})
+           for k in range(0, len(simbolos), 50)]
+    out, erros, pend = _radar_mt5_esperar(uid, ids, max_wait=max_wait)
+    opset = set(opcoes)
+    quotes, changes, opts, falhas = {}, {}, {}, []
+    for res in out.values():
+        for q in (res.get('quotes') or []):
+            sym = str(q.get('symbol') or '').upper()
+            if not sym:
+                continue
+            if q.get('error'):
+                falhas.append(sym)
+                continue
+            try:
+                px = float(q.get('last'))
+            except (TypeError, ValueError):
+                continue
+            if px <= 0:
+                continue
+            if sym in opset:
+                opts[sym] = px
+            else:
+                quotes[sym] = px
+                try:
+                    if q.get('change_pct') is not None:
+                        changes[sym] = float(q['change_pct'])
+                except (TypeError, ValueError):
+                    pass
+    if not quotes and not opts:
+        motivo = '; '.join(erros) or ('sem resposta do MT5 no prazo (coletor ativo?)' if pend else 'MT5 não devolveu cotações')
+        raise Mt5RadarError(motivo)
+    _apply_mt5_quotes(uid, quotes, changes, opts)
+    msg = f'MT5 (VPS): {len(quotes)} ativo(s), {len(opts)} opção(ões)'
+    if falhas:
+        msg += f' · sem cotação: {len(falhas)}'
+    return {'n_assets': len(quotes), 'n_options': len(opts), 'msg': msg}
+
+
+_mt5_radar_state = {}     # uid -> {'busy', 'ok', 'msg', 'ts', 'ini'}
+
+
+def _mt5_radar_intervalo():
+    """30 s no pregão (o coletor varre a cada 20 s); fora dele, a cada 10 min."""
+    n = now_brt()
+    return 30 if (n.weekday() < 5 and (9, 50) <= (n.hour, n.minute) < (18, 15)) else 600
+
+
+def _mt5_radar_kick(uid, force=False):
+    """Dispara a atualização em segundo plano (no máx. uma por vez e respeitando o intervalo)."""
+    st = _mt5_radar_state.setdefault(uid, {'busy': False, 'ok': None, 'msg': '', 'ts': 0.0, 'ini': 0.0})
+    agora = time.time()
+    if st['busy'] and agora - st['ini'] > 240:
+        st['busy'] = False                      # pedido travado: libera
+    if st['busy'] or (not force and agora - st['ini'] < _mt5_radar_intervalo()):
+        return st
+    st['busy'], st['ini'] = True, agora
+
+    def _run():
+        with app.app_context():
+            try:
+                st.update(ok=True, msg=mt5_radar_refresh(uid)['msg'], ts=time.time())
+            except Exception as e:
+                app.logger.warning('mt5_radar_refresh: %s', e)
+                st.update(ok=False, msg=str(e), ts=time.time())
+            finally:
+                st['busy'] = False
+
+    threading.Thread(target=_run, daemon=True).start()
+    return st
+
+
+@app.route('/api/mt5-radar/teste', methods=['POST'])
+@login_required
+def api_mt5_radar_teste():
+    """Pede uma cotação completa ao MT5 da VPS (teste da chave/conexão). Devolve o id; o front consulta o resultado."""
+    simbolo = ((request.get_json(silent=True) or {}).get('symbol') or 'PETR4').strip().upper()
+    try:
+        rid = _radar_mt5_pedir(current_user.id, {'kind': 'quote', 'symbol': simbolo})
+    except Mt5RadarError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 502
+    return jsonify({'ok': True, 'id': rid})
+
+
+@app.route('/api/mt5-radar/teste/<rid>')
+@login_required
+def api_mt5_radar_teste_status(rid):
+    try:
+        req = _radar_mt5_consultar(current_user.id, rid)
+    except Mt5RadarError as e:
+        return jsonify({'ok': False, 'error': str(e)}), 502
+    return jsonify({'ok': True, 'state': req.get('state'), 'result': req.get('result'), 'error': req.get('error')})
+
+
+
+def _check_api_key():
+    """Returns True if the X-API-Key header matches MT5_API_KEY env var."""
+    api_key = request.headers.get('X-API-Key', '')
+    expected_key = os.environ.get('MT5_API_KEY', '')
+    return expected_key and api_key == expected_key
+
+
+@app.route('/api/update_quotes', methods=['POST'])
+def api_update_quotes():
+    """
+    Receives quote updates from a local MT5 feeder script.
+    Requires API key authentication via header: X-API-Key.
+    Body (JSON):
+    {
+        "user_id": 1,
+        "quotes":  {"PETR4": 38.50, "VALE3": 92.10},       # asset prices
+        "changes": {"PETR4": 1.25, "VALE3": -0.80},        # daily change % (optional)
+        "options": {"PETRA40": 0.45, "VALEF92": 1.20}      # option current prices (optional)
+    }
+    """
+    from flask import jsonify
+
+    if not _check_api_key():
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    data = request.get_json()
+    if not data or 'quotes' not in data:
+        return jsonify({'error': 'Invalid payload — need at least quotes key'}), 400
+
+    user_id = int(data.get('user_id', 1))
+    res = _apply_mt5_quotes(user_id, data.get('quotes', {}), data.get('changes', {}), data.get('options', {}))
+
+    return jsonify({
+        'status': 'ok',
+        'updated_assets':  res['updated_assets'],
+        'updated_options': res['updated_options'],
+        'not_found_assets':  res['not_found_assets'],
+        'not_found_options': res['not_found_options'],
     }), 200
 
 
@@ -27418,6 +27545,7 @@ def api_current_quotes():
 
     uid  = current_user.id
     mode = Settings.get_value('quote_mode',        user_id=uid, default='yahoo')
+    mt5_st = _mt5_radar_kick(uid) if mode == 'mt5' else None      # MT5 na VPS: renova em segundo plano
     oplab_auto     = Settings.get_value('oplab_auto_update', user_id=uid, default='false') == 'true'
     oplab_interval = int(Settings.get_value('oplab_interval', user_id=uid, default='5'))
 
@@ -27471,6 +27599,7 @@ def api_current_quotes():
         'options':           options_data,
         'oplab_enabled':     oplab_auto,
         'oplab_interval_ms': oplab_interval * 60 * 1000,
+        'mt5_status':        ({'ok': mt5_st['ok'], 'msg': mt5_st['msg'], 'busy': mt5_st['busy']} if mt5_st else None),
     })
 
 

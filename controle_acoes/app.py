@@ -9038,11 +9038,7 @@ def _max_pain(strikes_map):
 @login_required
 def mapa_opcoes():
     """Mapa de Opções: posições em aberto (OI) por strike, via BRAPI."""
-    ativos = sorted({(a.ticker or '').strip().upper()
-                     for a in Asset.query.filter_by(user_id=current_user.id).all()
-                     if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
-    rk = sorted(_ranking_dropdown_tickers(current_user.id))
-    sugestoes = sorted(set(ativos) | set(rk))
+    sugestoes = _sugestoes_liquidez(current_user.id)     # lista "Com liquidez"
     return render_template('mapa_opcoes.html',
                            sugestoes=sugestoes,
                            tem_token=bool(_brapi_opt_token(current_user.id)))
@@ -10692,12 +10688,8 @@ def api_volume_anomalo_export_excel():
 @login_required
 def market_gamma():
     """Página Market Gamma: exposição gama dos formadores de mercado."""
-    ativos = sorted({(a.ticker or '').strip().upper()
-                     for a in Asset.query.filter_by(user_id=current_user.id).all()
-                     if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
-    rk = sorted(_ranking_dropdown_tickers(current_user.id))
     return render_template('market_gamma.html',
-                           sugestoes=sorted(set(ativos) | set(rk)),
+                           sugestoes=_sugestoes_liquidez(current_user.id),     # lista "Com liquidez"
                            tem_token=bool(_brapi_opt_token(current_user.id)))
 
 
@@ -10915,12 +10907,8 @@ def api_market_gamma(ticker):
 @login_required
 def bgt_bands():
     """Página BGT Bands: bandas de Break-Even Gamma-Theta por ativo."""
-    ativos = sorted({(a.ticker or '').strip().upper()
-                     for a in Asset.query.filter_by(user_id=current_user.id).all()
-                     if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
-    rk = sorted(_ranking_dropdown_tickers(current_user.id))
     return render_template('bgt_bands.html',
-                           sugestoes=sorted(set(ativos) | set(rk)),
+                           sugestoes=_sugestoes_liquidez(current_user.id),     # lista "Com liquidez"
                            tem_token=bool(_brapi_opt_token(current_user.id)))
 
 
@@ -11239,12 +11227,8 @@ def _spline_monotono(xs, ys):
 @login_required
 def curva_volatilidade():
     """Página Curva de Volatilidade: smile de IV por strike de um vencimento."""
-    ativos = sorted({(a.ticker or '').strip().upper()
-                     for a in Asset.query.filter_by(user_id=current_user.id).all()
-                     if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
-    rk = sorted(_ranking_dropdown_tickers(current_user.id))
     return render_template('curva_volatilidade.html',
-                           sugestoes=sorted(set(ativos) | set(rk)),
+                           sugestoes=_sugestoes_liquidez(current_user.id),     # lista "Com liquidez"
                            tem_token=bool(Settings.get_value('oplab_token', user_id=current_user.id)))
 
 
@@ -11433,12 +11417,8 @@ def api_curva_volatilidade(ticker):
 @login_required
 def simulador_bs():
     """Página Simulador BS: calculadora de preço/gregas por Black-Scholes."""
-    ativos = sorted({(a.ticker or '').strip().upper()
-                     for a in Asset.query.filter_by(user_id=current_user.id).all()
-                     if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
-    rk = sorted(_ranking_dropdown_tickers(current_user.id))
     return render_template('simulador_bs.html',
-                           sugestoes=sorted(set(ativos) | set(rk)),
+                           sugestoes=_sugestoes_liquidez(current_user.id),     # lista "Com liquidez"
                            selic=_selic(),
                            tem_token=bool(_brapi_opt_token(current_user.id)))
 
@@ -11596,12 +11576,8 @@ def api_simulador_bs_calcular():
 @login_required
 def put_call_ratio():
     """Página Put/Call Ratio: sentimento de mercado via OI de puts vs calls."""
-    ativos = sorted({(a.ticker or '').strip().upper()
-                     for a in Asset.query.filter_by(user_id=current_user.id).all()
-                     if a.ticker and a.type in ('ACAO', 'FII', 'ETF')})
-    rk = sorted(_ranking_dropdown_tickers(current_user.id))
     return render_template('put_call_ratio.html',
-                           sugestoes=sorted(set(ativos) | set(rk)),
+                           sugestoes=_sugestoes_liquidez(current_user.id),     # lista "Com liquidez"
                            tem_token=bool(_brapi_opt_token(current_user.id)))
 
 
@@ -25366,6 +25342,19 @@ def _ranking_dropdown_rows(uid=None):
             if r.ticker:
                 seen.setdefault(r.ticker.strip().upper(), r)
     return sorted(seen.values(), key=lambda r: r.ticker.strip().upper())
+
+
+def _sugestoes_liquidez(uid=None):
+    """Lista padrão de ativos de Mapa de Opções / Market Gamma: a lista "Com liquidez" do Ranking de
+    Volatilidade. Se ela ainda estiver vazia, cai nos ativos da carteira + listas das listas suspensas."""
+    uid = uid or current_user.id
+    liq = sorted({(r.ticker or '').strip().upper() for r in _tl_query(uid, 'LIQ').all() if r.ticker})
+    if liq:
+        return liq
+    ativos = {(a.ticker or '').strip().upper()
+              for a in Asset.query.filter_by(user_id=uid).all()
+              if a.ticker and a.type in ('ACAO', 'FII', 'ETF')}
+    return sorted(ativos | set(_ranking_dropdown_tickers(uid)))
 
 
 def _ranking_dropdown_tickers(uid=None):

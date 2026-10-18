@@ -137,7 +137,7 @@
     </div>
     <div class="sbs-campo">
       <label title="Taxa livre de risco anualizada, em %. Deixe em branco para usar a Selic cadastrada.">Taxa (r) % — opcional</label>
-      <input type="number" id="sbs-r" step="0.01" placeholder="Selic: {{ '%.2f'|format(selic) }}%">
+      <input type="number" id="sbs-r" step="0.01" value="{{ '%.2f'|format(selic) }}" placeholder="Selic: {{ '%.2f'|format(selic) }}%">
     </div>
     <div class="sbs-campo">
       <label>&nbsp;</label>
@@ -302,6 +302,8 @@ elStrikeSel.addEventListener('change', function () {
 function sbsSetStrike(K) {
     elStrike.value = K != null ? K : '';
     var bloco = sbsMontaStrikes();
+    // sbsMontaStrikes zera o campo quando o strike não está na lista da cadeia: devolve o do ticker
+    if (K != null) elStrike.value = K;
     if (bloco && K != null) {
         var o = Array.prototype.filter.call(elStrikeSel.options, function (x) { return x.value !== '' && x.value !== '__outro__' && Math.abs(parseFloat(x.value) - K) < 0.011; })[0];
         if (o) { elStrikeSel.value = o.value; sbsStrikeManual(false); }
@@ -436,6 +438,17 @@ document.getElementById('sbs-buscar-ticker').addEventListener('click', function 
             document.getElementById('sbs-vol-status').textContent = ivPct != null ? 'IV de ' + sym + ': ' + (+ivPct).toFixed(2) + '%' : '';
             sbsMarcaFonte('iv');
             if (d.underlying) sbsCarregaAtivo(d.underlying, { exp: d.exp || '', strike: d.strike != null ? +d.strike : null });
+            // Selic: usa a do campo; se estiver vazio, devolve a vigente
+            var elR = document.getElementById('sbs-r');
+            if (elR && elR.value === '' && elR.placeholder) {
+                var mR = /([0-9]+[.,][0-9]+)/.exec(elR.placeholder);
+                if (mR) elR.value = mR[1].replace(',', '.');
+            }
+            // Sem IV da opção (série sem negócio): usa a volatilidade histórica do ativo para o cálculo
+            if (ivPct == null && d.underlying) {
+                document.getElementById('sbs-vol-status').textContent = 'IV de ' + sym + ' indisponível — buscando a VH do ativo…';
+                document.getElementById('sbs-usar-hv').click();
+            }
         })
         .catch(function (e) { status.textContent = '⚠️ falha de rede: ' + e; });
 });

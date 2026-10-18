@@ -4875,6 +4875,7 @@ def _legs_com_teorico(legs, underlying, spot):
             strike = float(ref.get('strike') or l.get('strike') or 0)
             if strike <= 0:
                 continue
+            l['strike_serie'] = round(strike, 2) if ref else None
             tp = _oplab_teorico(ref) if ref else 0
             if not tp:
                 try:
@@ -4891,6 +4892,34 @@ def _legs_com_teorico(legs, underlying, spot):
             l['teorico'] = round(tp, 2) if tp else None
     except Exception:
         app.logger.exception('_legs_com_teorico')
+
+
+@app.route('/api/simulacao-teoricos', methods=['POST'])
+@login_required
+def api_simulacao_teoricos():
+    """Valor teórico (critério da OpLab: BS com EWMA do ativo, dias úteis/252, r = Selic) de cada perna
+    de opção da Simulação de Opções. Body: {underlying, legs:[{ticker, opt_type, expiration_date, strike}]}.
+    Devolve, na mesma ordem, {teorico, strike_serie} (None quando não dá para calcular)."""
+    body = request.get_json(silent=True) or {}
+    underlying = (body.get('underlying') or '').strip().upper()
+    legs = []
+    for l in (body.get('legs') or [])[:20]:
+        try:
+            k = float(l.get('strike') or 0)
+        except (TypeError, ValueError):
+            k = 0.0
+        legs.append({'ticker': str(l.get('ticker') or '').strip().upper(),
+                     'opt_type': str(l.get('opt_type') or '').upper(),
+                     'expiration_date': str(l.get('expiration_date') or '')[:10],
+                     'strike': k})
+    spot = None
+    if underlying:
+        try:
+            spot, _chg = _get_underlying_quote(underlying, current_user.id)
+        except Exception:
+            spot = None
+    _legs_com_teorico(legs, underlying, spot)
+    return jsonify({'spot': spot, 'legs': [{'teorico': l.get('teorico'), 'strike_serie': l.get('strike_serie')} for l in legs]})
 
 
 _OPLAB_TEOR_KEYS = ('bs', 'theoretical_price', 'theoretical', 'theo', 'black_scholes', 'bs_price',
@@ -5233,6 +5262,33 @@ def api_cadeia(ticker):
     if n_strikes not in (10, 20, 30, 40):
         n_strikes = 10
 
+    # Estrutura vinda da Simulação de Opções ("Editar em Cadeia"): garante os vencimentos e os strikes
+    # das pernas (e os intermediários + 2 vizinhos) mesmo fora da janela padrão de meses/strikes.
+    req_exps = [e.strip() for e in (request.args.get('exps') or '').split(',') if e.strip() in all_exp_keys]
+    if req_exps:
+        selected_exps = sorted(set(selected_exps) | set(req_exps))
+    req_strikes = []
+    for sv in (request.args.get('strikes') or '').split(','):
+        try:
+            if float(sv) > 0:
+                req_strikes.append(float(sv))
+        except ValueError:
+            pass
+
+    def _com_estrutura(lista, sel):
+        if not req_strikes:
+            return sel
+        ordenados = sorted(lista, key=lambda x: x['strike'])
+        lo, hi = min(req_strikes) - 0.011, max(req_strikes) + 0.011
+        idx = [i for i, r_ in enumerate(ordenados) if lo <= r_['strike'] <= hi]
+        if not idx:
+            return sel
+        ini, fim = max(min(idx) - 2, 0), min(max(idx) + 3, len(ordenados))
+        por_strike = {r_['strike']: r_ for r_ in sel}
+        for r_ in ordenados[ini:fim]:
+            por_strike.setdefault(r_['strike'], r_)
+        return sorted(por_strike.values(), key=lambda x: x['strike'])
+
     for exp in selected_exps:
         calls = sorted(calls_by_exp.get(exp, []), key=lambda x: x['strike'])
         puts  = sorted(puts_by_exp.get(exp, []),  key=lambda x: x['strike'])
@@ -5248,6 +5304,8 @@ def api_cadeia(ticker):
         else:
             calls_sel = calls[:n_strikes]
             puts_sel  = puts[:n_strikes * 2]
+        calls_sel = _com_estrutura(calls, calls_sel)
+        puts_sel  = _com_estrutura(puts, puts_sel)
 
         # Monta linhas alinhadas por strike
         all_strikes = sorted({r['strike'] for r in calls_sel + puts_sel})

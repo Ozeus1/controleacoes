@@ -318,6 +318,7 @@
                     <th style="text-align:right;">Prêmio / Preço</th>
                     <th>Vencimento</th>
                     <th style="text-align:right;">Strike</th>
+                    <th style="text-align:right;" title="Valor teórico (Black-Scholes com a EWMA do ativo, como na OpLab). ⚠ = o strike da série na cadeia é diferente do informado">Teór.</th>
                     <th class="col-iv-hdr" style="text-align:right; display:none;">VI %</th>
                     <th></th>
                 </tr>
@@ -367,6 +368,7 @@
                                     style="padding:.1rem .35rem;">🔎</button>
                         </div>
                     </td>
+                    <td class="col-teor" style="text-align:right;color:var(--text-secondary);white-space:nowrap;font-size:.85rem;">—</td>
                     <td class="col-iv" style="display:none;">
                         <input type="text" name="leg_iv"
                                value="{{ ('%.1f'|format(leg.iv|iv_pct) if leg.iv else '0,0')|replace('.', ',') }}"
@@ -403,6 +405,7 @@
                                     style="padding:.1rem .35rem;">🔎</button>
                         </div>
                     </td>
+                    <td class="col-teor" style="text-align:right;color:var(--text-secondary);white-space:nowrap;font-size:.85rem;">—</td>
                     <td class="col-iv" style="display:none;"><input type="text" name="leg_iv" placeholder="0,0" style="width:60px; text-align:right;" oninput="scheduleRedraw()"></td>
                     <td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>
                 </tr>
@@ -684,6 +687,7 @@ function rowTemplate(type) {
             '<button type="button" class="btn btn-secondary btn-sm sc-btn" title="Escolher da cadeia de opções"' +
             ' onclick="abreCadeiaLinha(this)" style="padding:.1rem .35rem;">🔎</button>' +
         '</div></td>' +
+        '<td class="col-teor" style="text-align:right;color:var(--text-secondary);white-space:nowrap;font-size:.85rem;">—</td>' +
         '<td class="col-iv" style="display:none;"><input type="text" name="leg_iv" value="0,0" style="width:60px;text-align:right;" oninput="scheduleRedraw()"' + ro + '></td>' +
         '<td><button type="button" class="btn btn-danger btn-sm" onclick="removeLeg(this)">✕</button></td>' +
     '</tr>';
@@ -1616,6 +1620,45 @@ function exportarPntSim(btn) {
     exportarPntLegs(pernas, btn);
 }
 
+// ── Coluna Teór.: valor teórico de cada perna (BS com a EWMA do ativo, como na OpLab) ────────────
+var __teorSig = '', __teorTimer = null;
+function atualizaTeoricos(force) {
+    clearTimeout(__teorTimer);
+    __teorTimer = setTimeout(function() {
+        var ativo = ((document.querySelector('[name=underlying]') || {}).value || '').trim().toUpperCase();
+        var legs = [], cels = [];
+        document.querySelectorAll('#legs-body .leg-row').forEach(function(row) {
+            var cel = row.querySelector('.col-teor');
+            if (!cel) return;
+            var lt = row.querySelector('[name=leg_type]').value;
+            if (lt === 'STOCK') { cel.textContent = '—'; cel.title = ''; return; }
+            legs.push({ ticker: (row.querySelector('[name=leg_ticker]').value || '').trim().toUpperCase(),
+                        opt_type: lt, expiration_date: (row.querySelector('[name=leg_exp]') || {}).value || '',
+                        strike: parseVal(row.querySelector('[name=leg_strike]').value) });
+            cels.push(cel);
+        });
+        if (!ativo || !legs.length) return;
+        var sig = JSON.stringify([ativo, legs]);
+        if (!force && sig === __teorSig) return;
+        __teorSig = sig;
+        fetch('/api/simulacao-teoricos', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                           body: JSON.stringify({ underlying: ativo, legs: legs }) })
+            .then(function(r) { return r.json(); })
+            .then(function(d) {
+                (d.legs || []).forEach(function(x, i) {
+                    var cel = cels[i]; if (!cel) return;
+                    if (x.teorico == null) { cel.textContent = '—'; cel.title = ''; return; }
+                    var txt = 'R$ ' + fmtNum(x.teorico, 2);
+                    var dif = x.strike_serie != null && Math.abs(x.strike_serie - legs[i].strike) > 0.011;
+                    cel.textContent = txt + (dif ? ' ⚠' : '');
+                    cel.title = dif ? ('Strike da série na cadeia: R$ ' + fmtNum(x.strike_serie, 2) +
+                                       ' (diferente do informado: R$ ' + fmtNum(legs[i].strike, 2) + '). O teórico usa o da série.') : '';
+                });
+            })
+            .catch(function() {});
+    }, force ? 0 : 600);
+}
+
 // ── Editar no simulador da Cadeia de Opções (aceita qualquer estrutura) ──────
 function editarEmCadeia() {
     var parts = [];
@@ -1638,7 +1681,10 @@ function editarEmCadeia() {
 }
 
 document.addEventListener('DOMContentLoaded',function(){
-    document.getElementById('legs-body').addEventListener('change', function(){ updateIVVisibility(); scheduleRedraw(); });
+    document.getElementById('legs-body').addEventListener('change', function(){ updateIVVisibility(); scheduleRedraw(); atualizaTeoricos(); });
+    document.getElementById('legs-body').addEventListener('input', function(){ atualizaTeoricos(); });
+    var _undEl = document.querySelector('[name=underlying]');
+    if (_undEl) _undEl.addEventListener('change', function(){ atualizaTeoricos(); });
     updateIVVisibility();
 
     // Destaca strikes zerados em opções (dados corrompidos pelo bug disabled→readonly)
@@ -1655,6 +1701,7 @@ document.addEventListener('DOMContentLoaded',function(){
 
     drawChart(readLegs());
     fetchSpotOnlySim();
+    atualizaTeoricos(true);
 });
 document.addEventListener('DOMContentLoaded', function() {
     if (window.initLegHelpers) initLegHelpers({

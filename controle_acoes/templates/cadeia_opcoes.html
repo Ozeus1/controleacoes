@@ -6,6 +6,7 @@
 .cad-hint{font-size:.78rem;color:var(--text-secondary);}
 /* ── Vencimentos ── */
 #venc-tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin:.8rem 0;}
+table.cadeia tr.leg-strike-hl td{background:rgba(251,191,36,.16)!important;box-shadow:inset 0 1px 0 rgba(251,191,36,.5),inset 0 -1px 0 rgba(251,191,36,.5);}
 .venc-tab{padding:.3rem .8rem;border:1px solid #475569;border-radius:5px;font-size:.82rem;
   cursor:pointer;color:#e2e8f0;background:var(--hover-bg);transition:background .12s;}
 .venc-tab.active{background:#3b82f6;border-color:#3b82f6;color:#fff;font-weight:700;}
@@ -337,7 +338,13 @@ function loadCadeia(ticker){
   document.getElementById('venc-tabs').innerHTML='';
   var cadeiaUsarBrapi = document.getElementById('cadeia-usar-brapi');
   var cadeiaSrcParam = (cadeiaUsarBrapi && cadeiaUsarBrapi.checked) ? '&source=brapi' : '';
-  fetch('/api/cadeia/'+encodeURIComponent(ticker)+'?n='+nStrikes()+'&weekly='+cadeiaWeekly()+'&n_meses='+cadeiaNMeses()+cadeiaSrcParam)
+  // Estrutura vinda da Simulação ("Editar em Cadeia"): pede também os vencimentos e strikes das pernas
+  var estr=window.__estrutura, estrParam='';
+  if(estr && estr.ativo===ticker){
+    if(estr.exps.length) estrParam+='&exps='+encodeURIComponent(estr.exps.join(','));
+    if(estr.strikes.length) estrParam+='&strikes='+encodeURIComponent(estr.strikes.join(','));
+  }
+  fetch('/api/cadeia/'+encodeURIComponent(ticker)+'?n='+nStrikes()+'&weekly='+cadeiaWeekly()+'&n_meses='+cadeiaNMeses()+cadeiaSrcParam+(estr&&estr.ativo===ticker?estrParam:''))
     .then(function(r){return r.text().then(function(text){
       var data=null;
       try{data=text?JSON.parse(text):{};}catch(_){
@@ -353,10 +360,13 @@ function loadCadeia(ticker){
       renderSpot(ticker,d.spot,d.spot_change,d.source);
       renderVencTabs(d.expirations);
       if(d.expirations&&d.expirations.length){
-        curExp=d.expirations[0].exp;
-        var first=document.querySelector('.venc-tab');
-        if(first) first.classList.add('active');
+        var alvoExp=(window.__estrutura&&window.__estrutura.ativo===ticker&&window.__estrutura.exps.length
+                     &&d.expirations.some(function(e){return e.exp===window.__estrutura.exps[0];}))
+                    ? window.__estrutura.exps[0] : d.expirations[0].exp;
+        curExp=alvoExp;
+        document.querySelectorAll('.venc-tab').forEach(function(b){ b.classList.toggle('active', b.dataset.exp===alvoExp); });
         renderCurrentExp();
+        destacaEstrutura();
       }
       document.getElementById('sim-underlying-input').value=ticker;
       // Pernas de ACAO seguem o ativo da cadeia carregada.
@@ -419,6 +429,23 @@ function renderCurrentExp(){
   var expData=allData.expirations.find(function(e){return e.exp===curExp;});
   if(!expData) return;
   renderTable(expData,allData.spot);
+  destacaEstrutura(true);
+}
+// Destaca na cadeia os strikes das pernas da estrutura (vindos da Simulação) e rola até o primeiro
+function destacaEstrutura(semRolar){
+  var estr=window.__estrutura;
+  if(!estr||estr.ativo!==curTicker||!curExp) return;
+  var ks=estr.pernas.filter(function(p){return !p.exp||p.exp===curExp;}).map(function(p){return p.strike;});
+  if(!ks.length) return;
+  var primeiro=null;
+  document.querySelectorAll('#cadeia-tables table.cadeia tbody tr').forEach(function(tr){
+    var td=tr.querySelector('td.strike-col'); if(!td) return;
+    var s=parseFloat(td.textContent.replace('R$','').replace(/\./g,'').replace(',','.'));
+    if(ks.some(function(k){return Math.abs(k-s)<0.011;})){
+      tr.classList.add('leg-strike-hl'); if(!primeiro) primeiro=tr;
+    }
+  });
+  if(primeiro && !semRolar && primeiro.scrollIntoView){ setTimeout(function(){ primeiro.scrollIntoView({block:'center'}); },80); }
 }
 
 function renderTable(expData,spot){
@@ -1118,6 +1145,16 @@ function prefillFromUrl(){
     var chk=document.getElementById('chk-same-exp');
     if(chk){ chk.checked=false; try{ localStorage.setItem('legs-same-exp','0'); }catch(e){} }
   }
+  // Guarda a estrutura para a cadeia carregar os vencimentos/strikes das pernas e destacá-los
+  var _pernas=[];
+  legsRaw.split('|').forEach(function(part){
+    var f=part.split(','); if(f.length<6||!f[0]) return;
+    var t=(f[1]||'').toUpperCase(); if(t==='STOCK') return;
+    var k=parseFloat(f[5])||0; if(k>0) _pernas.push({strike:k, exp:f[6]||''});
+  });
+  window.__estrutura={ativo:ativo, pernas:_pernas,
+    exps:Array.from(new Set(_pernas.map(function(p){return p.exp;}).filter(Boolean))).sort(),
+    strikes:Array.from(new Set(_pernas.map(function(p){return p.strike;}))).sort(function(a,b){return a-b;})};
   var n=0;
   legsRaw.split('|').forEach(function(part){
     var f=part.split(',');

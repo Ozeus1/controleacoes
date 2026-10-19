@@ -146,7 +146,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
           <tbody id="pl-legs-body"><tr><td colspan="11" class="pl-empty">Clique no BID/ASK da grade para montar a estrutura.</td></tr></tbody></table>
         </div>
         <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-top:.45rem;font-size:.76rem;">
-          <span>RESULTADO PROJETADO <b id="pl-res">R$ 0,00</b></span>
+          <span title="Fluxo de caixa da montagem pelos preços das pernas: vendas (+) menos compras (−)">RESULTADO PROJETADO <b id="pl-res">R$ 0,00</b></span>
           <span style="margin-left:auto;color:var(--text-secondary);" title="Base de preço das pernas — só no Manual os valores são editáveis">PREÇO</span>
           <span class="pl-seg" id="pl-saida"><button data-v="bidask" class="on">Bid/Ask</button><button data-v="mid">Mid</button><button data-v="ult">Últ.</button><button data-v="teor">Teór.</button><button data-v="manual">Manual</button></span>
         </div>
@@ -390,7 +390,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     if (l.type === 'STOCK') return +S.spot.toFixed(2);
     var o = (bySym[l.ticker] || {}).o; if (!o) return l.price;
     var v = modo === 'mid' ? (o.mid || o.close) : modo === 'ult' ? o.close : modo === 'teor' ? (o.teorico || o.close)
-          : (l.side === 'BUY' ? (o.ask_eff || o.ask || o.close) : (o.bid_eff || o.bid || o.close));
+          : (l.side === 'BUY' ? (o.ask >= 0.01 ? o.ask : o.close) : (o.bid >= 0.01 ? o.bid : o.close));   // book; sem ponta → último
     return v ? +(+v).toFixed(2) : l.price;
   }
   function reprecifica() { if (S.modo === 'manual') return; S.legs.forEach(function(l) { l.price = precoDe(l, S.modo); }); }
@@ -425,15 +425,16 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
   }
   function pnlLeg(l) { var sd = saidaDe(l); return sd != null ? (sd - l.price) * l.qty * (l.side === 'BUY' ? 1 : -1) : null; }
   function fmtPnl(v) { if (v == null) return '—'; if (Math.abs(v) < 0.005) v = 0; return fmt(v); }
+  // Resultado projetado = fluxo da montagem pelos preços das pernas: vendas entram (+), compras saem (−)
   function atualizaTotais() {
     var tot = 0;
     S.legs.forEach(function(l, i) {
-      var v = pnlLeg(l); if (l.on && v != null) tot += v;
+      var v = pnlLeg(l); if (l.on) tot += (l.side === 'SELL' ? 1 : -1) * l.price * l.qty;
       var td = document.querySelector('#pl-legs-body tr[data-i="' + i + '"] td.pnl');
       if (td) { td.textContent = fmtPnl(v); td.className = 'pnl ' + (v > 0.004 ? 'pos' : (v < -0.004 ? 'neg' : '')); }
     });
     if (Math.abs(tot) < 0.005) tot = 0;
-    $('pl-res').innerHTML = '<span class="' + (tot > 0 ? 'pos' : (tot < 0 ? 'neg' : '')) + '">' + brl(tot) + '</span>';
+    $('pl-res').innerHTML = '<span class="' + (tot > 0 ? 'pos' : (tot < 0 ? 'neg' : '')) + '">' + brl(tot) + (tot > 0 ? ' (crédito)' : (tot < 0 ? ' (débito)' : '')) + '</span>';
   }
   var SEL = 'font-size:.66rem;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;';
   function renderLegs() {

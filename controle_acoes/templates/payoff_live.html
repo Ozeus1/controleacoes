@@ -67,6 +67,24 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
 .pl-sl{display:grid;grid-template-columns:70px 1fr 40px;align-items:center;gap:.4rem;font-size:.72rem;}
 .pl-sl input[type=range]{width:100%;}
 .pl-chart{position:relative;height:560px;}
+/* ── Layout de tela cheia (estilo Jumba): grade em cima, painéis embaixo ocupando o resto da altura ── */
+@media (min-width:1201px){
+  .pl-grid-wrap{height:max(260px,36vh);max-height:none;}
+  .pl-row3{height:max(560px,calc(64vh - 330px));grid-template-columns:minmax(380px,1.1fr) minmax(480px,1.8fr) minmax(260px,.62fr);}
+  .pl-row3>*{min-height:0;}
+  .pl-col{display:flex;flex-direction:column;gap:.6rem;min-height:0;}
+  .pl-col>.pl-card,.pl-col>.pl-pair{margin:0;min-height:0;}
+  .pl-c-mont{flex:1.25 1 0;display:flex;flex-direction:column;}
+  .pl-c-ops{flex:1 1 0;display:flex;flex-direction:column;}
+  .pl-pair{flex:1 1 0;display:grid;grid-template-columns:1fr 1fr;gap:.6rem;}
+  .pl-pair>.pl-card{margin:0;display:flex;flex-direction:column;min-height:0;overflow:hidden;}
+  .pl-scroll{flex:1 1 auto;min-height:0;max-height:none!important;overflow:auto;}
+  #pl-bar-res{flex:1 1 auto;min-height:0;overflow:auto;}
+  .pl-c-pay{display:flex;flex-direction:column;margin:0;}
+  .pl-c-pay .pl-chart{flex:1 1 auto;height:auto;min-height:300px;}
+  .pl-c-ctl{margin:0;overflow:auto;}
+}
+@media (max-width:1200px){ .pl-pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:.6rem;} }
 .pl-small input,.pl-small select{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:5px;padding:.2rem .35rem;font-size:.76rem;}
 .pl-list{max-height:180px;overflow:auto;font-size:.76rem;}
 .pl-list .it{display:flex;justify-content:space-between;align-items:center;gap:.4rem;padding:.3rem .2rem;border-bottom:1px solid rgba(148,163,184,.08);cursor:pointer;}
@@ -111,8 +129,8 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
 
   <div class="pl-row3">
     <!-- Montador + Operações + Scanner/Marcadores -->
-    <div>
-      <div class="pl-card">
+    <div class="pl-col">
+      <div class="pl-card pl-c-mont">
         <div class="pl-h" style="flex-wrap:wrap;">☰ Montador de estrutura
           <span style="margin-left:auto;display:flex;flex-wrap:wrap;gap:.3rem;text-transform:none;letter-spacing:0;font-weight:400;">
             <button class="pl-btn" id="pl-nova">Nova estrutura</button>
@@ -121,7 +139,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
             <button class="pl-btn pri" id="pl-salvar">Salvar no portfólio…</button>
           </span></div>
         <div style="font-size:.78rem;margin-bottom:.3rem;"><b id="pl-nome-estr">Estrutura</b> <span style="color:var(--text-secondary);" id="pl-estado">· rascunho</span></div>
-        <div style="overflow-x:auto;">
+        <div class="pl-scroll" style="overflow:auto;">
         <table class="pl-legs no-datatable"><thead><tr><th></th><th>Ordem</th><th>Qtd.</th><th>Preço</th><th>Saída</th><th>PnL</th><th>Strike</th><th>Ticker</th><th>Tipo</th><th>Venc.</th><th></th></tr></thead>
           <tbody id="pl-legs-body"><tr><td colspan="11" class="pl-empty">Clique no BID/ASK da grade para montar a estrutura.</td></tr></tbody></table>
         </div>
@@ -132,9 +150,9 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
         </div>
       </div>
 
-      <div class="pl-card">
+      <div class="pl-card pl-c-ops">
         <div class="pl-h">☰ Operações <label style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;font-size:.72rem;"><input type="checkbox" id="pl-op-todas"> todos os ativos</label></div>
-        <div class="pl-list" id="pl-ops"><div class="pl-empty">Nenhuma operação ainda. Registre uma execução no Montador.</div></div>
+        <div class="pl-list pl-scroll" id="pl-ops"><div class="pl-empty">Nenhuma operação ainda. Registre uma execução no Montador.</div></div>
         <div style="display:flex;gap:.4rem;margin-top:.45rem;" class="pl-small">
           <button class="pl-btn" id="pl-op-add">+ Operação</button>
           <input id="pl-diario" placeholder="Anotar no diário…" style="flex:1;">
@@ -143,7 +161,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
         <div id="pl-notas" style="font-size:.72rem;color:var(--text-secondary);white-space:pre-wrap;margin-top:.35rem;max-height:90px;overflow:auto;"></div>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:.6rem;">
+      <div class="pl-pair">
         <div class="pl-card pl-small">
           <div class="pl-h">▥ Scanner de barreiras</div>
           <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;">
@@ -167,20 +185,20 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
             <a href="#" data-q="Entrada" style="color:#fbbf24;">Entrada</a> · <a href="#" data-q="Stop" style="color:#f87171;">Stop</a> ·
             <a href="#" data-q="Alvo 1" style="color:#60a5fa;">Alvo 1</a> · <a href="#" data-q="Alvo 2" style="color:#a78bfa;">Alvo 2</a> ·
             <a href="#" data-q="Alvo Final" style="color:#34d399;">Alvo Final</a></div>
-          <div class="pl-list" id="pl-mk-list" style="max-height:110px;"><div class="pl-empty">Nenhum marcador. Adicione níveis do seu plano — entrada, stop, alvos.</div></div>
+          <div class="pl-list pl-scroll" id="pl-mk-list"><div class="pl-empty">Nenhum marcador. Adicione níveis do seu plano — entrada, stop, alvos.</div></div>
         </div>
       </div>
     </div>
 
     <!-- Payoff -->
-    <div class="pl-card">
+    <div class="pl-card pl-c-pay">
       <div class="pl-h">▭ Payoff da estrutura <span id="pl-leg-lbl" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;"></span></div>
       <div class="pl-chart"><canvas id="pl-chart"></canvas></div>
       <div style="font-size:.66rem;color:var(--text-secondary);margin-top:.2rem;">Roda do mouse = zoom no eixo de preço · arraste = mover · duplo clique = resetar</div>
     </div>
 
     <!-- Controles -->
-    <div class="pl-card">
+    <div class="pl-card pl-c-ctl">
       <div class="pl-h">☷ Controles do payoff</div>
       <div class="pl-metrics" id="pl-metrics"></div>
       <div class="pl-ctl">Hoje <span id="pl-hoje-lbl" style="float:right;text-transform:none;"></span></div>
@@ -507,6 +525,9 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
       x: {type: 'linear', min: lo, max: hi, ticks: {color: '#94a3b8', font: {size: 10}, callback: function(v) { return S.escala === 'pct' ? fmt((v / S.spot - 1) * 100, 1) + '%' : fmt(v, 2); }}, grid: {color: 'rgba(148,163,184,.08)'}},
       y: {position: 'left', ticks: {color: '#94a3b8', font: {size: 10}, callback: function(v) { return brlK(v); }}, grid: {color: 'rgba(148,163,184,.08)'}, title: {display: true, text: 'Resultado (R$)', color: '#94a3b8'}}
     };
+    // resultado praticamente constante (ex.: compra e venda da mesma série): eixo com folga, sem ampliar ruído de arredondamento
+    var tudo = venc.concat(atual); if (tudo.length) { var y0 = Math.min.apply(null, tudo), y1 = Math.max.apply(null, tudo);
+      if (y1 - y0 < 2) { scales.y.min = Math.floor(y0 - 10); scales.y.max = Math.ceil(y1 + 10); } }
     Object.keys(GCOR).forEach(function(k) { if (S.g[k]) scales['g_' + k] = {position: 'right', grid: {display: false}, ticks: {color: GCOR[k], font: {size: 9}, maxTicksLimit: 6, callback: function(v) { return fmt(v, Math.abs(v) < 10 ? 2 : 0); }}, title: {display: true, text: nomes[k], color: GCOR[k], font: {size: 10}}}; });
     var data = {datasets: ds.map(function(d) { d.data = d.data.map(function(y, i) { return {x: xs[i], y: y}; }); return d; })};
     if (chart) { chart.data = data; chart.options.scales = scales; chart.update('none'); return; }

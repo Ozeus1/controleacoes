@@ -1,0 +1,668 @@
+{% extends "base.html" %}
+{% block title %}Payoff{% endblock %}
+{% block extra_scripts %}
+<style>
+.pl-wrap{max-width:100%;padding:0 .4rem;}
+.pl-wrap input:not([type=range]):not([type=checkbox]),.pl-wrap select{width:auto;margin:0;min-height:0;height:auto;padding:.15rem .35rem;font-size:.76rem;box-sizing:border-box;}
+.pl-wrap input[type=checkbox]{width:auto!important;height:auto;margin:0;}
+.pl-wrap input[type=range]{width:100%;margin:0;padding:0;}
+.pl-wrap .pl-top select,.pl-wrap .pl-top input{padding:.3rem .5rem;font-size:.85rem;}
+table.pl-grid thead th{position:sticky;top:0;z-index:5!important;}
+table.pl-grid thead th:first-child{left:auto!important;}
+.pl-wrap table tbody td:first-child{position:static!important;border-right:none;box-shadow:none;}
+table.pl-grid tbody td:first-child{background:transparent!important;}
+table.pl-grid thead th{background-color:var(--card-bg,#111827);}
+.pl-wrap table.pl-legs input{width:60px;}
+.pl-wrap table.pl-mini{width:100%;border-collapse:collapse;font-size:.72rem;}
+.pl-wrap table.pl-mini td{padding:.15rem .3rem!important;border:none!important;background:transparent!important;}
+.pl-card{background:var(--card-bg);border:1px solid var(--border-color);border-radius:10px;padding:.55rem .7rem;margin-bottom:.6rem;}
+.pl-h{display:flex;align-items:center;gap:.5rem;font-size:.74rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-secondary);margin:0 0 .45rem;}
+.pl-top{display:flex;align-items:center;gap:.8rem;flex-wrap:wrap;margin-bottom:.5rem;}
+.pl-top select,.pl-top input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:6px;padding:.3rem .5rem;font-size:.85rem;}
+.pl-spot{font-size:.9rem;}
+.pl-chips{display:flex;gap:.35rem;overflow-x:auto;padding:.25rem .1rem .45rem;margin-bottom:.5rem;scrollbar-width:thin;}
+.pl-chip{flex:0 0 auto;border:1px solid var(--border-color);background:var(--card-bg);color:var(--text-primary);border-radius:7px;padding:.22rem .45rem;font-size:.76rem;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:.3rem;}
+.pl-chip .b{font-size:.66rem;font-weight:700;border-radius:3px;padding:0 .25rem;background:#2563eb;color:#fff;}
+.pl-chip .b.w{background:#059669;}
+.pl-chip.on{border-color:#60a5fa;box-shadow:0 0 0 1px #60a5fa inset;font-weight:700;}
+.pl-chip.leg::before{content:'●';color:#fbbf24;font-size:.6rem;}
+.pl-grid-wrap{max-height:430px;overflow:auto;border:1px solid var(--border-color);border-radius:8px;}
+table.pl-grid{border-collapse:collapse;font-size:.74rem;width:100%;font-variant-numeric:tabular-nums;}
+table.pl-grid th{background:var(--card-bg);color:var(--text-secondary);font-weight:600;padding:.3rem .35rem;white-space:nowrap;z-index:2;font-size:.68rem;text-transform:uppercase;}
+table.pl-grid td{padding:.22rem .35rem;text-align:right;white-space:nowrap;border-bottom:1px solid rgba(148,163,184,.08);color:var(--text-primary);}
+table.pl-grid td.k{text-align:center;font-weight:700;background:rgba(148,163,184,.08);}
+table.pl-grid tr.atm td{background:rgba(96,165,250,.12);}
+table.pl-grid td.itm{background:rgba(52,211,153,.06);}
+table.pl-grid td.bid{color:#f87171;cursor:pointer;} table.pl-grid td.ask{color:#34d399;cursor:pointer;}
+table.pl-grid td.bid:hover,table.pl-grid td.ask:hover{outline:1px solid currentColor;}
+table.pl-grid td.tk{color:var(--text-secondary);} table.pl-grid td.teor{background:rgba(37,99,235,.10);}
+table.pl-grid td.inleg{box-shadow:inset 0 0 0 2px #fbbf24;}
+.pl-sep-c{background:linear-gradient(rgba(52,211,153,.14),rgba(52,211,153,.14)),var(--card-bg,#111827)!important;color:#34d399!important;text-align:center!important;}
+.pl-sep-p{background:linear-gradient(rgba(248,113,113,.14),rgba(248,113,113,.14)),var(--card-bg,#111827)!important;color:#f87171!important;text-align:center!important;}
+.pl-foot{display:flex;gap:1rem;align-items:center;font-size:.76rem;color:var(--text-secondary);margin-top:.35rem;flex-wrap:wrap;}
+.pl-seg{display:inline-flex;border:1px solid var(--border-color);border-radius:6px;overflow:hidden;}
+.pl-seg button{background:transparent;border:none;color:var(--text-secondary);padding:.15rem .5rem;font-size:.72rem;cursor:pointer;}
+.pl-seg button.on{background:#2563eb;color:#fff;}
+.pl-row3{display:grid;grid-template-columns:minmax(330px,1.05fr) minmax(420px,1.7fr) minmax(250px,.8fr);gap:.6rem;}
+@media (max-width:1200px){.pl-row3{grid-template-columns:1fr;}}
+.pl-btn{background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);color:var(--text-primary);border-radius:6px;padding:.22rem .55rem;font-size:.74rem;cursor:pointer;}
+.pl-btn.pri{background:#4338ca;border-color:#4338ca;color:#fff;}
+.pl-btn.toggle.on{background:#1d4ed8;border-color:#60a5fa;color:#fff;}
+table.pl-legs{width:100%;border-collapse:collapse;font-size:.74rem;}
+table.pl-legs th{color:var(--text-secondary);font-weight:600;font-size:.64rem;text-transform:uppercase;padding:.2rem;text-align:left;}
+table.pl-legs td{padding:.18rem .2rem;border-top:1px solid rgba(148,163,184,.08);}
+table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;padding:.1rem .25rem;font-size:.74rem;text-align:right;}
+.pl-side{border:none;border-radius:4px;font-size:.66rem;font-weight:700;padding:.12rem .4rem;cursor:pointer;}
+.pl-side.BUY{background:rgba(52,211,153,.18);color:#34d399;} .pl-side.SELL{background:rgba(248,113,113,.18);color:#f87171;}
+.pl-tipo{font-size:.64rem;font-weight:700;border-radius:3px;padding:0 .25rem;background:rgba(96,165,250,.18);color:#60a5fa;}
+.pos{color:#34d399;} .neg{color:#f87171;}
+.pl-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:.35rem .5rem;font-size:.72rem;margin-bottom:.5rem;}
+.pl-metrics span{display:block;color:var(--text-secondary);font-size:.6rem;text-transform:uppercase;}
+.pl-metrics b{font-size:.82rem;}
+.pl-ctl{font-size:.72rem;color:var(--text-secondary);margin:.45rem 0 .2rem;text-transform:uppercase;letter-spacing:.04em;}
+.pl-sl{display:grid;grid-template-columns:70px 1fr 40px;align-items:center;gap:.4rem;font-size:.72rem;}
+.pl-sl input[type=range]{width:100%;}
+.pl-chart{position:relative;height:560px;}
+.pl-small input,.pl-small select{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:5px;padding:.2rem .35rem;font-size:.76rem;}
+.pl-list{max-height:180px;overflow:auto;font-size:.76rem;}
+.pl-list .it{display:flex;justify-content:space-between;align-items:center;gap:.4rem;padding:.3rem .2rem;border-bottom:1px solid rgba(148,163,184,.08);cursor:pointer;}
+.pl-list .it:hover{background:rgba(96,165,250,.08);}
+.pl-list .it.on{background:rgba(96,165,250,.14);}
+.pl-empty{color:var(--text-secondary);text-align:center;padding:1rem .5rem;font-size:.76rem;}
+.pl-cores span{display:inline-block;width:14px;height:14px;border-radius:50%;cursor:pointer;margin-right:2px;border:2px solid transparent;}
+.pl-cores span.on{border-color:#fff;}
+#pl-loading{display:none;color:var(--text-secondary);font-size:.85rem;padding:.4rem;}
+#pl-error{display:none;color:#f87171;font-size:.85rem;padding:.4rem;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="pl-wrap">
+  <div class="pl-top">
+    <h2 style="margin:0;font-size:1.25rem;">📉 Payoff</h2>
+    <select id="pl-ticker">
+      {% for t in sugestoes %}<option value="{{ t }}" {{ 'selected' if t == 'BOVA11' else '' }}>{{ t }}</option>{% endfor %}
+      <option value="__outro__">— outro ativo… —</option>
+    </select>
+    <input id="pl-ticker-livre" placeholder="Ticker" maxlength="10" style="display:none;width:100px;text-transform:uppercase;">
+    <button class="pl-btn" id="pl-carregar">⟳ Carregar cadeia</button>
+    <span class="pl-spot" id="pl-spot"></span>
+    <span style="font-size:.78rem;color:var(--text-secondary);" id="pl-hoje"></span>
+    <span style="font-size:.78rem;color:var(--text-secondary);">Selic <b id="pl-selic">{{ '%.2f'|format(selic) }}</b>%</span>
+  </div>
+  <div id="pl-loading">⏳ Carregando a cadeia de opções…</div>
+  <div id="pl-error"></div>
+
+  <div class="pl-chips" id="pl-chips"></div>
+
+  <div class="pl-card">
+    <div class="pl-h">☰ Grade de opções <span style="color:#34d399;">CALLS</span> | <span style="color:#f87171;">PUTS</span> <span id="pl-live" style="color:#34d399;font-weight:600;text-transform:none;letter-spacing:0;"></span>
+      <span style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;">clique no <span style="color:#f87171;">BID</span> para vender · no <span style="color:#34d399;">ASK</span> para comprar</span></div>
+    <div class="pl-grid-wrap" id="pl-grid-wrap"><div class="pl-empty">Escolha o ativo e carregue a cadeia.</div></div>
+    <div class="pl-foot">
+      <span class="pl-seg" id="pl-lado"><button data-v="CP" class="on">C+P</button><button data-v="C">C</button><button data-v="P">P</button></span>
+      <span>Spot: <b id="pl-f-spot">—</b></span><span>Forward: <b id="pl-f-fwd">—</b></span><span id="pl-f-n"></span>
+    </div>
+  </div>
+
+  <div class="pl-row3">
+    <!-- Montador + Operações + Scanner/Marcadores -->
+    <div>
+      <div class="pl-card">
+        <div class="pl-h" style="flex-wrap:wrap;">☰ Montador de estrutura
+          <span style="margin-left:auto;display:flex;flex-wrap:wrap;gap:.3rem;text-transform:none;letter-spacing:0;font-weight:400;">
+            <button class="pl-btn" id="pl-nova">Nova estrutura</button>
+            <button class="pl-btn" id="pl-perna">+ Perna</button>
+            <button class="pl-btn" id="pl-ativo">+ Ativo</button>
+            <button class="pl-btn pri" id="pl-salvar">Salvar no portfólio…</button>
+          </span></div>
+        <div style="font-size:.78rem;margin-bottom:.3rem;"><b id="pl-nome-estr">Estrutura</b> <span style="color:var(--text-secondary);" id="pl-estado">· rascunho</span></div>
+        <div style="overflow-x:auto;">
+        <table class="pl-legs no-datatable"><thead><tr><th></th><th>Ordem</th><th>Qtd.</th><th>Preço</th><th>Saída</th><th>PnL</th><th>Strike</th><th>Ticker</th><th>Tipo</th><th>Venc.</th><th></th></tr></thead>
+          <tbody id="pl-legs-body"><tr><td colspan="11" class="pl-empty">Clique no BID/ASK da grade para montar a estrutura.</td></tr></tbody></table>
+        </div>
+        <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-top:.45rem;font-size:.76rem;">
+          <span>RESULTADO PROJETADO <b id="pl-res">R$ 0,00</b></span>
+          <span style="margin-left:auto;color:var(--text-secondary);">SAÍDA</span>
+          <span class="pl-seg" id="pl-saida"><button data-v="bidask" class="on">Bid/Ask</button><button data-v="mid">Mid</button><button data-v="ult">Últ.</button><button data-v="teor">Teór.</button><button data-v="manual">Manual</button></span>
+        </div>
+      </div>
+
+      <div class="pl-card">
+        <div class="pl-h">☰ Operações <label style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;font-size:.72rem;"><input type="checkbox" id="pl-op-todas"> todos os ativos</label></div>
+        <div class="pl-list" id="pl-ops"><div class="pl-empty">Nenhuma operação ainda. Registre uma execução no Montador.</div></div>
+        <div style="display:flex;gap:.4rem;margin-top:.45rem;" class="pl-small">
+          <button class="pl-btn" id="pl-op-add">+ Operação</button>
+          <input id="pl-diario" placeholder="Anotar no diário…" style="flex:1;">
+          <button class="pl-btn pri" id="pl-anotar">Anotar</button>
+        </div>
+        <div id="pl-notas" style="font-size:.72rem;color:var(--text-secondary);white-space:pre-wrap;margin-top:.35rem;max-height:90px;overflow:auto;"></div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:.6rem;">
+        <div class="pl-card pl-small">
+          <div class="pl-h">▥ Scanner de barreiras</div>
+          <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;">
+            <span class="pl-seg" id="pl-bar-lado"><button data-v="call" class="on">CALL</button><button data-v="put">PUT</button></span>
+            <label style="font-size:.7rem;">IQ ≥ <input id="pl-bar-iq" type="number" step="0.1" value="1.2" style="width:52px;"></label>
+            <label style="font-size:.7rem;">Desc. ≥ <input id="pl-bar-desc" type="number" step="0.5" value="5" style="width:48px;"> M</label>
+            <button class="pl-btn pri" id="pl-bar-buscar">Buscar</button>
+          </div>
+          <div id="pl-bar-res" style="font-size:.72rem;margin-top:.35rem;"></div>
+        </div>
+        <div class="pl-card pl-small">
+          <div class="pl-h">▥ Marcadores de preço</div>
+          <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;">
+            <input id="pl-mk-rot" placeholder="Rótulo" style="width:70px;">
+            <input id="pl-mk-preco" type="number" step="0.01" placeholder="Preço" style="width:64px;">
+            <span class="pl-cores" id="pl-mk-cores"></span>
+            <label style="font-size:.7rem;"><input type="checkbox" id="pl-mk-trac" checked> tracejada</label>
+            <button class="pl-btn" id="pl-mk-add">+</button>
+          </div>
+          <div style="font-size:.66rem;margin-top:.25rem;">Rápido:
+            <a href="#" data-q="Entrada" style="color:#fbbf24;">Entrada</a> · <a href="#" data-q="Stop" style="color:#f87171;">Stop</a> ·
+            <a href="#" data-q="Alvo 1" style="color:#60a5fa;">Alvo 1</a> · <a href="#" data-q="Alvo 2" style="color:#a78bfa;">Alvo 2</a> ·
+            <a href="#" data-q="Alvo Final" style="color:#34d399;">Alvo Final</a></div>
+          <div class="pl-list" id="pl-mk-list" style="max-height:110px;"><div class="pl-empty">Nenhum marcador. Adicione níveis do seu plano — entrada, stop, alvos.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Payoff -->
+    <div class="pl-card">
+      <div class="pl-h">▭ Payoff da estrutura <span id="pl-leg-lbl" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;"></span></div>
+      <div class="pl-chart"><canvas id="pl-chart"></canvas></div>
+      <div style="font-size:.66rem;color:var(--text-secondary);margin-top:.2rem;">Roda do mouse = zoom no eixo de preço · arraste = mover · duplo clique = resetar</div>
+    </div>
+
+    <!-- Controles -->
+    <div class="pl-card">
+      <div class="pl-h">☷ Controles do payoff</div>
+      <div class="pl-metrics" id="pl-metrics"></div>
+      <div class="pl-ctl">Hoje <span id="pl-hoje-lbl" style="float:right;text-transform:none;"></span></div>
+      <input type="range" id="pl-dias" min="0" max="1" value="0" step="1" style="width:100%;">
+      <div class="pl-ctl">Vol <a href="#" id="pl-zerar" style="float:right;text-transform:none;font-size:.68rem;">zerar</a></div>
+      <div class="pl-sl"><span>Vol (pts)</span><input type="range" id="pl-vol" min="-20" max="20" step="0.5" value="0"><b id="pl-vol-v">0,0</b></div>
+      <div class="pl-sl"><span>Skew</span><input type="range" id="pl-skew" min="-10" max="10" step="0.5" value="0"><b id="pl-skew-v">0,0</b></div>
+      <div class="pl-sl"><span>Curvatura</span><input type="range" id="pl-curv" min="-10" max="10" step="0.5" value="0"><b id="pl-curv-v">0,0</b></div>
+      <div class="pl-ctl">Gráficos</div>
+      <div style="display:flex;gap:.3rem;flex-wrap:wrap;">
+        <button class="pl-btn toggle on" data-g="pnl">P&amp;L (R$)</button>
+        <button class="pl-btn toggle on" data-g="atual">Atual</button>
+        <button class="pl-btn toggle on" data-g="venc">Vencimento</button>
+      </div>
+      <div class="pl-ctl">Gráficos secundários (gregas)</div>
+      <div style="display:flex;gap:.3rem;flex-wrap:wrap;">
+        <button class="pl-btn toggle" data-g="delta">Δ Delta</button><button class="pl-btn toggle" data-g="gamma">Γ Gamma</button>
+        <button class="pl-btn toggle" data-g="theta">Θ Theta</button><button class="pl-btn toggle" data-g="vega">ν Vega</button>
+        <button class="pl-btn toggle" data-g="rho">ρ Rho</button>
+      </div>
+      <div class="pl-ctl">Pontos notáveis</div>
+      <div style="display:flex;gap:.3rem;flex-wrap:wrap;">
+        <button class="pl-btn toggle on" data-g="be">Break-even</button><button class="pl-btn toggle on" data-g="sigma">±1σ</button>
+        <button class="pl-btn toggle" data-g="barreiras">Barreiras</button>
+      </div>
+      <div class="pl-ctl">Escala X</div>
+      <span class="pl-seg" id="pl-escala"><button data-v="preco" class="on">Preço</button><button data-v="pct">% Var</button></span>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+  var SELIC = {{ selic|float }} / 100, R = Math.log(1 + SELIC);
+  var $ = function(id) { return document.getElementById(id); };
+  var S = {ticker: '', d: null, spot: 0, exp: null, legs: [], saida: 'bidask', lado: 'CP', escala: 'preco',
+           g: {pnl: true, atual: true, venc: true, delta: false, gamma: false, theta: false, vega: false, rho: false, be: true, sigma: true, barreiras: false},
+           simId: null, simNome: '', markers: [], barreiras: [], cor: '#fbbf24'};
+  var bySym = {};
+  var chart = null;
+
+  function fmt(v, d) { d = d == null ? 2 : d; return (v == null || !isFinite(v)) ? '—' : Number(v).toLocaleString('pt-BR', {minimumFractionDigits: d, maximumFractionDigits: d}); }
+  function brl(v) { return v == null ? '—' : 'R$ ' + fmt(v); }
+  function brlK(v) { if (v == null || !isFinite(v)) return '—'; var a = Math.abs(v); return (v < 0 ? '−' : '') + 'R$ ' + (a >= 1e6 ? fmt(a / 1e6, 1) + 'M' : a >= 1e3 ? fmt(a / 1e3, 1) + 'K' : fmt(a, 0)); }
+  function dBR(iso) { var p = (iso || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso; }
+  function hoje0() { var h = new Date(); h.setHours(0, 0, 0, 0); return h; }
+  function dias(iso) { var p = iso.split('-'); return Math.max(Math.round((new Date(+p[0], +p[1] - 1, +p[2]) - hoje0()) / 86400000), 0); }
+
+  // ── Black-Scholes ──
+  function N(x) { var t = 1 / (1 + 0.2316419 * Math.abs(x)), d = 0.3989423 * Math.exp(-x * x / 2);
+    var p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return x > 0 ? 1 - p : p; }
+  function n(x) { return Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI); }
+  function bs(Sx, K, T, v, call) {
+    if (T <= 0 || v <= 0) return Math.max(0, call ? Sx - K : K - Sx);
+    var sq = v * Math.sqrt(T), d1 = (Math.log(Sx / K) + (R + v * v / 2) * T) / sq, d2 = d1 - sq;
+    return call ? Sx * N(d1) - K * Math.exp(-R * T) * N(d2) : K * Math.exp(-R * T) * N(-d2) - Sx * N(-d1);
+  }
+  function greeks(Sx, K, T, v, call) {
+    if (T <= 0 || v <= 0) { var itm = call ? Sx > K : Sx < K; return {delta: itm ? (call ? 1 : -1) : 0, gamma: 0, theta: 0, vega: 0, rho: 0}; }
+    var sq = Math.sqrt(T), d1 = (Math.log(Sx / K) + (R + v * v / 2) * T) / (v * sq), d2 = d1 - v * sq, disc = Math.exp(-R * T);
+    return {
+      delta: call ? N(d1) : N(d1) - 1,
+      gamma: n(d1) / (Sx * v * sq),
+      theta: (call ? (-Sx * n(d1) * v / (2 * sq) - R * K * disc * N(d2)) : (-Sx * n(d1) * v / (2 * sq) + R * K * disc * N(-d2))) / 365,
+      vega: Sx * n(d1) * sq / 100,
+      rho: (call ? K * T * disc * N(d2) : -K * T * disc * N(-d2)) / 100
+    };
+  }
+  function ivFrom(Sx, K, T, prem, call) {
+    if (!prem || T <= 0) return null;
+    var intr = Math.max(0, call ? Sx - K : K - Sx); if (prem <= intr * 1.002) return null;
+    var lo = 0.005, hi = 5; for (var i = 0; i < 60; i++) { var m = (lo + hi) / 2; if (bs(Sx, K, T, m, call) < prem) lo = m; else hi = m; }
+    var iv = (lo + hi) / 2; return iv > 4.9 ? null : iv;
+  }
+
+  // ── Vencimentos (chips) ──
+  var LETRAS = [['A','M'],['B','N'],['C','O'],['D','P'],['E','Q'],['F','R'],['G','S'],['H','T'],['I','U'],['J','V'],['K','W'],['L','X']];
+  function infoExp(iso) {
+    var p = iso.split('-'), y = +p[0], m = +p[1], d = +p[2], sex = 0, terc = null;
+    for (var i = 1; i <= 31; i++) { var dt = new Date(y, m - 1, i); if (dt.getMonth() !== m - 1) break; if (dt.getDay() === 5 && ++sex === 3) { terc = dt; break; } }
+    var mensal = terc && Math.abs(Math.round((new Date(y, m - 1, d) - terc) / 86400000)) <= 2;
+    if (mensal) return {mensal: true, badge: LETRAS[m - 1][0] + '/' + LETRAS[m - 1][1]};
+    var k = 0; for (var j = 1; j <= d + 1; j++) { var dj = new Date(y, m - 1, j); if (dj.getMonth() !== m - 1) break; if (dj.getDay() === 5 && j <= d + 1) k++; }
+    return {mensal: false, badge: 'W' + Math.max(k, 1)};
+  }
+  function renderChips() {
+    var legsExp = {}; S.legs.forEach(function(l) { if (l.exp) legsExp[l.exp] = 1; });
+    $('pl-chips').innerHTML = (S.d.expirations || []).map(function(e) {
+      var inf = infoExp(e.exp);
+      return '<button class="pl-chip' + (e.exp === S.exp ? ' on' : '') + (legsExp[e.exp] ? ' leg' : '') + '" data-exp="' + e.exp + '">' + dBR(e.exp) +
+        ' <span class="b' + (inf.mensal ? '' : ' w') + '">' + inf.badge + '</span></button>';
+    }).join('');
+  }
+  $('pl-chips').addEventListener('click', function(ev) { var b = ev.target.closest('.pl-chip'); if (!b) return; S.exp = b.dataset.exp; renderChips(); renderGrade(); });
+
+  // ── Carga da cadeia ──
+  function tickerSel() { return $('pl-ticker').value === '__outro__' ? ($('pl-ticker-livre').value || '').trim().toUpperCase() : $('pl-ticker').value; }
+  $('pl-ticker').addEventListener('change', function() { var o = this.value === '__outro__'; $('pl-ticker-livre').style.display = o ? '' : 'none'; if (!o) carregar(); });
+  $('pl-ticker-livre').addEventListener('keydown', function(e) { if (e.key === 'Enter') carregar(); });
+  $('pl-carregar').addEventListener('click', carregar);
+  function carregar(manter) {
+    var t = tickerSel(); if (!t) return;
+    $('pl-loading').style.display = 'block'; $('pl-error').style.display = 'none';
+    fetch('/api/cadeia/' + encodeURIComponent(t) + '?n=40&weekly=1&n_meses=12')
+      .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+      .then(function(res) {
+        $('pl-loading').style.display = 'none';
+        if (!res.ok || res.j.error) { $('pl-error').textContent = '⚠️ ' + (res.j.error || 'Erro ao carregar a cadeia.'); $('pl-error').style.display = 'block'; return; }
+        var trocou = t !== S.ticker;
+        S.ticker = t; S.d = res.j; S.spot = res.j.spot || 0;
+        bySym = {};
+        (S.d.expirations || []).forEach(function(e) { (e.rows || []).forEach(function(r) {
+          if (r.call) bySym[r.call.symbol] = {o: r.call, exp: e.exp, tipo: 'CALL', strike: r.strike};
+          if (r.put) bySym[r.put.symbol] = {o: r.put, exp: e.exp, tipo: 'PUT', strike: r.strike}; }); });
+        if (trocou && !manter) { S.legs = []; S.simId = null; S.simNome = ''; carregarMarcadores(); }
+        if (!S.exp || !(S.d.expirations || []).some(function(e) { return e.exp === S.exp; })) S.exp = (S.d.expirations[0] || {}).exp;
+        var chg = res.j.spot_change;
+        $('pl-spot').innerHTML = '<b>' + t + '</b> Spot <b>' + fmt(S.spot) + '</b>' + (chg != null ? ' <span class="' + (chg >= 0 ? 'pos' : 'neg') + '">' + (chg >= 0 ? '+' : '') + fmt(chg) + '%</span>' : '');
+        $('pl-hoje').textContent = '📅 ' + dBR(new Date().toISOString().slice(0, 10));
+        $('pl-live').textContent = res.j.market_open ? '● LIVE' : '● pregão fechado (último negócio)';
+        renderChips(); renderGrade(); renderLegs(); carregarOps();
+      })
+      .catch(function(e) { $('pl-loading').style.display = 'none'; $('pl-error').textContent = '⚠️ ' + e; $('pl-error').style.display = 'block'; });
+  }
+
+  // ── Grade ──
+  $('pl-lado').addEventListener('click', function(ev) { var b = ev.target.closest('button'); if (!b) return; S.lado = b.dataset.v; [].forEach.call(this.children, function(x) { x.classList.toggle('on', x === b); }); renderGrade(); });
+  function linhaOpc(o, K, T, call) {
+    if (!o) return null;
+    var iv = o.iv ? o.iv / 100 : null, ivb = ivFrom(S.spot, K, T, o.mid || o.close, call);
+    var g = greeks(S.spot, K, T, iv || ivb || 0, call);
+    return {o: o, iv: iv, ivb: ivb, g: g};
+  }
+  function celulas(x, call, K) {
+    var vazio = '<td>—</td>';
+    if (!x) return call ? vazio.repeat(15) : vazio.repeat(15);
+    var o = x.o, itm = call ? K < S.spot : K > S.spot, cls = itm ? ' class="itm"' : '';
+    var em = S.legs.some(function(l) { return l.ticker === o.symbol; });
+    var c = [
+      '<td' + cls + '>' + (o.vol_fin ? brlK(o.vol_fin).replace('R$ ', '') : '—') + '</td>',
+      '<td' + cls + '>' + (x.ivb ? fmt(x.ivb * 100, 1) + '%' : '—') + '</td>',
+      '<td' + cls + '>' + fmt(x.g.vega, 4) + '</td>', '<td' + cls + '>' + fmt(x.g.theta, 4) + '</td>', '<td' + cls + '>' + fmt(x.g.gamma, 4) + '</td>',
+      '<td' + cls + '>' + fmt(x.g.delta, 3) + '</td>', '<td' + cls + '>' + (x.iv ? fmt(x.iv * 100, 1) + '%' : '—') + '</td>',
+      '<td' + cls + '>' + (o.bid && o.ask ? fmt(o.ask - o.bid) : '—') + '</td>',
+      '<td class="bid" data-s="' + o.symbol + '" data-a="SELL" title="Vender pelo bid">' + (o.bid ? fmt(o.bid) : '—') + '</td>',
+      '<td' + cls + '>' + (o.mid ? fmt(o.mid) : '—') + '</td>',
+      '<td class="ask" data-s="' + o.symbol + '" data-a="BUY" title="Comprar pelo ask">' + (o.ask ? fmt(o.ask) : '—') + '</td>',
+      '<td' + cls + '>' + (o.close ? fmt(o.close) : '—') + '</td>',
+      '<td class="teor" title="Valor teórico (BS com a EWMA do ativo)">' + (o.teorico ? fmt(o.teorico) : '—') + '</td>',
+      '<td>' + (o.estilo === 'AM' ? '🇺🇸' : (o.estilo === 'EU' ? '🇪🇺' : '—')) + '</td>',
+      '<td class="tk' + (em ? ' inleg' : '') + '">' + o.symbol.slice(4) + '</td>'
+    ];
+    return call ? c.join('') : c.slice().reverse().join('');
+  }
+  function renderGrade() {
+    var e = (S.d.expirations || []).filter(function(x) { return x.exp === S.exp; })[0];
+    if (!e) { $('pl-grid-wrap').innerHTML = '<div class="pl-empty">Sem séries neste vencimento.</div>'; return; }
+    var T = dias(e.exp) / 365, cols = ['Vol fin', 'IV B&S', 'Vega', 'Theta', 'Gamma', 'Delta', 'IV', 'Spread', 'Bid', 'Mid', 'Ask', 'Último', 'Teór.', 'Estilo', 'Ticker'];
+    var showC = S.lado !== 'P', showP = S.lado !== 'C';
+    var h = '<table class="pl-grid no-datatable"><thead><tr>' +
+      (showC ? cols.map(function(c) { return '<th class="pl-sep-c">' + c + '</th>'; }).join('') : '') + '<th title="CALLS à esquerda · PUTS à direita">' + (showC ? '◀ ' : '') + 'Strike' + (showP ? ' ▶' : '') + '</th>' +
+      (showP ? cols.slice().reverse().map(function(c) { return '<th class="pl-sep-p">' + c + '</th>'; }).join('') : '') + '</tr></thead><tbody>';
+    var atm = null; e.rows.forEach(function(r) { if (atm == null || Math.abs(r.strike - S.spot) < Math.abs(atm - S.spot)) atm = r.strike; });
+    e.rows.slice().reverse().forEach(function(r) {
+      h += '<tr' + (r.strike === atm ? ' class="atm" id="pl-atm"' : '') + '>' + (showC ? celulas(linhaOpc(r.call, r.strike, T, true), true, r.strike) : '') +
+        '<td class="k">' + fmt(r.strike) + '</td>' + (showP ? celulas(linhaOpc(r.put, r.strike, T, false), false, r.strike) : '') + '</tr>';
+    });
+    $('pl-grid-wrap').innerHTML = h + '</tbody></table>';
+    var a = $('pl-atm'); if (a) $('pl-grid-wrap').scrollTop = a.offsetTop - 180;
+    $('pl-f-spot').textContent = fmt(S.spot); $('pl-f-fwd').textContent = fmt(S.spot * Math.exp(R * T));
+    $('pl-f-n').textContent = e.rows.length + ' strikes · ' + dias(e.exp) + ' d.c.';
+  }
+  $('pl-grid-wrap').addEventListener('click', function(ev) {
+    var td = ev.target.closest('td[data-s]'); if (!td) return;
+    var info = bySym[td.dataset.s]; if (!info) return;
+    var side = td.dataset.a, o = info.o;
+    var px = side === 'BUY' ? (o.ask_eff || o.ask || o.close) : (o.bid_eff || o.bid || o.close);
+    S.legs.push({on: true, side: side, qty: 100, price: +(px || 0).toFixed(2), type: info.tipo, strike: info.strike, ticker: o.symbol, exp: info.exp, iv: o.iv ? o.iv / 100 : null, manual: null});
+    marcaAlterado(); renderChips(); renderGrade(); renderLegs();
+  });
+
+  // ── Montador ──
+  function marcaAlterado() { $('pl-estado').textContent = S.simId ? '· editada (não salva)' : '· rascunho'; }
+  function saidaDe(l) {
+    if (l.type === 'STOCK') return S.spot;
+    if (S.saida === 'manual') return l.manual != null ? l.manual : l.price;
+    var o = (bySym[l.ticker] || {}).o; if (!o) return null;
+    if (S.saida === 'mid') return o.mid || o.close || null;
+    if (S.saida === 'ult') return o.close || null;
+    if (S.saida === 'teor') return o.teorico || null;
+    return l.side === 'BUY' ? (o.bid_eff || o.bid || null) : (o.ask_eff || o.ask || null);
+  }
+  function renderLegs() {
+    var tb = $('pl-legs-body');
+    if (!S.legs.length) { tb.innerHTML = '<tr><td colspan="11" class="pl-empty">Clique no BID/ASK da grade para montar a estrutura.</td></tr>'; $('pl-res').textContent = 'R$ 0,00'; desenhar(); return; }
+    var tot = 0;
+    tb.innerHTML = S.legs.map(function(l, i) {
+      var sd = saidaDe(l), sg = l.side === 'BUY' ? 1 : -1, pnl = sd != null ? (sd - l.price) * l.qty * sg : null;
+      if (l.on && pnl != null) tot += pnl;
+      var tipo = l.type === 'STOCK' ? 'AÇÃO' : l.type;
+      return '<tr data-i="' + i + '" style="' + (l.on ? '' : 'opacity:.45;') + '">' +
+        '<td><input type="checkbox" data-f="on"' + (l.on ? ' checked' : '') + ' style="width:auto;"></td>' +
+        '<td><button class="pl-side ' + l.side + '" data-f="side">' + (l.side === 'BUY' ? 'COMPRAR' : 'VENDER') + '</button></td>' +
+        '<td><input data-f="qty" value="' + l.qty + '" style="width:58px;"></td>' +
+        '<td><input data-f="price" value="' + fmt(l.price) + '"></td>' +
+        '<td>' + (S.saida === 'manual' ? '<input data-f="manual" value="' + fmt(l.manual != null ? l.manual : l.price) + '">' : (sd != null ? fmt(sd) : '—')) + '</td>' +
+        '<td class="' + (pnl > 0 ? 'pos' : (pnl < 0 ? 'neg' : '')) + '">' + (pnl != null ? fmt(pnl) : '—') + '</td>' +
+        '<td>' + (l.type === 'STOCK' ? '—' : '<input data-f="strike" value="' + fmt(l.strike) + '">') + '</td>' +
+        '<td>' + (l.type === 'STOCK' ? S.ticker : '<input data-f="ticker" value="' + (l.ticker || '') + '" style="width:84px;text-align:left;text-transform:uppercase;">') + '</td>' +
+        '<td>' + (l.type === 'STOCK' ? '<span class="pl-tipo">AÇÃO</span>' : '<select data-f="type" style="font-size:.66rem;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;"><option' + (l.type === 'CALL' ? ' selected' : '') + '>CALL</option><option' + (l.type === 'PUT' ? ' selected' : '') + '>PUT</option></select>') + '</td>' +
+        '<td>' + (l.type === 'STOCK' ? '—' : '<select data-f="exp" style="font-size:.66rem;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;">' +
+          (S.d ? S.d.expirations : []).map(function(e) { return '<option value="' + e.exp + '"' + (e.exp === l.exp ? ' selected' : '') + '>' + dBR(e.exp).slice(0, 5) + ' ' + infoExp(e.exp).badge + '</option>'; }).join('') +
+          (l.exp && !(S.d && S.d.expirations.some(function(e) { return e.exp === l.exp; })) ? '<option value="' + l.exp + '" selected>' + dBR(l.exp) + '</option>' : '') + '</select>') + '</td>' +
+        '<td><button class="pl-btn" data-f="del" title="Remover perna" style="padding:0 .35rem;">✕</button></td></tr>';
+    }).join('');
+    $('pl-res').innerHTML = '<span class="' + (tot >= 0 ? 'pos' : 'neg') + '">' + brl(tot) + '</span>';
+    desenhar();
+  }
+  function pv(s) { return parseFloat(String(s).replace(/\./g, '').replace(',', '.')) || 0; }
+  $('pl-legs-body').addEventListener('click', function(ev) {
+    var b = ev.target.closest('[data-f]'); if (!b) return; var tr = b.closest('tr'); var i = +tr.dataset.i, l = S.legs[i];
+    if (b.dataset.f === 'side') { l.side = l.side === 'BUY' ? 'SELL' : 'BUY'; marcaAlterado(); renderLegs(); }
+    else if (b.dataset.f === 'del') { S.legs.splice(i, 1); marcaAlterado(); renderChips(); renderGrade(); renderLegs(); }
+  });
+  $('pl-legs-body').addEventListener('change', function(ev) {
+    var el = ev.target, f = el.dataset.f; if (!f) return; var l = S.legs[+el.closest('tr').dataset.i];
+    if (f === 'on') l.on = el.checked;
+    else if (f === 'qty') l.qty = Math.max(1, parseInt(el.value, 10) || 1);
+    else if (f === 'price') l.price = pv(el.value);
+    else if (f === 'manual') l.manual = pv(el.value);
+    else if (f === 'strike') l.strike = pv(el.value);
+    else if (f === 'type') l.type = el.value;
+    else if (f === 'exp') l.exp = el.value;
+    else if (f === 'ticker') {
+      l.ticker = el.value.trim().toUpperCase(); var info = bySym[l.ticker];
+      if (info) { l.type = info.tipo; l.strike = info.strike; l.exp = info.exp; l.iv = info.o.iv ? info.o.iv / 100 : l.iv; }
+    }
+    marcaAlterado(); renderChips(); renderLegs();
+  });
+  $('pl-saida').addEventListener('click', function(ev) { var b = ev.target.closest('button'); if (!b) return; S.saida = b.dataset.v; [].forEach.call(this.children, function(x) { x.classList.toggle('on', x === b); }); renderLegs(); });
+  $('pl-nova').addEventListener('click', function() { S.legs = []; S.simId = null; S.simNome = ''; $('pl-nome-estr').textContent = 'Estrutura'; marcaAlterado(); renderChips(); renderGrade(); renderLegs(); renderOps(); });
+  $('pl-perna').addEventListener('click', function() {
+    var e = S.exp, atm = null; var ex = S.d && S.d.expirations.filter(function(x) { return x.exp === e; })[0];
+    if (ex) ex.rows.forEach(function(r) { if (atm == null || Math.abs(r.strike - S.spot) < Math.abs(atm.strike - S.spot)) atm = r; });
+    var o = atm && atm.call;
+    S.legs.push({on: true, side: 'BUY', qty: 100, price: o ? (o.ask_eff || o.close || 0) : 0, type: 'CALL', strike: atm ? atm.strike : Math.round(S.spot), ticker: o ? o.symbol : '', exp: e, iv: o && o.iv ? o.iv / 100 : null, manual: null});
+    marcaAlterado(); renderChips(); renderGrade(); renderLegs();
+  });
+  $('pl-ativo').addEventListener('click', function() { S.legs.push({on: true, side: 'BUY', qty: 100, price: +S.spot.toFixed(2), type: 'STOCK', strike: 0, ticker: S.ticker, exp: '', iv: null}); marcaAlterado(); renderLegs(); });
+
+  // ── Payoff: avaliação ──
+  function ivAtm(exp) {
+    var e = S.d && S.d.expirations.filter(function(x) { return x.exp === exp; })[0]; if (!e) return 0.3;
+    var best = null; e.rows.forEach(function(r) { if (best == null || Math.abs(r.strike - S.spot) < Math.abs(best.strike - S.spot)) best = r; });
+    var v = best && ((best.call && best.call.iv) || (best.put && best.put.iv)); return v ? v / 100 : 0.3;
+  }
+  function ivLeg(l) {
+    var base = l.iv || ((bySym[l.ticker] || {}).o || {}).iv / 100 || ivAtm(l.exp) || 0.3;
+    var m = Math.log(l.strike / S.spot) * 10;
+    var v = base + (+$('pl-vol').value) / 100 + (+$('pl-skew').value) / 100 * m + (+$('pl-curv').value) / 100 * m * m;
+    return Math.max(v, 0.01);
+  }
+  function legsOn() { return S.legs.filter(function(l) { return l.on; }); }
+  function expMin(ls) { var d = null; ls.forEach(function(l) { if (l.type !== 'STOCK' && l.exp) { var x = dias(l.exp); if (d == null || x < d) d = x; } }); return d; }
+  function valor(ls, Sx, tDias) {
+    var v = 0;
+    ls.forEach(function(l) {
+      var sg = l.side === 'BUY' ? 1 : -1;
+      if (l.type === 'STOCK') { v += (Sx - l.price) * l.qty * sg; return; }
+      var T = (dias(l.exp) - tDias) / 365;
+      v += (bs(Sx, l.strike, T, ivLeg(l), l.type === 'CALL') - l.price) * l.qty * sg;
+    });
+    return v;
+  }
+  function gregaTot(ls, Sx, tDias, k) {
+    var v = 0;
+    ls.forEach(function(l) {
+      var sg = l.side === 'BUY' ? 1 : -1;
+      if (l.type === 'STOCK') { if (k === 'delta') v += l.qty * sg; return; }
+      v += greeks(Sx, l.strike, (dias(l.exp) - tDias) / 365, ivLeg(l), l.type === 'CALL')[k] * l.qty * sg;
+    });
+    return v;
+  }
+  var GCOR = {delta: '#3b82f6', gamma: '#22d3ee', theta: '#fb923c', vega: '#34d399', rho: '#a78bfa'};
+
+  function desenhar() {
+    var ls = legsOn();
+    var dte = expMin(ls); if (dte == null) dte = S.exp ? dias(S.exp) : 0;
+    var sl = $('pl-dias'); sl.max = Math.max(dte, 1); if (+sl.value > +sl.max) sl.value = sl.max;
+    var td = +sl.value, dt = new Date(hoje0().getTime() + td * 86400000);
+    $('pl-hoje-lbl').textContent = 'DTE ' + (dte - td) + ' (' + dBR(dt.toISOString().slice(0, 10)).slice(0, 5) + ')';
+    var ks = ls.filter(function(l) { return l.type !== 'STOCK'; }).map(function(l) { return l.strike; }).concat([S.spot]);
+    var lo = Math.min.apply(null, ks) * 0.84, hi = Math.max.apply(null, ks) * 1.16, NP = 220;
+    var xs = [], venc = [], atual = [], gs = {};
+    Object.keys(GCOR).forEach(function(k) { gs[k] = []; });
+    for (var i = 0; i <= NP; i++) {
+      var x = lo + (hi - lo) * i / NP; xs.push(x);
+      if (ls.length) {
+        venc.push(valor(ls, x, dte)); atual.push(valor(ls, x, td));
+        Object.keys(GCOR).forEach(function(k) { if (S.g[k]) gs[k].push(gregaTot(ls, x, td, k)); });
+      }
+    }
+    // métricas
+    metricas(ls, xs, venc, dte);
+    // dataset
+    var lab = xs.map(function(x) { return x; });
+    var ds = [];
+    if (ls.length && S.g.pnl) {
+      if (S.g.venc) ds.push({label: 'Venc. (' + dBR(new Date(hoje0().getTime() + dte * 86400000).toISOString().slice(0, 10)).slice(0, 5) + ')', data: venc, borderColor: '#facc15', borderWidth: 2, pointRadius: 0, yAxisID: 'y',
+        fill: {target: 'origin', above: 'rgba(52,211,153,.18)', below: 'rgba(248,113,113,.20)'}});
+      if (S.g.atual) ds.push({label: 'Atual (' + dBR(dt.toISOString().slice(0, 10)).slice(0, 5) + ')', data: atual, borderColor: '#e2e8f0', borderWidth: 2, pointRadius: 0, yAxisID: 'y'});
+    }
+    var nomes = {delta: 'Delta', gamma: 'Gamma', theta: 'Theta', vega: 'Vega', rho: 'Rho'};
+    Object.keys(GCOR).forEach(function(k) { if (S.g[k] && gs[k].length) ds.push({label: nomes[k], data: gs[k], borderColor: GCOR[k], borderWidth: 1.5, pointRadius: 0, yAxisID: 'g_' + k}); });
+    var scales = {
+      x: {type: 'linear', min: lo, max: hi, ticks: {color: '#94a3b8', font: {size: 10}, callback: function(v) { return S.escala === 'pct' ? fmt((v / S.spot - 1) * 100, 1) + '%' : fmt(v, 2); }}, grid: {color: 'rgba(148,163,184,.08)'}},
+      y: {position: 'left', ticks: {color: '#94a3b8', font: {size: 10}, callback: function(v) { return brlK(v); }}, grid: {color: 'rgba(148,163,184,.08)'}, title: {display: true, text: 'Resultado (R$)', color: '#94a3b8'}}
+    };
+    Object.keys(GCOR).forEach(function(k) { if (S.g[k]) scales['g_' + k] = {position: 'right', grid: {display: false}, ticks: {color: GCOR[k], font: {size: 9}, maxTicksLimit: 6, callback: function(v) { return fmt(v, Math.abs(v) < 10 ? 2 : 0); }}, title: {display: true, text: nomes[k], color: GCOR[k], font: {size: 10}}}; });
+    var data = {datasets: ds.map(function(d) { d.data = d.data.map(function(y, i) { return {x: xs[i], y: y}; }); return d; })};
+    if (chart) { chart.data = data; chart.options.scales = scales; chart.update('none'); return; }
+    chart = new Chart($('pl-chart').getContext('2d'), {type: 'line', data: data, plugins: [linhasPlugin],
+      options: {responsive: true, maintainAspectRatio: false, animation: false, interaction: {mode: 'index', intersect: false},
+        plugins: {legend: {labels: {color: '#cbd5e1', boxWidth: 12, font: {size: 11}}},
+          tooltip: {callbacks: {title: function(it) { var x = it[0].parsed.x; return 'Preço ' + fmt(x) + ' (' + fmt((x / S.spot - 1) * 100, 1) + '%)'; },
+            label: function(c) { return c.dataset.label + ': ' + (c.dataset.yAxisID === 'y' ? brl(c.parsed.y) : fmt(c.parsed.y, 4)); }}}},
+        scales: scales}});
+    // zoom/pan simples no eixo X
+    var cv = $('pl-chart'), arr = null;
+    cv.addEventListener('wheel', function(ev) { ev.preventDefault(); var sx = chart.scales.x, c = sx.getValueForPixel(ev.offsetX), f = ev.deltaY > 0 ? 1.15 : 0.87;
+      sx.options.min = c - (c - sx.min) * f; sx.options.max = c + (sx.max - c) * f; chart.options.scales.x.min = sx.options.min; chart.options.scales.x.max = sx.options.max; chart.update('none'); }, {passive: false});
+    cv.addEventListener('mousedown', function(ev) { arr = {x: ev.offsetX, min: chart.scales.x.min, max: chart.scales.x.max}; });
+    window.addEventListener('mouseup', function() { arr = null; });
+    cv.addEventListener('mousemove', function(ev) { if (!arr) return; var sx = chart.scales.x, dx = (ev.offsetX - arr.x) * (arr.max - arr.min) / sx.width;
+      chart.options.scales.x.min = arr.min - dx; chart.options.scales.x.max = arr.max - dx; chart.update('none'); });
+    cv.addEventListener('dblclick', function() { desenhar(); });
+  }
+  // linhas verticais: spot, break-even, ±1σ, marcadores e barreiras
+  var linhasPlugin = {id: 'plLinhas', afterDatasetsDraw: function(ch) {
+    var sx = ch.scales.x, ya = ch.chartArea, g = ch.ctx; if (!S.spot) return;
+    function vline(v, cor, txt, dash, emBaixo) {
+      if (v == null || v < sx.min || v > sx.max) return; var px = sx.getPixelForValue(v);
+      g.save(); g.strokeStyle = cor; g.lineWidth = 1; g.setLineDash(dash ? [4, 3] : []); g.beginPath(); g.moveTo(px, ya.top); g.lineTo(px, ya.bottom); g.stroke(); g.setLineDash([]);
+      if (txt) { g.font = '10px sans-serif'; var w = g.measureText(txt).width + 8, y = emBaixo ? ya.bottom - 16 : ya.top + 2;
+        g.fillStyle = cor; g.fillRect(Math.min(px - w / 2, ya.right - w), y, w, 14); g.fillStyle = '#0f172a'; g.fillText(txt, Math.min(px - w / 2, ya.right - w) + 4, y + 10); }
+      g.restore();
+    }
+    if (S.g.sigma && ch.__sig) { g.save(); g.fillStyle = 'rgba(96,165,250,.07)'; var a = sx.getPixelForValue(Math.max(ch.__sig[0], sx.min)), b = sx.getPixelForValue(Math.min(ch.__sig[1], sx.max)); g.fillRect(a, ya.top, b - a, ya.bottom - ya.top); g.restore(); }
+    vline(S.spot, '#60a5fa', 'Spot: ' + fmt(S.spot), false, true);
+    if (S.g.be && ch.__be) ch.__be.forEach(function(b) { vline(b, '#cbd5e1', 'Break Even: ' + fmt(b), true); });
+    S.markers.forEach(function(m) { vline(m.preco, m.cor, m.rot + ' ' + fmt(m.preco), m.trac); });
+    if (S.g.barreiras) S.barreiras.forEach(function(b) { vline(b.strike, '#e879f9', 'Barreira ' + fmt(b.strike, 2), true); });
+  }};
+
+  function metricas(ls, xs, venc, dte) {
+    var el = $('pl-metrics');
+    if (!ls.length) { el.innerHTML = '<div style="grid-column:1/-1;color:var(--text-secondary);">Monte uma estrutura para ver as métricas.</div>'; if (chart) { chart.__be = null; chart.__sig = null; } return; }
+    var cred = 0; ls.forEach(function(l) { cred += (l.side === 'SELL' ? 1 : -1) * l.price * l.qty; });
+    // o preço não cai abaixo de zero: o extremo inferior é avaliado em S ≈ 0 (perda/lucro limitados);
+    // só a inclinação no extremo superior indica resultado ilimitado
+    var v0 = valor(ls, 0.01, dte);
+    var mx = Math.max.apply(null, venc.concat([v0])), mn = Math.min.apply(null, venc.concat([v0]));
+    var nI = venc.length - 1, slopeHi = venc[nI] - venc[nI - 1];
+    var ilimG = slopeHi > 0.5, ilimP = slopeHi < -0.5;
+    var bes = []; for (var i = 1; i < venc.length; i++) { if ((venc[i - 1] < 0) !== (venc[i] < 0)) { var t = venc[i - 1] / (venc[i - 1] - venc[i]); bes.push(xs[i - 1] + t * (xs[i] - xs[i - 1])); } }
+    var sig = ivAtm(S.exp), T = Math.max(dte, 1) / 365, s1 = [S.spot * Math.exp(-sig * Math.sqrt(T)), S.spot * Math.exp(sig * Math.sqrt(T))];
+    // POP: probabilidade lognormal de terminar com resultado > 0 no vencimento
+    var pop = 0, tot = 0;
+    for (var j = 0; j < xs.length; j++) { var x = xs[j], z = (Math.log(x / S.spot) - (R - sig * sig / 2) * T) / (sig * Math.sqrt(T)), dens = n(z) / (x * sig * Math.sqrt(T)); tot += dens; if (venc[j] > 0) pop += dens; }
+    pop = tot ? pop / tot * 100 : null;
+    if (chart) { chart.__be = bes; chart.__sig = s1; }
+    var rr = (!ilimG && !ilimP && mn < 0) ? (mx / Math.abs(mn)) : null;
+    var box = function(l, v, c) { return '<div><span>' + l + '</span><b class="' + (c || '') + '">' + v + '</b></div>'; };
+    el.innerHTML = box(cred >= 0 ? 'Crédito' : 'Débito', brlK(Math.abs(cred)), cred >= 0 ? 'pos' : 'neg') +
+      box('Lucro máx.', ilimG ? 'Ilimitado' : brlK(mx), 'pos') + box('Perda máx.', ilimP ? 'Ilimitada' : brlK(mn), 'neg') +
+      box('R/R', rr != null ? '1:' + fmt(1 / rr, 1) : '—') + box('POP', pop != null ? fmt(pop, 0) + '%' : '—') +
+      box('Break-even', bes.length ? bes.map(function(b) { return fmt(b); }).join(' · ') : '—', '') +
+      box('Spot', fmt(S.spot)) + box('σ ATM', fmt(sig * 100, 1) + '%') + box('±1σ', fmt(s1[0]) + ' – ' + fmt(s1[1])) +
+      box('Forward', fmt(S.spot * Math.exp(R * T))) + box('DTE', dte + 'd');
+  }
+
+  // ── Controles ──
+  ['pl-vol', 'pl-skew', 'pl-curv'].forEach(function(id) { $(id).addEventListener('input', function() { $(id + '-v').textContent = fmt(+this.value, 1); desenhar(); }); });
+  $('pl-dias').addEventListener('input', desenhar);
+  $('pl-zerar').addEventListener('click', function(e) { e.preventDefault(); ['pl-vol', 'pl-skew', 'pl-curv'].forEach(function(id) { $(id).value = 0; $(id + '-v').textContent = '0,0'; }); desenhar(); });
+  document.querySelectorAll('[data-g]').forEach(function(b) { b.addEventListener('click', function() { var k = b.dataset.g; S.g[k] = !S.g[k]; b.classList.toggle('on', S.g[k]); desenhar(); }); });
+  $('pl-escala').addEventListener('click', function(ev) { var b = ev.target.closest('button'); if (!b) return; S.escala = b.dataset.v; [].forEach.call(this.children, function(x) { x.classList.toggle('on', x === b); }); desenhar(); });
+
+  // ── Operações (simulações salvas) ──
+  var OPS = [];
+  function carregarOps() { fetch('/api/simulacao/list').then(function(r) { return r.json(); }).then(function(l) { OPS = Array.isArray(l) ? l : []; renderOps(); }).catch(function() {}); }
+  function renderOps() {
+    var todas = $('pl-op-todas').checked;
+    var l = OPS.filter(function(s) { return todas || (s.underlying || '').toUpperCase() === S.ticker; });
+    if (!l.length) { $('pl-ops').innerHTML = '<div class="pl-empty">Nenhuma operação ainda. Registre uma execução no Montador.</div>'; return; }
+    $('pl-ops').innerHTML = l.map(function(s) {
+      return '<div class="it' + (s.id === S.simId ? ' on' : '') + '" data-id="' + s.id + '"><span><b>' + s.name + '</b> <span style="color:var(--text-secondary);">' + (s.underlying || '') + ' · ' + s.created_at + ' · ' + s.legs.length + ' perna(s)' + (s.has_notes ? ' · 📝' : '') + '</span></span>' +
+        '<button class="pl-btn" data-del="' + s.id + '" title="Excluir" style="padding:0 .35rem;">🗑</button></div>';
+    }).join('');
+  }
+  $('pl-op-todas').addEventListener('change', renderOps);
+  $('pl-ops').addEventListener('click', function(ev) {
+    var del = ev.target.closest('[data-del]');
+    if (del) { ev.stopPropagation(); if (!confirm('Excluir esta operação salva?')) return;
+      fetch('/api/simulacao/' + del.dataset.del + '/delete', {method: 'POST'}).then(function() { if (+del.dataset.del === S.simId) S.simId = null; carregarOps(); }); return; }
+    var it = ev.target.closest('.it'); if (!it) return;
+    fetch('/api/simulacao/' + it.dataset.id).then(function(r) { return r.json(); }).then(function(s) {
+      if (s.error) { alert(s.error); return; }
+      var und = (s.underlying || '').toUpperCase();
+      var aplica = function() {
+        S.legs = s.legs.map(function(l) { return {on: true, side: l.side, qty: l.qty, price: l.premium, type: l.type, strike: l.strike, ticker: l.ticker || '', exp: l.exp || '', iv: l.iv ? (l.iv > 1.5 ? l.iv / 100 : l.iv) : null, manual: null}; });
+        S.simId = s.id; S.simNome = s.name; $('pl-nome-estr').textContent = s.name; $('pl-estado').textContent = '· salva';
+        $('pl-notas').textContent = s.notes || '';
+        var lexp = S.legs.filter(function(l) { return l.exp; })[0]; if (lexp && S.d.expirations.some(function(e) { return e.exp === lexp.exp; })) S.exp = lexp.exp;
+        renderChips(); renderGrade(); renderLegs(); renderOps();
+      };
+      if (und && und !== S.ticker) {
+        var opt = [].some.call($('pl-ticker').options, function(o) { return o.value === und; });
+        if (opt) $('pl-ticker').value = und; else { $('pl-ticker').value = '__outro__'; $('pl-ticker-livre').style.display = ''; $('pl-ticker-livre').value = und; }
+        var t0 = S.ticker; carregar(true); var esp = setInterval(function() { if (S.ticker === und) { clearInterval(esp); aplica(); } }, 200); setTimeout(function() { clearInterval(esp); }, 20000);
+      } else aplica();
+    });
+  });
+  function salvar() {
+    if (!S.legs.length) { alert('Monte a estrutura antes de salvar.'); return; }
+    var nome = prompt('Nome da operação:', S.simNome || ('Estrutura ' + S.ticker)); if (!nome) return;
+    var body = {name: nome, underlying: S.ticker, legs: S.legs.map(function(l) { return {type: l.type, side: l.side, qty: l.qty, strike: l.strike, premium: l.price, ticker: l.ticker, exp: l.exp, iv: l.iv ? l.iv * 100 : 0}; })};
+    if (S.simId && nome === S.simNome) body.id = S.simId;
+    fetch('/api/simulacao/save', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
+      .then(function(r) { return r.json(); }).then(function(j) {
+        if (j.error) { alert(j.error); return; }
+        S.simId = j.id; S.simNome = j.name; $('pl-nome-estr').textContent = j.name; $('pl-estado').textContent = '· salva'; carregarOps();
+      });
+  }
+  $('pl-salvar').addEventListener('click', salvar);
+  $('pl-op-add').addEventListener('click', salvar);
+  $('pl-anotar').addEventListener('click', function() {
+    var txt = $('pl-diario').value.trim(); if (!txt) return;
+    if (!S.simId) { alert('Salve a operação (ou abra uma da lista) para anotar no diário dela.'); return; }
+    var nova = (($('pl-notas').textContent || '') + '\n' + new Date().toLocaleString('pt-BR').slice(0, 17) + ' — ' + txt).trim();
+    fetch('/api/simulacao/' + S.simId + '/notes', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({notes: nova})})
+      .then(function(r) { return r.json(); }).then(function(j) { if (j.ok) { $('pl-notas').textContent = nova; $('pl-diario').value = ''; carregarOps(); } });
+  });
+
+  // ── Scanner de barreiras (Mapa de Opções: posições em aberto) ──
+  var barLado = 'call';
+  $('pl-bar-lado').addEventListener('click', function(ev) { var b = ev.target.closest('button'); if (!b) return; barLado = b.dataset.v; [].forEach.call(this.children, function(x) { x.classList.toggle('on', x === b); }); });
+  $('pl-bar-buscar').addEventListener('click', function() {
+    var t = S.ticker || tickerSel(); if (!t) return;
+    var iqMin = parseFloat($('pl-bar-iq').value) || 0, descMin = (parseFloat($('pl-bar-desc').value) || 0) * 1e6, box = $('pl-bar-res');
+    box.innerHTML = '⏳ buscando…';
+    fetch('/api/mapa-opcoes/vencimentos/' + encodeURIComponent(t)).then(function(r) { return r.json(); }).then(function(v) {
+      var vs = (v.vencimentos || []).slice(0, 4); if (!vs.length) { box.textContent = v.error || 'Sem vencimentos.'; return; }
+      return Promise.all(vs.map(function(e) { return fetch('/api/mapa-opcoes/' + encodeURIComponent(t) + '?exp=' + e + '&side=' + barLado + '&modo=abs').then(function(r) { return r.json(); }).then(function(j) { return {exp: e, j: j}; }).catch(function() { return {exp: e, j: {}}; }); }))
+        .then(function(rs) {
+          var out = [], ref = '';
+          rs.forEach(function(x) { if (x.j.data_ref) ref = x.j.data_ref; (x.j.barras || []).forEach(function(b) { if ((b.iq || 0) >= iqMin && (b.descoberto || 0) >= descMin) out.push({exp: x.exp, strike: b.strike, iq: b.iq, desc: b.descoberto}); }); });
+          out.sort(function(a, b) { return b.desc - a.desc; });
+          S.barreiras = out;
+          box.innerHTML = '<div style="color:var(--text-secondary);margin-bottom:.2rem;">' + out.length + ' barreira(s) · ' + t + (ref ? ' · ' + dBR(ref) : '') + '</div>' +
+            (out.length ? '<table class="no-datatable pl-mini"><tr style="color:var(--text-secondary);"><td>Venc.</td><td style="text-align:right;">Strike</td><td style="text-align:right;">IQ</td><td style="text-align:right;">Desc.</td><td style="text-align:right;">Dist.</td></tr>' +
+              out.slice(0, 12).map(function(b) { return '<tr data-k="' + b.strike + '" style="cursor:pointer;" title="Clique para marcar no gráfico"><td>' + b.exp.slice(5, 7) + '/' + b.exp.slice(0, 4) + '</td><td style="text-align:right;"><b>' + fmt(b.strike) + '</b></td><td style="text-align:right;color:#34d399;">' + fmt(b.iq) + '</td><td style="text-align:right;">' + fmt(b.desc / 1e6, 1) + 'M</td><td style="text-align:right;">' + fmt((b.strike / S.spot - 1) * 100, 1) + '%</td></tr>'; }).join('') + '</table>' : '');
+          S.g.barreiras = true; document.querySelector('[data-g=barreiras]').classList.add('on'); desenhar();
+        });
+    }).catch(function(e) { box.textContent = '⚠️ ' + e; });
+  });
+  $('pl-bar-res').addEventListener('click', function(ev) { var tr = ev.target.closest('tr[data-k]'); if (!tr) return; addMarker('Barreira', +tr.dataset.k, '#e879f9', true); });
+
+  // ── Marcadores de preço (por ativo, no navegador) ──
+  var CORES = ['#fbbf24', '#f87171', '#60a5fa', '#a78bfa', '#34d399', '#fb923c', '#e879f9', '#22d3ee'];
+  $('pl-mk-cores').innerHTML = CORES.map(function(c, i) { return '<span data-c="' + c + '" style="background:' + c + ';"' + (i === 0 ? ' class="on"' : '') + '></span>'; }).join('');
+  $('pl-mk-cores').addEventListener('click', function(ev) { var s = ev.target.closest('span[data-c]'); if (!s) return; S.cor = s.dataset.c; [].forEach.call(this.children, function(x) { x.classList.toggle('on', x === s); }); });
+  function chaveMk() { return 'pl-mk-' + S.ticker; }
+  function carregarMarcadores() { try { S.markers = JSON.parse(localStorage.getItem(chaveMk()) || '[]'); } catch (e) { S.markers = []; } renderMarkers(); }
+  function salvarMarcadores() { try { localStorage.setItem(chaveMk(), JSON.stringify(S.markers)); } catch (e) {} }
+  function addMarker(rot, preco, cor, trac) { if (!(preco > 0)) return; S.markers.push({rot: rot || 'Nível', preco: preco, cor: cor, trac: trac}); salvarMarcadores(); renderMarkers(); desenhar(); }
+  function renderMarkers() {
+    $('pl-mk-list').innerHTML = S.markers.length ? S.markers.map(function(m, i) { return '<div class="it"><span><span style="color:' + m.cor + ';">●</span> ' + m.rot + ' · <b>' + fmt(m.preco) + '</b> <span style="color:var(--text-secondary);">(' + fmt((m.preco / (S.spot || m.preco) - 1) * 100, 1) + '%)</span></span><button class="pl-btn" data-mi="' + i + '" style="padding:0 .35rem;">✕</button></div>'; }).join('')
+      : '<div class="pl-empty">Nenhum marcador. Adicione níveis do seu plano — entrada, stop, alvos.</div>';
+  }
+  $('pl-mk-list').addEventListener('click', function(ev) { var b = ev.target.closest('[data-mi]'); if (!b) return; S.markers.splice(+b.dataset.mi, 1); salvarMarcadores(); renderMarkers(); desenhar(); });
+  $('pl-mk-add').addEventListener('click', function() { addMarker($('pl-mk-rot').value.trim(), pv($('pl-mk-preco').value), S.cor, $('pl-mk-trac').checked); $('pl-mk-rot').value = ''; $('pl-mk-preco').value = ''; });
+  document.querySelectorAll('[data-q]').forEach(function(a) { a.addEventListener('click', function(e) { e.preventDefault(); $('pl-mk-rot').value = a.dataset.q; $('pl-mk-preco').focus(); var c = a.style.color; }); });
+
+  carregar();
+})();
+</script>
+{% endblock %}

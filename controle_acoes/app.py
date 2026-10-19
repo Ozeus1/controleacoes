@@ -2998,6 +2998,15 @@ def simulador_estudo():
     return render_template('simulador_estudo.html', sims=sims, selic=_selic())
 
 
+@app.route('/payoff-live')
+@login_required
+def payoff_live():
+    """Payoff ao vivo (estilo Jumba): grade de opções com gregas, montador de estrutura, payoff com gregas,
+    scanner de barreiras (Mapa de Opções), marcadores de preço e operações salvas."""
+    sug = list(dict.fromkeys(['BOVA11'] + _sugestoes_liquidez(current_user.id)))
+    return render_template('payoff_live.html', sugestoes=sug, selic=_selic())
+
+
 @app.route('/simflex')
 @login_required
 def simflex():
@@ -5199,6 +5208,9 @@ def api_cadeia(ticker):
             'ask_eff':  round(_a_eff, 2) if _a_eff else 0,
             'bid_src':  _b_src if _b_eff else None,
             'ask_src':  _a_src if _a_eff else None,
+            'estilo':   ('AM' if 'AMER' in str(o.get('maturity_type') or '').upper()
+                         else ('EU' if 'EURO' in str(o.get('maturity_type') or '').upper() else None)),
+            'volume':   int(float(o.get('volume') or 0)),
         }
 
         is_put = 'PUT' in cat or cat == 'P'

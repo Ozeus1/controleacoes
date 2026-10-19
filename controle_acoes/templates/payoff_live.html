@@ -660,8 +660,11 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
             if (x.j.data_ref) ref = x.j.data_ref;
             var m = x.exp.slice(0, 7);
             (x.j.barras || []).forEach(function(b) {
-              var k = m + '|' + b.strike, a = mes[k] = mes[k] || {exp: m, strike: b.strike, desc: 0, tit: 0, lan: 0};
-              a.desc += b.descoberto || 0; a.tit += b.titular || 0; a.lan += b.lancador || 0;
+              var k = m + '|' + b.strike, a = mes[k] = mes[k] || {exp: m, strike: b.strike, desc: 0, cob: 0, trav: 0, tit: 0, lan: 0, syms: {}};
+              a.desc += b.descoberto || 0; a.cob += b.coberto || 0; a.trav += b.travado || 0; a.tit += b.titular || 0; a.lan += b.lancador || 0;
+            });
+            (x.j.rows || []).forEach(function(r) {      // séries (tickers) de cada strike no mês
+              var a = mes[m + '|' + r.strike]; if (a && r.symbol) a.syms[r.symbol] = 1;
             });
           });
           var out = [];
@@ -671,7 +674,10 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
           S.barreiras = out;
           box.innerHTML = '<div style="color:var(--text-secondary);margin-bottom:.2rem;">' + out.length + ' barreira(s) · ' + t + (ref ? ' · ' + dBR(ref) : '') + '</div>' +
             (out.length ? '<table class="no-datatable pl-mini"><tr style="color:var(--text-secondary);"><td>Venc.</td><td style="text-align:right;">Strike</td><td style="text-align:right;">IQ</td><td style="text-align:right;">Desc.</td><td style="text-align:right;">Dist.</td></tr>' +
-              out.slice(0, 12).map(function(b) { return '<tr data-k="' + b.strike + '" style="cursor:pointer;" title="Clique para marcar no gráfico"><td>' + b.exp.slice(5, 7) + '/' + b.exp.slice(0, 4) + '</td><td style="text-align:right;"><b>' + fmt(b.strike) + '</b></td><td style="text-align:right;color:#34d399;">' + fmt(b.iq) + '</td><td style="text-align:right;">' + fmt(b.desc / 1e6, 1) + 'M</td><td style="text-align:right;">' + fmt((b.strike / S.spot - 1) * 100, 1) + '%</td></tr>'; }).join('') + '</table>' : '');
+              out.slice(0, 12).map(function(b) {
+                var det = Object.keys(b.syms).join(', ') + (Object.keys(b.syms).length ? ' · ' : '') + 'strike ' + fmt(b.strike) + ' · IQ ' + fmt(b.iq) +
+                  ' · descoberto ' + fmt(b.desc / 1e6, 1) + 'M · coberto ' + fmt(b.cob / 1e6, 1) + 'M · trava ' + fmt(b.trav / 1e6, 1) + 'M · titulares ' + b.tit + ' / lançadores ' + b.lan;
+                return '<tr data-k="' + b.strike + '" style="cursor:pointer;" title="' + det + ' — clique para marcar no gráfico"><td>' + b.exp.slice(5, 7) + '/' + b.exp.slice(0, 4) + '</td><td style="text-align:right;"><b>' + fmt(b.strike) + '</b></td><td style="text-align:right;color:#34d399;">' + fmt(b.iq) + '</td><td style="text-align:right;">' + fmt(b.desc / 1e6, 1) + 'M</td><td style="text-align:right;">' + fmt((b.strike / S.spot - 1) * 100, 1) + '%</td></tr>'; }).join('') + '</table>' : '');
           S.g.barreiras = true; document.querySelector('[data-g=barreiras]').classList.add('on'); desenhar();
         });
     }).catch(function(e) { box.textContent = '⚠️ ' + e; });

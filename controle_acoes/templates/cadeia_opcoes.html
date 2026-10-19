@@ -209,6 +209,8 @@ table.cadeia td.empty{color:#334155;}
       <button class="btn btn-secondary btn-sm" id="btn-pnt-cad" onclick="exportarPntCad(this)"
               title="Copia tickers, C/V, quantidades e o spread da montagem para armar a estratégia (Pnt)">📋 Exportar Pnt</button>
       <button class="btn btn-primary btn-sm" id="sim-save-btn">💾 Salvar</button>
+      <button class="btn btn-sm" id="sim-prod-btn" style="display:none;background:#f59e0b;color:#111;font-weight:700;"
+              title="Grava a estrutura como Operação Estruturada; a PUT vendida original sai de 'Venda a Seco de Puts' e o manejo fica registrado">🚀 Salvar em Produção</button>
       <button class="btn btn-secondary btn-sm" id="sim-new-btn">+ Nova</button>
     </div>
 
@@ -1010,6 +1012,38 @@ document.getElementById('sim-save-btn').addEventListener('click',function(){
     })
     .catch(function(e){alert('Erro: '+e);});
 });
+
+/* Manejo de Put: veio com option_id → a PUT original sai da venda a seco e a estrutura inteira vai para produção */
+(function(){
+  var oid=new URLSearchParams(location.search).get('option_id');
+  if(!oid) return;
+  var btn=document.getElementById('sim-prod-btn'); btn.style.display='';
+  btn.addEventListener('click',function(){
+    var name=document.getElementById('sim-name-input').value.trim();
+    var underlying=document.getElementById('sim-underlying-input').value.trim().toUpperCase();
+    var simId=document.getElementById('sim-current-id').value;
+    if(!name){alert('Informe um nome para a simulação.');return;}
+    var legs=readLegsC().filter(function(l){return l.type==='STOCK'||l.ticker;}).map(function(l){return {
+      type:l.type, side:l.side, qty:l.qty, ticker:l.ticker,
+      premium:l.premium, strike:l.strike, exp:l.exp||'', iv:l.iv?l.iv*100:0};});
+    if(!legs.length){alert('Monte as pernas antes de salvar em produção.');return;}
+    if(!confirm('Salvar esta estrutura em produção?\n\nA PUT vendida original sairá de "Venda a Seco de Puts" e toda a estrutura (incluindo a PUT mantida) passará a ser acompanhada como Operação Estruturada.')) return;
+    var body={name:name,underlying:underlying,legs:legs,producao:true,option_id:parseInt(oid,10)};
+    if(simId) body.id=parseInt(simId);
+    btn.disabled=true;
+    fetch('/api/simulacao/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+      .then(function(r){return r.json();})
+      .then(function(d){
+        btn.disabled=false;
+        if(d.error){alert(d.error);return;}
+        if(d.id) document.getElementById('sim-current-id').value=d.id;
+        if(d.producao_error){alert('Simulação salva, mas não foi para produção: '+d.producao_error);return;}
+        alert('✅ Salvo em produção — '+d.destino+(d.put_removida?'\nA PUT original saiu de "Venda a Seco de Puts".':''));
+        if(d.put_removida){ btn.style.display='none'; history.replaceState(null,'',location.pathname+location.search.replace(/[?&]option_id=\d+/,'')); }
+      })
+      .catch(function(e){btn.disabled=false;alert('Erro: '+e);});
+  });
+})();
 
 document.getElementById('sim-new-btn').addEventListener('click',function(){
   document.getElementById('sim-current-id').value='';

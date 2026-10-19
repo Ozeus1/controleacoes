@@ -660,6 +660,7 @@ canvas.mp-payoff{width:100%;max-width:640px;height:220px;}
     var st = mpLastData.strategies.filter(function(s) { return s.id === stId; })[0];
     var nome = '#' + stId + ' ' + (st ? st.nome : '') + ' ' + mpLastData.ticker;
     var q = new URLSearchParams({sim: '1', ativo: mpLastData.ticker, nome: nome, legs: parts.join('|')});
+    if (mpOptionId) q.set('option_id', mpOptionId);   // habilita "Salvar em Produção" na Cadeia (a put sai da venda a seco)
     window.open('/cadeia-opcoes?' + q.toString(), '_blank');
   };
 

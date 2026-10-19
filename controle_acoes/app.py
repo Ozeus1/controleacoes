@@ -2824,8 +2824,19 @@ def api_simulacao_save():
         if err:
             return jsonify({'id': sim.id, 'name': sim.name,
                             'producao_error': err}), 200
+        # Manejo de Put editado na Cadeia: a PUT vendida original sai de "Venda a Seco de Puts"
+        # (a posição passa a ser acompanhada pela estrutura gravada, que já inclui a PUT mantida)
+        removida = False
+        if d.get('option_id') and destino == 'Operações Estruturadas':
+            try:
+                opt = Option.query.get(int(d['option_id']))
+            except (TypeError, ValueError):
+                opt = None
+            if opt and opt.user_id == current_user.id:
+                db.session.delete(opt)
+                removida = True
         db.session.commit()
-        return jsonify({'id': sim.id, 'name': sim.name, 'destino': destino})
+        return jsonify({'id': sim.id, 'name': sim.name, 'destino': destino, 'put_removida': removida})
 
     return jsonify({'id': sim.id, 'name': sim.name})
 

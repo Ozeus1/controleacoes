@@ -14,6 +14,7 @@ table.pl-grid tbody td:first-child{background:transparent!important;}
 table.pl-grid thead th{background-color:var(--card-bg,#111827);}
 .pl-wrap table.pl-legs input{width:64px!important;}
 .pl-wrap table.pl-legs input[data-f=ticker]{width:88px!important;}
+.pl-wrap table.pl-legs input[type=checkbox]{width:auto!important;}
 .pl-wrap table.pl-mini{width:100%;border-collapse:collapse;font-size:.72rem;}
 .pl-wrap table.pl-mini td{padding:.15rem .3rem!important;border:none!important;background:transparent!important;}
 .pl-card{background:var(--card-bg);border:1px solid var(--border-color);border-radius:10px;padding:.55rem .7rem;margin-bottom:.6rem;}
@@ -120,7 +121,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
 
   <div class="pl-card">
     <div class="pl-h">☰ Grade de opções <span style="color:#34d399;">CALLS</span> | <span style="color:#f87171;">PUTS</span> <span id="pl-live" style="color:#34d399;font-weight:600;text-transform:none;letter-spacing:0;"></span>
-      <span style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;">clique no <span style="color:#f87171;">v</span> para vender ou no <span style="color:#34d399;">c</span> para comprar, ao lado do preço desejado (bid, mid, ask, último ou teórico)</span></div>
+      <span style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;">clique no <span style="color:#f87171;">v</span> (vender) ou no <span style="color:#34d399;">c</span> (comprar) ao lado do preço — cliques repetidos somam/subtraem a quantidade · arraste as pernas no gráfico para trocar o strike</span></div>
     <div class="pl-grid-wrap" id="pl-grid-wrap"><div class="pl-empty">Escolha o ativo e carregue a cadeia.</div></div>
     <div class="pl-foot">
       <span class="pl-seg" id="pl-lado"><button data-v="CP" class="on">C+P</button><button data-v="C">C</button><button data-v="P">P</button></span>
@@ -141,12 +142,12 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
           </span></div>
         <div style="font-size:.78rem;margin-bottom:.3rem;"><b id="pl-nome-estr">Estrutura</b> <span style="color:var(--text-secondary);" id="pl-estado">· rascunho</span></div>
         <div class="pl-scroll" style="overflow:auto;">
-        <table class="pl-legs no-datatable"><thead><tr><th></th><th>Ordem</th><th>Qtd.</th><th>Preço</th><th>Saída</th><th>PnL</th><th>Strike</th><th>Ticker</th><th>Tipo</th><th>Venc.</th><th></th></tr></thead>
+        <table class="pl-legs no-datatable"><thead><tr><th></th><th>Ordem</th><th>Qtd.</th><th>Preço</th><th title="Marcação a mercado: último negócio">Saída (últ.)</th><th>PnL</th><th>Strike</th><th>Ticker</th><th>Tipo</th><th>Venc.</th><th></th></tr></thead>
           <tbody id="pl-legs-body"><tr><td colspan="11" class="pl-empty">Clique no BID/ASK da grade para montar a estrutura.</td></tr></tbody></table>
         </div>
         <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;margin-top:.45rem;font-size:.76rem;">
           <span>RESULTADO PROJETADO <b id="pl-res">R$ 0,00</b></span>
-          <span style="margin-left:auto;color:var(--text-secondary);">SAÍDA</span>
+          <span style="margin-left:auto;color:var(--text-secondary);" title="Base de preço das pernas — só no Manual os valores são editáveis">PREÇO</span>
           <span class="pl-seg" id="pl-saida"><button data-v="bidask" class="on">Bid/Ask</button><button data-v="mid">Mid</button><button data-v="ult">Últ.</button><button data-v="teor">Teór.</button><button data-v="manual">Manual</button></span>
         </div>
       </div>
@@ -236,7 +237,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
 (function() {
   var SELIC = {{ selic|float }} / 100, R = Math.log(1 + SELIC);
   var $ = function(id) { return document.getElementById(id); };
-  var S = {ticker: '', d: null, spot: 0, exp: null, legs: [], saida: 'bidask', lado: 'CP', escala: 'preco',
+  var S = {ticker: '', d: null, spot: 0, exp: null, legs: [], modo: 'bidask', drag: null, legBoxes: [], lado: 'CP', escala: 'preco',
            g: {pnl: true, atual: true, venc: true, delta: false, gamma: false, theta: false, vega: false, rho: false, be: true, sigma: true, barreiras: false},
            simId: null, simNome: '', markers: [], barreiras: [], cor: '#fbbf24'};
   var bySym = {};
@@ -335,10 +336,10 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     return {o: o, iv: iv, ivb: ivb, g: g};
   }
   // botões pequenos V (vender) / C (comprar) ao lado de cada preço: a perna entra com aquele preço
-  function vc(sym, px, quais) {
+  function vc(sym, px, quais, src) {
     var h = '';
-    if (quais.indexOf('v') >= 0) h += '<span class="vc v" data-s="' + sym + '" data-a="SELL" data-px="' + px + '" title="Vender por ' + fmt(px) + '">v</span>';
-    if (quais.indexOf('c') >= 0) h += '<span class="vc c" data-s="' + sym + '" data-a="BUY" data-px="' + px + '" title="Comprar por ' + fmt(px) + '">c</span>';
+    if (quais.indexOf('v') >= 0) h += '<span class="vc v" data-s="' + sym + '" data-a="SELL" data-src="' + src + '" data-px="' + px + '" title="Vender por ' + fmt(px) + '">v</span>';
+    if (quais.indexOf('c') >= 0) h += '<span class="vc c" data-s="' + sym + '" data-a="BUY" data-src="' + src + '" data-px="' + px + '" title="Comprar por ' + fmt(px) + '">c</span>';
     return h;
   }
   function celulas(x, call, K) {
@@ -352,11 +353,11 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
       '<td' + cls + '>' + fmt(x.g.vega, 4) + '</td>', '<td' + cls + '>' + fmt(x.g.theta, 4) + '</td>', '<td' + cls + '>' + fmt(x.g.gamma, 4) + '</td>',
       '<td' + cls + '>' + fmt(x.g.delta, 3) + '</td>', '<td' + cls + '>' + (x.iv ? fmt(x.iv * 100, 1) + '%' : '—') + '</td>',
       '<td' + cls + '>' + (o.bid && o.ask ? fmt(o.ask - o.bid) : '—') + '</td>',
-      '<td class="bid" data-s="' + o.symbol + '" data-a="SELL" data-px="' + (o.bid || '') + '" title="Vender pelo bid">' + (o.bid ? fmt(o.bid) + vc(o.symbol, o.bid, 'v') : '—') + '</td>',
-      '<td' + cls + '>' + (o.mid ? fmt(o.mid) + vc(o.symbol, o.mid, 'vc') : '—') + '</td>',
-      '<td class="ask" data-s="' + o.symbol + '" data-a="BUY" data-px="' + (o.ask || '') + '" title="Comprar pelo ask">' + (o.ask ? fmt(o.ask) + vc(o.symbol, o.ask, 'c') : '—') + '</td>',
-      '<td' + cls + '>' + (o.close ? fmt(o.close) + vc(o.symbol, o.close, 'vc') : '—') + '</td>',
-      '<td class="teor" title="Valor teórico (BS com a EWMA do ativo)">' + (o.teorico ? fmt(o.teorico) + vc(o.symbol, o.teorico, 'vc') : '—') + '</td>',
+      '<td class="bid" data-s="' + o.symbol + '" data-a="SELL" data-src="bidask" data-px="' + (o.bid || '') + '" title="Vender pelo bid">' + (o.bid ? fmt(o.bid) + vc(o.symbol, o.bid, 'v', 'bidask') : '—') + '</td>',
+      '<td' + cls + '>' + (o.mid ? fmt(o.mid) + vc(o.symbol, o.mid, 'vc', 'mid') : '—') + '</td>',
+      '<td class="ask" data-s="' + o.symbol + '" data-a="BUY" data-src="bidask" data-px="' + (o.ask || '') + '" title="Comprar pelo ask">' + (o.ask ? fmt(o.ask) + vc(o.symbol, o.ask, 'c', 'bidask') : '—') + '</td>',
+      '<td' + cls + '>' + (o.close ? fmt(o.close) + vc(o.symbol, o.close, 'vc', 'ult') : '—') + '</td>',
+      '<td class="teor" title="Valor teórico (BS com a EWMA do ativo)">' + (o.teorico ? fmt(o.teorico) + vc(o.symbol, o.teorico, 'vc', 'teor') : '—') + '</td>',
       '<td>' + (o.estilo === 'AM' ? '🇺🇸' : (o.estilo === 'EU' ? '🇪🇺' : '—')) + '</td>',
       '<td class="tk' + (em ? ' inleg' : '') + '">' + o.symbol.slice(4) + '</td>'
     ];
@@ -380,25 +381,47 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     $('pl-f-spot').textContent = fmt(S.spot); $('pl-f-fwd').textContent = fmt(S.spot * Math.exp(R * T));
     $('pl-f-n').textContent = e.rows.length + ' strikes · ' + dias(e.exp) + ' d.c.';
   }
+  // ── Montador ──
+  // Uma perna por série: cliques repetidos somam (comprar) ou subtraem (vender) a quantidade padrão; quantidade zero
+  // remove a perna. A estrutura tem UMA base de preço (Bid/Ask, Mid, Últ., Teór. ou Manual): se os cliques vierem de
+  // bases diferentes, tudo passa a ser precificado pelo último negócio. Só no Manual os valores são editáveis.
+  var QTD_PADRAO = 100;
+  function precoDe(l, modo) {
+    if (l.type === 'STOCK') return +S.spot.toFixed(2);
+    var o = (bySym[l.ticker] || {}).o; if (!o) return l.price;
+    var v = modo === 'mid' ? (o.mid || o.close) : modo === 'ult' ? o.close : modo === 'teor' ? (o.teorico || o.close)
+          : (l.side === 'BUY' ? (o.ask_eff || o.ask || o.close) : (o.bid_eff || o.bid || o.close));
+    return v ? +(+v).toFixed(2) : l.price;
+  }
+  function reprecifica() { if (S.modo === 'manual') return; S.legs.forEach(function(l) { l.price = precoDe(l, S.modo); }); }
+  function marcaModo() { [].forEach.call($('pl-saida').children, function(x) { x.classList.toggle('on', x.dataset.v === S.modo); }); }
+  function aplicaQ(l, q) { l.side = q > 0 ? 'BUY' : 'SELL'; l.qty = Math.abs(q); }
+  function qDe(l) { return (l.side === 'BUY' ? 1 : -1) * l.qty; }
   $('pl-grid-wrap').addEventListener('click', function(ev) {
     var td = ev.target.closest('.vc[data-s]') || ev.target.closest('td[data-s]'); if (!td) return;
     var info = bySym[td.dataset.s]; if (!info) return;
-    var side = td.dataset.a, o = info.o;
-    var px = parseFloat(td.dataset.px) || (side === 'BUY' ? (o.ask_eff || o.ask || o.close) : (o.bid_eff || o.bid || o.close));
-    S.legs.push({on: true, side: side, qty: 100, price: +(px || 0).toFixed(2), type: info.tipo, strike: info.strike, ticker: o.symbol, exp: info.exp, iv: o.iv ? o.iv / 100 : null, manual: null});
-    marcaAlterado(); renderChips(); renderGrade(); renderLegs();
+    var o = info.o, src = td.dataset.src || 'bidask', delta = td.dataset.a === 'BUY' ? QTD_PADRAO : -QTD_PADRAO;
+    if (S.modo !== 'manual') {
+      if (!S.legs.length) S.modo = src;
+      else if (src !== S.modo) S.modo = 'ult';          // mistura de bases de preço → tudo pelo último
+    }
+    var l = S.legs.filter(function(x) { return x.ticker === o.symbol; })[0];
+    if (l) {
+      var q = qDe(l) + delta;
+      if (q === 0) S.legs.splice(S.legs.indexOf(l), 1); else aplicaQ(l, q);
+    } else {
+      l = {on: true, side: 'BUY', qty: 0, price: +(parseFloat(td.dataset.px) || 0).toFixed(2), type: info.tipo, strike: info.strike,
+           ticker: o.symbol, exp: info.exp, iv: o.iv ? o.iv / 100 : null};
+      aplicaQ(l, delta); S.legs.push(l);
+    }
+    reprecifica(); marcaModo(); marcaAlterado(); renderChips(); renderGrade(); renderLegs();
   });
 
-  // ── Montador ──
   function marcaAlterado() { $('pl-estado').textContent = S.simId ? '· editada (não salva)' : '· rascunho'; }
+  // Saída = marcação a mercado pelo último negócio (ação: spot)
   function saidaDe(l) {
     if (l.type === 'STOCK') return S.spot;
-    if (S.saida === 'manual') return l.manual != null ? l.manual : l.price;
-    var o = (bySym[l.ticker] || {}).o; if (!o) return null;
-    if (S.saida === 'mid') return o.mid || o.close || null;
-    if (S.saida === 'ult') return o.close || null;
-    if (S.saida === 'teor') return o.teorico || null;
-    return l.side === 'BUY' ? (o.bid_eff || o.bid || null) : (o.ask_eff || o.ask || null);
+    var o = (bySym[l.ticker] || {}).o; return o ? (o.close || null) : null;
   }
   function pnlLeg(l) { var sd = saidaDe(l); return sd != null ? (sd - l.price) * l.qty * (l.side === 'BUY' ? 1 : -1) : null; }
   function fmtPnl(v) { if (v == null) return '—'; if (Math.abs(v) < 0.005) v = 0; return fmt(v); }
@@ -412,50 +435,49 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     if (Math.abs(tot) < 0.005) tot = 0;
     $('pl-res').innerHTML = '<span class="' + (tot > 0 ? 'pos' : (tot < 0 ? 'neg' : '')) + '">' + brl(tot) + '</span>';
   }
+  var SEL = 'font-size:.66rem;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;';
   function renderLegs() {
-    var tb = $('pl-legs-body');
-    if (!S.legs.length) { tb.innerHTML = '<tr><td colspan="11" class="pl-empty">Clique no BID/ASK da grade para montar a estrutura.</td></tr>'; $('pl-res').textContent = 'R$ 0,00'; desenhar(); return; }
-    var tot = 0;
+    var tb = $('pl-legs-body'), man = S.modo === 'manual';
+    if (!S.legs.length) { tb.innerHTML = '<tr><td colspan="11" class="pl-empty">Clique no v / c da grade para montar a estrutura.</td></tr>'; $('pl-res').textContent = 'R$ 0,00'; desenhar(); return; }
     tb.innerHTML = S.legs.map(function(l, i) {
-      var sd = saidaDe(l), pnl = pnlLeg(l);
-      var tipo = l.type === 'STOCK' ? 'AÇÃO' : l.type;
+      var sd = saidaDe(l), pnl = pnlLeg(l), st = l.type === 'STOCK';
       return '<tr data-i="' + i + '" style="' + (l.on ? '' : 'opacity:.45;') + '">' +
-        '<td><input type="checkbox" data-f="on"' + (l.on ? ' checked' : '') + ' style="width:auto;"></td>' +
-        '<td><button class="pl-side ' + l.side + '" data-f="side">' + (l.side === 'BUY' ? 'COMPRAR' : 'VENDER') + '</button></td>' +
-        '<td><input data-f="qty" value="' + l.qty + '" style="width:58px;"></td>' +
-        '<td><input data-f="price" value="' + fmt(l.price) + '"></td>' +
-        '<td>' + (S.saida === 'manual' ? '<input data-f="manual" value="' + fmt(l.manual != null ? l.manual : l.price) + '">' : (sd != null ? fmt(sd) : '—')) + '</td>' +
+        '<td><input type="checkbox" data-f="on"' + (l.on ? ' checked' : '') + '></td>' +
+        '<td><button class="pl-side ' + l.side + '" data-f="side" title="Inverter compra/venda">' + (l.side === 'BUY' ? 'COMPRAR' : 'VENDER') + '</button></td>' +
+        '<td><input data-f="qty" value="' + l.qty + '" title="Quantidade (0 remove a perna)"></td>' +
+        '<td>' + (man ? '<input data-f="price" value="' + fmt(l.price) + '">' : fmt(l.price)) + '</td>' +
+        '<td>' + (sd != null ? fmt(sd) : '—') + '</td>' +
         '<td class="pnl ' + (pnl > 0.004 ? 'pos' : (pnl < -0.004 ? 'neg' : '')) + '">' + fmtPnl(pnl) + '</td>' +
-        '<td>' + (l.type === 'STOCK' ? '—' : '<input data-f="strike" value="' + fmt(l.strike) + '">') + '</td>' +
-        '<td>' + (l.type === 'STOCK' ? S.ticker : '<input data-f="ticker" value="' + (l.ticker || '') + '" style="width:84px;text-align:left;text-transform:uppercase;">') + '</td>' +
-        '<td>' + (l.type === 'STOCK' ? '<span class="pl-tipo">AÇÃO</span>' : '<select data-f="type" style="font-size:.66rem;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;"><option' + (l.type === 'CALL' ? ' selected' : '') + '>CALL</option><option' + (l.type === 'PUT' ? ' selected' : '') + '>PUT</option></select>') + '</td>' +
-        '<td>' + (l.type === 'STOCK' ? '—' : '<select data-f="exp" style="font-size:.66rem;background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:4px;">' +
+        '<td>' + (st ? '—' : (man ? '<input data-f="strike" value="' + fmt(l.strike) + '">' : fmt(l.strike))) + '</td>' +
+        '<td>' + (st ? S.ticker : (man ? '<input data-f="ticker" value="' + (l.ticker || '') + '" style="text-align:left;text-transform:uppercase;">' : (l.ticker || '—'))) + '</td>' +
+        '<td>' + (st ? '<span class="pl-tipo">AÇÃO</span>' : (man ? '<select data-f="type" style="' + SEL + '"><option' + (l.type === 'CALL' ? ' selected' : '') + '>CALL</option><option' + (l.type === 'PUT' ? ' selected' : '') + '>PUT</option></select>' : '<span class="pl-tipo">' + l.type + '</span>')) + '</td>' +
+        '<td>' + (st ? '—' : (man ? '<select data-f="exp" style="' + SEL + '">' +
           (S.d ? S.d.expirations : []).map(function(e) { return '<option value="' + e.exp + '"' + (e.exp === l.exp ? ' selected' : '') + '>' + dBR(e.exp).slice(0, 5) + ' ' + infoExp(e.exp).badge + '</option>'; }).join('') +
-          (l.exp && !(S.d && S.d.expirations.some(function(e) { return e.exp === l.exp; })) ? '<option value="' + l.exp + '" selected>' + dBR(l.exp) + '</option>' : '') + '</select>') + '</td>' +
+          (l.exp && !(S.d && S.d.expirations.some(function(e) { return e.exp === l.exp; })) ? '<option value="' + l.exp + '" selected>' + dBR(l.exp) + '</option>' : '') + '</select>'
+          : (l.exp ? dBR(l.exp).slice(0, 5) + ' ' + infoExp(l.exp).badge : '—'))) + '</td>' +
         '<td><button class="pl-btn" data-f="del" title="Remover perna" style="padding:0 .35rem;">✕</button></td></tr>';
     }).join('');
     atualizaTotais();
     desenhar();
   }
-  function pv(s) { return parseFloat(String(s).replace(/\./g, '').replace(',', '.')) || 0; }
+  function pv(x) { return parseFloat(String(x).replace(/\./g, '').replace(',', '.')) || 0; }
   $('pl-legs-body').addEventListener('click', function(ev) {
-    var b = ev.target.closest('[data-f]'); if (!b) return; var tr = b.closest('tr'); var i = +tr.dataset.i, l = S.legs[i];
-    if (b.dataset.f === 'side') { l.side = l.side === 'BUY' ? 'SELL' : 'BUY'; marcaAlterado(); renderLegs(); }
+    var b = ev.target.closest('button[data-f]'); if (!b) return; var i = +b.closest('tr').dataset.i, l = S.legs[i];
+    if (b.dataset.f === 'side') { l.side = l.side === 'BUY' ? 'SELL' : 'BUY'; reprecifica(); marcaAlterado(); renderLegs(); }
     else if (b.dataset.f === 'del') { S.legs.splice(i, 1); marcaAlterado(); renderChips(); renderGrade(); renderLegs(); }
   });
-  // preço e saída manual: recalcula o PnL e o resultado enquanto digita
+  // preço (Manual) e quantidade: recalcula o resultado enquanto digita
   $('pl-legs-body').addEventListener('input', function(ev) {
-    var el = ev.target, f = el.dataset.f; if (f !== 'manual' && f !== 'price' && f !== 'qty') return;
+    var el = ev.target, f = el.dataset.f; if (f !== 'price' && f !== 'qty') return;
     var l = S.legs[+el.closest('tr').dataset.i];
-    if (f === 'manual') l.manual = pv(el.value); else if (f === 'price') l.price = pv(el.value); else l.qty = Math.max(1, parseInt(el.value, 10) || 1);
+    if (f === 'price') l.price = pv(el.value); else l.qty = Math.max(0, parseInt(el.value, 10) || 0);
     atualizaTotais();
   });
   $('pl-legs-body').addEventListener('change', function(ev) {
-    var el = ev.target, f = el.dataset.f; if (!f) return; var l = S.legs[+el.closest('tr').dataset.i];
+    var el = ev.target, f = el.dataset.f; if (!f) return; var i = +el.closest('tr').dataset.i, l = S.legs[i];
     if (f === 'on') l.on = el.checked;
-    else if (f === 'qty') l.qty = Math.max(1, parseInt(el.value, 10) || 1);
+    else if (f === 'qty') { l.qty = Math.max(0, parseInt(el.value, 10) || 0); if (!l.qty) { S.legs.splice(i, 1); renderChips(); renderGrade(); } }
     else if (f === 'price') l.price = pv(el.value);
-    else if (f === 'manual') l.manual = pv(el.value);
     else if (f === 'strike') l.strike = pv(el.value);
     else if (f === 'type') l.type = el.value;
     else if (f === 'exp') l.exp = el.value;
@@ -465,19 +487,40 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     }
     marcaAlterado(); renderChips(); renderLegs();
   });
-  $('pl-saida').addEventListener('click', function(ev) { var b = ev.target.closest('button'); if (!b) return;
-    if (b.dataset.v === 'manual' && S.saida !== 'manual') S.legs.forEach(function(l) {
-      if (l.manual == null) { var o = (bySym[l.ticker] || {}).o; l.manual = l.type === 'STOCK' ? S.spot : (o ? (o.mid || o.close || l.price) : l.price); } });
-    S.saida = b.dataset.v; [].forEach.call(this.children, function(x) { x.classList.toggle('on', x === b); }); renderLegs(); });
-  $('pl-nova').addEventListener('click', function() { S.legs = []; S.simId = null; S.simNome = ''; $('pl-nome-estr').textContent = 'Estrutura'; marcaAlterado(); renderChips(); renderGrade(); renderLegs(); renderOps(); });
+  $('pl-saida').addEventListener('click', function(ev) {
+    var b = ev.target.closest('button'); if (!b) return;
+    S.modo = b.dataset.v; reprecifica(); marcaModo(); marcaAlterado(); renderLegs();
+  });
+  $('pl-nova').addEventListener('click', function() { S.legs = []; S.simId = null; S.simNome = ''; if (S.modo === 'manual') S.modo = 'bidask'; marcaModo(); $('pl-nome-estr').textContent = 'Estrutura'; marcaAlterado(); renderChips(); renderGrade(); renderLegs(); renderOps(); });
   $('pl-perna').addEventListener('click', function() {
     var e = S.exp, atm = null; var ex = S.d && S.d.expirations.filter(function(x) { return x.exp === e; })[0];
     if (ex) ex.rows.forEach(function(r) { if (atm == null || Math.abs(r.strike - S.spot) < Math.abs(atm.strike - S.spot)) atm = r; });
-    var o = atm && atm.call;
-    S.legs.push({on: true, side: 'BUY', qty: 100, price: o ? (o.ask_eff || o.close || 0) : 0, type: 'CALL', strike: atm ? atm.strike : Math.round(S.spot), ticker: o ? o.symbol : '', exp: e, iv: o && o.iv ? o.iv / 100 : null, manual: null});
-    marcaAlterado(); renderChips(); renderGrade(); renderLegs();
+    var o = atm && atm.call; if (!o) return;
+    var l = S.legs.filter(function(x) { return x.ticker === o.symbol; })[0];
+    if (l) { var q = qDe(l) + QTD_PADRAO; if (q === 0) S.legs.splice(S.legs.indexOf(l), 1); else aplicaQ(l, q); }
+    else S.legs.push({on: true, side: 'BUY', qty: QTD_PADRAO, price: +(o.close || 0).toFixed(2), type: 'CALL', strike: atm.strike, ticker: o.symbol, exp: e, iv: o.iv ? o.iv / 100 : null});
+    reprecifica(); marcaAlterado(); renderChips(); renderGrade(); renderLegs();
   });
-  $('pl-ativo').addEventListener('click', function() { S.legs.push({on: true, side: 'BUY', qty: 100, price: +S.spot.toFixed(2), type: 'STOCK', strike: 0, ticker: S.ticker, exp: '', iv: null}); marcaAlterado(); renderLegs(); });
+  $('pl-ativo').addEventListener('click', function() {
+    var l = S.legs.filter(function(x) { return x.type === 'STOCK'; })[0];
+    if (l) { var q = qDe(l) + QTD_PADRAO; if (q === 0) S.legs.splice(S.legs.indexOf(l), 1); else aplicaQ(l, q); }
+    else S.legs.push({on: true, side: 'BUY', qty: QTD_PADRAO, price: +S.spot.toFixed(2), type: 'STOCK', strike: 0, ticker: S.ticker, exp: '', iv: null});
+    marcaAlterado(); renderLegs();
+  });
+
+  // Arrastar uma perna no gráfico troca o strike (encaixa no strike listado mais próximo do mesmo vencimento/tipo)
+  function moveStrike(l, x) {
+    var e = S.d && S.d.expirations.filter(function(z) { return z.exp === l.exp; })[0]; if (!e) return false;
+    var best = null;
+    e.rows.forEach(function(r) { var o = l.type === 'CALL' ? r.call : r.put; if (!o) return;
+      if (best == null || Math.abs(r.strike - x) < Math.abs(best.k - x)) best = {k: r.strike, o: o}; });
+    if (!best || best.o.symbol === l.ticker) return false;
+    var outra = S.legs.filter(function(z) { return z !== l && z.ticker === best.o.symbol; })[0];
+    if (outra) return false;                          // já existe perna nessa série: não sobrepõe durante o arraste
+    l.ticker = best.o.symbol; l.strike = best.k; l.iv = best.o.iv ? best.o.iv / 100 : l.iv;
+    l.price = S.modo === 'manual' ? +(best.o.close || l.price) : precoDe(l, S.modo);
+    return true;
+  }
 
   // ── Payoff: avaliação ──
   function ivAtm(exp) {
@@ -522,6 +565,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     $('pl-hoje-lbl').textContent = 'DTE ' + (dte - td) + ' (' + dBR(dt.toISOString().slice(0, 10)).slice(0, 5) + ')';
     var ks = ls.filter(function(l) { return l.type !== 'STOCK'; }).map(function(l) { return l.strike; }).concat([S.spot]);
     var lo = Math.min.apply(null, ks) * 0.84, hi = Math.max.apply(null, ks) * 1.16, NP = 220;
+    if (S.drag && chart) { lo = chart.scales.x.min; hi = chart.scales.x.max; }
     var xs = [], venc = [], atual = [], gs = {};
     Object.keys(GCOR).forEach(function(k) { gs[k] = []; });
     for (var i = 0; i <= NP; i++) {
@@ -563,9 +607,24 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     var cv = $('pl-chart'), arr = null;
     cv.addEventListener('wheel', function(ev) { ev.preventDefault(); var sx = chart.scales.x, c = sx.getValueForPixel(ev.offsetX), f = ev.deltaY > 0 ? 1.15 : 0.87;
       sx.options.min = c - (c - sx.min) * f; sx.options.max = c + (sx.max - c) * f; chart.options.scales.x.min = sx.options.min; chart.options.scales.x.max = sx.options.max; chart.update('none'); }, {passive: false});
-    cv.addEventListener('mousedown', function(ev) { arr = {x: ev.offsetX, min: chart.scales.x.min, max: chart.scales.x.max}; });
-    window.addEventListener('mouseup', function() { arr = null; });
-    cv.addEventListener('mousemove', function(ev) { if (!arr) return; var sx = chart.scales.x, dx = (ev.offsetX - arr.x) * (arr.max - arr.min) / sx.width;
+    function legHit(ev) { return S.legBoxes.filter(function(b) { return ev.offsetX >= b.x0 && ev.offsetX <= b.x1 && ev.offsetY >= b.y0 && ev.offsetY <= b.y1; })[0]; }
+    cv.addEventListener('mousedown', function(ev) {
+      var h = legHit(ev);
+      if (h) { S.drag = {i: h.i}; cv.style.cursor = 'ew-resize'; return; }
+      arr = {x: ev.offsetX, min: chart.scales.x.min, max: chart.scales.x.max};
+    });
+    window.addEventListener('mouseup', function() {
+      arr = null;
+      if (S.drag) { S.drag = null; cv.style.cursor = ''; marcaAlterado(); renderChips(); renderGrade(); renderLegs(); }
+    });
+    cv.addEventListener('mousemove', function(ev) {
+      if (S.drag) {
+        var l = S.legs[S.drag.i]; if (!l) return;
+        if (moveStrike(l, chart.scales.x.getValueForPixel(ev.offsetX))) renderLegs();
+        return;
+      }
+      if (!arr) { cv.style.cursor = legHit(ev) ? 'ew-resize' : ''; return; }
+      var sx = chart.scales.x, dx = (ev.offsetX - arr.x) * (arr.max - arr.min) / sx.width;
       chart.options.scales.x.min = arr.min - dx; chart.options.scales.x.max = arr.max - dx; chart.update('none'); });
     cv.addEventListener('dblclick', function() { desenhar(); });
   }
@@ -584,6 +643,22 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     if (S.g.be && ch.__be) ch.__be.forEach(function(b) { vline(b, '#cbd5e1', 'Break Even: ' + fmt(b), true); });
     S.markers.forEach(function(m) { vline(m.preco, m.cor, m.rot + ' ' + fmt(m.preco), m.trac); });
     if (S.g.barreiras) S.barreiras.forEach(function(b) { vline(b.strike, '#e879f9', 'Barreira ' + fmt(b.strike, 2), true); });
+    // pernas: etiqueta arrastável no strike (verde = compra, vermelho = venda)
+    S.legBoxes = []; var nivel = {};
+    S.legs.forEach(function(l, i) {
+      if (l.type === 'STOCK' || !l.on || l.strike < sx.min || l.strike > sx.max) return;
+      var px = sx.getPixelForValue(l.strike), cor = l.side === 'BUY' ? '#34d399' : '#f87171';
+      var txt = (l.side === 'BUY' ? '+' : '−') + l.qty + (l.type === 'CALL' ? 'C ' : 'P ') + fmt(l.strike) + ' · ' + fmt(l.price);
+      var kk = Math.round(px / 40), lv = nivel[kk] = (nivel[kk] || 0) + 1;
+      g.save(); g.font = 'bold 10px sans-serif';
+      var w = g.measureText(txt).width + 10, x0 = Math.max(ya.left, Math.min(px - w / 2, ya.right - w)), y0 = ya.bottom - 34 - (lv - 1) * 18;
+      g.strokeStyle = cor; g.setLineDash([2, 3]); g.beginPath(); g.moveTo(px, ya.top); g.lineTo(px, y0); g.stroke(); g.setLineDash([]);
+      g.fillStyle = (S.drag && S.drag.i === i) ? cor : 'rgba(15,23,42,.92)'; g.fillRect(x0, y0, w, 15);
+      g.strokeStyle = cor; g.strokeRect(x0, y0, w, 15);
+      g.fillStyle = (S.drag && S.drag.i === i) ? '#0f172a' : cor; g.fillText(txt, x0 + 5, y0 + 11);
+      g.restore();
+      S.legBoxes.push({i: i, x0: x0, x1: x0 + w, y0: y0, y1: y0 + 15});
+    });
   }};
 
   function metricas(ls, xs, venc, dte) {
@@ -643,6 +718,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
       var und = (s.underlying || '').toUpperCase();
       var aplica = function() {
         S.legs = s.legs.map(function(l) { return {on: true, side: l.side, qty: l.qty, price: l.premium, type: l.type, strike: l.strike, ticker: l.ticker || '', exp: l.exp || '', iv: l.iv ? (l.iv > 1.5 ? l.iv / 100 : l.iv) : null, manual: null}; });
+        S.modo = 'manual'; marcaModo();
         S.simId = s.id; S.simNome = s.name; $('pl-nome-estr').textContent = s.name; $('pl-estado').textContent = '· salva';
         $('pl-notas').textContent = s.notes || '';
         var lexp = S.legs.filter(function(l) { return l.exp; })[0]; if (lexp && S.d.expirations.some(function(e) { return e.exp === lexp.exp; })) S.exp = lexp.exp;

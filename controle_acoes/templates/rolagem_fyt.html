@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+{% block title %}Rolagem FYT{% endblock %}
+{% block extra_scripts %}
+<style>
+#rf-spot{font-size:1rem;font-weight:700;color:var(--text-primary);display:inline-flex;gap:.5rem;align-items:baseline;}
+#rf-spot .chg-pos{color:#34d399;font-size:.85rem;} #rf-spot .chg-neg{color:#f87171;font-size:.85rem;}
+#rf-loading{display:none;padding:2rem;text-align:center;color:var(--text-secondary);}
+#rf-error{display:none;color:#f87171;padding:1rem;}
+#rf-hint{padding:1.5rem;text-align:center;color:var(--text-secondary);font-size:.88rem;}
+.fyt-filtros{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.9rem;
+  background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);border-radius:8px;padding:.9rem 1rem;margin:.6rem 0 .8rem;}
+.fyt-campo{display:flex;flex-direction:column;gap:.3rem;}
+.fyt-campo label{font-size:.75rem;color:var(--text-secondary);font-weight:600;text-transform:uppercase;letter-spacing:.03em;}
+.fyt-campo select,.fyt-campo input{background:var(--card-bg);color:var(--text-primary);border:1px solid var(--border-color);border-radius:5px;padding:.35rem .5rem;font-size:.85rem;}
+.fyt-dual{position:relative;height:26px;margin-top:.15rem;}
+.fyt-dual input[type=range]{position:absolute;left:0;right:0;width:100%;margin:0;top:2px;height:22px;background:none;pointer-events:none;-webkit-appearance:none;appearance:none;padding:0;border:none;}
+.fyt-dual input[type=range]::-webkit-slider-thumb{pointer-events:all;-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#fff;border:2px solid #7c3aed;cursor:pointer;}
+.fyt-dual input[type=range]::-moz-range-thumb{pointer-events:all;width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid #7c3aed;cursor:pointer;}
+.fyt-dual .trilho{position:absolute;left:0;right:0;top:11px;height:4px;border-radius:2px;background:#475569;}
+.fyt-dual .faixa{position:absolute;top:11px;height:4px;border-radius:2px;background:#7c3aed;}
+.fyt-kvals{display:flex;justify-content:space-between;font-size:.8rem;color:var(--text-primary);}
+.rf-seg{display:inline-flex;border:1px solid var(--border-color);border-radius:5px;overflow:hidden;margin-left:.4rem;vertical-align:middle;}
+.rf-seg button{background:transparent;border:none;color:var(--text-secondary);font-size:.7rem;padding:.05rem .45rem;cursor:pointer;}
+.rf-seg button.on{background:#7c3aed;color:#fff;}
+table.rf-tab{width:100%;border-collapse:collapse;font-size:.8rem;}
+table.rf-tab th{padding:.45rem .5rem;white-space:nowrap;background:var(--card-bg);color:var(--text-secondary);font-weight:600;border-bottom:1px solid var(--border-color);text-align:right;}
+table.rf-tab td{padding:.42rem .5rem;white-space:nowrap;border-bottom:1px solid rgba(255,255,255,.04);text-align:right;color:var(--text-primary);}
+table.rf-tab th.l,table.rf-tab td.l{text-align:left;}
+table.rf-tab td.k,table.rf-tab th.k{text-align:center;background:rgba(148,163,184,.12);font-weight:700;}
+table.rf-tab td.tk{color:#60a5fa;}
+table.rf-tab tr.spot td{border-top:2px solid #e2e8f0;}
+table.rf-tab tbody td:first-child{position:static!important;background:transparent!important;box-shadow:none;border-right:none;}
+table.rf-tab thead th:first-child{left:auto!important;}
+.pos{color:#34d399;} .neg{color:#f87171;}
+.fyt-ajuda{margin-top:1rem;background:var(--hover-bg,#1e293b);border:1px solid var(--border-color);border-top:3px solid #6366f1;border-radius:10px;padding:.9rem 1.2rem 1.1rem;}
+.fyt-ajuda-top{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;flex-wrap:wrap;border-bottom:1px solid var(--border-color);margin-bottom:.8rem;}
+.fyt-ajuda-top h4{margin:0 0 .5rem;font-size:1rem;}
+.fyt-atabs{display:flex;gap:1.1rem;flex-wrap:wrap;}
+.fyt-atab{padding:.35rem 0;font-size:.85rem;color:var(--text-secondary);cursor:pointer;border-bottom:2px solid transparent;}
+.fyt-atab.on{color:#818cf8;border-bottom-color:#818cf8;font-weight:600;}
+.fyt-apane{display:none;font-size:.86rem;line-height:1.55;color:var(--text-primary);}
+.fyt-apane.on{display:block;}
+.fyt-apane h5{margin:.2rem 0 .6rem;font-size:.95rem;}
+.fyt-apane ul{padding-left:1.1rem;margin:.3rem 0 .8rem;}
+.fyt-apane li{margin-bottom:.4rem;}
+.fyt-apane .nota{border-left:3px solid #fbbf24;background:rgba(251,191,36,.08);padding:.5rem .8rem;border-radius:0 6px 6px 0;margin:.6rem 0;font-size:.82rem;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card" style="padding:1.2rem 1.4rem;">
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:.4rem;">
+    <h2 style="margin:0;">🧬 Rolagem FYT</h2>
+    <div id="rf-spot"></div>
+  </div>
+  <p style="color:var(--text-secondary);font-size:.85rem;margin:.2rem 0 .8rem;">
+    Pares de opções do <strong>vencimento atual → seguinte</strong>, no mesmo strike, com o valor da rolagem pelo último negócio e pela boca.
+    Escolha o ativo, o vencimento e a faixa de strikes e clique em <strong>Buscar</strong>.
+  </p>
+
+  <div class="fyt-campo" style="margin-bottom:.9rem;max-width:260px;">
+    <label for="rf-ticker">Ativo subjacente</label>
+    <select id="rf-ticker">
+      {% for t in sugestoes %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+      <option value="__outro__">— outro ativo… —</option>
+    </select>
+    <input id="rf-ticker-livre" placeholder="Digite o ticker" maxlength="10" style="display:none;margin-top:.3rem;text-transform:uppercase;">
+  </div>
+
+  <div class="fyt-filtros">
+    <div class="fyt-campo">
+      <label for="rf-exp">Vencimento</label>
+      <select id="rf-exp"><option value="0" selected>Vencimento atual</option><option value="1">Vencimento +1 mês</option></select>
+    </div>
+    <div class="fyt-campo" style="grid-column:span 2;min-width:280px;">
+      <label>Strikes <span class="rf-seg" id="rf-modo"><button data-m="rs" class="on">R$</button><button data-m="pct">%</button></span></label>
+      <div class="fyt-kvals"><span id="rf-lo">—</span><span id="rf-hi">—</span></div>
+      <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="rf-faixa"></div>
+        <input type="range" id="rf-a" min="0" max="100" step="0.5" value="0"><input type="range" id="rf-b" min="0" max="100" step="0.5" value="100"></div>
+    </div>
+  </div>
+  <button class="btn btn-primary" id="rf-buscar" style="width:100%;">🔎 Buscar</button>
+
+  <div id="rf-loading">⏳ Consultando a cadeia de opções…</div>
+  <div id="rf-error"></div>
+  <div id="rf-hint">Escolha um ativo e clique em <strong>Buscar</strong>.</div>
+  <div id="rf-res" style="margin-top:.8rem;"></div>
+
+  <div class="fyt-ajuda" id="rf-ajuda">
+    <div class="fyt-ajuda-top">
+      <h4>Rolagem de Opções</h4>
+      <div class="fyt-atabs">
+        <span class="fyt-atab on" data-p="conceito">Conceito</span>
+        <span class="fyt-atab" data-p="filtros">Filtros e Colunas</span>
+        <span class="fyt-atab" data-p="risco">Risco</span>
+        <span class="fyt-atab" data-p="mais">Saiba Mais</span>
+        <span class="fyt-atab" data-p="painel">Painel</span>
+      </div>
+    </div>
+    <div class="fyt-apane on" data-p="conceito">
+      <h5>ℹ️ O que é a Rolagem?</h5>
+      <p>A <strong>Rolagem</strong> é a operação de <strong>alongar o vencimento</strong> de opções vendidas, recomprando a opção do vencimento atual e vendendo a equivalente no vencimento seguinte. Pode gerar um <strong class="pos">crédito</strong> (embolso) ou um <strong class="neg">débito</strong> (custo), dependendo da distância do strike em relação ao preço do ativo.</p>
+      <p>É uma ferramenta essencial para quem opera estratégias de venda de opções (THL, Booster, Short Strangle, Venda Coberta), pois permite <strong>renovar posições vendidas</strong> mês a mês, embolsando a diferença de theta entre os vencimentos.</p>
+      <p>A tabela apresenta os pares de opções (vencimento atual → vencimento seguinte) <strong>lado a lado</strong>, com os valores de boca e último para cada par, organizados por strike.</p>
+    </div>
+    <div class="fyt-apane" data-p="filtros">
+      <h5>🎛️ Filtros e Colunas</h5>
+      <ul>
+        <li><strong>Vencimento:</strong> seleciona se a rolagem é do <strong>vencimento atual</strong> para o próximo, ou do <strong>vencimento +1 mês</strong> para o subsequente.</li>
+        <li><strong>Faixa de Strike:</strong> slider para limitar a faixa de strikes exibidos. Pode ser configurado em R$ ou % em relação ao preço atual do ativo.</li>
+      </ul>
+      <h5>📊 Colunas da Tabela</h5>
+      <ul>
+        <li><strong>Tickers:</strong> os tickers das opções — <span class="neg">−</span> a do vencimento seguinte (vendida) e <span class="pos">+</span> a do vencimento atual (recomprada). CALLs à esquerda, PUTs à direita.</li>
+        <li><strong>Último:</strong> valor da rolagem pelo último preço negociado de cada opção.</li>
+        <li><strong>Boca:</strong> valor da rolagem agredindo o book (pior cenário de execução: recompra no ask, venda no bid).</li>
+        <li><strong>Sinal (padrão do Pnt):</strong> <span class="pos">negativo = crédito (embolso)</span>, <span class="neg">positivo = débito (custo)</span>.</li>
+        <li><strong>Strike:</strong> o strike de exercício do par de opções. A linha branca marca a posição do preço atual.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="risco">
+      <h5>⚠️ Risco e Gestão</h5>
+      <div class="nota"><strong>Atenção:</strong> rolagens <strong>ATM e ITM</strong> podem gerar débito (custo) em vez de crédito, especialmente em cenários de forte movimentação do ativo. Rolagens de PUTs tendem a ter valores menores que de CALLs, dado o efeito da taxa de juros.</div>
+      <ul>
+        <li><strong class="pos">Rolagem com crédito:</strong> a situação ideal — o theta da opção curta (vencimento atual) é maior que o da opção longa (vencimento seguinte), gerando embolso líquido.</li>
+        <li><strong class="neg">Rolagem negativa:</strong> se o ativo se moveu muito contra a posição, a opção ITM terá pouco valor extrínseco, e a rolagem pode custar caro ou ser inviável.</li>
+        <li><strong style="color:#fbbf24;">Timing:</strong> idealmente, a rolagem deve ser feita nos últimos dias antes do vencimento, quando o theta da opção curta está mais acelerado.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="mais">
+      <h5>📖 Saiba mais</h5>
+      <ul>
+        <li>O valor pela boca é o que você consegue executar agora; o pelo último serve de referência quando o book está vazio (pregão fechado ou série pouco líquida).</li>
+        <li>Para envios ao Pnt, use o valor com o mesmo sinal da tabela (+ paga, − recebe).</li>
+        <li>A Busca de Rolagem Manual e a Automática (menu Rolagem) cruzam a rolagem com as suas posições em carteira.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="painel">
+      <h5>🖥️ Painel</h5>
+      <ul>
+        <li>Clique numa linha para copiar a rolagem da CALL (ou, segurando Shift, da PUT) no formato do Pnt, com as duas pernas e o valor pela boca.</li>
+        <li>Passe o mouse sobre os valores para ver os preços de cada perna usados no cálculo.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script>
+(function() {
+  var $ = function(id) { return document.getElementById(id); };
+  var data = null, modo = 'rs', spotRef = 0;
+  function fmt(v, d) { d = d == null ? 2 : d; return v == null ? '—' : Number(v).toLocaleString('pt-BR', {minimumFractionDigits: d, maximumFractionDigits: d}); }
+  function brl(v) { return v == null ? '—' : (v < 0 ? '-R$ ' : 'R$ ') + fmt(Math.abs(v)); }
+  function dBR(iso) { var p = (iso || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] + '/' + p[0] : iso; }
+  function tk() { return $('rf-ticker').value === '__outro__' ? ($('rf-ticker-livre').value || '').trim().toUpperCase() : $('rf-ticker').value; }
+  $('rf-ticker').addEventListener('change', function() { $('rf-ticker-livre').style.display = this.value === '__outro__' ? '' : 'none'; });
+
+  [].forEach.call(document.querySelectorAll('.fyt-atab'), function(t) { t.addEventListener('click', function() {
+    [].forEach.call(document.querySelectorAll('.fyt-atab'), function(x) { x.classList.toggle('on', x === t); });
+    [].forEach.call(document.querySelectorAll('.fyt-apane'), function(x) { x.classList.toggle('on', x.dataset.p === t.dataset.p); });
+  }); });
+
+  // ── Faixa de strikes (R$ ou %) ──
+  function faixa() { var a = +$('rf-a').value, b = +$('rf-b').value; return a <= b ? [a, b] : [b, a]; }
+  function desenhaFaixa() {
+    var mn = +$('rf-a').min, mx = +$('rf-a').max, r = faixa(), sp = (mx - mn) || 1;
+    $('rf-faixa').style.left = ((r[0] - mn) / sp * 100) + '%'; $('rf-faixa').style.width = ((r[1] - r[0]) / sp * 100) + '%';
+    $('rf-lo').textContent = modo === 'rs' ? 'R$ ' + fmt(r[0]) : fmt(r[0], 1) + '%';
+    $('rf-hi').textContent = modo === 'rs' ? 'R$ ' + fmt(r[1]) : fmt(r[1], 1) + '%';
+  }
+  function poeFaixa(spot, manter) {
+    var r = manter ? faixa() : null;
+    if (modo === 'rs') {
+      var lo = Math.floor(spot * 0.8), hi = Math.ceil(spot * 1.2);
+      ['rf-a', 'rf-b'].forEach(function(id) { $(id).min = lo; $(id).max = hi; $(id).step = spot >= 20 ? 0.5 : 0.1; });
+      $('rf-a').value = r ? spot * (1 + r[0] / 100) : spot * 0.9; $('rf-b').value = r ? spot * (1 + r[1] / 100) : spot * 1.1;
+    } else {
+      ['rf-a', 'rf-b'].forEach(function(id) { $(id).min = -20; $(id).max = 20; $(id).step = 0.5; });
+      $('rf-a').value = r ? (r[0] / spot - 1) * 100 : -10; $('rf-b').value = r ? (r[1] / spot - 1) * 100 : 10;
+    }
+    desenhaFaixa();
+  }
+  ['rf-a', 'rf-b'].forEach(function(id) { $(id).addEventListener('input', function() { desenhaFaixa(); if (data) render(); }); });
+  $('rf-modo').addEventListener('click', function(ev) {
+    var b = ev.target.closest('button'); if (!b || b.dataset.m === modo) return;
+    var antigo = faixa(), spot = spotRef || 1;
+    modo = b.dataset.m; [].forEach.call(this.children, function(x) { x.classList.toggle('on', x === b); });
+    if (modo === 'pct') { poeFaixa(spot); $('rf-a').value = (antigo[0] / spot - 1) * 100; $('rf-b').value = (antigo[1] / spot - 1) * 100; }
+    else { poeFaixa(spot); $('rf-a').value = spot * (1 + antigo[0] / 100); $('rf-b').value = spot * (1 + antigo[1] / 100); }
+    desenhaFaixa(); if (data) render();
+  });
+  function prepara() {
+    fetch('/api/quote_hint/' + encodeURIComponent(tk())).then(function(r) { return r.json(); }).then(function(d) {
+      if (d && d.price) { spotRef = d.price; poeFaixa(d.price); }
+    }).catch(function() {});
+  }
+  $('rf-ticker').addEventListener('change', function() { if (this.value !== '__outro__') prepara(); });
+  $('rf-ticker-livre').addEventListener('change', prepara);
+  $('rf-exp').addEventListener('change', function() { if (data) buscar(); });
+
+  // ── Busca ──
+  function buscar() {
+    var t = tk(); if (!t) return;
+    $('rf-loading').style.display = 'block'; $('rf-error').style.display = 'none'; $('rf-hint').style.display = 'none'; $('rf-res').innerHTML = '';
+    fetch('/api/rolagem-fyt/' + encodeURIComponent(t) + '?exp=' + $('rf-exp').value)
+      .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+      .then(function(res) {
+        $('rf-loading').style.display = 'none';
+        if (!res.ok || res.j.error) { $('rf-error').textContent = '⚠️ ' + (res.j.error || 'Erro ao buscar.'); $('rf-error').style.display = 'block'; return; }
+        data = res.j;
+        if (data.spot && (!spotRef || Math.abs(spotRef - data.spot) / data.spot > 0.02 || +$('rf-a').max < 30 && modo === 'rs')) { spotRef = data.spot; poeFaixa(data.spot); }
+        spotRef = data.spot || spotRef;
+        var chg = data.spot_change;
+        $('rf-spot').innerHTML = data.ticker + ' Preço: R$ ' + fmt(data.spot) + (chg != null ? ' <span class="' + (chg >= 0 ? 'chg-pos' : 'chg-neg') + '">' + (chg >= 0 ? '↑ +' : '↓ ') + fmt(chg) + '%</span>' : '');
+        render();
+      })
+      .catch(function(e) { $('rf-loading').style.display = 'none'; $('rf-error').textContent = '⚠️ ' + e; $('rf-error').style.display = 'block'; });
+  }
+  $('rf-buscar').addEventListener('click', buscar);
+
+  function celVal(v, tit) {
+    if (v == null) return '<td>—</td>';
+    return '<td class="' + (v < 0 ? 'pos' : 'neg') + '" title="' + tit + '">' + brl(v) + '</td>';
+  }
+  function render() {
+    var r = faixa(), spot = data.spot || spotRef;
+    var lo = modo === 'rs' ? r[0] : spot * (1 + r[0] / 100), hi = modo === 'rs' ? r[1] : spot * (1 + r[1] / 100);
+    var rows = data.rows.filter(function(x) { return x.strike >= lo - 0.001 && x.strike <= hi + 0.001; });
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin-bottom:.5rem;">🔁 Rolagem de <strong>' + dBR(data.exp_cur) + '</strong> → <strong>' + dBR(data.exp_nxt) + '</strong> · ' + rows.length + ' strike(s) · valor no padrão do Pnt: <span class="pos">negativo = crédito</span>, <span class="neg">positivo = débito</span></div>';
+    if (!rows.length) { $('rf-res').innerHTML = h + '<div id="rf-hint">Nenhum strike na faixa escolhida.</div>'; return; }
+    h += '<div style="overflow-x:auto;"><table class="rf-tab no-datatable"><thead><tr><th class="l">Tickers (CALL)</th><th>Último</th><th>Boca</th><th class="k">Strike</th><th>Boca</th><th>Último</th><th class="l" style="padding-left:1.5rem;">Tickers (PUT)</th></tr></thead><tbody>';
+    var marcou = false;
+    rows.forEach(function(x, i) {
+      var c = x.call, p = x.put, sp = (!marcou && x.strike > spot) ? ' class="spot"' : '';
+      if (sp) marcou = true;
+      h += '<tr data-i="' + i + '"' + sp + ' style="cursor:pointer;" title="Clique: copiar a rolagem da CALL para o Pnt · Shift+clique: a da PUT">' +
+        '<td class="l tk">' + (c ? '-' + c.longa + ' +' + c.curta : '—') + '</td>' +
+        (c ? celVal(c.ultimo, 'Último: recompra ' + fmt(c.p_curta_ult) + ' − venda ' + fmt(c.p_longa_ult)) + celVal(c.boca, 'Boca: recompra no ask ' + fmt(c.p_curta_ask) + ' − venda no bid ' + fmt(c.p_longa_bid)) : '<td>—</td><td>—</td>') +
+        '<td class="k">R$ ' + fmt(x.strike) + '</td>' +
+        (p ? celVal(p.boca, 'Boca: recompra no ask ' + fmt(p.p_curta_ask) + ' − venda no bid ' + fmt(p.p_longa_bid)) + celVal(p.ultimo, 'Último: recompra ' + fmt(p.p_curta_ult) + ' − venda ' + fmt(p.p_longa_ult)) : '<td>—</td><td>—</td>') +
+        '<td class="l tk" style="padding-left:1.5rem;">' + (p ? '-' + p.longa + ' +' + p.curta : '—') + '</td></tr>';
+    });
+    $('rf-res').innerHTML = h + '</tbody></table></div>';
+    $('rf-res').querySelectorAll('tr[data-i]').forEach(function(tr) { tr.addEventListener('click', function(ev) {
+      var x = rows[+tr.dataset.i], par = ev.shiftKey ? x.put : x.call; if (!par) return;
+      var v = par.boca != null ? par.boca : par.ultimo, T = String.fromCharCode(9);
+      var linha = [par.curta, par.longa, 'C', 'V', 100, 100, v != null ? v.toFixed(2).replace('.', ',') : ''].join(T);
+      var ok = function() { tr.style.outline = '1px solid #34d399'; setTimeout(function() { tr.style.outline = ''; }, 900); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, function() { prompt('Copie (Pnt):', linha); });
+      else prompt('Copie (Pnt):', linha);
+    }); });
+  }
+  prepara();
+})();
+</script>
+{% endblock %}

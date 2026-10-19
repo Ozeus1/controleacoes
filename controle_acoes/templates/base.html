@@ -249,9 +249,9 @@
                 </div>
 
                 {# ── Opções (dropdown com Estudos e Simulação) ── #}
-                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','simulador','simflex','payoff_live','simulador_estudo','rolagem_opcoes','busca_rolagem_automatica','rtd_planilha','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_grafico','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','put_call_ratio','trader_futuros','ajuda_operacoes'] else '' }}">
+                <div class="nav-dropdown {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','simulador','simflex','payoff_live','simulador_estudo','rolagem_opcoes','busca_rolagem_automatica','rolagem_fyt','rtd_planilha','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_grafico','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','put_call_ratio','trader_futuros','ajuda_operacoes'] else '' }}">
                     <a href="{{ url_for('opcoes') }}"
-                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','simulador','simflex','payoff_live','simulador_estudo','rolagem_opcoes','busca_rolagem_automatica','rtd_planilha','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_grafico','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','put_call_ratio','trader_futuros','ajuda_operacoes'] else '' }}"
+                       class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['opcoes','estudos','simulacao_opcoes','simulador','simflex','payoff_live','simulador_estudo','rolagem_opcoes','busca_rolagem_automatica','rolagem_fyt','rtd_planilha','venda_puts','collar_edit','ranking_volatilidade','simulador_liquidez','busca_operacoes','busca_operacoes_avancadas','manejo_opcoes','manejo_grafico','manejo_put','lancamento_coberto','venda_put_longa','fyt','mapa_opcoes','market_gamma','bgt_bands','curva_volatilidade','simulador_bs','put_call_ratio','trader_futuros','ajuda_operacoes'] else '' }}"
                        onclick="toggleNavDrop(this,event)">
                         Opções <span class="nav-caret">▾</span>
                     </a>
@@ -288,8 +288,8 @@
                             </div>
                         </div>
                         {# Rolagem: item pai com submenu Busca Manual (rolagem_opcoes) / Busca Automática (busca_rolagem_automatica) #}
-                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['rolagem_opcoes','busca_rolagem_automatica','rtd_planilha'] else '' }}">
-                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['rolagem_opcoes','busca_rolagem_automatica','rtd_planilha'] else '' }}"
+                        <div class="nav-dropdown nav-subdropdown {{ 'active' if request.endpoint in ['rolagem_opcoes','busca_rolagem_automatica','rolagem_fyt','rtd_planilha'] else '' }}">
+                            <a href="#" class="nav-dropdown-toggle {{ 'active' if request.endpoint in ['rolagem_opcoes','busca_rolagem_automatica','rolagem_fyt','rtd_planilha'] else '' }}"
                                onclick="toggleNavDrop(this,event)">
                                 🔁 Rolagem <span class="nav-caret nav-caret-sub">▸</span>
                             </a>
@@ -298,6 +298,8 @@
                                    class="{{ 'active' if request.endpoint == 'rolagem_opcoes' else '' }}">🔁 Busca Manual</a>
                                 <a href="{{ url_for('busca_rolagem_automatica') }}"
                                    class="{{ 'active' if request.endpoint == 'busca_rolagem_automatica' else '' }}">🔍 Busca Automática</a>
+                                <a href="{{ url_for('rolagem_fyt') }}"
+                                   class="{{ 'active' if request.endpoint == 'rolagem_fyt' else '' }}">🧬 Rolagem FYT</a>
                                 <a href="{{ url_for('rtd_planilha') }}"
                                    class="{{ 'active' if request.endpoint == 'rtd_planilha' else '' }}">📊 RTD (planilha)</a>
                             </div>

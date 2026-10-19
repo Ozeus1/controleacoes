@@ -2998,6 +2998,76 @@ def simulador_estudo():
     return render_template('simulador_estudo.html', sims=sims, selic=_selic())
 
 
+@app.route('/rolagem-fyt')
+@login_required
+def rolagem_fyt():
+    """Rolagem FYT: pares CALL/PUT (vencimento atual → seguinte) por strike, com último e boca."""
+    sug = list(dict.fromkeys(['BOVA11'] + _sugestoes_liquidez(current_user.id)))
+    return render_template('rolagem_fyt.html', sugestoes=sug)
+
+
+@app.route('/api/rolagem-fyt/<ticker>')
+@login_required
+def api_rolagem_fyt(ticker):
+    """Rolagem de opções vendidas: recompra a série do vencimento mensal `exp` (0 = atual, 1 = +1 mês) e vende a do
+    mensal seguinte, mesmo strike. Valor no padrão do Pnt: + paga (débito), − recebe (crédito).
+    Último = último(curta) − último(longa) · Boca = ask(curta) − bid(longa)."""
+    ticker = ticker.strip().upper()
+    token = Settings.get_value('oplab_token', user_id=current_user.id)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado'}), 400
+    try:
+        exp_i = min(max(int(request.args.get('exp', 0)), 0), 1)
+    except (TypeError, ValueError):
+        exp_i = 0
+    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    try:
+        data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+    except OplabApiError as e:
+        return jsonify({'error': str(e)}), 503
+    lista = data if isinstance(data, list) else (data.get('options') or [])
+    hoje = date.today()
+    por_exp = {}
+    for o in lista:
+        if not isinstance(o, dict):
+            continue
+        due = str(o.get('due_date') or o.get('expiration_date') or '')[:10]
+        try:
+            if date.fromisoformat(due) < hoje or not _is_monthly_exp(due):
+                continue
+        except ValueError:
+            continue
+        k = round(float(o.get('strike') or 0), 2)
+        sym = str(o.get('symbol') or '').upper()
+        if k <= 0 or not sym:
+            continue
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        lado = 'put' if ('PUT' in cat or cat == 'P') else 'call'
+        por_exp.setdefault(due, {'call': {}, 'put': {}})[lado][k] = {
+            'symbol': sym, 'bid': float(o.get('bid') or 0), 'ask': float(o.get('ask') or 0), 'close': float(o.get('close') or 0)}
+    exps = sorted(por_exp)
+    if len(exps) < exp_i + 2:
+        return jsonify({'error': 'Não há vencimentos mensais suficientes para a rolagem.'}), 404
+    cur, nxt = exps[exp_i], exps[exp_i + 1]
+
+    def par(lado, k):
+        a, b = por_exp[cur][lado].get(k), por_exp[nxt][lado].get(k)
+        if not a or not b:
+            return None
+        ult = round(a['close'] - b['close'], 2) if (a['close'] >= 0.01 and b['close'] >= 0.01) else None
+        boca = round(a['ask'] - b['bid'], 2) if (a['ask'] >= 0.01 and b['bid'] >= 0.01) else None
+        return {'curta': a['symbol'], 'longa': b['symbol'], 'ultimo': ult, 'boca': boca,
+                'p_curta_ult': a['close'], 'p_longa_ult': b['close'], 'p_curta_ask': a['ask'], 'p_longa_bid': b['bid']}
+    ks = sorted(set(por_exp[cur]['call']) | set(por_exp[cur]['put']))
+    rows = []
+    for k in ks:
+        c, p = par('call', k), par('put', k)
+        if c or p:
+            rows.append({'strike': k, 'call': c, 'put': p})
+    return jsonify({'ticker': ticker, 'spot': spot, 'spot_change': spot_change, 'exp_cur': cur, 'exp_nxt': nxt,
+                    'exps': exps[:3], 'rows': rows})
+
+
 @app.route('/payoff-live')
 @login_required
 def payoff_live():

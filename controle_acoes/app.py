@@ -13564,6 +13564,154 @@ def api_fyt_box4():
                     'market_open': market_open, 'selic': round(selic, 2), 'selic_per': round(selic_per, 2)})
 
 
+def _scc_ativo(tk, exp_iso, op, alvo, token, uid, selic, market_open):
+    """Melhor CALL vendida (venda coberta) de um ativo no vencimento mais próximo de `exp_iso`, ou None.
+    op=taxa (ITM, taxa = lucro máx. mais próxima de `alvo` %) · atm (strike mais perto do spot) ·
+    otm (prêmio/spot mais próximo de `alvo` %)."""
+    from datetime import date as _d
+    try:
+        chain = _oplab_chain_cached(tk, token)
+    except Exception:
+        return None
+    alvo_d = _d.fromisoformat(exp_iso)
+    dues = {}
+    for o in chain:
+        if isinstance(o, dict):
+            due = str(o.get('due_date') or o.get('expiration_date') or '')[:10]
+            if len(due) == 10:
+                dues[due] = True
+    cand = []
+    for due in dues:
+        try:
+            dif = abs((_d.fromisoformat(due) - alvo_d).days)
+        except ValueError:
+            continue
+        if dif <= 3:
+            cand.append((dif, due))
+    if not cand:
+        return None
+    exp_sel = min(cand)[1]
+    spot = None
+    calls = []
+    for o in chain:
+        if not isinstance(o, dict):
+            continue
+        due = str(o.get('due_date') or o.get('expiration_date') or '')[:10]
+        if due != exp_sel:
+            continue
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        if 'PUT' in cat or cat == 'P':
+            continue
+        strike = float(o.get('strike') or 0)
+        sym = str(o.get('symbol') or o.get('ticker') or '').upper()
+        if strike <= 0 or not sym:
+            continue
+        if spot is None:
+            try:
+                spot = float(o.get('spot_price') or 0) or None
+            except (TypeError, ValueError):
+                spot = None
+        mt = str(o.get('maturity_type') or '').upper()
+        calls.append({'symbol': sym, 'strike': round(strike, 2),
+                      'bid': round(float(o.get('bid') or 0), 2), 'ask': round(float(o.get('ask') or 0), 2),
+                      'close': round(float(o.get('close') or 0), 2),
+                      'estilo': 'AM' if 'AMER' in mt else ('EU' if 'EURO' in mt else None)})
+    if not calls:
+        return None
+    if not spot:
+        try:
+            with app.app_context():
+                spot = _get_underlying_quote(tk, uid)[0]
+        except Exception:
+            spot = None
+    if not spot:
+        return None
+    dc = max((_d.fromisoformat(exp_sel) - _d.today()).days, 1)
+    cdi_per = ((1 + selic / 100) ** (dc / 365.0) - 1) * 100
+    rows = []
+    for c in calls:
+        e = _box4_eff(c, market_open)
+        if market_open and not e['boca']:
+            continue
+        prem = e['bid']
+        if not prem or prem < 0.05:
+            continue
+        k = c['strike']
+        dist = (k / spot - 1) * 100
+        prot = prem / spot * 100
+        lucro = (k + prem - spot) / spot * 100
+        if op == 'taxa':
+            if not (k < spot and lucro > 0 and dist >= -15):
+                continue
+            chave = abs(lucro - alvo)
+        elif op == 'atm':
+            if abs(dist) > 2.5:
+                continue
+            chave = abs(dist)
+        else:
+            if not (k > spot and dist <= 15):
+                continue
+            chave = abs(prot - alvo)
+        rows.append((chave, {
+            'ativo': tk, 'spot': round(spot, 2), 'symbol': c['symbol'], 'strike': k, 'estilo': c['estilo'],
+            'dist': round(dist, 2), 'premio': round(prem, 2), 'prot': round(prot, 2), 'lucro': round(lucro, 2),
+            'cdi_lucro': round(lucro / cdi_per * 100) if cdi_per > 0 else None,
+            'cdi_prot': round(prot / cdi_per * 100) if cdi_per > 0 else None,
+            'exp': exp_sel, 'dc': dc, 'src': e['src'], 'cdi_per': round(cdi_per, 2)}))
+    if not rows:
+        return None
+    rows.sort(key=lambda t: t[0])
+    return rows[0][1]
+
+
+@app.route('/api/fyt-scc')
+@login_required
+def api_fyt_scc():
+    """Smart Covered Call: varre os ativos da lista "Com liquidez" atrás da melhor CALL para venda coberta.
+    op=taxa (ITM: taxa de lucro máx. mais próxima de `taxa` %) · atm (ordena pelo maior % de lucro máx.) ·
+    otm (remuneração: prêmio/spot mais próximo de `taxa` %). exp=AAAA-MM-DD (vence mais próximo na cadeia)."""
+    op = (request.args.get('op') or 'taxa').lower()
+    if op not in ('taxa', 'atm', 'otm'):
+        op = 'taxa'
+    try:
+        alvo = float(str(request.args.get('taxa') or '3').replace(',', '.'))
+    except ValueError:
+        alvo = 3.0
+    exp_iso = (request.args.get('exp') or '')[:10]
+    from datetime import date as _d
+    try:
+        _d.fromisoformat(exp_iso)
+    except ValueError:
+        return jsonify({'error': 'Informe o vencimento.'}), 400
+    uid = current_user.id
+    token = Settings.get_value('oplab_token', user_id=uid)
+    if not token:
+        return jsonify({'error': 'Token OpLab não configurado'}), 400
+    selic = _selic()
+    tickers = list(dict.fromkeys(['BOVA11', 'SMAL11'] + _sugestoes_liquidez(uid)))[:60]
+    _nb = now_brt()
+    market_open = (_nb.weekday() < 5 and (10, 0) <= (_nb.hour, _nb.minute) < (16, 30))
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _one(tk):
+        try:
+            return _scc_ativo(tk, exp_iso, op, alvo, token, uid, selic, market_open)
+        except Exception:
+            app.logger.exception('scc %s', tk)
+            return None
+
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        res = [r for r in ex.map(_one, tickers) if r]
+    if op == 'taxa':
+        res.sort(key=lambda r: (abs(r['lucro'] - alvo), -r['prot']))
+    elif op == 'atm':
+        res.sort(key=lambda r: -r['lucro'])
+    else:
+        res.sort(key=lambda r: (abs(r['prot'] - alvo), -r['dist']))
+    return jsonify({'op': op, 'taxa': alvo, 'exp': exp_iso, 'rows': res[:80], 'total': len(res),
+                    'varridos': len(tickers), 'market_open': market_open})
+
+
 @app.route('/api/fyt-seagull/<ticker>')
 @login_required
 def api_fyt_seagull(ticker):

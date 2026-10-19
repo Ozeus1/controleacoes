@@ -146,6 +146,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <option value="collar">🛡️ Collar (com Fence opcional)</option>
         <option value="ssc">🔗 Short Strangle Coberto</option>
         <option value="sx">🧷 Strangle de Cobertura</option>
+        <option value="scc">🪙 Smart Covered Call</option>
       </select>
     </div>
 
@@ -733,6 +734,26 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
           <input type="range" id="fyt-sx-d-a" min="0" max="100" step="0.5" value="0"><input type="range" id="fyt-sx-d-b" min="0" max="100" step="0.5" value="100"></div>
       </div>
     </div>
+    </div>
+
+    <!-- Filtros do Smart Covered Call -->
+    <div id="fyt-filtros-cc" style="display:none;">
+      <div class="fyt-campo">
+        <label for="fyt-cc-op">Operação</label>
+        <select id="fyt-cc-op">
+          <option value="taxa" selected>Operação de Taxa</option>
+          <option value="atm">Venda Coberta Agressiva</option>
+          <option value="otm">Remuneração de Carteira</option>
+        </select>
+      </div>
+      <div class="fyt-campo" id="fyt-cc-taxa-wrap">
+        <label for="fyt-cc-taxa" title="Taxa-alvo: na Operação de Taxa, o lucro máximo em %; na Remuneração, o prêmio em % do ativo">Taxa</label>
+        <select id="fyt-cc-taxa"><option value="1">Taxa de ~1%</option><option value="2">Taxa de ~2%</option><option value="3" selected>Taxa de ~3%</option><option value="4">Taxa de ~4%</option></select>
+      </div>
+      <div class="fyt-campo">
+        <label for="fyt-cc-exp">Vencimento</label>
+        <select id="fyt-cc-exp"></select>
+      </div>
     </div>
 
     <div class="fyt-campo" style="flex-direction:row;align-items:center;gap:.4rem;justify-content:flex-end;">
@@ -1474,6 +1495,59 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     </div>
   </div>
 
+
+  <div class="fyt-ajuda" id="fyt-ajuda-cc" style="display:none;">
+    <div class="fyt-ajuda-top">
+      <h4>Smart Covered Call</h4>
+      <div class="fyt-atabs">
+        <span class="fyt-atab on" data-p="conceito">Conceito</span>
+        <span class="fyt-atab" data-p="estrategias">Estratégias</span>
+        <span class="fyt-atab" data-p="colunas">Colunas</span>
+        <span class="fyt-atab" data-p="exemplo">Exemplo</span>
+        <span class="fyt-atab" data-p="controles">Controles</span>
+      </div>
+    </div>
+    <div class="fyt-apane on" data-p="conceito">
+      <h5>ℹ️ O que é o Smart Covered Call?</h5>
+      <p>Scanner que varre o mercado de opções (os ativos da lista <strong>Com liquidez</strong>) para encontrar as melhores oportunidades de <strong>Venda Coberta</strong> (Covered Call). O investidor já possui (ou pretende adquirir) o ativo e <strong>vende uma CALL</strong> sobre ele para receber prêmio.</p>
+      <div class="nota"><strong>💡 Na prática:</strong> imagine que você tem 100 ações de PETR4 a R$ 38. Você vende uma CALL com strike R$ 40 e recebe R$ 1,50 de prêmio. Se PETR4 subir acima de R$ 40 e você for exercido, vende por R$ 40 + fica com R$ 1,50 — lucro de R$ 3,50 (9,2%). Se não subir, embolsa R$ 1,50 como renda extra e pode repetir a operação.</div>
+    </div>
+    <div class="fyt-apane" data-p="estrategias">
+      <h5>📋 As 3 Estratégias</h5>
+      <ul>
+        <li><strong style="color:#34d399;">Operação de Taxa (ITM):</strong> vende CALL <strong>dentro do dinheiro</strong> (strike abaixo do spot). Objetivo: ser exercido e embolsar a taxa acordada (alvo de 1% a 4%). Quanto mais ITM, maior a chance de sucesso.</li>
+        <li><strong style="color:#fbbf24;">Venda Coberta Agressiva (ATM):</strong> vende CALL <strong>no dinheiro</strong>, capturando o máximo de valor extrínseco (prêmio gordo). Para quem aceita ser exercido e trocar de papel. Ordena pelo maior % de lucro máximo.</li>
+        <li><strong style="color:#60a5fa;">Remuneração de Carteira (OTM):</strong> vende CALL <strong>fora do dinheiro</strong>. Rentabiliza a carteira via prêmio, sem intenção de ser exercido — um "dividendo sintético". Quanto mais longe do spot, menor o risco de exercício.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="colunas">
+      <h5>📊 Colunas da Tabela</h5>
+      <ul>
+        <li><strong>Dist. Spot:</strong> distância percentual entre o strike da opção e o spot do ativo. Negativo = ITM (CALL com strike abaixo do spot); positivo = OTM.</li>
+        <li><strong>Prêmio:</strong> valor recebido pela venda da opção (bid; fora do pregão, o último negócio).</li>
+        <li><strong>% Proteção:</strong> quanto o ativo pode cair até o breakeven (Spot − Prêmio). Na Remuneração, também exibe a taxa equivalente em % do CDI.</li>
+        <li><strong>% Lucro Máx. | Taxa:</strong> retorno máximo caso exercido com sucesso, (strike + prêmio − spot) ÷ spot, sempre acompanhado do equivalente em % do CDI proporcional aos dias corridos da operação.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="exemplo">
+      <h5>🧮 Exemplo Prático</h5>
+      <p>PETR4 a R$ 38,00 — CALL vendida: strike R$ 36, prêmio R$ 3,50, 30 dias <span style="color:var(--text-secondary);font-size:.8rem;">(Operação de Taxa — CALL ITM, Dist. Spot = −5,3%)</span></p>
+      <ul>
+        <li><strong style="color:#34d399;">Se exercido (sucesso):</strong> você vende PETR4 a R$ 36 (strike) + recebeu R$ 3,50 de prêmio. Resultado bruto: R$ 36 + R$ 3,50 − R$ 38 = <strong>R$ 1,50 de lucro (3,9% em 30 dias)</strong>. Taxa = (Strike + Prêmio − Spot) ÷ Spot = (36 + 3,50 − 38) ÷ 38 = 3,9%.</li>
+        <li><strong style="color:#fbbf24;">Se NÃO exercido (ativo caiu abaixo do strike):</strong> PETR4 fechou abaixo de R$ 36 — a opção vira pó. Você mantém as ações e o prêmio de <strong>R$ 3,50 (9,2% de proteção)</strong>. Breakeven: R$ 38 − R$ 3,50 = R$ 34,50. Você só perde dinheiro se PETR4 fechar abaixo de R$ 34,50.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="controles">
+      <h5>🎛️ Controles</h5>
+      <ul>
+        <li><strong>Operação:</strong> escolhe entre Operação de Taxa (ITM), Venda Coberta Agressiva (ATM) e Remuneração de Carteira (OTM).</li>
+        <li><strong>Taxa (~1% a ~4%):</strong> na Operação de Taxa, o lucro máximo desejado — para cada ativo vem a CALL ITM com a taxa mais próxima. Na Remuneração, o prêmio desejado em % do ativo. Não se aplica à Venda Agressiva.</li>
+        <li><strong>Vencimento:</strong> lista os próximos vencimentos, semanais (W) e mensais (M), mostrando o mais próximo disponível na cadeia de cada ativo.</li>
+        <li><strong>Buscar:</strong> varre os ativos da lista Com liquidez (até 60) e mostra uma linha por ativo. Clique na linha para ver o detalhe, abrir no SimFlex ou exportar para o Pnt.</li>
+      </ul>
+    </div>
+  </div>
+
   <div class="fyt-ajuda" id="fyt-ajuda-sl" style="display:none;">
     <div class="fyt-ajuda-top">
       <h4>Slide Estrutural</h4>
@@ -1711,7 +1785,10 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (v === 'collar') clPrepara();
     if (v === 'fence') fcPrepara();
     if (v === 'seagull') sgPrepara();
-    document.getElementById('fyt-ativo-wrap').style.display     = (v === 'box4') ? 'none' : '';
+    document.getElementById('fyt-ativo-wrap').style.display     = (v === 'box4' || v === 'scc') ? 'none' : '';
+    document.getElementById('fyt-filtros-cc').style.display     = (v === 'scc') ? 'contents' : 'none';
+    document.getElementById('fyt-ajuda-cc').style.display       = (v === 'scc') ? '' : 'none';
+    if (v === 'scc') window.__CC.sync();
     if (v === 'box4') b4Prepara();
     if (v === 'box3') bxPrepara();
     if (v === 'slide') slPrepara();
@@ -1813,6 +1890,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   }
   function buscar() {
     if (opSel.value === 'box4') { buscarBox4(); return; }
+    if (opSel.value === 'scc') { buscarScc(); return; }
     setTicker(tickerAtual());
     if (!currentTicker) {
       errBox.textContent = '⚠️ Escolha um ativo antes de buscar.';
@@ -4002,6 +4080,134 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     };
   }
 
+  // ── Smart Covered Call ───────────────────────────────────────────────────────────
+  // Vencimentos: próximas sextas (semanais W e mensais M, com o feriado antecipando para a quinta).
+  function fytSextas(n) {
+    var hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+    var mensais = {}; fytMensaisLista(14).forEach(function(e) { mensais[e.iso] = e.label; });
+    var feriado = function(dt) {
+      var ds = ('0' + (dt.getMonth() + 1)).slice(-2) + '-' + ('0' + dt.getDate()).slice(-2);
+      if (['01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-24', '12-25', '12-31'].indexOf(ds) >= 0) return true;
+      var Y = dt.getFullYear(), a = Y % 19, b = Math.floor(Y / 100), c = Y % 100, dd = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25),
+          g = Math.floor((b - f + 1) / 3), hh = (19 * a + b - dd - g + 15) % 30, i = Math.floor(c / 4), k = c % 4,
+          l = (32 + 2 * e + 2 * i - hh - k) % 7, mm = Math.floor((a + 11 * hh + 22 * l) / 451),
+          pm = Math.floor((hh + l - 7 * mm + 114) / 31), pd = ((hh + l - 7 * mm + 114) % 31) + 1;
+      var ss = new Date(Y, pm - 1, pd - 2);
+      return ss.getMonth() === dt.getMonth() && ss.getDate() === dt.getDate();
+    };
+    var out = [], d = new Date(hoje.getTime());
+    for (var i = 0; i < 400 && out.length < n; i++) {
+      d.setDate(d.getDate() + 1);
+      if (d.getDay() !== 5) continue;
+      var v = new Date(d.getTime());
+      while (feriado(v) || v.getDay() === 0 || v.getDay() === 6) v.setDate(v.getDate() - 1);
+      if (v <= hoje) continue;
+      var iso = v.getFullYear() + '-' + ('0' + (v.getMonth() + 1)).slice(-2) + '-' + ('0' + v.getDate()).slice(-2);
+      out.push({iso: iso, label: mensais[iso] || (dateBR(iso) + ' (W)')});
+    }
+    return out;
+  }
+  window.__CC = (function() {
+    var elOp = document.getElementById('fyt-cc-op'), elTx = document.getElementById('fyt-cc-taxa'), elEx = document.getElementById('fyt-cc-exp');
+    elEx.innerHTML = fytSextas(14).map(function(e) { return '<option value="' + e.iso + '">' + e.label + '</option>'; }).join('');
+    function sync() {
+      document.getElementById('fyt-cc-taxa-wrap').style.display = (elOp.value === 'atm') ? 'none' : '';
+      elTx.options[0].textContent = (elOp.value === 'otm') ? 'Prêmio de ~1%' : 'Taxa de ~1%';
+      elTx.options[1].textContent = (elOp.value === 'otm') ? 'Prêmio de ~2%' : 'Taxa de ~2%';
+      elTx.options[2].textContent = (elOp.value === 'otm') ? 'Prêmio de ~3%' : 'Taxa de ~3%';
+      elTx.options[3].textContent = (elOp.value === 'otm') ? 'Prêmio de ~4%' : 'Taxa de ~4%';
+    }
+    elOp.addEventListener('change', sync);
+    return {sync: sync, query: function() { return new URLSearchParams({op: elOp.value, taxa: elTx.value, exp: elEx.value}); }};
+  })();
+
+  function buscarScc() {
+    loading.style.display = 'block'; loading.textContent = '⏳ Varrendo os ativos da lista Com liquidez…';
+    errBox.style.display = 'none'; hintBox.style.display = 'none'; results.innerHTML = ''; spotEl.innerHTML = '';
+    fetch('/api/fyt-scc?' + window.__CC.query().toString())
+      .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
+      .then(function(res) {
+        loading.style.display = 'none'; loading.textContent = '⏳ Varrendo a cadeia de opções…';
+        if (!res.ok || res.j.error) { errBox.textContent = '⚠️ ' + (res.j.error || 'Erro ao buscar.'); errBox.style.display = 'block'; return; }
+        currentEstrutura = 'scc'; renderScc(res.j);
+      })
+      .catch(function(e) { loading.style.display = 'none'; errBox.textContent = '⚠️ Falha na requisição: ' + e; errBox.style.display = 'block'; });
+  }
+  function renderScc(d) {
+    lastData = d;
+    var desc = {
+      taxa: '<strong>OPERAÇÃO DE TAXA</strong>: venda de CALL ITM (dentro do dinheiro), com objetivo de ser exercido e obter o lucro máximo da operação no período escolhido. Quanto mais distante o strike vendido do preço do ativo, maior a probabilidade de sucesso.',
+      atm: '<strong>VENDA COBERTA AGRESSIVA</strong>: venda de CALL no dinheiro (ATM), capturando o máximo de valor extrínseco. Para quem aceita ser exercido e trocar de papel. Ordenada pelo maior % de lucro máximo.',
+      otm: '<strong>REMUNERAÇÃO DE CARTEIRA</strong>: venda de CALL fora do dinheiro (OTM), rentabilizando a carteira pelo prêmio sem intenção de ser exercido — um "dividendo sintético". Quanto mais longe do spot, menor o risco de exercício.'
+    }[d.op];
+    var h = '<div style="background:var(--hover-bg,#0f172a);border-radius:8px;padding:.7rem 1rem;margin:.2rem 0 .8rem;font-size:.85rem;">' + desc + '</div>';
+    if (!d.rows.length) {
+      results.innerHTML = h + '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">Nenhuma CALL atende em ' + d.varridos + ' ativos neste vencimento' +
+        (d.market_open ? ' (no pregão exige-se book na CALL)' : '') + '. Tente outro vencimento ou outra taxa.</div>';
+      return;
+    }
+    h += '<div style="font-size:.78rem;color:var(--text-secondary);margin-bottom:.4rem;">' + d.rows.length + ' de ' + d.varridos + ' ativos' +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') + '</div>';
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr><th style="text-align:left;">Ativo</th><th>Spot</th><th style="text-align:left;">Opção</th><th>Strike</th>' +
+      '<th title="Strike ÷ spot − 1: negativo = ITM">Dist. Spot</th><th title="Valor recebido pela CALL vendida">Prêmio</th>' +
+      '<th title="Quanto o ativo pode cair até o breakeven (spot − prêmio)">% Proteção</th>' +
+      '<th title="(strike + prêmio − spot) ÷ spot, e o equivalente em % do CDI do período">% Lucro máx. | Taxa</th></tr></thead><tbody>';
+    d.rows.forEach(function(r, i) {
+      h += '<tr data-i="' + i + '" title="Clique para ver o detalhamento">' +
+        '<td style="text-align:left;color:#60a5fa;">' + r.ativo + '</td><td>' + brl(r.spot) + '</td>' +
+        '<td style="text-align:left;white-space:nowrap;"><span class="neg">−' + r.symbol + '</span> ' + b4Estilo(r.estilo) + (r.src === 'ultimo' ? ' <span style="font-size:.68rem;color:var(--text-secondary);">últ.</span>' : '') + '</td>' +
+        '<td>' + brl(r.strike) + '</td><td class="' + (r.dist < 0 ? 'pos' : '') + '">' + fmt(r.dist) + '%</td><td>' + brl(r.premio) + '</td>' +
+        '<td>' + fmt(r.prot, 1) + '%' + (d.op === 'otm' && r.cdi_prot != null ? ' <span style="font-size:.72rem;color:var(--text-secondary);">(' + fmt(r.cdi_prot, 0) + '% CDI)</span>' : '') + '</td>' +
+        '<td class="pos"><strong>' + fmt(r.lucro) + '%</strong>' + (r.cdi_lucro != null ? ' <span style="font-size:.72rem;color:var(--text-secondary);">(' + fmt(r.cdi_lucro, 0) + '% CDI)</span>' : '') + '</td></tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) { tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); }); });
+  }
+  function refreshModalCc() {
+    var r = lastData.rows[modalIdx], q = parseInt(document.getElementById('fytm-qty').value) || 100;
+    var nomeOp = {taxa: 'Operação de Taxa', atm: 'Venda Coberta Agressiva', otm: 'Remuneração de Carteira'}[lastData.op];
+    document.getElementById('fytm-title').textContent = 'Smart Covered Call — ' + nomeOp + ' ' + r.ativo + ' · ' + r.symbol;
+    var exerc = (r.strike + r.premio - r.spot) * q, be = r.spot - r.premio;
+    var boxes = [
+      ['Posição no ativo ' + r.ativo + ' (' + q + ' ações)', brl(r.spot * q), 'neg'],
+      ['Venda ' + q + '× ' + r.symbol + ' (CALL K ' + fmt(r.strike) + ')' + (r.estilo ? ' · ' + (r.estilo === 'AM' ? 'americana' : 'europeia') : ''), brl(r.premio * q), 'pos'],
+      ['Distância do strike ao spot', fmt(r.dist) + '% (' + (r.dist < 0 ? 'ITM' : (r.dist > 0 ? 'OTM' : 'ATM')) + ')', ''],
+      ['Se exercido: lucro máximo', brl(exerc) + ' (' + fmt(r.lucro) + '%' + (r.cdi_lucro != null ? ' · ' + fmt(r.cdi_lucro, 0) + '% do CDI' : '') + ')', 'pos'],
+      ['Se não exercido: prêmio embolsado', brl(r.premio * q) + ' (' + fmt(r.prot, 1) + '% do ativo' + (r.cdi_prot != null ? ' · ' + fmt(r.cdi_prot, 0) + '% do CDI' : '') + ')', 'pos'],
+      ['Breakeven (spot − prêmio)', brl(be) + ' — proteção de ' + fmt(r.prot, 1) + '%', ''],
+      ['CDI no período', fmt(r.cdi_per) + '% (' + r.dc + ' d.c.)', ''],
+      ['Vencimento', dateBR(r.exp) + ' (' + r.dc + ' d.c.)', '']
+    ];
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span><span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+    var L = [
+      {ticker: r.ativo, side: 'BUY', opt_type: 'STOCK', quantity: q, strike: 0, entry_price: r.spot, expiration_date: ''},
+      {ticker: r.symbol, side: 'SELL', opt_type: 'CALL', quantity: q, strike: r.strike, entry_price: r.premio, expiration_date: r.exp}
+    ];
+    var nome = 'Smart Covered Call ' + r.ativo + ' ' + r.strike;
+    document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + new URLSearchParams({sim: '1', ativo: r.ativo, nome: nome,
+      legs: L.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')}).toString();
+    var calc = document.getElementById('fytm-calc');
+    calc.onclick = null; calc.removeAttribute('target'); calc.style.display = '';
+    calc.href = '/venda_puts?' + new URLSearchParams({st: '1', ativo: r.ativo, spot: r.spot, qty: q, exp: r.exp, op: 'livre',
+      livre_legs: 'S:1|C:-1', livre_nome: nome, at: r.ativo, ak: 0, ap: r.spot, bt: r.symbol, bk: r.strike, bp: r.premio}).toString() + '#estrutura';
+    var sf = document.getElementById('fytm-sf'); sf.style.display = '';
+    sf.onclick = function() {
+      try { localStorage.setItem('simflex_import', JSON.stringify({origem: '', name: nome, ativo: r.ativo, novo: true, legs: L})); }
+      catch (e) { alert('Não foi possível preparar o SimFlex: ' + e); return; }
+      window.open('/simflex?importar=1', '_blank');
+    };
+    var pnt = document.getElementById('fytm-pnt'); pnt.style.display = '';
+    pnt.onclick = function() {   // só a perna de opção (a ação você já tem): venda da CALL, coeficiente negativo = recebe
+      var T = String.fromCharCode(9);
+      var linha = [r.symbol, 'V', q, (-r.premio).toFixed(2).replace('.', ',')].join(T);
+      var ok = function() { pnt.textContent = '✓ Copiado!'; setTimeout(function() { pnt.textContent = '📋 Exportar Pnt'; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, function() { prompt('Copie (Pnt):', linha); });
+      else prompt('Copie (Pnt):', linha);
+    };
+  }
+
   // ── Box de 3 Pontas ─────────────────────────────────────────────────────
   var bxReady = false, bxTickerPrep = '';
   function bxDual() {
@@ -4472,6 +4678,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (currentEstrutura === 'slide') { refreshModalSl(); return; }
     if (currentEstrutura === 'box3') { refreshModalBx(); return; }
     if (currentEstrutura === 'box4') { refreshModalB4(); return; }
+    if (currentEstrutura === 'scc') { refreshModalCc(); return; }
     if (currentEstrutura === 'seagull') { refreshModalSg(); return; }
     if (currentEstrutura === 'fence') { refreshModalFc(); return; }
     if (currentEstrutura === 'collar') { refreshModalCl(); return; }

@@ -630,11 +630,32 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     var iqMin = parseFloat($('pl-bar-iq').value) || 0, descMin = (parseFloat($('pl-bar-desc').value) || 0) * 1e6, box = $('pl-bar-res');
     box.innerHTML = '⏳ buscando…';
     fetch('/api/mapa-opcoes/vencimentos/' + encodeURIComponent(t)).then(function(r) { return r.json(); }).then(function(v) {
-      var vs = (v.vencimentos || []).slice(0, 4); if (!vs.length) { box.textContent = v.error || 'Sem vencimentos.'; return; }
-      return Promise.all(vs.map(function(e) { return fetch('/api/mapa-opcoes/' + encodeURIComponent(t) + '?exp=' + e + '&side=' + barLado + '&modo=abs').then(function(r) { return r.json(); }).then(function(j) { return {exp: e, j: j}; }).catch(function() { return {exp: e, j: {}}; }); }))
-        .then(function(rs) {
-          var out = [], ref = '';
-          rs.forEach(function(x) { if (x.j.data_ref) ref = x.j.data_ref; (x.j.barras || []).forEach(function(b) { if ((b.iq || 0) >= iqMin && (b.descoberto || 0) >= descMin) out.push({exp: x.exp, strike: b.strike, iq: b.iq, desc: b.descoberto}); }); });
+      // todos os vencimentos dos próximos ~3 meses; as posições são SOMADAS por mês (semanais + mensal),
+      // como no Mapa de Opções com vários vencimentos combinados
+      var lim = new Date(); lim.setDate(lim.getDate() + 95);
+      var vs = (v.vencimentos || []).filter(function(e) { return new Date(e + 'T00:00:00') <= lim; }).slice(0, 14);
+      if (!vs.length) vs = (v.vencimentos || []).slice(0, 3);
+      if (!vs.length) { box.textContent = v.error || 'Sem vencimentos.'; return; }
+      var rs = [], fila = vs.slice();
+      function lote() {
+        var parte = fila.splice(0, 4);
+        if (!parte.length) return Promise.resolve();
+        return Promise.all(parte.map(function(e) { return fetch('/api/mapa-opcoes/' + encodeURIComponent(t) + '?exp=' + e + '&side=' + barLado + '&modo=abs').then(function(r) { return r.json(); }).then(function(j) { rs.push({exp: e, j: j}); }).catch(function() {}); }))
+          .then(function() { box.innerHTML = '⏳ ' + rs.length + ' de ' + vs.length + ' vencimentos…'; return lote(); });
+      }
+      return lote().then(function() {
+          var mes = {}, ref = '';
+          rs.forEach(function(x) {
+            if (x.j.data_ref) ref = x.j.data_ref;
+            var m = x.exp.slice(0, 7);
+            (x.j.barras || []).forEach(function(b) {
+              var k = m + '|' + b.strike, a = mes[k] = mes[k] || {exp: m, strike: b.strike, desc: 0, tit: 0, lan: 0};
+              a.desc += b.descoberto || 0; a.tit += b.titular || 0; a.lan += b.lancador || 0;
+            });
+          });
+          var out = [];
+          Object.keys(mes).forEach(function(k) { var a = mes[k]; a.iq = a.lan ? a.tit / a.lan : null;
+            if (a.iq != null && a.iq >= iqMin && a.desc >= descMin) out.push(a); });
           out.sort(function(a, b) { return b.desc - a.desc; });
           S.barreiras = out;
           box.innerHTML = '<div style="color:var(--text-secondary);margin-bottom:.2rem;">' + out.length + ' barreira(s) · ' + t + (ref ? ' · ' + dBR(ref) : '') + '</div>' +

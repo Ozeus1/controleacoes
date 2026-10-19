@@ -35,6 +35,10 @@ table.pl-grid tr.atm td{background:rgba(96,165,250,.12);}
 table.pl-grid td.itm{background:rgba(52,211,153,.06);}
 table.pl-grid td.bid{color:#f87171;cursor:pointer;} table.pl-grid td.ask{color:#34d399;cursor:pointer;}
 table.pl-grid td.bid:hover,table.pl-grid td.ask:hover{outline:1px solid currentColor;}
+table.pl-grid .vc{display:inline-block;font-size:.58rem;font-weight:700;line-height:1;padding:.12rem .22rem;margin-left:.22rem;border-radius:3px;cursor:pointer;vertical-align:middle;opacity:.55;}
+table.pl-grid .vc.v{color:#f87171;background:rgba(248,113,113,.14);} table.pl-grid .vc.c{color:#34d399;background:rgba(52,211,153,.14);}
+table.pl-grid .vc:hover{opacity:1;outline:1px solid currentColor;}
+table.pl-grid tr:hover .vc{opacity:.9;}
 table.pl-grid td.tk{color:var(--text-secondary);} table.pl-grid td.teor{background:rgba(37,99,235,.10);}
 table.pl-grid td.inleg{box-shadow:inset 0 0 0 2px #fbbf24;}
 .pl-sep-c{background:linear-gradient(rgba(52,211,153,.14),rgba(52,211,153,.14)),var(--card-bg,#111827)!important;color:#34d399!important;text-align:center!important;}
@@ -97,7 +101,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
 
   <div class="pl-card">
     <div class="pl-h">☰ Grade de opções <span style="color:#34d399;">CALLS</span> | <span style="color:#f87171;">PUTS</span> <span id="pl-live" style="color:#34d399;font-weight:600;text-transform:none;letter-spacing:0;"></span>
-      <span style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;">clique no <span style="color:#f87171;">BID</span> para vender · no <span style="color:#34d399;">ASK</span> para comprar</span></div>
+      <span style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;">clique no <span style="color:#f87171;">v</span> para vender ou no <span style="color:#34d399;">c</span> para comprar, ao lado do preço desejado (bid, mid, ask, último ou teórico)</span></div>
     <div class="pl-grid-wrap" id="pl-grid-wrap"><div class="pl-empty">Escolha o ativo e carregue a cadeia.</div></div>
     <div class="pl-foot">
       <span class="pl-seg" id="pl-lado"><button data-v="CP" class="on">C+P</button><button data-v="C">C</button><button data-v="P">P</button></span>
@@ -311,6 +315,13 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     var g = greeks(S.spot, K, T, iv || ivb || 0, call);
     return {o: o, iv: iv, ivb: ivb, g: g};
   }
+  // botões pequenos V (vender) / C (comprar) ao lado de cada preço: a perna entra com aquele preço
+  function vc(sym, px, quais) {
+    var h = '';
+    if (quais.indexOf('v') >= 0) h += '<span class="vc v" data-s="' + sym + '" data-a="SELL" data-px="' + px + '" title="Vender por ' + fmt(px) + '">v</span>';
+    if (quais.indexOf('c') >= 0) h += '<span class="vc c" data-s="' + sym + '" data-a="BUY" data-px="' + px + '" title="Comprar por ' + fmt(px) + '">c</span>';
+    return h;
+  }
   function celulas(x, call, K) {
     var vazio = '<td>—</td>';
     if (!x) return call ? vazio.repeat(15) : vazio.repeat(15);
@@ -322,11 +333,11 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
       '<td' + cls + '>' + fmt(x.g.vega, 4) + '</td>', '<td' + cls + '>' + fmt(x.g.theta, 4) + '</td>', '<td' + cls + '>' + fmt(x.g.gamma, 4) + '</td>',
       '<td' + cls + '>' + fmt(x.g.delta, 3) + '</td>', '<td' + cls + '>' + (x.iv ? fmt(x.iv * 100, 1) + '%' : '—') + '</td>',
       '<td' + cls + '>' + (o.bid && o.ask ? fmt(o.ask - o.bid) : '—') + '</td>',
-      '<td class="bid" data-s="' + o.symbol + '" data-a="SELL" title="Vender pelo bid">' + (o.bid ? fmt(o.bid) : '—') + '</td>',
-      '<td' + cls + '>' + (o.mid ? fmt(o.mid) : '—') + '</td>',
-      '<td class="ask" data-s="' + o.symbol + '" data-a="BUY" title="Comprar pelo ask">' + (o.ask ? fmt(o.ask) : '—') + '</td>',
-      '<td' + cls + '>' + (o.close ? fmt(o.close) : '—') + '</td>',
-      '<td class="teor" title="Valor teórico (BS com a EWMA do ativo)">' + (o.teorico ? fmt(o.teorico) : '—') + '</td>',
+      '<td class="bid" data-s="' + o.symbol + '" data-a="SELL" data-px="' + (o.bid || '') + '" title="Vender pelo bid">' + (o.bid ? fmt(o.bid) + vc(o.symbol, o.bid, 'v') : '—') + '</td>',
+      '<td' + cls + '>' + (o.mid ? fmt(o.mid) + vc(o.symbol, o.mid, 'vc') : '—') + '</td>',
+      '<td class="ask" data-s="' + o.symbol + '" data-a="BUY" data-px="' + (o.ask || '') + '" title="Comprar pelo ask">' + (o.ask ? fmt(o.ask) + vc(o.symbol, o.ask, 'c') : '—') + '</td>',
+      '<td' + cls + '>' + (o.close ? fmt(o.close) + vc(o.symbol, o.close, 'vc') : '—') + '</td>',
+      '<td class="teor" title="Valor teórico (BS com a EWMA do ativo)">' + (o.teorico ? fmt(o.teorico) + vc(o.symbol, o.teorico, 'vc') : '—') + '</td>',
       '<td>' + (o.estilo === 'AM' ? '🇺🇸' : (o.estilo === 'EU' ? '🇪🇺' : '—')) + '</td>',
       '<td class="tk' + (em ? ' inleg' : '') + '">' + o.symbol.slice(4) + '</td>'
     ];
@@ -351,10 +362,10 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     $('pl-f-n').textContent = e.rows.length + ' strikes · ' + dias(e.exp) + ' d.c.';
   }
   $('pl-grid-wrap').addEventListener('click', function(ev) {
-    var td = ev.target.closest('td[data-s]'); if (!td) return;
+    var td = ev.target.closest('.vc[data-s]') || ev.target.closest('td[data-s]'); if (!td) return;
     var info = bySym[td.dataset.s]; if (!info) return;
     var side = td.dataset.a, o = info.o;
-    var px = side === 'BUY' ? (o.ask_eff || o.ask || o.close) : (o.bid_eff || o.bid || o.close);
+    var px = parseFloat(td.dataset.px) || (side === 'BUY' ? (o.ask_eff || o.ask || o.close) : (o.bid_eff || o.bid || o.close));
     S.legs.push({on: true, side: side, qty: 100, price: +(px || 0).toFixed(2), type: info.tipo, strike: info.strike, ticker: o.symbol, exp: info.exp, iv: o.iv ? o.iv / 100 : null, manual: null});
     marcaAlterado(); renderChips(); renderGrade(); renderLegs();
   });

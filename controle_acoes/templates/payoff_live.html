@@ -714,7 +714,11 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     if (del) { ev.stopPropagation(); if (!confirm('Excluir esta operação salva?')) return;
       fetch('/api/simulacao/' + del.dataset.del + '/delete', {method: 'POST'}).then(function() { if (+del.dataset.del === S.simId) S.simId = null; carregarOps(); }); return; }
     var it = ev.target.closest('.it'); if (!it) return;
-    fetch('/api/simulacao/' + it.dataset.id).then(function(r) { return r.json(); }).then(function(s) {
+    abrirOp(it.dataset.id);
+  });
+  // Abre uma operação salva (também usado por ?abrir=<id>, vindo de "Abrir no Payoff")
+  function abrirOp(id, inicial) {
+    fetch('/api/simulacao/' + id).then(function(r) { return r.json(); }).then(function(s) {
       if (s.error) { alert(s.error); return; }
       var und = (s.underlying || '').toUpperCase();
       var aplica = function() {
@@ -728,10 +732,13 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
       if (und && und !== S.ticker) {
         var opt = [].some.call($('pl-ticker').options, function(o) { return o.value === und; });
         if (opt) $('pl-ticker').value = und; else { $('pl-ticker').value = '__outro__'; $('pl-ticker-livre').style.display = ''; $('pl-ticker-livre').value = und; }
-        var t0 = S.ticker; carregar(true); var esp = setInterval(function() { if (S.ticker === und) { clearInterval(esp); aplica(); } }, 200); setTimeout(function() { clearInterval(esp); }, 20000);
-      } else aplica();
+        if (!inicial) carregar(true);
+        var esp = setInterval(function() { if (S.ticker === und && S.d) { clearInterval(esp); aplica(); } }, 200); setTimeout(function() { clearInterval(esp); }, 20000);
+      } else {
+        var esp2 = setInterval(function() { if (S.d) { clearInterval(esp2); aplica(); } }, 200); setTimeout(function() { clearInterval(esp2); }, 20000);
+      }
     });
-  });
+  }
   function salvar() {
     if (!S.legs.length) { alert('Monte a estrutura antes de salvar.'); return; }
     var nome = prompt('Nome da operação:', S.simNome || ('Estrutura ' + S.ticker)); if (!nome) return;
@@ -820,7 +827,18 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
   $('pl-mk-add').addEventListener('click', function() { addMarker($('pl-mk-rot').value.trim(), pv($('pl-mk-preco').value), S.cor, $('pl-mk-trac').checked); $('pl-mk-rot').value = ''; $('pl-mk-preco').value = ''; });
   document.querySelectorAll('[data-q]').forEach(function(a) { a.addEventListener('click', function(e) { e.preventDefault(); $('pl-mk-rot').value = a.dataset.q; $('pl-mk-preco').focus(); var c = a.style.color; }); });
 
-  carregar();
+  var qAbrir = new URLSearchParams(location.search).get('abrir');
+  if (qAbrir) {
+    // seleciona o ativo da operação antes da primeira carga e abre a estrutura quando a cadeia chegar
+    fetch('/api/simulacao/' + encodeURIComponent(qAbrir)).then(function(r) { return r.json(); }).then(function(s) {
+      var und = ((s && s.underlying) || '').toUpperCase();
+      if (und) {
+        var tem = [].some.call($('pl-ticker').options, function(o) { return o.value === und; });
+        if (tem) $('pl-ticker').value = und; else { $('pl-ticker').value = '__outro__'; $('pl-ticker-livre').style.display = ''; $('pl-ticker-livre').value = und; }
+      }
+      carregar(); abrirOp(qAbrir, true);
+    }).catch(function() { carregar(); });
+  } else carregar();
 })();
 </script>
 {% endblock %}

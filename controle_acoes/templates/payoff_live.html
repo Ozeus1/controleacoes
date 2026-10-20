@@ -229,8 +229,8 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
       </div>
       <div class="pl-ctl">Pontos notáveis</div>
       <div style="display:flex;gap:.3rem;flex-wrap:wrap;">
-        <button class="pl-btn toggle on" data-g="be">Break-even</button><button class="pl-btn toggle on" data-g="sigma">±1σ</button>
-        <button class="pl-btn toggle" data-g="barreiras">Barreiras</button>
+        <button class="pl-btn toggle on" data-g="be">Break-even</button><button class="pl-btn toggle on" data-g="sigma" title="Clique em sequência: 1 desvio padrão → 2 desvios → desligado">±1σ</button>
+        <button class="pl-btn toggle on" data-g="barreiras" title="Mostra ou oculta no gráfico os marcadores de preço e as barreiras do scanner">Barreiras</button>
       </div>
       <div class="pl-ctl">Escala X</div>
       <span class="pl-seg" id="pl-escala"><button data-v="preco" class="on">Preço</button><button data-v="pct">% Var</button></span>
@@ -246,7 +246,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
   var SELIC = {{ selic|float }} / 100, R = Math.log(1 + SELIC);
   var $ = function(id) { return document.getElementById(id); };
   var S = {ticker: '', d: null, spot: 0, exp: null, legs: [], modo: 'bidask', drag: null, legBoxes: [], lado: 'CP', escala: 'preco',
-           g: {pnl: true, atual: true, venc: true, delta: false, gamma: false, theta: false, vega: false, rho: false, be: true, sigma: true, barreiras: false},
+           g: {pnl: true, atual: true, venc: true, delta: false, gamma: false, theta: false, vega: false, rho: false, be: true, sigma: 1, barreiras: true},
            simId: null, simNome: '', markers: [], barreiras: [], cor: '#fbbf24'};
   var bySym = {};
   var chart = null;
@@ -676,10 +676,22 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
         g.fillStyle = cor; g.fillRect(Math.min(px - w / 2, ya.right - w), y, w, 14); g.fillStyle = '#0f172a'; g.fillText(txt, Math.min(px - w / 2, ya.right - w) + 4, y + 10); }
       g.restore();
     }
-    if (S.g.sigma && ch.__sig) { g.save(); g.fillStyle = 'rgba(96,165,250,.07)'; var a = sx.getPixelForValue(Math.max(ch.__sig[0], sx.min)), b = sx.getPixelForValue(Math.min(ch.__sig[1], sx.max)); g.fillRect(a, ya.top, b - a, ya.bottom - ya.top); g.restore(); }
+    // ±1σ / ±2σ (botão alterna 1 → 2 → desligado): faixa sombreada + linhas tracejadas nos limites
+    function faixaSigma(lim, alfa, rot) {
+      g.save(); g.fillStyle = 'rgba(96,165,250,' + alfa + ')';
+      var a = sx.getPixelForValue(Math.max(lim[0], sx.min)), b = sx.getPixelForValue(Math.min(lim[1], sx.max)); g.fillRect(a, ya.top, b - a, ya.bottom - ya.top); g.restore();
+      [[lim[0], '−'], [lim[1], '+']].forEach(function(e) {
+        vline(e[0], 'rgba(96,165,250,.7)', null, true);
+        if (e[0] < sx.min || e[0] > sx.max) return;
+        g.save(); g.font = '10px sans-serif'; g.fillStyle = 'rgba(147,197,253,.95)'; g.textAlign = e[1] === '−' ? 'right' : 'left';
+        g.fillText(e[1] + rot + ' ' + fmt(e[0]), sx.getPixelForValue(e[0]) + (e[1] === '−' ? -3 : 3), ya.top + (rot === '1σ' ? 40 : 54)); g.restore();
+      });
+    }
+    if (S.g.sigma >= 2 && ch.__sig2) faixaSigma(ch.__sig2, '.05', '2σ');
+    if (S.g.sigma >= 1 && ch.__sig) faixaSigma(ch.__sig, '.08', '1σ');
     vline(S.spot, '#60a5fa', 'Spot: ' + fmt(S.spot), false, true);
     if (S.g.be && ch.__be) ch.__be.forEach(function(b) { vline(b, '#cbd5e1', 'Break Even: ' + fmt(b), true); });
-    S.markers.forEach(function(m) { vline(m.preco, m.cor, m.rot + ' ' + fmt(m.preco), m.trac); });
+    if (S.g.barreiras) S.markers.forEach(function(m) { vline(m.preco, m.cor, m.rot + ' ' + fmt(m.preco), m.trac); });
     if (S.g.barreiras) S.barreiras.forEach(function(b) { vline(b.strike, '#e879f9', 'Barreira ' + fmt(b.strike, 2), true); });
     // pernas: etiqueta arrastável no strike (verde = compra, vermelho = venda)
     S.legBoxes = []; var nivel = {};
@@ -701,7 +713,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
 
   function metricas(ls, xs, venc, dte) {
     var el = $('pl-metrics');
-    if (!ls.length) { el.innerHTML = '<div style="grid-column:1/-1;color:var(--text-secondary);">Monte uma estrutura para ver as métricas.</div>'; if (chart) { chart.__be = null; chart.__sig = null; } return; }
+    if (!ls.length) { el.innerHTML = '<div style="grid-column:1/-1;color:var(--text-secondary);">Monte uma estrutura para ver as métricas.</div>'; if (chart) { chart.__be = null; chart.__sig = null; chart.__sig2 = null; } return; }
     var cred = 0; ls.forEach(function(l) { cred += (l.side === 'SELL' ? 1 : -1) * l.price * l.qty; });
     // o preço não cai abaixo de zero: o extremo inferior é avaliado em S ≈ 0 (perda/lucro limitados);
     // só a inclinação no extremo superior indica resultado ilimitado
@@ -710,12 +722,12 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     var nI = venc.length - 1, slopeHi = venc[nI] - venc[nI - 1];
     var ilimG = slopeHi > 0.5, ilimP = slopeHi < -0.5;
     var bes = []; for (var i = 1; i < venc.length; i++) { if ((venc[i - 1] < 0) !== (venc[i] < 0)) { var t = venc[i - 1] / (venc[i - 1] - venc[i]); bes.push(xs[i - 1] + t * (xs[i] - xs[i - 1])); } }
-    var sig = ivAtm(S.exp), T = Math.max(dte, 1) / 365, s1 = [S.spot * Math.exp(-sig * Math.sqrt(T)), S.spot * Math.exp(sig * Math.sqrt(T))];
+    var sig = ivAtm(S.exp), T = Math.max(dte, 1) / 365, s1 = [S.spot * Math.exp(-sig * Math.sqrt(T)), S.spot * Math.exp(sig * Math.sqrt(T))], s2 = [S.spot * Math.exp(-2 * sig * Math.sqrt(T)), S.spot * Math.exp(2 * sig * Math.sqrt(T))];
     // POP: probabilidade lognormal de terminar com resultado > 0 no vencimento
     var pop = 0, tot = 0;
     for (var j = 0; j < xs.length; j++) { var x = xs[j], z = (Math.log(x / S.spot) - (R - sig * sig / 2) * T) / (sig * Math.sqrt(T)), dens = n(z) / (x * sig * Math.sqrt(T)); tot += dens; if (venc[j] > 0) pop += dens; }
     pop = tot ? pop / tot * 100 : null;
-    if (chart) { chart.__be = bes; chart.__sig = s1; }
+    if (chart) { chart.__be = bes; chart.__sig = s1; chart.__sig2 = s2; }
     var rr = (!ilimG && !ilimP && mn < 0) ? (mx / Math.abs(mn)) : null;
     var box = function(l, v, c) { return '<div><span>' + l + '</span><b class="' + (c || '') + '">' + v + '</b></div>'; };
     el.innerHTML = box(cred >= 0 ? 'Crédito' : 'Débito', brlK(Math.abs(cred)), cred >= 0 ? 'pos' : 'neg') +
@@ -730,7 +742,9 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
   ['pl-vol', 'pl-skew', 'pl-curv'].forEach(function(id) { $(id).addEventListener('input', function() { $(id + '-v').textContent = fmt(+this.value, 1); desenhar(); }); });
   $('pl-dias').addEventListener('input', desenhar);
   $('pl-zerar').addEventListener('click', function(e) { e.preventDefault(); ['pl-vol', 'pl-skew', 'pl-curv'].forEach(function(id) { $(id).value = 0; $(id + '-v').textContent = '0,0'; }); desenhar(); });
-  document.querySelectorAll('[data-g]').forEach(function(b) { b.addEventListener('click', function() { var k = b.dataset.g; S.g[k] = !S.g[k]; b.classList.toggle('on', S.g[k]); desenhar(); }); });
+  document.querySelectorAll('[data-g]').forEach(function(b) { b.addEventListener('click', function() { var k = b.dataset.g;
+    if (k === 'sigma') { S.g.sigma = {1: 2, 2: 0, 0: 1}[S.g.sigma]; b.textContent = '±' + (S.g.sigma || 1) + 'σ'; b.classList.toggle('on', S.g.sigma > 0); desenhar(); return; }
+    S.g[k] = !S.g[k]; b.classList.toggle('on', S.g[k]); desenhar(); }); });
   $('pl-escala').addEventListener('click', function(ev) { var b = ev.target.closest('button'); if (!b) return; S.escala = b.dataset.v; [].forEach.call(this.children, function(x) { x.classList.toggle('on', x === b); }); desenhar(); });
 
   // ── Operações (simulações salvas) ──
@@ -872,7 +886,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
   function chaveMk() { return 'pl-mk-' + S.ticker; }
   function carregarMarcadores() { try { S.markers = JSON.parse(localStorage.getItem(chaveMk()) || '[]'); } catch (e) { S.markers = []; } renderMarkers(); }
   function salvarMarcadores() { try { localStorage.setItem(chaveMk(), JSON.stringify(S.markers)); } catch (e) {} }
-  function addMarker(rot, preco, cor, trac) { if (!(preco > 0)) return; S.markers.push({rot: rot || 'Nível', preco: preco, cor: cor, trac: trac}); salvarMarcadores(); renderMarkers(); desenhar(); }
+  function addMarker(rot, preco, cor, trac) { if (!(preco > 0)) return; S.g.barreiras = true; document.querySelector('[data-g=barreiras]').classList.add('on'); S.markers.push({rot: rot || 'Nível', preco: preco, cor: cor, trac: trac}); salvarMarcadores(); renderMarkers(); desenhar(); }
   function renderMarkers() {
     $('pl-mk-list').innerHTML = S.markers.length ? S.markers.map(function(m, i) { return '<div class="it"><span><span style="color:' + m.cor + ';">●</span> ' + m.rot + ' · <b>' + fmt(m.preco) + '</b> <span style="color:var(--text-secondary);">(' + fmt((m.preco / (S.spot || m.preco) - 1) * 100, 1) + '%)</span></span><button class="pl-btn" data-mi="' + i + '" style="padding:0 .35rem;">✕</button></div>'; }).join('')
       : '<div class="pl-empty">Nenhum marcador. Adicione níveis do seu plano — entrada, stop, alvos.</div>';

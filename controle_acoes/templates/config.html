@@ -48,8 +48,8 @@
             Escolha a fonte para cotações de <strong>ações, FIIs e ETFs</strong>.
             <br>
             <span style="color:var(--success-color); font-size:.85rem;">
-                ✓ <strong>Opções</strong> sempre são atualizadas via OpLab quando o token estiver configurado,
-                independente do modo escolhido aqui.
+                ✓ <strong>Opções</strong> são atualizadas via OpLab quando o token estiver configurado — exceto no modo
+                <strong>MT5 na VPS</strong>, em que ações, ETFs e todas as opções (tabelas da página Opções) vêm do MT5.
             </span>
         </p>
 
@@ -500,7 +500,9 @@ document.getElementById('oplab-test-btn').addEventListener('click', function() {
                    autocomplete="off" style="margin-bottom:0;">
         </div>
         <button type="submit" class="btn btn-primary">Salvar chave</button>
-        <button type="button" id="mt5-teste-btn" class="btn btn-secondary">Testar com PETR4</button>
+        <input type="text" id="mt5-teste-ticker" value="PETR4" maxlength="14" placeholder="Ticker" title="Ativo ou opção a testar (ex.: PETR4, BOVA11, PETRL401)"
+               style="width:130px; margin-bottom:0; text-transform:uppercase;">
+        <button type="button" id="mt5-teste-btn" class="btn btn-secondary">Testar cotação</button>
     </form>
     <form method="POST" action="{{ url_for('config') }}" style="display:flex; gap:.75rem; flex-wrap:wrap; align-items:center; margin-bottom:1rem;">
         <input type="hidden" name="action" value="save_mt5_interval">
@@ -539,7 +541,7 @@ document.getElementById('oplab-test-btn').addEventListener('click', function() {
     document.getElementById('mt5-teste-btn').addEventListener('click', function () {
         var btn = this, box = document.getElementById('mt5-teste-res');
         btn.disabled = true; box.style.display = 'block'; box.textContent = '⏳ Pedido enviado ao MT5… (o coletor responde em até ~20 s)';
-        fetch('/api/mt5-radar/teste', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: 'PETR4' }) })
+        fetch('/api/mt5-radar/teste', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ symbol: (document.getElementById('mt5-teste-ticker').value || 'PETR4').trim().toUpperCase() }) })
             .then(function (r) { return r.json(); })
             .then(function (j) {
                 if (!j.ok) { box.textContent = '⚠️ ' + (j.error || 'falha ao pedir'); btn.disabled = false; return; }

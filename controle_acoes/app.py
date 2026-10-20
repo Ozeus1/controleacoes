@@ -24147,7 +24147,9 @@ def update_quotes():
         usar_brapi_opcoes = Settings.get_value(
             'opt_fallback_brapi', user_id=current_user.id, default='false') == 'true'
 
-        if usar_brapi_opcoes:
+        if quote_mode == 'mt5':
+            pass    # MT5 na VPS: ações, ETFs e opções (todas as tabelas da página Opções) vêm do MT5 no passo abaixo
+        elif usar_brapi_opcoes:
             # OpLab fora do ar: opções vêm da BRAPI (fechamento do dia).
             # oplab_covered fica vazio de propósito — as AÇÕES continuam indo
             # ao Yahoo/BRAPI no passo seguinte, que é o fluxo normal delas.
@@ -24226,7 +24228,9 @@ def update_quotes_async():
                 usar_brapi_opcoes = Settings.get_value(
                     'opt_fallback_brapi', user_id=user_id, default='false') == 'true'
 
-                if usar_brapi_opcoes:
+                if quote_mode == 'mt5':
+                    pass    # MT5 na VPS: ações, ETFs e opções vêm do MT5 (passo 2); OpLab só como reserva se o MT5 falhar
+                elif usar_brapi_opcoes:
                     # OpLab fora do ar: opções pela BRAPI (fechamento do dia).
                     # oplab_covered segue vazio — ações continuam no Yahoo/BRAPI.
                     o_ok, op_err = _brapi_options_bulk_update(user_id)
@@ -24274,10 +24278,14 @@ def update_quotes_async():
                     try:
                         final_msg += mt5_radar_refresh(user_id, max_wait=120)['msg'] + '. '
                     except Exception as e_mt5:
-                        final_msg += f'MT5 (VPS) falhou: {e_mt5}. ETFs via Yahoo. '
+                        final_msg += f'MT5 (VPS) falhou: {e_mt5}. '
+                        if oplab_token:     # reserva: opções e ações B3 pela OpLab
+                            a_ok, o_ok, _cov, op_err = _do_oplab_bulk_update_safe(user_id, oplab_token, deadline_secs=25)
+                            final_msg += (f'OpLab (reserva): {op_err}. ' if op_err else f'OpLab (reserva): {a_ok} ativo(s), {o_ok} opção(ões). ')
                         etf_count, etf_tried, errs = update_all_assets_logic(
                             user_id=user_id, only_types={'ETF'}
                         )
+                        final_msg += 'ETFs via Yahoo. '
                     intl_success, _ = update_intl_quotes_logic(user_id)
 
                 # Foto do patrimônio do dia com os preços recém-atualizados
@@ -29675,9 +29683,17 @@ def _oplab_scheduler_loop():
             try:
                 now = now_brt()
                 _daily_snapshot_sweep(now)
+                # Modo MT5 na VPS: renova ações, ETFs e opções pelo Radar no intervalo escolhido (2/3/5 min),
+                # sem depender de ter uma tela aberta — e a OpLab automática não sobrescreve esses preços.
+                mt5_users = set()
+                for s in Settings.query.filter_by(key='quote_mode', value='mt5').all():
+                    mt5_users.add(s.user_id)
+                    _mt5_radar_kick(s.user_id)
                 rows = Settings.query.filter_by(key='oplab_auto_update', value='true').all()
                 for s in rows:
                     uid   = s.user_id
+                    if uid in mt5_users:
+                        continue
                     usar_brapi = Settings.get_value(
                         'opt_fallback_brapi', user_id=uid, default='false') == 'true'
                     token = Settings.get_value('oplab_token', user_id=uid)

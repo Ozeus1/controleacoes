@@ -3031,7 +3031,7 @@ def api_rolagem_fyt(ticker):
         exp_i = min(max(int(request.args.get('exp', 0)), 0), 1)
     except (TypeError, ValueError):
         exp_i = 0
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     try:
         data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
     except OplabApiError as e:
@@ -12408,7 +12408,7 @@ def api_fyt(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -12689,7 +12689,7 @@ def api_fyt_straddle_ha(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -12876,7 +12876,7 @@ def api_fyt_slide(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -13086,7 +13086,7 @@ def api_fyt_booster(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -13345,7 +13345,7 @@ def api_fyt_box3(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -13504,7 +13504,7 @@ def _box4_eff(rw, market_open):
     return {'bid': b, 'ask': a_, 'src': src, 'boca': has_book}
 
 
-def _box4_ativo(tk, ym, modo, token, uid, selic_per, market_open):
+def _box4_ativo(tk, ym, modo, token, uid, selic_per, market_open, spot_ext=None):
     """Melhor Box de 4 Pontas (um par de strikes A<B) de um ativo no mês `ym` (AAAA-MM), ou None."""
     from datetime import date as _d
     try:
@@ -13555,6 +13555,8 @@ def _box4_ativo(tk, ym, modo, token, uid, selic_per, market_open):
     ks = sorted(set(calls) & set(puts))
     if len(ks) < 2:
         return None
+    if spot_ext:
+        spot = spot_ext                     # cotação atual (OpLab ou BRAPI), não o spot_price da cadeia
     if not spot:
         try:
             with app.app_context():
@@ -13626,6 +13628,7 @@ def api_fyt_box4():
     if not token:
         return jsonify({'error': 'Token OpLab não configurado'}), 400
     tickers = list(dict.fromkeys(['BOVA11', 'SMAL11'] + _ranking_dropdown_tickers(uid)))[:40]
+    spots = _spots_fyt(tickers, uid, token, request.args.get('source') == 'brapi')
     selic = _selic()
     from datetime import date as _d
     y, m = int(ym[:4]), int(ym[5:7])
@@ -13645,7 +13648,7 @@ def api_fyt_box4():
 
     def _one(tk):
         try:
-            return _box4_ativo(tk, ym, modo, token, uid, selic_per, market_open)
+            return _box4_ativo(tk, ym, modo, token, uid, selic_per, market_open, spots.get(tk))
         except Exception:
             app.logger.exception('box4 %s', tk)
             return None
@@ -13657,7 +13660,7 @@ def api_fyt_box4():
                     'market_open': market_open, 'selic': round(selic, 2), 'selic_per': round(selic_per, 2)})
 
 
-def _scc_ativo(tk, exp_iso, op, alvo, token, uid, selic, market_open):
+def _scc_ativo(tk, exp_iso, op, alvo, token, uid, selic, market_open, spot_ext=None):
     """Melhor CALL vendida (venda coberta) de um ativo no vencimento mais próximo de `exp_iso`, ou None.
     op=taxa (ITM, taxa = lucro máx. mais próxima de `alvo` %) · atm (strike mais perto do spot) ·
     otm (prêmio/spot mais próximo de `alvo` %)."""
@@ -13711,6 +13714,8 @@ def _scc_ativo(tk, exp_iso, op, alvo, token, uid, selic, market_open):
                       'estilo': 'AM' if 'AMER' in mt else ('EU' if 'EURO' in mt else None)})
     if not calls:
         return None
+    if spot_ext:
+        spot = spot_ext                     # cotação atual (OpLab ou BRAPI), não o spot_price da cadeia
     if not spot:
         try:
             with app.app_context():
@@ -13782,13 +13787,14 @@ def api_fyt_scc():
         return jsonify({'error': 'Token OpLab não configurado'}), 400
     selic = _selic()
     tickers = list(dict.fromkeys(['BOVA11', 'SMAL11'] + _sugestoes_liquidez(uid)))[:60]
+    spots = _spots_fyt(tickers, uid, token, request.args.get('source') == 'brapi')
     _nb = now_brt()
     market_open = (_nb.weekday() < 5 and (10, 0) <= (_nb.hour, _nb.minute) < (16, 30))
     from concurrent.futures import ThreadPoolExecutor
 
     def _one(tk):
         try:
-            return _scc_ativo(tk, exp_iso, op, alvo, token, uid, selic, market_open)
+            return _scc_ativo(tk, exp_iso, op, alvo, token, uid, selic, market_open, spots.get(tk))
         except Exception:
             app.logger.exception('scc %s', tk)
             return None
@@ -13820,7 +13826,7 @@ def api_fyt_seagull(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -13989,7 +13995,7 @@ def api_fyt_fence(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -14155,7 +14161,7 @@ def api_fyt_collar(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -14357,7 +14363,7 @@ def api_fyt_thl_cal(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -14524,7 +14530,7 @@ def api_fyt_bws(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -14734,7 +14740,7 @@ def api_fyt_ssc(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -14903,7 +14909,7 @@ def api_fyt_sx(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -15084,7 +15090,7 @@ def api_fyt_thl(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -15414,7 +15420,7 @@ def _mannerheim_calc(ticker, args):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -15816,7 +15822,7 @@ def api_fyt_mannerheim(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -16157,7 +16163,7 @@ def api_fyt_trava_alta(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -16562,7 +16568,7 @@ def api_fyt_trava_baixa(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -16965,7 +16971,7 @@ def api_fyt_borboleta(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -17349,7 +17355,7 @@ def api_fyt_broken_wing(ticker):
         if not token:
             return jsonify({'error': 'Token OpLab não configurado'}), 400
 
-    spot, spot_change = _get_underlying_quote(ticker, current_user.id)
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
     if not spot:
         return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
 
@@ -18342,6 +18348,93 @@ def _quotes_from_db(tickers, user_id):
         price, change = _get_underlying_quote_cached(t, user_id)
         if price:
             out[t] = {'price': price, 'change_percent': change or 0.0}
+    return out
+
+
+_SPOT_FYT_CACHE = {}
+
+
+def _spot_oplab(ticker, token):
+    """(preço, variação %) do ativo pela OpLab (/market/instruments/{ticker}: close = último negócio do pregão).
+    Cache de 8 s para o clique repetido em Buscar não bater na API."""
+    t = ticker.strip().upper()
+    agora = time.time()
+    hit = _SPOT_FYT_CACHE.get(t)
+    if hit and agora - hit[0] < 8:
+        return hit[1]
+    d = _oplab_get_json(f'/market/instruments/{t}', token, timeout=8)
+    if isinstance(d, list):
+        d = d[0] if d else {}
+    d = d or {}
+    for sub in ('data', 'spot'):
+        if isinstance(d.get(sub), dict):
+            d = {**d, **d[sub]}
+    px = None
+    for k in ('close', 'spot_price', 'last', 'price'):
+        try:
+            v = float(d.get(k) or 0)
+        except (TypeError, ValueError):
+            v = 0
+        if v > 0:
+            px = round(v, 2)
+            break
+    var = None
+    for k in ('variation', 'change_percent', 'var_pct'):
+        try:
+            if d.get(k) is not None:
+                var = round(float(d[k]), 2)
+                break
+        except (TypeError, ValueError):
+            pass
+    res = (px, var)
+    if px:
+        _SPOT_FYT_CACHE[t] = (agora, res)
+    return res
+
+
+def _spot_fyt(ticker, uid, usar_brapi=None, token=None):
+    """Cotação do ativo para as buscas FYT, a mais atual possível: OpLab primeiro; com "usar BRAPI" marcado
+    (ou OpLab indisponível) segue a ordem normal (BRAPI → Yahoo → banco). Devolve (preço, variação %)."""
+    if usar_brapi is None:
+        try:
+            usar_brapi = request.args.get('source') == 'brapi'
+        except RuntimeError:
+            usar_brapi = False
+    if not usar_brapi:
+        try:
+            tk = token or Settings.get_value('oplab_token', user_id=uid)
+            if tk:
+                px, var = _spot_oplab(ticker, tk)
+                if px:
+                    return px, var
+        except Exception:
+            pass
+    return _get_underlying_quote(ticker, uid)
+
+
+def _spots_fyt(tickers, uid, token, usar_brapi):
+    """Cotações de vários ativos de uma vez (varredura de lista): OpLab em paralelo, ou BRAPI em lote com "usar BRAPI".
+    Devolve {ticker: preço}; o que faltar o chamador completa com o spot da própria cadeia."""
+    out = {}
+    if usar_brapi:
+        try:
+            for tk, info in (get_quotes(list(tickers), user_id=uid) or {}).items():
+                if info and info.get('price'):
+                    out[tk.upper()] = round(float(info['price']), 2)
+        except Exception:
+            app.logger.exception('_spots_fyt: BRAPI falhou')
+        return out
+    from concurrent.futures import ThreadPoolExecutor
+
+    def um(tk):
+        try:
+            return tk, _spot_oplab(tk, token)[0]
+        except Exception:
+            return tk, None
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for tk, px in ex.map(um, list(tickers)):
+            if px:
+                out[tk] = px
     return out
 
 

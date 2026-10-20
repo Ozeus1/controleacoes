@@ -3987,7 +3987,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     var modo = document.getElementById('fyt-b4-modo').value, ym = document.getElementById('fyt-b4-ym').value;
     loading.style.display = 'block'; loading.textContent = '⏳ Varrendo os ativos das suas listas…';
     errBox.style.display = 'none'; hintBox.style.display = 'none'; results.innerHTML = ''; spotEl.innerHTML = '';
-    fetch('/api/fyt-box4?' + new URLSearchParams({modo: modo, ym: ym}).toString())
+    fetch('/api/fyt-box4?' + new URLSearchParams({modo: modo, ym: ym}).toString() + (document.getElementById('fyt-usar-brapi').checked ? '&source=brapi' : ''))
       .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
       .then(function(res) {
         loading.style.display = 'none'; loading.textContent = '⏳ Varrendo a cadeia de opções…';
@@ -4124,7 +4124,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   function buscarScc() {
     loading.style.display = 'block'; loading.textContent = '⏳ Varrendo os ativos da lista Com liquidez…';
     errBox.style.display = 'none'; hintBox.style.display = 'none'; results.innerHTML = ''; spotEl.innerHTML = '';
-    fetch('/api/fyt-scc?' + window.__CC.query().toString())
+    fetch('/api/fyt-scc?' + window.__CC.query().toString() + (document.getElementById('fyt-usar-brapi').checked ? '&source=brapi' : ''))
       .then(function(r) { return r.json().then(function(j) { return {ok: r.ok, j: j}; }); })
       .then(function(res) {
         loading.style.display = 'none'; loading.textContent = '⏳ Varrendo a cadeia de opções…';

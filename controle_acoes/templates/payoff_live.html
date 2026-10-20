@@ -169,9 +169,14 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
           <div class="pl-h">▥ Scanner de barreiras</div>
           <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;">
             <span class="pl-seg" id="pl-bar-lado"><button data-v="call" class="on">CALL</button><button data-v="put">PUT</button></span>
-            <label style="font-size:.7rem;">IQ ≥ <input id="pl-bar-iq" type="number" step="0.1" value="1.2" style="width:52px;"></label>
-            <label style="font-size:.7rem;">Desc. ≥ <input id="pl-bar-desc" type="number" step="0.5" value="5" style="width:48px;"> M</label>
+            <label style="font-size:.7rem;" title="IQ mínimo da barreira (titulares ÷ lançadores nesse strike)">IQ ≥ <input id="pl-bar-iq" type="number" step="0.1" value="0.8" style="width:52px;"></label>
+            <label style="font-size:.7rem;" title="Posição descoberta mínima no strike, em milhões de opções">Desc. ≥ <input id="pl-bar-desc" type="number" step="0.1" min="0" value="0.5" style="width:52px;"> M</label>
             <button class="pl-btn pri" id="pl-bar-buscar">Buscar</button>
+          </div>
+          <div style="display:flex;gap:.3rem;align-items:center;flex-wrap:wrap;margin-top:.3rem;font-size:.7rem;">
+            <label title="Por mês: semanais + mensal de cada mês somados (uma barreira por mês). Combinado: todos os vencimentos do prazo somados, como no Mapa de Opções com vários vencimentos.">Agrupar
+              <select id="pl-bar-agr"><option value="mes">por mês</option><option value="todos" selected>combinado</option></select></label>
+            <label>Prazo <select id="pl-bar-meses"><option value="2">2 meses</option><option value="3">3 meses</option><option value="4" selected>4 meses</option><option value="6">6 meses</option></select></label>
           </div>
           <div id="pl-bar-res" style="font-size:.72rem;margin-top:.35rem;"></div>
         </div>
@@ -802,8 +807,9 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     fetch('/api/mapa-opcoes/vencimentos/' + encodeURIComponent(t)).then(function(r) { return r.json(); }).then(function(v) {
       // todos os vencimentos dos próximos ~3 meses; as posições são SOMADAS por mês (semanais + mensal),
       // como no Mapa de Opções com vários vencimentos combinados
-      var lim = new Date(); lim.setDate(lim.getDate() + 95);
-      var vs = (v.vencimentos || []).filter(function(e) { return new Date(e + 'T00:00:00') <= lim; }).slice(0, 14);
+      var agr = $('pl-bar-agr').value;      // 'mes' | 'todos'
+      var lim = new Date(); lim.setDate(lim.getDate() + 31 * (+$('pl-bar-meses').value || 4));
+      var vs = (v.vencimentos || []).filter(function(e) { return new Date(e + 'T00:00:00') <= lim; }).slice(0, 30);
       if (!vs.length) vs = (v.vencimentos || []).slice(0, 3);
       if (!vs.length) { box.textContent = v.error || 'Sem vencimentos.'; return; }
       var rs = [], fila = vs.slice();
@@ -817,7 +823,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
           var mes = {}, ref = '';
           rs.forEach(function(x) {
             if (x.j.data_ref) ref = x.j.data_ref;
-            var m = x.exp.slice(0, 7);
+            var m = agr === 'todos' ? 'todos' : x.exp.slice(0, 7);
             (x.j.barras || []).forEach(function(b) {
               var k = m + '|' + b.strike, a = mes[k] = mes[k] || {exp: m, strike: b.strike, desc: 0, cob: 0, trav: 0, tit: 0, lan: 0, syms: {}};
               a.desc += b.descoberto || 0; a.cob += b.coberto || 0; a.trav += b.travado || 0; a.tit += b.titular || 0; a.lan += b.lancador || 0;
@@ -826,17 +832,33 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
               var a = mes[m + '|' + r.strike]; if (a && r.symbol) a.syms[r.symbol] = 1;
             });
           });
-          var out = [];
-          Object.keys(mes).forEach(function(k) { var a = mes[k]; a.iq = a.lan ? a.tit / a.lan : null;
-            if (a.iq != null && a.iq >= iqMin && a.desc >= descMin) out.push(a); });
+          var todas = Object.keys(mes).map(function(k) { var a = mes[k]; a.iq = a.lan ? a.tit / a.lan : null; return a; });
+          var out = todas.filter(function(a) { return a.iq != null && a.iq >= iqMin && a.desc >= descMin; });
           out.sort(function(a, b) { return b.desc - a.desc; });
           S.barreiras = out;
-          box.innerHTML = '<div style="color:var(--text-secondary);margin-bottom:.2rem;">' + out.length + ' barreira(s) · ' + t + (ref ? ' · ' + dBR(ref) : '') + '</div>' +
-            (out.length ? '<table class="no-datatable pl-mini"><tr style="color:var(--text-secondary);"><td>Venc.</td><td style="text-align:right;">Strike</td><td style="text-align:right;">IQ</td><td style="text-align:right;">Desc.</td><td style="text-align:right;">Dist.</td></tr>' +
-              out.slice(0, 12).map(function(b) {
-                var det = Object.keys(b.syms).join(', ') + (Object.keys(b.syms).length ? ' · ' : '') + 'strike ' + fmt(b.strike) + ' · IQ ' + fmt(b.iq) +
-                  ' · descoberto ' + fmt(b.desc / 1e6, 1) + 'M · coberto ' + fmt(b.cob / 1e6, 1) + 'M · trava ' + fmt(b.trav / 1e6, 1) + 'M · titulares ' + b.tit + ' / lançadores ' + b.lan;
-                return '<tr data-k="' + b.strike + '" style="cursor:pointer;" title="' + det + ' — clique para marcar no gráfico"><td>' + b.exp.slice(5, 7) + '/' + b.exp.slice(0, 4) + '</td><td style="text-align:right;"><b>' + fmt(b.strike) + '</b></td><td style="text-align:right;color:#34d399;">' + fmt(b.iq) + '</td><td style="text-align:right;">' + fmt(b.desc / 1e6, 1) + 'M</td><td style="text-align:right;">' + fmt((b.strike / S.spot - 1) * 100, 1) + '%</td></tr>'; }).join('') + '</table>' : '');
+          function linha(b, falha) {
+            var det = Object.keys(b.syms).join(', ') + (Object.keys(b.syms).length ? ' · ' : '') + 'strike ' + fmt(b.strike) + ' · IQ ' + fmt(b.iq) +
+              ' · descoberto ' + fmt(b.desc / 1e6, 2) + 'M · coberto ' + fmt(b.cob / 1e6, 2) + 'M · trava ' + fmt(b.trav / 1e6, 2) + 'M · titulares ' + b.tit + ' / lançadores ' + b.lan;
+            var rot = b.exp === 'todos' ? 'comb.' : b.exp.slice(5, 7) + '/' + b.exp.slice(0, 4);
+            var cIq = falha && !(b.iq != null && b.iq >= iqMin) ? 'color:#f87171;' : 'color:#34d399;';
+            var cDs = falha && !(b.desc >= descMin) ? 'color:#f87171;' : '';
+            return '<tr data-k="' + b.strike + '" style="cursor:pointer;" title="' + det + ' — clique para marcar no gráfico"><td>' + rot + '</td><td style="text-align:right;"><b>' + fmt(b.strike) + '</b></td><td style="text-align:right;' + cIq + '">' + fmt(b.iq) + '</td><td style="text-align:right;' + cDs + '">' + fmt(b.desc / 1e6, 2) + 'M</td><td style="text-align:right;">' + fmt((b.strike / S.spot - 1) * 100, 1) + '%</td></tr>';
+          }
+          var cab = '<table class="no-datatable pl-mini"><tr style="color:var(--text-secondary);"><td>Venc.</td><td style="text-align:right;">Strike</td><td style="text-align:right;">IQ</td><td style="text-align:right;">Desc.</td><td style="text-align:right;">Dist.</td></tr>';
+          var html = '<div style="color:var(--text-secondary);margin-bottom:.2rem;">' + out.length + ' barreira(s) · ' + t + (ref ? ' · ' + dBR(ref) : '') + ' · ' + vs.length + ' vencimento(s)</div>';
+          if (out.length) {
+            html += cab + out.slice(0, 12).map(function(b) { return linha(b, false); }).join('') + '</table>';
+          } else if (todas.length) {
+            // nada passou no filtro: mostra por que e os strikes mais próximos (em vermelho o critério que barrou)
+            var maxDesc = Math.max.apply(null, todas.map(function(a) { return a.desc; }));
+            var maxIq = Math.max.apply(null, todas.map(function(a) { return a.iq == null ? 0 : a.iq; }));
+            html += '<div style="color:#fbbf24;margin-bottom:.25rem;">Nenhum strike atende aos dois filtros. Maior descoberto encontrado: <b>' + fmt(maxDesc / 1e6, 2) + 'M</b> · maior IQ: <b>' + fmt(maxIq) + '</b>. Reduza Desc. ou IQ. Mais próximos (vermelho = barrado):</div>';
+            var prox = todas.slice().sort(function(a, b) { return b.desc - a.desc; }).slice(0, 8);
+            html += cab + prox.map(function(b) { return linha(b, true); }).join('') + '</table>';
+          } else {
+            html += '<div style="color:var(--text-secondary);">Sem posições em aberto para ' + t + ' nesse prazo.</div>';
+          }
+          box.innerHTML = html;
           S.g.barreiras = true; document.querySelector('[data-g=barreiras]').classList.add('on'); desenhar();
         });
     }).catch(function(e) { box.textContent = '⚠️ ' + e; });

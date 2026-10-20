@@ -351,7 +351,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
         (S.d.expirations || []).forEach(function(e) { (e.rows || []).forEach(function(r) {
           if (r.call) bySym[r.call.symbol] = {o: r.call, exp: e.exp, tipo: 'CALL', strike: r.strike};
           if (r.put) bySym[r.put.symbol] = {o: r.put, exp: e.exp, tipo: 'PUT', strike: r.strike}; }); });
-        if (trocou && !manter) { S.legs = []; S.simId = null; S.simNome = ''; carregarMarcadores(); }
+        if (trocou && !manter) { S.legs = []; S.simId = null; S.simNome = ''; resetExtra(); }
         if (!S.exp || !(S.d.expirations || []).some(function(e) { return e.exp === S.exp; })) S.exp = (S.d.expirations[0] || {}).exp;
         var chg = res.j.spot_change;
         $('pl-spot').innerHTML = '<b>' + t + '</b> Spot <b>' + fmt(S.spot) + '</b>' + (chg != null ? ' <span class="' + (chg >= 0 ? 'pos' : 'neg') + '">' + (chg >= 0 ? '+' : '') + fmt(chg) + '%</span>' : '');
@@ -529,7 +529,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     var b = ev.target.closest('button'); if (!b) return;
     S.modo = b.dataset.v; reprecifica(); marcaModo(); marcaAlterado(); renderLegs();
   });
-  $('pl-nova').addEventListener('click', function() { S.legs = []; S.simId = null; S.simNome = ''; if (S.modo === 'manual') S.modo = 'bidask'; marcaModo(); $('pl-nome-estr').textContent = 'Estrutura'; marcaAlterado(); renderChips(); renderGrade(); renderLegs(); renderOps(); });
+  $('pl-nova').addEventListener('click', function() { S.legs = []; S.simId = null; S.simNome = ''; resetExtra(); $('pl-notas').textContent = ''; if (S.modo === 'manual') S.modo = 'bidask'; marcaModo(); $('pl-nome-estr').textContent = 'Estrutura'; marcaAlterado(); renderChips(); renderGrade(); renderLegs(); renderOps(); });
   $('pl-perna').addEventListener('click', function() {
     var e = S.exp, atm = null; var ex = S.d && S.d.expirations.filter(function(x) { return x.exp === e; })[0];
     if (ex) ex.rows.forEach(function(r) { if (atm == null || Math.abs(r.strike - S.spot) < Math.abs(atm.strike - S.spot)) atm = r; });
@@ -777,6 +777,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
         S.modo = 'manual'; marcaModo();
         S.simId = s.id; S.simNome = s.name; $('pl-nome-estr').textContent = s.name; $('pl-estado').textContent = '· salva';
         $('pl-notas').textContent = s.notes || '';
+        aplicaExtra(s.extra);
         var lexp = S.legs.filter(function(l) { return l.exp; })[0]; if (lexp && S.d.expirations.some(function(e) { return e.exp === lexp.exp; })) S.exp = lexp.exp;
         renderChips(); renderGrade(); renderLegs(); renderOps();
       };
@@ -793,7 +794,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
   function salvar() {
     if (!S.legs.length) { alert('Monte a estrutura antes de salvar.'); return; }
     var nome = prompt('Nome da operação:', S.simNome || ('Estrutura ' + S.ticker)); if (!nome) return;
-    var body = {name: nome, underlying: S.ticker, legs: S.legs.map(function(l) { return {type: l.type, side: l.side, qty: l.qty, strike: l.strike, premium: l.price, ticker: l.ticker, exp: l.exp, iv: l.iv ? l.iv * 100 : 0}; })};
+    var body = {name: nome, underlying: S.ticker, legs: S.legs.map(function(l) { return {type: l.type, side: l.side, qty: l.qty, strike: l.strike, premium: l.price, ticker: l.ticker, exp: l.exp, iv: l.iv ? l.iv * 100 : 0}; }), extra: coletaExtra()};
     if (S.simId && nome === S.simNome) body.id = S.simId;
     fetch('/api/simulacao/save', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})
       .then(function(r) { return r.json(); }).then(function(j) {
@@ -873,6 +874,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
             html += '<div style="color:var(--text-secondary);">Sem posições em aberto para ' + t + ' nesse prazo.</div>';
           }
           box.innerHTML = html;
+          S.scan = {html: html, bars: out.map(function(b) { return {strike: b.strike}; })}; persisteExtra();
           S.g.barreiras = true; document.querySelector('[data-g=barreiras]').classList.add('on'); desenhar();
         });
     }).catch(function(e) { box.textContent = '⚠️ ' + e; });
@@ -883,15 +885,40 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
   var CORES = ['#fbbf24', '#f87171', '#60a5fa', '#a78bfa', '#34d399', '#fb923c', '#e879f9', '#22d3ee'];
   $('pl-mk-cores').innerHTML = CORES.map(function(c, i) { return '<span data-c="' + c + '" style="background:' + c + ';"' + (i === 0 ? ' class="on"' : '') + '></span>'; }).join('');
   $('pl-mk-cores').addEventListener('click', function(ev) { var s = ev.target.closest('span[data-c]'); if (!s) return; S.cor = s.dataset.c; [].forEach.call(this.children, function(x) { x.classList.toggle('on', x === s); }); });
-  function chaveMk() { return 'pl-mk-' + S.ticker; }
-  function carregarMarcadores() { try { S.markers = JSON.parse(localStorage.getItem(chaveMk()) || '[]'); } catch (e) { S.markers = []; } renderMarkers(); }
-  function salvarMarcadores() { try { localStorage.setItem(chaveMk(), JSON.stringify(S.markers)); } catch (e) {} }
-  function addMarker(rot, preco, cor, trac) { if (!(preco > 0)) return; S.g.barreiras = true; document.querySelector('[data-g=barreiras]').classList.add('on'); S.markers.push({rot: rot || 'Nível', preco: preco, cor: cor, trac: trac}); salvarMarcadores(); renderMarkers(); desenhar(); }
+  // Marcadores de preço e resultado do scanner pertencem à estrutura: gravados com ela (e a cada alteração, se já salva);
+  // ao trocar de ativo, abrir outra estrutura ou criar nova, os campos são zerados.
+  var BAR_PADRAO = {lado: 'call', iq: '0.8', desc: '0.5', agr: 'todos', meses: '4'};
+  function coletaExtra() {
+    return {markers: S.markers, scan: S.scan || null, g_bar: !!S.g.barreiras,
+            filtros: {lado: barLado, iq: $('pl-bar-iq').value, desc: $('pl-bar-desc').value, agr: $('pl-bar-agr').value, meses: $('pl-bar-meses').value}};
+  }
+  function aplicaExtra(x) {
+    x = x || {};
+    S.markers = Array.isArray(x.markers) ? x.markers : [];
+    S.scan = x.scan || null;
+    S.barreiras = (S.scan && S.scan.bars) || [];
+    var f = Object.assign({}, BAR_PADRAO, x.filtros || {});
+    barLado = f.lado === 'put' ? 'put' : 'call';
+    [].forEach.call($('pl-bar-lado').children, function(b) { b.classList.toggle('on', b.dataset.v === barLado); });
+    $('pl-bar-iq').value = f.iq; $('pl-bar-desc').value = f.desc; $('pl-bar-agr').value = f.agr; $('pl-bar-meses').value = f.meses;
+    $('pl-bar-res').innerHTML = (S.scan && S.scan.html) || '';
+    S.g.barreiras = x.g_bar !== false;
+    document.querySelector('[data-g=barreiras]').classList.toggle('on', S.g.barreiras);
+    renderMarkers();   // o gráfico é redesenhado por quem chamou (renderLegs)
+  }
+  function resetExtra() { aplicaExtra(null); }
+  var _pxT;
+  function persisteExtra() {
+    if (!S.simId) return;
+    clearTimeout(_pxT); var id = S.simId;
+    _pxT = setTimeout(function() { fetch('/api/simulacao/' + id + '/extra', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({extra: coletaExtra()})}).catch(function() {}); }, 400);
+  }
+  function addMarker(rot, preco, cor, trac) { if (!(preco > 0)) return; S.g.barreiras = true; document.querySelector('[data-g=barreiras]').classList.add('on'); S.markers.push({rot: rot || 'Nível', preco: preco, cor: cor, trac: trac}); persisteExtra(); renderMarkers(); desenhar(); }
   function renderMarkers() {
     $('pl-mk-list').innerHTML = S.markers.length ? S.markers.map(function(m, i) { return '<div class="it"><span><span style="color:' + m.cor + ';">●</span> ' + m.rot + ' · <b>' + fmt(m.preco) + '</b> <span style="color:var(--text-secondary);">(' + fmt((m.preco / (S.spot || m.preco) - 1) * 100, 1) + '%)</span></span><button class="pl-btn" data-mi="' + i + '" style="padding:0 .35rem;">✕</button></div>'; }).join('')
       : '<div class="pl-empty">Nenhum marcador. Adicione níveis do seu plano — entrada, stop, alvos.</div>';
   }
-  $('pl-mk-list').addEventListener('click', function(ev) { var b = ev.target.closest('[data-mi]'); if (!b) return; S.markers.splice(+b.dataset.mi, 1); salvarMarcadores(); renderMarkers(); desenhar(); });
+  $('pl-mk-list').addEventListener('click', function(ev) { var b = ev.target.closest('[data-mi]'); if (!b) return; S.markers.splice(+b.dataset.mi, 1); persisteExtra(); renderMarkers(); desenhar(); });
   $('pl-mk-add').addEventListener('click', function() { addMarker($('pl-mk-rot').value.trim(), pv($('pl-mk-preco').value), S.cor, $('pl-mk-trac').checked); $('pl-mk-rot').value = ''; $('pl-mk-preco').value = ''; });
   document.querySelectorAll('[data-q]').forEach(function(a) { a.addEventListener('click', function(e) { e.preventDefault(); $('pl-mk-rot').value = a.dataset.q; $('pl-mk-preco').focus(); var c = a.style.color; }); });
 

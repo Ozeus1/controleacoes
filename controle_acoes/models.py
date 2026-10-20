@@ -459,6 +459,7 @@ class SimulacaoOpcoes(db.Model):
     name         = db.Column(db.String(120), default='')
     underlying   = db.Column(db.String(15), default='')
     notes        = db.Column(db.Text, default='')   # anotações do usuário — não faz parte da estrutura, não vai para produção
+    payoff_extra = db.Column(db.Text, default='')   # JSON da tela Payoff: marcadores de preço + resultado do scanner de barreiras
     created_at   = db.Column(db.DateTime, default=datetime.now)
     legs = db.relationship('SimulacaoLeg', backref='simulacao', lazy=True,
                            cascade='all, delete-orphan',

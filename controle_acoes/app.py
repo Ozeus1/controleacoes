@@ -841,6 +841,9 @@ def run_migrations():
     sim_opcoes_cols = {row[1] for row in cursor.fetchall()}
     if 'notes' not in sim_opcoes_cols and sim_opcoes_cols:
         cursor.execute("ALTER TABLE simulacao_opcoes ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
+    # Payoff: marcadores de preço e scanner de barreiras ficam associados à estrutura salva (JSON)
+    if 'payoff_extra' not in sim_opcoes_cols and sim_opcoes_cols:
+        cursor.execute("ALTER TABLE simulacao_opcoes ADD COLUMN payoff_extra TEXT NOT NULL DEFAULT ''")
 
     # Add iv column to simulacao_leg if missing
     cursor.execute("PRAGMA table_info(simulacao_leg)")
@@ -2762,6 +2765,32 @@ def api_simulacao_bulk_delete():
     return jsonify({'ok': True, 'deleted': n})
 
 
+def _payoff_extra_txt(extra):
+    """Valida/serializa o JSON extra da tela Payoff (marcadores + scanner). None = ausente."""
+    if extra is None:
+        return None
+    try:
+        txt = json.dumps(extra, ensure_ascii=False) if not isinstance(extra, str) else extra
+    except (TypeError, ValueError):
+        return None
+    return txt if len(txt) <= 200_000 else None
+
+
+@app.route('/api/simulacao/<int:sim_id>/extra', methods=['POST'])
+@login_required
+def api_simulacao_extra(sim_id):
+    """Grava só os marcadores de preço e o resultado do scanner de barreiras da tela Payoff."""
+    sim = SimulacaoOpcoes.query.filter_by(id=sim_id, user_id=current_user.id).first()
+    if not sim:
+        return jsonify({'error': 'Simulação não encontrada.'}), 404
+    txt = _payoff_extra_txt((request.get_json(force=True) or {}).get('extra'))
+    if txt is None:
+        return jsonify({'error': 'Dados inválidos.'}), 400
+    sim.payoff_extra = txt
+    db.session.commit()
+    return jsonify({'ok': True})
+
+
 @app.route('/api/simulacao/save', methods=['POST'])
 @login_required
 def api_simulacao_save():
@@ -2774,6 +2803,7 @@ def api_simulacao_save():
     # Anotações do usuário sobre a simulação — material de estudo, não faz
     # parte da estrutura em si (nunca é lido por _sim_to_producao).
     notes      = d.get('notes')
+    extra      = _payoff_extra_txt(d.get('extra'))     # None = não mexe
 
     if not name:
         return jsonify({'error': 'Informe um nome'}), 400
@@ -2785,12 +2815,15 @@ def api_simulacao_save():
         sim.name = name; sim.underlying = underlying
         if notes is not None:
             sim.notes = notes
+        if extra is not None:
+            sim.payoff_extra = extra
         for leg in list(sim.legs):
             db.session.delete(leg)
         db.session.flush()
     else:
         sim = SimulacaoOpcoes(user_id=current_user.id, name=name,
                               underlying=underlying, notes=notes or '',
+                              payoff_extra=extra or '',
                               created_at=datetime.now())
         db.session.add(sim); db.session.flush()
 
@@ -3098,6 +3131,13 @@ def simflex():
     return render_template('simflex.html', ranking_vol=ranking_vol, selic=_selic())
 
 
+def _payoff_extra_obj(sim):
+    try:
+        return json.loads(sim.payoff_extra) if sim.payoff_extra else {}
+    except (TypeError, ValueError):
+        return {}
+
+
 @app.route('/api/simulacao/<int:sim_id>')
 @login_required
 def api_simulacao_get(sim_id):
@@ -3108,6 +3148,7 @@ def api_simulacao_get(sim_id):
     return jsonify({
         'id': sim.id, 'name': sim.name, 'underlying': sim.underlying or '',
         'notes': sim.notes or '',
+        'extra': _payoff_extra_obj(sim),
         'legs': [{
             'type':    l.leg_type,
             'side':    l.side,

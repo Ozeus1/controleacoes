@@ -110,6 +110,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     </select>
     <input id="pl-ticker-livre" placeholder="Ticker" maxlength="10" style="display:none;width:100px;text-transform:uppercase;">
     <button class="pl-btn" id="pl-carregar">⟳ Carregar cadeia</button>
+    <label style="font-size:.78rem;color:var(--text-secondary);display:flex;align-items:center;gap:.25rem;cursor:pointer;" title="Mostrar também os vencimentos semanais (W1…W5) na faixa de vencimentos"><input type="checkbox" id="pl-semanais" checked> semanais</label>
     <span class="pl-spot" id="pl-spot"></span>
     <span style="font-size:.78rem;color:var(--text-secondary);" id="pl-hoje"></span>
     <span style="font-size:.78rem;color:var(--text-secondary);">Selic <b id="pl-selic">{{ '%.2f'|format(selic) }}</b>%</span>
@@ -228,6 +229,8 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
       </div>
       <div class="pl-ctl">Escala X</div>
       <span class="pl-seg" id="pl-escala"><button data-v="preco" class="on">Preço</button><button data-v="pct">% Var</button></span>
+      <div class="pl-ctl">Gráfico do ativo</div>
+      <div id="pl-mychart" style="min-height:120px;"></div>
     </div>
   </div>
 </div>
@@ -287,15 +290,42 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     var k = 0; for (var j = 1; j <= d + 1; j++) { var dj = new Date(y, m - 1, j); if (dj.getMonth() !== m - 1) break; if (dj.getDay() === 5 && j <= d + 1) k++; }
     return {mensal: false, badge: 'W' + Math.max(k, 1)};
   }
+  // "semanais" marcado/desmarcado fica guardado no navegador
+  function lerSemanais() { try { return localStorage.getItem('pl_semanais') !== '0'; } catch (e) { return true; } }
+  $('pl-semanais').checked = lerSemanais();
+  $('pl-semanais').addEventListener('change', function() {
+    try { localStorage.setItem('pl_semanais', this.checked ? '1' : '0'); } catch (e) {}
+    if (!S.d) return;
+    renderChips(); renderGrade();
+  });
+  // lista de vencimentos visíveis: sem "semanais" só os mensais (a perna já montada e o vencimento aberto continuam aparecendo)
+  function expVisiveis() {
+    var todos = S.d.expirations || [];
+    if ($('pl-semanais').checked) return todos;
+    var legsExp = {}; S.legs.forEach(function(l) { if (l.exp) legsExp[l.exp] = 1; });
+    return todos.filter(function(e) { return infoExp(e.exp).mensal || legsExp[e.exp]; });
+  }
   function renderChips() {
     var legsExp = {}; S.legs.forEach(function(l) { if (l.exp) legsExp[l.exp] = 1; });
-    $('pl-chips').innerHTML = (S.d.expirations || []).map(function(e) {
+    var vis = expVisiveis();
+    if (vis.length && !vis.some(function(e) { return e.exp === S.exp; })) S.exp = vis[0].exp;   // vencimento aberto era semanal e foi ocultado
+    $('pl-chips').innerHTML = vis.map(function(e) {
       var inf = infoExp(e.exp);
       return '<button class="pl-chip' + (e.exp === S.exp ? ' on' : '') + (legsExp[e.exp] ? ' leg' : '') + '" data-exp="' + e.exp + '">' + dBR(e.exp) +
         ' <span class="b' + (inf.mensal ? '' : ' w') + '">' + inf.badge + '</span></button>';
     }).join('');
   }
   $('pl-chips').addEventListener('click', function(ev) { var b = ev.target.closest('.pl-chip'); if (!b) return; S.exp = b.dataset.exp; renderChips(); renderGrade(); });
+
+  // gráfico do ativo (MyChart do "ver gráfico") embutido nos controles; só refaz quando o ativo muda.
+  // mychart.js carrega no fim da página (pode chegar depois da primeira resposta da cadeia): espera o load.
+  function embedGrafico() {
+    if (!S.ticker) return;
+    if (!(window.MyChart && MyChart.embed)) { window.addEventListener('load', embedGrafico, {once: true}); return; }
+    if (S.chartTk === S.ticker) return;
+    S.chartTk = S.ticker;
+    MyChart.embed($('pl-mychart'), S.ticker, false, {price: S.spot, change: S.spotChg});
+  }
 
   // ── Carga da cadeia ──
   function tickerSel() { return $('pl-ticker').value === '__outro__' ? ($('pl-ticker-livre').value || '').trim().toUpperCase() : $('pl-ticker').value; }
@@ -323,6 +353,8 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
         $('pl-hoje').textContent = '📅 ' + dBR(new Date().toISOString().slice(0, 10));
         $('pl-live').textContent = res.j.market_open ? '● LIVE' : '● pregão fechado (último negócio)';
         renderChips(); renderGrade(); renderLegs(); carregarOps();
+        // gráfico do ativo (MyChart) embutido nos controles; só refaz quando o ativo muda
+        S.spotChg = chg; embedGrafico();
       })
       .catch(function(e) { $('pl-loading').style.display = 'none'; $('pl-error').textContent = '⚠️ ' + e; $('pl-error').style.display = 'block'; });
   }

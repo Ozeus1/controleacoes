@@ -18,6 +18,7 @@ var _state      = null;
 var _modal      = null;
 var _card       = null;
 var _expanded   = false; // modal em tela cheia (toggle "Expandir")
+var _host       = null;  // elemento onde o gráfico está embutido (null = modal)
 var _canvas     = null;
 var _ctx        = null;
 var CSRF        = '';
@@ -814,23 +815,23 @@ function ensureModal() {
         + '<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap">'
         + '<button id="mc-interval-btn" style="' + toolBtn(false) + '">Intervalo: D ▾</button>'
         + '<button id="mc-period-btn"   style="' + toolBtn(false) + '">Período: 2S ▾</button>'
-        + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
-        + '<span style="font-size:.78rem;color:#64748b">Zoom:</span>'
+        + '<span class="mc-sep" style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
+        + '<span class="mc-lbl" style="font-size:.78rem;color:#64748b">Zoom:</span>'
         + '<button id="mc-zoom-in"  title="Aumentar zoom (+)"           style="' + toolBtn(false) + '">🔍+</button>'
         + '<button id="mc-zoom-out" title="Diminuir zoom (−)"           style="' + toolBtn(false) + '">🔍−</button>'
         + '<button id="mc-zoom-reset" title="Resetar zoom"              style="' + toolBtn(false) + '">↺</button>'
-        + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
-        + '<span style="font-size:.78rem;color:#64748b">Ferramenta:</span>'
+        + '<span class="mc-sep" style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
+        + '<span class="mc-lbl" style="font-size:.78rem;color:#64748b">Ferramenta:</span>'
         + '<button id="mc-tool-cursor" title="Cursor (pan com Shift+drag)"  style="' + toolBtn(true)  + '">↖</button>'
         + '<button id="mc-tool-line"   title="Linha (L)"                    style="' + toolBtn(false) + '">╱</button>'
         + '<button id="mc-tool-zoom"   title="Zoom por área (arraste um retângulo)" style="' + toolBtn(false) + '">▭</button>'
         + '<button id="mc-del-lines"   title="Ocultar linhas"               style="' + toolBtn(false) + '" onclick="MyChart._toggleLines()">👁</button>'
-        + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
+        + '<span class="mc-sep" style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
         + '<button id="mc-tv-btn" title="Abrir gráfico completo" style="' + toolBtn(false) + '">📊 Graf</button>'
         + '<button id="mc-i10-btn" title="Abrir no Investidor10" style="' + toolBtn(false) + '">📋 Investidor10</button>'
-        + '<span style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
+        + '<span class="mc-sep" style="width:1px;height:16px;background:#334155;margin:0 .25rem"></span>'
         + '<button id="mc-expand-btn" title="Expandir em tela cheia (E)" style="' + toolBtn(false) + '">⛶</button>'
-        + '<button onclick="MyChart._close()" style="background:none;border:none;font-size:1.4rem;color:#94a3b8;cursor:pointer;line-height:1;">&times;</button>'
+        + '<button id="mc-close-btn" onclick="MyChart._close()" style="background:none;border:none;font-size:1.4rem;color:#94a3b8;cursor:pointer;line-height:1;">&times;</button>'
         + '</div>';
     card.appendChild(hdr);
 
@@ -840,7 +841,7 @@ function ensureModal() {
         + 'background:#0f172a;border-bottom:1px solid #1e293b;flex-wrap:wrap;';
     maRow.innerHTML =
         '<button id="mc-ma-btn" style="' + toolBtn(false) + '">Médias ▾</button>'
-        + '<span style="font-size:.72rem;color:#475569;margin-left:.5rem">'
+        + '<span class="mc-hint" style="font-size:.72rem;color:#475569;margin-left:.5rem">'
         + (COARSE ? '👆 1 dedo=mover  ✌️ pinça=zoom  ╱=desenhar linha'
                   : '🖱 scroll=zoom horiz.  Ctrl+scroll=zoom vert.  Shift+drag=pan  ▭=zoom por área  E=expandir')
         + '</span>'
@@ -1019,7 +1020,7 @@ function ensureModal() {
 
     // Resize
     window.addEventListener('resize', function() {
-        if (_state && _modal.style.display !== 'none') { _resize(); _draw(); }
+        if (_state && (_host || _modal.style.display !== 'none')) { _resize(); _draw(); }
     });
 
     // Eventos canvas
@@ -1132,7 +1133,26 @@ function ensureModal() {
 }
 
 // ── Abertura ──────────────────────────────────────────────────────────────────
+// Abre em janela (modal) — comportamento de sempre.
 MyChart.open = function(ticker, isIntl, quote) {
+    _host = null;
+    _abrir(ticker, isIntl, quote);
+};
+
+// Embute o mesmo gráfico (card com cabeçalho, médias, zoom, linhas…) dentro de um elemento da página.
+// Só há uma instância: um novo embed/open move o card para o novo destino.
+MyChart.embed = function(host, ticker, isIntl, quote) {
+    if (!host) return;
+    _host = host;
+    _abrir(ticker, isIntl, quote);
+};
+
+function _cardStyleEmbed() {
+    return 'background:#0f172a;border-radius:10px;width:100%;display:flex;flex-direction:column;'
+        + 'border:1px solid #1e293b;overflow:hidden;';
+}
+
+function _abrir(ticker, isIntl, quote) {
     ticker = (ticker || '').toUpperCase().trim();
     var yfticker = ticker;
     if (!isIntl && isB3Ticker(ticker))
@@ -1149,7 +1169,28 @@ MyChart.open = function(ticker, isIntl, quote) {
     }
 
     ensureModal();
-    _modal.style.display = 'flex';
+    if (_host) {
+        if (!document.getElementById('mc-embed-css')) {
+            var st = document.createElement('style');
+            st.id = 'mc-embed-css';
+            st.textContent = '.mc-embedded .mc-sep,.mc-embedded .mc-lbl,.mc-embedded .mc-hint,'
+                + '.mc-embedded #mc-expand-btn,.mc-embedded #mc-close-btn{display:none!important}'
+                + '.mc-embedded button{padding:.12rem .38rem!important;font-size:.72rem!important}'
+                + '.mc-embedded #mc-status{font-size:.64rem!important;padding:.25rem .5rem!important}'
+                + '.mc-embedded #mc-title{font-size:.9rem!important}.mc-embedded #mc-price{font-size:.95rem!important}';
+            document.head.appendChild(st);
+        }
+        _expanded = false;
+        _modal.style.display = 'none';
+        _card.classList.add('mc-embedded');
+        _card.style.cssText = _cardStyleEmbed();
+        if (_card.parentNode !== _host) _host.appendChild(_card);
+    } else {
+        _card.classList.remove('mc-embedded');
+        _card.style.cssText = _cardStyle(_expanded);
+        if (_card.parentNode !== _modal) _modal.appendChild(_card);
+        _modal.style.display = 'flex';
+    }
     document.getElementById('mc-title').textContent  = '📈 ' + ticker;
     document.getElementById('mc-price').textContent  = '';
     document.getElementById('mc-change').textContent = '';
@@ -1252,7 +1293,7 @@ MyChart.open = function(ticker, isIntl, quote) {
         .catch(function(e) {
             document.getElementById('mc-status').textContent = '✗ Erro: ' + e;
         });
-};
+}
 
 MyChart._close = function() {
     if (_modal) _modal.style.display = 'none';
@@ -1286,6 +1327,7 @@ function _resize() {
     if (!wrap) return;
     var W = wrap.clientWidth || 900;
     var H = Math.max(380, Math.round(W * 0.44));
+    if (_host) H = Math.max(240, Math.round(W * 0.62));   // embutido: painel estreito
     if (_expanded && _card) {
         // Em tela cheia a largura cresce muito (98vw) e H = W*0.44 estouraria
         // a altura da viewport — usa o espaço vertical realmente disponível
@@ -1318,6 +1360,7 @@ function _resize() {
 
 // ── Desenho ───────────────────────────────────────────────────────────────────
 var PAD = { T: 32, R: 72, B: 28, L: 12 };
+function _padR() { return _host ? 52 : PAD.R; }   // embutido: painel estreito
 
 function _draw() {
     if (!_state || !_state._vis || !_state._vis.length) return;
@@ -1329,7 +1372,7 @@ function _draw() {
 
     ctx.clearRect(0, 0, W, H);
 
-    var padL = PAD.L, padR = PAD.R, padT = PAD.T, padB = PAD.B;
+    var padL = PAD.L, padR = _padR(), padT = PAD.T, padB = PAD.B;
     var cW   = W - padL - padR;
     var cH   = H - padT - padB;
 
@@ -1372,7 +1415,7 @@ function _draw() {
     }
 
     // Grade vertical
-    var dateStep = Math.max(1, Math.floor(vis.length / 8));   // rótulos só sobre candles reais
+    var dateStep = Math.max(1, Math.floor(vis.length / Math.max(2, Math.min(8, Math.floor(cW / 64)))));   // rótulos só sobre candles reais
     ctx.fillStyle = '#64748b'; ctx.font = '10px Inter,sans-serif'; ctx.textAlign = 'center';
     for (var i = 0; i < vis.length; i += dateStep) {
         var xg = xPx(i);
@@ -1513,7 +1556,7 @@ function _drawVolume(vis, W, cW) {
     ctx2.clearRect(0, 0, VW, VH);
     ctx2.fillStyle = '#0f172a'; ctx2.fillRect(0, 0, VW, VH);
 
-    var vCW   = VW - PAD.L - PAD.R;
+    var vCW   = VW - PAD.L - _padR();
     var maxV  = 1;
     for (var i = 0; i < vis.length; i++) if (vis[i].v > maxV) maxV = vis[i].v;
     var vSlots = (_state._visCount || vis.length) - 1 || 1;

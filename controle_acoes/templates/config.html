@@ -443,7 +443,10 @@ document.getElementById('oplab-test-btn').addEventListener('click', function() {
     btn.disabled = true; btn.textContent = 'Testando…';
     var t0 = Date.now();
     fetch('/oplab_test?ticker=' + encodeURIComponent(ticker))
-        .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }); })
+        .then(function(r) { return r.json().then(function(d) { return {ok: r.ok, data: d}; }, function() {
+            // resposta que não é JSON (ex.: página de erro do nginx quando o servidor está fora do ar)
+            throw new Error('O servidor respondeu HTTP ' + r.status + ' (' + (r.statusText || 'sem JSON') + ') em vez de JSON — serviço fora do ar ou reiniciando?');
+        }); })
         .then(function(res) {
             var statusEl = document.getElementById('oplab-test-status');
             var bodyEl   = document.getElementById('oplab-test-body');

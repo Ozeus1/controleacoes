@@ -843,7 +843,12 @@ def run_migrations():
         cursor.execute("ALTER TABLE simulacao_opcoes ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
     # Payoff: marcadores de preço e scanner de barreiras ficam associados à estrutura salva (JSON)
     if 'payoff_extra' not in sim_opcoes_cols and sim_opcoes_cols:
-        cursor.execute("ALTER TABLE simulacao_opcoes ADD COLUMN payoff_extra TEXT NOT NULL DEFAULT ''")
+        # os workers do gunicorn sobem em paralelo: o primeiro cria a coluna e os demais receberiam
+        # "duplicate column name", derrubando o boot inteiro (502) — por isso tolera a corrida
+        try:
+            cursor.execute("ALTER TABLE simulacao_opcoes ADD COLUMN payoff_extra TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass  # coluna já criada por outro worker
 
     # Add iv column to simulacao_leg if missing
     cursor.execute("PRAGMA table_info(simulacao_leg)")

@@ -1706,11 +1706,17 @@ function editDeltaPut(optId, current) {
         }
         var fh = fichaHtml(d);
         document.getElementById('qh-ficha').innerHTML = fh;
-        document.getElementById('qh-name').textContent   = (!fh && d.name !== d.ticker) ? d.name : '';
-        document.getElementById('qh-price').textContent  = fmt(d.price);
+        var nm = (!fh && d.name !== d.ticker) ? d.name : '';
+        if(d.fonte){   // modo MT5: último valor gravado (não é ao vivo) — mostra a hora
+            var idade = (d.idade_min != null) ? ' (há '+(d.idade_min < 60 ? d.idade_min+' min' : Math.floor(d.idade_min/60)+' h')+')' : '';
+            nm = (nm ? nm+' · ' : '') + d.fonte+' · '+d.atualizado+idade;
+        }
+        document.getElementById('qh-name').textContent   = nm;
+        document.getElementById('qh-name').style.color   = (d.fonte && d.idade_min != null && d.idade_min > 15) ? '#fbbf24' : '';
+        document.getElementById('qh-price').textContent  = (d.price > 0) ? fmt(d.price) : '—';   // opção só com book (sem negócio): sem último
         var cel = document.getElementById('qh-change');
-        cel.textContent  = fmtPct(d.change);
-        cel.style.color  = d.change >= 0 ? '#34d399' : '#f87171';
+        cel.textContent  = d.change_na ? '—' : fmtPct(d.change);
+        cel.style.color  = d.change_na ? '' : (d.change >= 0 ? '#34d399' : '#f87171');
         document.getElementById('qh-ask').textContent    = d.ask > 0 ? fmt(d.ask) : '—';
         document.getElementById('qh-bid').textContent    = d.bid > 0 ? fmt(d.bid) : '—';
         var tl=document.getElementById('qh-trades-label'); var tv=document.getElementById('qh-trades');

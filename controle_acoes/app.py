@@ -5,7 +5,7 @@ import sqlite3
 import math
 from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from dotenv import load_dotenv
-from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StudyStrategy, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, RankingVolExcluded, SearchedOption, RtdOptionData, RtdPlanilha, PortfolioSnapshot, PMEvent, AssetTxn
+from models import db, Asset, Settings, User, TradeHistory, Option, OptionSpread, FixedIncome, InvestmentFund, Crypto, Pension, International, Dividend, MarketIndex, StudyOption, StudyStock, StudyIntlStock, StudyStrategy, StructuredOp, StructuredLeg, SimulacaoOpcoes, SimulacaoLeg, OptionRollSimulation, PutSale, CollarSimulation, SelicMensal, RankingVol, RankingVolExcluded, SearchedOption, RtdOptionData, RtdPlanilha, PortfolioSnapshot, PMEvent, AssetTxn, Mt5Quote
 from services import get_quotes, get_raw_quote_data
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 import requests
@@ -5027,16 +5027,16 @@ def _prefetch_teorico(underlying):
     return _Juntar()
 
 
-def _legs_com_teorico(legs, underlying, spot, prefetch=None):
+def _legs_com_teorico(legs, underlying, spot, prefetch=None, prazo=15):
     """Acrescenta leg['teorico'] (valor teórico da OpLab: campo da cadeia; senão BS com a EWMA do ativo,
     dias úteis/252, r = Selic; senão BS com a VI da própria série) a cada perna de opção das telas de payoff;
     None quando não dá para calcular (ação, sem token/cotação). `prefetch` = thread de _prefetch_teorico."""
     for l in legs:
         l['teorico'] = None
     if prefetch is not None:
-        prefetch.join(15)
+        prefetch.join(prazo)
         if prefetch.vivo():       # a OpLab não respondeu a tempo: segue sem Teór. em vez de esperar de novo
-            app.logger.warning('_legs_com_teorico: OpLab sem resposta em 15 s para %s — sem Teór.', underlying)
+            app.logger.warning('_legs_com_teorico: OpLab sem resposta em %s s para %s — sem Teór.', prazo, underlying)
             return
     underlying = (underlying or '').strip().upper()
     token = Settings.get_value('oplab_token', user_id=current_user.id)
@@ -18592,6 +18592,11 @@ def _spot_pagina(ticker, user_id, prazo=12):
     import queue as _q
     if not ticker:
         return None, None
+    if _modo_mt5(user_id):                 # MT5: último valor recebido do Radar, sem rede
+        row = _mt5_quote_row(user_id, ticker)
+        if row and _num_pos(row.last) and _mt5_fresca(row):
+            chg = row.change_pct if row.change_pct is not None else _get_underlying_quote_cached(ticker, user_id)[1]
+            return round(float(row.last), 2), chg
     saida = _q.Queue(maxsize=1)
 
     def _run():
@@ -18802,7 +18807,7 @@ def payoff_spread(id):
     days_nearest = max((sp.expiration_date - date.today()).days, 0) if sp.expiration_date else None
     import json as _json
     roll_adjustment, roll_history = _spread_roll_adjustment(sp)
-    _legs_com_teorico(legs, sp.underlying_asset, und_price, _pf)
+    _legs_com_teorico(legs, sp.underlying_asset, und_price, _pf, 4 if _modo_mt5(current_user.id) else 15)
     return render_template('payoff.html',
                            obs_kind='spread', obs_id=sp.id, obs_text=sp.obs or '',
                            pop_save_url=url_for('save_payoff_pop', kind='spread', id=sp.id),
@@ -18868,7 +18873,7 @@ def payoff_estruturada(id):
     roll_adjustment, roll_extrato = _estruturada_roll_adjustment(op)
     import json as _json
     if not getattr(op, 'intl', False):
-        _legs_com_teorico(legs, op.underlying_asset, und_price, _pf)
+        _legs_com_teorico(legs, op.underlying_asset, und_price, _pf, 4 if _modo_mt5(current_user.id) else 15)
     return render_template('payoff.html',
                            obs_kind='estruturada', obs_id=op.id, obs_text=op.obs or '',
                            pop_save_url=url_for('save_payoff_pop', kind='estruturada', id=op.id),
@@ -18985,7 +18990,7 @@ def payoff_option(id):
     t_days = max((opt.expiration_date - date.today()).days, 1) if opt.expiration_date else 30
 
     import json as _json
-    _legs_com_teorico(legs, opt.underlying_asset, und_price, _pf)
+    _legs_com_teorico(legs, opt.underlying_asset, und_price, _pf, 4 if _modo_mt5(current_user.id) else 15)
     return render_template('payoff.html',
                            obs_kind='option', obs_id=opt.id, obs_text=opt.obs or '',
                            title=f"{titles.get(ot, 'Opção')} — {opt.ticker}",
@@ -19427,6 +19432,13 @@ def api_payoff_leg_book_price(ticker):
     custo de recomprar; perna comprada usa bid, o valor de vender), então
     devolve os dois e deixa a escolha pro chamador.
     """
+    if _modo_mt5(current_user.id):         # MT5: último book recebido do Radar (instantâneo, sem OpLab)
+        row = _mt5_quote_row(current_user.id, ticker)
+        if row and (_num_pos(row.bid) or _num_pos(row.ask) or _num_pos(row.last)):
+            _txt, _idade = _mt5_atualizado(row)
+            return jsonify({'ok': True, 'market_open': True, 'fonte': 'MT5', 'atualizado': _txt, 'idade_min': _idade,
+                            'bid': _num_pos(row.bid), 'ask': _num_pos(row.ask), 'last': _num_pos(row.last)})
+
     token = Settings.get_value('oplab_token', user_id=current_user.id)
     if not token:
         return jsonify({'error': 'Token OpLab não configurado.'}), 403
@@ -27457,6 +27469,74 @@ def _radar_mt5_esperar(uid, ids, max_wait=150, intervalo=4):
     return out, erros, pend
 
 
+def _num_pos(v):
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f > 0 else None
+
+
+def _salvar_mt5_quotes(uid, completas):
+    """Upsert de Mt5Quote: última cotação (último, bid, ask, horário) de cada símbolo devolvido pelo MT5."""
+    if not completas:
+        return
+    agora = now_brt().replace(tzinfo=None)
+    existentes = {r.symbol: r for r in Mt5Quote.query.filter_by(user_id=uid).all()}
+    for sym, q in completas.items():
+        last, bid, ask = _num_pos(q.get('last')), _num_pos(q.get('bid')), _num_pos(q.get('ask'))
+        if last is None and bid is None and ask is None:
+            continue
+        try:
+            chg = float(q['change_pct']) if q.get('change_pct') is not None else None
+        except (TypeError, ValueError):
+            chg = None
+        try:
+            tt = int(q.get('time')) if q.get('time') is not None else None
+        except (TypeError, ValueError):
+            tt = None
+        r = existentes.get(sym)
+        if r is None:
+            r = Mt5Quote(user_id=uid, symbol=sym)
+            db.session.add(r)
+        # sem "último" novo, mantém o último negócio já guardado (o book mudou, o negócio não)
+        r.last = last if last is not None else r.last
+        r.bid, r.ask, r.change_pct, r.tick_time, r.updated_at = bid, ask, chg, tt, agora
+    db.session.commit()
+
+
+def _modo_mt5(uid):
+    return Settings.get_value('quote_mode', user_id=uid, default='yahoo') == 'mt5'
+
+
+def _mt5_quote_row(uid, symbol):
+    """Última cotação do MT5 guardada para o símbolo (ou None)."""
+    if not symbol:
+        return None
+    return Mt5Quote.query.filter_by(user_id=uid, symbol=symbol.strip().upper()).first()
+
+
+def _mt5_atualizado(row):
+    """(texto 'HH:MM' ou 'dd/mm HH:MM', idade em minutos) da gravação da cotação."""
+    if not row or not row.updated_at:
+        return '', None
+    agora = now_brt().replace(tzinfo=None)
+    idade = max(int((agora - row.updated_at).total_seconds() // 60), 0)
+    txt = row.updated_at.strftime('%H:%M') if row.updated_at.date() == agora.date() else row.updated_at.strftime('%d/%m %H:%M')
+    return txt, idade
+
+
+def _mt5_fresca(row):
+    """Cotação do MT5 serve como "atual": no pregão, de até 30 min; fora dele (fim de semana/noite), qualquer uma."""
+    if not row or not row.updated_at:
+        return False
+    n = now_brt()
+    no_pregao = n.weekday() < 5 and (9, 50) <= (n.hour, n.minute) < (18, 30)
+    if not no_pregao:
+        return True
+    return (n.replace(tzinfo=None) - row.updated_at).total_seconds() <= 1800
+
+
 def mt5_radar_refresh(uid, max_wait=150):
     """Pede ao MT5 da VPS a última cotação de todos os ativos e opções em uso e grava no banco."""
     asset_tickers, option_tickers, _t, _o = _build_ticker_maps(uid)
@@ -27469,7 +27549,7 @@ def mt5_radar_refresh(uid, max_wait=150):
            for k in range(0, len(simbolos), 50)]
     out, erros, pend = _radar_mt5_esperar(uid, ids, max_wait=max_wait)
     opset = set(opcoes)
-    quotes, changes, opts, falhas = {}, {}, {}, []
+    quotes, changes, opts, falhas, completas = {}, {}, {}, [], {}
     for res in out.values():
         for q in (res.get('quotes') or []):
             sym = str(q.get('symbol') or '').upper()
@@ -27478,6 +27558,7 @@ def mt5_radar_refresh(uid, max_wait=150):
             if q.get('error'):
                 falhas.append(sym)
                 continue
+            completas[sym] = q          # guarda tudo (último, bid, ask, horário) para os hints e o payoff
             try:
                 px = float(q.get('last'))
             except (TypeError, ValueError):
@@ -27493,9 +27574,16 @@ def mt5_radar_refresh(uid, max_wait=150):
                         changes[sym] = float(q['change_pct'])
                 except (TypeError, ValueError):
                     pass
-    if not quotes and not opts:
+    if not quotes and not opts and not completas:
         motivo = '; '.join(erros) or ('sem resposta do MT5 no prazo (coletor ativo?)' if pend else 'MT5 não devolveu cotações')
         raise Mt5RadarError(motivo)
+    try:
+        _salvar_mt5_quotes(uid, completas)
+    except Exception:
+        db.session.rollback()
+        app.logger.exception('_salvar_mt5_quotes')
+    if not quotes and not opts:
+        raise Mt5RadarError('o MT5 só devolveu cotações sem último negócio (bid/ask guardados para os hints)')
     _apply_mt5_quotes(uid, quotes, changes, opts)
     msg = f'MT5 (VPS): {len(quotes)} ativo(s), {len(opts)} opção(ões)'
     if falhas:
@@ -28945,10 +29033,25 @@ def api_quote_hint(ticker):
     if not is_option and _option_re.match(ticker):
         is_option = True
 
+    # ── 1b. Modo MT5: usa o último valor recebido do MT5 (instantâneo, sem OpLab) ──
+    mt5_row = None
+    if is_option and _modo_mt5(uid):
+        mt5_row = _mt5_quote_row(uid, ticker)
+    if mt5_row:
+        _p = _num_pos(mt5_row.last) or db_last_price
+        price = float(_p or 0)
+        ask, bid = float(mt5_row.ask or 0), float(mt5_row.bid or 0)
+        if mt5_row.change_pct is not None:
+            change = float(mt5_row.change_pct)
+        _f = _HINT_FICHA.get(ticker)           # ficha em cache (1 dia) de uma consulta anterior à OpLab, se houver
+        if _f and time.time() - _f[0] < 86400:
+            o_strike, o_exp, o_tipo, o_estilo = _f[1]
+        _txt, _idade = _mt5_atualizado(mt5_row)
+
     # ── 2. OpLab: cotação ao vivo para opções ─────────────────────
     # /v3/market/quote → bid, ask, close, variation
     # /v3/market/instruments/{ticker} → trades (negócios do dia) e outros campos
-    if is_option and oplab_token:
+    if is_option and oplab_token and not mt5_row:
         _oplab_base = 'https://api.oplab.com.br/v3'
         _oplab_hdrs = _oplab_headers(oplab_token)
 
@@ -29051,7 +29154,7 @@ def api_quote_hint(ticker):
         price = db_last_price
 
     # Se já resolvemos a opção, retorna
-    if is_option and (price > 0 or db_last_price > 0):
+    if is_option and (price > 0 or db_last_price > 0 or mt5_row):
         resp = {
             'ticker':    ticker,
             'name':      name,
@@ -29068,6 +29171,9 @@ def api_quote_hint(ticker):
         }
         if trades is not None:
             resp['trades'] = trades
+        if mt5_row:
+            resp.update({'fonte': 'MT5', 'atualizado': _txt, 'idade_min': _idade,
+                         'change_na': mt5_row.change_pct is None})
         return jsonify(resp)
 
     # Opção sem NENHUM preço (nem OpLab, nem banco): retorna já — brapi e

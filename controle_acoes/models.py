@@ -728,3 +728,18 @@ class RtdOptionData(db.Model):
     option_type     = db.Column(db.String(10), nullable=True)   # CALL / PUT
     imported_at     = db.Column(db.DateTime, default=datetime.utcnow)
     __table_args__ = (db.UniqueConstraint('user_id', 'ticker', name='uq_rtd_option_data'),)
+
+
+class Mt5Quote(db.Model):
+    """Última cotação recebida do MT5 (Radar) por símbolo: alimenta os hints das opções e o payoff no modo MT5."""
+    __tablename__ = 'mt5_quote'
+    id         = db.Column(db.Integer, primary_key=True)
+    user_id    = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False, index=True)
+    symbol     = db.Column(db.String(32), nullable=False)
+    last       = db.Column(db.Float, nullable=True)
+    bid        = db.Column(db.Float, nullable=True)
+    ask        = db.Column(db.Float, nullable=True)
+    change_pct = db.Column(db.Float, nullable=True)
+    tick_time  = db.Column(db.BigInteger, nullable=True)   # horário do tick (servidor da corretora, epoch)
+    updated_at = db.Column(db.DateTime, default=datetime.now)   # quando o app gravou (Brasília)
+    __table_args__ = (db.UniqueConstraint('user_id', 'symbol', name='uq_mt5_quote'),)

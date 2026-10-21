@@ -5015,9 +5015,15 @@ def _prefetch_teorico(underlying):
         th.start()
 
     class _Juntar:
-        def join(self, timeout=None):
+        t0 = time.time()
+
+        def join(self, timeout=None):            # prazo TOTAL contado desde o início da pré-busca
+            fim = self.t0 + (timeout or 0)
             for th in ths:
-                th.join(timeout)
+                th.join(max(0.0, fim - time.time()))
+
+        def vivo(self):
+            return any(th.is_alive() for th in ths)
     return _Juntar()
 
 
@@ -5028,7 +5034,10 @@ def _legs_com_teorico(legs, underlying, spot, prefetch=None):
     for l in legs:
         l['teorico'] = None
     if prefetch is not None:
-        prefetch.join(30)
+        prefetch.join(15)
+        if prefetch.vivo():       # a OpLab não respondeu a tempo: segue sem Teór. em vez de esperar de novo
+            app.logger.warning('_legs_com_teorico: OpLab sem resposta em 15 s para %s — sem Teór.', underlying)
+            return
     underlying = (underlying or '').strip().upper()
     token = Settings.get_value('oplab_token', user_id=current_user.id)
     if not (token and spot and underlying):
@@ -18576,6 +18585,31 @@ def _get_underlying_quote(ticker, user_id):
     return _get_underlying_quote_cached(ticker, user_id)
 
 
+def _spot_pagina(ticker, user_id, prazo=12):
+    """Cotação do ativo para o RENDER de uma página (payoff): _get_underlying_quote com prazo máximo.
+    Se BRAPI/Yahoo não responderem em `prazo` segundos, devolve o último valor salvo no banco em vez de
+    deixar a página pendurada até o gunicorn/nginx derrubar (502)."""
+    import queue as _q
+    if not ticker:
+        return None, None
+    saida = _q.Queue(maxsize=1)
+
+    def _run():
+        try:
+            with app.app_context():
+                saida.put(_get_underlying_quote(ticker, user_id))
+        except Exception:
+            saida.put(None)
+    threading.Thread(target=_run, daemon=True).start()
+    try:
+        res = saida.get(timeout=prazo)
+        if res and res[0]:
+            return res
+    except _q.Empty:
+        app.logger.warning('_spot_pagina: %s sem resposta em %ss — usando o último valor salvo', ticker, prazo)
+    return _get_underlying_quote_cached(ticker, user_id)
+
+
 def _spread_roll_adjustment(sp):
     """Resultado realizado antes da trava atual, usado para corrigir o payoff rolado."""
     import json as _json
@@ -18763,7 +18797,7 @@ def payoff_spread(id):
         },
     ]
     _pf = _prefetch_teorico(sp.underlying_asset)
-    und_price, und_change = _get_underlying_quote(sp.underlying_asset, current_user.id)
+    und_price, und_change = _spot_pagina(sp.underlying_asset, current_user.id)
     t_days = max((sp.expiration_date - date.today()).days, 1) if sp.expiration_date else 30
     days_nearest = max((sp.expiration_date - date.today()).days, 0) if sp.expiration_date else None
     import json as _json
@@ -18828,7 +18862,7 @@ def payoff_estruturada(id):
             und_price, und_change = op.underlying_price, op.underlying_change
     else:
         _pf = _prefetch_teorico(op.underlying_asset)
-        und_price, und_change = _get_underlying_quote(op.underlying_asset, current_user.id)
+        und_price, und_change = _spot_pagina(op.underlying_asset, current_user.id)
     t_days = max((max(exp_dates) - date.today()).days, 1) if exp_dates else 30
     days_nearest = max((min(exp_dates) - date.today()).days, 0) if exp_dates else None
     roll_adjustment, roll_extrato = _estruturada_roll_adjustment(op)
@@ -18947,7 +18981,7 @@ def payoff_option(id):
         'COMPRA_PUT':  'Compra a Seco de Put',
     }
     _pf = _prefetch_teorico(opt.underlying_asset)
-    und_price, und_change = _get_underlying_quote(opt.underlying_asset, current_user.id)
+    und_price, und_change = _spot_pagina(opt.underlying_asset, current_user.id)
     t_days = max((opt.expiration_date - date.today()).days, 1) if opt.expiration_date else 30
 
     import json as _json

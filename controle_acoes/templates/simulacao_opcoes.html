@@ -1262,7 +1262,13 @@ function fetchChainSim(cands, idx) {
         .catch(function() { return fetchChainSim(cands, idx + 1); });
 }
 
-// Pregão B3 aberto? (dia útil, 10:00–16:30, fuso America/Sao_Paulo)
+// Pregão B3 aberto? (dia útil, 10:00 até 16:55 no horário de verão dos EUA ou 17:55 no resto do ano, fuso America/Sao_Paulo)
+function b3FechaMin(d) {
+    function dom(ano, mes, n) { var x = new Date(Date.UTC(ano, mes - 1, 1)); x.setUTCDate(1 + (7 - x.getUTCDay()) % 7 + 7 * (n - 1)); return x; }
+    var u = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    var verao = u >= dom(d.getFullYear(), 3, 2) && u < dom(d.getFullYear(), 11, 1);
+    return verao ? 16 * 60 + 55 : 17 * 60 + 55;
+}
 function marketOpenSim() {
     try {
         var parts = new Intl.DateTimeFormat('pt-BR', {timeZone: 'America/Sao_Paulo',
@@ -1272,7 +1278,7 @@ function marketOpenSim() {
         var wd = (map.weekday || '').toLowerCase();
         if (wd.indexOf('sáb') === 0 || wd.indexOf('sab') === 0 || wd.indexOf('dom') === 0) return false;
         var hm = parseInt(map.hour, 10) * 60 + parseInt(map.minute, 10);
-        return hm >= 600 && hm < 990;
+        return hm >= 600 && hm < b3FechaMin(new Date());
     } catch (e) { return false; }
 }
 

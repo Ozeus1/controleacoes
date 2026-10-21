@@ -353,6 +353,22 @@ def now_brt():
     return datetime.now(_BRT)
 
 
+def _horario_verao_eua(d):
+    """True no horário de verão dos EUA (2º domingo de março → 1º domingo de novembro): a B3 acompanha NY."""
+    def n_domingo(ano, mes, n):
+        dia = date(ano, mes, 1)
+        dia += timedelta(days=(6 - dia.weekday()) % 7)        # 1º domingo
+        return dia + timedelta(weeks=n - 1)
+    return n_domingo(d.year, 3, 2) <= d < n_domingo(d.year, 11, 1)
+
+
+def _b3_fechamento(d=None):
+    """(hora, minuto) em que acaba o pregão contínuo da B3 (antes do call de fechamento): 16:55 durante o horário
+    de verão dos EUA (pregão 10h–17h) e 17:55 no restante do ano (10h–18h). Comparar com (hora, minuto) de now_brt()."""
+    d = d or now_brt().date()
+    return (16, 55) if _horario_verao_eua(d) else (17, 55)
+
+
 def du_count(start: date, end: date) -> int:
     """Conta dias úteis (seg-sex) entre start e end, exclusive start, inclusive end."""
     if not start or not end or end <= start:
@@ -4074,7 +4090,7 @@ def _busca_cadeia_flat(ticker, user_id):
     from datetime import date as _date
 
     _now_cad = now_brt()
-    _market_open = (_now_cad.weekday() < 5 and (10, 0) <= (_now_cad.hour, _now_cad.minute) < (16, 30))
+    _market_open = (_now_cad.weekday() < 5 and (10, 0) <= (_now_cad.hour, _now_cad.minute) < _b3_fechamento())
 
     options = []
     for o in opt_list:
@@ -4628,7 +4644,7 @@ def api_busca_rolagem_buscar():
                            'market_open': cadeia.get('market_open', True)})
 
     _now_b = now_brt()
-    market_open = _now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30)
+    market_open = _now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento()
     return jsonify({'resultados': resultados, 'market_open': market_open})
 
 
@@ -5257,7 +5273,7 @@ def api_cadeia(ticker):
     # Opções na B3: seg–sex, 10h às 16h30 (Brasília).
     _now_cad = now_brt()
     _market_open_cadeia = (_now_cad.weekday() < 5
-                           and (10, 0) <= (_now_cad.hour, _now_cad.minute) < (16, 30))
+                           and (10, 0) <= (_now_cad.hour, _now_cad.minute) < _b3_fechamento())
 
     # Normaliza opções
     calls_by_exp = {}
@@ -5819,7 +5835,7 @@ def api_busca_operacoes(ticker):
     # spread é abusivo (> 25% do mid, mínimo R$0,10).
     _now_b = now_brt()
     market_open = (_now_b.weekday() < 5
-                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _eff(rw):
         """Retorna (bid_eff, bid_src, ask_eff, ask_src)."""
@@ -8306,7 +8322,7 @@ def api_manejo_put(ticker):
 
     _now_b = now_brt()
     market_open = (_now_b.weekday() < 5
-                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _eff(rw):
         bid, ask, last = rw['bid'], rw['ask'], rw['close']
@@ -12620,7 +12636,7 @@ def api_fyt(ticker):
     # ── Preço efetivo (book no pregão, último fora dele) ──────────────────
     _now_b = now_brt()
     market_open = (_now_b.weekday() < 5
-                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _eff_fyt(rw):
         """Retorna dict com bid/ask EFETIVOS (o que de fato é usado no cálculo),
@@ -12869,7 +12885,7 @@ def api_fyt_straddle_ha(ticker):
     exp_c = monthlies[exp_v_i + off_c]
 
     _now_b = now_brt()
-    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _eff(rw):
         bid, ask, last = rw['bid'], rw['ask'], rw['close']
@@ -13065,7 +13081,7 @@ def api_fyt_slide(ticker):
     exp_c = monthlies[exp_v_i + off_c]
 
     _now_b = now_brt()
-    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _eff(rw):
         bid, ask, last = rw['bid'], rw['ask'], rw['close']
@@ -13282,7 +13298,7 @@ def api_fyt_booster(ticker):
     mesmo = exp_c == exp_v
 
     _now_b = now_brt()
-    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _eff(rw):
         bid, ask, last = rw['bid'], rw['ask'], rw['close']
@@ -13516,7 +13532,7 @@ def api_fyt_box3(ticker):
     selic_per = ((1 + selic / 100) ** (dc / 365.0) - 1) * 100
 
     _now_b = now_brt()
-    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _eff(rw):
         bid, ask, last = rw['bid'], rw['ask'], rw['close']
@@ -13723,7 +13739,7 @@ def api_fyt_box4():
     dc = max((ult - _d.today()).days, 1)
     selic_per = ((1 + selic / 100) ** (dc / 365.0) - 1) * 100
     _nb = now_brt()
-    market_open = (_nb.weekday() < 5 and (10, 0) <= (_nb.hour, _nb.minute) < (16, 30))
+    market_open = (_nb.weekday() < 5 and (10, 0) <= (_nb.hour, _nb.minute) < _b3_fechamento())
     from concurrent.futures import ThreadPoolExecutor
 
     def _one(tk):
@@ -13869,7 +13885,7 @@ def api_fyt_scc():
     tickers = list(dict.fromkeys(['BOVA11', 'SMAL11'] + _sugestoes_liquidez(uid)))[:60]
     spots = _spots_fyt(tickers, uid, token, request.args.get('source') == 'brapi')
     _nb = now_brt()
-    market_open = (_nb.weekday() < 5 and (10, 0) <= (_nb.hour, _nb.minute) < (16, 30))
+    market_open = (_nb.weekday() < 5 and (10, 0) <= (_nb.hour, _nb.minute) < _b3_fechamento())
     from concurrent.futures import ThreadPoolExecutor
 
     def _one(tk):
@@ -14003,7 +14019,7 @@ def api_fyt_seagull(ticker):
     dc = max((_date.fromisoformat(exp) - today).days, 1)
 
     _now_b = now_brt()
-    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
     cs, ps = calls[exp], puts[exp]
     ce = {k: _box4_eff(v, market_open) for k, v in cs.items()}
     pe = {k: _box4_eff(v, market_open) for k, v in ps.items()}
@@ -14172,7 +14188,7 @@ def api_fyt_fence(ticker):
     dc = max((_date.fromisoformat(exp) - today).days, 1)
 
     _now_b = now_brt()
-    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
     cs, ps = calls[exp], puts[exp]
     ce = {k: _box4_eff(v, market_open) for k, v in cs.items()}
     pe = {k: _box4_eff(v, market_open) for k, v in ps.items()}
@@ -14345,7 +14361,7 @@ def api_fyt_collar(ticker):
     dc_p = max((_date.fromisoformat(exp_p) - today).days, 1)
 
     _now_b = now_brt()
-    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
     cs, ps = calls[exp_c], puts[exp_p]
     ce = {k: _box4_eff(v, market_open) for k, v in cs.items()}
     pe = {k: _box4_eff(v, market_open) for k, v in ps.items()}
@@ -14553,7 +14569,7 @@ def api_fyt_thl_cal(ticker):
     divisor = meses if perene else du
 
     _now_b = now_brt()
-    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _side(tab):
         cs, ls = tab.get(exp_v, {}), tab.get(exp_c, {})
@@ -14724,7 +14740,7 @@ def api_fyt_bws(ticker):
     exp_v, exp_c = monthlies[exp_v_i], monthlies[exp_v_i + off_c]
 
     _now_b = now_brt()
-    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
     bw_tab = calls if bwb_call else puts
     sh_tab = puts if bwb_call else calls
     sold = bw_tab[exp_v]                       # K2 (vendida 2×) no venc. curto
@@ -14916,7 +14932,7 @@ def api_fyt_ssc(ticker):
     dc = max((_date.fromisoformat(exp) - today).days, 1)
 
     _now_b = now_brt()
-    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
     cs, ps = calls[exp], puts[exp]
     ce = {k: _box4_eff(v, market_open) for k, v in cs.items()}
     pe = {k: _box4_eff(v, market_open) for k, v in ps.items()}
@@ -15085,7 +15101,7 @@ def api_fyt_sx(ticker):
     sel.sort()
 
     _now_b = now_brt()
-    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
     rows = []
     for exp in sel:
       dc = max((_date.fromisoformat(exp) - today).days, 1)
@@ -15325,7 +15341,7 @@ def api_fyt_thl(ticker):
     # ── Preço efetivo (book no pregão, último fora dele) ──────────────────
     _now_b = now_brt()
     market_open = (_now_b.weekday() < 5
-                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _eff_thl(rw):
         """Retorna dict com bid/ask efetivos, bid/ask crus do book, se veio de
@@ -15649,7 +15665,7 @@ def _mannerheim_calc(ticker, args):
     # ── Preço efetivo (book no pregão, último fora dele) ──────────────────
     _now_b = now_brt()
     market_open = (_now_b.weekday() < 5
-                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _eff(rw):
         bid, ask, last = rw['bid'], rw['ask'], rw['close']
@@ -16051,7 +16067,7 @@ def api_fyt_mannerheim(ticker):
     # ── Preço efetivo (book no pregão, último fora dele) ──────────────────
     _now_b = now_brt()
     market_open = (_now_b.weekday() < 5
-                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _eff(rw):
         bid, ask, last = rw['bid'], rw['ask'], rw['close']
@@ -16406,7 +16422,7 @@ def api_fyt_trava_alta(ticker):
     # ── Preço efetivo (book no pregão, último fora dele) ──────────────────
     _now_b = now_brt()
     market_open = (_now_b.weekday() < 5
-                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _eff(rw):
         bid, ask, last = rw['bid'], rw['ask'], rw['close']
@@ -16811,7 +16827,7 @@ def api_fyt_trava_baixa(ticker):
     # ── Preço efetivo (book no pregão, último fora dele) ──────────────────
     _now_b = now_brt()
     market_open = (_now_b.weekday() < 5
-                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _eff(rw):
         bid, ask, last = rw['bid'], rw['ask'], rw['close']
@@ -17208,7 +17224,7 @@ def api_fyt_borboleta(ticker):
 
     _now_b = now_brt()
     market_open = (_now_b.weekday() < 5
-                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _eff(rw):
         bid, ask, last = rw['bid'], rw['ask'], rw['close']
@@ -17558,7 +17574,7 @@ def api_fyt_broken_wing(ticker):
 
     _now_b = now_brt()
     market_open = (_now_b.weekday() < 5
-                   and (10, 0) <= (_now_b.hour, _now_b.minute) < (16, 30))
+                   and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
 
     def _eff(rw):
         bid, ask, last = rw['bid'], rw['ask'], rw['close']
@@ -19468,7 +19484,7 @@ def api_payoff_reverter_books():
                     out[t] = b
     n = now_brt()
     return jsonify({'ok': True, 'modo': 'mt5' if mt5 else 'oplab', 'books': out,
-                    'market_open': bool(n.weekday() < 5 and (10, 0) <= (n.hour, n.minute) < (17, 55))})
+                    'market_open': bool(n.weekday() < 5 and (10, 0) <= (n.hour, n.minute) < _b3_fechamento())})
 
 
 @app.route('/api/payoff-leg/book_price/<ticker>')
@@ -19493,7 +19509,7 @@ def api_payoff_leg_book_price(ticker):
         return jsonify({'error': 'Token OpLab não configurado.'}), 403
 
     _now = now_brt()
-    market_open = (_now.weekday() < 5 and (10, 0) <= (_now.hour, _now.minute) < (16, 30))
+    market_open = (_now.weekday() < 5 and (10, 0) <= (_now.hour, _now.minute) < _b3_fechamento())
     if not market_open:
         return jsonify({'error': 'Pregão fechado — sem book de ofertas ao vivo.',
                         'market_open': False}), 409

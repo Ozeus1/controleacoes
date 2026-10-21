@@ -19422,6 +19422,55 @@ def api_payoff_leg_current_price():
     return jsonify({'ok': True, 'current_price': price})
 
 
+def _book_oplab(ticker, token):
+    """bid/ask/último de UMA opção pela OpLab (/market/instruments/{t}); None quando falha."""
+    try:
+        d = _oplab_get_json(f'/market/instruments/{ticker}', token, timeout=6, retries=0)
+    except Exception:
+        return None
+    if isinstance(d, list):
+        d = d[0] if d else {}
+    if not isinstance(d, dict):
+        return None
+    return {'bid': _num_pos(d.get('bid')), 'ask': _num_pos(d.get('ask')), 'last': _num_pos(d.get('close')),
+            'fonte': 'OpLab', 'atualizado': '', 'idade_min': None}
+
+
+@app.route('/api/payoff-reverter/books', methods=['POST'])
+@login_required
+def api_payoff_reverter_books():
+    """Book (bid/ask/último) das pernas para o modal "Reverter" do payoff.
+    Modo MT5: último book recebido do Radar (instantâneo); o que faltar (ou nos outros modos): OpLab, em paralelo."""
+    body = request.get_json(silent=True) or {}
+    tickers = []
+    for t in (body.get('tickers') or [])[:12]:
+        t = str(t).strip().upper()
+        if t and t not in tickers:
+            tickers.append(t)
+    uid = current_user.id
+    out = {}
+    mt5 = _modo_mt5(uid)
+    if mt5 and tickers:
+        rows = {r.symbol: r for r in Mt5Quote.query.filter(Mt5Quote.user_id == uid, Mt5Quote.symbol.in_(tickers)).all()}
+        for t in tickers:
+            r = rows.get(t)
+            if r and (_num_pos(r.bid) or _num_pos(r.ask) or _num_pos(r.last)):
+                txt, idade = _mt5_atualizado(r)
+                out[t] = {'bid': _num_pos(r.bid), 'ask': _num_pos(r.ask), 'last': _num_pos(r.last),
+                          'fonte': 'MT5', 'atualizado': txt, 'idade_min': idade}
+    faltando = [t for t in tickers if t not in out]
+    token = Settings.get_value('oplab_token', user_id=uid)
+    if faltando and token:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=6) as ex:
+            for t, b in zip(faltando, ex.map(lambda x: _book_oplab(x, token), faltando)):
+                if b:
+                    out[t] = b
+    n = now_brt()
+    return jsonify({'ok': True, 'modo': 'mt5' if mt5 else 'oplab', 'books': out,
+                    'market_open': bool(n.weekday() < 5 and (10, 0) <= (n.hour, n.minute) < (17, 55))})
+
+
 @app.route('/api/payoff-leg/book_price/<ticker>')
 @login_required
 def api_payoff_leg_book_price(ticker):

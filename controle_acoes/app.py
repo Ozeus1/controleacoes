@@ -4899,7 +4899,7 @@ def _oplab_ewma(ticker, token):
     contra a tela da OpLab (diferença < R$ 0,02). Cache de 10 min."""
     agora = time.time()
     hit = _EWMA_CACHE.get(ticker)
-    if hit and agora - hit[0] < 600:
+    if hit and agora - hit[0] < (600 if hit[1] else 45):     # falha só fica 45 s no cache
         return hit[1]
     val = None
     try:
@@ -4923,7 +4923,7 @@ def _oplab_iv_ativo(ticker, token):
     Cache de 10 min."""
     agora = time.time()
     hit = _IVATIVO_CACHE.get(ticker)
-    if hit and agora - hit[0] < 600:
+    if hit and agora - hit[0] < (600 if hit[1] else 45):
         return hit[1]
     val = None
     try:
@@ -4969,6 +4969,7 @@ def _teorico_serie(o, spot, strike, due_iso, is_call, ewma, selic_pct):
 
 
 _CHAIN_CACHE = {}   # ativo -> (timestamp, lista de opções da OpLab)
+_CHAIN_FALHA = {}   # ativo -> (timestamp, exceção) da última falha
 
 
 def _oplab_chain_cached(underlying, token):
@@ -4978,32 +4979,68 @@ def _oplab_chain_cached(underlying, token):
     hit = _CHAIN_CACHE.get(underlying)
     if hit and agora - hit[0] < 60:
         return hit[1]
-    data = _oplab_get_json(f'/market/options/{underlying}', token, timeout=20)
+    falha = _CHAIN_FALHA.get(underlying)
+    if falha and agora - falha[0] < 45:        # falhou há pouco: não repete a espera (20 s) a cada chamada
+        raise falha[1]
+    try:
+        data = _oplab_get_json(f'/market/options/{underlying}', token, timeout=20)
+    except Exception as exc:
+        _CHAIN_FALHA[underlying] = (agora, exc)
+        raise
+    _CHAIN_FALHA.pop(underlying, None)
     lista = data if isinstance(data, list) else (data.get('options') or [])
     _CHAIN_CACHE[underlying] = (agora, lista)
     return lista
 
 
-def _legs_com_teorico(legs, underlying, spot):
-    """Acrescenta leg['teorico'] (valor teórico da OpLab: BS com a EWMA do ativo,
-    dias úteis/252, r = Selic) a cada perna de opção das telas de payoff; None quando
-    não dá para calcular (ação, sem token/EWMA/cotação)."""
+def _prefetch_teorico(underlying):
+    """Dispara em segundo plano (thread) a busca da EWMA e da cadeia da OpLab que o 'Teór.' usa, para correr
+    em paralelo com a cotação do ativo. Devolve a thread (ou None); _legs_com_teorico(prefetch=...) espera por ela."""
+    underlying = (underlying or '').strip().upper()
+    try:
+        token = Settings.get_value('oplab_token', user_id=current_user.id)
+    except Exception:
+        token = None
+    if not (token and underlying):
+        return None
+
+    def _run(fn):
+        with app.app_context():
+            try:
+                fn(underlying, token)
+            except Exception:
+                pass
+    ths = [threading.Thread(target=_run, args=(fn,), daemon=True) for fn in (_oplab_ewma, _oplab_chain_cached)]
+    for th in ths:
+        th.start()
+
+    class _Juntar:
+        def join(self, timeout=None):
+            for th in ths:
+                th.join(timeout)
+    return _Juntar()
+
+
+def _legs_com_teorico(legs, underlying, spot, prefetch=None):
+    """Acrescenta leg['teorico'] (valor teórico da OpLab: campo da cadeia; senão BS com a EWMA do ativo,
+    dias úteis/252, r = Selic; senão BS com a VI da própria série) a cada perna de opção das telas de payoff;
+    None quando não dá para calcular (ação, sem token/cotação). `prefetch` = thread de _prefetch_teorico."""
     for l in legs:
         l['teorico'] = None
+    if prefetch is not None:
+        prefetch.join(30)
     underlying = (underlying or '').strip().upper()
     token = Settings.get_value('oplab_token', user_id=current_user.id)
     if not (token and spot and underlying):
         return
     try:
         ewma = _oplab_ewma(underlying, token)
-        if not ewma:
-            return
         try:
             chain = _oplab_chain_cached(underlying, token)
         except Exception:
             chain = []
         por_simbolo = {str(o.get('symbol') or '').upper(): o for o in chain if isinstance(o, dict)}
-        r = _selic() / 100.0
+        selic_pct = _selic()
         for l in legs:
             if l.get('opt_type') not in ('CALL', 'PUT') or not l.get('expiration_date'):
                 continue
@@ -5012,20 +5049,8 @@ def _legs_com_teorico(legs, underlying, spot):
             if strike <= 0:
                 continue
             l['strike_serie'] = round(strike, 2) if ref else None
-            tp = _oplab_teorico(ref) if ref else 0
-            if not tp:
-                try:
-                    dtm = int(ref.get('days_to_maturity'))
-                except (TypeError, ValueError):
-                    dtm = None
-                if dtm is None:
-                    try:
-                        dtm = max(int(round((date.fromisoformat(str(l['expiration_date'])[:10]) - date.today()).days * 5 / 7)), 0)
-                    except ValueError:
-                        dtm = 0
-                if dtm > 0:
-                    tp = _bs_price(float(spot), strike, dtm / 252.0, r, ewma / 100.0, l['opt_type'] == 'CALL')
-            l['teorico'] = round(tp, 2) if tp else None
+            tp = _teorico_serie(ref, float(spot), strike, str(l['expiration_date'])[:10], l['opt_type'] == 'CALL', ewma, selic_pct)
+            l['teorico'] = tp if tp else None
     except Exception:
         app.logger.exception('_legs_com_teorico')
 
@@ -18737,12 +18762,13 @@ def payoff_spread(id):
             'leg_ref':          f'spread_short:{sp.id}',
         },
     ]
+    _pf = _prefetch_teorico(sp.underlying_asset)
     und_price, und_change = _get_underlying_quote(sp.underlying_asset, current_user.id)
     t_days = max((sp.expiration_date - date.today()).days, 1) if sp.expiration_date else 30
     days_nearest = max((sp.expiration_date - date.today()).days, 0) if sp.expiration_date else None
     import json as _json
     roll_adjustment, roll_history = _spread_roll_adjustment(sp)
-    _legs_com_teorico(legs, sp.underlying_asset, und_price)
+    _legs_com_teorico(legs, sp.underlying_asset, und_price, _pf)
     return render_template('payoff.html',
                            obs_kind='spread', obs_id=sp.id, obs_text=sp.obs or '',
                            pop_save_url=url_for('save_payoff_pop', kind='spread', id=sp.id),
@@ -18785,6 +18811,7 @@ def payoff_estruturada(id):
     ]
     exp_dates = [leg.expiration_date for leg in op.legs if leg.expiration_date]
     expiration = max(exp_dates).strftime('%d/%m/%Y') if exp_dates else ''
+    _pf = None
     if getattr(op, 'intl', False):
         # Tastytrade: subjacente internacional — Yahoo sem sufixo .SA;
         # fallback no valor salvo pelo último Atualizar Cotações.
@@ -18800,13 +18827,14 @@ def payoff_estruturada(id):
         if not und_price:
             und_price, und_change = op.underlying_price, op.underlying_change
     else:
+        _pf = _prefetch_teorico(op.underlying_asset)
         und_price, und_change = _get_underlying_quote(op.underlying_asset, current_user.id)
     t_days = max((max(exp_dates) - date.today()).days, 1) if exp_dates else 30
     days_nearest = max((min(exp_dates) - date.today()).days, 0) if exp_dates else None
     roll_adjustment, roll_extrato = _estruturada_roll_adjustment(op)
     import json as _json
     if not getattr(op, 'intl', False):
-        _legs_com_teorico(legs, op.underlying_asset, und_price)
+        _legs_com_teorico(legs, op.underlying_asset, und_price, _pf)
     return render_template('payoff.html',
                            obs_kind='estruturada', obs_id=op.id, obs_text=op.obs or '',
                            pop_save_url=url_for('save_payoff_pop', kind='estruturada', id=op.id),
@@ -18918,11 +18946,12 @@ def payoff_option(id):
         'COMPRA_CALL': 'Compra a Seco de Call',
         'COMPRA_PUT':  'Compra a Seco de Put',
     }
+    _pf = _prefetch_teorico(opt.underlying_asset)
     und_price, und_change = _get_underlying_quote(opt.underlying_asset, current_user.id)
     t_days = max((opt.expiration_date - date.today()).days, 1) if opt.expiration_date else 30
 
     import json as _json
-    _legs_com_teorico(legs, opt.underlying_asset, und_price)
+    _legs_com_teorico(legs, opt.underlying_asset, und_price, _pf)
     return render_template('payoff.html',
                            obs_kind='option', obs_id=opt.id, obs_text=opt.obs or '',
                            title=f"{titles.get(ot, 'Opção')} — {opt.ticker}",

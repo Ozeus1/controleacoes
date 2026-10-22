@@ -509,6 +509,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='js/payoff_style.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='js/pnt_boca.js') }}?v=1"></script>
 <script>
 // ── Seletor de opções da cadeia (botão 🔎 em cada perna) ─────────────────────
 // Mesma regra da tela Cálculos de Opções: lista só o tipo da perna (CALL/PUT),
@@ -1615,18 +1616,66 @@ function abrirEmPagina(destino) {
     }).catch(function (e) { alert('Falha ao salvar a simulação: ' + e); });
 }
 
+// Exportar Pnt: abre o modal com a boca atual (bid/ask) das pernas, a escolha da boca a enviar (o Pnt só aceita
+// ofertas melhores que o book) e o resumo financeiro; copia a linha no formato do Pnt.
+function lerBRLMetrica(id, absoluto) {
+    var el = document.getElementById(id); if (!el) return null;
+    var s = el.textContent || '';
+    if (s.indexOf('∞') >= 0 || !/\d/.test(s)) return null;
+    var v = parseFloat(s.replace(/[^0-9,]/g, '').replace(',', '.'));
+    if (isNaN(v)) return null;
+    return (!absoluto && /[−-]/.test(s)) ? -v : v;
+}
 function exportarPntSim(btn) {
     var pernas = [];
     document.querySelectorAll('#legs-body .leg-row').forEach(function (row) {
         var on = row.querySelector('.leg-on'); if (on && !on.checked) return;
         var tp = row.querySelector('[name=leg_type]').value; if (tp === 'STOCK') return;
-        pernas.push({ ticker: (row.querySelector('[name=leg_ticker]').value || '').trim(),
-                      side: row.querySelector('[name=leg_side]').value,
+        var prem = parseVal(row.querySelector('[name=leg_premium]').value);
+        pernas.push({ ticker: (row.querySelector('[name=leg_ticker]').value || '').trim().toUpperCase(),
+                      acao: row.querySelector('[name=leg_side]').value,
                       qty: parseInt(row.querySelector('[name=leg_qty]').value, 10) || 0,
-                      premium: parseVal(row.querySelector('[name=leg_premium]').value) });
+                      tipo: tp, strike: parseVal(row.querySelector('[name=leg_strike]').value),
+                      exp: (row.querySelector('[name=leg_exp]') || {}).value || '',
+                      ref: prem, cols: [prem] });
     });
-    exportarPntLegs(pernas, btn);
+    pernas = pernas.filter(function (l) { return l.ticker && l.qty > 0; });
+    if (!pernas.length) { alert('Preencha ao menos uma perna com ticker e quantidade.'); return; }
+    var netSim = pernas.reduce(function (a, l) { return a + (l.acao === 'SELL' ? 1 : -1) * l.qty * l.cols[0]; }, 0);   // fluxo pelos preços da simulação (+ = crédito)
+    var lucroMax = lerBRLMetrica('m-gain', false), perdaMax = lerBRLMetrica('m-loss', true);
+    var nome = ((document.querySelector('[name=name]') || {}).value || '').trim();
+    var txtMax = function (id) { var el = document.getElementById(id); return el ? (el.textContent || '—') : '—'; };
+    PntBoca.abrir({
+        titulo: '📋 Exportar Pnt — ' + (nome || 'simulação'),
+        tituloOperacao: '1) Operação a executar — montagem da estrutura',
+        tituloInfo: '2) Simulação',
+        infoHtml: function (x) {
+            return 'Saldo pelos preços da simulação: <strong>' + x.cd(netSim) + '</strong> &nbsp;·&nbsp; Lucro máx.: <strong>' + esc(txtMax('m-gain')) +
+                '</strong> &nbsp;·&nbsp; Perda máx.: <strong>' + esc(txtMax('m-loss')) + '</strong>';
+        },
+        pernas: pernas,
+        colunasPerna: [{ titulo: 'Preço simulação', tip: 'Prêmio digitado na simulação' }],
+        rotuloRef: 'Pela simulação',
+        resumoColunas: [
+            { titulo: 'Montagem (crédito/débito)', html: function (c, x) { return x.cd(x.cash(c)); } },
+            { titulo: 'Diferença p/ a simulação', html: function (c, x) {
+                var d = x.cash(c) - netSim;
+                return '<span style="color:' + (d > 0.004 ? 'var(--success-color,#34d399)' : d < -0.004 ? 'var(--danger-color,#f87171)' : 'inherit') + ';">' + x.sgn(d) + '</span>';
+            } },
+            { titulo: 'Lucro máx. nessa boca', html: function (c, x) {
+                if (lucroMax == null) return '—';
+                return x.sgn(lucroMax + (x.cash(c) - netSim));
+            } },
+            { titulo: 'Perda máx. nessa boca', html: function (c, x) {
+                if (perdaMax == null) return '—';
+                var p = perdaMax - (x.cash(c) - netSim);
+                return p > 0 ? '<span style="color:var(--danger-color,#f87171);">−R$ ' + x.nf(p) + '</span>' : '<span style="color:var(--success-color,#34d399);">sem perda (+R$ ' + x.nf(-p) + ')</span>';
+            } }
+        ],
+        notaResumo: 'Receber mais (ou pagar menos) que o saldo da simulação aumenta o lucro máximo e reduz a perda máxima na mesma medida.'
+    });
 }
+function esc(t) { return String(t == null ? '' : t).replace(/[&<>"]/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[m]; }); }
 
 // ── Coluna Teór.: valor teórico de cada perna (BS com a EWMA do ativo, como na OpLab) ────────────
 var __teorSig = '', __teorTimer = null;

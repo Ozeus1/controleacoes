@@ -23,6 +23,9 @@
     padding:.3rem .4rem; font-size:.87rem; width:100%;
 }
 #mg-tab input[readonly] { background:var(--hover-bg); color:var(--text-secondary); }
+/* lista de strikes com bid/ask/mid/último/spread: fonte monoespaçada para as colunas ficarem alinhadas */
+.leg-strike-sel, .leg-strike-sel option { font-family:ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',monospace; }
+.leg-strike-sel option { font-size:.82rem; }
 .col-qtd    { width:78px; }
 .col-sel    { width:34px; }
 .col-tipo   { width:92px; }
@@ -739,6 +742,27 @@ function mgResetSaiEditada(tr) {
     if (saiEl) delete saiEl.dataset.editado;
 }
 
+// Texto de cada strike na lista: strike e o book da série (bid, ask, mid, último e spread), em colunas alinhadas
+// (espaços não separáveis + fonte monoespaçada). Quando fechado, o select mostra o começo do texto (o strike).
+function mgPad(txt, n, aEsq) {
+    txt = String(txt);
+    var pad = '';
+    while (txt.length + pad.length < n) pad += ' ';
+    return aEsq ? txt + pad : pad + txt;
+}
+function mgRotuloStrike(strike, o, perto) {
+    // book REAL da série (sem o bid/ask "efetivo" que a cadeia preenche com o último quando não há oferta)
+    var bid = o.bid || 0, ask = o.ask || 0, last = o.close || 0;
+    var temBook = bid > 0 && ask > 0 && ask >= bid;
+    var mid = temBook ? (bid + ask) / 2 : 0, spr = temBook ? ask - bid : 0;
+    var n = function (v) { return v > 0 ? fmtNum(v) : '—'; };
+    return mgPad(fmtBRL(strike), 10, true)
+        + ' · bid ' + mgPad(n(bid), 5) + ' · ask ' + mgPad(n(ask), 5)
+        + ' · mid ' + mgPad(n(mid), 5) + ' · últ ' + mgPad(n(last), 5)
+        + ' · spr ' + mgPad(temBook ? fmtNum(spr) : '—', 5) + (temBook && mid > 0 ? ' (' + fmtNum(spr / mid * 100, 1) + '%)' : '')
+        + (perto ? ' ◄ spot' : '');
+}
+
 // ── Cascata vencimento → strike → ticker/prêmio (igual ao Simulador) ──
 function mgPreencheVencimentos(tr) {
     var sel = tr.querySelector('.leg-exp-sel');
@@ -795,7 +819,7 @@ window.mgVencMudou = function (sel) {
         if (!o) return '';
         var perto = spot && Math.abs(r.strike - spot) / spot < 0.02;
         return '<option value="' + r.strike + '"' + (perto ? ' data-perto="1"' : '') + '>'
-             + fmtBRL(r.strike) + (perto ? ' (próximo do spot)' : '') + '</option>';
+             + mgRotuloStrike(r.strike, o, perto) + '</option>';
     }).join('');
     strikeSel.disabled = rows.length === 0;
     if (!MG_RESTAURANDO && document.getElementById('mg-venc-unico').checked) {

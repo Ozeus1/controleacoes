@@ -43,6 +43,8 @@ table.pl-grid .vc:hover{opacity:1;outline:1px solid currentColor;}
 table.pl-grid tr:hover .vc{opacity:.9;}
 table.pl-grid td.tk{color:var(--text-secondary);} table.pl-grid td.teor{background:rgba(37,99,235,.10);}
 table.pl-grid td.inleg{box-shadow:inset 0 0 0 2px #fbbf24;}
+table.pl-grid td.inleg[draggable=true]{cursor:grab;} table.pl-grid td.inleg[draggable=true]:active{cursor:grabbing;}
+table.pl-grid tr.drop-alvo td{background:rgba(251,191,36,.16)!important;}
 .pl-sep-c{background:linear-gradient(rgba(52,211,153,.14),rgba(52,211,153,.14)),var(--card-bg,#111827)!important;color:#34d399!important;text-align:center!important;}
 .pl-sep-p{background:linear-gradient(rgba(248,113,113,.14),rgba(248,113,113,.14)),var(--card-bg,#111827)!important;color:#f87171!important;text-align:center!important;}
 .pl-foot{display:flex;gap:1rem;align-items:center;font-size:.76rem;color:var(--text-secondary);margin-top:.35rem;flex-wrap:wrap;}
@@ -139,6 +141,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
             <button class="pl-btn" id="pl-nova">Nova estrutura</button>
             <button class="pl-btn" id="pl-perna">+ Perna</button>
             <button class="pl-btn" id="pl-ativo">+ Ativo</button>
+            <button class="pl-btn" id="pl-pnt" title="Abre o modal com a boca atual das pernas, a escolha da boca que não cruza o book e a linha para o Pnt">📋 Exportar Pnt</button>
             <button class="pl-btn pri" id="pl-salvar">Salvar no portfólio…</button>
           </span></div>
         <div style="font-size:.78rem;margin-bottom:.3rem;"><b id="pl-nome-estr">Estrutura</b> <span style="color:var(--text-secondary);" id="pl-estado">· rascunho</span></div>
@@ -241,6 +244,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='js/pnt_boca.js') }}?v=2"></script>
 <script>
 (function() {
   var SELIC = {{ selic|float }} / 100, R = Math.log(1 + SELIC);
@@ -396,7 +400,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
       '<td' + cls + '>' + (o.close ? fmt(o.close) + vc(o.symbol, o.close, 'vc', 'ult') : '—') + '</td>',
       '<td class="teor" title="Valor teórico (BS com a EWMA do ativo)">' + (o.teorico ? fmt(o.teorico) + vc(o.symbol, o.teorico, 'vc', 'teor') : '—') + '</td>',
       '<td>' + (o.estilo === 'AM' ? '🇺🇸' : (o.estilo === 'EU' ? '🇪🇺' : '—')) + '</td>',
-      '<td class="tk' + (em ? ' inleg' : '') + '">' + o.symbol.slice(4) + '</td>'
+      '<td class="tk' + (em ? ' inleg' : '') + '"' + (em ? ' draggable="true" data-tk="' + o.symbol + '" title="Arraste para outro strike para trocar a perna"' : '') + '>' + o.symbol.slice(4) + '</td>'
     ];
     return call ? c.join('') : c.slice().reverse().join('');
   }
@@ -410,7 +414,7 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
       (showP ? cols.slice().reverse().map(function(c) { return '<th class="pl-sep-p">' + c + '</th>'; }).join('') : '') + '</tr></thead><tbody>';
     var atm = null; e.rows.forEach(function(r) { if (atm == null || Math.abs(r.strike - S.spot) < Math.abs(atm - S.spot)) atm = r.strike; });
     e.rows.slice().reverse().forEach(function(r) {
-      h += '<tr' + (r.strike === atm ? ' class="atm" id="pl-atm"' : '') + '>' + (showC ? celulas(linhaOpc(r.call, r.strike, T, true), true, r.strike) : '') +
+      h += '<tr data-k="' + r.strike + '"' + (r.strike === atm ? ' class="atm" id="pl-atm"' : '') + '>' + (showC ? celulas(linhaOpc(r.call, r.strike, T, true), true, r.strike) : '') +
         '<td class="k">' + fmt(r.strike) + '</td>' + (showP ? celulas(linhaOpc(r.put, r.strike, T, false), false, r.strike) : '') + '</tr>';
     });
     $('pl-grid-wrap').innerHTML = h + '</tbody></table>';
@@ -453,6 +457,47 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     }
     reprecifica(); marcaModo(); marcaAlterado(); renderChips(); renderGrade(); renderLegs();
   });
+
+  // aviso temporário (ex.: depois de mover uma perna): o que mudou e como ficaram as pernas
+  function toast(h) {
+    var t = $('pl-toast');
+    if (!t) { t = document.createElement('div'); t.id = 'pl-toast';
+      t.style.cssText = 'position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:19300;background:#0f172a;border:1px solid #fbbf24;color:#e2e8f0;border-radius:8px;padding:.55rem .8rem;font-size:.78rem;max-width:min(92vw,680px);box-shadow:0 8px 28px rgba(0,0,0,.5);cursor:pointer;';
+      t.addEventListener('click', function() { t.style.display = 'none'; }); document.body.appendChild(t); }
+    t.innerHTML = h; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(function() { t.style.display = 'none'; }, 8000);
+  }
+  function resumoPernas() {
+    return S.legs.map(function(l) {
+      return '<span style="white-space:nowrap;"><b style="color:' + (l.side === 'BUY' ? '#34d399' : '#f87171') + ';">' + (l.side === 'BUY' ? 'C' : 'V') + '</b> ' + l.qty + ' ' + (l.type === 'STOCK' ? S.ticker : l.ticker) +
+        (l.type === 'STOCK' ? '' : ' (K ' + fmt(l.strike) + ') @ ' + fmt(l.price)) + '</span>';
+    }).join(' · ');
+  }
+  function avisaMovida(t0, k0, l) {
+    toast('↔ <b>Perna movida:</b> ' + t0 + ' (K ' + fmt(k0) + ') → <b>' + l.ticker + '</b> (K ' + fmt(l.strike) + ')<br><span style="color:#94a3b8;">Pernas agora:</span> ' + resumoPernas());
+  }
+  var gdrag = null;
+  function limpaAlvo() { [].forEach.call($('pl-grid-wrap').querySelectorAll('tr.drop-alvo'), function(t) { t.classList.remove('drop-alvo'); }); }
+  $('pl-grid-wrap').addEventListener('dragstart', function(ev) {
+    var td = ev.target.closest && ev.target.closest('td.inleg[data-tk]'); if (!td) return;
+    gdrag = td.dataset.tk; ev.dataTransfer.effectAllowed = 'move'; try { ev.dataTransfer.setData('text/plain', gdrag); } catch (e) {}
+  });
+  $('pl-grid-wrap').addEventListener('dragover', function(ev) {
+    if (!gdrag) return; var tr = ev.target.closest('tr[data-k]'); if (!tr) return;
+    ev.preventDefault(); ev.dataTransfer.dropEffect = 'move'; if (!tr.classList.contains('drop-alvo')) { limpaAlvo(); tr.classList.add('drop-alvo'); }
+  });
+  $('pl-grid-wrap').addEventListener('drop', function(ev) {
+    if (!gdrag) return; ev.preventDefault();
+    var tr = ev.target.closest('tr[data-k]'), tk = gdrag; gdrag = null; limpaAlvo(); if (!tr) return;
+    var l = S.legs.filter(function(z) { return z.ticker === tk; })[0]; if (!l) return;
+    var k = parseFloat(tr.dataset.k), t0 = l.ticker, k0 = l.strike; if (k === k0) return;
+    var e = S.d && S.d.expirations.filter(function(z) { return z.exp === l.exp; })[0];
+    var r = e && e.rows.filter(function(z) { return z.strike === k; })[0], o = r && (l.type === 'CALL' ? r.call : r.put);
+    if (!o) { toast('Não há ' + l.type + ' no strike ' + fmt(k) + ' neste vencimento.'); return; }
+    if (S.legs.some(function(z) { return z !== l && z.ticker === o.symbol; })) { toast('Já existe uma perna em ' + o.symbol + ' (K ' + fmt(k) + '): some ou remova uma delas.'); return; }
+    if (!moveStrike(l, k)) return;
+    marcaAlterado(); renderChips(); renderGrade(); renderLegs(); avisaMovida(t0, k0, l);
+  });
+  $('pl-grid-wrap').addEventListener('dragend', function() { gdrag = null; limpaAlvo(); });
 
   function marcaAlterado() { $('pl-estado').textContent = S.simId ? '· editada (não salva)' : '· rascunho'; }
   // Saída = marcação a mercado pelo último negócio (ação: spot)
@@ -648,12 +693,13 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     function legHit(ev) { return S.legBoxes.filter(function(b) { return ev.offsetX >= b.x0 && ev.offsetX <= b.x1 && ev.offsetY >= b.y0 && ev.offsetY <= b.y1; })[0]; }
     cv.addEventListener('mousedown', function(ev) {
       var h = legHit(ev);
-      if (h) { S.drag = {i: h.i}; cv.style.cursor = 'ew-resize'; return; }
+      if (h) { var l0 = S.legs[h.i]; S.drag = {i: h.i, t0: l0 && l0.ticker, k0: l0 && l0.strike}; cv.style.cursor = 'ew-resize'; return; }
       arr = {x: ev.offsetX, min: chart.scales.x.min, max: chart.scales.x.max};
     });
     window.addEventListener('mouseup', function() {
       arr = null;
-      if (S.drag) { S.drag = null; cv.style.cursor = ''; marcaAlterado(); renderChips(); renderGrade(); renderLegs(); }
+      if (S.drag) { var d0 = S.drag, lm = S.legs[d0.i]; S.drag = null; cv.style.cursor = ''; marcaAlterado(); renderChips(); renderGrade(); renderLegs();
+        if (lm && d0.t0 && lm.ticker !== d0.t0) avisaMovida(d0.t0, d0.k0, lm); }
     });
     cv.addEventListener('mousemove', function(ev) {
       if (S.drag) {
@@ -729,13 +775,20 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     pop = tot ? pop / tot * 100 : null;
     if (chart) { chart.__be = bes; chart.__sig = s1; chart.__sig2 = s2; }
     var rr = (!ilimG && !ilimP && mn < 0) ? (mx / Math.abs(mn)) : null;
-    var box = function(l, v, c) { return '<div><span>' + l + '</span><b class="' + (c || '') + '">' + v + '</b></div>'; };
+    S.metr = {mx: mx, mn: mn, ilimG: ilimG, ilimP: ilimP};
+    // margem aproximada (igual ao SimFlex): perda ilimitada → 15% do ativo + prêmio por série vendida, pelo lado (CALL ou PUT) mais pesado;
+    // crédito com perda limitada → perda máx. + crédito recebido; débito → sem margem
+    var mC = 0, mP = 0;
+    ls.forEach(function(l) { if (l.type !== 'STOCK' && l.side === 'SELL') { var m = l.qty * (0.15 * S.spot + l.price); if (l.type === 'CALL') mC += m; else mP += m; } });
+    var margem = ilimP ? Math.max(mC, mP) : (cred > 0 ? Math.max(0, -mn) + cred : 0);
+    var box = function(l, v, c, tip) { return '<div' + (tip ? ' title="' + tip + '"' : '') + '><span>' + l + '</span><b class="' + (c || '') + '">' + v + '</b></div>'; };
     el.innerHTML = box(cred >= 0 ? 'Crédito' : 'Débito', brlK(Math.abs(cred)), cred >= 0 ? 'pos' : 'neg') +
       box('Lucro máx.', ilimG ? 'Ilimitado' : brlK(mx), 'pos') + box('Perda máx.', ilimP ? 'Ilimitada' : brlK(mn), 'neg') +
       box('R/R', rr != null ? '1:' + fmt(1 / rr, 1) : '—') + box('POP', pop != null ? fmt(pop, 0) + '%' : '—') +
       box('Break-even', bes.length ? bes.map(function(b) { return fmt(b); }).join(' · ') : '—', '') +
       box('Spot', fmt(S.spot)) + box('σ ATM', fmt(sig * 100, 1) + '%') + box('±1σ', fmt(s1[0]) + ' – ' + fmt(s1[1])) +
-      box('Forward', fmt(S.spot * Math.exp(R * T))) + box('DTE', dte + 'd');
+      box('Forward', fmt(S.spot * Math.exp(R * T))) + box('DTE', dte + 'd') +
+      box('Margem aprox.', margem > 0 ? brl(margem) : 'R$ 0,00', margem > 0 ? 'neg' : '', 'Margem aproximada (mesma regra do SimFlex): perda ilimitada = 15% do ativo + prêmio das séries vendidas, pelo lado (CALL ou PUT) mais pesado; crédito com perda limitada = perda máxima + crédito; débito = sem margem');
   }
 
   // ── Controles ──
@@ -802,6 +855,18 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
         S.simId = j.id; S.simNome = j.name; $('pl-nome-estr').textContent = j.name; $('pl-estado').textContent = '· salva'; carregarOps();
       });
   }
+  $('pl-pnt').addEventListener('click', function() {
+    var ls = S.legs.filter(function(l) { return l.on && l.type !== 'STOCK'; });
+    if (!ls.length) { alert('Monte a estrutura (clique no v / c da grade) antes de exportar para o Pnt.'); return; }
+    var M = S.metr || {};
+    PntBoca.montagem({
+      titulo: '📋 Exportar Pnt — ' + (S.simNome || ('Estrutura ' + S.ticker)),
+      pernas: ls.map(function(l) { return {ticker: l.ticker, side: l.side, qty: l.qty, preco: l.price, tipo: l.type, strike: l.strike, exp: l.exp}; }),
+      lucroMax: M.mx != null && !M.ilimG ? M.mx : null,
+      perdaMax: M.mn != null && !M.ilimP ? Math.max(0, -M.mn) : null,
+      txtLucro: M.mx != null ? (M.ilimG ? 'Ilimitado' : brl(M.mx)) : '', txtPerda: M.mn != null ? (M.ilimP ? 'Ilimitada' : brl(Math.max(0, -M.mn))) : ''
+    });
+  });
   $('pl-salvar').addEventListener('click', salvar);
   $('pl-op-add').addEventListener('click', salvar);
   $('pl-anotar').addEventListener('click', function() {

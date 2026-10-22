@@ -507,8 +507,16 @@ function bindAba() {
       l.entLock = true; recalcVols(t, l);
     });
     marcaSujo(); renderLegs(); calcula();
-    copiaPnt(t.legs.filter(function (l) { return l.on && l.type !== 'STOCK'; }).map(function (l) {
-      return { ticker: l.ticker, side: l.side, qty: l.qty, px: l.entPx || 0 }; }), 'montagem');
+    // abre o modal: boca atual das pernas, escolha da boca (que não cruza o book), resumo e cópia da linha do Pnt
+    var C = CALC || {};
+    PntBoca.montagem({
+      titulo: '📋 Montar — ' + (t.name || t.ativo || 'estrutura'),
+      pernas: t.legs.filter(function (l) { return l.on && l.type !== 'STOCK'; }).map(function (l) {
+        return { ticker: l.ticker, side: l.side, qty: l.qty, preco: l.entPx || 0, tipo: l.type, strike: l.strike, exp: l.exp || '' }; }),
+      lucroMax: C.legs && !C.gainUnl ? C.maxG : null,
+      perdaMax: C.legs && !C.lossUnl ? Math.max(0, -C.minG) : null,
+      txtLucro: C.legs ? (C.gainUnl ? 'Ilimitado' : 'R$ ' + fmt(C.maxG)) : '', txtPerda: C.legs ? (C.lossUnl ? 'Ilimitada' : (C.minG >= 0 ? 'sem perda' : 'R$ ' + fmt(-C.minG))) : ''
+    });
   });
   $('sf-reverter').addEventListener('click', function () {
     // ordem de DESMONTAGEM (lados invertidos, preços de saída) vai para a área de transferência
@@ -751,7 +759,7 @@ function calcula() {
   var base = custoEnt > 0 ? custoEnt : (margem + custoEnt > 0 ? margem + custoEnt : Math.abs(custoEnt)) || 1;
   var cdi = Math.pow(1 + t.juros / 100, Math.max(duE, 1) / 252) - 1;
   var resAtual = tot.res + ((t.hist && t.useCarry) ? t.carry : 0);
-  CALC = { legs: legs, dE: dE, duE: duE, S: S, sig: sig, Ty: Ty, mu: mu, sd: sd, base: base, resAtual: resAtual, bes: bes };
+  CALC = { legs: legs, dE: dE, duE: duE, S: S, sig: sig, Ty: Ty, mu: mu, sd: sd, base: base, resAtual: resAtual, bes: bes, maxG: maxG, minG: minG, gainUnl: gainUnl, lossUnl: lossUnl };
   var pill = function (v, txt) { return '<span class="sf-pill ' + (v >= 0 ? 'g' : 'r') + '">' + txt + '</span>'; };
   var h = '<div class="r"><span>Vencimento</span><span>' + brD(isoD(dE)) + ' (' + duE + ' d.u.)</span></div>' +
     '<div class="r sep"><span>Max. Lucro</span><span>' + (gainUnl ? pill(1, 'Ilimitado') : '<span class="pos">' + fmt(maxG) + '</span> ' + pill(maxG, fmt(maxG / base * 100) + '%')) + '</span></div>' +
@@ -1045,4 +1053,5 @@ render();
 if (new URLSearchParams(location.search).get('importar')) importarDaProducao();
 })();
 </script>
+<script src="{{ url_for('static', filename='js/pnt_boca.js') }}?v=2"></script>
 {% endblock %}

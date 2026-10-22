@@ -184,5 +184,53 @@
         carrega();
     }
 
-    global.PntBoca = { abrir: abrir, fechar: fechar };
+    // Lê um valor em R$ do texto de um elemento (ex.: "R$ 3.177,51", "−R$ 10,00", "∞"). null se não houver número.
+    function lerBRL(id, absoluto) {
+        var el = $(id); if (!el) return null;
+        var t = el.textContent || '';
+        if (t.indexOf('∞') >= 0 || !/\d/.test(t)) return null;
+        var v = parseFloat(t.replace(/[^0-9,]/g, '').replace(',', '.'));
+        if (isNaN(v)) return null;
+        return (!absoluto && /[−-]/.test(t)) ? -v : v;
+    }
+
+    // Montagem de uma estrutura (Exportar Pnt): as pernas como estão na tela, com o preço informado em cada uma.
+    //   o = {titulo, pernas:[{ticker, side:'BUY'|'SELL', qty, preco, tipo, strike, exp}], lucroMax, perdaMax (abs), txtLucro, txtPerda}
+    // lucroMax/perdaMax (R$, opcionais) permitem mostrar como ficam o lucro e a perda máximos na boca escolhida.
+    function montagem(o) {
+        var pernas = (o.pernas || []).filter(function (l) { return l.ticker && l.qty > 0; }).map(function (l) {
+            return { ticker: String(l.ticker).toUpperCase(), acao: l.side, qty: l.qty, tipo: l.tipo, strike: l.strike || 0, exp: l.exp || '', ref: l.preco, cols: [l.preco] };
+        });
+        if (!pernas.length) { alert('Preencha ao menos uma perna de opção com ticker e quantidade.'); return; }
+        var netSim = pernas.reduce(function (a, l) { return a + (l.acao === 'SELL' ? 1 : -1) * l.qty * l.cols[0]; }, 0);   // fluxo pelos preços informados (+ = crédito)
+        var temLP = o.lucroMax != null || o.perdaMax != null;
+        var cols = [
+            { titulo: 'Montagem (crédito/débito)', html: function (c, x) { return x.cd(x.cash(c)); } },
+            { titulo: 'Diferença p/ os preços informados', html: function (c, x) {
+                var d = x.cash(c) - netSim;
+                return '<span style="color:' + (d > 0.004 ? 'var(--success-color,#34d399)' : d < -0.004 ? 'var(--danger-color,#f87171)' : 'inherit') + ';">' + x.sgn(d) + '</span>';
+            } }
+        ];
+        if (o.lucroMax != null) cols.push({ titulo: 'Lucro máx. nessa boca', html: function (c, x) { return x.sgn(o.lucroMax + (x.cash(c) - netSim)); } });
+        if (o.perdaMax != null) cols.push({ titulo: 'Perda máx. nessa boca', html: function (c, x) {
+            var p = o.perdaMax - (x.cash(c) - netSim);
+            return p > 0 ? '<span style="color:var(--danger-color,#f87171);">−R$ ' + x.nf(p) + '</span>' : '<span style="color:var(--success-color,#34d399);">sem perda (+R$ ' + x.nf(-p) + ')</span>';
+        } });
+        abrir({
+            titulo: o.titulo || '📋 Exportar Pnt',
+            tituloOperacao: '1) Operação a executar — montagem da estrutura',
+            tituloInfo: '2) Montagem pelos preços informados',
+            infoHtml: function (x) {
+                return 'Saldo pelos preços informados: <strong>' + x.cd(netSim) + '</strong>' +
+                    (o.txtLucro ? ' &nbsp;·&nbsp; Lucro máx.: <strong>' + esc(o.txtLucro) + '</strong>' : '') + (o.txtPerda ? ' &nbsp;·&nbsp; Perda máx.: <strong>' + esc(o.txtPerda) + '</strong>' : '');
+            },
+            pernas: pernas,
+            colunasPerna: [{ titulo: 'Preço informado', tip: 'Prêmio digitado na tela' }],
+            rotuloRef: 'Pelos preços da tela',
+            resumoColunas: cols,
+            notaResumo: temLP ? 'Receber mais (ou pagar menos) que o saldo informado aumenta o lucro máximo e reduz a perda máxima na mesma medida.' : 'Receber mais (ou pagar menos) que o saldo informado melhora o resultado final na mesma medida.'
+        });
+    }
+
+    global.PntBoca = { abrir: abrir, fechar: fechar, montagem: montagem, lerBRL: lerBRL };
 })(window);

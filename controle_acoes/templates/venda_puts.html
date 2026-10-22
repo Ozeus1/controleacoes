@@ -1919,51 +1919,18 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
         window.location.href = '/cadeia-opcoes?' + q.toString();
     };
 
-    // Exportar Pnt: copia tickers, C/V (lado da operação), quantidades e o
-    // spread da montagem (saldo ÷ quantidade da 1ª perna) para a área de
-    // transferência — mesmo formato usado em Editar Operação Estruturada:
-    // <tickers por TAB> <C/V por TAB> <quantidades por TAB> <spread, 1 valor>.
+    // Exportar Pnt: abre o modal com a boca atual (bid/ask) das pernas, a escolha da boca que não cruza o book
+    // (o Pnt só aceita ofertas melhores que o book) e o resumo; copia a linha do Pnt.
     window.estruturaExportarPnt = function() {
         var legs = window.__estruturaLegs;
         if (!legs || !legs.length) { alert('Preencha a estrutura primeiro.'); return; }
-
-        var tickers = [], sides = [], qtys = [];
-        var net = 0;
-        legs.forEach(function(l) {
-            var sign = l.side === 'SELL' ? 1 : -1;
-            net += sign * (l.qty || 0) * (l.premium || 0);
-            tickers.push(l.ticker || '');
-            sides.push(l.side === 'BUY' ? 'C' : 'V');
-            qtys.push(l.qty || 0);
+        var ativo = (document.getElementById('e-ativo') || {}).value || '';
+        PntBoca.montagem({
+            titulo: '📋 Exportar Pnt — ' + (ativo.toUpperCase() || 'estrutura'),
+            pernas: legs.filter(function(l) { return l.type !== 'STOCK'; }).map(function(l) {
+                return { ticker: l.ticker || '', side: l.side, qty: l.qty || 0, preco: l.premium || 0, tipo: l.type, strike: l.strike || 0, exp: l.exp || '' };
+            })
         });
-
-        var qtyRef = qtys[0] || 1;
-        var spreadPorAcao = -net / qtyRef;   // + paga (débito) · − recebe (crédito)
-        var linha = tickers.concat(sides).concat(qtys)
-            .concat([spreadPorAcao.toFixed(2).replace('.', ',')])
-            .join('\t');
-
-        var btn = document.getElementById('e-export-btn');
-        var original = btn.innerHTML;
-        function ok() {
-            btn.textContent = '✓ Copiado!';
-            setTimeout(function () { btn.innerHTML = original; }, 1500);
-        }
-        function fail() {
-            alert('Não foi possível copiar automaticamente. Texto:\n\n' + linha);
-        }
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(linha).then(ok, fail);
-        } else {
-            var ta = document.createElement('textarea');
-            ta.value = linha;
-            ta.style.position = 'fixed';
-            ta.style.opacity = '0';
-            document.body.appendChild(ta);
-            ta.select();
-            try { document.execCommand('copy'); ok(); } catch (e) { fail(); }
-            document.body.removeChild(ta);
-        }
     };
 
     // Salva a estrutura nas Simulações de Opções. Com producao=true, também
@@ -2108,4 +2075,5 @@ table.no-datatable th:last-child, table.no-datatable td:last-child { text-align:
 
 })();
 </script>
+<script src="{{ url_for('static', filename='js/pnt_boca.js') }}?v=2"></script>
 {% endblock %}

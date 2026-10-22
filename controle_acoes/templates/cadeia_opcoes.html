@@ -237,6 +237,7 @@ table.cadeia td.empty{color:#334155;}
 </div><!-- /card -->
 
 <script src="{{ url_for('static', filename='js/payoff_style.js') }}?v=3"></script>
+<script src="{{ url_for('static', filename='js/pnt_boca.js') }}?v=2"></script>
 <script>
 var SELIC_RATE = {{ selic|default(14.5) }};
 (function(){
@@ -1072,16 +1073,15 @@ function exportarPntLegs(pernas, btn) {
     else fail();
 }
 window.exportarPntCad = function (btn) {
-  var pernas = [];
-  document.querySelectorAll('#legs-body .leg-row').forEach(function (row) {
-    var on = row.querySelector('.leg-on'); if (on && !on.checked) return;
-    if (row.querySelector('[name=leg_type]').value === 'STOCK') return;
-    pernas.push({ ticker: (row.querySelector('[name=leg_ticker]').value || '').trim(),
-                  side: row.querySelector('[name=leg_side]').value,
-                  qty: parseInt(row.querySelector('[name=leg_qty]').value, 10) || 0,
-                  premium: parseValC(row.querySelector('[name=leg_premium]').value) });
+  // abre o modal: boca atual das pernas, escolha da boca (que não cruza o book) e resumo; copia a linha do Pnt
+  var pernas = readLegsC().filter(function (l) { return l.type !== 'STOCK'; }).map(function (l) {
+    return { ticker: l.ticker, side: l.side, qty: l.qty, preco: l.premium, tipo: l.type, strike: l.strike, exp: l.exp || '' };
   });
-  exportarPntLegs(pernas, btn);
+  var nome = ((document.getElementById('sim-name-input') || {}).value || '').trim();
+  var txt = function (id) { var el = document.getElementById(id); return el ? (el.textContent || '') : ''; };
+  PntBoca.montagem({ titulo: '📋 Exportar Pnt — ' + (nome || 'cadeia de opções'), pernas: pernas,
+                     lucroMax: PntBoca.lerBRL('m-gain-c', false), perdaMax: PntBoca.lerBRL('m-loss-c', true),
+                     txtLucro: txt('m-gain-c'), txtPerda: txt('m-loss-c') });
 };
 
 /* ════ Abrir simulação salva ════ */

@@ -29000,6 +29000,76 @@ def api_chart_lines(ticker):
 _HINT_FICHA = {}   # ticker -> (timestamp, (strike, vencimento ISO, CALL/PUT, estilo)) — ficha da opção p/ o hint
 
 
+def _ewma_rapido(und, token, prazo=3):
+    """EWMA (%) do ativo para o hint: do cache (10 min) ou buscando com no máximo `prazo` s (a busca termina em segundo plano
+    e fica no cache para o próximo hint)."""
+    hit = _EWMA_CACHE.get(und)
+    if hit and time.time() - hit[0] < (600 if hit[1] else 45):
+        return hit[1]
+    res = {}
+    th = threading.Thread(target=lambda: res.setdefault('v', _oplab_ewma(und, token)), daemon=True)
+    th.start()
+    th.join(prazo)
+    return res.get('v')
+
+
+def _underlying_da_opcao(uid, ticker, payloads):
+    """Ativo-objeto de uma opção: campo da OpLab; senão o cadastro do usuário (opção, estruturada, trava, estudo);
+    senão uma ação da carteira com a mesma raiz de 4 letras (ex.: BBASW249 → BBAS3)."""
+    for d in payloads:
+        if isinstance(d, dict):
+            for k in ('parent_symbol', 'underlying', 'underlying_symbol'):
+                v = d.get(k)
+                if isinstance(v, str) and v.strip():
+                    return v.strip().upper()
+    try:
+        o = Option.query.filter(Option.user_id == uid, Option.ticker.ilike(ticker)).first()
+        if o and o.underlying_asset:
+            return o.underlying_asset.upper()
+        leg = StructuredLeg.query.join(StructuredOp).filter(StructuredOp.user_id == uid, StructuredLeg.ticker.ilike(ticker)).first()
+        if leg and leg.operation.underlying_asset:
+            return leg.operation.underlying_asset.upper()
+        sp = OptionSpread.query.filter(OptionSpread.user_id == uid, db.or_(OptionSpread.leg_long_ticker.ilike(ticker), OptionSpread.leg_short_ticker.ilike(ticker))).first()
+        if sp and sp.underlying_asset:
+            return sp.underlying_asset.upper()
+        so = StudyOption.query.filter(StudyOption.user_id == uid, StudyOption.ticker.ilike(ticker)).first()
+        if so and so.underlying_asset:
+            return so.underlying_asset.upper()
+        ac = Asset.query.filter(Asset.user_id == uid, Asset.ticker.like(ticker[:4] + '%')).first()
+        if ac:
+            return ac.ticker.upper()
+    except Exception:
+        pass
+    return None
+
+
+def _teorico_hint(uid, ticker, token, strike, exp_iso, tipo, payloads):
+    """Valor teórico (critério da OpLab) de uma opção para o hint: campo pronto na resposta da OpLab; senão Black-Scholes com a EWMA
+    do ativo (dias úteis/252, r = Selic). O spot vem do MT5 salvo ou do banco (sem rede); a EWMA tem prazo curto. None se não der."""
+    for d in payloads:
+        if isinstance(d, dict):
+            tp = _oplab_teorico(d)
+            if tp:
+                return round(tp, 2)
+    if not (token and strike and exp_iso and tipo):
+        return None
+    und = _underlying_da_opcao(uid, ticker, payloads)
+    if not und:
+        return None
+    spot = None
+    if _modo_mt5(uid):
+        row = _mt5_quote_row(uid, und)
+        if row and _num_pos(row.last) and _mt5_fresca(row):
+            spot = float(row.last)
+    if not spot:
+        spot = (_get_underlying_quote_cached(und, uid) or (None, None))[0]
+    if not spot:
+        return None
+    ewma = _ewma_rapido(und, token)
+    ref = next((d for d in payloads if isinstance(d, dict) and d.get('days_to_maturity') is not None), {})
+    return _teorico_serie(ref, float(spot), float(strike), str(exp_iso)[:10], tipo == 'CALL', ewma, _selic())
+
+
 @app.route('/api/quote_hint/<ticker>')
 @login_required
 def api_quote_hint(ticker):
@@ -29098,6 +29168,7 @@ def api_quote_hint(ticker):
     if not is_option and _option_re.match(ticker):
         is_option = True
 
+    _oplab_payloads = []        # respostas da OpLab (quote/instruments): podem trazer o valor teórico pronto
     # ── 1b. Modo MT5: usa o último valor recebido do MT5 (instantâneo, sem OpLab) ──
     mt5_row = None
     if is_option and _modo_mt5(uid):
@@ -29131,6 +29202,7 @@ def api_quote_hint(ticker):
             if r.status_code == 200:
                 data = r.json()
                 item = data[0] if isinstance(data, list) and data else (data if isinstance(data, dict) else {})
+                _oplab_payloads.append(item)
                 close_day = item.get('close') or item.get('last') or 0
                 var_day   = None
                 for _vk in ('variation', 'change', 'pct_change', 'percentChange', 'dailyChange'):
@@ -29177,6 +29249,7 @@ def api_quote_hint(ticker):
                     d2 = r2.json()
                     if isinstance(d2, list):
                         d2 = d2[0] if d2 else {}
+                    _oplab_payloads.append(d2)
                     try:
                         _k2 = float(d2.get('strike') or 0)
                         if _k2 > 0:
@@ -29239,6 +29312,12 @@ def api_quote_hint(ticker):
         if mt5_row:
             resp.update({'fonte': 'MT5', 'atualizado': _txt, 'idade_min': _idade,
                          'change_na': mt5_row.change_pct is None})
+        try:
+            tp = _teorico_hint(uid, ticker, oplab_token, o_strike, o_exp, o_tipo, _oplab_payloads)
+            if tp:
+                resp['teorico'] = round(float(tp), 2)
+        except Exception:
+            app.logger.exception('_teorico_hint %s', ticker)
         return jsonify(resp)
 
     # Opção sem NENHUM preço (nem OpLab, nem banco): retorna já — brapi e

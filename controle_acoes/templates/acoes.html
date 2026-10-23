@@ -802,6 +802,7 @@
     <span style="color:#94a3b8;">Var %</span>   <span id="qh-change"></span>
     <span style="color:#94a3b8;">Ask</span>     <span id="qh-ask" style="color:#f87171;"></span>
     <span style="color:#94a3b8;">Bid</span>     <span id="qh-bid" style="color:#34d399;"></span>
+    <span id="qh-teor-label" style="color:#94a3b8;display:none;">Teórico</span> <span id="qh-teor" style="display:none;"></span>
     <span id="qh-trades-label" style="color:#94a3b8;display:none;">Negócios</span> <span id="qh-trades" style="display:none;"></span>
   </div>
   <div id="qh-loading" style="color:#94a3b8; text-align:center; padding:.3rem 0;">carregando…</div>
@@ -823,6 +824,7 @@
         document.getElementById('qh-change').textContent = '';
         document.getElementById('qh-ask').textContent    = '';
         document.getElementById('qh-bid').textContent    = '';
+        document.getElementById('qh-teor').textContent   = '';
         document.getElementById('qh-loading').style.display = 'block';
         posHint(x, y);
         hint.style.display = 'block';
@@ -847,6 +849,7 @@
         cel.style.color  = d.change >= 0 ? '#34d399' : '#f87171';
         document.getElementById('qh-ask').textContent    = d.ask > 0 ? fmt(d.ask) : '—';
         document.getElementById('qh-bid').textContent    = d.bid > 0 ? fmt(d.bid) : '—';
+        var tr_=document.getElementById('qh-teor-label'),tv_=document.getElementById('qh-teor');if(d.is_option&&d.teorico>0){tr_.style.display='';tv_.style.display='';tv_.textContent=fmt(d.teorico);}else{tr_.style.display='none';tv_.style.display='none';}
         var tl = document.getElementById('qh-trades-label');
         var tv = document.getElementById('qh-trades');
         if(d.is_option && d.trades != null){ tl.style.display=''; tv.style.display=''; tv.textContent=d.trades; }

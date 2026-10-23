@@ -731,13 +731,18 @@ tbody tr:nth-child(odd) > td,
 tbody tr:nth-child(odd) > th {
     background-color: var(--zebra-bg);
 }
+/* Coluna congelada (1ª) SEMPRE opaca: --zebra-bg e --hover-bg são translúcidos (rgba), e com eles direto a coluna
+   deixava o texto das colunas que rolam por baixo aparecer e se misturar ao nome. Aqui a listra/hover entra como
+   uma camada (gradiente) sobre a cor sólida do card — mesmo visual, mas sem transparência. */
 tbody tr:nth-child(odd) > td:first-child {
-    background-color: var(--zebra-bg) !important;
+    background: linear-gradient(var(--zebra-bg), var(--zebra-bg)), var(--card-bg) !important;
 }
 tbody tr:hover > td,
-tbody tr:hover > th,
-tbody tr:hover > td:first-child {
+tbody tr:hover > th {
     background-color: var(--hover-bg) !important;
+}
+tbody tr:hover > td:first-child {
+    background: linear-gradient(var(--hover-bg), var(--hover-bg)), var(--card-bg) !important;
 }
 
 /* ── Freeze panes: sticky header row ── */
@@ -781,10 +786,6 @@ tbody td:first-child {
     --bs-table-color-state: var(--text-primary);
 }
 
-/* Hover sobre linha não muda o fundo da coluna sticky */
-tr:hover > td:first-child {
-    background: var(--card-bg) !important;
-}
 
 /* Badge de ticker/estratégia: fundo translúcido com texto na cor de
    destaque. O estilo sólido com texto branco não sobrevive a um accent

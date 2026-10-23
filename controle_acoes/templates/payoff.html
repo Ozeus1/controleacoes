@@ -779,6 +779,18 @@
     <p style="margin:.3rem 0 0; font-size:.72rem; color:var(--text-secondary);">
         Roda do mouse: zoom no eixo X (preço) · arraste: mover no X · Shift+roda: zoom no eixo Y (R$) · Shift+arraste: mover no Y · duplo clique: resetar
     </p>
+
+    {# ── Gráfico do ativo embutido (o mesmo gráfico do "ver gráfico"/Payoff), aberto sob demanda ── #}
+    {% if underlying %}
+    <div style="margin-top:.9rem;">
+        <button type="button" id="pf-graf-toggle" onclick="pfGraficoAtivo()"
+                style="background:none;border:none;color:var(--text-secondary);cursor:pointer;padding:.2rem 0;font-size:.82rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;"
+                title="Abre o gráfico do ativo (candles, médias, volume, zoom e linhas) aqui na página">
+            <span id="pf-graf-seta">▸</span> 📈 Gráfico do ativo — {{ underlying }}
+        </button>
+        <div id="pf-graf-host" style="display:none;margin-top:.5rem;"></div>
+    </div>
+    {% endif %}
 </div>
 </div>{# /payoff-fullscreen-wrap #}
 
@@ -1576,6 +1588,24 @@ window.abrirNoSimFlex = function () {
     window.open('/simflex?importar=1', '_blank');
 };
 </script>
+{% if underlying %}
+<script>
+// Abre/fecha o gráfico do ativo embutido sob o payoff (MyChart, o mesmo do "ver gráfico" e da tela Payoff)
+window.pfGraficoAtivo = function () {
+    var host = document.getElementById('pf-graf-host'), seta = document.getElementById('pf-graf-seta');
+    var abrir = host.style.display === 'none';
+    host.style.display = abrir ? 'block' : 'none';
+    seta.textContent = abrir ? '▾' : '▸';
+    if (!abrir) return;
+    if (!(window.MyChart && MyChart.embed)) { host.innerHTML = '<div style="color:var(--text-secondary);font-size:.85rem;">Gráfico indisponível: recarregue a página.</div>'; return; }
+    var cv = document.getElementById('payoff-chart');
+    var preco = cv && cv.dataset.spot !== '' ? parseFloat(cv.dataset.spot) : null;
+    var var_ = cv && cv.dataset.change !== '' ? parseFloat(cv.dataset.change) : null;
+    MyChart.embed(host, {{ underlying|upper|tojson }}, false, preco > 0 ? { price: preco, change: var_ } : null, { compacto: false });
+    host.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+};
+</script>
+{% endif %}
 {# ── Reverter: ordem inversa da montagem, no formato do Pnt (modal compartilhado: static/js/pnt_boca.js) ── #}
 <script src="{{ url_for('static', filename='js/pnt_boca.js') }}?v=2"></script>
 <script>

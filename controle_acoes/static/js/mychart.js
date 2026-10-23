@@ -19,6 +19,7 @@ var _modal      = null;
 var _card       = null;
 var _expanded   = false; // modal em tela cheia (toggle "Expandir")
 var _host       = null;  // elemento onde o gráfico está embutido (null = modal)
+var _hostCompacto = true; // embutido em painel estreito (cabeçalho compacto) ou em área larga (cabeçalho completo)
 var _canvas     = null;
 var _ctx        = null;
 var CSRF        = '';
@@ -1141,9 +1142,11 @@ MyChart.open = function(ticker, isIntl, quote) {
 
 // Embute o mesmo gráfico (card com cabeçalho, médias, zoom, linhas…) dentro de um elemento da página.
 // Só há uma instância: um novo embed/open move o card para o novo destino.
-MyChart.embed = function(host, ticker, isIntl, quote) {
+// opts.compacto = false → área larga da página: cabeçalho completo (zoom, ferramentas, Graf, Investidor10) e gráfico mais baixo que largo.
+MyChart.embed = function(host, ticker, isIntl, quote, opts) {
     if (!host) return;
     _host = host;
+    _hostCompacto = !(opts && opts.compacto === false);
     _abrir(ticker, isIntl, quote);
 };
 
@@ -1177,16 +1180,19 @@ function _abrir(ticker, isIntl, quote) {
                 + '.mc-embedded #mc-expand-btn,.mc-embedded #mc-close-btn{display:none!important}'
                 + '.mc-embedded button{padding:.12rem .38rem!important;font-size:.72rem!important}'
                 + '.mc-embedded #mc-status{font-size:.64rem!important;padding:.25rem .5rem!important}'
-                + '.mc-embedded #mc-title{font-size:.9rem!important}.mc-embedded #mc-price{font-size:.95rem!important}';
+                + '.mc-embedded #mc-title{font-size:.9rem!important}.mc-embedded #mc-price{font-size:.95rem!important}'
+                + '.mc-inline #mc-expand-btn,.mc-inline #mc-close-btn{display:none!important}';
             document.head.appendChild(st);
         }
         _expanded = false;
         _modal.style.display = 'none';
-        _card.classList.add('mc-embedded');
+        _card.classList.toggle('mc-embedded', _hostCompacto);
+        _card.classList.toggle('mc-inline', !_hostCompacto);
         _card.style.cssText = _cardStyleEmbed();
         if (_card.parentNode !== _host) _host.appendChild(_card);
     } else {
         _card.classList.remove('mc-embedded');
+        _card.classList.remove('mc-inline');
         _card.style.cssText = _cardStyle(_expanded);
         if (_card.parentNode !== _modal) _modal.appendChild(_card);
         _modal.style.display = 'flex';
@@ -1327,7 +1333,8 @@ function _resize() {
     if (!wrap) return;
     var W = wrap.clientWidth || 900;
     var H = Math.max(380, Math.round(W * 0.44));
-    if (_host) H = Math.max(240, Math.round(W * 0.62));   // embutido: painel estreito
+    if (_host) H = _hostCompacto ? Math.max(240, Math.min(Math.round(W * 0.62), 520))      // embutido: painel estreito
+                                 : Math.max(320, Math.min(Math.round(W * 0.38), 520));     // embutido em área larga
     if (_expanded && _card) {
         // Em tela cheia a largura cresce muito (98vw) e H = W*0.44 estouraria
         // a altura da viewport — usa o espaço vertical realmente disponível
@@ -1360,7 +1367,7 @@ function _resize() {
 
 // ── Desenho ───────────────────────────────────────────────────────────────────
 var PAD = { T: 32, R: 72, B: 28, L: 12 };
-function _padR() { return _host ? 52 : PAD.R; }   // embutido: painel estreito
+function _padR() { return (_host && _hostCompacto) ? 52 : PAD.R; }   // embutido em painel estreito
 
 function _draw() {
     if (!_state || !_state._vis || !_state._vis.length) return;

@@ -5107,8 +5107,16 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   // Operações — também não dispara a busca sozinha.
   var qEstrutura = new URLSearchParams(location.search).get('estrutura');
   if (qEstrutura === 'thl' || qEstrutura === 'mannerheim' || qEstrutura === 'trava_alta' ||
-      qEstrutura === 'trava_baixa' || qEstrutura === 'borboleta' || qEstrutura === 'broken_wing') {
+      qEstrutura === 'trava_baixa' || qEstrutura === 'borboleta' || qEstrutura === 'broken_wing' ||
+      qEstrutura === 'booster') {
     opSel.value = qEstrutura;
+    if (qEstrutura === 'booster') {              // ?tipo=put abre o Booster / Ratio de PUTs
+      var qTipo = (new URLSearchParams(location.search).get('tipo') || '').toLowerCase();
+      if (qTipo === 'put' || qTipo === 'call') {
+        var tsel = document.getElementById('fyt-bo-tipo');
+        tsel.value = qTipo; tsel.dispatchEvent(new Event('change'));
+      }
+    }
     syncFiltrosEstrutura();
   }
 })();

@@ -132,6 +132,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
       <button class="ba-obtn" data-op="strangle_cobertura">🦁 Strangle de Cobertura</button>
       <button class="ba-obtn" data-op="booster_leao_call">🦁 Booster Leão Call</button>
       <button class="ba-obtn" data-op="booster_leao_put">🦁 Booster Leão Put</button>
+      <button class="ba-obtn" data-op="assimetric_wings">🦁 Assimetric Wings</button>
     </div>
     <div class="ba-cat">
       <div class="ba-cat-lbl">📅 Calendário — Lateral (semanal → mensal · marque "incluir semanais")</div>
@@ -293,6 +294,7 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     strangle_cobertura: '🦁 Strangle de Cobertura — compra 1 CALL ITM + 1 PUT ITM com asa (distância entre os strikes) de R$ 40 no BOVA11 (outros ativos: proporcional, ≈ 20% do preço) e centro ≈ ativo (±5%); no vencimento vale no mínimo a asa, então o que importa é custo ≤ asa (lucro travado = asa − custo); ganho ilimitado fora dos strikes',
     booster_leao_call: '🦁📈 Booster Leão Call — compra 1 CALL ITM (asa 3 posições abaixo do ATM) e vende 1 CALL ATM no próximo MENSAL e no mensal seguinte (trava de alta), mais a venda da CALL mais OTM possível no próximo SEMANAL (mín. 6 dias úteis, contando hoje) que ainda paga o débito da trava; montagem a crédito ou ~zero; risco ilimitado na alta forte (CALL semanal) · estimado por BS no venc. semanal',
     booster_leao_put: '🦁📉 Booster Leão Put — espelho do Call: compra 1 PUT ITM (asa 3 posições acima do ATM) e vende 1 PUT ATM no próximo MENSAL e no mensal seguinte (trava de baixa), mais a venda da PUT mais OTM possível no próximo SEMANAL (mín. 6 dias úteis, contando hoje) que ainda paga o débito da trava; montagem a crédito ou ~zero; risco na queda forte (PUT semanal) · estimado por BS no venc. semanal',
+    assimetric_wings: '🦁🪽 Assimetric Wings — vende 3 PUTs ATM (300 no BOVA11) no próximo mensal e no mensal seguinte e usa o crédito para comprar 1 PUT ~10% ITM (100) do vencimento MAIS LONGO possível que o crédito paga; montagem a crédito ou ~zero; lucro máximo no ATM (venc. curto), risco forte na queda (3 vendidas × 1 comprada) · estimado por BS no venc. curto',
     monster_slide:  '🦁 Monster Slide — vende 1 CALL ITM (até 10%) e, com o prêmio, monta ≥ 10 travas de alta com CALLs (compra a 6 posições acima, asa 2); montagem a custo ~zero/crédito; risco ilimitado na alta forte',
     strangle_itm:   '🔗💰 Strangle ITM (vendido) — venda CALL ITM (abaixo do spot) + PUT ITM (acima), ~1–3% ITM cada; lateral/manejo; lucro = gordura (crédito − (K_PUT − K_CALL)); risco ilimitado fora do corredor',
     guts_short:     '💪📉 Guts (Short) — venda CALL ITM + PUT ITM (Δ 0,60–0,70); mercado lateral com IV alta; risco ilimitado nas pontas',
@@ -629,7 +631,30 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     return h + '</tbody></table></div>';
   }
 
-  var CUSTOM_TABLES = {booster_leao_call: boosterTable, booster_leao_put: boosterTable, box3: box3Table, broken_wings_short_put: bwspTable, broken_wings_short_call: bwspTable, box4: box4Table, strangle_itm: strangleItmTable, monster_slide: monsterTable, strangle_cobertura: strangleCobTable,
+  // ── Assimetric Wings (🦁 Leão): −3 PUT ATM (mensal) + 1 PUT ~10% ITM (vencimento mais longo possível) ─────────
+  function asymTable(rows, expIdx) {
+    if (!rows.length) return '<div class="ba-empty">Nenhuma PUT ~10% ITM de vencimento posterior que o crédito das 3 PUTs ATM consiga pagar neste mensal.</div>';
+    var h = '<div class="ba-wrap"><table class="ba-tab"><thead><tr>' +
+      '<th>Pernas (qtd × série)</th><th title="PUT ATM vendida / PUT ITM comprada">Strikes (ATM / ITM)</th>' +
+      '<th title="Quanto a PUT comprada está dentro do dinheiro">ITM</th>' +
+      '<th title="Vencimento da PUT comprada: o mais longo cujo custo o crédito das vendidas ainda paga">Venc. da comprada</th>' +
+      '<th>Montagem</th><th>Lucro máx. (est.)</th><th>Perda máx. (est.)</th><th>Breakevens</th></tr></thead><tbody>';
+    rows.forEach(function(r, j) {
+      h += '<tr class="ba-row" data-exp="' + expIdx + '" data-row="' + j + '" title="Clique para ver o resumo">' +
+        '<td>' + r.legs.map(legBadge).join(' ') + '</td>' +
+        '<td>' + fmt(r.legs[0].k) + ' / ' + fmt(r.legs[1].k) + '</td>' +
+        '<td>' + fmt(r.itm_pct, 1) + '%</td>' +
+        '<td>' + dateBR(r.exp_long) + '</td>' +
+        '<td><span class="ba-badge ' + (r.is_credit ? 'credit' : 'debit') + '">' + r.montagem + ' ' + brl(Math.abs(r.net)) + '</span></td>' +
+        '<td class="pos"><strong>≈ ' + brl(r.max_gain) + '</strong></td>' +
+        '<td class="neg">≈ ' + brl(r.max_loss) + '</td>' +
+        '<td>' + (r.bes.length ? r.bes.map(function(b) { return brl(b); }).join(' · ') : '—') + '</td>' +
+        '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  var CUSTOM_TABLES = {assimetric_wings: asymTable, booster_leao_call: boosterTable, booster_leao_put: boosterTable, box3: box3Table, broken_wings_short_put: bwspTable, broken_wings_short_call: bwspTable, box4: box4Table, strangle_itm: strangleItmTable, monster_slide: monsterTable, strangle_cobertura: strangleCobTable,
     slide_estrutural: function(rows, expIdx) { return slideTable(rows, expIdx, false); },
     slide_estrutural_put: function(rows, expIdx) { return slideTable(rows, expIdx, true); }};
 

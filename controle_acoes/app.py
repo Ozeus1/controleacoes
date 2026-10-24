@@ -5885,10 +5885,13 @@ def api_busca_operacoes(ticker):
                'pmcp', 'bear_calendar')
     # Booster Leão (🦁): trava ITM→ATM no próximo MENSAL + venda da opção mais OTM possível no próximo SEMANAL
     _BOOSTER = ('booster_leao_call', 'booster_leao_put')
+    # Assimetric Wings (🦁): vende 300 PUTs ATM (próximo mensal e mensal seguinte) e usa o crédito para comprar 100 PUTs ~10% ITM
+    # do vencimento mais longo possível
+    _ASYM = ('assimetric_wings',)
     if op in ('calendar_spread', 'diagonal_spread', 'double_diagonal',
               'short_call_calendar', 'straddle_strangle_swap',
               'bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual',
-              'straddle_long_put') + _CAL_V4 + _BOOSTER:
+              'straddle_long_put') + _CAL_V4 + _BOOSTER + _ASYM:
         def _enrich_cal(lst):
             out = []
             for rw in lst:
@@ -5977,6 +5980,12 @@ def api_busca_operacoes(ticker):
                         pairs.append((w_exp, m2, (_date.fromisoformat(w_exp) - today).days,
                                       (_date.fromisoformat(m2) - today).days))
                     break
+        if op in _ASYM:
+            # Blocos: próximo mensal e mensal seguinte (as PUTs ATM vendidas). O vencimento da PUT comprada é escolhido por
+            # linha (o mais longo possível que o crédito paga); exp_l/dc_l aqui são só provisórios (corrigidos depois).
+            _mens = [e for e in all_exps if _is_monthly_cal(e) and (_date.fromisoformat(e) - today).days >= 1]
+            pairs = [(m, _mens[-1], (_date.fromisoformat(m) - today).days, (_date.fromisoformat(_mens[-1]) - today).days)
+                     for m in _mens[:2]] if len(_mens) >= 2 else []
 
         expirations = []
         for exp_s, exp_l, dc_s, dc_l in pairs:
@@ -6009,7 +6018,7 @@ def api_busca_operacoes(ticker):
                             sig = lg['iv'] or 0.35
                             v += q * _bs_price(S, lg['k'], T_rem, r_cont, sig, is_c)
                     return v
-                if op in ('bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual', 'straddle_long_put') + _BOOSTER:
+                if op in ('bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual', 'straddle_long_put') + _BOOSTER + _ASYM:
                     # exposição aberta nas duas pontas: varre ~0–1,60 × spot
                     # (S→0 entra no cálculo para a perda/ganho máximos da PUT)
                     grid = [spot * (0.01 + 0.0265 * k) for k in range(61)]
@@ -6228,6 +6237,33 @@ def api_busca_operacoes(ticker):
                     combos.append([(itm, _dl(itm, is_call, T_l) or (0.7 if is_call else -0.7), is_call, 1, exp_l, dc_l),
                                    (cen, _dl(cen, is_call, T_l) or (0.5 if is_call else -0.5), is_call, -1, exp_l, dc_l),
                                    (w, _dl(w, is_call, T_s) or (0.2 if is_call else -0.2), is_call, -1, exp_s, dc_s)])
+            elif op in _ASYM:
+                # Assimetric Wings: −3 PUT ATM (mensal M) + 1 PUT ~10% ITM (strike acima do spot) no vencimento MAIS LONGO
+                # possível, desde que o crédito das 3 vendidas pague a compra (net ≥ 0). ATM = os dois strikes que cercam o spot.
+                try:
+                    itm_alvo = float(str(request.args.get('itm') or '10').replace(',', '.'))
+                except ValueError:
+                    itm_alvo = 10.0
+                alvo_k = spot * (1 + itm_alvo / 100.0)
+                abaixo = [r for r in puts_s if r['strike'] <= spot]
+                acima = [r for r in puts_s if r['strike'] > spot]
+                centros = ([abaixo[-1]] if abaixo else []) + ([acima[0]] if acima else [])
+                longos = []
+                for e_l in sorted([e for e in all_exps if _is_monthly_cal(e)
+                                   and (_date.fromisoformat(e) - today).days > dc_s], reverse=True):
+                    pool_l = _enrich_cal(puts_by_exp.get(e_l, []))
+                    if pool_l:
+                        longos.append((e_l, (_date.fromisoformat(e_l) - today).days, pool_l))
+                for cen in centros:
+                    for e_l, dcl, pool_l in longos:                       # do mais longo para o mais curto
+                        cand = [r for r in pool_l if r['strike'] > spot]
+                        if not cand:
+                            continue
+                        lp = min(cand, key=lambda r: abs(r['strike'] - alvo_k))
+                        if 3 * cen['bid'] - lp['ask'] >= -0.02:
+                            combos.append([(cen, _dl(cen, False, T_s) or -0.5, False, -3, exp_s, dc_s),
+                                           (lp, _dl(lp, False, dcl / 365.0) or -0.8, False, 1, e_l, dcl)])
+                            break
             else:   # double_diagonal
                 for cs, dvs in _cands_cal(calls_s, True, T_s, (0.18, 0.32), 'sell')[:2]:
                     for ps, dps in _cands_cal(puts_s, False, T_s, (-0.32, -0.18), 'sell')[:2]:
@@ -6244,7 +6280,7 @@ def api_busca_operacoes(ticker):
 
             # Operações do livro montadas no CRÉDITO (não exigir débito)
             _ha_op = op in ('bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual', 'straddle_long_put')
-            _credit_cal = ('double_diagonal', 'short_call_calendar', 'straddle_strangle_swap') + _BOOSTER                           + (('bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual', 'straddle_long_put') if _ha_op else ())
+            _credit_cal = ('double_diagonal', 'short_call_calendar', 'straddle_strangle_swap') + _BOOSTER + _ASYM                           + (('bull_straddle_ha', 'bear_straddle_ha', 'straddle_ha_dual', 'straddle_long_put') if _ha_op else ())
             for sel in combos:
                 rank_k = None
                 if _ha_op:
@@ -6274,6 +6310,10 @@ def api_busca_operacoes(ticker):
                     'bes':       [round(b, 2) for b in bes],
                     'est':       True,                        # valores estimados (BS)
                 })
+                if op in _ASYM:
+                    _ks, _kl = legs_out[0]['k'], legs_out[1]['k']
+                    rows[-1].update({'centro': _ks, 'itm_pct': round((_kl - spot) / spot * 100, 1),
+                                     'exp_long': legs_out[1]['exp'], 'n_vend': 3})
                 if op in _BOOSTER:
                     _ki, _ka, _kw = legs_out[0]['k'], legs_out[1]['k'], legs_out[2]['k']
                     rows[-1].update({
@@ -6301,11 +6341,14 @@ def api_busca_operacoes(ticker):
                 rows.sort(key=lambda x: x['_rk'])        # HA 1 strike além primeiro, strike mais ATM, maior crédito
                 for r_ in rows:
                     r_.pop('_rk', None)
-            elif op in _BOOSTER:
+            elif op in _BOOSTER + _ASYM:
                 rows.sort(key=lambda x: (-x['max_gain'], -x['net']))
             else:
                 rows.sort(key=lambda x: -(x['ratio'] or 0))
             rows = rows[:8]
+            if op in _ASYM and rows:           # cabeçalho do bloco: vencimento longo da melhor linha
+                exp_l = rows[0]['exp_long']
+                dc_l = (_date.fromisoformat(exp_l) - today).days
             expirations.append({
                 'exp':          exp_s,
                 'exp_long':     exp_l,

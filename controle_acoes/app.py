@@ -5960,19 +5960,22 @@ def api_busca_operacoes(ticker):
                 pairs.append((selected_exps[i], selected_exps[j], dc_s, dc_l))
         pairs = pairs[:4]
         if op in _BOOSTER:
-            # Par (semanal, mensal) do Booster Leão: o PRÓXIMO mensal que tenha, antes dele, um semanal com no mínimo
-            # 6 dias úteis até o vencimento (contando hoje) — prazo para a venda semanal "pagar a conta".
+            # Pares (semanal, mensal) do Booster Leão: a trava ITM→ATM é montada no PRÓXIMO mensal e no mensal SEGUINTE
+            # (dois blocos de resultado), sempre com a venda no mesmo semanal — o primeiro semanal com no mínimo 6 dias
+            # úteis até o vencimento (contando hoje), anterior ao próximo mensal; é o prazo para a venda "pagar a conta".
             # Semanais entram mesmo com "incluir semanais" desmarcado (a estrutura depende deles).
             pairs = []
-            cand_exps = [e for e in all_exps if (_date.fromisoformat(e) - today).days <= max(max_days, 75)]
+            cand_exps = [e for e in all_exps if (_date.fromisoformat(e) - today).days <= max(max_days, 120)]
             _hoje_util = 1 if today.weekday() < 5 else 0
             _du_incl = lambda e: du_count(today, _date.fromisoformat(e)) + _hoje_util
-            for m_exp in [e for e in cand_exps if _is_monthly_cal(e)]:
+            _mensais = [e for e in cand_exps if _is_monthly_cal(e)]
+            for k_m, m_exp in enumerate(_mensais):
                 ws = [e for e in cand_exps if not _is_monthly_cal(e) and e < m_exp and _du_incl(e) >= 6]
                 if ws:
                     w_exp = ws[0]
-                    pairs.append((w_exp, m_exp, (_date.fromisoformat(w_exp) - today).days,
-                                  (_date.fromisoformat(m_exp) - today).days))
+                    for m2 in _mensais[k_m:k_m + 2]:           # próximo mensal e o seguinte
+                        pairs.append((w_exp, m2, (_date.fromisoformat(w_exp) - today).days,
+                                      (_date.fromisoformat(m2) - today).days))
                     break
 
         expirations = []
@@ -6199,7 +6202,7 @@ def api_busca_operacoes(ticker):
                                            (hp, dhp, False, 6, exp_l, dc_l),
                                            ('rank', round(dev, 3), asym, round(cost_c, 2), round(cost_p, 2))])
             elif op in _BOOSTER:
-                # Booster Leão — CALL: +1 CALL ITM (asa 3 posições abaixo do ATM) −1 CALL ATM (próximo MENSAL)
+                # Booster Leão — CALL: +1 CALL ITM (asa 3 posições abaixo do ATM) −1 CALL ATM (próximo MENSAL e mensal seguinte)
                 #                     −1 CALL OTM no SEMANAL, a MAIS OTM possível que ainda paga a conta (net ≥ 0).
                 # Booster Leão — PUT: espelho (+1 PUT ITM 3 posições ACIMA do ATM, −1 PUT ATM, −1 PUT OTM semanal mais abaixo).
                 # ATM = os dois strikes que cercam o spot (uma variante para cada).

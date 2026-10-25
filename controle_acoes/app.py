@@ -17509,6 +17509,226 @@ def api_fyt_borboleta(ticker):
     })
 
 
+@app.route('/api/fyt-bwb/<ticker>')
+@login_required
+def api_fyt_bwb(ticker):
+    """Broken Wing Butterfly: +1 K1 −2 K2 +1 K3, mesmo tipo (CALL ou PUT) e vencimento único, com uma das asas
+    maior que a outra (a "asa quebrada"), o que barateia a montagem (ou a faz nascer no crédito) e desloca o risco
+    para o lado da asa quebrada.
+    Parâmetros: tipo=call|put · lado=sup (K3−K2 > K2−K1: risco acima) | inf (K2−K1 > K3−K2: risco abaixo) ·
+    exp=AAAA-MM-DD (semanais e mensais até o 2º mensal; padrão = próximo mensal) · asa=todos|R$ (asa normal —
+    regra do Booster: BOVA11/SMAL11 até R$ 12, demais até R$ 3; a quebrada vai de asa a asa + o mesmo limite) ·
+    a_min/a_max (faixa da assunção) · p_min/p_max (preço líquido, + débito / − crédito)."""
+    ticker = ticker.strip().upper()
+    usar_brapi = request.args.get('source') == 'brapi'
+    token = None
+    if not usar_brapi:
+        token = Settings.get_value('oplab_token', user_id=current_user.id)
+        if not token:
+            return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
+    if not spot:
+        return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
+
+    def _num(name, default):
+        try:
+            return float(str(request.args.get(name, default)).replace(',', '.'))
+        except (TypeError, ValueError):
+            return default
+
+    tipo = 'put' if (request.args.get('tipo') or 'call').lower() == 'put' else 'call'
+    call = tipo == 'call'
+    sup = (request.args.get('lado') or 'sup').lower() != 'inf'
+    cap = 12.0 if ticker in ('BOVA11', 'SMAL11') else 3.0
+    asa_raw = (request.args.get('asa') or 'todos').strip().lower()
+    asa_f = None if asa_raw in ('', 'todos') else _num('asa', 0.0)
+    a_min = _num('a_min', spot * 0.8)
+    a_max = _num('a_max', spot * 1.2)
+    if a_max < a_min:
+        a_min, a_max = a_max, a_min
+    p_min = _num('p_min', -0.5)
+    p_max = _num('p_max', 0.5)
+    if p_max < p_min:
+        p_min, p_max = p_max, p_min
+
+    if usar_brapi:
+        try:
+            opt_list = _brapi_opt_list_raw(ticker, current_user.id)
+        except OplabApiError as e:
+            return jsonify({'error': str(e)}), 502
+        except Exception:
+            app.logger.exception('api_fyt_bwb (brapi) error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia via BRAPI.'}), 500
+    else:
+        try:
+            data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+        except OplabApiError as e:
+            return jsonify({'error': str(e), 'status': e.status_code}), 503
+        except Exception:
+            app.logger.exception('api_fyt_bwb error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+        opt_list = data if isinstance(data, list) else (
+            data.get('options') or data.get('calls', []) + data.get('puts', []) or [])
+
+    from datetime import date as _date
+    today = _date.today()
+
+    def _third_friday(y, m):
+        count, day = 0, 1
+        while True:
+            d = _date(y, m, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    return d
+            day += 1
+
+    def _is_monthly(exp_str):
+        d = _date.fromisoformat(exp_str)
+        return abs((d - _third_friday(d.year, d.month)).days) <= 2
+
+    by_exp = {}
+    for o in opt_list:
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        is_put = 'PUT' in cat or cat == 'P'
+        if is_put == call:
+            continue
+        strike = float(o.get('strike') or 0)
+        due = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due:
+            due = due.split('T')[0]
+        sym = str(o.get('symbol') or o.get('ticker') or '').upper()
+        if not due or strike <= 0 or not sym:
+            continue
+        try:
+            if _date.fromisoformat(due) <= today:
+                continue
+        except ValueError:
+            continue
+        by_exp.setdefault(due, {})[round(strike, 2)] = {
+            'symbol': sym, 'strike': round(strike, 2),
+            'bid': round(float(o.get('bid') or 0), 2), 'ask': round(float(o.get('ask') or 0), 2),
+            'close': round(float(o.get('close') or 0), 2)}
+
+    dues = sorted(by_exp)
+    if not dues:
+        return jsonify({'error': f'Nenhum vencimento com {"CALLs" if call else "PUTs"} para {ticker}.'}), 404
+    monthlies = [d for d in dues if _is_monthly(d)]
+    limite = monthlies[1] if len(monthlies) >= 2 else (monthlies[0] if monthlies else dues[-1])
+    lista = [d for d in dues if d <= limite]
+    exps_out = [{'exp': d, 'dc': max((_date.fromisoformat(d) - today).days, 0), 'mensal': _is_monthly(d)} for d in lista]
+
+    req_exp = (request.args.get('exp') or '').strip()
+    exp = None
+    if req_exp:
+        try:
+            alvo = _date.fromisoformat(req_exp)
+            perto = min(lista, key=lambda d: abs((_date.fromisoformat(d) - alvo).days))
+            if abs((_date.fromisoformat(perto) - alvo).days) <= 3:
+                exp = perto
+        except ValueError:
+            exp = None
+        if exp is None:
+            return jsonify({'error': f'Sem opções de {ticker} no vencimento {req_exp}. Escolha outro vencimento da lista.',
+                            'expirations': exps_out}), 404
+    else:
+        exp = monthlies[0] if monthlies else lista[0]
+
+    _now_b = now_brt()
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
+
+    def _eff(rw):
+        bid, ask, last = rw['bid'], rw['ask'], rw['close']
+        last_ok = last if last >= 0.05 else None
+        has_book = bid >= 0.05 and ask >= 0.05
+        if not market_open:
+            return {'bid': last_ok, 'ask': last_ok, 'src': 'ultimo', 'boca': has_book}
+        b = bid if bid >= 0.05 else last_ok
+        a = ask if ask >= 0.05 else last_ok
+        src = 'book' if has_book else 'ultimo'
+        if has_book and last_ok and (ask - bid) > max(0.10, 0.25 * (bid + ask) / 2):
+            b = a = last_ok
+            src = 'ultimo'
+        return {'bid': b, 'ask': a, 'src': src, 'boca': has_book}
+
+    chain = by_exp[exp]
+    eff = {k: _eff(v) for k, v in chain.items()}
+    ks = sorted(chain)
+
+    def _f(S, k):
+        return max(S - k, 0.0) if call else max(k - S, 0.0)
+
+    rows = []
+    for k2 in ks:
+        e2 = eff[k2]
+        if (market_open and not e2['boca']) or not e2['bid']:
+            continue
+        lows = [k for k in ks if 0.004 < k2 - k <= 2 * cap + 0.004]
+        highs = [k for k in ks if 0.004 < k - k2 <= 2 * cap + 0.004]
+        for k1 in lows:
+            w1 = round(k2 - k1, 2)
+            e1 = eff[k1]
+            if (market_open and not e1['boca']) or not e1['ask']:
+                continue
+            for k3 in highs:
+                w2 = round(k3 - k2, 2)
+                asa, asa_q = (w1, w2) if sup else (w2, w1)
+                if asa_q <= asa + 0.004 or asa_q > asa + cap + 0.004:
+                    continue
+                if asa_f is None:
+                    if asa > cap + 0.004:
+                        continue
+                elif abs(asa - asa_f) > 0.004:
+                    continue
+                e3 = eff[k3]
+                if (market_open and not e3['boca']) or not e3['ask']:
+                    continue
+                preco = round(e1['ask'] + e3['ask'] - 2 * e2['bid'], 2)
+                if not (p_min - 0.004 <= preco <= p_max + 0.004):
+                    continue
+
+                def val(S):
+                    return _f(S, k1) - 2 * _f(S, k2) + _f(S, k3) - preco
+                lucro_max = val(k2)                  # pico no miolo
+                v_lo, v_hi = val(k1), val(k3)       # caudas (constantes além de K1 e de K3)
+                if lucro_max <= 0:
+                    continue
+                v_risco = v_hi if sup else v_lo
+                if v_risco >= 0:
+                    continue                          # lado da asa quebrada nunca volta a zero → sem assunção
+                if sup:
+                    assuncao = k2 + lucro_max / (lucro_max - v_hi) * (k3 - k2)
+                    be_outro = (k2 - lucro_max / (lucro_max - v_lo) * (k2 - k1)) if v_lo < 0 else None
+                else:
+                    assuncao = k2 - lucro_max / (lucro_max - v_lo) * (k2 - k1)
+                    be_outro = (k2 + lucro_max / (lucro_max - v_hi) * (k3 - k2)) if v_hi < 0 else None
+                if not (a_min <= assuncao <= a_max):
+                    continue
+                c1, c2, c3 = chain[k1]['close'], chain[k2]['close'], chain[k3]['close']
+                ultimo = round(c1 + c3 - 2 * c2, 2) if min(c1, c2, c3) >= 0.05 else None
+                srcs = (e1['src'], e2['src'], e3['src'])
+                rows.append({
+                    'k1': k1, 'k2': k2, 'k3': k3,
+                    's1': chain[k1]['symbol'], 's2': chain[k2]['symbol'], 's3': chain[k3]['symbol'],
+                    'p1': round(e1['ask'], 2), 'p2': round(e2['bid'], 2), 'p3': round(e3['ask'], 2),
+                    'asa': asa, 'asa_q': asa_q, 'preco': preco, 'ultimo': ultimo,
+                    'lucro_max': round(lucro_max, 2), 'risco_max': round(min(v_lo, v_hi, 0.0), 2),
+                    'assuncao': round(assuncao, 2), 'assunc_dist': round((assuncao - spot) / spot * 100, 1),
+                    'be_outro': round(be_outro, 2) if be_outro is not None else None,
+                    'k2_dist': round((k2 - spot) / spot * 100, 1),
+                    'src': 'ultimo' if 'ultimo' in srcs else 'book',
+                })
+    rows.sort(key=lambda r: (r['preco'], -r['lucro_max'], abs(r['k2'] - spot)))
+    rows = _fyt_diversify(rows, lambda r: r['s2'], per_key=3, limit=80)
+    return jsonify({
+        'ticker': ticker, 'spot': spot, 'spot_change': spot_change, 'tipo': tipo, 'lado': 'sup' if sup else 'inf',
+        'market_open': market_open, 'expirations': exps_out, 'exp': exp,
+        'dc': max((_date.fromisoformat(exp) - today).days, 1), 'mensal': _is_monthly(exp),
+        'rows': rows, 'total': len(rows), 'source': 'brapi' if usar_brapi else 'oplab',
+    })
+
+
 @app.route('/api/fyt-broken-wing/<ticker>')
 @login_required
 def api_fyt_broken_wing(ticker):

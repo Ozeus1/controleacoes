@@ -17800,6 +17800,361 @@ def api_fyt_bwb(ticker):
     })
 
 
+@app.route('/api/fyt-hexabox/<ticker>')
+@login_required
+def api_fyt_hexabox(ticker):
+    """Hexabox (6 pernas): uma estrutura de CALL acima + a espelho de PUT abaixo. (O tipo BWB usa /api/fyt-bwb?tipo=hexabox.)
+    kind=slide   — Slide Estrutural de CALL (+K1 −K2 −K3, K1<K2<K3) + de PUT (+K1 −K2 −K3, K1>K2>K3), vencimento único
+                   (exp=AAAA-MM-DD, semanais até o 2º mensal); asa_cv (K1↔K2) e asa_vv (K2↔K3) iguais nas duas;
+                   miolo = meio dos dois strikes vendidos; resultado no vencimento.
+    kind=booster — Booster Leão CALL + PUT, regra da busca avançada: trava ITM (3 strikes) → vendida no mensal (m=0 próximo,
+                   m=1 seguinte) + venda no 1º semanal com ≥ 6 d.u. (contando hoje) antes do próximo mensal, a mais OTM
+                   que ainda paga a trava; miolo = strike vendido no mensal; resultado estimado (BS) no vencimento semanal.
+    a_min/a_max = distância entre os miolos (CALL − PUT) · p_min/p_max = preço líquido das 6 pernas (+ débito)."""
+    ticker = ticker.strip().upper()
+    usar_brapi = request.args.get('source') == 'brapi'
+    token = None
+    if not usar_brapi:
+        token = Settings.get_value('oplab_token', user_id=current_user.id)
+        if not token:
+            return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
+    if not spot:
+        return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
+
+    def _num(name, default):
+        try:
+            return float(str(request.args.get(name, default)).replace(',', '.'))
+        except (TypeError, ValueError):
+            return default
+
+    def _asa(name):
+        raw = (request.args.get(name) or 'todos').strip().lower()
+        return None if raw in ('', 'todos') else _num(name, 0.0)
+
+    kind = 'booster' if (request.args.get('kind') or '').lower() == 'booster' else 'slide'
+    cap = 12.0 if ticker in ('BOVA11', 'SMAL11') else 3.0
+    a_min = _num('a_min', 0.0)
+    a_max = _num('a_max', spot * 0.2)
+    if a_max < a_min:
+        a_min, a_max = a_max, a_min
+    p_min = _num('p_min', -1.0)
+    p_max = _num('p_max', 1.0)
+    if p_max < p_min:
+        p_min, p_max = p_max, p_min
+
+    if usar_brapi:
+        try:
+            opt_list = _brapi_opt_list_raw(ticker, current_user.id)
+        except OplabApiError as e:
+            return jsonify({'error': str(e)}), 502
+        except Exception:
+            app.logger.exception('api_fyt_hexabox (brapi) error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia via BRAPI.'}), 500
+    else:
+        try:
+            data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+        except OplabApiError as e:
+            return jsonify({'error': str(e), 'status': e.status_code}), 503
+        except Exception:
+            app.logger.exception('api_fyt_hexabox error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+        opt_list = data if isinstance(data, list) else (
+            data.get('options') or data.get('calls', []) + data.get('puts', []) or [])
+
+    from datetime import date as _date
+    import bisect
+    today = _date.today()
+
+    def _third_friday(y, m):
+        count, day = 0, 1
+        while True:
+            d = _date(y, m, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    return d
+            day += 1
+
+    def _is_monthly(exp_str):
+        d = _date.fromisoformat(exp_str)
+        return abs((d - _third_friday(d.year, d.month)).days) <= 2
+
+    by_exp = {'call': {}, 'put': {}}
+    for o in opt_list:
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        tp = 'put' if ('PUT' in cat or cat == 'P') else 'call'
+        strike = float(o.get('strike') or 0)
+        due = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due:
+            due = due.split('T')[0]
+        sym = str(o.get('symbol') or o.get('ticker') or '').upper()
+        if not due or strike <= 0 or not sym:
+            continue
+        try:
+            if _date.fromisoformat(due) <= today:
+                continue
+        except ValueError:
+            continue
+        by_exp[tp].setdefault(due, {})[round(strike, 2)] = {
+            'symbol': sym, 'strike': round(strike, 2),
+            'bid': round(float(o.get('bid') or 0), 2), 'ask': round(float(o.get('ask') or 0), 2),
+            'close': round(float(o.get('close') or 0), 2)}
+
+    dues = sorted(set(by_exp['call']) & set(by_exp['put']))
+    if not dues:
+        return jsonify({'error': f'Nenhum vencimento com CALLs e PUTs para {ticker}.'}), 404
+    monthlies = [d for d in dues if _is_monthly(d)]
+    limite = monthlies[1] if len(monthlies) >= 2 else (monthlies[0] if monthlies else dues[-1])
+    lista = [d for d in dues if d <= limite]
+    exps_out = [{'exp': d, 'dc': max((_date.fromisoformat(d) - today).days, 0), 'mensal': _is_monthly(d)} for d in lista]
+
+    _now_b = now_brt()
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
+
+    def _eff(rw):
+        bid, ask, last = rw['bid'], rw['ask'], rw['close']
+        last_ok = last if last >= 0.05 else None
+        has_book = bid >= 0.05 and ask >= 0.05
+        if not market_open:
+            return {'bid': last_ok, 'ask': last_ok, 'src': 'ultimo', 'boca': has_book}
+        b = bid if bid >= 0.05 else last_ok
+        a = ask if ask >= 0.05 else last_ok
+        src = 'book' if has_book else 'ultimo'
+        if has_book and last_ok and (ask - bid) > max(0.10, 0.25 * (bid + ask) / 2):
+            b = a = last_ok
+            src = 'ultimo'
+        return {'bid': b, 'ask': a, 'src': src, 'boca': has_book}
+
+    def _ok_buy(e):
+        return e['ask'] and not (market_open and not e['boca'])
+
+    def _ok_sell(e):
+        return e['bid'] and not (market_open and not e['boca'])
+
+    def _leg(rw, e, tp, q, exp_):
+        px = e['ask'] if q > 0 else e['bid']
+        return {'s': rw['symbol'], 'tp': tp.upper(), 'k': rw['strike'], 'q': q, 'px': round(px, 2), 'exp': exp_,
+                'close': rw['close'], 'src': e['src']}
+
+    def _pair(calls, puts):
+        """calls/puts: {(miolo, *chave): [cand]} com cand = {'preco', 'legs', ...}. Junta só grupos com a mesma chave (ex.: as
+        mesmas asas), pela distância entre miolos e pela faixa de preço total (bisect nas PUTs ordenadas por preço); no
+        máximo 6 montagens por par de miolos."""
+        puts = {k: sorted(v, key=lambda c: c['preco']) for k, v in puts.items()}
+        put_px = {k: [c['preco'] for c in v] for k, v in puts.items()}
+        por_chave = {}
+        for mp in puts:
+            por_chave.setdefault(mp[1:], []).append(mp)
+        out = []
+        for mc, lc in calls.items():
+            for mp in por_chave.get(mc[1:], []):
+                lp = puts[mp]
+                dist = round(mc[0] - mp[0], 2)
+                if not (a_min - 0.004 <= dist <= a_max + 0.004):
+                    continue
+                pares = []
+                for c in lc:
+                    lo = bisect.bisect_left(put_px[mp], p_min - c['preco'] - 0.004)
+                    hi = bisect.bisect_right(put_px[mp], p_max - c['preco'] + 0.004)
+                    pares.extend((round(c['preco'] + lp[x]['preco'], 2), c, lp[x]) for x in range(lo, min(hi, lo + 6)))
+                pares.sort(key=lambda t: t[0])
+                out.extend((preco, c, p, dist, (mc[0] + mp[0]) / 2) for preco, c, p in pares[:6])
+        return out
+
+    def _zeros(xs, vs):
+        z = []
+        for (xa, va), (xb, vb) in zip(zip(xs, vs), zip(xs[1:], vs[1:])):
+            if (va < 0) != (vb < 0):
+                z.append(xa + (0 - va) / (vb - va) * (xb - xa))
+        return z
+
+    def _ult(legs):
+        if any(l['close'] < 0.05 for l in legs):
+            return None
+        return round(sum(l['q'] * l['close'] for l in legs), 2)
+
+    rows = []
+    extra = {}
+    if kind == 'slide':
+        req_exp = (request.args.get('exp') or '').strip()
+        exp = None
+        if req_exp:
+            try:
+                alvo = _date.fromisoformat(req_exp)
+                perto = min(lista, key=lambda d: abs((_date.fromisoformat(d) - alvo).days))
+                if abs((_date.fromisoformat(perto) - alvo).days) <= 3:
+                    exp = perto
+            except ValueError:
+                exp = None
+            if exp is None:
+                return jsonify({'error': f'Sem opções de {ticker} no vencimento {req_exp}. Escolha outro vencimento da lista.',
+                                'expirations': exps_out}), 404
+        else:
+            exp = monthlies[0] if monthlies else lista[0]
+        asa_cv, asa_vv = _asa('asa_cv'), _asa('asa_vv')
+
+        def _ok_asa(v, alvo):
+            return v > 0.004 and ((alvo is None and v <= cap + 0.004) or (alvo is not None and abs(v - alvo) <= 0.004))
+
+        def _slides(tp):
+            chain = by_exp[tp].get(exp, {})
+            eff = {k: _eff(v) for k, v in chain.items()}
+            ks = sorted(chain)
+            call = tp == 'call'
+            grupos = {}
+            for k1 in ks:
+                if not _ok_buy(eff[k1]):
+                    continue
+                for k2 in [k for k in ks if 0.004 < ((k - k1) if call else (k1 - k)) <= cap + 0.004]:
+                    cv = round((k2 - k1) if call else (k1 - k2), 2)
+                    if not _ok_asa(cv, asa_cv) or not _ok_sell(eff[k2]):
+                        continue
+                    for k3 in [k for k in ks if 0.004 < ((k - k2) if call else (k2 - k)) <= cap + 0.004]:
+                        vv = round((k3 - k2) if call else (k2 - k3), 2)
+                        if not _ok_asa(vv, asa_vv) or not _ok_sell(eff[k3]):
+                            continue
+                        legs = [_leg(chain[k1], eff[k1], tp, 1, exp), _leg(chain[k2], eff[k2], tp, -1, exp),
+                                _leg(chain[k3], eff[k3], tp, -1, exp)]
+                        preco = round(sum(l['q'] * l['px'] for l in legs), 2)
+                        if cv - preco <= 0:              # lucro no platô entre as vendidas
+                            continue
+                        miolo = round((k2 + k3) / 2, 2)
+                        grupos.setdefault((miolo, cv, vv), []).append({'preco': preco, 'legs': legs, 'k': (k1, k2, k3),
+                                                             'asa_cv': cv, 'asa_vv': vv, 'miolo': miolo})
+            return grupos
+
+        for preco, c, p, dist, centro in _pair(_slides('call'), _slides('put')):
+            legs = c['legs'] + p['legs']
+
+            def val(S):
+                return sum(l['q'] * (max(S - l['k'], 0.0) if l['tp'] == 'CALL' else max(l['k'] - S, 0.0)) for l in legs) - preco
+            kinks = sorted({l['k'] for l in legs})
+            xs = [0.0] + kinks + [kinks[-1] * 2]              # inclinação −1 acima da maior CALL e +1 abaixo da menor PUT
+            vs = [val(x) for x in xs]
+            lucro_max = max(vs)
+            if lucro_max <= 0:
+                continue
+            rows.append({
+                'c': {'k': list(c['k']), 'asa_cv': c['asa_cv'], 'asa_vv': c['asa_vv'], 'miolo': c['miolo'], 'preco': c['preco']},
+                'p': {'k': list(p['k']), 'asa_cv': p['asa_cv'], 'asa_vv': p['asa_vv'], 'miolo': p['miolo'], 'preco': p['preco']},
+                'legs': [{k: l[k] for k in ('s', 'tp', 'k', 'q', 'px', 'exp')} for l in legs],
+                'dist': dist, 'centro': round(centro, 2), 'centro_dist': round((centro - spot) / spot * 100, 1),
+                'preco': preco, 'ultimo': _ult(legs), 'lucro_max': round(lucro_max, 2),
+                'risco_max': None, 'risco_txt': 'ilimitado (alta forte / queda forte)',
+                'bes': [round(z, 2) for z in _zeros(xs, vs)],
+                'src': 'ultimo' if any(l['src'] == 'ultimo' for l in legs) else 'book', 'est': False,
+            })
+        extra = {'exp': exp, 'dc': max((_date.fromisoformat(exp) - today).days, 1), 'mensal': _is_monthly(exp)}
+    else:
+        # Vencimentos pela regra do Booster Leão da busca avançada
+        _hoje_util = 1 if today.weekday() < 5 else 0
+        mens = [d for d in dues if _is_monthly(d)]
+        if not mens:
+            return jsonify({'error': f'Nenhum vencimento mensal com CALLs e PUTs para {ticker}.'}), 404
+        ws = [d for d in dues if not _is_monthly(d) and d < mens[0]
+              and du_count(today, _date.fromisoformat(d)) + _hoje_util >= 6]
+        if not ws:
+            return jsonify({'error': f'Sem semanal com ao menos 6 dias úteis antes do próximo mensal ({mens[0]}) em {ticker}.'}), 404
+        exp_w = ws[0]
+        try:
+            m_i = min(max(int(request.args.get('m', 0)), 0), 1)
+        except (TypeError, ValueError):
+            m_i = 0
+        if m_i >= len(mens):
+            return jsonify({'error': 'Mensal seguinte indisponível para este ativo.'}), 404
+        exp_m = mens[m_i]
+        dc_w = max((_date.fromisoformat(exp_w) - today).days, 1)
+        dc_m = max((_date.fromisoformat(exp_m) - today).days, 1)
+        selic = _selic()
+        r_cont = math.log(1 + selic / 100.0)
+        T_rest = max(dc_m - dc_w, 0) / 365.0
+        ivs = {}
+
+        def _iv(rw, tp, dc):
+            key = rw['symbol']
+            if key not in ivs:
+                prem = rw['close'] or ((rw['bid'] + rw['ask']) / 2 if rw['bid'] and rw['ask'] else 0)
+                intr = max(0.0, (spot - rw['strike']) if tp == 'call' else (rw['strike'] - spot))
+                iv = None
+                if prem and prem > intr * 1.005:
+                    iv = _implied_vol(spot, rw['strike'], dc / 365.0, r_cont, prem, tp == 'call')
+                ivs[key] = iv if iv and 0.02 < iv < 3 else 0.30
+            return ivs[key]
+
+        def _boosters(tp):
+            call = tp == 'call'
+            pool_m = by_exp[tp].get(exp_m, {})
+            pool_w = by_exp[tp].get(exp_w, {})
+            ks = sorted(pool_m)
+            eff_m = {k: _eff(v) for k, v in pool_m.items()}
+            eff_w = {k: _eff(v) for k, v in pool_w.items()}
+            grupos = {}
+            for i, kc in enumerate(ks):
+                if not (spot * 0.85 <= kc <= spot * 1.15):
+                    continue
+                j = i - 3 if call else i + 3
+                if j < 0 or j >= len(ks):
+                    continue
+                ki = ks[j]
+                e_c, e_i = eff_m[kc], eff_m[ki]
+                if not _ok_sell(e_c) or not _ok_buy(e_i):
+                    continue
+                debito = e_i['ask'] - e_c['bid']
+                ok = [k for k in pool_w if (k > kc if call else k < kc) and _ok_sell(eff_w[k])
+                      and eff_w[k]['bid'] >= max(0.05, debito - 0.02)]
+                if not ok:
+                    continue
+                kw = max(ok) if call else min(ok)
+                legs = [_leg(pool_m[ki], e_i, tp, 1, exp_m), _leg(pool_m[kc], e_c, tp, -1, exp_m),
+                        _leg(pool_w[kw], eff_w[kw], tp, -1, exp_w)]
+                for l in legs:
+                    l['iv'] = _iv(pool_m[l['k']] if l['exp'] == exp_m else pool_w[l['k']], tp, dc_m if l['exp'] == exp_m else dc_w)
+                preco = round(sum(l['q'] * l['px'] for l in legs), 2)
+                grupos.setdefault((kc,), []).append({'preco': preco, 'legs': legs, 'k': (ki, kc, kw),
+                                                  'asa': round(abs(ki - kc), 2), 'dist_w': round(abs(kw - kc), 2), 'miolo': kc})
+            return grupos
+
+        grid = [spot * (0.70 + 0.0025 * n) for n in range(241)]
+        for preco, c, p, dist, centro in _pair(_boosters('call'), _boosters('put')):
+            legs = c['legs'] + p['legs']
+
+            def val(S):                                   # no vencimento semanal: semanais pelo intrínseco, mensais por BS
+                v = 0.0
+                for l in legs:
+                    call = l['tp'] == 'CALL'
+                    if l['exp'] == exp_w:
+                        v += l['q'] * (max(S - l['k'], 0.0) if call else max(l['k'] - S, 0.0))
+                    else:
+                        v += l['q'] * _bs_price(S, l['k'], T_rest, r_cont, l['iv'], call)
+                return v - preco
+            vs = [val(S) for S in grid]
+            lucro_max = max(vs)
+            if lucro_max <= 0:
+                continue
+            rows.append({
+                'c': {'k': list(c['k']), 'asa': c['asa'], 'dist_w': c['dist_w'], 'miolo': c['miolo'], 'preco': c['preco']},
+                'p': {'k': list(p['k']), 'asa': p['asa'], 'dist_w': p['dist_w'], 'miolo': p['miolo'], 'preco': p['preco']},
+                'legs': [{k: l[k] for k in ('s', 'tp', 'k', 'q', 'px', 'exp')} for l in legs],
+                'dist': dist, 'centro': round(centro, 2), 'centro_dist': round((centro - spot) / spot * 100, 1),
+                'preco': preco, 'ultimo': _ult(legs), 'lucro_max': round(lucro_max, 2),
+                'risco_max': round(min(vs + [0.0]), 2), 'risco_txt': 'na faixa de ±30% do spot; ilimitado na alta forte',
+                'bes': [round(z, 2) for z in _zeros(grid, vs)],
+                'src': 'ultimo' if any(l['src'] == 'ultimo' for l in legs) else 'book', 'est': True,
+            })
+        extra = {'exp_w': exp_w, 'exp_m': exp_m, 'dc_w': dc_w, 'dc_m': dc_m, 'm': m_i,
+                 'du_w': du_count(today, _date.fromisoformat(exp_w)) + _hoje_util}
+
+    rows.sort(key=lambda r: (r['preco'], -r['lucro_max'], abs(r['centro'] - spot)))
+    rows = _fyt_diversify(rows, lambda r: (r['c']['miolo'], r['p']['miolo']), per_key=2, limit=80)
+    out = {'ticker': ticker, 'spot': spot, 'spot_change': spot_change, 'kind': kind, 'tipo': 'hexabox',
+           'market_open': market_open, 'expirations': exps_out,
+           'rows': rows, 'total': len(rows), 'source': 'brapi' if usar_brapi else 'oplab'}
+    out.update(extra)
+    return jsonify(out)
+
+
 @app.route('/api/fyt-broken-wing/<ticker>')
 @login_required
 def api_fyt_broken_wing(ticker):

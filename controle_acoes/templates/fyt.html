@@ -137,6 +137,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <option value="trava_baixa">📉 Trava de Baixa</option>
         <option value="borboleta">🦋 Borboleta</option>
         <option value="bwb">🦋 Broken Wing Butterfly</option>
+        <option value="hexabox">⬡ Hexabox (estrutura de CALL + de PUT)</option>
         <option value="broken_wing">🪽 Broken Wings Short</option>
         <option value="straddle_ha">⚖️ Short Straddle HA (Hedge Assimétrico)</option>
         <option value="slide">🛝 Slide Estrutural</option>
@@ -400,6 +401,42 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <div class="fyt-kvals"><span id="fyt-bb-p-lo">—</span><span id="fyt-bb-p-hi">—</span></div>
         <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-bb-p-faixa"></div>
           <input type="range" id="fyt-bb-p-a" min="-5" max="5" step="0.01" value="-0.5"><input type="range" id="fyt-bb-p-b" min="-5" max="5" step="0.01" value="0.5"></div>
+      </div>
+    </div>
+
+    <!-- Filtros do Hexabox -->
+    <div id="fyt-filtros-hx" style="display:none;">
+      <div class="fyt-campo">
+        <label for="fyt-hx-tipo" title="Estrutura de CALL acima + a espelho de PUT abaixo (6 pernas)">Tipo</label>
+        <select id="fyt-hx-tipo"><option value="bwb" selected>BWB (Broken Wing Butterfly)</option><option value="slide">Slide Estrutural</option><option value="booster">Booster Leão</option></select>
+      </div>
+      <div class="fyt-campo" id="fyt-hx-exp-wrap">
+        <label for="fyt-hx-exp" title="Vencimento único das 6 pernas: semanais (W) e os dois próximos mensais (M)">Vencimento</label>
+        <select id="fyt-hx-exp"></select>
+      </div>
+      <div class="fyt-campo" id="fyt-hx-m-wrap" style="display:none;">
+        <label for="fyt-hx-m" title="Regra da busca avançada: trava no próximo mensal ou no mensal seguinte; a venda é sempre no 1º semanal com ao menos 6 dias úteis (contando hoje) antes do próximo mensal">Mensal da trava</label>
+        <select id="fyt-hx-m"><option value="0" selected>Próximo mensal</option><option value="1">Mensal seguinte</option></select>
+      </div>
+      <div class="fyt-campo" id="fyt-hx-a1-wrap">
+        <label for="fyt-hx-a1" id="fyt-hx-a1-lbl">Asa da Call</label>
+        <select id="fyt-hx-a1"></select>
+      </div>
+      <div class="fyt-campo" id="fyt-hx-a2-wrap">
+        <label for="fyt-hx-a2" id="fyt-hx-a2-lbl">Asa da Put</label>
+        <select id="fyt-hx-a2"></select>
+      </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label title="Distância entre os miolos das duas estruturas (CALL − PUT). Arraste os dois controles">Distância entre os miolos (R$)</label>
+        <div class="fyt-kvals"><span id="fyt-hx-a-lo">—</span><span id="fyt-hx-a-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-hx-a-faixa"></div>
+          <input type="range" id="fyt-hx-a-a" min="0" max="60" step="0.01" value="0"><input type="range" id="fyt-hx-a-b" min="0" max="60" step="0.01" value="20"></div>
+      </div>
+      <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
+        <label title="Preço líquido das 6 pernas por ação: positivo = débito, negativo = crédito">Preço (R$)</label>
+        <div class="fyt-kvals"><span id="fyt-hx-p-lo">—</span><span id="fyt-hx-p-hi">—</span></div>
+        <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-hx-p-faixa"></div>
+          <input type="range" id="fyt-hx-p-a" min="-5" max="5" step="0.01" value="-1"><input type="range" id="fyt-hx-p-b" min="-5" max="5" step="0.01" value="2"></div>
       </div>
     </div>
 
@@ -923,6 +960,39 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       <h5>⚠️ Risco</h5>
       <div class="risco">Perda limitada, mas concentrada do lado da asa quebrada: além de K3 (superior) ou aquém de K1 (inferior) o resultado fica travado no risco máximo.</div>
       <ul><li>Vencimentos semanais têm menos liquidez: confira a boca de cada perna antes de enviar.</li></ul>
+    </div>
+  </div>
+
+  <div class="fyt-ajuda" id="fyt-ajuda-hx" style="display:none;">
+    <div class="fyt-ajuda-top">
+      <h4>Hexabox</h4>
+      <div class="fyt-atabs">
+        <span class="fyt-atab on" data-p="conceito">Conceito</span>
+        <span class="fyt-atab" data-p="filtros">Filtros</span>
+        <span class="fyt-atab" data-p="risco">Risco</span>
+      </div>
+    </div>
+    <div class="fyt-apane on" data-p="conceito">
+      <h5>ℹ️ O que é o Hexabox?</h5>
+      <p>Seis pernas: uma estrutura de <strong>CALL</strong> e a sua espelho de <strong>PUT</strong>, combinadas pela distância entre os miolos.</p>
+      <ul>
+        <li><strong>BWB:</strong> Broken Wing Butterfly de CALL com asa quebrada inferior + de PUT com asa quebrada superior, mesmo vencimento. Miolo = strike vendido 2×.</li>
+        <li><strong>Slide Estrutural:</strong> Slide de CALL (+K1 −K2 −K3, strikes crescentes) + Slide de PUT (strikes decrescentes), mesmo vencimento, com as mesmas asas CV (comprada → 1ª vendida) e VV (1ª → 2ª vendida). Miolo = meio dos dois strikes vendidos.</li>
+        <li><strong>Booster Leão:</strong> Booster Leão CALL + PUT pela regra da busca avançada: trava ITM (3 strikes) → vendida no mensal + venda da opção mais OTM do 1º semanal com ao menos 6 dias úteis que ainda paga a trava. Miolo = strike vendido no mensal.</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="filtros">
+      <h5>🎛️ Filtros</h5>
+      <ul>
+        <li><strong>Vencimento</strong> (BWB e Slide): único, semanais (W) e os dois próximos mensais (M). No Booster Leão, escolha só o mensal da trava; o semanal segue a regra.</li>
+        <li><strong>Asas</strong>: BWB pede a asa normal da CALL e da PUT; Slide pede asa CV e asa VV (iguais nas duas). Mesma regra do Booster: BOVA11/SMAL11 até R$ 12, demais até R$ 3.</li>
+        <li><strong>Distância entre os miolos</strong>: miolo da CALL − miolo da PUT.</li>
+        <li><strong>Preço</strong>: líquido das 6 pernas (negativo = crédito).</li>
+      </ul>
+    </div>
+    <div class="fyt-apane" data-p="risco">
+      <h5>⚠️ Risco</h5>
+      <div class="risco">Slide e Booster Leão têm mais opções vendidas que compradas: risco ilimitado na alta forte (CALLs) e grande na queda forte (PUTs). No Booster Leão o resultado é estimado por Black-Scholes no vencimento semanal; o risco mostrado é o pior ponto dentro de ±30% do spot.</div>
     </div>
   </div>
 
@@ -1886,6 +1956,9 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('fyt-filtros-bb').style.display = (v === 'bwb') ? 'contents' : 'none';
     document.getElementById('fyt-ajuda-bb').style.display = (v === 'bwb') ? '' : 'none';
     if (v === 'bwb' && window.__BB) window.__BB.prepara();
+    document.getElementById('fyt-filtros-hx').style.display = (v === 'hexabox') ? 'contents' : 'none';
+    document.getElementById('fyt-ajuda-hx').style.display = (v === 'hexabox') ? '' : 'none';
+    if (v === 'hexabox' && window.__HX) window.__HX.prepara();
     if (v === 'borboleta' && window.__BF) window.__BF.prepara();
     document.getElementById('fyt-ajuda-mn').style.display = (v === 'mannerheim') ? '' : 'none';
     if (v === 'mannerheim' && window.__MN) window.__MN.prepara();
@@ -2007,6 +2080,10 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       q = TX.query();
       if (usarBrapi) q.set('source', 'brapi');
       url = (estrutura === 'trava_alta' ? '/api/fyt-trava-alta/' : '/api/fyt-trava-baixa/') + encodeURIComponent(currentTicker) + '?' + q.toString();
+    } else if (estrutura === 'hexabox') {
+      q = window.__HX.query();
+      if (usarBrapi) q.set('source', 'brapi');
+      url = (window.__HX.tipo() === 'bwb' ? '/api/fyt-bwb/' : '/api/fyt-hexabox/') + encodeURIComponent(currentTicker) + '?' + q.toString();
     } else if (estrutura === 'bwb') {
       q = window.__BB.query();
       if (usarBrapi) q.set('source', 'brapi');
@@ -2129,6 +2206,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         loading.style.display = 'none';
         if (!res.ok || res.j.error) {
           if (estrutura === 'bwb' && res.j.expirations) window.__BB.vencs(res.j.expirations);
+          if (estrutura === 'hexabox' && res.j.expirations) window.__HX.vencs(res.j.expirations);
           errBox.textContent = '⚠️ ' + (res.j.error || 'Erro ao buscar estruturas.');
           errBox.style.display = 'block';
           return;
@@ -2140,6 +2218,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         else if (estrutura === 'trava_baixa') { window.__TB.ajusta(res.j.spot); renderTravaN(res.j, true); }
         else if (estrutura === 'borboleta') { window.__BF.ajusta(res.j.spot); renderBorbN(res.j); }
         else if (estrutura === 'bwb') { window.__BB.ajusta(res.j.spot, res.j.expirations); renderBb(res.j); }
+        else if (estrutura === 'hexabox') { window.__HX.ajusta(res.j.spot, res.j.expirations); if (res.j.kind) renderHx(res.j); else renderHexa(res.j); }
         else if (estrutura === 'broken_wing') { window.__BW.ajusta(res.j.spot); renderBws(res.j); }
         else if (estrutura === 'straddle_ha') { shaAjustaFaixa(res.j.spot); renderStraddleHa(res.j); }
         else if (estrutura === 'slide') { slAjustaFaixa(res.j.spot); renderSlide(res.j); }
@@ -3475,7 +3554,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     function reprep() { if (opSel.value === 'bwb') { tkPrep = ''; prepara(); } }
     elTicker.addEventListener('change', reprep); elTickerL.addEventListener('change', reprep);
     return {
-      prepara: prepara, vencs: vencs,
+      prepara: prepara, vencs: vencs, calendario: calendario, rotulo: rotulo,
       ajusta: function(spot, lista) { if (!ready && spot) poe(spot); if (lista && lista.length) vencs(lista); },
       query: function() { var a = dual('a'), p = dual('p');
         return new URLSearchParams({ tipo: $('tipo').value, lado: $('lado').value, exp: $('exp').value, asa: $('asa').value,
@@ -3640,6 +3719,180 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     };
     var L = perna(c, 'CALL').concat(perna(p, 'PUT'));
     var nome = 'Hexabox ' + lastData.ticker + ' C' + c.k2 + ' P' + p.k2;
+    var qs = new URLSearchParams({sim: '1', ativo: lastData.ticker, nome: nome,
+      legs: L.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')});
+    document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + qs.toString();
+    document.getElementById('fytm-calc').style.display = 'none';
+    var sf = document.getElementById('fytm-sf'); sf.style.display = '';
+    sf.onclick = function() {
+      try { localStorage.setItem('simflex_import', JSON.stringify({origem: '', name: nome, ativo: lastData.ticker, novo: true, legs: L})); }
+      catch (e) { alert('Não foi possível preparar o SimFlex: ' + e); return; }
+      window.open('/simflex?importar=1', '_blank');
+    };
+    var pnt = document.getElementById('fytm-pnt'); pnt.style.display = '';
+    pnt.onclick = function() {
+      var T = String.fromCharCode(9);
+      var linha = L.map(function(l) { return l.ticker; }).concat(L.map(function(l) { return l.side === 'BUY' ? 'C' : 'V'; }))
+        .concat(L.map(function(l) { return l.quantity; })).concat([r.preco.toFixed(2).replace('.', ',')]).join(T);
+      var ok = function() { pnt.textContent = '✓ Copiado!'; setTimeout(function() { pnt.textContent = '📋 Exportar Pnt'; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, function() { prompt('Copie (Pnt):', linha); });
+      else prompt('Copie (Pnt):', linha);
+    };
+  }
+
+  // ── Hexabox (BWB / Slide / Booster Leão: estrutura de CALL + a espelho de PUT) ───────────────
+  function hexaUI() {
+    var $ = function(id) { return document.getElementById('fyt-hx-' + id); }, ready = false, tkPrep = '', spotRef = null;
+    function dual(w) { var lo = parseFloat($(w + '-a').value), hi = parseFloat($(w + '-b').value); return lo <= hi ? [lo, hi] : [hi, lo]; }
+    function desenha(w) {
+      var mn = parseFloat($(w + '-a').min), mx = parseFloat($(w + '-a').max), r = dual(w), span = (mx - mn) || 1, f = $(w + '-faixa');
+      f.style.left = ((r[0] - mn) / span * 100) + '%'; f.style.width = ((r[1] - r[0]) / span * 100) + '%';
+      $(w + '-lo').textContent = brl(r[0]); $(w + '-hi').textContent = brl(r[1]);
+    }
+    ['a-a', 'a-b'].forEach(function(x) { $(x).addEventListener('input', function() { desenha('a'); }); });
+    ['p-a', 'p-b'].forEach(function(x) { $(x).addEventListener('input', function() { desenha('p'); }); });
+    desenha('a'); desenha('p');
+    function opcoesAsa() {
+      var etf = ['BOVA11', 'SMAL11'].indexOf(tickerAtual()) >= 0, h = '<option value="todos">Todos</option>', v;
+      if (etf) { for (v = 1; v <= 12; v++) h += '<option value="' + v + '">R$ ' + fmt(v) + '</option>'; }
+      else { for (v = 0.25; v <= 3 + 1e-9; v += 0.25) h += '<option value="' + v + '">R$ ' + fmt(v) + '</option>'; }
+      ['a1', 'a2'].forEach(function(id) {
+        var sel = $(id), atual = sel.value;
+        sel.innerHTML = h;
+        if ([].slice.call(sel.options).some(function(o) { return o.value === atual; })) sel.value = atual;
+      });
+    }
+    function vencs(lista) {
+      var sel = $('exp'), atual = sel.value;
+      sel.innerHTML = lista.map(function(e) { return '<option value="' + e.exp + '">' + window.__BB.rotulo(e) + '</option>'; }).join('');
+      if (lista.some(function(e) { return e.exp === atual; })) sel.value = atual;
+      else { var m = lista.filter(function(e) { return e.mensal; })[0]; if (m) sel.value = m.exp; }
+    }
+    function mensais() {
+      var M = fytMensaisLista(2);
+      [].forEach.call($('m').options, function(o, i) { if (M[i]) o.textContent = (i ? 'Mensal seguinte' : 'Próximo mensal') + ' — ' + M[i].label; });
+    }
+    function poe(spot) {
+      spotRef = spot;
+      var hi = Math.ceil(spot * 0.3);
+      ['a-a', 'a-b'].forEach(function(x) { $(x).min = 0; $(x).max = hi; });
+      $('a-a').value = 0; $('a-b').value = Math.round(spot * 0.1 * 100) / 100;
+      ready = true; desenha('a');
+    }
+    function modo() {
+      var t = $('tipo').value;
+      $('exp-wrap').style.display = t === 'booster' ? 'none' : '';
+      $('m-wrap').style.display = t === 'booster' ? '' : 'none';
+      $('a1-wrap').style.display = t === 'booster' ? 'none' : '';
+      $('a2-wrap').style.display = t === 'booster' ? 'none' : '';
+      $('a1-lbl').textContent = t === 'slide' ? 'Asa CV' : 'Asa da Call';
+      $('a2-lbl').textContent = t === 'slide' ? 'Asa VV' : 'Asa da Put';
+      $('a1-lbl').title = t === 'slide' ? 'Comprada → 1ª vendida (igual nas duas slides)' : 'Asa normal (a menor) da BWB de CALL — a quebrada é a inferior';
+      $('a2-lbl').title = t === 'slide' ? '1ª vendida → 2ª vendida (igual nas duas slides)' : 'Asa normal (a menor) da BWB de PUT — a quebrada é a superior';
+    }
+    $('tipo').addEventListener('change', function() {
+      var t = $('tipo').value;
+      $('p-a').value = -1; $('p-b').value = t === 'bwb' ? 2 : 1; desenha('p'); modo();
+    });
+    vencs(window.__BB.calendario()); mensais(); modo();
+    function prepara() {
+      opcoesAsa(); modo();
+      var tk = tickerAtual(); if (!tk || tk === tkPrep) return; tkPrep = tk; ready = false;
+      vencs(window.__BB.calendario());
+      fetch('/api/quote_hint/' + encodeURIComponent(tk)).then(function(r) { return r.json(); }).then(function(d) {
+        if (tickerAtual() === tk && d && d.price) poe(d.price);
+      }).catch(function() { tkPrep = ''; });
+    }
+    function reprep() { if (opSel.value === 'hexabox') { tkPrep = ''; prepara(); } }
+    elTicker.addEventListener('change', reprep); elTickerL.addEventListener('change', reprep);
+    return {
+      prepara: prepara, vencs: vencs, tipo: function() { return $('tipo').value; },
+      ajusta: function(spot, lista) { if (!ready && spot) poe(spot); if (lista && lista.length) vencs(lista); },
+      query: function() {
+        var a = dual('a'), p = dual('p'), t = $('tipo').value, q;
+        if (t === 'bwb') q = {tipo: 'hexabox', exp: $('exp').value, asa_c: $('a1').value, asa_p: $('a2').value};
+        else if (t === 'slide') q = {kind: 'slide', exp: $('exp').value, asa_cv: $('a1').value, asa_vv: $('a2').value};
+        else q = {kind: 'booster', m: $('m').value};
+        q.a_min = ready ? a[0] : ''; q.a_max = ready ? a[1] : ''; q.p_min = p[0]; q.p_max = p[1];
+        return new URLSearchParams(q);
+      }
+    };
+  }
+  window.__HX = hexaUI();
+
+  function renderHx(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' + (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>' : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
+    var slide = d.kind === 'slide', nome = slide ? 'Slide Estrutural' : 'Booster Leão';
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">Nenhum Hexabox (' + nome + ') atende aos filtros. ' +
+        'Amplie a distância entre os miolos e a faixa de preço' + (slide ? ', escolha "Todos" nas asas ou troque o vencimento.' : ' ou troque o mensal da trava.') + '</div>';
+      return;
+    }
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">⬡ <strong>Hexabox — ' + nome + '</strong> (CALL + PUT) · 📆 ' +
+      (slide ? 'Vencimento: <strong>' + dateBR(d.exp) + '</strong> ' + (d.mensal ? '(M)' : '(W)') + ' (' + d.dc + 'd)'
+             : 'Semanal: <strong>' + dateBR(d.exp_w) + '</strong> (' + d.du_w + ' d.u.) · Mensal da trava: <strong>' + dateBR(d.exp_m) + '</strong> (' + d.dc_m + 'd) · resultado estimado (BS) no vencimento semanal') +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') + ' · <strong>' + d.rows.length + '</strong> montagem(ns)</div>';
+    var tk = function(r, tp) {
+      return r.legs.filter(function(l) { return l.tp === tp; }).map(function(l) {
+        return '<span class="fyt-badge ' + (l.q > 0 ? 'buy' : 'sell') + '">' + (l.q > 0 ? '+' : '−') + l.s + '</span>';
+      }).join(' ');
+    };
+    var ks = function(x) { return x.k.map(function(k) { return fmt(k); }).join(' / '); };
+    var asas = function(x) { return slide ? fmt(x.asa_cv) + ' / ' + fmt(x.asa_vv) : fmt(x.asa) + ' / ' + fmt(x.dist_w); };
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr><th>Tickers</th>' +
+      '<th title="' + (slide ? 'Comprada / 1ª vendida / 2ª vendida' : 'ITM comprada / vendida no mensal / vendida no semanal') + '">Call (strikes)</th>' +
+      '<th title="' + (slide ? 'Asa CV / asa VV' : 'Asa da trava / distância da semanal') + '">' + (slide ? 'Asas' : 'Asa / semanal') + '</th>' +
+      '<th>Put (strikes)</th><th>' + (slide ? 'Asas' : 'Asa / semanal') + '</th>' +
+      '<th title="Miolo da CALL − miolo da PUT">Distância</th><th title="Ponto médio entre os miolos">Centro</th>' +
+      '<th title="' + (slide ? 'Melhor resultado no vencimento' : 'Melhor resultado estimado no vencimento semanal') + ', por ação">Lucro máx.</th>' +
+      '<th title="Pontos onde o resultado cruza o zero">Equilíbrio</th>' +
+      '<th title="Preço líquido das 6 pernas pelos últimos negócios (positivo = débito)">Último</th><th title="Preço líquido das 6 pernas pela boca (positivo = débito)">Boca</th></tr></thead><tbody>';
+    d.rows.forEach(function(r, i) {
+      h += '<tr data-i="' + i + '" title="Clique para ver o detalhamento">' +
+        '<td style="text-align:left;line-height:1.9;">' + tk(r, 'CALL') + '<br>' + tk(r, 'PUT') + '</td>' +
+        '<td>' + ks(r.c) + '</td><td>' + asas(r.c) + '</td><td>' + ks(r.p) + '</td><td>' + asas(r.p) + '</td>' +
+        '<td><strong>' + brl(r.dist) + '</strong></td>' +
+        '<td>' + brl(r.centro) + '<br><span style="font-size:.72rem;color:var(--text-secondary);">' + pct(r.centro_dist) + '</span></td>' +
+        '<td class="pos">' + (r.est ? '≈ ' : '') + fmt(r.lucro_max) + '</td>' +
+        '<td style="font-size:.8rem;">' + (r.bes.length ? r.bes.map(function(b) { return fmt(b); }).join('<br>') : '—') + '</td>' +
+        '<td>' + (r.ultimo == null ? '—' : '<span class="' + (r.ultimo <= 0 ? 'pos' : '') + '">' + fmt(r.ultimo) + '</span>') + '</td>' +
+        '<td><strong class="' + (r.preco <= 0 ? 'pos' : '') + '">' + fmt(r.preco) + '</strong>' +
+          (r.src === 'ultimo' ? '<br><span style="font-size:.7rem;color:var(--text-secondary);">últ.</span>' : '') + '</td></tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) { tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); }); });
+  }
+
+  function refreshModalHx() {
+    var r = lastData.rows[modalIdx], q = parseInt(document.getElementById('fytm-qty').value) || 100, credito = r.preco < 0;
+    var slide = lastData.kind === 'slide', nome0 = slide ? 'Slide Estrutural' : 'Booster Leão';
+    document.getElementById('fytm-title').textContent = 'Hexabox ' + nome0 + ' ' + lastData.ticker + ' — Call ' + r.c.k.join('/') + ' · Put ' + r.p.k.join('/');
+    var boxes = r.legs.map(function(l) {
+      return [l.tp + ': ' + (l.q > 0 ? 'compra ' : 'venda ') + q + '× ' + l.s + ' (K ' + fmt(l.k) + ' · ' + dateBR(l.exp) + ')', brl(l.px * q), l.q > 0 ? 'neg' : 'pos'];
+    }).concat([
+      [credito ? 'Crédito recebido (6 pernas)' : 'Custo da montagem (6 pernas)', brl(Math.abs(r.preco) * q), credito ? 'pos' : 'neg'],
+      [nome0 + ' CALL / PUT', fmt(r.c.preco) + ' / ' + fmt(r.p.preco), ''],
+      ['Lucro máximo' + (r.est ? ' (estimado)' : ''), brl(r.lucro_max * q), 'pos'],
+      ['Risco', r.risco_max == null ? r.risco_txt : brl(r.risco_max * q) + ' — ' + r.risco_txt, 'neg'],
+      ['Distância entre os miolos', brl(r.dist) + ' · centro ' + brl(r.centro), ''],
+      ['Pontos de equilíbrio', r.bes.length ? r.bes.map(function(b) { return fmt(b); }).join(' · ') : 'nenhum', ''],
+      slide ? ['Asas CV / VV', fmt(r.c.asa_cv) + ' / ' + fmt(r.c.asa_vv), '']
+            : ['Asa da trava / dist. semanal', 'CALL ' + fmt(r.c.asa) + ' / ' + fmt(r.c.dist_w) + ' · PUT ' + fmt(r.p.asa) + ' / ' + fmt(r.p.dist_w), ''],
+      slide ? ['Vencimento', dateBR(lastData.exp) + (lastData.mensal ? ' (M)' : ' (W)') + ' · ' + lastData.dc + ' d.c.', '']
+            : ['Vencimentos', 'semanal ' + dateBR(lastData.exp_w) + ' (' + lastData.du_w + ' d.u.) · mensal ' + dateBR(lastData.exp_m), '']
+    ]);
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
+             '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+    var L = r.legs.map(function(l) {
+      return {ticker: l.s, side: l.q > 0 ? 'BUY' : 'SELL', opt_type: l.tp, quantity: Math.abs(l.q) * q, strike: l.k, entry_price: l.px, expiration_date: l.exp};
+    });
+    var nome = 'Hexabox ' + nome0 + ' ' + lastData.ticker + ' C' + r.c.miolo + ' P' + r.p.miolo;
     var qs = new URLSearchParams({sim: '1', ativo: lastData.ticker, nome: nome,
       legs: L.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')});
     document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + qs.toString();
@@ -5032,6 +5285,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (currentEstrutura === 'trava_baixa') { refreshModalTravaBaixa(); return; }
     if (currentEstrutura === 'borboleta') { refreshModalBorbN(); return; }
     if (currentEstrutura === 'bwb') { refreshModalBb(); return; }
+    if (currentEstrutura === 'hexabox') { if (lastData.kind) refreshModalHx(); else refreshModalHexa(); return; }
     if (currentEstrutura === 'broken_wing') { refreshModalBws(); return; }
     if (currentEstrutura === 'straddle_ha') { refreshModalSha(); return; }
     if (currentEstrutura === 'slide') { refreshModalSl(); return; }

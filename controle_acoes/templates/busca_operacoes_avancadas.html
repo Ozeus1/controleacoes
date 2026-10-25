@@ -820,6 +820,9 @@ table.ba-tab tr.ba-row:hover{background:rgba(14,165,233,.12);cursor:pointer;}
     modal.dataset.exp = tr.dataset.exp;
     modal.dataset.row = tr.dataset.row;
     refreshModal();
+    // Padrão: mostra a estrutura na página Simulação de Opções (nova aba, com botão Voltar)
+    var u = document.getElementById('bam-open').getAttribute('href') || '';
+    if (u.indexOf('?') > 0 && window.open('/simulacao_opcoes/new?' + u.split('?')[1], '_blank')) return;
     modal.style.display = 'flex';
   });
   document.getElementById('bam-qty').addEventListener('input', refreshModal);

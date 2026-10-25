@@ -1416,6 +1416,10 @@ tr.bo-row:hover{background:rgba(124,58,237,.12)!important;}
     modal.dataset.exp = expIdx;
     modal.dataset.row = rowIdx;
     refreshModal();
+    // Padrão: mostra a estrutura na página Simulação de Opções (nova aba, com botão Voltar); sem pernas → resumo
+    var d = window.__boData, e = d.expirations[expIdx], r = e.rows[rowIdx];
+    var u = cadeiaHref(d, e, r, parseInt(document.getElementById('bm-qty').value) || 100);
+    if (u && window.open('/simulacao_opcoes/new?' + u.split('?')[1], '_blank')) return;
     modal.style.display = 'flex';
   }
 

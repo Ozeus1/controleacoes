@@ -107,11 +107,25 @@
 </div>
 <script>
 (function() {
-    var back = new URLSearchParams(location.search).get('back');
-    if (!back) return;
+    var qs = new URLSearchParams(location.search), back = qs.get('back');
     var btn = document.getElementById('sim-back-btn');
-    btn.href = decodeURIComponent(back);
-    btn.style.display = '';
+    if (back) {
+        btn.href = decodeURIComponent(back);
+        btn.style.display = '';
+    } else if (qs.get('sim') === '1') {
+        // Aberta a partir de uma busca de estruturas (nova aba): Voltar fecha a aba e devolve à busca
+        btn.textContent = '← Voltar';
+        btn.href = '#';
+        btn.style.display = '';
+        btn.addEventListener('click', function(ev) {
+            ev.preventDefault();
+            if (window.opener && !window.opener.closed) {
+                window.close();
+                setTimeout(function() { if (history.length > 1) history.back(); }, 250);
+            } else if (history.length > 1) history.back();
+            else location.href = '/busca-operacoes-avancadas';
+        });
+    }
 })();
 </script>
 
@@ -1721,7 +1735,45 @@ function editarEmCadeia() {
     window.location.href = '/cadeia-opcoes?' + q.toString();
 }
 
+// Estrutura vinda das buscas (FYT / operações normais e avançadas): ?sim=1&ativo=..&nome=..&legs=tk,tipo,lado,qtd,prêmio,strike,venc|...
+// (mesmo formato da Cadeia de Opções). Só preenche simulação nova; nada é gravado até clicar em Salvar.
+function aplicaEstruturaDaBusca() {
+    var qs = new URLSearchParams(location.search);
+    if (qs.get('sim') !== '1' || !qs.get('legs')) return;
+    var body = document.getElementById('legs-body');
+    var preenchida = [].some.call(body.querySelectorAll('.leg-row'), function(r) {      // simulação já salva / com dados: não mexe
+        var tk = r.querySelector('[name=leg_ticker]'), pr = r.querySelector('[name=leg_premium]');
+        return (tk && tk.value.trim()) || (pr && pr.value.trim());
+    });
+    if (preenchida) return;
+    body.innerHTML = '';                                                                  // descarta a linha em branco da simulação nova
+    var nomeEl = document.querySelector('[name=name]'), undEl = document.querySelector('[name=underlying]');
+    if (nomeEl) nomeEl.value = qs.get('nome') || '';
+    if (undEl) undEl.value = (qs.get('ativo') || '').toUpperCase();
+    var num = function(v) { return (parseFloat(v) || 0).toFixed(2).replace('.', ','); };
+    var exps = {};
+    qs.get('legs').split('|').forEach(function(p) {
+        var f = p.split(',');
+        if (f.length < 6) return;
+        var tp = (f[1] || 'CALL').toUpperCase();
+        if (tp !== 'CALL' && tp !== 'PUT' && tp !== 'STOCK') tp = 'CALL';
+        body.insertAdjacentHTML('beforeend', rowTemplate(tp));
+        var row = body.lastElementChild, set = function(n, v) { var el = row.querySelector('[name=' + n + ']'); if (el) el.value = v; };
+        set('leg_side', f[2] === 'SELL' ? 'SELL' : 'BUY');
+        set('leg_qty', String(parseInt(f[3], 10) || 1));
+        set('leg_premium', num(f[4]));
+        if (tp !== 'STOCK') {
+            set('leg_ticker', (f[0] || '').toUpperCase());
+            set('leg_strike', num(f[5]));
+            set('leg_exp', f[6] || '');
+            if (f[6]) exps[f[6]] = 1;
+        }
+    });
+    if (Object.keys(exps).length > 1) window.__prefillMultiExp = true;   // calendar/diagonal: não colapsar os vencimentos
+}
+
 document.addEventListener('DOMContentLoaded',function(){
+    aplicaEstruturaDaBusca();
     document.getElementById('legs-body').addEventListener('change', function(){ updateIVVisibility(); scheduleRedraw(); atualizaTeoricos(); });
     document.getElementById('legs-body').addEventListener('input', function(){ atualizaTeoricos(); });
     var _undEl = document.querySelector('[name=underlying]');

@@ -5261,6 +5261,9 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   function openModal(i) {
     modalIdx = i;
     refreshModal();
+    // Padrão: mostra a estrutura na página Simulação de Opções (nova aba, com botão Voltar); sem pernas → resumo
+    var u = document.getElementById('fytm-cadeia').getAttribute('href') || '';
+    if (u.indexOf('/cadeia-opcoes?') === 0 && window.open('/simulacao_opcoes/new?' + u.split('?')[1], '_blank')) return;
     document.getElementById('fyt-modal').style.display = 'flex';
   }
   window.fytCloseModal = function() {
@@ -5279,6 +5282,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     document.getElementById('fytm-pnt').style.display = 'none';
     document.getElementById('fytm-sf').style.display = 'none';
     document.getElementById('fytm-cadeia').style.display = '';
+    document.getElementById('fytm-cadeia').removeAttribute('href');   // evita herdar o link da estrutura anterior
     if (currentEstrutura === 'thl') { refreshModalThlCal(); return; }
     if (currentEstrutura === 'mannerheim') { refreshModalMannEsp(); return; }
     if (currentEstrutura === 'trava_alta') { refreshModalTrava(); return; }

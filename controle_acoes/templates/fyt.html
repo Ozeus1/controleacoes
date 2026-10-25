@@ -366,10 +366,10 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     <!-- Filtros da Broken Wing Butterfly -->
     <div id="fyt-filtros-bb" style="display:none;">
       <div class="fyt-campo">
-        <label for="fyt-bb-tipo" title="Tipo das três pernas (+1 / −2 / +1)">Tipo</label>
-        <select id="fyt-bb-tipo"><option value="call" selected>Call</option><option value="put">Put</option></select>
+        <label for="fyt-bb-tipo" title="Tipo das três pernas (+1 / −2 / +1). Hexabox = 6 pernas: BWB de CALL com asa quebrada inferior + BWB de PUT com asa quebrada superior">Tipo</label>
+        <select id="fyt-bb-tipo"><option value="call" selected>Call</option><option value="put">Put</option><option value="hexabox">Hexabox (BWB Call + BWB Put)</option></select>
       </div>
-      <div class="fyt-campo">
+      <div class="fyt-campo" id="fyt-bb-lado-wrap">
         <label for="fyt-bb-lado" title="Qual asa é a maior (quebrada): é desse lado que fica o risco. Superior = risco acima de K3 · Inferior = risco abaixo de K1">Asa quebrada</label>
         <select id="fyt-bb-lado"><option value="sup" selected>Superior (risco acima)</option><option value="inf">Inferior (risco abaixo)</option></select>
       </div>
@@ -377,12 +377,20 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <label for="fyt-bb-exp" title="Vencimento único das três pernas: semanais (W) e os dois próximos mensais (M)">Vencimento</label>
         <select id="fyt-bb-exp"></select>
       </div>
-      <div class="fyt-campo">
+      <div class="fyt-campo" id="fyt-bb-asa-wrap">
         <label for="fyt-bb-asa" title="Asa normal (a menor). A asa quebrada é maior que ela, até o mesmo limite a mais. BOVA11/SMAL11: R$ 1 a 12; demais: R$ 0,25 a 3 — mesma regra do Booster">Asa</label>
         <select id="fyt-bb-asa"></select>
       </div>
+      <div class="fyt-campo" id="fyt-bb-asac-wrap" style="display:none;">
+        <label for="fyt-bb-asa-c" title="Asa normal (a menor) da BWB de CALL — a asa quebrada dela é a inferior">Asa da Call</label>
+        <select id="fyt-bb-asa-c"></select>
+      </div>
+      <div class="fyt-campo" id="fyt-bb-asap-wrap" style="display:none;">
+        <label for="fyt-bb-asa-p" title="Asa normal (a menor) da BWB de PUT — a asa quebrada dela é a superior">Asa da Put</label>
+        <select id="fyt-bb-asa-p"></select>
+      </div>
       <div class="fyt-campo" style="grid-column:span 2;min-width:260px;">
-        <label title="Faixa em que a assunção (onde o resultado volta a zero do lado da asa quebrada) deve cair. Arraste os dois controles">Assunção</label>
+        <label id="fyt-bb-a-lbl" title="Faixa em que a assunção (onde o resultado volta a zero do lado da asa quebrada) deve cair. Arraste os dois controles">Assunção</label>
         <div class="fyt-kvals"><span id="fyt-bb-a-lo">—</span><span id="fyt-bb-a-hi">—</span></div>
         <div class="fyt-dual"><div class="trilho"></div><div class="faixa" id="fyt-bb-a-faixa"></div>
           <input type="range" id="fyt-bb-a-a" min="0" max="100" step="0.01" value="0"><input type="range" id="fyt-bb-a-b" min="0" max="100" step="0.01" value="100"></div>
@@ -902,6 +910,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <li><strong>Asa:</strong> largura da asa normal. BOVA11/SMAL11 até R$ 12, demais até R$ 3 (como no Booster). A quebrada vai de mais que a asa até asa + o mesmo limite.</li>
         <li><strong>Assunção:</strong> faixa em que o resultado volta a zero do lado da asa quebrada.</li>
         <li><strong>Preço:</strong> preço líquido por ação (negativo = crédito).</li>
+        <li><strong>Hexabox:</strong> 6 pernas no mesmo vencimento — BWB de CALL com asa quebrada inferior + BWB de PUT com asa quebrada superior. Pede a asa de cada uma; o filtro de assunção vira a <strong>distância entre os miolos</strong> (K2 da CALL − K2 da PUT) e o preço é o líquido das 6 pernas.</li>
       </ul>
       <h5>📊 Colunas</h5>
       <ul>
@@ -3397,12 +3406,31 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     ['p-a', 'p-b'].forEach(function(x) { $(x).addEventListener('input', function() { desenha('p'); }); });
     desenha('p');
     function opcoesAsa() {
-      var etf = ['BOVA11', 'SMAL11'].indexOf(tickerAtual()) >= 0, sel = $('asa'), atual = sel.value, h = '<option value="todos">Todos</option>', v;
+      var etf = ['BOVA11', 'SMAL11'].indexOf(tickerAtual()) >= 0, h = '<option value="todos">Todos</option>', v;
       if (etf) { for (v = 1; v <= 12; v++) h += '<option value="' + v + '">R$ ' + fmt(v) + '</option>'; }
       else { for (v = 0.25; v <= 3 + 1e-9; v += 0.25) h += '<option value="' + v + '">R$ ' + fmt(v) + '</option>'; }
-      sel.innerHTML = h;
-      if ([].slice.call(sel.options).some(function(o) { return o.value === atual; })) sel.value = atual;
+      ['asa', 'asa-c', 'asa-p'].forEach(function(id) {
+        var sel = $(id), atual = sel.value;
+        sel.innerHTML = h;
+        if ([].slice.call(sel.options).some(function(o) { return o.value === atual; })) sel.value = atual;
+      });
     }
+    var spotRef = null;
+    function hexa() { return $('tipo').value === 'hexabox'; }
+    function modo() {              // Hexabox: duas asas, sem "asa quebrada", e a faixa vira distância entre os miolos
+      var hx = hexa();
+      $('lado-wrap').style.display = hx ? 'none' : '';
+      $('asa-wrap').style.display = hx ? 'none' : '';
+      $('asac-wrap').style.display = hx ? '' : 'none';
+      $('asap-wrap').style.display = hx ? '' : 'none';
+      $('a-lbl').textContent = hx ? 'Distância entre os miolos (R$)' : 'Assunção';
+      $('a-lbl').title = hx ? 'K2 da CALL − K2 da PUT: distância entre os centros das duas borboletas. Arraste os dois controles'
+                            : 'Faixa em que a assunção (onde o resultado volta a zero do lado da asa quebrada) deve cair. Arraste os dois controles';
+      if (spotRef) poe(spotRef);
+    }
+    $('tipo').addEventListener('change', function() {      // Hexabox costuma sair no débito: faixa de preço mais larga
+      var hx = hexa(); $('p-a').value = hx ? -1 : -0.5; $('p-b').value = hx ? 2 : 0.5; desenha('p'); modo();
+    });
     function iso(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
     function rotulo(e) {
       var m = parseInt(e.exp.split('-')[1], 10) - 1;
@@ -3430,13 +3458,14 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     }
     vencs(calendario());
     function poe(spot) {
-      var lo = Math.floor(spot * 0.8), hi = Math.ceil(spot * 1.2);
+      spotRef = spot;
+      var hx = hexa(), lo = hx ? 0 : Math.floor(spot * 0.8), hi = Math.ceil(spot * (hx ? 0.3 : 1.2));
       ['a-a', 'a-b'].forEach(function(x) { $(x).min = lo; $(x).max = hi; });
-      $('a-a').value = Math.round(spot * 0.9 * 100) / 100; $('a-b').value = Math.round(spot * 1.1 * 100) / 100;
+      $('a-a').value = hx ? 0 : Math.round(spot * 0.9 * 100) / 100; $('a-b').value = Math.round(spot * (hx ? 0.1 : 1.1) * 100) / 100;
       ready = true; desenha('a');
     }
     function prepara() {
-      opcoesAsa();
+      opcoesAsa(); modo();
       var tk = tickerAtual(); if (!tk || tk === tkPrep) return; tkPrep = tk; ready = false;
       vencs(calendario());
       fetch('/api/quote_hint/' + encodeURIComponent(tk)).then(function(r) { return r.json(); }).then(function(d) {
@@ -3450,12 +3479,13 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       ajusta: function(spot, lista) { if (!ready && spot) poe(spot); if (lista && lista.length) vencs(lista); },
       query: function() { var a = dual('a'), p = dual('p');
         return new URLSearchParams({ tipo: $('tipo').value, lado: $('lado').value, exp: $('exp').value, asa: $('asa').value,
-          a_min: ready ? a[0] : '', a_max: ready ? a[1] : '', p_min: p[0], p_max: p[1] }); }
+          asa_c: $('asa-c').value, asa_p: $('asa-p').value, a_min: ready ? a[0] : '', a_max: ready ? a[1] : '', p_min: p[0], p_max: p[1] }); }
     };
   }
   window.__BB = bwbUI();
 
   function renderBb(d) {
+    if (d.tipo === 'hexabox') return renderHexa(d);
     lastData = d;
     spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
       (d.spot_change != null
@@ -3492,7 +3522,46 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     results.querySelectorAll('tr[data-i]').forEach(function(tr) { tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); }); });
   }
 
+  function renderHexa(d) {
+    lastData = d;
+    spotEl.innerHTML = d.ticker + ' ' + brl(d.spot) +
+      (d.spot_change != null
+        ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' + (d.spot_change >= 0 ? '+' : '') + fmt(d.spot_change) + '%</span>' : '') +
+      (d.source === 'brapi' ? ' <span style="color:#fbbf24;">🅱 BRAPI</span>' : '');
+    if (!d.rows || !d.rows.length) {
+      results.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-secondary);">Nenhum Hexabox atende aos filtros. ' +
+        'Escolha "Todos" nas asas, amplie a distância entre os miolos e a faixa de preço, ou troque o vencimento.</div>';
+      return;
+    }
+    var h = '<div style="font-size:.82rem;color:var(--text-secondary);margin:.2rem 0 .6rem;">🦋 <strong>Hexabox</strong> (BWB de CALL com asa quebrada inferior + BWB de PUT com asa quebrada superior) · 📆 Vencimento: <strong>' +
+      dateBR(d.exp) + '</strong> ' + (d.mensal ? '(M)' : '(W)') + ' (' + d.dc + 'd)' +
+      (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') + ' · <strong>' + d.rows.length + '</strong> montagem(ns)</div>';
+    var ks = function(x) { return fmt(x.k1) + ' / ' + fmt(x.k2) + ' / ' + fmt(x.k3); };
+    var tk = function(x) { return '<span class="fyt-badge buy">+' + x.s1 + '</span> <span class="fyt-badge sell">−2 × ' + x.s2 + '</span> <span class="fyt-badge buy">+' + x.s3 + '</span>'; };
+    h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
+      '<th>Tickers</th><th title="K1 / K2 / K3 da BWB de CALL">Call (K1/K2/K3)</th><th title="Asa normal / asa quebrada (inferior)">Asas call</th>' +
+      '<th title="K1 / K2 / K3 da BWB de PUT">Put (K1/K2/K3)</th><th title="Asa normal / asa quebrada (superior)">Asas put</th>' +
+      '<th title="K2 da CALL − K2 da PUT">Distância</th><th title="Ponto médio entre os dois miolos">Centro</th>' +
+      '<th title="Melhor resultado no vencimento, por ação">Lucro máx.</th><th title="Pior resultado, por ação">Risco máx.</th>' +
+      '<th title="Preço líquido das 6 pernas pelos últimos negócios (positivo = débito)">Último</th><th title="Preço líquido das 6 pernas pela boca (positivo = débito)">Boca</th></tr></thead><tbody>';
+    d.rows.forEach(function(r, i) {
+      h += '<tr data-i="' + i + '" title="Clique para ver o detalhamento">' +
+        '<td style="text-align:left;line-height:1.9;">' + tk(r.c) + '<br>' + tk(r.p) + '</td>' +
+        '<td>' + ks(r.c) + '</td><td>' + fmt(r.c.asa) + ' / ' + fmt(r.c.asa_q) + '</td>' +
+        '<td>' + ks(r.p) + '</td><td>' + fmt(r.p.asa) + ' / ' + fmt(r.p.asa_q) + '</td>' +
+        '<td><strong>' + brl(r.dist) + '</strong></td>' +
+        '<td>' + brl(r.centro) + '<br><span style="font-size:.72rem;color:var(--text-secondary);">' + pct(r.centro_dist) + '</span></td>' +
+        '<td class="pos">' + fmt(r.lucro_max) + '</td><td class="neg">' + fmt(r.risco_max) + '</td>' +
+        '<td>' + (r.ultimo == null ? '—' : '<span class="' + (r.ultimo <= 0 ? 'pos' : '') + '">' + fmt(r.ultimo) + '</span>') + '</td>' +
+        '<td><strong class="' + (r.preco <= 0 ? 'pos' : '') + '">' + fmt(r.preco) + '</strong>' +
+          (r.src === 'ultimo' ? '<br><span style="font-size:.7rem;color:var(--text-secondary);">últ.</span>' : '') + '</td></tr>';
+    });
+    results.innerHTML = h + '</tbody></table></div>';
+    results.querySelectorAll('tr[data-i]').forEach(function(tr) { tr.addEventListener('click', function() { openModal(parseInt(tr.dataset.i)); }); });
+  }
+
   function refreshModalBb() {
+    if (lastData.tipo === 'hexabox') return refreshModalHexa();
     var r = lastData.rows[modalIdx], q = parseInt(document.getElementById('fytm-qty').value) || 100;
     var tp = lastData.tipo === 'put' ? 'PUT' : 'CALL', sup = lastData.lado !== 'inf', credito = r.preco < 0;
     document.getElementById('fytm-title').textContent = 'Broken Wing Butterfly ' + tp + ' ' + lastData.ticker + ' — ' + r.k1 + ' / ' + r.k2 + ' / ' + r.k3;
@@ -3518,6 +3587,59 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       {ticker: r.s3, side: 'BUY',  opt_type: tp, quantity: q,     strike: r.k3, entry_price: r.p3, expiration_date: lastData.exp}
     ];
     var nome = 'BWB ' + tp + ' ' + lastData.ticker + ' ' + r.k1 + '/' + r.k2 + '/' + r.k3;
+    var qs = new URLSearchParams({sim: '1', ativo: lastData.ticker, nome: nome,
+      legs: L.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')});
+    document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + qs.toString();
+    document.getElementById('fytm-calc').style.display = 'none';
+    var sf = document.getElementById('fytm-sf'); sf.style.display = '';
+    sf.onclick = function() {
+      try { localStorage.setItem('simflex_import', JSON.stringify({origem: '', name: nome, ativo: lastData.ticker, novo: true, legs: L})); }
+      catch (e) { alert('Não foi possível preparar o SimFlex: ' + e); return; }
+      window.open('/simflex?importar=1', '_blank');
+    };
+    var pnt = document.getElementById('fytm-pnt'); pnt.style.display = '';
+    pnt.onclick = function() {
+      var T = String.fromCharCode(9);
+      var linha = L.map(function(l) { return l.ticker; }).concat(L.map(function(l) { return l.side === 'BUY' ? 'C' : 'V'; }))
+        .concat(L.map(function(l) { return l.quantity; })).concat([r.preco.toFixed(2).replace('.', ',')]).join(T);
+      var ok = function() { pnt.textContent = '✓ Copiado!'; setTimeout(function() { pnt.textContent = '📋 Exportar Pnt'; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(linha).then(ok, function() { prompt('Copie (Pnt):', linha); });
+      else prompt('Copie (Pnt):', linha);
+    };
+  }
+
+  function refreshModalHexa() {
+    var r = lastData.rows[modalIdx], q = parseInt(document.getElementById('fytm-qty').value) || 100, credito = r.preco < 0;
+    var c = r.c, p = r.p;
+    document.getElementById('fytm-title').textContent = 'Hexabox ' + lastData.ticker + ' — Call ' + c.k1 + '/' + c.k2 + '/' + c.k3 + ' · Put ' + p.k1 + '/' + p.k2 + '/' + p.k3;
+    var boxes = [
+      ['CALL: compra ' + q + '× ' + c.s1 + ' (K ' + fmt(c.k1) + ')', brl(c.p1 * q), 'neg'],
+      ['CALL: venda ' + (2 * q) + '× ' + c.s2 + ' (K ' + fmt(c.k2) + ')', brl(c.p2 * 2 * q), 'pos'],
+      ['CALL: compra ' + q + '× ' + c.s3 + ' (K ' + fmt(c.k3) + ')', brl(c.p3 * q), 'neg'],
+      ['PUT: compra ' + q + '× ' + p.s1 + ' (K ' + fmt(p.k1) + ')', brl(p.p1 * q), 'neg'],
+      ['PUT: venda ' + (2 * q) + '× ' + p.s2 + ' (K ' + fmt(p.k2) + ')', brl(p.p2 * 2 * q), 'pos'],
+      ['PUT: compra ' + q + '× ' + p.s3 + ' (K ' + fmt(p.k3) + ')', brl(p.p3 * q), 'neg'],
+      [credito ? 'Crédito recebido (6 pernas)' : 'Custo da montagem (6 pernas)', brl(Math.abs(r.preco) * q), credito ? 'pos' : 'neg'],
+      ['BWB de CALL / BWB de PUT', fmt(c.preco) + ' / ' + fmt(p.preco), ''],
+      ['Lucro máximo', brl(r.lucro_max * q), 'pos'],
+      ['Risco máximo', brl(r.risco_max * q), 'neg'],
+      ['Distância entre os miolos', brl(r.dist) + ' · centro ' + brl(r.centro), ''],
+      ['Pontos de equilíbrio', r.bes && r.bes.length ? r.bes.map(function(b) { return fmt(b); }).join(' · ') : 'nenhum', ''],
+      ['Asas call / put', fmt(c.asa) + '|' + fmt(c.asa_q) + '  ·  ' + fmt(p.asa) + '|' + fmt(p.asa_q), ''],
+      ['Vencimento', dateBR(lastData.exp) + (lastData.mensal ? ' (M)' : ' (W)') + ' · ' + lastData.dc + ' d.c.', '']
+    ];
+    document.getElementById('fytm-grid').innerHTML = boxes.map(function(b) {
+      return '<div class="metric-box"><span class="metric-label">' + b[0] + '</span>' +
+             '<span class="metric-value ' + (b[2] || '') + '">' + b[1] + '</span></div>';
+    }).join('');
+    var perna = function(x, tp) {
+      return [
+        {ticker: x.s1, side: 'BUY',  opt_type: tp, quantity: q,     strike: x.k1, entry_price: x.p1, expiration_date: lastData.exp},
+        {ticker: x.s2, side: 'SELL', opt_type: tp, quantity: 2 * q, strike: x.k2, entry_price: x.p2, expiration_date: lastData.exp},
+        {ticker: x.s3, side: 'BUY',  opt_type: tp, quantity: q,     strike: x.k3, entry_price: x.p3, expiration_date: lastData.exp}];
+    };
+    var L = perna(c, 'CALL').concat(perna(p, 'PUT'));
+    var nome = 'Hexabox ' + lastData.ticker + ' C' + c.k2 + ' P' + p.k2;
     var qs = new URLSearchParams({sim: '1', ativo: lastData.ticker, nome: nome,
       legs: L.map(function(l) { return [l.ticker, l.opt_type, l.side, l.quantity, l.entry_price, l.strike, l.expiration_date].join(','); }).join('|')});
     document.getElementById('fytm-cadeia').href = '/cadeia-opcoes?' + qs.toString();

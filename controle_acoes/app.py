@@ -17515,10 +17515,13 @@ def api_fyt_bwb(ticker):
     """Broken Wing Butterfly: +1 K1 −2 K2 +1 K3, mesmo tipo (CALL ou PUT) e vencimento único, com uma das asas
     maior que a outra (a "asa quebrada"), o que barateia a montagem (ou a faz nascer no crédito) e desloca o risco
     para o lado da asa quebrada.
-    Parâmetros: tipo=call|put · lado=sup (K3−K2 > K2−K1: risco acima) | inf (K2−K1 > K3−K2: risco abaixo) ·
+    Parâmetros: tipo=call|put|hexabox · lado=sup (K3−K2 > K2−K1: risco acima) | inf (K2−K1 > K3−K2: risco abaixo) ·
     exp=AAAA-MM-DD (semanais e mensais até o 2º mensal; padrão = próximo mensal) · asa=todos|R$ (asa normal —
     regra do Booster: BOVA11/SMAL11 até R$ 12, demais até R$ 3; a quebrada vai de asa a asa + o mesmo limite) ·
-    a_min/a_max (faixa da assunção) · p_min/p_max (preço líquido, + débito / − crédito)."""
+    a_min/a_max (faixa da assunção) · p_min/p_max (preço líquido, + débito / − crédito).
+    Hexabox (6 pernas): BWB de CALL com asa quebrada inferior + BWB de PUT com asa quebrada superior, no mesmo
+    vencimento; asa_c/asa_p = asa normal de cada uma; a_min/a_max passa a ser a distância entre os miolos
+    (K2 da CALL − K2 da PUT); p_min/p_max = preço líquido das 6 pernas."""
     ticker = ticker.strip().upper()
     usar_brapi = request.args.get('source') == 'brapi'
     token = None
@@ -17537,14 +17540,22 @@ def api_fyt_bwb(ticker):
         except (TypeError, ValueError):
             return default
 
-    tipo = 'put' if (request.args.get('tipo') or 'call').lower() == 'put' else 'call'
-    call = tipo == 'call'
+    def _asa(name):
+        raw = (request.args.get(name) or 'todos').strip().lower()
+        return None if raw in ('', 'todos') else _num(name, 0.0)
+
+    tipo = (request.args.get('tipo') or 'call').lower()
+    tipo = tipo if tipo in ('call', 'put', 'hexabox') else 'call'
+    hexa = tipo == 'hexabox'
     sup = (request.args.get('lado') or 'sup').lower() != 'inf'
     cap = 12.0 if ticker in ('BOVA11', 'SMAL11') else 3.0
-    asa_raw = (request.args.get('asa') or 'todos').strip().lower()
-    asa_f = None if asa_raw in ('', 'todos') else _num('asa', 0.0)
-    a_min = _num('a_min', spot * 0.8)
-    a_max = _num('a_max', spot * 1.2)
+    asa_f = _asa('asa')
+    if hexa:
+        a_min = _num('a_min', 0.0)
+        a_max = _num('a_max', spot * 0.2)
+    else:
+        a_min = _num('a_min', spot * 0.8)
+        a_max = _num('a_max', spot * 1.2)
     if a_max < a_min:
         a_min, a_max = a_max, a_min
     p_min = _num('p_min', -0.5)
@@ -17588,11 +17599,11 @@ def api_fyt_bwb(ticker):
         d = _date.fromisoformat(exp_str)
         return abs((d - _third_friday(d.year, d.month)).days) <= 2
 
-    by_exp = {}
+    by_exp = {'call': {}, 'put': {}}
     for o in opt_list:
         cat = str(o.get('category') or o.get('type') or '').upper()
-        is_put = 'PUT' in cat or cat == 'P'
-        if is_put == call:
+        tp = 'put' if ('PUT' in cat or cat == 'P') else 'call'
+        if not hexa and tp != tipo:
             continue
         strike = float(o.get('strike') or 0)
         due = str(o.get('due_date') or o.get('expiration_date') or '')
@@ -17606,14 +17617,14 @@ def api_fyt_bwb(ticker):
                 continue
         except ValueError:
             continue
-        by_exp.setdefault(due, {})[round(strike, 2)] = {
+        by_exp[tp].setdefault(due, {})[round(strike, 2)] = {
             'symbol': sym, 'strike': round(strike, 2),
             'bid': round(float(o.get('bid') or 0), 2), 'ask': round(float(o.get('ask') or 0), 2),
             'close': round(float(o.get('close') or 0), 2)}
 
-    dues = sorted(by_exp)
+    dues = sorted(set(by_exp['call']) & set(by_exp['put'])) if hexa else sorted(by_exp[tipo])
     if not dues:
-        return jsonify({'error': f'Nenhum vencimento com {"CALLs" if call else "PUTs"} para {ticker}.'}), 404
+        return jsonify({'error': f'Nenhum vencimento com {"CALLs e PUTs" if hexa else tipo.upper() + "s"} para {ticker}.'}), 404
     monthlies = [d for d in dues if _is_monthly(d)]
     limite = monthlies[1] if len(monthlies) >= 2 else (monthlies[0] if monthlies else dues[-1])
     lista = [d for d in dues if d <= limite]
@@ -17652,75 +17663,135 @@ def api_fyt_bwb(ticker):
             src = 'ultimo'
         return {'bid': b, 'ask': a, 'src': src, 'boca': has_book}
 
-    chain = by_exp[exp]
-    eff = {k: _eff(v) for k, v in chain.items()}
-    ks = sorted(chain)
+    def _gen(tp, lado_sup, asa_fix, filtra_preco):
+        """Todas as BWB de um tipo/lado no vencimento escolhido (lucro no miolo > 0)."""
+        chain = by_exp[tp].get(exp, {})
+        eff = {k: _eff(v) for k, v in chain.items()}
+        ks = sorted(chain)
+        is_call = tp == 'call'
 
-    def _f(S, k):
-        return max(S - k, 0.0) if call else max(k - S, 0.0)
+        def _f(S, k):
+            return max(S - k, 0.0) if is_call else max(k - S, 0.0)
+
+        out = []
+        for k2 in ks:
+            e2 = eff[k2]
+            if (market_open and not e2['boca']) or not e2['bid']:
+                continue
+            lows = [k for k in ks if 0.004 < k2 - k <= 2 * cap + 0.004]
+            highs = [k for k in ks if 0.004 < k - k2 <= 2 * cap + 0.004]
+            for k1 in lows:
+                w1 = round(k2 - k1, 2)
+                e1 = eff[k1]
+                if (market_open and not e1['boca']) or not e1['ask']:
+                    continue
+                for k3 in highs:
+                    w2 = round(k3 - k2, 2)
+                    asa, asa_q = (w1, w2) if lado_sup else (w2, w1)
+                    if asa_q <= asa + 0.004 or asa_q > asa + cap + 0.004:
+                        continue
+                    if asa_fix is None:
+                        if asa > cap + 0.004:
+                            continue
+                    elif abs(asa - asa_fix) > 0.004:
+                        continue
+                    e3 = eff[k3]
+                    if (market_open and not e3['boca']) or not e3['ask']:
+                        continue
+                    preco = round(e1['ask'] + e3['ask'] - 2 * e2['bid'], 2)
+                    if filtra_preco and not (p_min - 0.004 <= preco <= p_max + 0.004):
+                        continue
+                    val = lambda S: _f(S, k1) - 2 * _f(S, k2) + _f(S, k3) - preco
+                    lucro_max = val(k2)                  # pico no miolo
+                    if lucro_max <= 0:
+                        continue
+                    c1, c2, c3 = chain[k1]['close'], chain[k2]['close'], chain[k3]['close']
+                    out.append({
+                        'k1': k1, 'k2': k2, 'k3': k3,
+                        's1': chain[k1]['symbol'], 's2': chain[k2]['symbol'], 's3': chain[k3]['symbol'],
+                        'p1': round(e1['ask'], 2), 'p2': round(e2['bid'], 2), 'p3': round(e3['ask'], 2),
+                        'asa': asa, 'asa_q': asa_q, 'preco': preco,
+                        'ultimo': round(c1 + c3 - 2 * c2, 2) if min(c1, c2, c3) >= 0.05 else None,
+                        'lucro_max': lucro_max, 'v_lo': val(k1), 'v_hi': val(k3),   # caudas: constantes além de K1 / K3
+                        'src': 'ultimo' if 'ultimo' in (e1['src'], e2['src'], e3['src']) else 'book',
+                    })
+        return out
 
     rows = []
-    for k2 in ks:
-        e2 = eff[k2]
-        if (market_open and not e2['boca']) or not e2['bid']:
-            continue
-        lows = [k for k in ks if 0.004 < k2 - k <= 2 * cap + 0.004]
-        highs = [k for k in ks if 0.004 < k - k2 <= 2 * cap + 0.004]
-        for k1 in lows:
-            w1 = round(k2 - k1, 2)
-            e1 = eff[k1]
-            if (market_open and not e1['boca']) or not e1['ask']:
+    if not hexa:
+        for c in _gen(tipo, sup, asa_f, True):
+            k1, k2, k3, lucro_max, v_lo, v_hi = c['k1'], c['k2'], c['k3'], c['lucro_max'], c['v_lo'], c['v_hi']
+            if (v_hi if sup else v_lo) >= 0:
+                continue                          # lado da asa quebrada nunca volta a zero → sem assunção
+            if sup:
+                assuncao = k2 + lucro_max / (lucro_max - v_hi) * (k3 - k2)
+                be_outro = (k2 - lucro_max / (lucro_max - v_lo) * (k2 - k1)) if v_lo < 0 else None
+            else:
+                assuncao = k2 - lucro_max / (lucro_max - v_lo) * (k2 - k1)
+                be_outro = (k2 + lucro_max / (lucro_max - v_hi) * (k3 - k2)) if v_hi < 0 else None
+            if not (a_min <= assuncao <= a_max):
                 continue
-            for k3 in highs:
-                w2 = round(k3 - k2, 2)
-                asa, asa_q = (w1, w2) if sup else (w2, w1)
-                if asa_q <= asa + 0.004 or asa_q > asa + cap + 0.004:
+            c.update({
+                'lucro_max': round(lucro_max, 2), 'risco_max': round(min(v_lo, v_hi, 0.0), 2),
+                'assuncao': round(assuncao, 2), 'assunc_dist': round((assuncao - spot) / spot * 100, 1),
+                'be_outro': round(be_outro, 2) if be_outro is not None else None,
+                'k2_dist': round((k2 - spot) / spot * 100, 1),
+            })
+            for x in ('v_lo', 'v_hi'):
+                c.pop(x)
+            rows.append(c)
+        rows.sort(key=lambda r: (r['preco'], -r['lucro_max'], abs(r['k2'] - spot)))
+        rows = _fyt_diversify(rows, lambda r: r['s2'], per_key=3, limit=80)
+    else:
+        # Agrupa por miolo; as PUTs ficam ordenadas por preço para achar (bisect) as que fecham a faixa de preço total.
+        import bisect
+        def _por_k2(cands):
+            by_k2 = {}
+            for c in cands:
+                by_k2.setdefault(c['k2'], []).append(c)
+            return by_k2
+        calls = _por_k2(_gen('call', False, _asa('asa_c'), False))   # asa quebrada inferior
+        puts = {k: sorted(v, key=lambda c: c['preco']) for k, v in _por_k2(_gen('put', True, _asa('asa_p'), False)).items()}
+        put_px = {k: [c['preco'] for c in v] for k, v in puts.items()}
+        f_c = lambda S, k: max(S - k, 0.0)
+        f_p = lambda S, k: max(k - S, 0.0)
+        for k2c, lc in calls.items():
+            for k2p, lp in puts.items():
+                dist = round(k2c - k2p, 2)
+                if not (a_min - 0.004 <= dist <= a_max + 0.004):
                     continue
-                if asa_f is None:
-                    if asa > cap + 0.004:
+                pares = []
+                for c in lc:
+                    lo = bisect.bisect_left(put_px[k2p], p_min - c['preco'] - 0.004)
+                    hi = bisect.bisect_right(put_px[k2p], p_max - c['preco'] + 0.004)
+                    pares.extend((round(c['preco'] + lp[x]['preco'], 2), c, lp[x]) for x in range(lo, min(hi, lo + 6)))
+                pares.sort(key=lambda t: t[0])
+                for preco, c, p in pares[:6]:          # no máximo 6 montagens por par de miolos
+                    def val(S):
+                        return (f_c(S, c['k1']) - 2 * f_c(S, c['k2']) + f_c(S, c['k3'])
+                                + f_p(S, p['k1']) - 2 * f_p(S, p['k2']) + f_p(S, p['k3']) - preco)
+                    kinks = sorted({c['k1'], c['k2'], c['k3'], p['k1'], p['k2'], p['k3']})
+                    vals = [val(k) for k in kinks]           # linear entre os strikes, constante além das pontas
+                    lucro_max, risco_max = max(vals), min(vals + [0.0])
+                    if lucro_max <= 0:
                         continue
-                elif abs(asa - asa_f) > 0.004:
-                    continue
-                e3 = eff[k3]
-                if (market_open and not e3['boca']) or not e3['ask']:
-                    continue
-                preco = round(e1['ask'] + e3['ask'] - 2 * e2['bid'], 2)
-                if not (p_min - 0.004 <= preco <= p_max + 0.004):
-                    continue
-
-                def val(S):
-                    return _f(S, k1) - 2 * _f(S, k2) + _f(S, k3) - preco
-                lucro_max = val(k2)                  # pico no miolo
-                v_lo, v_hi = val(k1), val(k3)       # caudas (constantes além de K1 e de K3)
-                if lucro_max <= 0:
-                    continue
-                v_risco = v_hi if sup else v_lo
-                if v_risco >= 0:
-                    continue                          # lado da asa quebrada nunca volta a zero → sem assunção
-                if sup:
-                    assuncao = k2 + lucro_max / (lucro_max - v_hi) * (k3 - k2)
-                    be_outro = (k2 - lucro_max / (lucro_max - v_lo) * (k2 - k1)) if v_lo < 0 else None
-                else:
-                    assuncao = k2 - lucro_max / (lucro_max - v_lo) * (k2 - k1)
-                    be_outro = (k2 + lucro_max / (lucro_max - v_hi) * (k3 - k2)) if v_hi < 0 else None
-                if not (a_min <= assuncao <= a_max):
-                    continue
-                c1, c2, c3 = chain[k1]['close'], chain[k2]['close'], chain[k3]['close']
-                ultimo = round(c1 + c3 - 2 * c2, 2) if min(c1, c2, c3) >= 0.05 else None
-                srcs = (e1['src'], e2['src'], e3['src'])
-                rows.append({
-                    'k1': k1, 'k2': k2, 'k3': k3,
-                    's1': chain[k1]['symbol'], 's2': chain[k2]['symbol'], 's3': chain[k3]['symbol'],
-                    'p1': round(e1['ask'], 2), 'p2': round(e2['bid'], 2), 'p3': round(e3['ask'], 2),
-                    'asa': asa, 'asa_q': asa_q, 'preco': preco, 'ultimo': ultimo,
-                    'lucro_max': round(lucro_max, 2), 'risco_max': round(min(v_lo, v_hi, 0.0), 2),
-                    'assuncao': round(assuncao, 2), 'assunc_dist': round((assuncao - spot) / spot * 100, 1),
-                    'be_outro': round(be_outro, 2) if be_outro is not None else None,
-                    'k2_dist': round((k2 - spot) / spot * 100, 1),
-                    'src': 'ultimo' if 'ultimo' in srcs else 'book',
-                })
-    rows.sort(key=lambda r: (r['preco'], -r['lucro_max'], abs(r['k2'] - spot)))
-    rows = _fyt_diversify(rows, lambda r: r['s2'], per_key=3, limit=80)
+                    zeros = []
+                    for (ka, va), (kb, vb) in zip(zip(kinks, vals), zip(kinks[1:], vals[1:])):
+                        if (va < 0) != (vb < 0):
+                            zeros.append(ka + (0 - va) / (vb - va) * (kb - ka))
+                    uc = c['ultimo'] + p['ultimo'] if c['ultimo'] is not None and p['ultimo'] is not None else None
+                    centro = (k2c + k2p) / 2
+                    rows.append({
+                        'c': {k: c[k] for k in ('k1', 'k2', 'k3', 's1', 's2', 's3', 'p1', 'p2', 'p3', 'asa', 'asa_q', 'preco')},
+                        'p': {k: p[k] for k in ('k1', 'k2', 'k3', 's1', 's2', 's3', 'p1', 'p2', 'p3', 'asa', 'asa_q', 'preco')},
+                        'dist': dist, 'centro': round(centro, 2), 'centro_dist': round((centro - spot) / spot * 100, 1),
+                        'preco': preco, 'ultimo': round(uc, 2) if uc is not None else None,
+                        'lucro_max': round(lucro_max, 2), 'risco_max': round(risco_max, 2),
+                        'bes': [round(z, 2) for z in zeros],
+                        'src': 'ultimo' if 'ultimo' in (c['src'], p['src']) else 'book',
+                    })
+        rows.sort(key=lambda r: (r['preco'], -r['lucro_max'], abs(r['centro'] - spot)))
+        rows = _fyt_diversify(rows, lambda r: (r['c']['s2'], r['p']['s2']), per_key=2, limit=80)
     return jsonify({
         'ticker': ticker, 'spot': spot, 'spot_change': spot_change, 'tipo': tipo, 'lado': 'sup' if sup else 'inf',
         'market_open': market_open, 'expirations': exps_out, 'exp': exp,

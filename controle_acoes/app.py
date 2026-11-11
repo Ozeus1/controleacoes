@@ -19452,6 +19452,7 @@ def _estruturada_roll_adjustment(op):
                 'saida':      leg.get('close_price'),
                 'novo':       leg.get('new_ticker') or '',
                 'novo_premio': leg.get('new_premium'),
+                'nova_qtde':  leg.get('new_quantity'),
                 'pnl':        round(pnl, 2),
                 'contabiliza': conta,
             })
@@ -20030,20 +20031,27 @@ def roll_option(id):
     close_premium  = request.form.get('close_premium', '').replace(',', '.')  # prêmio recompra do antigo
     roll_date      = request.form.get('roll_date', date.today().isoformat())
     notes          = request.form.get('notes', '')
+    # Quantidade NOVA da posição rolada: a rolagem pode fechar 1000 opções e
+    # abrir só 800 (ou 1200). Vazio = mantém a quantidade atual.
+    new_qty_raw    = (request.form.get('new_qty') or '').strip()
 
     try:
         close_p  = float(close_premium) if close_premium else 0.0
         new_p    = float(new_premium)   if new_premium   else opt.sale_price
         new_k    = float(new_strike)    if new_strike    else opt.strike_price
         new_exp_d = datetime.strptime(new_exp, '%Y-%m-%d').date() if new_exp else opt.expiration_date
+        old_qty  = opt.quantity or 0
+        new_qty  = max(1, int(new_qty_raw)) if new_qty_raw.isdigit() else old_qty
 
         # Débito/crédito líquido da rolagem (do ponto de vista da posição)
         # SELL (venda): recomprou por close_p e vendeu novo por new_p → crédito = new_p - close_p
         # BUY (compra): vendeu por close_p e comprou novo por new_p  → débito  = new_p - close_p
         if opt.option_type in ('VENDA_CALL', 'VENDA_PUT'):
-            net_roll = new_p - close_p   # positivo = crédito adicional
+            net_roll = new_p - close_p   # positivo = crédito adicional (por opção)
+            net_roll_total = new_p * new_qty - close_p * old_qty
         else:
-            net_roll = close_p - new_p   # positivo = recebeu mais do que pagou
+            net_roll = close_p - new_p   # positivo = recebeu mais do que pagou (por opção)
+            net_roll_total = close_p * old_qty - new_p * new_qty
 
         _append_roll(opt, {
             'roll_type':     roll_type,
@@ -20056,7 +20064,10 @@ def roll_option(id):
             'new_strike':    new_k,
             'new_exp':       new_exp_d.isoformat(),
             'new_premium':   new_p,
+            'quantity':      old_qty,      # qtde FECHADA (posição antiga)
+            'new_quantity':  new_qty,      # qtde ABERTA (posição nova)
             'net_roll':      round(net_roll, 4),
+            'net_roll_total': round(net_roll_total, 2),
             'notes':         notes,
         })
 
@@ -20066,11 +20077,16 @@ def roll_option(id):
         opt.strike_price     = new_k
         opt.expiration_date  = new_exp_d
         opt.sale_price       = new_p
+        opt.quantity         = new_qty
         opt.entry_date       = datetime.strptime(roll_date, '%Y-%m-%d').date()
         opt.current_option_price = new_p
 
         db.session.commit()
-        flash(f'Rolagem registrada! Crédito/Débito líquido: R$ {net_roll:.2f}', 'success')
+        if new_qty != old_qty:
+            flash(f'Rolagem registrada! Quantidade: {old_qty} → {new_qty}. '
+                  f'Caixa total da rolagem: R$ {net_roll_total:.2f}', 'success')
+        else:
+            flash(f'Rolagem registrada! Crédito/Débito líquido: R$ {net_roll:.2f}', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Erro na rolagem: {e}', 'danger')
@@ -20479,6 +20495,10 @@ def roll_estruturada(id):
     # o risco de uma call descoberta. Listas paralelas às demais "leg_new_*".
     new_types       = request.form.getlist('leg_new_type')
     new_sides       = request.form.getlist('leg_new_side')
+    # Quantidade da perna SUBSTITUTA: o manejo pode trocar um braço de 1000
+    # opções por outro de 800 (ou 1200). Lista paralela às demais leg_new_*;
+    # vazio/ausente mantém a quantidade original do braço.
+    new_qtys        = request.form.getlist('leg_new_qty')
     # Pernas a ENCERRAR (zerar o braço): saem da estrutura em vez de trocar de
     # contrato. Vem como lista de leg_id — os campos da nova perna ficam
     # desabilitados no formulário, então não deslocam as listas paralelas acima.
@@ -20581,6 +20601,10 @@ def roll_estruturada(id):
             ne  = new_exps[j]                               if j < len(new_exps)      and new_exps[j]      else (leg.expiration_date.isoformat() if leg.expiration_date else '')
             ntp = (new_types[j].upper().strip()             if j < len(new_types)     and new_types[j]     else leg.opt_type)
             nsd = (new_sides[j].upper().strip()             if j < len(new_sides)     and new_sides[j]     else leg.side)
+            # Quantidade nova do braço substituto (vazio = mantém a atual)
+            nqty = qty_total
+            if j < len(new_qtys) and str(new_qtys[j]).strip().isdigit():
+                nqty = max(1, int(new_qtys[j]))
             if ntp not in ('CALL', 'PUT'):
                 ntp = leg.opt_type
             if nsd not in ('BUY', 'SELL'):
@@ -20592,13 +20616,13 @@ def roll_estruturada(id):
             # troca de lado (ex.: fecha PUT vendida e abre CALL comprada, dois
             # desembolsos). Usar um lado só distorceria o net do manejo.
             if leg.side == 'SELL':
-                net_roll -= cp * qty_total        # recompra a vendida: paga
+                net_roll -= cp * qty_total        # recompra a vendida: paga (qtde ANTIGA)
             else:
-                net_roll += cp * qty_total        # vende a comprada: recebe
+                net_roll += cp * qty_total        # vende a comprada: recebe (qtde ANTIGA)
             if nsd == 'SELL':
-                net_roll += np_ * qty_total       # vende a nova: recebe
+                net_roll += np_ * nqty            # vende a nova: recebe (qtde NOVA)
             else:
-                net_roll -= np_ * qty_total       # compra a nova: paga
+                net_roll -= np_ * nqty            # compra a nova: paga (qtde NOVA)
 
             # A perna foi de fato manejada? (ticker/strike/prêmio/venc/tipo/lado)
             old_exp_iso = leg.expiration_date.isoformat() if leg.expiration_date else ''
@@ -20607,7 +20631,8 @@ def roll_estruturada(id):
                        or abs(np_ - (leg.entry_price or 0)) > 0.001
                        or (ne or '') != old_exp_iso
                        or ntp != leg.opt_type
-                       or nsd != leg.side)
+                       or nsd != leg.side
+                       or nqty != qty_total)
 
             # Resultado da perna fechada — apenas REGISTRADO (roll_history), NÃO
             # vira TradeHistory. Num manejo, fechar/abrir pernas é ajuste de
@@ -20634,7 +20659,8 @@ def roll_estruturada(id):
                 'old_type':      leg.opt_type,
                 'new_type':      ntp,
                 'new_side':      nsd,
-                'quantity':      qty_total,
+                'quantity':      qty_total,          # qtde ANTIGA (fechada)
+                'new_quantity':  nqty,               # qtde NOVA (aberta)
                 'realized_pnl':  round(((leg.entry_price or 0) - cp) * qty_total if leg.side == 'SELL'
                                        else (cp - (leg.entry_price or 0)) * qty_total, 2) if changed else None,
             })
@@ -20644,6 +20670,7 @@ def roll_estruturada(id):
             leg.strike          = nk
             leg.opt_type        = ntp
             leg.side            = nsd
+            leg.quantity        = nqty
             leg.entry_price     = np_
             leg.current_price   = np_
             if ne:
@@ -30438,6 +30465,19 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
             ticker, novo, anterior, desvio * 100, var)
         return False
 
+    # Memoiza a decisão por ticker DENTRO desta atualização: o mesmo papel
+    # aparece em vários registros (Asset, underlying de Option/StructuredOp/
+    # OptionSpread) e cada chamada extra de _cotacao_confiavel incrementaria a
+    # contagem de confirmações de _quote_pendente — 3 ocorrências do mesmo
+    # ticker numa única rodada aceitariam na hora um dado que deveria esperar
+    # 3 ATUALIZAÇÕES seguidas para ser confirmado.
+    _conf_cache: dict = {}
+
+    def _confiavel(ticker, novo, anterior):
+        if ticker not in _conf_cache:
+            _conf_cache[ticker] = _cotacao_confiavel(ticker, novo, anterior)
+        return _conf_cache[ticker]
+
     # ── Assets: atualiza current_price/daily_change via OpLab quando disponível ──
     assets_ok = 0
     oplab_covered_assets: set = set()   # tickers que o OpLab retornou → não precisam ir ao Yahoo
@@ -30451,7 +30491,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
             # dia, porém, continua sendo gravada — ela é um percentual válido
             # mesmo quando o preço é segurado, e sem isso a coluna "Var Dia %"
             # ficava congelada junto com a cotação.
-            if not _cotacao_confiavel(key, prices[key], a.current_price):
+            if not _confiavel(key, prices[key], a.current_price):
                 if key in variations:
                     a.daily_change = variations[key]
                 continue
@@ -30483,14 +30523,18 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
             uk = o.underlying_asset.upper()
             if uk in prices and prices[uk] > 0:
                 # Grava na própria Option — subjacentes fora da carteira
-                # (ex.: AXIA3, MULT3) não têm Asset onde salvar o preço
-                o.underlying_price = prices[uk]
+                # (ex.: AXIA3, MULT3) não têm Asset onde salvar o preço.
+                # O filtro de cotação destoante vale aqui também: subjacente
+                # fora da carteira não tinha proteção nenhuma e congelava num
+                # close obsoleto devolvido pelo /market/quote (caso LFTS11).
+                if _confiavel(uk, prices[uk], o.underlying_price):
+                    o.underlying_price = prices[uk]
                 if uk in variations:
                     o.underlying_change = variations[uk]
                 # Propaga para o Asset correspondente se existir
                 asset_obj = next((a for a in assets if a.ticker.upper() == uk), None)
                 if (asset_obj and asset_obj.type != 'ETF'
-                        and _cotacao_confiavel(uk, prices[uk], asset_obj.current_price)):
+                        and _confiavel(uk, prices[uk], asset_obj.current_price)):
                     asset_obj.current_price = prices[uk]
                     if uk in variations:
                         asset_obj.daily_change = variations[uk]
@@ -30577,15 +30621,28 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
                 options_ok += 1
 
     # ── Atualiza underlying de OperaçõesEstruturadas ──────────────
+    # Com as mesmas defesas dos Assets: (1) cotação destoante do valor salvo
+    # é descartada (o /market/quote às vezes devolve um close ANTIGO — caso
+    # LFTS11 — e aqui isso gravava preço/variação errados sem checagem
+    # nenhuma, ex.: RADL3/SBSP3 presos com var. de -23%); (2) subjacente que
+    # não veio no bulk busca fallback individual (OpLab instruments → Yahoo),
+    # senão o preço/variação congelam para sempre no último valor gravado.
     for sop in struct_ops_bulk:
         if getattr(sop, 'intl', False):
             continue
         if sop.underlying_asset:
             uk = sop.underlying_asset.upper()
             if uk in prices and prices[uk] > 0:
-                sop.underlying_price = prices[uk]
-            if uk in variations:
-                sop.underlying_change = variations[uk]
+                if _confiavel(uk, prices[uk], sop.underlying_price):
+                    sop.underlying_price = prices[uk]
+                if uk in variations:
+                    sop.underlying_change = variations[uk]
+            elif oplab_online and _left() > 0:
+                p, var = _fallback_option_quote(uk)
+                if p and _confiavel(uk, p, sop.underlying_price):
+                    sop.underlying_price = p
+                    if var is not None:
+                        sop.underlying_change = var
 
     # ── Atualiza OptionSpreads (/spreads) — com fallback individual ────────
     for sp in spreads:
@@ -30612,7 +30669,8 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
         if sp.underlying_asset:
             uk = sp.underlying_asset.upper()
             if uk in prices and prices[uk] > 0:
-                sp.underlying_price = prices[uk]
+                if _confiavel(uk, prices[uk], sp.underlying_price):
+                    sp.underlying_price = prices[uk]
                 if uk in variations:
                     sp.underlying_change = variations[uk]
             elif oplab_online and _left() > 0:
@@ -30621,7 +30679,7 @@ def _do_oplab_bulk_update(uid: int, token: str, oplab_online: bool = True,
                 # 0,00/travado indefinidamente para ativos que não estão na
                 # carteira (Asset), já que só o OpLab bulk os cobre.
                 p, var = _fallback_option_quote(uk)
-                if p:
+                if p and _confiavel(uk, p, sp.underlying_price):
                     sp.underlying_price = p
                     if var is not None:
                         sp.underlying_change = var

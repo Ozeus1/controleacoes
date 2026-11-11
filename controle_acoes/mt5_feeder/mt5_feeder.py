@@ -83,9 +83,17 @@ def _get_price(symbol):
             if tick is not None:
                 break
 
+    from datetime import datetime as _dt
+
     price = None
+    price_day = None          # dia do dado usado como preço (p/ validar a variação)
     if tick is not None:
         price = tick.last if tick.last > 0 else tick.bid
+        try:
+            if getattr(tick, 'time', 0):
+                price_day = _dt.utcfromtimestamp(int(tick.time)).date()
+        except Exception:
+            price_day = None
 
     # Fallback: último candle M1 quando tick indisponível (fora do pregão)
     if not price or price <= 0:
@@ -93,6 +101,10 @@ def _get_price(symbol):
         rates = _mt5.copy_rates_from_pos(symbol, _mt5.TIMEFRAME_M1, 0, 1)
         if rates is not None and len(rates) > 0:
             price = round(float(rates[0]['close']), 2)
+            try:
+                price_day = _dt.utcfromtimestamp(int(rates[0]['time'])).date()
+            except Exception:
+                price_day = None
 
     if not price or price <= 0:
         return None, None
@@ -100,18 +112,30 @@ def _get_price(symbol):
     price = round(price, 2)
 
     # Variação do dia: usa o candle D1 de hoje para pegar o open real do pregão
-    # (session_open do symbol_info pode ser o preço de referência, não o open do dia)
-    change_pct = 0.0
+    # (session_open do symbol_info pode ser o preço de referência, não o open do dia).
+    # IMPORTANTE: o candle D1 na posição 0 é o ÚLTIMO disponível, que para um
+    # símbolo sem histórico recente (fora do Market Watch, pós-desdobramento,
+    # dado não sincronizado) pode ser de um dia DIFERENTE do tick — comparar
+    # preço de hoje com abertura de semanas atrás gerava variações absurdas
+    # (ex.: RADL3/SBSP3 com -23%). Sem a confirmação de que preço e candle são
+    # do MESMO dia, é melhor NÃO informar variação (o site mantém a salva).
+    change_pct = None
     try:
         rates_d1 = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_D1, 0, 1)
         if rates_d1 is not None and len(rates_d1) > 0:
             day_open = float(rates_d1[0]['open'])
-            if day_open > 0:
+            try:
+                d1_day = _dt.utcfromtimestamp(int(rates_d1[0]['time'])).date()
+            except Exception:
+                d1_day = None
+            mesmo_dia = (price_day is None or d1_day is None or price_day == d1_day)
+            if day_open > 0 and mesmo_dia:
                 change_pct = round((price - day_open) / day_open * 100, 2)
         else:
-            # Fallback: session_open do symbol_info
+            # Fallback: session_open do symbol_info (só com tick do dia em mãos,
+            # senão o preço pode ser velho e a "variação" não é do dia nenhum)
             info = mt5.symbol_info(symbol)
-            if info and info.session_open > 0:
+            if info and info.session_open > 0 and tick is not None:
                 change_pct = round((price - info.session_open) / info.session_open * 100, 2)
     except Exception:
         pass
@@ -126,8 +150,11 @@ def obter_cotacoes(ticker_map, log_fn):
         price, change = _get_price(simbolo_mt5)
         if price:
             quotes[ticker_site]  = price
-            changes[ticker_site] = change
-            log_fn(f"    {ticker_site:<12} ({simbolo_mt5:<15}) = R$ {price:.2f}  ({change:+.2f}%)")
+            if change is not None:
+                changes[ticker_site] = change
+                log_fn(f"    {ticker_site:<12} ({simbolo_mt5:<15}) = R$ {price:.2f}  ({change:+.2f}%)")
+            else:
+                log_fn(f"    {ticker_site:<12} ({simbolo_mt5:<15}) = R$ {price:.2f}  (var. do dia indisponível — mantida a salva)")
         else:
             log_fn(f"    {ticker_site:<12} ({simbolo_mt5:<15}) = sem preço")
     return quotes, changes

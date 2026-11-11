@@ -132,7 +132,7 @@
                 <td class="actions" style="white-space:nowrap;">
                     <a href="{{ url_for('payoff_option', id=item.option.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
                     <button class="btn btn-sm btn-laranja" title="Rolar operação"
-                            onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
+                            onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }}, {{ item.option.quantity or 0 }})">🔄</button>
                     {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker, 'option:' ~ item.option.id) }}
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm btn-violeta" title="Histórico de rolagens"
@@ -283,7 +283,7 @@
                        class="btn btn-sm btn-secondary" title="Manejo de Put — abre já preenchido" target="_blank">🛟</a>
                     <a href="{{ url_for('payoff_option', id=item.option.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
                     <button class="btn btn-sm btn-laranja" title="Rolar operação"
-                            onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
+                            onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }}, {{ item.option.quantity or 0 }})">🔄</button>
                     {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker, 'option:' ~ item.option.id) }}
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm btn-violeta" title="Histórico de rolagens"
@@ -388,7 +388,7 @@
                 <td class="actions" style="white-space:nowrap;">
                     <a href="{{ url_for('payoff_option', id=item.option.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
                     <button class="btn btn-sm btn-laranja" title="Rolar operação"
-                            onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
+                            onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }}, {{ item.option.quantity or 0 }})">🔄</button>
                     {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker, 'option:' ~ item.option.id) }}
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm btn-violeta" title="Histórico de rolagens"
@@ -491,7 +491,7 @@
                 <td class="actions" style="white-space:nowrap;">
                     <a href="{{ url_for('payoff_option', id=item.option.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
                     <button class="btn btn-sm btn-laranja" title="Rolar operação"
-                            onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }})">🔄</button>
+                            onclick="openRollOption({{ item.option.id }}, '{{ item.option.ticker }}', '{{ item.option.option_type }}', {{ item.option.strike_price }}, '{{ item.option.expiration_date.strftime('%Y-%m-%d') }}', {{ item.option.sale_price }}, {{ item.option.quantity or 0 }})">🔄</button>
                     {{ roll_sim_link(item.option.ticker ~ ',' ~ ('PUT' if 'PUT' in (item.option.option_type or '') else 'CALL') ~ ',' ~ ('BUY' if 'COMPRA' in (item.option.option_type or '') else 'SELL') ~ ',' ~ item.option.quantity ~ ',' ~ '%.2f'|format(item.option.sale_price or 0) ~ ',' ~ '%.2f'|format(item.option.strike_price or 0) ~ ',' ~ item.option.expiration_date.strftime('%Y-%m-%d'), item.option.underlying_asset, 'Rolagem ' ~ item.option.ticker, 'option:' ~ item.option.id) }}
                     {% if item.option.roll_history %}
                     <button class="btn btn-sm btn-violeta" title="Histórico de rolagens"
@@ -802,7 +802,7 @@
                 <td class="actions" style="white-space:nowrap;">
                     <a href="{{ url_for('payoff_estruturada', id=op.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
                     <button class="btn btn-sm btn-laranja" title="Rolar estruturada"
-                            onclick="openRollEstruturada({{ op.id }}, '{{ op.name }}', [{% for l in op.legs %}{'id':{{ l.id }},'ticker':'{{ l.ticker }}','side':'{{ l.side }}','opt_type':'{{ l.opt_type }}','strike':{{ l.strike or 0 }},'entry_price':{{ l.entry_price or 0 }},'current_price':{{ l.current_price or 0 }},'expiration_date':'{{ l.expiration_date.isoformat() if l.expiration_date else '' }}'}{% if not loop.last %},{% endif %}{% endfor %}])">🔄</button>
+                            onclick="openRollEstruturada({{ op.id }}, '{{ op.name }}', [{% for l in op.legs %}{'id':{{ l.id }},'ticker':'{{ l.ticker }}','side':'{{ l.side }}','opt_type':'{{ l.opt_type }}','strike':{{ l.strike or 0 }},'entry_price':{{ l.entry_price or 0 }},'current_price':{{ l.current_price or 0 }},'quantity':{{ l.quantity or 1 }},'expiration_date':'{{ l.expiration_date.isoformat() if l.expiration_date else '' }}'}{% if not loop.last %},{% endif %}{% endfor %}])">🔄</button>
                     {% set roll_legs = [] %}
                     {% for l in op.legs if l.opt_type != 'STOCK' %}
                         {% set _ = roll_legs.append(l.ticker ~ ',' ~ l.opt_type ~ ',' ~ l.side ~ ',' ~ l.quantity ~ ',' ~ '%.2f'|format(l.entry_price or 0) ~ ',' ~ '%.2f'|format(l.strike or 0) ~ ',' ~ (l.expiration_date.isoformat() if l.expiration_date else '')) %}
@@ -870,8 +870,11 @@
           <input type="text" name="new_strike" class="form-control form-control-sm" placeholder="0,00" id="roll-opt-new-strike"></div>
         <div><label style="font-size:.8rem;color:var(--text-secondary);">Novo Vencimento</label>
           <input type="date" name="new_exp" class="form-control form-control-sm" id="roll-opt-new-exp"></div>
-        <div style="grid-column:span 2;"><label style="font-size:.8rem;color:var(--text-secondary);">Novo Prêmio Recebido/Pago (R$)</label>
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Novo Prêmio Recebido/Pago (R$)</label>
           <input type="text" name="new_premium" class="form-control form-control-sm" placeholder="0,00" id="roll-opt-new-prem"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Nova Quantidade <span id="roll-opt-qty-old" style="opacity:.7;"></span></label>
+          <input type="number" name="new_qty" class="form-control form-control-sm" min="1" step="1" id="roll-opt-new-qty"
+                 title="A rolagem pode fechar e reabrir com quantidade diferente (ex.: 1000 → 800). Vazio = mantém."></div>
         <div style="grid-column:span 2;"><label style="font-size:.8rem;color:var(--text-secondary);">Observações</label>
           <input type="text" name="notes" class="form-control form-control-sm" placeholder="Motivo da rolagem..."></div>
       </div>
@@ -983,12 +986,14 @@
 
 <script>
 // ── Rolagem de opção individual ──────────────────────────────────────────────
-function openRollOption(id, ticker, optType, strike, exp, premium) {
+function openRollOption(id, ticker, optType, strike, exp, premium, qty) {
     document.getElementById('roll-opt-ticker').textContent = ticker + ' (K=' + strike.toLocaleString('pt-BR',{minimumFractionDigits:2}) + ' / venc ' + exp + ')';
     document.getElementById('roll-opt-new-ticker').value = ticker;
     document.getElementById('roll-opt-new-strike').value = strike.toString().replace('.', ',');
     document.getElementById('roll-opt-new-exp').value    = exp;
     document.getElementById('roll-opt-new-prem').value   = premium.toString().replace('.', ',');
+    document.getElementById('roll-opt-new-qty').value    = qty || '';
+    document.getElementById('roll-opt-qty-old').textContent = qty ? '(atual: ' + qty + ')' : '';
     document.getElementById('form-roll-option').action   = '/roll_option/' + id;
     document.getElementById('modal-roll-option').style.display = 'flex';
 }
@@ -1091,7 +1096,9 @@ function openRollEstruturada(id, name, legs) {
             '<input type="text" name="leg_new_strike" class="form-control form-control-sm" placeholder="0,00" value="' + ((leg.strike||0).toFixed(2).replace('.',',')) + '"></div>' +
             '<div><label style="font-size:.72rem;color:var(--text-secondary);">Novo Prêmio</label>' +
             '<input type="text" name="leg_new_premium" class="form-control form-control-sm" placeholder="0,00" value="' + ((leg.entry_price||0).toFixed(2).replace('.',',')) + '"></div>' +
-            '<div style="grid-column:span 2;"><label style="font-size:.72rem;color:var(--text-secondary);">Novo Vencimento</label>' +
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Nova Qtde (era ' + (leg.quantity||1) + ')</label>' +
+            '<input type="number" name="leg_new_qty" class="form-control form-control-sm" min="1" step="1" value="' + (leg.quantity||1) + '"></div>' +
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Novo Vencimento</label>' +
             '<input type="date" name="leg_new_exp" class="form-control form-control-sm" value="' + exp + '"></div>' +
             '</div></div>';
     });
@@ -1200,15 +1207,16 @@ function openRollHistory(history, title, defaultQty) {
             var sum = 0;
             var hasData = false;
             r.legs.forEach(function(l) {
-                var qty = parseFloat(l.quantity) || 1;
+                var qty  = parseFloat(l.quantity) || 1;                 // qtde fechada
+                var qtyN = parseFloat(l.new_quantity) || qty;           // qtde aberta
                 var cp  = parseFloat(l.close_price);
                 var np_ = parseFloat(l.new_premium);
                 var nS  = l.new_side || l.side;
                 if (!isNaN(cp)) {
                     hasData = true;
-                    sum += (l.side === 'SELL' ? -cp : cp) * qty;      // fechamento
+                    sum += (l.side === 'SELL' ? -cp : cp) * qty;      // fechamento (qtde antiga)
                     if (!l.closed_leg && !isNaN(np_)) {
-                        sum += (nS === 'SELL' ? np_ : -np_) * qty;    // abertura
+                        sum += (nS === 'SELL' ? np_ : -np_) * qtyN;   // abertura (qtde nova)
                     }
                 }
             });
@@ -1238,9 +1246,12 @@ function openRollHistory(history, title, defaultQty) {
             var newPrem   = parseFloat(r.new_premium);
             var oldPrem   = parseFloat(r.old_premium);
             var isSell    = (r.option_type || '').indexOf('VENDA') >= 0 || !r.option_type;
+            // A rolagem pode mudar a quantidade (fecha 1000×, reabre 800×):
+            // o fechamento usa a qtde ANTIGA e a abertura a NOVA.
+            var qtyNewO   = parseFloat(r.new_quantity) || qtyRoll;
             if (!isNaN(closePrem) && !isNaN(newPrem)) {
                 closeCash = (isSell ? -closePrem : closePrem) * qtyRoll;
-                openCash  = (isSell ?  newPrem  : -newPrem)  * qtyRoll;
+                openCash  = (isSell ?  newPrem  : -newPrem)  * qtyNewO;
                 net = closeCash + openCash;
                 if (!isNaN(oldPrem)) {
                     initialCash = (isSell ? oldPrem : -oldPrem) * qtyRoll;
@@ -1310,7 +1321,10 @@ function openRollHistory(history, title, defaultQty) {
                         dBR(r.old_exp), isShort ? 'recompra' : 'venda') + '</td>' +
                 '<td style="' + tdStyle() + '">' + pernaCel(r.new_ticker, null, r.new_strike, r.new_premium,
                         dBR(r.new_exp), isShort ? 'prêmio' : 'custo') + '</td>' +
-                '<td style="' + tdStyle() + '">' + mudancaCel(r.old_strike, r.new_strike, r.old_exp, r.new_exp) + '</td>' +
+                '<td style="' + tdStyle() + '">' + mudancaCel(r.old_strike, r.new_strike, r.old_exp, r.new_exp) +
+                    ((r.new_quantity && r.quantity && parseFloat(r.new_quantity) !== parseFloat(r.quantity))
+                        ? '<span style="display:inline-block;padding:.08rem .4rem;border-radius:4px;font-size:.72rem;background:rgba(245,158,11,.18);margin:.1rem .15rem .1rem 0;white-space:nowrap;">🔢 Qtde ' + r.quantity + ' → ' + r.new_quantity + '</span>'
+                        : '') + '</td>' +
                 '<td style="' + tdStyle('r') + '">' + caixaCel(net) + '</td>' +
                 '</tr>';
         }
@@ -1352,24 +1366,35 @@ function openRollHistory(history, title, defaultQty) {
                 if (l.new_side && l.new_side !== l.side && !encerrada) {
                     cvTxt += ' → ' + (nS === 'SELL' ? 'V' : 'C');
                 }
-                // Caixa da perna: fecha pelo lado ANTIGO, abre pelo lado NOVO
+                // Caixa da perna: fecha pelo lado ANTIGO (qtde antiga), abre
+                // pelo lado NOVO (qtde nova — a substituição pode mudar a qtde)
+                var qLN = parseFloat(l.new_quantity) || qL;
                 var cpL = nOrNull(l.close_price), npL = nOrNull(l.new_premium);
                 var cxL = null;
                 if (cpL != null) {
                     cxL = (isS ? -cpL : cpL) * qL;            // fechamento
                     if (!encerrada && npL != null) {
-                        cxL += (nS === 'SELL' ? npL : -npL) * qL;   // abertura
+                        cxL += (nS === 'SELL' ? npL : -npL) * qLN;   // abertura
                     }
                 }
                 var entrouCel = encerrada
                     ? '<span style="color:var(--danger-color);font-size:.78rem;">🗑️ perna encerrada' +
                       '<div style="font-size:.72rem;color:var(--text-secondary);">saiu da estrutura</div></span>'
-                    : pernaCel(l.new_ticker, l.new_type, l.new_strike, l.new_premium,
-                               dBR(l.new_exp), nS === 'SELL' ? 'prêmio' : 'custo');
+                    : (l.partial_close
+                        ? '<span style="color:var(--accent-color,#f59e0b);font-size:.78rem;">✂️ fechamento parcial' +
+                          '<div style="font-size:.72rem;color:var(--text-secondary);">fechou ' + qL + '×' +
+                          (l.remaining_qty != null ? ' · restam ' + l.remaining_qty + '×' : '') + '</div></span>'
+                        : pernaCel(l.new_ticker, l.new_type, l.new_strike, l.new_premium,
+                                   dBR(l.new_exp), nS === 'SELL' ? 'prêmio' : 'custo'));
+                var qtyTag = (!encerrada && !l.partial_close && l.new_quantity && qLN !== qL)
+                    ? '<span style="display:inline-block;padding:.08rem .4rem;border-radius:4px;font-size:.72rem;' +
+                      'background:rgba(245,158,11,.18);margin:.1rem .15rem .1rem 0;white-space:nowrap;">' +
+                      '🔢 Qtde ' + qL + ' → ' + qLN + '</span>'
+                    : '';
                 var mudCel = encerrada
                     ? '<span style="color:var(--text-secondary);font-size:.75rem;">posição zerada</span>'
                     : mudancaCel(l.old_strike, l.new_strike, l.old_exp, l.new_exp,
-                                 l.old_type, l.new_type, l.side, l.new_side);
+                                 l.old_type, l.new_type, l.side, l.new_side) + qtyTag;
                 html += '<tr' + (encerrada ? ' style="opacity:.85;"' : '') + '>' +
                     '<td style="' + tdStyle() + '"><span style="padding:.1rem .4rem;border-radius:4px;font-size:.75rem;font-weight:700;background:' + cvBg + ';color:' + cvCol + ';">' + cvTxt + '</span></td>' +
                     '<td style="' + tdStyle() + '">' + pernaCel(l.old_ticker, l.old_type, l.old_strike, l.close_price,
@@ -1390,13 +1415,14 @@ function openRollHistory(history, title, defaultQty) {
             var saiuE = 0, entrouE = 0, realizE = 0, temRealiz = false, nEnc = 0;
             r.legs.forEach(function(l) {
                 var qL  = parseFloat(l.quantity) || 1;
+                var qLN = parseFloat(l.new_quantity) || qL;
                 var cpL = nOrNull(l.close_price), npL = nOrNull(l.new_premium);
                 var isS = l.side === 'SELL', nS = l.new_side || l.side;
                 if (cpL != null) {
                     if (isS) saiuE += cpL * qL; else entrouE += cpL * qL;
                 }
                 if (!l.closed_leg && npL != null) {
-                    if (nS === 'SELL') entrouE += npL * qL; else saiuE += npL * qL;
+                    if (nS === 'SELL') entrouE += npL * qLN; else saiuE += npL * qLN;
                 }
                 var pl = nOrNull(l.realized_pnl);
                 if (pl != null) { realizE += pl; temRealiz = true; }

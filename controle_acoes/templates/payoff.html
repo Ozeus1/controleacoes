@@ -97,7 +97,7 @@
                         {# Zerar o braço: fecha a perna e ela sai da estrutura, em vez
                            de ser substituída por outra. O caixa da saída e o resultado
                            realizado ficam registrados no manejo. #}
-                        <div style="margin:0 0 .6rem;">
+                        <div style="margin:0 0 .6rem; display:flex; align-items:center; gap:.7rem; flex-wrap:wrap;">
                           <label class="mj-drop-lbl" style="display:inline-flex; align-items:center; gap:.45rem;
                                  cursor:pointer; font-size:.78rem; padding:.35rem .6rem; border-radius:6px;
                                  background:rgba(239,68,68,.10); border:1px solid rgba(239,68,68,.35);">
@@ -107,6 +107,16 @@
                             <span>🗑️ <strong>Encerrar esta perna</strong>
                                 <span style="color:var(--text-secondary);">(zerar o braço — sai da estrutura)</span></span>
                           </label>
+                          {# Fechamento parcial: menos que o total mantém o braço aberto
+                             com o restante — a fração fechada vai para o Histórico. #}
+                          <span class="mj-drop-qty" style="display:none; align-items:center; gap:.35rem; font-size:.75rem; color:var(--text-secondary);">
+                            Qtde a encerrar:
+                            <input type="hidden" name="leg_drop_id" value="{{ leg.id }}" disabled>
+                            <input type="number" name="leg_drop_qty" class="form-control form-control-sm"
+                                   value="{{ leg.quantity }}" min="1" max="{{ leg.quantity }}" step="1"
+                                   style="width:90px; display:inline-block;" disabled>
+                            de {{ leg.quantity }} <span>(menor que o total = parcial)</span>
+                          </span>
                         </div>
                         <div class="mj-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:.6rem;">
                             <div><label style="font-size:.72rem;color:var(--text-secondary);">Fechamento (R$) — {{ 'recompra' if leg.side=='SELL' else 'venda' }}</label>
@@ -139,11 +149,27 @@
                             <div class="mj-new"><label style="font-size:.72rem;color:var(--text-secondary);">Novo vencimento</label>
                                 <input type="date" name="leg_new_exp" class="form-control form-control-sm"
                                        value="{{ leg.expiration_date }}" disabled></div>
+                            {# A perna substituta pode mudar de QUANTIDADE (ex.: fecha
+                               1000× e reabre 800×). O fechamento usa a qtde antiga; a
+                               abertura e o payoff usam a nova. #}
+                            <div class="mj-new"><label style="font-size:.72rem;color:var(--text-secondary);">Nova qtde <span style="opacity:.7;">(era {{ leg.quantity }})</span></label>
+                                <input type="number" name="leg_new_qty" class="form-control form-control-sm"
+                                       value="{{ leg.quantity }}" min="1" step="1" disabled></div>
                         </div>
                     </div>
                 </fieldset>
                 {% endif %}
                 {% endfor %}
+
+                {# ── Braços NOVOS: entram na estrutura sem substituir nenhum.
+                      Combinado com "Encerrar esta perna", permite trocar um braço
+                      por DOIS ou mais (encerra o antigo + adiciona os novos). ── #}
+                <div id="mj-new-legs"></div>
+                <div style="margin:.2rem 0 .4rem; display:flex; align-items:center; gap:.6rem; flex-wrap:wrap;">
+                    <button type="button" class="btn btn-sm btn-teal" onclick="mjAddNewLeg()">➕ Adicionar braço novo</button>
+                    <span style="font-size:.74rem; color:var(--text-secondary);">
+                        braço que entra sem substituir nenhum — para trocar 1 perna por 2+, encerre a antiga e adicione as novas</span>
+                </div>
 
                 {# ── Prévia da simulação do manejo (fluxos + novo payoff) ── #}
                 <div id="mj-sim-wrap" style="display:none; margin-top:1rem; border:1px solid var(--border-color);
@@ -182,11 +208,15 @@
         var fields = fs.querySelector('.mj-fields');
         fields.style.display = chk.checked ? 'block' : 'none';
         fields.querySelectorAll('input, select').forEach(function (i) { i.disabled = !chk.checked; });
+        var d = fs.querySelector('.mj-drop');
         if (!chk.checked) {
             // Ao desmarcar a perna, desfaz também o "encerrar" para não deixar
             // um leg_drop pendente de uma perna que voltou a ficar intocada.
-            var d = fs.querySelector('.mj-drop');
             if (d) { d.checked = false; mjAplicaDrop(fs, false); }
+        } else {
+            // Normaliza o estado do "encerrar" (campos de qtde parcial só
+            // ficam ativos com o encerramento marcado).
+            mjAplicaDrop(fs, !!(d && d.checked));
         }
         mjSimRefresh();
     }
@@ -198,6 +228,12 @@
             d.style.display = encerrando ? 'none' : '';
             d.querySelectorAll('input, select').forEach(function (i) { i.disabled = encerrando; });
         });
+        // Qtde a encerrar (parcial): só existe/submete enquanto encerrando
+        var dq = fs.querySelector('.mj-drop-qty');
+        if (dq) {
+            dq.style.display = encerrando ? 'inline-flex' : 'none';
+            dq.querySelectorAll('input').forEach(function (i) { i.disabled = !encerrando; });
+        }
         var lbl = fs.querySelector('.mj-drop-lbl');
         if (lbl) {
             lbl.style.background  = encerrando ? 'rgba(239,68,68,.22)' : 'rgba(239,68,68,.10)';
@@ -205,6 +241,40 @@
         }
         fs.style.opacity = encerrando ? '.85' : '';
     }
+
+    // ── Braços novos (new_leg_*): linhas adicionadas dinamicamente ──────────
+    var mjNewLegSeq = 0;
+    window.mjAddNewLeg = function () {
+        mjNewLegSeq++;
+        var wrap = document.createElement('fieldset');
+        wrap.className = 'mj-newleg';
+        wrap.style.cssText = 'border:1px dashed var(--accent-color,#f59e0b); border-radius:8px; padding:.7rem .9rem; margin-bottom:.7rem;';
+        wrap.innerHTML =
+            '<legend style="font-size:.82rem; padding:0 .4rem; display:flex; align-items:center; gap:.5rem;">' +
+            '<span style="padding:.05rem .45rem; border-radius:4px; font-weight:700; background:rgba(245,158,11,.15); color:var(--accent-color,#f59e0b);">＋</span>' +
+            '<strong>Braço novo ' + mjNewLegSeq + '</strong>' +
+            '<button type="button" onclick="var f=this.closest(\'.mj-newleg\'); f.parentNode.removeChild(f); mjSimRefresh();"' +
+            ' style="background:none;border:none;color:var(--danger-color);cursor:pointer;font-size:.9rem;" title="Remover este braço">✖ remover</button>' +
+            '</legend>' +
+            '<div style="display:grid; grid-template-columns:repeat(auto-fill,minmax(130px,1fr)); gap:.6rem;">' +
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Ticker</label>' +
+            '<input type="text" name="new_leg_ticker" class="form-control form-control-sm" style="text-transform:uppercase;" placeholder="ex: PETRQ46"></div>' +
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Tipo</label>' +
+            '<select name="new_leg_type" class="form-control form-control-sm"><option value="CALL">CALL</option><option value="PUT">PUT</option></select></div>' +
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Lado</label>' +
+            '<select name="new_leg_side" class="form-control form-control-sm"><option value="SELL">Venda (V)</option><option value="BUY">Compra (C)</option></select></div>' +
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Strike</label>' +
+            '<input type="text" name="new_leg_strike" class="form-control form-control-sm" placeholder="0,00"></div>' +
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Prêmio</label>' +
+            '<input type="text" name="new_leg_premium" class="form-control form-control-sm" placeholder="0,00"></div>' +
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Vencimento</label>' +
+            '<input type="date" name="new_leg_exp" class="form-control form-control-sm"></div>' +
+            '<div><label style="font-size:.72rem;color:var(--text-secondary);">Qtde</label>' +
+            '<input type="number" name="new_leg_qty" class="form-control form-control-sm" value="100" min="1" step="1"></div>' +
+            '</div>';
+        document.getElementById('mj-new-legs').appendChild(wrap);
+        mjSimRefresh();
+    };
     function mjToggleDrop(chk) {
         mjAplicaDrop(chk.closest('.mj-leg'), chk.checked);
         mjSimRefresh();
@@ -277,13 +347,33 @@
                 line.new_strike  = mjNum(fs.querySelector('[name=leg_new_strike]').value);
                 line.open_price  = mjNum(fs.querySelector('[name=leg_new_premium]').value);
                 line.new_exp     = fs.querySelector('[name=leg_new_exp]').value || '';
-                // Troca de tipo/lado da perna substituta (PUT↔CALL, compra↔venda)
+                // Troca de tipo/lado/quantidade da perna substituta
                 var tpEl = fs.querySelector('[name=leg_new_type]');
                 var sdEl = fs.querySelector('[name=leg_new_side]');
+                var nqEl = fs.querySelector('[name=leg_new_qty]');
                 if (tpEl) line.new_type = tpEl.value;
                 if (sdEl) line.new_side = sdEl.value;
+                if (nqEl && !nqEl.disabled) {
+                    var nqv = Math.round(mjNum(nqEl.value));
+                    if (nqv > 0) line.new_qty = nqv;
+                }
             }
             lines.push(line);
+        });
+        // Braços novos adicionados no modal entram como linhas de abertura pura
+        document.querySelectorAll('#mj-new-legs .mj-newleg').forEach(function (fs) {
+            var tk = (fs.querySelector('[name=new_leg_ticker]').value || '').trim().toUpperCase();
+            if (!tk) return;
+            lines.push({
+                current_symbol: '', side: fs.querySelector('[name=new_leg_side]').value || 'BUY',
+                opt_type: fs.querySelector('[name=new_leg_type]').value || 'CALL',
+                avg: 0, qty: Math.round(mjNum(fs.querySelector('[name=new_leg_qty]').value)) || 100,
+                current_strike: 0, current_exp: '', close_price: 0, new_leg: true,
+                new_symbol: tk,
+                new_strike: mjNum(fs.querySelector('[name=new_leg_strike]').value),
+                open_price: mjNum(fs.querySelector('[name=new_leg_premium]').value),
+                new_exp: fs.querySelector('[name=new_leg_exp]').value || ''
+            });
         });
         var hoje = new Date();
         var nome = ('Manejo ' + MJ_TITLE + ' ' +
@@ -380,28 +470,57 @@
             var close = mjNum(fs.querySelector('[name=leg_close_price]').value);
             var q     = l.quantity;
             if (encerra) {
-                // Braço zerado: só o fluxo de fechamento; a perna some do payoff.
-                if (l.side === 'SELL') { saiu   += close * q; realizado += (base.entry - close) * q; }
-                else                   { entrou += close * q; realizado += (close - base.entry) * q; }
-                nEncerradas++;
-                return;                          // não entra em `sim`
+                // Braço zerado (total ou PARCIAL): só o fluxo de fechamento da
+                // fração encerrada; o restante (se houver) continua no payoff.
+                var dqEl = fs.querySelector('[name=leg_drop_qty]');
+                var qf = dqEl && !dqEl.disabled ? Math.round(mjNum(dqEl.value)) : q;
+                if (!(qf > 0)) qf = q;
+                qf = Math.min(qf, q);
+                if (l.side === 'SELL') { saiu   += close * qf; realizado += (base.entry - close) * qf; }
+                else                   { entrou += close * qf; realizado += (close - base.entry) * qf; }
+                if (qf < q) {
+                    var resto = Object.assign({}, base); resto.qty = q - qf;
+                    sim.push(resto);             // fica a fração não encerrada
+                } else {
+                    nEncerradas++;
+                }
+                return;                          // a parte fechada não entra em `sim`
             }
             var nk    = mjNum(fs.querySelector('[name=leg_new_strike]').value) || base.strike;
             var np    = mjNum(fs.querySelector('[name=leg_new_premium]').value);
             var ne    = fs.querySelector('[name=leg_new_exp]').value || base.exp;
-            // A nova perna pode trocar de tipo (PUT↔CALL) e de lado (compra↔venda)
+            // A nova perna pode trocar de tipo (PUT↔CALL), de lado (compra↔venda)
+            // e de QUANTIDADE (fecha 1000×, reabre 800×)
             var tpEl  = fs.querySelector('[name=leg_new_type]');
             var sdEl  = fs.querySelector('[name=leg_new_side]');
+            var nqEl  = fs.querySelector('[name=leg_new_qty]');
             var ntp   = (tpEl && tpEl.value) || l.opt_type;
             var nsd   = (sdEl && sdEl.value) || l.side;
-            // O fechamento segue o lado ANTIGO; a abertura, o lado NOVO — eles
-            // divergem quando a perna troca de lado (ex.: fecha PUT vendida e
-            // abre CALL comprada, dois desembolsos).
+            var nq    = nqEl ? Math.round(mjNum(nqEl.value)) : q;
+            if (!(nq > 0)) nq = q;
+            // O fechamento segue o lado ANTIGO (qtde antiga); a abertura, o
+            // lado NOVO (qtde nova) — eles divergem quando a perna troca de
+            // lado (ex.: fecha PUT vendida e abre CALL comprada).
             if (l.side === 'SELL') { saiu   += close * q; realizado += (base.entry - close) * q; }
             else                   { entrou += close * q; realizado += (close - base.entry) * q; }
-            if (nsd === 'SELL') entrou += np * q;
-            else                saiu   += np * q;
-            sim.push({side: nsd, type: ntp, qty: q, strike: nk, entry: np, exp: ne});
+            if (nsd === 'SELL') entrou += np * nq;
+            else                saiu   += np * nq;
+            sim.push({side: nsd, type: ntp, qty: nq, strike: nk, entry: np, exp: ne});
+        });
+        // ── Braços novos (sem perna antiga): abertura pura ───────────────────
+        document.querySelectorAll('#mj-new-legs .mj-newleg').forEach(function (fs) {
+            var tk = (fs.querySelector('[name=new_leg_ticker]').value || '').trim();
+            if (!tk) return;
+            var tp = fs.querySelector('[name=new_leg_type]').value || 'CALL';
+            var sd = fs.querySelector('[name=new_leg_side]').value || 'BUY';
+            var k  = mjNum(fs.querySelector('[name=new_leg_strike]').value);
+            var pr = mjNum(fs.querySelector('[name=new_leg_premium]').value);
+            var ex = fs.querySelector('[name=new_leg_exp]').value || '';
+            var qn = Math.round(mjNum(fs.querySelector('[name=new_leg_qty]').value)) || 100;
+            algum = true;
+            if (sd === 'SELL') entrou += pr * qn;
+            else               saiu   += pr * qn;
+            sim.push({side: sd, type: tp, qty: qn, strike: k, entry: pr, exp: ex});
         });
         return {legs: sim, saiu: saiu, entrou: entrou, realizado: realizado,
                 algum: algum, encerradas: nEncerradas};
@@ -530,10 +649,13 @@
         var wrap = document.getElementById('mj-sim-wrap');
         if (wrap && wrap.style.display !== 'none') mjSimular();
     }
-    document.querySelectorAll('#manejo-modal input').forEach(function (i) {
-        i.addEventListener('input', mjSimRefresh);
-        i.addEventListener('change', mjSimRefresh);
-    });
+    // Delegação no modal inteiro: cobre também os campos criados depois
+    // (braços novos adicionados dinamicamente e a qtde parcial).
+    (function () {
+        var modal = document.getElementById('manejo-modal');
+        modal.addEventListener('input',  function (e) { if (e.target.matches('input, select')) mjSimRefresh(); });
+        modal.addEventListener('change', function (e) { if (e.target.matches('input, select')) mjSimRefresh(); });
+    })();
     </script>
     {% endif %}
 
@@ -712,6 +834,9 @@
                         {% if m.novo %}{{ m.novo }}
                             {% if m.novo_premio is not none %}
                             <span style="color:var(--text-secondary);">@ {{ '%.2f'|format(m.novo_premio)|replace('.', ',') }}</span>
+                            {% endif %}
+                            {% if m.nova_qtde and m.nova_qtde != m.quantity %}
+                            <span style="color:var(--accent-color,#f59e0b); font-weight:600;">× {{ m.nova_qtde }}</span>
                             {% endif %}
                         {% else %}<span style="color:var(--text-secondary);">—</span>{% endif %}
                     </td>

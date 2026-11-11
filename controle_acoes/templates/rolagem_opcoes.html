@@ -130,8 +130,11 @@
           <input type="text" name="new_strike" id="rr-new-strike" class="form-control form-control-sm" placeholder="0,00"></div>
         <div><label style="font-size:.8rem;color:var(--text-secondary);">Novo Vencimento</label>
           <input type="date" name="new_exp" id="rr-new-exp" class="form-control form-control-sm"></div>
-        <div style="grid-column:span 2;"><label style="font-size:.8rem;color:var(--text-secondary);">Novo Prêmio Recebido/Pago (R$)</label>
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Novo Prêmio Recebido/Pago (R$)</label>
           <input type="text" name="new_premium" id="rr-new-prem" class="form-control form-control-sm" placeholder="0,00"></div>
+        <div><label style="font-size:.8rem;color:var(--text-secondary);">Nova Quantidade <span id="rr-qty-old" style="opacity:.7;"></span></label>
+          <input type="number" name="new_qty" id="rr-new-qty" class="form-control form-control-sm" min="1" step="1"
+                 title="A rolagem pode fechar e reabrir com quantidade diferente (ex.: 1000 → 800). Vazio = mantém."></div>
         <div style="grid-column:span 2;"><label style="font-size:.8rem;color:var(--text-secondary);">Observações</label>
           <input type="text" name="notes" class="form-control form-control-sm" placeholder="Motivo da rolagem..."></div>
       </div>
@@ -357,6 +360,9 @@ function openOptionCommitModal(l,optId,kFallback,expFallback){
   $('rr-new-strike').value=String(l.new_strike||l.current_strike||0).replace('.',',');
   $('rr-new-exp').value=l.new_exp||l.current_exp||'';
   $('rr-new-prem').value=String(openVal(l)||0).replace('.',',');
+  var _q=Number(l.new_qty||l.qty||0)||'';
+  $('rr-new-qty').value=_q;
+  $('rr-qty-old').textContent=l.qty?('(atual: '+l.qty+')'):'';
   $('rr-form').action='/roll_option/'+optId;
   $('modal-commit-roll').style.display='flex';
 }

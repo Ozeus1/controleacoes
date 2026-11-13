@@ -20,12 +20,13 @@
     <form method="POST" id="op-form">
         <input type="hidden" name="option_type" value="{{ option_type if option_type else (option.option_type if option else 'VENDA_CALL') }}">
 
-{% set auto = (not edit) and option_type == 'VENDA_PUT' %}
+{% set auto = (not edit) and option_type in ('VENDA_PUT', 'VENDA_CALL') %}
+{% set eh_call = option_type == 'VENDA_CALL' %}
         {% if auto %}
-        {# Venda a seco de PUT (cadastro novo): só ticker, quantidade, valor e data da venda;
+        {# Venda a seco de PUT / venda coberta de CALL (cadastro novo): só ticker, quantidade, valor e data da venda;
            ativo objeto, strike e vencimento vêm da ficha da opção na OpLab. #}
         <div class="form-group">
-            <label for="ticker">Ticker da Opção (ex: ABEVM31)</label>
+            <label for="ticker">Ticker da Opção (ex: {{ 'ABEVA31' if eh_call else 'ABEVM31' }})</label>
             <input type="text" id="ticker" name="ticker" class="form-control" required
                    style="text-transform: uppercase;" autocomplete="off" onblur="aoBuscar()">
         </div>
@@ -154,10 +155,11 @@
 {% endif %}
 </form>
 </div>
-{% if option_type == 'VENDA_PUT' and not edit %}
+{% if option_type in ('VENDA_PUT', 'VENDA_CALL') and not edit %}
 <script>
 // Busca a ficha da opção (OpLab) e preenche ativo objeto, strike e vencimento.
-// Se for CALL, avisa e limpa; se a busca falhar, libera os campos para digitar à mão.
+// Se o tipo da opção não bater com o da operação (CALL × PUT), avisa e limpa; se a busca falhar, libera os campos para digitar à mão.
+var aoEhCall = {{ 'true' if eh_call else 'false' }};
 var aoUltimoTicker = '';
 function aoLiberaManual(msg) {
     ['underlying_asset', 'strike_price', 'expiration_date'].forEach(function (id) {
@@ -178,10 +180,12 @@ function aoBuscar() {
             var d = res.j;
             if (!res.ok || d.error) { st.textContent = ''; aoLiberaManual('Não consegui buscar ' + t + ' na OpLab (' + (d.error || 'erro') + ').'); return; }
             var tipo = (d.type || '').toUpperCase();
-            if (tipo && tipo.indexOf('PUT') < 0) {
+            if (tipo && tipo.indexOf(aoEhCall ? 'CALL' : 'PUT') < 0) {
                 st.textContent = '';
                 ['underlying_asset', 'strike_price', 'expiration_date'].forEach(function (id) { document.getElementById(id).value = ''; });
-                er.textContent = t + ' é uma CALL, não uma PUT. Para vender CALL use "Venda Coberta de Call"; ou confira o ticker da PUT.';
+                er.textContent = aoEhCall
+                    ? t + ' é uma PUT, não uma CALL. Para vender PUT use "Venda a Seco de Put"; ou confira o ticker da CALL.'
+                    : t + ' é uma CALL, não uma PUT. Para vender CALL use "Venda Coberta de Call"; ou confira o ticker da PUT.';
                 er.style.display = 'block';
                 return;
             }

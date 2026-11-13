@@ -171,6 +171,20 @@
                         braço que entra sem substituir nenhum — para trocar 1 perna por 2+, encerre a antiga e adicione as novas</span>
                 </div>
 
+                {# ── Troca do ATIVO da estrutura: aparece quando o ticker de uma perna nova é de outro ativo ── #}
+                <div id="mj-ativo-box" style="display:none; margin:.2rem 0 .8rem; padding:.6rem .8rem; border:1px solid rgba(245,158,11,.55);
+                     border-radius:8px; background:rgba(245,158,11,.08); font-size:.8rem;">
+                    <label style="display:flex; gap:.5rem; align-items:flex-start; cursor:pointer; margin:0;">
+                        <input type="checkbox" id="mj-novo-ativo" name="novo_ativo" value="" checked disabled
+                               style="margin-top:.2rem; width:auto; flex:0 0 auto;" onchange="mjSimRefresh()">
+                        <span>🔀 <strong>Trocar o ativo da estrutura</strong> de <strong id="mj-ativo-old"></strong>
+                            para <strong id="mj-ativo-new"></strong>
+                            <span id="mj-ativo-msg" style="display:block; color:var(--text-secondary); margin-top:.2rem;">
+                                A ficha da opção informada é de outro ativo. Marcado, a estrutura passa a ser acompanhada no novo ativo
+                                (cotação, gráfico e payoff). Exige que todas as pernas do ativo antigo sejam encerradas ou substituídas neste manejo.</span></span>
+                    </label>
+                </div>
+
                 {# ── Prévia da simulação do manejo (fluxos + novo payoff) ── #}
                 <div id="mj-sim-wrap" style="display:none; margin-top:1rem; border:1px solid var(--border-color);
                      border-radius:8px; padding:.8rem .9rem; background:rgba(0,0,0,.12);">
@@ -280,6 +294,37 @@
         mjSimRefresh();
     }
 
+    // Ativo da ficha de cada ticker novo informado (dataset.und) → sugere trocar o ativo da estrutura
+    function mjAtivoNovoMarcado() {
+        var c = document.getElementById('mj-novo-ativo');
+        return c && !c.disabled && c.checked && c.value ? c.value : '';
+    }
+    function mjAtualizaAtivo() {
+        var box = document.getElementById('mj-ativo-box'), chk = document.getElementById('mj-novo-ativo');
+        if (!box || !chk) return;
+        var atual = (MJ_UND || '').toUpperCase(), set = {};
+        document.querySelectorAll('#manejo-modal [name=new_leg_ticker], #manejo-modal [name=leg_new_ticker]').forEach(function (i) {
+            var u = (i.dataset.und || '').toUpperCase();
+            if (!i.disabled && u && atual && u !== atual) set[u] = 1;
+        });
+        var us = Object.keys(set);
+        if (!us.length) { box.style.display = 'none'; chk.disabled = true; chk.value = ''; return; }
+        if (box.style.display === 'none') chk.checked = true;          // recém-detectado: já vem marcado
+        box.style.display = '';
+        document.getElementById('mj-ativo-old').textContent = atual;
+        if (us.length > 1) {
+            document.getElementById('mj-ativo-new').textContent = us.join(' / ');
+            chk.disabled = true; chk.checked = false; chk.value = '';
+            document.getElementById('mj-ativo-msg').textContent = 'As pernas novas são de mais de um ativo — a estrutura só pode ter um subjacente. Ajuste os tickers.';
+            return;
+        }
+        chk.disabled = false; chk.value = us[0];
+        document.getElementById('mj-ativo-new').textContent = us[0];
+        document.getElementById('mj-ativo-msg').textContent =
+            'A ficha da opção informada é de outro ativo. Marcado, a estrutura passa a ser acompanhada em ' + us[0] +
+            ' (cotação, gráfico e payoff). Exige que todas as pernas de ' + atual + ' sejam encerradas ou substituídas neste manejo.';
+    }
+
     // Ticker da opção (braço novo ou "Novo ticker" da perna substituta): ao informar, preenche tipo, strike e vencimento
     // pela ficha da opção (OpLab). Lado, quantidade e prêmio ficam como estão, para o usuário definir.
     document.getElementById('manejo-modal').addEventListener('change', function (ev) {
@@ -289,6 +334,7 @@
         var tk = (inp.value || '').trim().toUpperCase();
         if (!box || !tk) return;
         inp.value = tk;
+        inp.dataset.und = '';
         var pre = inp.name === 'new_leg_ticker' ? 'new_leg_' : 'leg_new_';
         var campo = function (n) { return box.querySelector('[name=' + pre + n + ']'); };
         var st = inp.parentNode.querySelector('.mj-tk-st');
@@ -304,12 +350,14 @@
                 if (inp.value.trim().toUpperCase() !== tk) return;            // o ticker mudou enquanto buscava
                 var d = res.j;
                 if (!res.ok || d.error) { st.style.color = '#f87171'; st.textContent = 'Ficha não encontrada — preencha à mão.'; return; }
+                inp.dataset.und = (d.underlying || '').toUpperCase();
                 var tipo = (d.type || '').toUpperCase();
                 if (campo('type') && (tipo.indexOf('PUT') >= 0 || tipo.indexOf('CALL') >= 0)) campo('type').value = tipo.indexOf('PUT') >= 0 ? 'PUT' : 'CALL';
                 if (campo('strike') && d.strike != null) campo('strike').value = Number(d.strike).toFixed(2).replace('.', ',');
                 var exp = campo('exp');
                 if (exp && d.expiration) exp.value = String(d.expiration).slice(0, 10);
-                st.style.color = '#34d399'; st.textContent = '✓ tipo, strike e vencimento preenchidos';
+                st.style.color = '#34d399'; st.textContent = '✓ tipo, strike e vencimento preenchidos' +
+                    (inp.dataset.und && inp.dataset.und !== (MJ_UND || '').toUpperCase() ? ' · ativo ' + inp.dataset.und : '');
                 mjSimRefresh();
             })
             .catch(function () { st.style.color = '#f87171'; st.textContent = 'Falha de rede ao buscar a ficha.'; });
@@ -421,7 +469,7 @@
             body: JSON.stringify({
                 id: mjSavedId, name: nome,
                 payload: {
-                    roll_type: 'MANEJO', underlying: MJ_UND, current_symbol: '',
+                    roll_type: 'MANEJO', underlying: mjAtivoNovoMarcado() || MJ_UND, current_symbol: '',
                     option_kind: 'CALL', position_side: 'SELL',
                     quantity: (MJ_LEGS[0] && MJ_LEGS[0].quantity) || 100,
                     avg_price: 0, current: null, lines: lines
@@ -681,6 +729,7 @@
 
     // Recalcula ao editar campos com a prévia aberta
     function mjSimRefresh() {
+        mjAtualizaAtivo();
         var wrap = document.getElementById('mj-sim-wrap');
         if (wrap && wrap.style.display !== 'none') mjSimular();
     }

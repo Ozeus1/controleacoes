@@ -20526,6 +20526,35 @@ def roll_estruturada(id):
     new_leg_sides   = request.form.getlist('new_leg_side')
     new_leg_qtys    = request.form.getlist('new_leg_qty')
 
+    # Troca do ATIVO da estrutura (ex.: recomprou a PUT de BBAS3 e vendeu uma PUT de PETR4): o manejo pode migrar a
+    # estrutura para o ativo da ficha das pernas novas. Só é possível se NENHUMA perna do ativo antigo restar depois
+    # do manejo (estrutura com dois subjacentes não é suportada) — validado antes de gravar qualquer coisa.
+    novo_ativo = (request.form.get('novo_ativo') or '').strip().upper()
+    if novo_ativo and (not re.fullmatch(r'[A-Z0-9.\-]{1,15}', novo_ativo)
+                       or novo_ativo == (op.underlying_asset or '').strip().upper()):
+        novo_ativo = ''
+    if novo_ativo:
+        restam, j_ = [], 0
+        for lid_ in leg_ids:
+            lg_ = StructuredLeg.query.get(int(lid_))
+            if not lg_ or lg_.operation.user_id != current_user.id:
+                continue
+            if lg_.id in drop_ids:
+                if drop_qty_by_leg.get(lg_.id, lg_.quantity or 1) < (lg_.quantity or 1):
+                    restam.append(f'{lg_.ticker} (fechamento parcial)')
+                continue
+            nt_ = new_tickers[j_].upper().strip() if j_ < len(new_tickers) and new_tickers[j_] else lg_.ticker
+            j_ += 1
+            if nt_ == lg_.ticker:
+                restam.append(lg_.ticker)
+        vistos_ = {int(x) for x in leg_ids if str(x).strip().isdigit()}
+        restam += [l_.ticker or l_.opt_type for l_ in op.legs if l_.id not in vistos_]
+        if restam:
+            flash(f'Não é possível trocar o ativo da estrutura para {novo_ativo}: ainda restam pernas do ativo '
+                  f'{op.underlying_asset} ({", ".join(restam)}). Encerre ou substitua todas as pernas antigas no mesmo '
+                  f'manejo (ou desmarque a troca de ativo).', 'danger')
+            return redirect(next_url if next_url.startswith('/') else url_for('opcoes'))
+
     try:
         roll_entry = {
             'roll_type': roll_type,
@@ -20533,6 +20562,9 @@ def roll_estruturada(id):
             'notes':     notes_text,
             'legs':      [],
         }
+        if novo_ativo:
+            roll_entry['underlying_from'] = op.underlying_asset
+            roll_entry['underlying_to'] = novo_ativo
         try:
             exit_d = datetime.strptime(roll_date, '%Y-%m-%d').date()
         except ValueError:
@@ -20737,6 +20769,11 @@ def roll_estruturada(id):
         roll_entry['defer_pnl'] = True
         _append_roll(op, roll_entry)
         op.created_at = datetime.strptime(roll_date, '%Y-%m-%d')
+        ativo_antigo = op.underlying_asset
+        if novo_ativo:
+            op.underlying_asset = novo_ativo
+            op.underlying_price = None      # cotação do ativo antigo não vale: o payoff busca a do novo
+            op.underlying_change = None
 
         db.session.commit()
         msg = (f'Manejo registrado! Caixa do ajuste: R$ {net_roll:.2f} · '
@@ -20752,6 +20789,8 @@ def roll_estruturada(id):
                         'resultado e mover a operação para o Histórico.')
         if legs_novas:
             msg += f" Braço(s) novo(s): {', '.join(legs_novas)}."
+        if novo_ativo:
+            msg += f' Ativo da estrutura trocado: {ativo_antigo} → {novo_ativo}.'
         flash(msg, 'success')
     except Exception as e:
         db.session.rollback()

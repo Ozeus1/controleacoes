@@ -279,6 +279,41 @@
         mjAplicaDrop(chk.closest('.mj-leg'), chk.checked);
         mjSimRefresh();
     }
+
+    // Ticker da opção (braço novo ou "Novo ticker" da perna substituta): ao informar, preenche tipo, strike e vencimento
+    // pela ficha da opção (OpLab). Lado, quantidade e prêmio ficam como estão, para o usuário definir.
+    document.getElementById('manejo-modal').addEventListener('change', function (ev) {
+        var inp = ev.target;
+        if (!inp || (inp.name !== 'new_leg_ticker' && inp.name !== 'leg_new_ticker')) return;
+        var box = inp.closest(inp.name === 'new_leg_ticker' ? '.mj-newleg' : '.mj-grid');
+        var tk = (inp.value || '').trim().toUpperCase();
+        if (!box || !tk) return;
+        inp.value = tk;
+        var pre = inp.name === 'new_leg_ticker' ? 'new_leg_' : 'leg_new_';
+        var campo = function (n) { return box.querySelector('[name=' + pre + n + ']'); };
+        var st = inp.parentNode.querySelector('.mj-tk-st');
+        if (!st) {
+            st = document.createElement('small'); st.className = 'mj-tk-st';
+            st.style.cssText = 'display:block; font-size:.68rem; margin-top:.15rem;';
+            inp.parentNode.appendChild(st);
+        }
+        st.style.color = 'var(--text-secondary)'; st.textContent = '⏳ buscando a ficha…';
+        fetch('/api/busca-opcao/' + encodeURIComponent(tk))
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (res) {
+                if (inp.value.trim().toUpperCase() !== tk) return;            // o ticker mudou enquanto buscava
+                var d = res.j;
+                if (!res.ok || d.error) { st.style.color = '#f87171'; st.textContent = 'Ficha não encontrada — preencha à mão.'; return; }
+                var tipo = (d.type || '').toUpperCase();
+                if (campo('type') && (tipo.indexOf('PUT') >= 0 || tipo.indexOf('CALL') >= 0)) campo('type').value = tipo.indexOf('PUT') >= 0 ? 'PUT' : 'CALL';
+                if (campo('strike') && d.strike != null) campo('strike').value = Number(d.strike).toFixed(2).replace('.', ',');
+                var exp = campo('exp');
+                if (exp && d.expiration) exp.value = String(d.expiration).slice(0, 10);
+                st.style.color = '#34d399'; st.textContent = '✓ tipo, strike e vencimento preenchidos';
+                mjSimRefresh();
+            })
+            .catch(function () { st.style.color = '#f87171'; st.textContent = 'Falha de rede ao buscar a ficha.'; });
+    });
     document.getElementById('manejo-modal').addEventListener('click', function (ev) {
         if (ev.target === this) closeManejo();
     });

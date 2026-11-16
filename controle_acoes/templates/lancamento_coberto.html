@@ -132,8 +132,18 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     });
   }
 
+  // Boca em %: spread entre bid e ask relativo ao preço médio da boca (vazio sem as duas pontas)
+  function bocaPct(r) {
+    r.boca_pct = (r.bid > 0 && r.ask > 0 && r.ask >= r.bid) ? (r.ask - r.bid) / ((r.ask + r.bid) / 2) * 100 : null;
+  }
+  function bocaCel(r) {
+    if (r.boca_pct == null) return '<td>—</td>';
+    return '<td class="' + (r.boca_pct <= 5 ? 'pos' : (r.boca_pct > 15 ? 'neg' : '')) + '">' + fmt(r.boca_pct, 1) + '%</td>';
+  }
+
   function render(d) {
     window.__lcData = d;
+    d.rows.forEach(bocaPct);
     document.getElementById('lc-spot').innerHTML = d.ticker + ' ' + brl(d.spot) +
       (d.spot_change != null
         ? ' <span class="' + (d.spot_change >= 0 ? 'chg-pos' : 'chg-neg') + '">' +
@@ -156,6 +166,7 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       ['teorico',  'Teór.', 'Valor teórico (Black-Scholes com a EWMA do ativo, dias úteis/252, r = Selic) — mesmo critério da OpLab'],
       ['bid',      'Bid', 'Melhor oferta de compra (quem quer comprar a CALL)'],
       ['ask',      'Ask', 'Melhor oferta de venda (quem quer vender a CALL)'],
+      ['boca_pct', 'Boca %', 'Spread da boca em %: (ask − bid) ÷ preço médio (bid+ask)/2. Quanto menor, mais líquida a série'],
       ['custo',    'Custo líq. (BE)', 'Spot − prêmio = preço de equilíbrio'],
       ['protec',   'Proteção', 'Prêmio / spot'],
       ['taxa_ex',  'Taxa se exercido', '(Strike − custo líquido) / custo líquido'],
@@ -185,6 +196,7 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         '<td style="color:var(--text-secondary);">' + (r.teorico ? brl(r.teorico) : '—') + '</td>' +
         '<td>' + (r.bid != null ? brl(r.bid) : '—') + '</td>' +
         '<td>' + (r.ask != null ? brl(r.ask) : '—') + '</td>' +
+        bocaCel(r) +
         '<td>' + brl(r.custo) + '</td>' +
         '<td class="pos">' + fmt(r.protec) + '%</td>' +
         '<td class="pos"><strong>+' + fmt(r.taxa_ex) + '%</strong></td>' +
@@ -245,6 +257,7 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (!ticker) return;
     curTicker = ticker;
     lcSyncSel(ticker);
+    if (window.abasSetTicker) abasSetTicker(ticker);
     document.getElementById('lc-loading').style.display = 'block';
     document.getElementById('lc-error').style.display = 'none';
     document.getElementById('lc-results').innerHTML = '';
@@ -320,6 +333,10 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   document.getElementById('lc-modal').addEventListener('click', function(ev) {
     if (ev.target === this) lcCloseModal();
   });
+
+  // Veio de outra aba (ou de um link) com ?ticker=ATIVO: já carrega esse ativo
+  var qTicker = new URLSearchParams(location.search).get('ticker');
+  if (qTicker) lcLoad(qTicker);
 })();
 </script>
 {% endblock %}

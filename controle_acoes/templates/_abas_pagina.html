@@ -16,3 +16,19 @@
   <a class="est-tab {{ 'on' if request.endpoint == ep else '' }}" href="{{ url_for(ep) }}{{ '?ticker=' ~ _tk if _tk else '' }}">{{ rot }}</a>
   {% endfor %}
 </div>
+<script>
+// Mantém o ativo ao trocar de aba: os links das abas levam ?ticker=ATIVO (e a URL atual também, para recarregar/voltar)
+window.abasSetTicker = function (t) {
+  t = (t || '').trim().toUpperCase();
+  if (!t) return;
+  document.querySelectorAll('.est-tabs .est-tab').forEach(function (a) {
+    var u = new URL(a.getAttribute('href'), location.origin);
+    u.searchParams.set('ticker', t);
+    a.setAttribute('href', u.pathname + u.search);
+  });
+  try {
+    var c = new URL(location.href); c.searchParams.set('ticker', t);
+    history.replaceState(null, '', c.pathname + c.search + c.hash);
+  } catch (e) {}
+};
+</script>

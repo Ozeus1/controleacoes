@@ -18251,7 +18251,7 @@ def api_fyt_venda_coberta(ticker):
         by_exp.setdefault(due, {})[round(strike, 2)] = {
             'symbol': sym, 'strike': round(strike, 2), 'delta': o.get('delta'),
             'bid': round(float(o.get('bid') or 0), 2), 'ask': round(float(o.get('ask') or 0), 2),
-            'close': round(float(o.get('close') or 0), 2),
+            'close': round(float(o.get('close') or 0), 2), 'o': o,
             'vol_fin': round(float(o.get('financial_volume') or o.get('volume_financial') or 0), 2)}
 
     monthlies = sorted(by_exp)
@@ -18295,6 +18295,10 @@ def api_fyt_venda_coberta(ticker):
 
     selic = _selic()
     r_cont = math.log(1 + selic / 100.0)
+    try:
+        ewma = _oplab_ewma(ticker, token) if token else None       # % a.a., p/ o valor teórico
+    except Exception:
+        ewma = None
     rows = []
     for i_inc, exp in escolhidos:
         dc = max((_date.fromisoformat(exp) - today).days, 1)
@@ -18334,11 +18338,14 @@ def api_fyt_venda_coberta(ticker):
             ret_ex = (k - custo) / custo * 100
             ret_aa = ((1 + ret_ex / 100) ** (365.0 / dc) - 1) * 100
             ask = rw['ask'] if rw['ask'] >= 0.05 else None
-            boca = ((ask - rw['bid']) / ((ask + rw['bid']) / 2) * 100) if (ask and rw['bid'] >= 0.05 and ask >= rw['bid']) else None
+            boca = round(ask - rw['bid'], 2) if (ask and rw['bid'] >= 0.05 and ask >= rw['bid']) else None   # R$, absoluto
+            teor = _teorico_serie(rw['o'], spot, k, exp, True, ewma, selic)
+            boca_pct = (boca / teor * 100) if (boca is not None and teor) else None                         # boca ÷ teórico
             achados.append({
                 'symbol': rw['symbol'], 'exp': exp, 'dc': dc, 'mes': i_inc, 'strike': k,
                 'otm_pct': round((k - spot) / spot * 100, 1), 'delta': round(delta, 2),
-                'premium': round(px, 2), 'bid': rw['bid'] or None, 'ask': ask, 'boca_pct': round(boca, 1) if boca is not None else None,
+                'premium': round(px, 2), 'bid': rw['bid'] or None, 'ask': ask, 'teorico': teor, 'boca': boca,
+                'boca_pct': round(boca_pct, 1) if boca_pct is not None else None,
                 'custo': round(custo, 2), 'protec': round(px / spot * 100, 2),
                 'ret_ex': round(ret_ex, 2), 'ret_aa': round(ret_aa, 1) if ret_aa < 999 else None,
                 'vs_selic': round(ret_ex - selic_per, 2),

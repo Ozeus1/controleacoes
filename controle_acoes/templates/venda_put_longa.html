@@ -226,13 +226,15 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     });
   }
 
-  // Boca em %: spread entre bid e ask relativo ao preço médio da boca (vazio sem as duas pontas)
+  // Boca: ask − bid (R$, absoluto) e Boca % = boca ÷ teórico (vazio sem as duas pontas ou sem teórico)
   function bocaPct(r) {
-    r.boca_pct = (r.bid > 0 && r.ask > 0 && r.ask >= r.bid) ? (r.ask - r.bid) / ((r.ask + r.bid) / 2) * 100 : null;
+    r.boca = (r.bid > 0 && r.ask > 0 && r.ask >= r.bid) ? r.ask - r.bid : null;
+    r.boca_pct = (r.boca != null && r.teorico > 0) ? r.boca / r.teorico * 100 : null;
   }
   function bocaCel(r) {
-    if (r.boca_pct == null) return '<td>—</td>';
-    return '<td class="' + (r.boca_pct <= 5 ? 'pos' : (r.boca_pct > 15 ? 'neg' : '')) + '">' + fmt(r.boca_pct, 1) + '%</td>';
+    var cls = r.boca_pct == null ? '' : (r.boca_pct <= 5 ? 'pos' : (r.boca_pct > 15 ? 'neg' : ''));
+    return '<td>' + (r.boca != null ? brl(r.boca) : '—') + '</td>' +
+           '<td class="' + cls + '">' + (r.boca_pct != null ? fmt(r.boca_pct, 1) + '%' : '—') + '</td>';
   }
 
   function render(d) {
@@ -276,7 +278,8 @@ table.pl-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       ['teorico',  'Teór.', 'Valor teórico (Black-Scholes com a EWMA do ativo, dias úteis/252, r = Selic) — mesmo critério da OpLab'],
       ['bid',      'Bid', 'Melhor oferta de compra (quem quer comprar a PUT)'],
       ['ask',      'Ask', 'Melhor oferta de venda (quem quer vender a PUT)'],
-      ['boca_pct', 'Boca %', 'Spread da boca em %: (ask − bid) ÷ preço médio (bid+ask)/2. Quanto menor, mais líquida a série'],
+      ['boca',     'Boca (R$)', 'Spread absoluto da boca: ask − bid'],
+      ['boca_pct', 'Boca %', 'Boca ÷ valor teórico: (ask − bid) ÷ teór. Quanto menor, mais líquida a série'],
       ['custo_ef', 'Custo ef. (BE)', 'Strike − prêmio = preço de equilíbrio se exercido'],
       ['margem',   'Margem', '(Spot − custo efetivo) / spot — quanto o BE fica abaixo do preço atual'],
       ['taxa_per', 'Retorno período', 'Prêmio / strike (capital reservado = strike)'],

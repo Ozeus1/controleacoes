@@ -1057,7 +1057,7 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         <li><strong>Custo líq. (BE):</strong> preço do ativo − prêmio = preço de equilíbrio.</li>
         <li><strong>Proteção:</strong> prêmio ÷ preço do ativo.</li>
         <li><strong>Ret. se exercido:</strong> (strike − custo líquido) ÷ custo líquido, no período; <strong>a.a.</strong> anualizado; <strong>vs Selic</strong> é a diferença para a Selic no mesmo prazo.</li>
-        <li><strong>Boca %:</strong> spread bid×ask relativo ao preço médio.</li>
+        <li><strong>Boca (R$):</strong> ask − bid. <strong>Boca %:</strong> boca ÷ valor teórico.</li>
       </ul>
     </div>
     <div class="fyt-apane" data-p="risco">
@@ -3893,8 +3893,10 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       (d.market_open === false ? ' · 🕐 pregão fechado: prêmios pelo último negócio' : '') + ' · <strong>' + d.rows.length + '</strong> CALL(s)</div>';
     h += '<div class="fyt-wrap"><table class="fyt-tab"><thead><tr>' +
       '<th>Vencimento</th><th>CALL (venda)</th><th>Dias</th><th>Strike</th><th title="Distância do strike ao preço do ativo">OTM</th><th title="Delta da CALL">Δ</th>' +
-      '<th title="Prêmio recebido (venda pelo bid)">Prêmio (bid)</th><th>Ask</th>' +
-      '<th title="Spread bid×ask relativo ao preço médio. Quanto menor, mais líquida">Boca %</th>' +
+      '<th title="Prêmio recebido (venda pelo bid)">Prêmio (bid)</th>' +
+      '<th title="Valor teórico (Black-Scholes com a EWMA do ativo, ou o da OpLab)">Teór.</th><th>Ask</th>' +
+      '<th title="Spread absoluto da boca: ask − bid">Boca (R$)</th>' +
+      '<th title="Boca ÷ valor teórico: (ask − bid) ÷ teór. Quanto menor, mais líquida">Boca %</th>' +
       '<th title="Preço do ativo − prêmio = preço de equilíbrio">Custo líq. (BE)</th><th title="Prêmio ÷ preço do ativo">Proteção</th>' +
       '<th title="(Strike − custo líquido) ÷ custo líquido, no período">Ret. se exercido</th><th>Ret. a.a.</th><th title="Retorno se exercido − Selic no mesmo prazo">vs Selic</th></tr></thead><tbody>';
     d.rows.forEach(function(r, i) {
@@ -3903,7 +3905,9 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
         '<td><span class="fyt-badge sell">−' + r.symbol + '</span></td><td>' + r.dc + 'd</td><td>' + brl(r.strike) + '</td>' +
         '<td>+' + fmt(r.otm_pct, 1) + '%</td><td>' + fmt(r.delta, 2) + '</td>' +
         '<td class="pos"><strong>' + brl(r.premium) + '</strong>' + (r.src === 'ultimo' ? '<br><span style="font-size:.7rem;color:var(--text-secondary);">últ.</span>' : '') + '</td>' +
+        '<td style="color:var(--text-secondary);">' + (r.teorico ? brl(r.teorico) : '—') + '</td>' +
         '<td>' + (r.ask != null ? brl(r.ask) : '—') + '</td>' +
+        '<td>' + (r.boca != null ? brl(r.boca) : '—') + '</td>' +
         '<td class="' + (r.boca_pct == null ? '' : (r.boca_pct <= 5 ? 'pos' : (r.boca_pct > 15 ? 'neg' : ''))) + '">' + (r.boca_pct == null ? '—' : fmt(r.boca_pct, 1) + '%') + '</td>' +
         '<td>' + brl(r.custo) + '</td><td class="pos">' + fmt(r.protec) + '%</td>' +
         '<td class="pos"><strong>+' + fmt(r.ret_ex) + '%</strong></td><td class="pos">' + (r.ret_aa != null ? fmt(r.ret_aa, 1) + '%' : '—') + '</td>' +

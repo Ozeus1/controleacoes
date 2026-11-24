@@ -473,6 +473,7 @@
             <span>POP</span><br><strong id="m-pop">—</strong>
         </div>
         <div id="m-now-box" style="display:none;" title="Resultado no vencimento se o preço do ativo ficar onde está agora"><span>Lucro atual</span><br><strong id="m-now">—</strong></div>
+        <div id="m-nowpct-box" style="display:none;" title="Lucro atual ÷ Lucro máximo (mesmo critério da coluna Lucro % da página Opções): quanto do lucro máximo já foi capturado (aqui, no vencimento, com o preço do ativo onde está agora)"><span>Lucro %</span><br><strong id="m-nowpct">—</strong></div>
         <div id="m-spot-box" style="display:none;"><span id="m-spot-lbl">Spot</span><br><strong id="m-spot">—</strong></div>
         <div id="m-delta-box" style="display:none;" title="Delta total da posição (Σ sinal × qtd × delta)"><span>Delta</span><br><strong id="m-delta">—</strong></div>
         <div id="m-gamma-box" style="display:none;" title="Gamma total da posição"><span>Gamma</span><br><strong id="m-gamma">—</strong></div>
@@ -1083,8 +1084,19 @@ function drawChart(legs) {
             nowEl.textContent = (pSpot >= 0 ? '+' : '-') + fmtBRL(Math.abs(pSpot));
             nowEl.className = pSpot >= 0 ? 'positive' : 'negative';
         }
+        var npEl = document.getElementById('m-nowpct'), npBox = document.getElementById('m-nowpct-box');
+        if (npEl && npBox) {
+            npBox.style.display = '';
+            if (maxGain > 1e7 || !(maxGain > 0)) { npEl.textContent = '—'; npEl.className = ''; }
+            else {
+                var npv = pSpot / maxGain * 100;
+                npEl.textContent = (npv < 0 ? '−' : '') + Math.abs(npv).toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + '%';
+                npEl.className = npv >= 0 ? 'positive' : 'negative';
+            }
+        }
     } else {
         var nb = document.getElementById('m-now-box'); if (nb) nb.style.display = 'none';
+        var nb2 = document.getElementById('m-nowpct-box'); if (nb2) nb2.style.display = 'none';
     }
 
     // Eixo X

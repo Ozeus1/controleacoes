@@ -948,6 +948,7 @@
         <div><span style="color:var(--text-secondary);">Perda máx.</span><br><strong id="m-max-loss" class="negative">—</strong></div>
         <div><span style="color:var(--text-secondary);">Breakeven(s)</span><br><strong id="m-be">—</strong></div>
         <div><span style="color:var(--text-secondary);">Lucro atual</span><br><strong id="m-pnl">—</strong></div>
+        <div title="Lucro atual ÷ Lucro máximo (mesmo critério da coluna Lucro % da página Opções): quanto do lucro máximo já foi capturado"><span style="color:var(--text-secondary);">Lucro %</span><br><strong id="m-pnl-pct">—</strong></div>
         <div><span style="color:var(--text-secondary);">POP</span><br><strong id="m-pop">—</strong></div>
         {% if underlying_price %}
         <div style="border-left:1px solid var(--border-color); padding-left:1.5rem;">
@@ -1288,6 +1289,16 @@ document.addEventListener('fullscreenchange', function () {
     // era lido como lucro por quem não repara na cor.
     pnlEl.textContent = (pnl < 0 ? '−' : '') + fmtBRL(pnl);
     pnlEl.className = pnl >= 0 ? 'positive' : 'negative';
+    // Lucro % = lucro atual ÷ lucro máximo (— quando o lucro máximo é ilimitado ou não positivo)
+    var pnlPctEl = document.getElementById('m-pnl-pct');
+    if (pnlPctEl) {
+        if (maxGain > 1e7 || !(maxGain > 0)) { pnlPctEl.textContent = '—'; pnlPctEl.className = ''; }
+        else {
+            var pnlPct = pnl / maxGain * 100;
+            pnlPctEl.textContent = (pnlPct < 0 ? '−' : '') + Math.abs(pnlPct).toLocaleString('pt-BR', {minimumFractionDigits: 1, maximumFractionDigits: 1}) + '%';
+            pnlPctEl.className = pnlPct >= 0 ? 'positive' : 'negative';
+        }
+    }
 
     // ── POP via Black-Scholes (JS) ────────────────────────────────────────────
     (function() {

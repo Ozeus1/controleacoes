@@ -218,6 +218,7 @@ table.cadeia td.empty{color:#334155;}
     <div id="sim-metrics-bar">
       <div><span>Saldo montagem:</span><strong id="m-net-c">—</strong></div>
       <div><span>Lucro máx.:</span><strong id="m-gain-c">—</strong></div>
+      <div title="Lucro máximo ÷ custo de saída (desembolso das compras) — mesmo critério dos simuladores"><span>Lucro máx. %:</span><strong id="m-gain-pct-c">—</strong></div>
       <div><span>Perda máx.:</span><strong id="m-loss-c">—</strong></div>
       <div><span>Breakeven(s):</span><strong id="m-be-c">—</strong></div>
       <div><span>POP:</span><strong id="m-pop-c">—</strong></div>
@@ -900,6 +901,14 @@ function drawChartC(legs){
   netEl.textContent=fmtBRLsimC(net)+(net>=0?' (crédito)':' (débito)');
   netEl.className=net>=0?'positive':'negative';
   document.getElementById('m-gain-c').textContent=maxGain>1e7?'∞':fmtBRLsimC(maxGain);
+  (function(){            // Lucro máx. % sobre o investido (custo de saída = desembolso das pernas compradas); só crédito puro → —
+    var el=document.getElementById('m-gain-pct-c'); if(!el)return;
+    var custo=legs.reduce(function(a,l){return a+(l.type!=='STOCK'&&l.side==='BUY'?l.qty*l.premium:0);},0);
+    if(!(custo>0)||maxGain>1e7){el.textContent='—';el.className='';return;}
+    var pc=maxGain/custo*100;
+    el.textContent=(pc<0?'−':'')+Math.abs(pc).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+'%';
+    el.className=pc>=0?'positive':'negative';
+  })();
   document.getElementById('m-loss-c').textContent=maxLoss<-1e7?'-∞':fmtBRLsimC(maxLoss);
   document.getElementById('m-be-c').textContent=bes.length?bes.map(function(b){return 'R$ '+brl(b);}).join(' / '):'—';
 

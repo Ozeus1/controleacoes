@@ -781,9 +781,11 @@ table.pl-legs input{width:60px;height:22px!important;background:var(--card-bg);c
     var mC = 0, mP = 0;
     ls.forEach(function(l) { if (l.type !== 'STOCK' && l.side === 'SELL') { var m = l.qty * (0.15 * S.spot + l.price); if (l.type === 'CALL') mC += m; else mP += m; } });
     var margem = ilimP ? Math.max(mC, mP) : (cred > 0 ? Math.max(0, -mn) + cred : 0);
+    var custoSaida = 0; ls.forEach(function(l) { if (l.type !== 'STOCK' && l.side === 'BUY') custoSaida += l.price * l.qty; });
+    var lucroPct = (custoSaida > 0 && !ilimG) ? mx / custoSaida * 100 : null;
     var box = function(l, v, c, tip) { return '<div' + (tip ? ' title="' + tip + '"' : '') + '><span>' + l + '</span><b class="' + (c || '') + '">' + v + '</b></div>'; };
     el.innerHTML = box(cred >= 0 ? 'Crédito' : 'Débito', brlK(Math.abs(cred)), cred >= 0 ? 'pos' : 'neg') +
-      box('Lucro máx.', ilimG ? 'Ilimitado' : brlK(mx), 'pos') + box('Perda máx.', ilimP ? 'Ilimitada' : brlK(mn), 'neg') +
+      box('Lucro máx.', ilimG ? 'Ilimitado' : brlK(mx), 'pos') + box('Lucro máx. %', lucroPct == null ? '—' : fmt(lucroPct, 1) + '%', lucroPct == null ? '' : (lucroPct >= 0 ? 'pos' : 'neg'), 'Lucro máximo ÷ custo de saída (desembolso das compras) — mesmo critério dos simuladores; — quando só há vendas ou o lucro é ilimitado') + box('Perda máx.', ilimP ? 'Ilimitada' : brlK(mn), 'neg') +
       box('R/R', rr != null ? '1:' + fmt(1 / rr, 1) : '—') + box('POP', pop != null ? fmt(pop, 0) + '%' : '—') +
       box('Break-even', bes.length ? bes.map(function(b) { return fmt(b); }).join(' · ') : '—', '') +
       box('Spot', fmt(S.spot)) + box('σ ATM', fmt(sig * 100, 1) + '%') + box('±1σ', fmt(s1[0]) + ' – ' + fmt(s1[1])) +

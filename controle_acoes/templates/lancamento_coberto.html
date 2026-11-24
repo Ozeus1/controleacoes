@@ -132,10 +132,10 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     });
   }
 
-  // Boca: ask − bid (R$, absoluto) e Boca % = boca ÷ teórico (vazio sem as duas pontas ou sem teórico)
+  // Boca: ask − bid (R$, absoluto) e Boca % = boca ÷ bid (vazio sem as duas pontas)
   function bocaPct(r) {
     r.boca = (r.bid > 0 && r.ask > 0 && r.ask >= r.bid) ? r.ask - r.bid : null;
-    r.boca_pct = (r.boca != null && r.teorico > 0) ? r.boca / r.teorico * 100 : null;
+    r.boca_pct = (r.boca != null && r.bid > 0) ? r.boca / r.bid * 100 : null;
   }
   function bocaCel(r) {
     var cls = r.boca_pct == null ? '' : (r.boca_pct <= 5 ? 'pos' : (r.boca_pct > 15 ? 'neg' : ''));
@@ -169,7 +169,7 @@ table.lc-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
       ['bid',      'Bid', 'Melhor oferta de compra (quem quer comprar a CALL)'],
       ['ask',      'Ask', 'Melhor oferta de venda (quem quer vender a CALL)'],
       ['boca',     'Boca (R$)', 'Spread absoluto da boca: ask − bid'],
-      ['boca_pct', 'Boca %', 'Boca ÷ valor teórico: (ask − bid) ÷ teór. Quanto menor, mais líquida a série'],
+      ['boca_pct', 'Boca %', 'Boca ÷ bid: (ask − bid) ÷ bid. Quanto menor, mais líquida a série'],
       ['custo',    'Custo líq. (BE)', 'Spot − prêmio = preço de equilíbrio'],
       ['protec',   'Proteção', 'Prêmio / spot'],
       ['taxa_ex',  'Taxa se exercido', '(Strike − custo líquido) / custo líquido'],

@@ -18340,7 +18340,7 @@ def api_fyt_venda_coberta(ticker):
             ask = rw['ask'] if rw['ask'] >= 0.05 else None
             boca = round(ask - rw['bid'], 2) if (ask and rw['bid'] >= 0.05 and ask >= rw['bid']) else None   # R$, absoluto
             teor = _teorico_serie(rw['o'], spot, k, exp, True, ewma, selic)
-            boca_pct = (boca / teor * 100) if (boca is not None and teor) else None                         # boca ÷ teórico
+            boca_pct = (boca / rw['bid'] * 100) if boca is not None else None                              # boca ÷ bid
             achados.append({
                 'symbol': rw['symbol'], 'exp': exp, 'dc': dc, 'mes': i_inc, 'strike': k,
                 'otm_pct': round((k - spot) / spot * 100, 1), 'delta': round(delta, 2),

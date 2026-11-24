@@ -27107,6 +27107,128 @@ def api_ranking_vol_update():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/ativo-vol/<ticker>')
+@login_required
+def api_ativo_vol(ticker):
+    """Dados de volatilidade e cotação de UM ativo, atualizados na hora (mesmos campos e critério do Ranking de
+    Volatilidade): variação %, último, data/hora, IV Rank, percentil, vol. implícita, mín. e máx. Fonte: ficha do
+    instrumento na OpLab; o que ela não trouxer cai nos últimos valores salvos no ranking."""
+    ticker = ticker.strip().upper()
+    token = Settings.get_value('oplab_token', user_id=current_user.id)
+    out = {'ticker': ticker, 'var_pct': None, 'last': None, 'iv_rank': None, 'iv_percentil': None,
+           'vol_impl': None, 'vol_min': None, 'vol_max': None, 'fonte': 'oplab', 'erro': None}
+    now = now_brt()
+    out['quando'] = now.strftime('%d/%m %H:%M')
+    if token:
+        try:
+            d = _oplab_get_json(f'/market/instruments/{ticker}', token, timeout=15)
+            px, var = _oplab_extract_price(d)
+            out['last'], out['var_pct'] = (round(px, 2) if px else None), (round(var, 2) if var is not None else None)
+            (out['iv_rank'], out['iv_percentil'], out['vol_impl'], out['vol_min'], out['vol_max']) = _oplab_extract_iv(d)
+        except Exception as e:
+            out['erro'] = str(e)
+    else:
+        out['erro'] = 'Token OpLab não configurado'
+    # o que a OpLab não trouxe: últimos valores do Ranking de Volatilidade (se o ativo estiver lá)
+    try:
+        rv = RankingVol.query.filter_by(user_id=current_user.id, ticker=ticker).first()
+    except Exception:
+        rv = None
+    if rv:
+        usou = False
+        for campo, val in (('iv_rank', rv.iv_rank), ('iv_percentil', rv.iv_percentil), ('vol_impl', rv.vol_impl),
+                           ('vol_min', rv.vol_min), ('vol_max', rv.vol_max)):
+            if out[campo] is None and val is not None:
+                out[campo] = val; usou = True
+        if out['last'] is None and rv.last_price:
+            out['last'], out['var_pct'] = rv.last_price, rv.var_pct; usou = True
+        if usou:
+            out['fonte'] = 'ranking' if out['erro'] or token is None else 'oplab+ranking'
+            if out['last'] is not None and rv.updated_at and out['erro']:
+                out['quando'] = (rv.last_date or '') + ' ' + rv.updated_at.strftime('%H:%M')
+    if out['last'] is None:                                  # cotação: mesma fonte das buscas do FYT
+        try:
+            px, var = _spot_fyt(ticker, current_user.id)
+            if px:
+                out['last'], out['var_pct'] = round(px, 2), (round(var, 2) if var is not None else None)
+        except Exception:
+            pass
+    return jsonify(out)
+
+
+def _oplab_extract_iv(d):
+    """Extrai (iv_rank, iv_percentil, vol_impl, vol_min, vol_max) do payload
+    de /market/instruments/{symbol}.
+
+    A OpLab devolve 0 (não null) para ativos sem opções líquidas — 0 aqui
+    significa "sem dado", não "volatilidade zero". Tratar 0 como válido
+    fazia o primeiro campo da lista vencer com 0 e nunca cair no fallback
+    EWMA, que é o que de fato tem valor para boa parte dos papéis."""
+    if not isinstance(d, dict):
+        return None, None, None, None, None
+    for sub in ('data', 'spot', 'summary', 'iv', 'implied_volatility', 'greeks'):
+        if isinstance(d.get(sub), dict):
+            d.update(d[sub])
+
+    def _pick(*keys):
+        for k in keys:
+            v = d.get(k)
+            if v is None:
+                continue
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                continue
+            if f == 0:          # 0 = sem dado na OpLab; tenta a próxima chave
+                continue
+            # Campos vêm em % (ex.: 41.79). Frações (<=1) viram percentual.
+            return round(f * 100, 1) if f <= 1.0 else round(f, 1)
+        return None
+
+    # iv_* primeiro (volatilidade implícita); ewma_* como fallback para
+    # papéis sem opções líquidas, onde a OpLab só preenche o histórico.
+    ivr  = _pick('iv_1y_rank', 'ewma_1y_rank', 'iv_6m_rank', 'ewma_6m_rank',
+                 'iv_rank', 'ivRank')
+    ivp  = _pick('iv_1y_percentile', 'ewma_1y_percentile', 'iv_6m_percentile',
+                 'ewma_6m_percentile', 'iv_percentile', 'ivPercentile', 'iv_percentil')
+    vol  = _pick('iv_current', 'ewma_current', 'hv_current', 'historical_volatility',
+                 'implied_volatility_current', 'current_iv', 'close_iv', 'iv', 'vol_impl')
+    vmin = _pick('iv_1y_min', 'ewma_1y_min', 'iv_6m_min', 'ewma_6m_min', 'iv_min', 'ivMin')
+    vmax = _pick('iv_1y_max', 'ewma_1y_max', 'iv_6m_max', 'ewma_6m_max', 'iv_max', 'ivMax')
+    return ivr, ivp, vol, vmin, vmax
+
+def _oplab_extract_price(d):
+    """Preço e variação % do mesmo payload de /market/instruments/{symbol}.
+    A OpLab já devolve a cotação aqui, então usá-la evita uma segunda fonte
+    (brapi/Yahoo) e mantém preço e IV coerentes entre si — vindos do mesmo
+    instante e do mesmo provedor."""
+    if not isinstance(d, dict):
+        return None, None
+    for sub in ('data', 'spot'):
+        if isinstance(d.get(sub), dict):
+            d = {**d, **d[sub]}
+
+    def _num(*keys, skip_zero=False):
+        for k in keys:
+            v = d.get(k)
+            if v is None:
+                continue
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                continue
+            # Preço 0 = papel sem negócio no dia, não cotação zero: tenta a
+            # próxima chave (o spot_price costuma estar preenchido).
+            if skip_zero and f == 0:
+                continue
+            return f
+        return None
+
+    px  = _num('close', 'spot_price', 'last', 'price', 'adjusted_close', skip_zero=True)
+    var = _num('variation', 'change_percent', 'var_pct')
+    return px, var
+
+
 def _api_ranking_vol_update_impl():
     from flask import jsonify
     import requests as _req
@@ -27127,77 +27249,8 @@ def _api_ranking_vol_update_impl():
     now     = now_brt()
     today_str = now.strftime('%d/%m')
 
-    def _extract_iv(d):
-        """Extrai (iv_rank, iv_percentil, vol_impl, vol_min, vol_max) do payload
-        de /market/instruments/{symbol}.
-
-        A OpLab devolve 0 (não null) para ativos sem opções líquidas — 0 aqui
-        significa "sem dado", não "volatilidade zero". Tratar 0 como válido
-        fazia o primeiro campo da lista vencer com 0 e nunca cair no fallback
-        EWMA, que é o que de fato tem valor para boa parte dos papéis."""
-        if not isinstance(d, dict):
-            return None, None, None, None, None
-        for sub in ('data', 'spot', 'summary', 'iv', 'implied_volatility', 'greeks'):
-            if isinstance(d.get(sub), dict):
-                d.update(d[sub])
-
-        def _pick(*keys):
-            for k in keys:
-                v = d.get(k)
-                if v is None:
-                    continue
-                try:
-                    f = float(v)
-                except (TypeError, ValueError):
-                    continue
-                if f == 0:          # 0 = sem dado na OpLab; tenta a próxima chave
-                    continue
-                # Campos vêm em % (ex.: 41.79). Frações (<=1) viram percentual.
-                return round(f * 100, 1) if f <= 1.0 else round(f, 1)
-            return None
-
-        # iv_* primeiro (volatilidade implícita); ewma_* como fallback para
-        # papéis sem opções líquidas, onde a OpLab só preenche o histórico.
-        ivr  = _pick('iv_1y_rank', 'ewma_1y_rank', 'iv_6m_rank', 'ewma_6m_rank',
-                     'iv_rank', 'ivRank')
-        ivp  = _pick('iv_1y_percentile', 'ewma_1y_percentile', 'iv_6m_percentile',
-                     'ewma_6m_percentile', 'iv_percentile', 'ivPercentile', 'iv_percentil')
-        vol  = _pick('iv_current', 'ewma_current', 'hv_current', 'historical_volatility',
-                     'implied_volatility_current', 'current_iv', 'close_iv', 'iv', 'vol_impl')
-        vmin = _pick('iv_1y_min', 'ewma_1y_min', 'iv_6m_min', 'ewma_6m_min', 'iv_min', 'ivMin')
-        vmax = _pick('iv_1y_max', 'ewma_1y_max', 'iv_6m_max', 'ewma_6m_max', 'iv_max', 'ivMax')
-        return ivr, ivp, vol, vmin, vmax
-
-    def _extract_price(d):
-        """Preço e variação % do mesmo payload de /market/instruments/{symbol}.
-        A OpLab já devolve a cotação aqui, então usá-la evita uma segunda fonte
-        (brapi/Yahoo) e mantém preço e IV coerentes entre si — vindos do mesmo
-        instante e do mesmo provedor."""
-        if not isinstance(d, dict):
-            return None, None
-        for sub in ('data', 'spot'):
-            if isinstance(d.get(sub), dict):
-                d = {**d, **d[sub]}
-
-        def _num(*keys, skip_zero=False):
-            for k in keys:
-                v = d.get(k)
-                if v is None:
-                    continue
-                try:
-                    f = float(v)
-                except (TypeError, ValueError):
-                    continue
-                # Preço 0 = papel sem negócio no dia, não cotação zero: tenta a
-                # próxima chave (o spot_price costuma estar preenchido).
-                if skip_zero and f == 0:
-                    continue
-                return f
-            return None
-
-        px  = _num('close', 'spot_price', 'last', 'price', 'adjusted_close', skip_zero=True)
-        var = _num('variation', 'change_percent', 'var_pct')
-        return px, var
+    _extract_iv = _oplab_extract_iv          # extratores no nível do módulo (usados também em /api/ativo-vol)
+    _extract_price = _oplab_extract_price
 
     from services import _brapi_quotes, _yf_fast_info
     from concurrent.futures import as_completed as _as_completed, TimeoutError as _CFTimeoutError

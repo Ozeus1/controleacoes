@@ -117,6 +117,16 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
            style="display:none;margin-top:.3rem;">
   </div>
 
+  <!-- Volatilidade e cotação do ativo escolhido (mesmos campos do Ranking de Volatilidade), atualizados ao selecionar -->
+  <div id="fyt-vol-strip" style="display:none;margin:-.3rem 0 .9rem;overflow-x:auto;">
+    <table class="fyt-tab no-datatable" style="min-width:560px;max-width:760px;">
+      <thead><tr><th>Var. %</th><th>Últ.</th><th>Data / Hora</th><th title="Posição da vol. implícita atual no intervalo de 52 semanas (0-100)">IV Rank</th>
+        <th title="Percentil da vol. implícita atual no último ano">Perc.</th><th>Vol. Impl.</th><th>Vol. Mín.</th><th>Vol. Máx.</th></tr></thead>
+      <tbody><tr id="fyt-vol-row"></tr></tbody>
+    </table>
+    <div id="fyt-vol-nota" style="font-size:.72rem;color:var(--text-secondary);margin-top:.2rem;"></div>
+  </div>
+
   <!-- Vendida semanal (só THL) -->
   <div class="fyt-campo" id="fyt-thl-weekly-wrap" style="display:none;flex-direction:row;align-items:center;gap:.4rem;margin-bottom:.9rem;">
     <input type="checkbox" id="fyt-thl-weekly" style="width:auto;">
@@ -1959,16 +1969,50 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
   }
   setTicker(elTicker.value);
 
+  // Faixa com var. %, último, data/hora, IV Rank, percentil e vol. impl./mín./máx. do ativo escolhido (atualizada na seleção)
+  var volSeq = 0, volUlt = '';
+  function volStrip(tk) {
+    tk = (tk || '').trim().toUpperCase();
+    var box = document.getElementById('fyt-vol-strip'), row = document.getElementById('fyt-vol-row'), nota = document.getElementById('fyt-vol-nota');
+    if (!tk || tk === '__OUTRO__') { box.style.display = 'none'; return; }
+    if (document.getElementById('fyt-ativo-wrap').style.display === 'none') return;     // estruturas sem seletor de ativo
+    if (tk === volUlt) return;                                                           // já mostrado (o change do campo livre repete o Enter)
+    volUlt = tk;
+    var mine = ++volSeq;
+    box.style.display = ''; nota.textContent = '⏳ atualizando ' + tk + '…';
+    row.innerHTML = '<td colspan="8" style="color:var(--text-secondary);">' + tk + ' — buscando…</td>';        // não mostra os dados do ativo anterior
+    fetch('/api/ativo-vol/' + encodeURIComponent(tk)).then(function(r) { return r.json(); }).then(function(d) {
+      if (mine !== volSeq) return;                                   // o ativo mudou enquanto buscava
+      var badge = function(v) {
+        if (v == null) return '—';
+        var bg = v < 30 ? '#1e3a5f' : (v > 70 ? '#7f1d1d' : '#1a2e1a');
+        return '<span style="display:inline-block;padding:.15rem .5rem;border-radius:4px;font-weight:600;background:' + bg + '">' + fmt(v, 1) + '</span>';
+      };
+      var n1 = function(v) { return v == null ? '—' : fmt(v, 1); };
+      row.innerHTML =
+        '<td class="' + (d.var_pct == null ? '' : (d.var_pct >= 0 ? 'chg-pos' : 'chg-neg')) + '">' + (d.var_pct == null ? '—' : (d.var_pct >= 0 ? '+' : '') + fmt(d.var_pct) + '%') + '</td>' +
+        '<td>' + (d.last == null ? '—' : fmt(d.last)) + '</td>' +
+        '<td style="white-space:nowrap;color:var(--text-secondary);">' + (d.quando || '—') + '</td>' +
+        '<td>' + badge(d.iv_rank) + '</td><td>' + badge(d.iv_percentil) + '</td>' +
+        '<td>' + n1(d.vol_impl) + '</td><td>' + n1(d.vol_min) + '</td><td>' + n1(d.vol_max) + '</td>';
+      nota.textContent = d.erro ? ('⚠️ OpLab indisponível agora (' + d.erro + ')' + (d.fonte !== 'oplab' ? ' — usando os últimos valores do Ranking de Volatilidade.' : '')) :
+                         (d.fonte === 'oplab+ranking' ? 'Parte dos dados vem do último registro do Ranking de Volatilidade.' : '');
+    }).catch(function(e) { volUlt = ''; if (mine === volSeq) { row.innerHTML = '<td colspan="8" style="color:var(--text-secondary);">Não foi possível carregar os dados do ativo.</td>'; nota.textContent = ''; } });
+  }
+  window.fytVolStrip = volStrip;
+
   elTicker.addEventListener('change', function() {
     var livre = elTicker.value === '__outro__';
     elTickerL.style.display = livre ? '' : 'none';
     if (livre) { elTickerL.focus(); return; }
     setTicker(elTicker.value);
+    volStrip(elTicker.value);
   });
-  elTickerL.addEventListener('change', function() { setTicker(elTickerL.value); });
+  elTickerL.addEventListener('change', function() { setTicker(elTickerL.value); volStrip(elTickerL.value); });
   elTickerL.addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') { e.preventDefault(); setTicker(elTickerL.value); }
+    if (e.key === 'Enter') { e.preventDefault(); setTicker(elTickerL.value); volStrip(elTickerL.value); }
   });
+  volStrip(elTicker.value);                                           // ativo já selecionado ao abrir a página
 
   // ── Alterna o painel de filtros conforme a estrutura escolhida ─────────
   var opSel = document.getElementById('fyt-op');
@@ -2006,6 +2050,8 @@ table.fyt-tab tr:hover{background:rgba(124,58,237,.12);cursor:pointer;}
     if (v === 'fence') fcPrepara();
     if (v === 'seagull') sgPrepara();
     document.getElementById('fyt-ativo-wrap').style.display     = (v === 'box4' || v === 'scc') ? 'none' : '';
+    if (v === 'box4' || v === 'scc') document.getElementById('fyt-vol-strip').style.display = 'none';
+    else if (document.getElementById('fyt-vol-row').innerHTML) document.getElementById('fyt-vol-strip').style.display = '';   // volta a mostrar (sem nova consulta)
     document.getElementById('fyt-filtros-cc').style.display     = (v === 'scc') ? 'contents' : 'none';
     document.getElementById('fyt-ajuda-cc').style.display       = (v === 'scc') ? '' : 'none';
     if (v === 'scc') window.__CC.sync();

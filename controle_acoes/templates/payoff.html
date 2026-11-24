@@ -776,6 +776,8 @@
                         title="Valor teórico (Black-Scholes com a EWMA do ativo, dias úteis/252, r = Selic) — mesmo critério do Teór. da OpLab">Teór.</th>
                     <th style="padding:.45rem .6rem; text-align:right;">Total</th>
                     <th style="padding:.45rem .6rem; text-align:right;">Lucro (R$)</th>
+                    <th style="padding:.45rem .6rem; text-align:right;"
+                        title="Lucro da perna ÷ valor de entrada da perna (preço de entrada × qtd): venda lucra quando a cotação cai, compra quando sobe">Lucro %</th>
                 </tr>
             </thead>
             <tbody id="legs-tbody">
@@ -784,6 +786,7 @@
             {% set total = sign * leg.quantity * leg.entry_price %}
             {% set cur = leg.current_price if leg.current_price else leg.entry_price %}
             {% set leg_pnl = ((leg.entry_price - cur) if leg.side == 'SELL' else (cur - leg.entry_price)) * leg.quantity %}
+            {% set leg_pct = (leg_pnl / (leg.entry_price * leg.quantity) * 100) if (leg.entry_price and leg.quantity) else none %}
                 <tr style="border-bottom:1px solid var(--border-color);"
                     data-side="{{ leg.side }}"
                     data-opt-type="{{ leg.opt_type }}"
@@ -847,6 +850,10 @@
                     <td class="leg-pnl-cell {{ 'positive' if leg_pnl >= 0 else 'negative' }}"
                         style="padding:.4rem .6rem; text-align:right;">
                         {{ '+' if leg_pnl >= 0 else '-' }}R$ {{ "%.2f"|format(leg_pnl|abs)|replace('.', ',') }}
+                    </td>
+                    <td class="leg-pct-cell {{ ('positive' if leg_pct >= 0 else 'negative') if leg_pct is not none else '' }}"
+                        style="padding:.4rem .6rem; text-align:right;">
+                        {% if leg_pct is not none %}{{ '+' if leg_pct >= 0 else '-' }}{{ "%.1f"|format(leg_pct|abs)|replace('.', ',') }}%{% else %}—{% endif %}
                     </td>
                 </tr>
             {% endfor %}

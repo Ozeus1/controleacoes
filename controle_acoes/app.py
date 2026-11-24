@@ -18157,6 +18157,203 @@ def api_fyt_hexabox(ticker):
     return jsonify(out)
 
 
+@app.route('/api/fyt-venda-coberta/<ticker>')
+@login_required
+def api_fyt_venda_coberta(ticker):
+    """Venda coberta de CALL (compra a ação + vende 1 CALL OTM por ação) nos vencimentos MENSAIS escolhidos.
+    Parâmetros: exp = vencimento inicial (AAAA-MM-DD, mensal; padrão = próximo mensal) · inc = quais vencimentos varrer
+    a partir do inicial: lista de 0 (inicial), 1 (inicial +1), 2 (inicial +2) · d_min/d_max = faixa de delta da CALL
+    (0 a 1) · k_min/k_max = strike da CALL (R$, só OTM: strike ≥ spot) · p_min/p_max = prêmio recebido (bid, R$).
+    Venda pelo bid (com o pregão fechado, pelo último negócio)."""
+    ticker = ticker.strip().upper()
+    usar_brapi = request.args.get('source') == 'brapi'
+    token = None
+    if not usar_brapi:
+        token = Settings.get_value('oplab_token', user_id=current_user.id)
+        if not token:
+            return jsonify({'error': 'Token OpLab não configurado'}), 400
+
+    spot, spot_change = _spot_fyt(ticker, current_user.id)
+    if not spot:
+        return jsonify({'error': f'Cotação de {ticker} indisponível.'}), 404
+
+    def _num(name, default):
+        try:
+            return float(str(request.args.get(name, default)).replace(',', '.'))
+        except (TypeError, ValueError):
+            return default
+
+    d_min, d_max = _num('d_min', 0.0), _num('d_max', 1.0)
+    if d_max < d_min:
+        d_min, d_max = d_max, d_min
+    k_min, k_max = _num('k_min', spot), _num('k_max', spot * 1.3)
+    if k_max < k_min:
+        k_min, k_max = k_max, k_min
+    k_min = max(k_min, spot)                      # só OTM
+    p_min, p_max = _num('p_min', 0.0), _num('p_max', spot)
+    if p_max < p_min:
+        p_min, p_max = p_max, p_min
+    inc = sorted({int(x) for x in (request.args.get('inc') or '0,1,2').split(',') if x.strip() in ('0', '1', '2')}) or [0]
+
+    if usar_brapi:
+        try:
+            opt_list = _brapi_opt_list_raw(ticker, current_user.id)
+        except OplabApiError as e:
+            return jsonify({'error': str(e)}), 502
+        except Exception:
+            app.logger.exception('api_fyt_venda_coberta (brapi) error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia via BRAPI.'}), 500
+    else:
+        try:
+            data = _oplab_get_json(f'/market/options/{ticker}', token, timeout=20)
+        except OplabApiError as e:
+            return jsonify({'error': str(e), 'status': e.status_code}), 503
+        except Exception:
+            app.logger.exception('api_fyt_venda_coberta error for %s', ticker)
+            return jsonify({'error': 'Erro inesperado ao buscar a cadeia de opções.'}), 500
+        opt_list = data if isinstance(data, list) else (
+            data.get('options') or data.get('calls', []) + data.get('puts', []) or [])
+
+    from datetime import date as _date
+    today = _date.today()
+
+    def _third_friday(y, m):
+        count, day = 0, 1
+        while True:
+            d = _date(y, m, day)
+            if d.weekday() == 4:
+                count += 1
+                if count == 3:
+                    return d
+            day += 1
+
+    def _is_monthly(exp_str):
+        d = _date.fromisoformat(exp_str)
+        return abs((d - _third_friday(d.year, d.month)).days) <= 2
+
+    by_exp = {}
+    for o in opt_list:
+        cat = str(o.get('category') or o.get('type') or '').upper()
+        if 'PUT' in cat or cat == 'P':
+            continue
+        strike = float(o.get('strike') or 0)
+        due = str(o.get('due_date') or o.get('expiration_date') or '')
+        if 'T' in due:
+            due = due.split('T')[0]
+        sym = str(o.get('symbol') or o.get('ticker') or '').upper()
+        if not due or strike <= 0 or not sym:
+            continue
+        try:
+            if _date.fromisoformat(due) <= today or not _is_monthly(due):
+                continue
+        except ValueError:
+            continue
+        by_exp.setdefault(due, {})[round(strike, 2)] = {
+            'symbol': sym, 'strike': round(strike, 2), 'delta': o.get('delta'),
+            'bid': round(float(o.get('bid') or 0), 2), 'ask': round(float(o.get('ask') or 0), 2),
+            'close': round(float(o.get('close') or 0), 2),
+            'vol_fin': round(float(o.get('financial_volume') or o.get('volume_financial') or 0), 2)}
+
+    monthlies = sorted(by_exp)
+    if not monthlies:
+        return jsonify({'error': f'Nenhum vencimento mensal com CALLs para {ticker}.'}), 404
+    exps_out = [{'exp': e, 'dc': max((_date.fromisoformat(e) - today).days, 0)} for e in monthlies[:12]]
+
+    req_exp = (request.args.get('exp') or '').strip()
+    idx = 0
+    if req_exp:
+        try:
+            alvo = _date.fromisoformat(req_exp)
+        except ValueError:
+            alvo = None
+        if alvo is not None:
+            perto = min(range(len(monthlies)), key=lambda i: abs((_date.fromisoformat(monthlies[i]) - alvo).days))
+            if abs((_date.fromisoformat(monthlies[perto]) - alvo).days) > 4:
+                return jsonify({'error': f'Sem CALLs mensais de {ticker} perto de {req_exp}. Escolha outro vencimento inicial.',
+                                'expirations': exps_out}), 404
+            idx = perto
+    escolhidos = [(i, monthlies[idx + i]) for i in inc if idx + i < len(monthlies)]
+    if not escolhidos:
+        return jsonify({'error': 'Os vencimentos escolhidos não existem para este ativo.', 'expirations': exps_out}), 404
+
+    _now_b = now_brt()
+    market_open = (_now_b.weekday() < 5 and (10, 0) <= (_now_b.hour, _now_b.minute) < _b3_fechamento())
+
+    def _eff(rw):
+        bid, ask, last = rw['bid'], rw['ask'], rw['close']
+        last_ok = last if last >= 0.05 else None
+        has_book = bid >= 0.05 and ask >= 0.05
+        if not market_open:
+            return {'bid': last_ok, 'ask': last_ok, 'src': 'ultimo', 'boca': has_book}
+        b = bid if bid >= 0.05 else last_ok
+        a = ask if ask >= 0.05 else last_ok
+        src = 'book' if has_book else 'ultimo'
+        if has_book and last_ok and (ask - bid) > max(0.10, 0.25 * (bid + ask) / 2):
+            b = a = last_ok
+            src = 'ultimo'
+        return {'bid': b, 'ask': a, 'src': src, 'boca': has_book}
+
+    selic = _selic()
+    r_cont = math.log(1 + selic / 100.0)
+    rows = []
+    for i_inc, exp in escolhidos:
+        dc = max((_date.fromisoformat(exp) - today).days, 1)
+        T = dc / 365.0
+        selic_per = ((1 + selic / 100) ** (dc / 365.0) - 1) * 100
+        achados = []
+        for k, rw in by_exp[exp].items():
+            if not (k_min - 0.004 <= k <= k_max + 0.004):
+                continue
+            e = _eff(rw)
+            if market_open and not e['boca']:
+                continue
+            px = e['bid']
+            if not px or not (p_min - 0.004 <= px <= p_max + 0.004):
+                continue
+            # delta: o da OpLab quando vem na cadeia; senão Black-Scholes com a IV extraída do prêmio
+            delta = None
+            try:
+                dv = float(rw['delta']) if rw.get('delta') not in (None, '') else None
+            except (TypeError, ValueError):
+                dv = None
+            if dv:
+                dv = abs(dv)
+                delta = dv / 100.0 if dv > 1 else dv
+            else:
+                prem = rw['close'] or px
+                if prem and prem > max(0.0, spot - k) * 1.005:
+                    iv = _implied_vol(spot, k, T, r_cont, prem, True)
+                    if 0.005 < iv < 4.9:
+                        d1 = (math.log(spot / k) + (r_cont + 0.5 * iv * iv) * T) / (iv * math.sqrt(T))
+                        delta = _norm_cdf(d1)
+            if delta is None or not (d_min - 0.0005 <= delta <= d_max + 0.0005):
+                continue
+            custo = spot - px
+            if custo <= 0:
+                continue
+            ret_ex = (k - custo) / custo * 100
+            ret_aa = ((1 + ret_ex / 100) ** (365.0 / dc) - 1) * 100
+            ask = rw['ask'] if rw['ask'] >= 0.05 else None
+            boca = ((ask - rw['bid']) / ((ask + rw['bid']) / 2) * 100) if (ask and rw['bid'] >= 0.05 and ask >= rw['bid']) else None
+            achados.append({
+                'symbol': rw['symbol'], 'exp': exp, 'dc': dc, 'mes': i_inc, 'strike': k,
+                'otm_pct': round((k - spot) / spot * 100, 1), 'delta': round(delta, 2),
+                'premium': round(px, 2), 'bid': rw['bid'] or None, 'ask': ask, 'boca_pct': round(boca, 1) if boca is not None else None,
+                'custo': round(custo, 2), 'protec': round(px / spot * 100, 2),
+                'ret_ex': round(ret_ex, 2), 'ret_aa': round(ret_aa, 1) if ret_aa < 999 else None,
+                'vs_selic': round(ret_ex - selic_per, 2),
+                'liq': rw['vol_fin'], 'src': e['src'],
+            })
+        achados.sort(key=lambda r: -r['ret_ex'])
+        rows.extend(achados[:40])
+    return jsonify({
+        'ticker': ticker, 'spot': spot, 'spot_change': spot_change, 'market_open': market_open,
+        'selic': round(selic, 2), 'expirations': exps_out,
+        'exps': [{'exp': e, 'dc': max((_date.fromisoformat(e) - today).days, 1), 'mes': i} for i, e in escolhidos],
+        'rows': rows, 'total': len(rows), 'source': 'brapi' if usar_brapi else 'oplab',
+    })
+
+
 @app.route('/api/fyt-broken-wing/<ticker>')
 @login_required
 def api_fyt_broken_wing(ticker):

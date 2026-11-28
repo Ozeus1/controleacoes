@@ -11,7 +11,7 @@
    coluna "Cotação Ativo"/"Cotação" em todas as tabelas desta página. #}
 {% macro var_dia_td(change) -%}
 {% if change is not none %}
-<td class="{{ 'positive' if change >= 0 else 'negative' }}">{{ "%.2f"|format(change)|replace('.', ',') }}%</td>
+<td class="{{ 'positive' if change >= 0 else 'negative' }}">{{ change|brl_fmt }}%</td>
 {% else %}
 <td style="color:var(--text-secondary);">—</td>
 {% endif %}
@@ -91,42 +91,42 @@
                 <td><span class="ticker-badge">{{ item.option.ticker }}</span></td>
                 <td>{{ item.option.quantity }}</td>
                 <td>{{ item.option.underlying_asset }}</td>
-                <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                <td>R$ {{ item.underlying_price|brl_fmt }}</td>
                 {{ var_dia_td(item.underlying_change) }}
-                <td>R$ {{ "%.2f"|format(item.avg_price)|replace('.', ',') }}</td>
-                <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
+                <td>R$ {{ item.avg_price|brl_fmt }}</td>
+                <td>R$ {{ item.option.strike_price|brl_fmt }}</td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
                 <td data-order="{{ item.days_left if item.days_left is not none else -1 }}">{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
-                <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
-                <td>R$ {{ "%.2f"|format(item.exercise_price)|replace('.', ',') }}</td>
+                <td>R$ {{ item.option.sale_price|brl_fmt }}</td>
+                <td>R$ {{ item.exercise_price|brl_fmt }}</td>
                 {# Verde enquanto a cotação está abaixo do preço de exercício; vermelho se ultrapassar #}
                 <td class="{{ 'negative' if item.lastro > 0 else 'positive' }}">
-                    R$ {{ "%.2f"|format(item.lastro)|replace('.', ',') }}
+                    R$ {{ item.lastro|brl_fmt }}
                 </td>
-                <td>R$ {{ "%.2f"|format(item.total_sold)|replace('.', ',') }}</td>
-                <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td>R$ {{ item.total_sold|brl_fmt }}</td>
+                <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ item.option.current_option_price|brl_fmt }}</td>
                 <td style="color:var(--text-secondary); font-size:.82rem;">{{ item.last_update }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_change"
                     class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
-                    {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%
+                    {{ (item.option.daily_change or 0)|brl_fmt }}%
                 </td>
                 <td class="profit-highlight {{ 'positive' if item.profit >= 0 else 'negative' }}">
-                    R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
+                    R$ {{ item.profit|brl_fmt }}
                 </td>
                 <td class="profit-highlight {{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
-                    {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
+                    {{ item.profit_pct|brl_fmt }}%
                 </td>
                 <td class="{{ 'positive' if item.lucro_ex_rs >= 0 else 'negative' }}">
-                    R$ {{ "%.2f"|format(item.lucro_ex_rs)|replace('.', ',') }}
+                    R$ {{ item.lucro_ex_rs|brl_fmt }}
                 </td>
                 <td class="{{ 'positive' if item.lucro_ex_pct >= 0 else 'negative' }}">
-                    {{ "%.2f"|format(item.lucro_ex_pct)|replace('.', ',') }}%
+                    {{ item.lucro_ex_pct|brl_fmt }}%
                 </td>
                 <td class="{{ 'positive' if item.lucro_at_rs >= 0 else 'negative' }}">
-                    R$ {{ "%.2f"|format(item.lucro_at_rs)|replace('.', ',') }}
+                    R$ {{ item.lucro_at_rs|brl_fmt }}
                 </td>
                 <td class="{{ 'positive' if item.lucro_at_pct >= 0 else 'negative' }}">
-                    {{ "%.2f"|format(item.lucro_at_pct)|replace('.', ',') }}%
+                    {{ item.lucro_at_pct|brl_fmt }}%
                 </td>
 
                 <td class="actions" style="white-space:nowrap;">
@@ -218,31 +218,31 @@
                 <td><span class="ticker-badge">{{ item.option.ticker }}</span></td>
                 <td>{{ item.option.quantity }}</td>
                 <td>{{ item.option.underlying_asset }}</td>
-                <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                <td>R$ {{ item.underlying_price|brl_fmt }}</td>
                 {{ var_dia_td(item.underlying_change) }}
-                <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
+                <td>R$ {{ item.option.strike_price|brl_fmt }}</td>
                 <td class="{{ 'positive' if item.lastro_rs >= 0 else 'negative' }}">
-                    R$ {{ "%.2f"|format(item.lastro_rs)|replace('.', ',') }}
+                    R$ {{ item.lastro_rs|brl_fmt }}
                 </td>
                 <td class="{{ 'positive' if item.lastro_pct >= 0 else 'negative' }}">
-                    {{ "%.2f"|format(item.lastro_pct)|replace('.', ',') }}%
+                    {{ item.lastro_pct|brl_fmt }}%
                 </td>
-                <td>R$ {{ "%.2f"|format(item.breakeven)|replace('.', ',') }}</td>
+                <td>R$ {{ item.breakeven|brl_fmt }}</td>
                 <td class="{{ 'positive' if item.lastrobk_rs >= 0 else 'negative' }}">
-                    R$ {{ "%.2f"|format(item.lastrobk_rs)|replace('.', ',') }}
+                    R$ {{ item.lastrobk_rs|brl_fmt }}
                 </td>
                 <td class="{{ 'positive' if item.lastrobk_pct >= 0 else 'negative' }}">
-                    {{ "%.2f"|format(item.lastrobk_pct)|replace('.', ',') }}%
+                    {{ item.lastrobk_pct|brl_fmt }}%
                 </td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
                 <td data-order="{{ item.days_left if item.days_left is not none else -1 }}">{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
-                <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
-                <td>R$ {{ "%.2f"|format(item.total_sold)|replace('.', ',') }}</td>
-                <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td>R$ {{ item.option.sale_price|brl_fmt }}</td>
+                <td>R$ {{ item.total_sold|brl_fmt }}</td>
+                <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ item.option.current_option_price|brl_fmt }}</td>
                 <td style="color:var(--text-secondary); font-size:.82rem;">{{ item.last_update }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_change"
                     class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
-                    {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%
+                    {{ (item.option.daily_change or 0)|brl_fmt }}%
                 </td>
                 {# Delta em módulo — badge clicável: ⚡ atualiza, ✏️ edita manualmente #}
                 {% set delta_abs = (item.option.delta|abs) if item.option.delta is not none else none %}
@@ -262,7 +262,7 @@
                                    padding:.18rem .45rem;font-size:.78rem;font-weight:700;cursor:pointer;">
                         ⚡ <span id="put-delta-val-{{ item.option.id }}">
                             {%- if delta_abs is not none -%}
-                                {{ "%.2f"|format(delta_abs)|replace('.', ',') }}
+                                {{ delta_abs|brl_fmt }}
                             {%- else -%}—{%- endif -%}
                         </span>
                     </button>
@@ -271,12 +271,12 @@
                             title="Editar delta manualmente"
                             onclick="editDeltaPut({{ item.option.id }}, {{ delta_abs if delta_abs is not none else "''" }})">✏️</button>
                 </td>
-                <td data-optticker="{{ item.option.ticker }}" data-field="opt_value" data-qty="{{ item.option.quantity }}">R$ {{ "%.2f"|format(item.current_val)|replace('.', ',') }}</td>
+                <td data-optticker="{{ item.option.ticker }}" data-field="opt_value" data-qty="{{ item.option.quantity }}">R$ {{ item.current_val|brl_fmt }}</td>
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
-                    R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
+                    R$ {{ item.profit|brl_fmt }}
                 </td>
                 <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
-                    {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
+                    {{ item.profit_pct|brl_fmt }}%
                 </td>
                 <td class="actions" style="white-space:nowrap;">
                     <a href="{{ url_for('manejo_put') }}?ticker={{ item.option.underlying_asset }}&strike={{ '%.2f'|format(item.option.strike_price or 0) }}&premium={{ '%.2f'|format(item.option.sale_price or 0) }}&exp={{ item.option.expiration_date.strftime('%Y-%m-%d') }}&qty={{ item.option.quantity }}&option_id={{ item.option.id }}&auto=1"
@@ -365,25 +365,25 @@
                 <td><span class="ticker-badge">{{ item.option.ticker }}</span></td>
                 <td>{{ item.option.quantity }}</td>
                 <td>{{ item.option.underlying_asset }}</td>
-                <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                <td>R$ {{ item.underlying_price|brl_fmt }}</td>
                 {{ var_dia_td(item.underlying_change) }}
-                <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
+                <td>R$ {{ item.option.strike_price|brl_fmt }}</td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
                 <td data-order="{{ item.days_left if item.days_left is not none else -1 }}">{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
-                <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
-                <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
-                <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td>R$ {{ item.option.sale_price|brl_fmt }}</td>
+                <td>R$ {{ item.total_invested|brl_fmt }}</td>
+                <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ item.option.current_option_price|brl_fmt }}</td>
                 <td style="color:var(--text-secondary); font-size:.82rem;">{{ item.last_update }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_change"
                     class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
-                    {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%
+                    {{ (item.option.daily_change or 0)|brl_fmt }}%
                 </td>
-                <td data-optticker="{{ item.option.ticker }}" data-field="opt_value" data-qty="{{ item.option.quantity }}">R$ {{ "%.2f"|format(item.current_value)|replace('.', ',') }}</td>
+                <td data-optticker="{{ item.option.ticker }}" data-field="opt_value" data-qty="{{ item.option.quantity }}">R$ {{ item.current_value|brl_fmt }}</td>
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
-                    R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
+                    R$ {{ item.profit|brl_fmt }}
                 </td>
                 <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
-                    {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
+                    {{ item.profit_pct|brl_fmt }}%
                 </td>
                 <td class="actions" style="white-space:nowrap;">
                     <a href="{{ url_for('payoff_option', id=item.option.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
@@ -468,25 +468,25 @@
                 <td><span class="ticker-badge">{{ item.option.ticker }}</span></td>
                 <td>{{ item.option.quantity }}</td>
                 <td>{{ item.option.underlying_asset }}</td>
-                <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                <td>R$ {{ item.underlying_price|brl_fmt }}</td>
                 {{ var_dia_td(item.underlying_change) }}
-                <td>R$ {{ "%.2f"|format(item.option.strike_price)|replace('.', ',') }}</td>
+                <td>R$ {{ item.option.strike_price|brl_fmt }}</td>
                 <td>{{ item.option.expiration_date.strftime('%d/%m/%Y') }}</td>
                 <td data-order="{{ item.days_left if item.days_left is not none else -1 }}">{% if item.days_left is not none %}{% if item.days_left <= 7 %}<span class="negative">{{ item.days_left }}d</span>{% elif item.days_left <= 21 %}<span style="color:#f59e0b">{{ item.days_left }}d</span>{% else %}{{ item.days_left }}d{% endif %}{% else %}-{% endif %}</td>
-                <td>R$ {{ "%.2f"|format(item.option.sale_price)|replace('.', ',') }}</td>
-                <td>R$ {{ "%.2f"|format(item.total_invested)|replace('.', ',') }}</td>
-                <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.option.current_option_price)|replace('.', ',') }}</td>
+                <td>R$ {{ item.option.sale_price|brl_fmt }}</td>
+                <td>R$ {{ item.total_invested|brl_fmt }}</td>
+                <td data-optticker="{{ item.option.ticker }}" data-field="opt_price">R$ {{ item.option.current_option_price|brl_fmt }}</td>
                 <td style="color:var(--text-secondary); font-size:.82rem;">{{ item.last_update }}</td>
                 <td data-optticker="{{ item.option.ticker }}" data-field="opt_change"
                     class="{{ 'positive' if (item.option.daily_change or 0) >= 0 else 'negative' }}">
-                    {{ "%.2f"|format(item.option.daily_change or 0)|replace('.', ',') }}%
+                    {{ (item.option.daily_change or 0)|brl_fmt }}%
                 </td>
-                <td data-optticker="{{ item.option.ticker }}" data-field="opt_value" data-qty="{{ item.option.quantity }}">R$ {{ "%.2f"|format(item.current_value)|replace('.', ',') }}</td>
+                <td data-optticker="{{ item.option.ticker }}" data-field="opt_value" data-qty="{{ item.option.quantity }}">R$ {{ item.current_value|brl_fmt }}</td>
                 <td class="{{ 'positive' if item.profit >= 0 else 'negative' }}">
-                    R$ {{ "%.2f"|format(item.profit)|replace('.', ',') }}
+                    R$ {{ item.profit|brl_fmt }}
                 </td>
                 <td class="{{ 'positive' if item.profit_pct >= 0 else 'negative' }}">
-                    {{ "%.2f"|format(item.profit_pct)|replace('.', ',') }}%
+                    {{ item.profit_pct|brl_fmt }}%
                 </td>
                 <td class="actions" style="white-space:nowrap;">
                     <a href="{{ url_for('payoff_option', id=item.option.id) }}" class="btn btn-sm btn-secondary" title="Gráfico Payoff" target="_blank">📊</a>
@@ -568,25 +568,25 @@
         <tbody>
             {% for item in items %}
             <tr>
-                <td><span class="ticker-badge">{{ item.spread.leg_long_ticker }}</span><br><small>K={{ "%.2f"|format(item.spread.leg_long_strike)|replace('.', ',') }}</small></td>
-                <td><span class="ticker-badge">{{ item.spread.leg_short_ticker }}</span><br><small>K={{ "%.2f"|format(item.spread.leg_short_strike)|replace('.', ',') }}</small></td>
+                <td><span class="ticker-badge">{{ item.spread.leg_long_ticker }}</span><br><small>K={{ item.spread.leg_long_strike|brl_fmt }}</small></td>
+                <td><span class="ticker-badge">{{ item.spread.leg_short_ticker }}</span><br><small>K={{ item.spread.leg_short_strike|brl_fmt }}</small></td>
                 <td>{{ item.spread.underlying_asset }}</td>
-                <td>R$ {{ "%.2f"|format(item.underlying_price)|replace('.', ',') }}</td>
+                <td>R$ {{ item.underlying_price|brl_fmt }}</td>
                 {{ var_dia_td(item.underlying_change) }}
                 <td>{{ item.spread.quantity }}</td>
                 <td>{{ item.spread.expiration_date.strftime('%d/%m/%Y') }}</td>
                 <td>{{ item.days_left }}</td>
                 <td class="{{ 'positive' if item.net >= 0 else 'negative' }}">
                     {{ '✅' if item.is_credit else '💰' }}
-                    R$ {{ "%.2f"|format(item.net|abs)|replace('.', ',') }}
+                    R$ {{ item.net|abs|brl_fmt }}
                 </td>
-                <td class="{{ 'positive' if item.net_total >= 0 else 'negative' }}">R$ {{ "%.2f"|format(item.net_total|abs)|replace('.', ',') }}</td>
-                <td data-optticker="{{ item.spread.leg_long_ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.spread.leg_long_current)|replace('.', ',') }}</td>
-                <td data-optticker="{{ item.spread.leg_short_ticker }}" data-field="opt_price">R$ {{ "%.2f"|format(item.spread.leg_short_current)|replace('.', ',') }}</td>
-                <td class="{{ 'positive' if item.result >= 0 else 'negative' }}">R$ {{ "%.2f"|format(item.result)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if item.net_total >= 0 else 'negative' }}">R$ {{ item.net_total|abs|brl_fmt }}</td>
+                <td data-optticker="{{ item.spread.leg_long_ticker }}" data-field="opt_price">R$ {{ item.spread.leg_long_current|brl_fmt }}</td>
+                <td data-optticker="{{ item.spread.leg_short_ticker }}" data-field="opt_price">R$ {{ item.spread.leg_short_current|brl_fmt }}</td>
+                <td class="{{ 'positive' if item.result >= 0 else 'negative' }}">R$ {{ item.result|brl_fmt }}</td>
                 <td class="{{ 'positive' if item.result_pct >= 0 else 'negative' }}">{{ "%.1f"|format(item.result_pct)|replace('.', ',') }}%</td>
-                <td class="positive">R$ {{ "%.2f"|format(item.max_gain)|replace('.', ',') }}</td>
-                <td class="negative">R$ {{ "%.2f"|format(item.max_loss)|replace('.', ',') }}</td>
+                <td class="positive">R$ {{ item.max_gain|brl_fmt }}</td>
+                <td class="negative">R$ {{ item.max_loss|brl_fmt }}</td>
                 {% set pop_val = item.spread.pop if item.spread.pop else item['pop'] %}
                 <td title="{{ 'Salvo (payoff/manual)' if item.spread.pop else 'Calculado via BS' }}">
                     {% if pop_val %}
@@ -621,12 +621,12 @@
         <tfoot>
             <tr class="total-row" style="font-weight: bold; background-color: var(--total-row-bg);">
                 <td colspan="9">TOTAL</td>
-                <td class="{{ 'positive' if items|sum(attribute='net_total') >= 0 else 'negative' }}">R$ {{ "%.2f"|format(items|sum(attribute='net_total')|abs)|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if items|sum(attribute='net_total') >= 0 else 'negative' }}">R$ {{ items|sum(attribute='net_total')|abs|brl_fmt }}</td>
                 <td></td><td></td>
-                <td class="{{ 'positive' if items|sum(attribute='result') >= 0 else 'negative' }}">R$ {{ "%.2f"|format(items|sum(attribute='result'))|replace('.', ',') }}</td>
+                <td class="{{ 'positive' if items|sum(attribute='result') >= 0 else 'negative' }}">R$ {{ items|sum(attribute='result')|brl_fmt }}</td>
                 <td></td>
-                <td class="positive">R$ {{ "%.2f"|format(items|sum(attribute='max_gain'))|replace('.', ',') }}</td>
-                <td class="negative">R$ {{ "%.2f"|format(items|sum(attribute='max_loss'))|replace('.', ',') }}</td>
+                <td class="positive">R$ {{ items|sum(attribute='max_gain')|brl_fmt }}</td>
+                <td class="negative">R$ {{ items|sum(attribute='max_loss')|brl_fmt }}</td>
                 <td></td><td></td>
             </tr>
         </tfoot>
@@ -707,10 +707,10 @@
                         </span>
                         {{ leg.quantity }}× <span class="ticker-badge" style="font-size:.78rem; padding:.05rem .35rem;">{{ leg.ticker }}</span>
                         {{ leg.opt_type }}
-                        K={{ "%.2f"|format(leg.strike)|replace('.', ',') }}
-                        @ {{ "%.2f"|format(leg.entry_price)|replace('.', ',') }}
+                        K={{ leg.strike|brl_fmt }}
+                        @ {{ leg.entry_price|brl_fmt }}
                         <small style="color:var(--text-secondary);">
-                            atual <span {% if not intl %}data-optticker="{{ leg.ticker }}" data-field="opt_price"{% endif %}>{{ cur }} {{ "%.2f"|format(leg.current_price or 0)|replace('.', ',') }}</span>
+                            atual <span {% if not intl %}data-optticker="{{ leg.ticker }}" data-field="opt_price"{% endif %}>{{ cur }} {{ (leg.current_price or 0)|brl_fmt }}</span>
                         </small>
                     </div>
                     {% endfor %}
@@ -729,15 +729,15 @@
                     {% else %}—{% endif %}
                 </td>
                 <td style="white-space:nowrap;">
-                    {% if op.underlying_price %}{{ cur }} {{ "%.2f"|format(op.underlying_price)|replace('.', ',') }}{% else %}—{% endif %}
+                    {% if op.underlying_price %}{{ cur }} {{ op.underlying_price|brl_fmt }}{% else %}—{% endif %}
                 </td>
                 {{ var_dia_td(op.underlying_change) }}
                 <td class="{{ 'positive' if item.net >= 0 else 'negative' }}" style="white-space:nowrap;">
-                    {{ cur + ' ' + "%.2f"|format(item.net|abs)|replace('.', ',') }}
+                    {{ cur + ' ' + item.net|abs|brl_fmt }}
                     <br><small>{{ '✅ crédito' if item.net >= 0 else '💰 débito' }}</small>
                 </td>
                 <td class="{{ 'positive' if item.current_pnl >= 0 else 'negative' }}" style="white-space:nowrap;">
-                    {{ cur }} {{ "%.2f"|format(item.current_pnl)|replace('.', ',') }}
+                    {{ cur }} {{ item.current_pnl|brl_fmt }}
                 </td>
                 <td style="white-space:nowrap; font-size:.85rem;">
                     {% if not item.unlimited_profit and item.max_profit and item.max_profit != 0 %}
@@ -749,14 +749,14 @@
                     {% if item.unlimited_profit %}
                     <span title="Ilimitado">∞</span>
                     {% else %}
-                    {{ cur }} {{ "%.2f"|format(item.max_profit)|replace('.', ',') }}
+                    {{ cur }} {{ item.max_profit|brl_fmt }}
                     {% endif %}
                 </td>
                 <td class="negative" style="white-space:nowrap;">
                     {% if item.unlimited_loss %}
                     <span title="Ilimitado">-∞</span>
                     {% else %}
-                    {{ cur }} {{ "%.2f"|format(item.max_loss)|replace('.', ',') }}
+                    {{ cur }} {{ item.max_loss|brl_fmt }}
                     {% endif %}
                 </td>
                 <td style="white-space:nowrap; font-size:.82rem;">
@@ -765,7 +765,7 @@
                         <span style="color:var(--text-secondary); font-size:.75rem;">▼ Baixa</span><br>
                         <span style="background:rgba(239,68,68,.12); color:var(--danger-color);
                                      padding:.1rem .5rem; border-radius:20px;">
-                            {{ cur }} {{ "%.2f"|format(item.be_low)|replace('.', ',') }}
+                            {{ cur }} {{ item.be_low|brl_fmt }}
                         </span>
                     </div>
                     {% endif %}
@@ -774,14 +774,14 @@
                         <span style="color:var(--text-secondary); font-size:.75rem;">▲ Alta</span><br>
                         <span style="background:rgba(16,185,129,.12); color:var(--success-color);
                                      padding:.1rem .5rem; border-radius:20px;">
-                            {{ cur }} {{ "%.2f"|format(item.be_high)|replace('.', ',') }}
+                            {{ cur }} {{ item.be_high|brl_fmt }}
                         </span>
                     </div>
                     {% elif item.breakevens %}
                         {% for be in item.breakevens %}
                         <span style="display:inline-block; background:var(--hover-bg); padding:.1rem .5rem;
                                      border-radius:20px; margin:.1rem;">
-                            {{ cur }} {{ "%.2f"|format(be)|replace('.', ',') }}
+                            {{ cur }} {{ be|brl_fmt }}
                         </span>
                         {% endfor %}
                     {% endif %}
@@ -821,7 +821,7 @@
                     <form action="{{ url_for('close_estruturada', id=op.id) }}" method="post" style="display:inline;">
                         <button type="submit" class="btn btn-sm" style="background:var(--accent-color); color: var(--accent-contrast);"
                                 title="Encerrar operação"
-                                onclick="return confirm('Encerrar {{ op.name|e }} ({{ op.underlying_asset or '—' }})?\n\nLucro atual: {{ cur }} {{ '%.2f'|format(item.current_pnl)|replace('.', ',') }}')">🛑</button>
+                                onclick="return confirm('Encerrar {{ op.name|e }} ({{ op.underlying_asset or '—' }})?\n\nLucro atual: {{ cur }} {{ item.current_pnl|brl_fmt }}')">🛑</button>
                     </form>
                     <form action="{{ url_for('delete_estruturada', id=op.id) }}" method="post" style="display:inline;">
                         <button type="submit" class="btn btn-sm btn-danger" title="Excluir"

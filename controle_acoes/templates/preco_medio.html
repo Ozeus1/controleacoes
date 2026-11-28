@@ -8,6 +8,7 @@
 .pm-badge.ok{background:rgba(16,185,129,.15);color:#34d399;}
 .pm-det{cursor:pointer;}
 .pm-det:hover{text-decoration:underline dotted;}
+.pm-badge.off{background:rgba(148,163,184,.15);color:#94a3b8;}
 .pm-btn{padding:.15rem .45rem;font-size:.78rem;border-radius:5px;border:1px solid transparent;cursor:pointer;margin-right:.15rem;background:var(--surface-2);color:var(--text-secondary);}
 .pm-btn:disabled{opacity:.5;cursor:default;}
 .pm-btn.pm-btn-verde{background:rgba(16,185,129,.16);border-color:rgba(16,185,129,.34);color:#10b981;}
@@ -259,11 +260,12 @@
   <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.3rem;width:min(96vw,980px);max-height:90vh;overflow-y:auto;">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem;gap:.6rem;">
       <h5 style="margin:0;">🧾 Detalhamento — <span id="pm-det-ticker"></span></h5>
-      <button onclick="document.getElementById('pm-det-modal').style.display='none'" style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;">&times;</button>
+      <button onclick="pmCloseDet()" style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;">&times;</button>
     </div>
     <p style="font-size:.76rem;color:var(--text-secondary);margin:0 0 .6rem;">
-      Créditos que formam o valor <strong>Disponível</strong> (dividendos recebidos + resultado de opções do ativo)
-      e o que já foi <strong>Aplicado</strong> ao PM. Para aplicar os pendentes use o botão 💰 da linha.
+      Créditos que formam o <strong>Disponível</strong> (dividendos + resultado de opções do ativo). Marque as linhas e escolha:
+      <strong>Aplicar</strong> (entram no PM), <strong>Descartar</strong> (saem do cálculo — ex.: eventos de posições anteriores,
+      já vendidas) ou <strong>Voltar a pendente</strong> (desfaz uma aplicação ou descarte).
     </p>
     <div id="pm-det-body" style="font-size:.85rem;overflow-x:auto;">Carregando…</div>
   </div>
@@ -285,7 +287,39 @@ function pmOpenManual(tk){
   document.getElementById('pm-manual-modal').style.display='flex';
 }
 function pmCloseManual(){document.getElementById('pm-manual-modal').style.display='none';}
+var pmDetTk='', pmDetDirty=false;
+function pmCloseDet(){
+  document.getElementById('pm-det-modal').style.display='none';
+  if(pmDetDirty){pmDetDirty=false;location.reload();}
+}
+function pmDetUpd(){
+  var cks=document.querySelectorAll('#pm-det-body .pm-det-ck:checked'), v=0;
+  cks.forEach(function(c){v+=Number(c.getAttribute('data-v'));});
+  var el=document.getElementById('pm-det-sel');
+  if(el)el.textContent=cks.length?(cks.length+' marcada(s) · '+brlJS(v)):'nenhuma marcada';
+}
+function pmDetAcao(acao){
+  var cks=document.querySelectorAll('#pm-det-body .pm-det-ck:checked'), keys=[], v=0;
+  cks.forEach(function(c){keys.push(c.value);v+=Number(c.getAttribute('data-v'));});
+  if(!keys.length){alert('Marque ao menos uma linha.');return;}
+  var msg={
+    aplicar:'Aplicar '+keys.length+' crédito(s) ('+brlJS(v)+') ao PM de '+pmDetTk+'?\n\nSó os que estão pendentes são aplicados.',
+    descartar:'Descartar '+keys.length+' crédito(s)? Eles saem do cálculo (Disponível e PM).\n\nDá para desfazer em "Voltar a pendente".',
+    pendente:'Voltar '+keys.length+' crédito(s) a pendente? (desfaz aplicação ou descarte)'}[acao];
+  if(!confirm(msg))return;
+  fetch('/api/pm/creditos/'+encodeURIComponent(pmDetTk),{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({acao:acao,keys:keys})})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(d.error)throw new Error(d.error);
+      pmDetDirty=true;
+      pmOpenDet(pmDetTk);
+      if(acao==='aplicar'&&!d.n)alert('Nada foi aplicado: as linhas marcadas já estavam aplicadas/descartadas ou o disponível está esgotado.');
+    })
+    .catch(function(e){alert('Erro: '+(e.message||e));});
+}
 function pmOpenDet(tk){
+  pmDetTk=tk;
   document.getElementById('pm-det-ticker').textContent=tk;
   var body=document.getElementById('pm-det-body');
   body.textContent='Carregando…';
@@ -293,19 +327,32 @@ function pmOpenDet(tk){
   fetch('/api/pm/disponivel/'+encodeURIComponent(tk)).then(function(r){return r.json();}).then(function(d){
     if(d.error)throw new Error(d.error);
     var tipos={DIVIDENDO:'💵 Dividendo',OPCOES:'🎯 Opções',COMPRA_LUCRO:'🛒 Compra com lucro',MANUAL:'✏️ Ajuste manual',ORFAO:'⚠️ Aplicado (origem não encontrada)'};
-    var pend='<span class="pm-badge sug">pendente</span>', ok='<span class="pm-badge ok">aplicado</span>', lanc='<span class="pm-badge ok">lançado</span>';
+    var pills={PENDENTE:'<span class="pm-badge sug">pendente</span>',APLICADO:'<span class="pm-badge ok">aplicado</span>',DESCARTADO:'<span class="pm-badge off">descartado</span>'};
+    var lanc='<span class="pm-badge ok">lançado</span>';
     function cls(v){return v>0?'positive':(v<0?'negative':'');}
-    function linha(r,sit){
-      return '<tr><td style="white-space:nowrap;">'+escH(r.date)+'</td>'+
+    function linha(r,ck,sit,dim){
+      return '<tr'+(dim?' style="opacity:.5;"':'')+'><td>'+ck+'</td>'+
+        '<td style="white-space:nowrap;">'+escH(r.date)+'</td>'+
         '<td style="white-space:nowrap;">'+(tipos[r.kind]||escH(r.kind))+'</td>'+
         '<td style="font-size:.8rem;color:var(--text-secondary);">'+escH(r.ref)+'</td>'+
         '<td class="'+cls(r.valor)+'" style="text-align:right;white-space:nowrap;">'+brlJS(r.valor)+'</td>'+
         '<td>'+sit+'</td></tr>';
     }
-    var h='<table style="width:100%;"><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th style="text-align:right;">Valor</th><th>Situação</th></tr></thead><tbody>';
-    if(!d.creditos.length&&!d.outros.length)h+='<tr><td colspan="5" style="color:var(--text-secondary);">Nenhum dividendo ou resultado de opções encontrado para este ativo.</td></tr>';
-    d.creditos.forEach(function(r){h+=linha(r,r.aplicado?ok:pend);});
-    d.outros.forEach(function(r){h+=linha(r,lanc);});
+    var h='<div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.6rem;">'+
+      '<button type="button" class="btn btn-primary btn-sm" onclick="pmDetAcao(\'aplicar\')">💰 Aplicar marcadas ao PM</button>'+
+      '<button type="button" class="btn btn-secondary btn-sm" onclick="pmDetAcao(\'descartar\')">🚫 Descartar marcadas</button>'+
+      '<button type="button" class="btn btn-secondary btn-sm" onclick="pmDetAcao(\'pendente\')">↩️ Voltar a pendente</button>'+
+      '<span id="pm-det-sel" style="font-size:.8rem;color:var(--text-secondary);margin-left:auto;">nenhuma marcada</span></div>';
+    h+='<table style="width:100%;"><thead><tr><th><input type="checkbox" id="pm-det-all" title="Marcar/desmarcar todas as pendentes"></th>'+
+      '<th>Data</th><th>Tipo</th><th>Descrição</th><th style="text-align:right;">Valor</th><th>Situação</th></tr></thead><tbody>';
+    if(!d.creditos.length&&!d.outros.length)h+='<tr><td colspan="6" style="color:var(--text-secondary);">Nenhum dividendo ou resultado de opções encontrado para este ativo.</td></tr>';
+    var nDesc=0, vDesc=0;
+    d.creditos.forEach(function(r){
+      if(r.status==='DESCARTADO'){nDesc++;vDesc+=r.valor;}
+      var ck='<input type="checkbox" class="pm-det-ck" value="'+escH(r.key)+'" data-st="'+r.status+'" data-v="'+r.valor+'">';
+      h+=linha(r,ck,pills[r.status]||'',r.status==='DESCARTADO');
+    });
+    d.outros.forEach(function(r){h+=linha(r,'',lanc,false);});
     h+='</tbody></table>';
     var s=d.resumo;
     function sl(t,v,forte){
@@ -321,10 +368,17 @@ function pmOpenDet(tk){
       '<div style="height:.7rem;"></div>'+
       sl('Aplicado ao custo (coluna Aplicado)',s.aplicado_total,true)+
       (Math.abs(s.manual)>0.005?'<div style="font-size:.75rem;color:var(--text-secondary);text-align:right;">inclui ajustes manuais de '+brlJS(s.manual)+'</div>':'')+
+      (nDesc?'<div style="font-size:.75rem;color:var(--text-secondary);text-align:right;margin-top:.4rem;">'+nDesc+' crédito(s) descartado(s) ('+brlJS(vDesc)+') ficam fora do cálculo</div>':'')+
     '</div>';
     body.innerHTML=h;
   }).catch(function(e){body.textContent='Erro ao carregar o detalhamento: '+(e.message||e);});
-}var pmHistTk='', pmHistDirty=false;
+}
+document.getElementById('pm-det-body').addEventListener('change',function(ev){
+  if(ev.target.id==='pm-det-all'){
+    this.querySelectorAll('.pm-det-ck').forEach(function(c){c.checked=ev.target.checked&&c.getAttribute('data-st')==='PENDENTE';});
+  }
+  pmDetUpd();
+});var pmHistTk='', pmHistDirty=false;
 function escH(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function pmOpenHist(tk){
   pmHistTk=tk;
@@ -416,7 +470,7 @@ function pmCloseHist(){
 ['pm-buy-modal','pm-hist-modal','pm-manual-modal','pm-det-modal'].forEach(function(id){
   document.getElementById(id).addEventListener('click',function(ev){
     if(ev.target!==this)return;
-    if(id==='pm-hist-modal')pmCloseHist();else this.style.display='none';
+    if(id==='pm-hist-modal')pmCloseHist();else if(id==='pm-det-modal')pmCloseDet();else this.style.display='none';
   });
 });
 </script>

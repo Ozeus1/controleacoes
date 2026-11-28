@@ -21440,6 +21440,33 @@ def preco_medio():
                            divergentes=len(_pm_eventos_divergentes(current_user.id)))
 
 
+def _pm_aplicar_creditos(user_id, ticker, a, pending, pool, custo_aj):
+    """Aplica créditos pendentes ao PM (cria os PMEvent, sem commit), limitado ao
+    pool disponível. Retorna (n aplicados, total aplicado, novo custo ajustado)."""
+    # Prejuízos primeiro (aumentam a folga do pool); ganhos depois, por data —
+    # senão o cap cortaria ganhos que os prejuízos posteriores compensariam.
+    pending = sorted(pending, key=lambda i: (i['valor'] >= 0, i['date'] or date.min))
+    remaining, n, aplicado = pool, 0, 0.0
+    for item in pending:
+        v = item['valor']
+        if v > 0:
+            if remaining <= 0.005:
+                continue
+            v = min(v, remaining)          # cap: não aplica além do pool
+        pm_before = custo_aj / a.quantity
+        custo_aj -= v
+        db.session.add(PMEvent(
+            user_id=user_id, ticker=ticker, kind=item['kind'],
+            event_date=item['date'], valor=round(v, 2),
+            source_key=item['key'], ref=item['ref'],
+            pm_before=round(pm_before, 4), pm_after=round(custo_aj / a.quantity, 4),
+            created_at=datetime.now()))
+        remaining -= v
+        aplicado += v
+        n += 1
+    return n, aplicado, custo_aj
+
+
 @app.route('/preco-medio/aplicar/<ticker>', methods=['POST'])
 @login_required
 def pm_aplicar(ticker):
@@ -21455,27 +21482,7 @@ def pm_aplicar(ticker):
         flash(f'{ticker}: nenhum crédito pendente para aplicar.', 'warning')
         return redirect(url_for('preco_medio'))
 
-    # Prejuízos primeiro (aumentam a folga do pool); ganhos depois, por data —
-    # senão o cap cortaria ganhos que os prejuízos posteriores compensariam.
-    pending = sorted(pending, key=lambda i: (i['valor'] >= 0, i['date'] or date.min))
-    remaining, n, aplicado = pool, 0, 0.0
-    for item in pending:
-        v = item['valor']
-        if v > 0:
-            if remaining <= 0.005:
-                continue
-            v = min(v, remaining)          # cap: não aplica além do pool
-        pm_before = custo_aj / a.quantity
-        custo_aj -= v
-        db.session.add(PMEvent(
-            user_id=current_user.id, ticker=ticker, kind=item['kind'],
-            event_date=item['date'], valor=round(v, 2),
-            source_key=item['key'], ref=item['ref'],
-            pm_before=round(pm_before, 4), pm_after=round(custo_aj / a.quantity, 4),
-            created_at=datetime.now()))
-        remaining -= v
-        aplicado += v
-        n += 1
+    n, aplicado, custo_aj = _pm_aplicar_creditos(current_user.id, ticker, a, pending, pool, custo_aj)
     if not n:
         flash(f'{ticker}: pool disponível esgotado (créditos já usados em compras).', 'warning')
         return redirect(url_for('preco_medio'))
@@ -21887,14 +21894,20 @@ def pm_disponivel(ticker):
     (dividendos e opções) com a situação, os demais lançamentos e a conta que fecha
     nos totais da tabela."""
     ticker = ticker.strip().upper()
-    a, evs, earned, pending, pool, custo_of, custo_aj = _pm_state(current_user.id, ticker)
+    ctx = _pm_ctx(current_user.id)
+    a, evs, earned, pending, pool, custo_of, custo_aj = _pm_state(current_user.id, ticker, ctx)
     if not a:
         return jsonify({'error': 'ativo não encontrado na carteira'}), 404
     used_keys = {e.source_key for e in evs if e.source_key}
+    ignored_keys = {e.source_key for e in evs if e.kind == 'IGNORADO' and e.source_key}
     earned_keys = {i['key'] for i in earned}
     fdate = lambda d: d.strftime('%d/%m/%Y') if d else ''
-    creditos = [{'kind': i['kind'], 'date': fdate(i['date']), 'ref': i['ref'],
-                 'valor': i['valor'], 'aplicado': i['key'] in used_keys} for i in earned]
+
+    def _status(k):
+        return 'DESCARTADO' if k in ignored_keys else ('APLICADO' if k in used_keys else 'PENDENTE')
+    creditos = [{'key': i['key'], 'kind': i['kind'], 'date': fdate(i['date']), 'ref': i['ref'],
+                 'valor': i['valor'], 'status': _status(i['key'])}
+                for i in _pm_earned_items(current_user.id, ticker, ctx)]
     outros = []
     for e in sorted(evs, key=lambda x: (x.event_date or date.min, x.id)):
         if e.kind == 'IGNORADO':
@@ -21918,6 +21931,57 @@ def pm_disponivel(ticker):
                    'compras': compras, 'manual': manual, 'disponivel': round(pool, 2),
                    'aplicado_total': round(custo_of - custo_aj, 2),
                    'resto': round(pool - (ganhos - aplic - orfaos - compras), 2)}})
+
+@app.route('/api/pm/creditos/<ticker>', methods=['POST'])
+@login_required
+def pm_creditos_acao(ticker):
+    """Ação em lote sobre os créditos (dividendos/opções) marcados no detalhamento:
+    'aplicar' (pendentes entram no PM), 'descartar' (saem do cálculo, via marcador
+    IGNORADO) ou 'pendente' (desfaz aplicação ou descarte)."""
+    ticker = ticker.strip().upper()
+    data = request.get_json(silent=True) or {}
+    acao = (data.get('acao') or '').lower()
+    keys = {str(k) for k in (data.get('keys') or [])}
+    if acao not in ('aplicar', 'descartar', 'pendente') or not keys:
+        return jsonify({'error': 'ação ou seleção inválida'}), 400
+    ctx = _pm_ctx(current_user.id)
+    a, evs, earned, pending, pool, custo_of, custo_aj = _pm_state(current_user.id, ticker, ctx)
+    if not a or a.quantity <= 0:
+        return jsonify({'error': 'ativo não encontrado na carteira'}), 404
+    todos = {i['key']: i for i in _pm_earned_items(current_user.id, ticker, ctx)}
+    keys &= set(todos)
+    if not keys:
+        return jsonify({'error': 'nenhum crédito válido na seleção'}), 400
+    n = 0
+    if acao == 'aplicar':
+        n, aplicado, custo_aj = _pm_aplicar_creditos(
+            current_user.id, ticker, a, [i for i in pending if i['key'] in keys], pool, custo_aj)
+    elif acao == 'descartar':
+        for k in keys:
+            evs_k = [e for e in evs if e.source_key == k]
+            if any(e.kind == 'IGNORADO' for e in evs_k):
+                continue
+            if evs_k:                      # já aplicado: vira marcador (valor 0)
+                for e in evs_k:
+                    e.kind, e.valor = 'IGNORADO', 0.0
+                    e.ref = ('Descartado: ' + (e.ref or ''))[:200]
+            else:
+                it = todos[k]
+                db.session.add(PMEvent(
+                    user_id=current_user.id, ticker=ticker, kind='IGNORADO',
+                    event_date=it['date'], valor=0.0, source_key=k,
+                    ref=('Descartado: ' + it['ref'])[:200], created_at=datetime.now()))
+            n += 1
+    else:                                  # 'pendente': apaga o evento/marcador da origem
+        for e in evs:
+            if e.source_key in keys:
+                db.session.delete(e)
+                n += 1
+    if acao != 'aplicar':
+        db.session.flush()
+        _pm_rebuild_chain(current_user.id, ticker)
+    db.session.commit()
+    return jsonify({'ok': True, 'n': n})
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Livro de transações da carteira (AssetTxn)

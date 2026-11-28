@@ -1,0 +1,41 @@
+{# Helpers para formatação de números brasileiros #}
+
+{# Formata um valor monetário em Real com separador de milhar (.) e decimal (,) #}
+{% macro format_brl(value, prefix='R$ ') -%}
+{%- set formatted = "%.2f"|format(value|float) -%}
+{%- set parts = formatted.split('.') -%}
+{%- set integer = parts[0] -%}
+{%- set decimal = parts[1] -%}
+{%- set integer_formatted = '' -%}
+{%- set reversed_int = integer[::-1] -%}
+{%- for i, digit in enumerate(reversed_int) -%}
+  {%- if i > 0 and i % 3 == 0 -%}
+    {%- set integer_formatted = '.' + integer_formatted -%}
+  {%- endif -%}
+  {%- set integer_formatted = digit + integer_formatted -%}
+{%- endfor -%}
+{{ prefix }}{{ integer_formatted }},{{ decimal }}
+{%- endmacro %}
+
+{# Formata um número com separador de milhar (.) e decimal (,) sem prefixo #}
+{% macro format_number_br(value, decimal_places=2) -%}
+{%- set fmt_str = "%.{}f"|format(decimal_places) -%}
+{%- set formatted = fmt_str|format(value|float) -%}
+{%- set parts = formatted.split('.') -%}
+{%- set integer = parts[0] -%}
+{%- set decimal = parts[1] -%}
+{%- set integer_formatted = '' -%}
+{%- set reversed_int = integer[::-1] -%}
+{%- for i, digit in enumerate(reversed_int) -%}
+  {%- if i > 0 and i % 3 == 0 -%}
+    {%- set integer_formatted = '.' + integer_formatted -%}
+  {%- endif -%}
+  {%- set integer_formatted = digit + integer_formatted -%}
+{%- endfor -%}
+{{ integer_formatted }},{{ decimal }}
+{%- endmacro %}
+
+{# Formata um percentual com separador decimal (,) #}
+{% macro format_pct(value) -%}
+{{ "%.2f"|format(value|float)|replace('.', ',') }}%
+{%- endmacro %}

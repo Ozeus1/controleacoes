@@ -6,6 +6,8 @@
 .pm-badge{display:inline-block;padding:.1rem .5rem;border-radius:12px;font-size:.72rem;font-weight:700;}
 .pm-badge.sug{background:rgba(245,158,11,.18);color:#fbbf24;border:1px solid rgba(245,158,11,.4);}
 .pm-badge.ok{background:rgba(16,185,129,.15);color:#34d399;}
+.pm-det{cursor:pointer;}
+.pm-det:hover{text-decoration:underline dotted;}
 .pm-btn{padding:.15rem .45rem;font-size:.78rem;border-radius:5px;border:1px solid transparent;cursor:pointer;margin-right:.15rem;background:var(--surface-2);color:var(--text-secondary);}
 .pm-btn:disabled{opacity:.5;cursor:default;}
 .pm-btn.pm-btn-verde{background:rgba(16,185,129,.16);border-color:rgba(16,185,129,.34);color:#10b981;}
@@ -51,8 +53,8 @@
                 <td>{{ it.custo_oficial | brl }}</td>
                 <td class="{{ 'positive' if it.earned_div > 0 else '' }}">{{ it.earned_div | brl }}</td>
                 <td class="{{ 'positive' if it.earned_opc > 0 else ('negative' if it.earned_opc < 0 else '') }}">{{ it.earned_opc | brl }}</td>
-                <td>{{ it.aplicado | brl }}</td>
-                <td>
+                <td class="pm-det" title="Ver o detalhamento" onclick="pmOpenDet('{{ a.ticker }}')">{{ it.aplicado | brl }}</td>
+                <td class="pm-det" onclick="pmOpenDet('{{ a.ticker }}')">
                     {% if it.pending_n > 0 and it.pool > 0.005 %}
                     <span class="pm-badge sug" title="{{ it.pending_n }} crédito(s) pendente(s) — clique em 💰 para aplicar ao PM">
                         {{ it.pool | brl }} · sugerido</span>
@@ -251,6 +253,21 @@
   </div>
 </div>
 
+{# ── Modal: detalhamento do Disponível / Aplicado ── #}
+<div id="pm-det-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);
+     align-items:center;justify-content:center;padding:1rem;">
+  <div style="background:var(--card-bg,#1e293b);border-radius:10px;padding:1.3rem;width:min(96vw,980px);max-height:90vh;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.8rem;gap:.6rem;">
+      <h5 style="margin:0;">🧾 Detalhamento — <span id="pm-det-ticker"></span></h5>
+      <button onclick="document.getElementById('pm-det-modal').style.display='none'" style="background:none;border:none;font-size:1.4rem;color:var(--text-secondary);cursor:pointer;">&times;</button>
+    </div>
+    <p style="font-size:.76rem;color:var(--text-secondary);margin:0 0 .6rem;">
+      Créditos que formam o valor <strong>Disponível</strong> (dividendos recebidos + resultado de opções do ativo)
+      e o que já foi <strong>Aplicado</strong> ao PM. Para aplicar os pendentes use o botão 💰 da linha.
+    </p>
+    <div id="pm-det-body" style="font-size:.85rem;overflow-x:auto;">Carregando…</div>
+  </div>
+</div>
 <script>
 function brlJS(v){return 'R$ '+(Number(v||0)).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});}
 function pmOpenBuy(tk,pool,price){
@@ -268,7 +285,46 @@ function pmOpenManual(tk){
   document.getElementById('pm-manual-modal').style.display='flex';
 }
 function pmCloseManual(){document.getElementById('pm-manual-modal').style.display='none';}
-var pmHistTk='', pmHistDirty=false;
+function pmOpenDet(tk){
+  document.getElementById('pm-det-ticker').textContent=tk;
+  var body=document.getElementById('pm-det-body');
+  body.textContent='Carregando…';
+  document.getElementById('pm-det-modal').style.display='flex';
+  fetch('/api/pm/disponivel/'+encodeURIComponent(tk)).then(function(r){return r.json();}).then(function(d){
+    if(d.error)throw new Error(d.error);
+    var tipos={DIVIDENDO:'💵 Dividendo',OPCOES:'🎯 Opções',COMPRA_LUCRO:'🛒 Compra com lucro',MANUAL:'✏️ Ajuste manual',ORFAO:'⚠️ Aplicado (origem não encontrada)'};
+    var pend='<span class="pm-badge sug">pendente</span>', ok='<span class="pm-badge ok">aplicado</span>', lanc='<span class="pm-badge ok">lançado</span>';
+    function cls(v){return v>0?'positive':(v<0?'negative':'');}
+    function linha(r,sit){
+      return '<tr><td style="white-space:nowrap;">'+escH(r.date)+'</td>'+
+        '<td style="white-space:nowrap;">'+(tipos[r.kind]||escH(r.kind))+'</td>'+
+        '<td style="font-size:.8rem;color:var(--text-secondary);">'+escH(r.ref)+'</td>'+
+        '<td class="'+cls(r.valor)+'" style="text-align:right;white-space:nowrap;">'+brlJS(r.valor)+'</td>'+
+        '<td>'+sit+'</td></tr>';
+    }
+    var h='<table style="width:100%;"><thead><tr><th>Data</th><th>Tipo</th><th>Descrição</th><th style="text-align:right;">Valor</th><th>Situação</th></tr></thead><tbody>';
+    if(!d.creditos.length&&!d.outros.length)h+='<tr><td colspan="5" style="color:var(--text-secondary);">Nenhum dividendo ou resultado de opções encontrado para este ativo.</td></tr>';
+    d.creditos.forEach(function(r){h+=linha(r,r.aplicado?ok:pend);});
+    d.outros.forEach(function(r){h+=linha(r,lanc);});
+    h+='</tbody></table>';
+    var s=d.resumo;
+    function sl(t,v,forte){
+      return '<div style="display:flex;justify-content:space-between;gap:1.5rem;'+(forte?'font-weight:700;border-top:1px solid var(--border-color);margin-top:.3rem;padding-top:.3rem;':'')+'">'+
+        '<span>'+t+'</span><span style="white-space:nowrap;">'+brlJS(v)+'</span></div>';
+    }
+    h+='<div style="margin:1rem 0 0 auto;max-width:430px;">'+
+      sl('Créditos ganhos (dividendos + opções)',s.ganhos)+
+      sl('(−) Já aplicados ao PM',-s.aplicado_creditos)+
+      sl('(−) Usados em compras com lucro',-s.compras)+
+      (Math.abs(s.resto)>0.005?sl('(±) Outros ajustes',s.resto):'')+
+      sl('= Disponível (coluna Disponível)',s.disponivel,true)+
+      '<div style="height:.7rem;"></div>'+
+      sl('Aplicado ao custo (coluna Aplicado)',s.aplicado_total,true)+
+      (Math.abs(s.manual)>0.005?'<div style="font-size:.75rem;color:var(--text-secondary);text-align:right;">inclui ajustes manuais de '+brlJS(s.manual)+'</div>':'')+
+    '</div>';
+    body.innerHTML=h;
+  }).catch(function(e){body.textContent='Erro ao carregar o detalhamento: '+(e.message||e);});
+}var pmHistTk='', pmHistDirty=false;
 function escH(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function pmOpenHist(tk){
   pmHistTk=tk;
@@ -357,7 +413,7 @@ function pmCloseHist(){
   document.getElementById('pm-hist-modal').style.display='none';
   if(pmHistDirty){pmHistDirty=false;location.reload();}
 }
-['pm-buy-modal','pm-hist-modal','pm-manual-modal'].forEach(function(id){
+['pm-buy-modal','pm-hist-modal','pm-manual-modal','pm-det-modal'].forEach(function(id){
   document.getElementById(id).addEventListener('click',function(ev){
     if(ev.target!==this)return;
     if(id==='pm-hist-modal')pmCloseHist();else this.style.display='none';

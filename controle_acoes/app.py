@@ -21880,6 +21880,45 @@ def pm_historico(ticker):
         'created': e.created_at.strftime('%d/%m/%Y %H:%M') if e.created_at else '',
     } for e in evs])
 
+@app.route('/api/pm/disponivel/<ticker>')
+@login_required
+def pm_disponivel(ticker):
+    """Detalhe dos valores Disponível/Aplicado do PM de um ticker: cada crédito ganho
+    (dividendos e opções) com a situação, os demais lançamentos e a conta que fecha
+    nos totais da tabela."""
+    ticker = ticker.strip().upper()
+    a, evs, earned, pending, pool, custo_of, custo_aj = _pm_state(current_user.id, ticker)
+    if not a:
+        return jsonify({'error': 'ativo não encontrado na carteira'}), 404
+    used_keys = {e.source_key for e in evs if e.source_key}
+    earned_keys = {i['key'] for i in earned}
+    fdate = lambda d: d.strftime('%d/%m/%Y') if d else ''
+    creditos = [{'kind': i['kind'], 'date': fdate(i['date']), 'ref': i['ref'],
+                 'valor': i['valor'], 'aplicado': i['key'] in used_keys} for i in earned]
+    outros = []
+    for e in sorted(evs, key=lambda x: (x.event_date or date.min, x.id)):
+        if e.kind == 'IGNORADO':
+            continue
+        if e.kind in ('COMPRA_LUCRO', 'MANUAL'):
+            kind = e.kind
+        elif e.source_key not in earned_keys:
+            kind = 'ORFAO'      # aplicado, mas a origem não aparece mais na varredura
+        else:
+            continue
+        outros.append({'kind': kind, 'date': fdate(e.event_date), 'ref': e.ref or '',
+                       'valor': round(e.valor or 0, 2)})
+    ganhos  = round(sum(i['valor'] for i in earned), 2)
+    aplic   = round(sum(i['valor'] for i in earned if i['key'] in used_keys), 2)
+    orfaos  = round(sum(o['valor'] for o in outros if o['kind'] == 'ORFAO'), 2)
+    compras = round(sum(o['valor'] for o in outros if o['kind'] == 'COMPRA_LUCRO'), 2)
+    manual  = round(sum(o['valor'] for o in outros if o['kind'] == 'MANUAL'), 2)
+    return jsonify({
+        'creditos': creditos, 'outros': outros,
+        'resumo': {'ganhos': ganhos, 'aplicado_creditos': round(aplic + orfaos, 2),
+                   'compras': compras, 'manual': manual, 'disponivel': round(pool, 2),
+                   'aplicado_total': round(custo_of - custo_aj, 2),
+                   'resto': round(pool - (ganhos - aplic - orfaos - compras), 2)}})
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Livro de transações da carteira (AssetTxn)
 # ─────────────────────────────────────────────────────────────────────────────

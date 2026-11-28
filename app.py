@@ -2,14 +2,18 @@ from flask import Flask
 from flask_login import LoginManager
 from config import config
 from models import db, init_db, populate_db, User
+from filters import register_filters
 import os
 
 def create_app(config_name='default'):
     """Factory function para criar a aplicação Flask"""
     app = Flask(__name__)
-    
+
     # Carregar configurações
     app.config.from_object(config[config_name])
+
+    # Registrar filtros de formatação
+    register_filters(app)
     
     # Inicializar extensões
     init_db(app)

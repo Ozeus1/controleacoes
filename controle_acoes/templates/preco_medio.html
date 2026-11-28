@@ -18,10 +18,17 @@
 .pm-btn.pm-btn-vermelho{background:rgba(248,113,113,.14);border-color:rgba(248,113,113,.32);color:#f87171;}
 </style>
 
-{% macro pm_table(items, titulo) %}
+{% macro pm_table(items, titulo, tipo) %}
 <div class="card" style="margin-bottom:1.5rem;">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:1rem;flex-wrap:wrap;gap:.5rem;">
         <h3 style="margin:0;">{{ titulo }}</h3>
+        {% set _aptos = items | selectattr('pending_n', 'gt', 0) | selectattr('pool', 'gt', 0.005) | list %}
+        <form method="POST" action="{{ url_for('pm_aplicar_todos', tipo=tipo) }}" style="margin:0;">
+            <button type="submit" class="pm-btn{{ ' pm-btn-verde' if _aptos else '' }}" style="padding:.3rem .8rem;font-size:.85rem;"
+                    title="{{ 'Aplicar os créditos pendentes de todos os ativos desta tabela (igual ao 💰 de cada linha)' if _aptos else 'Nenhum crédito pendente nesta tabela' }}"
+                    {% if not _aptos %}disabled{% endif %}
+                    onclick="return confirm('Aplicar os créditos pendentes de {{ _aptos|length }} ativo(s) ({{ _aptos|sum(attribute='pool')|brl }}) ao Preço Médio?');">💰 Aplicar todos ({{ _aptos|length }})</button>
+        </form>
     </div>
     {% if items %}
     <div style="overflow-x:auto;">
@@ -165,8 +172,8 @@
 </div>
 {% endif %}
 
-{{ pm_table(acoes, '📈 Ações — Preço Médio Ajustado') }}
-{{ pm_table(fiis,  '🏢 FIIs — Preço Médio Ajustado') }}
+{{ pm_table(acoes, '📈 Ações — Preço Médio Ajustado', 'acoes') }}
+{{ pm_table(fiis,  '🏢 FIIs — Preço Médio Ajustado', 'fiis') }}
 
 {# ── Modal: compra com lucro ── #}
 <div id="pm-buy-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.75);

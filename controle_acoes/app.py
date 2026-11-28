@@ -21492,6 +21492,37 @@ def pm_aplicar(ticker):
     return redirect(url_for('preco_medio'))
 
 
+@app.route('/preco-medio/aplicar-todos/<tipo>', methods=['POST'])
+@login_required
+def pm_aplicar_todos(tipo):
+    """Aplica os créditos pendentes de TODOS os ativos de uma tabela (ações ou FIIs):
+    o mesmo que o 💰 de cada linha, em lote."""
+    tipos = {'acoes': 'ACAO', 'fiis': 'FII'}
+    if tipo not in tipos:
+        flash('Tabela inválida.', 'warning')
+        return redirect(url_for('preco_medio'))
+    ctx = _pm_ctx(current_user.id)
+    assets = Asset.query.filter(Asset.user_id == current_user.id, Asset.type == tipos[tipo],
+                                Asset.strategy != 'SWING', Asset.quantity > 0
+                                ).order_by(Asset.ticker).all()
+    n_ativos = n_cred = 0
+    total = 0.0
+    for a in assets:
+        _a, evs, earned, pending, pool, custo_of, custo_aj = _pm_state(current_user.id, a.ticker, ctx)
+        if not pending or pool <= 0.005:
+            continue
+        n, aplicado, _ = _pm_aplicar_creditos(current_user.id, a.ticker, a, pending, pool, custo_aj)
+        if n:
+            n_ativos += 1
+            n_cred += n
+            total += aplicado
+    if not n_ativos:
+        flash('Nenhum crédito pendente para aplicar.', 'warning')
+        return redirect(url_for('preco_medio'))
+    db.session.commit()
+    flash(f'{n_ativos} ativo(s): {n_cred} crédito(s) aplicados — R$ {brl_fmt(total)} abatidos do PM.', 'success')
+    return redirect(url_for('preco_medio'))
+
 @app.route('/preco-medio/comprar', methods=['POST'])
 @login_required
 def pm_comprar():
